@@ -479,6 +479,84 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
 
         return model
 
+    def test_set_attention_slice_auto(self):
+        torch.cuda.empty_cache()
+        torch.cuda.reset_max_memory_allocated()
+        torch.cuda.reset_peak_memory_stats()
+
+        unet = self.get_unet_model()
+        unet.set_attention_slice("auto")
+
+        latents = self.get_latents(0)
+        encoder_hidden_states = self.get_encoder_hidden_states(0)
+        timestep = 1
+
+        with torch.no_grad():
+            _ = unet(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
+
+        mem_bytes = torch.cuda.max_memory_allocated()
+        print(mem_bytes)
+        assert False
+
+    def test_set_attention_slice_max(self):
+        torch.cuda.empty_cache()
+        torch.cuda.reset_max_memory_allocated()
+        torch.cuda.reset_peak_memory_stats()
+
+        unet = self.get_unet_model()
+        unet.set_attention_slice("max")
+
+        latents = self.get_latents(0)
+        encoder_hidden_states = self.get_encoder_hidden_states(0)
+        timestep = 1
+
+        with torch.no_grad():
+            _ = unet(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
+
+        mem_bytes = torch.cuda.max_memory_allocated()
+        print(mem_bytes)
+        assert False
+
+    def test_set_attention_slice_int(self):
+        torch.cuda.empty_cache()
+        torch.cuda.reset_max_memory_allocated()
+        torch.cuda.reset_peak_memory_stats()
+
+        unet = self.get_unet_model()
+        unet.set_attention_slice(2)
+
+        latents = self.get_latents(0)
+        encoder_hidden_states = self.get_encoder_hidden_states(0)
+        timestep = 1
+
+        with torch.no_grad():
+            _ = unet(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
+
+        mem_bytes = torch.cuda.max_memory_allocated()
+        print(mem_bytes)
+        assert False
+
+    def test_set_attention_slice_list(self):
+        torch.cuda.empty_cache()
+        torch.cuda.reset_max_memory_allocated()
+        torch.cuda.reset_peak_memory_stats()
+
+        # there are 16 slicable layers
+        slice_list = 8 * [2, 3]
+        unet = self.get_unet_model()
+        unet.set_attention_slice(slice_list)
+
+        latents = self.get_latents(0)
+        encoder_hidden_states = self.get_encoder_hidden_states(0)
+        timestep = 1
+
+        with torch.no_grad():
+            _ = unet(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
+
+        mem_bytes = torch.cuda.max_memory_allocated()
+        print(mem_bytes)
+        assert False
+
     def get_encoder_hidden_states(self, seed=0, shape=(4, 77, 768), fp16=False):
         dtype = torch.float16 if fp16 else torch.float32
         hidden_states = torch.from_numpy(load_hf_numpy(self.get_file_format(seed, shape))).to(torch_device).to(dtype)

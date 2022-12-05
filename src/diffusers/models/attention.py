@@ -14,7 +14,7 @@
 import math
 import warnings
 from dataclasses import dataclass
-from typing import Optional
+from typing import List, Optional, Union
 
 import torch
 import torch.nn.functional as F
@@ -174,9 +174,12 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             self.norm_out = nn.LayerNorm(inner_dim)
             self.out = nn.Linear(inner_dim, self.num_vector_embeds - 1)
 
-    def _set_attention_slice(self, slice_size):
-        for block in self.transformer_blocks:
-            block._set_attention_slice(slice_size)
+    def _set_attention_slice(self, slice_size: Union[int, List[int]]):
+        if isinstance(slice_size, int):
+            slice_size = len(self.transformer_blocks) * [slice_size]
+
+        for i, block in enumerate(self.transformer_blocks):
+            block._set_attention_slice(slice_size[i])
 
     def forward(self, hidden_states, encoder_hidden_states=None, timestep=None, return_dict: bool = True):
         """
@@ -411,6 +414,7 @@ class BasicTransformerBlock(nn.Module):
         super().__init__()
         self.only_cross_attention = only_cross_attention
         self.attention_head_dim = attention_head_dim
+        self.cross_attention_dim = cross_attention_dim
         self.attn1 = CrossAttention(
             query_dim=dim,
             heads=num_attention_heads,
@@ -448,23 +452,6 @@ class BasicTransformerBlock(nn.Module):
                     "Could not enable memory efficient attention. Make sure xformers is installed"
                     f" correctly and a GPU is available: {e}"
                 )
-
-    def set_attention_slice(self, slice_size):
-        head_dims = self.attention_head_dim
-        head_dims = [head_dims] if isinstance(head_dims, int) else head_dims
-        if slice_size is not None and any(dim % slice_size != 0 for dim in head_dims):
-            raise ValueError(
-                f"Make sure slice_size {slice_size} is a common divisor of "
-                f"the number of heads used in cross_attention: {head_dims}"
-            )
-        if slice_size is not None and slice_size > min(head_dims):
-            raise ValueError(
-                f"slice_size {slice_size} has to be smaller or equal to "
-                f"the lowest number of heads used in cross_attention: min({head_dims}) = {min(head_dims)}"
-            )
-
-        self.attn1._slice_size = slice_size
-        self.attn2._slice_size = slice_size
 
     def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
         if not is_xformers_available():
@@ -548,6 +535,7 @@ class CrossAttention(nn.Module):
         # for slice_size > 0 the attention score computation
         # is split across the batch axis to save memory
         # You can set slice_size with `set_attention_slice`
+        self.sliceable_head_dim = heads
         self._slice_size = None
         self._use_memory_efficient_attention_xformers = False
 
@@ -572,6 +560,12 @@ class CrossAttention(nn.Module):
         tensor = tensor.reshape(batch_size // head_size, head_size, seq_len, dim)
         tensor = tensor.permute(0, 2, 1, 3).reshape(batch_size // head_size, seq_len, dim * head_size)
         return tensor
+
+    def set_attention_slice(self, slice_size):
+        if slice_size is not None and slice_size > self.sliceable_head_dim:
+            raise ValueError(f"slice_size {slice_size} has to be smaller or equal to {self.sliceable_head_dim}.")
+
+        self._slice_size = slice_size
 
     def forward(self, hidden_states, context=None, mask=None):
         batch_size, sequence_length, _ = hidden_states.shape
