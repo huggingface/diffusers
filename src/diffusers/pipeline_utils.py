@@ -520,9 +520,7 @@ class DiffusionPipeline(ConfigMixin):
             else:
                 file_name = CUSTOM_PIPELINE_FILE_NAME
 
-            pipeline_class = get_class_from_dynamic_module(
-                custom_pipeline, module_file=file_name, cache_dir=cache_dir
-            )
+            pipeline_class = get_class_from_dynamic_module(custom_pipeline, module_file=file_name, cache_dir=cache_dir)
         elif cls != DiffusionPipeline:
             pipeline_class = cls
         else:
