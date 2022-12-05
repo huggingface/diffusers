@@ -44,7 +44,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
     r"""
-    Pipeline for text-to-image generation using Stable Diffusion.
+    Pipeline for image-to-image generation using Stable Diffusion.
 
     This model inherits from [`FlaxDiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
