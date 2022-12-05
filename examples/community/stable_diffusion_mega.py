@@ -87,6 +87,7 @@ class StableDiffusionMegaPipeline(DiffusionPipeline):
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
+        self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     @property
     def components(self) -> Dict[str, Any]:
