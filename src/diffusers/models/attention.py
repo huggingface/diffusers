@@ -174,10 +174,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             self.norm_out = nn.LayerNorm(inner_dim)
             self.out = nn.Linear(inner_dim, self.num_vector_embeds - 1)
 
-    def _set_attention_slice(self, slice_size):
-        for block in self.transformer_blocks:
-            block._set_attention_slice(slice_size)
-
     def forward(self, hidden_states, encoder_hidden_states=None, timestep=None, return_dict: bool = True):
         """
         Args:
@@ -448,10 +444,6 @@ class BasicTransformerBlock(nn.Module):
                     f" correctly and a GPU is available: {e}"
                 )
 
-    def _set_attention_slice(self, slice_size):
-        self.attn1._slice_size = slice_size
-        self.attn2._slice_size = slice_size
-
     def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
         if not is_xformers_available():
             print("Here is how to install it")
@@ -534,6 +526,7 @@ class CrossAttention(nn.Module):
         # for slice_size > 0 the attention score computation
         # is split across the batch axis to save memory
         # You can set slice_size with `set_attention_slice`
+        self.sliceable_head_dim = heads
         self._slice_size = None
         self._use_memory_efficient_attention_xformers = False
 
@@ -558,6 +551,12 @@ class CrossAttention(nn.Module):
         tensor = tensor.reshape(batch_size // head_size, head_size, seq_len, dim)
         tensor = tensor.permute(0, 2, 1, 3).reshape(batch_size // head_size, seq_len, dim * head_size)
         return tensor
+
+    def set_attention_slice(self, slice_size):
+        if slice_size is not None and slice_size > self.sliceable_head_dim:
+            raise ValueError(f"slice_size {slice_size} has to be smaller or equal to {self.sliceable_head_dim}.")
+
+        self._slice_size = slice_size
 
     def forward(self, hidden_states, context=None, mask=None):
         batch_size, sequence_length, _ = hidden_states.shape
