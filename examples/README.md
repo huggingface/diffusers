@@ -60,7 +60,7 @@ git clone https://github.com/huggingface/diffusers
 cd diffusers
 pip install .
 ```
-Then cd in the example folder of your choice and run
+Then cd in the example folder  and run
 ```bash
 pip install -r requirements.txt
 ```

@@ -24,12 +24,16 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.optimization import get_scheduler
+from diffusers.utils import check_min_version
 from huggingface_hub import HfFolder, Repository, whoami
 from PIL import Image, ImageDraw
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
+
+# Will error if the minimal version of diffusers is not installed. Remove at your own risks.
+check_min_version("0.10.0.dev0")
 
 logger = get_logger(__name__)
 
