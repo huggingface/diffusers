@@ -122,6 +122,8 @@
       title: "VQ Diffusion"
     - local: api/pipelines/repaint
       title: "RePaint"
+    - local: api/pipelines/audio_diffusion
+      title: "Audio Diffusion"
     title: "Pipelines"
   - sections:
     - local: api/experimental/rl

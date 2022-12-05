@@ -30,12 +30,14 @@ if is_torch_available():
     )
     from .pipeline_utils import DiffusionPipeline
     from .pipelines import (
+        AudioDiffusionPipeline,
         DanceDiffusionPipeline,
         DDIMPipeline,
         DDPMPipeline,
         KarrasVePipeline,
         LDMPipeline,
         LDMSuperResolutionPipeline,
+        Mel,
         PNDMPipeline,
         RePaintPipeline,
         ScoreSdeVePipeline,
