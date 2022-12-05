@@ -6,8 +6,7 @@ body:
     attributes:
       value: |
         Thanks a lot for taking the time to file an issue 🤗. |
-        Issues does not only help to improve the library, but also publicly document common problems, questions, workflows
-        for the whole community, which is extremely helpful! |
+        Issues does not only help to improve the library, but also publicly document common problems, questions, workflows for the whole community, which is extremely helpful! |
         In order to make your issue as **useful for the community as possible**, let's try to stick to some simple guidelines: |
         - 1. Please try to be as precise and concise as possible. |
              *Give your issue a fitting title. Assume that someone which very limited knowledge of diffusers can understand your issue by adding links to code, documentation other issues, pull requests etc...* |
