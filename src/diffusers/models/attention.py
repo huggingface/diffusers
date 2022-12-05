@@ -14,7 +14,7 @@
 import math
 import warnings
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -173,13 +173,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         elif self.is_input_vectorized:
             self.norm_out = nn.LayerNorm(inner_dim)
             self.out = nn.Linear(inner_dim, self.num_vector_embeds - 1)
-
-    def _set_attention_slice(self, slice_size: Union[int, List[int]]):
-        if isinstance(slice_size, int):
-            slice_size = len(self.transformer_blocks) * [slice_size]
-
-        for i, block in enumerate(self.transformer_blocks):
-            block._set_attention_slice(slice_size[i])
 
     def forward(self, hidden_states, encoder_hidden_states=None, timestep=None, return_dict: bool = True):
         """
@@ -412,8 +405,6 @@ class BasicTransformerBlock(nn.Module):
         only_cross_attention: bool = False,
     ):
         super().__init__()
-        self.only_cross_attention = only_cross_attention
-        self.attention_head_dim = attention_head_dim
         self.cross_attention_dim = cross_attention_dim
         self.attn1 = CrossAttention(
             query_dim=dim,
