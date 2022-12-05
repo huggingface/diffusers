@@ -167,4 +167,3 @@ tags
 # RL pipelines may produce mp4 outputs
 *.mp4
 
-hf-internal-testing
