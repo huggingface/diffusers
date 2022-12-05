@@ -9,6 +9,7 @@ import numpy as np
 import torch
 
 from diffusers import DiffusionPipeline
+from diffusers.utils.import_utils import is_accelerate_available, is_xformers_available
 from diffusers.utils.testing_utils import require_torch, torch_device
 
 
@@ -22,6 +23,11 @@ class PipelineTesterMixin:
     It provides a set of common tests for each PyTorch pipeline, e.g. saving and loading the pipeline,
     equivalence of dict and tuple outputs, etc.
     """
+
+    # set these parameters to False in the child class if the pipeline does not support the corresponding functionality
+    test_attention_slicing = True
+    test_cpu_offload = True
+    test_xformers_attention = True
 
     @property
     def pipeline_class(self) -> Union[Callable, DiffusionPipeline]:
@@ -49,36 +55,37 @@ class PipelineTesterMixin:
         torch.cuda.empty_cache()
 
     def test_save_load_local(self):
-        device = "cpu"
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs(torch_device)
         output = pipe(**inputs)[0]
 
         with tempfile.TemporaryDirectory() as tmpdir:
             pipe.save_pretrained(tmpdir)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
-            pipe_loaded.to(device)
+            pipe_loaded.to(torch_device)
             pipe_loaded.set_progress_bar_config(disable=None)
 
-        output_loaded = pipe_loaded(**self.get_dummy_inputs(device))[0]
+        inputs = self.get_dummy_inputs(torch_device)
+        output_loaded = pipe_loaded(**inputs)[0]
 
         max_diff = np.abs(output - output_loaded).max()
-        self.assertLessEqual(max_diff, 1e-5)
+        self.assertLess(max_diff, 1e-5)
 
     def test_dict_tuple_outputs_equivalent(self):
-        device = "cpu"
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        output = pipe(**self.get_dummy_inputs(device))[0]
-        output_tuple = pipe(**self.get_dummy_inputs(device), return_dict=False)[0]
+        output = pipe(**self.get_dummy_inputs(torch_device))[0]
+        output_tuple = pipe(**self.get_dummy_inputs(torch_device), return_dict=False)[0]
 
         max_diff = np.abs(output - output_tuple).max()
-        self.assertLessEqual(max_diff, 1e-5)
+        self.assertLess(max_diff, 1e-5)
 
     def test_pipeline_call_implements_required_args(self):
         required_args = ["num_inference_steps", "generator", "return_dict"]
@@ -89,12 +96,13 @@ class PipelineTesterMixin:
     def test_num_inference_steps_consistent(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         outputs = []
         times = []
         for num_steps in [1, 3, 6]:
-            inputs = self.get_dummy_inputs("cpu")
+            inputs = self.get_dummy_inputs(torch_device)
             inputs["num_inference_steps"] = num_steps
 
             start_time = time.time()
@@ -135,7 +143,7 @@ class PipelineTesterMixin:
         output_fp16 = pipe_fp16(**self.get_dummy_inputs(device))[0]
 
         max_diff = np.abs(output - output_fp16).max()
-        self.assertLessEqual(max_diff, 1e-2, "The outputs of the fp16 and fp32 pipelines are too different.")
+        self.assertLess(max_diff, 1e-2, "The outputs of the fp16 and fp32 pipelines are too different.")
 
     @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
     def test_save_load_float16(self):
@@ -167,28 +175,28 @@ class PipelineTesterMixin:
         output_loaded = pipe_loaded(**self.get_dummy_inputs(device))[0]
 
         max_diff = np.abs(output - output_loaded).max()
-        self.assertLessEqual(max_diff, 1e-5, "The output of the fp16 pipeline changed after saving and loading.")
+        self.assertLess(max_diff, 1e-5, "The output of the fp16 pipeline changed after saving and loading.")
 
     def test_save_load_optional_components(self):
         if not hasattr(self.pipeline_class, "_optional_components"):
             return
 
-        device = "cpu"
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         # set all optional components to None
         for optional_component in pipe._optional_components:
             setattr(pipe, optional_component, None)
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs(torch_device)
         output = pipe(**inputs)[0]
 
         with tempfile.TemporaryDirectory() as tmpdir:
             pipe.save_pretrained(tmpdir)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
-            pipe_loaded.to(device)
+            pipe_loaded.to(torch_device)
             pipe_loaded.set_progress_bar_config(disable=None)
 
         for optional_component in pipe._optional_components:
@@ -197,10 +205,11 @@ class PipelineTesterMixin:
                 f"`{optional_component}` did not stay set to None after loading.",
             )
 
-        output_loaded = pipe_loaded(**self.get_dummy_inputs(device))[0]
+        inputs = self.get_dummy_inputs(torch_device)
+        output_loaded = pipe_loaded(**inputs)[0]
 
         max_diff = np.abs(output - output_loaded).max()
-        self.assertLessEqual(max_diff, 1e-5)
+        self.assertLess(max_diff, 1e-5)
 
     @unittest.skipIf(torch_device != "cuda", reason="CUDA and CPU are required to switch devices")
     def test_to_device(self):
@@ -221,3 +230,68 @@ class PipelineTesterMixin:
 
         output_cuda = pipe(**self.get_dummy_inputs("cuda"))[0]
         self.assertTrue(np.isnan(output_cuda).sum() == 0)
+
+    def test_attention_slicing_forward_pass(self):
+        if not self.test_attention_slicing:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_without_slicing = pipe(**inputs)
+
+        pipe.enable_attention_slicing(slice_size=1)
+        inputs = self.get_dummy_inputs(torch_device)
+        output_with_slicing = pipe(**inputs)
+
+        max_diff = np.abs(output_with_slicing.images - output_without_slicing.images).max()
+        self.assertLess(max_diff, 1e-5, "Attention slicing should not affect the inference results")
+
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_accelerate_available(),
+        reason="XFormers attention is only available with CUDA and `accelerate` installed",
+    )
+    def test_cpu_offload_forward_pass(self):
+        if not self.test_cpu_offload:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_without_offload = pipe(**inputs)
+
+        pipe.enable_sequential_cpu_offload()
+        inputs = self.get_dummy_inputs(torch_device)
+        output_with_offload = pipe(**inputs)
+
+        max_diff = np.abs(output_with_offload.images - output_without_offload.images).max()
+        self.assertLess(max_diff, 1e-5, "CPU offloading should not affect the inference results")
+
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_xformers_attention_forward_pass(self):
+        if not self.test_xformers_attention:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_without_offload = pipe(**inputs)
+
+        pipe.enable_xformers_memory_efficient_attention()
+        inputs = self.get_dummy_inputs(torch_device)
+        output_with_offload = pipe(**inputs)
+
+        max_diff = np.abs(output_with_offload.images - output_without_offload.images).max()
+        self.assertLess(max_diff, 1e-5, "XFormers attention should not affect the inference results")

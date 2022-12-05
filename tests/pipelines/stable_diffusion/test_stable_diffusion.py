@@ -275,24 +275,6 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    def test_stable_diffusion_attention_chunk(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        output_1 = sd_pipe(**inputs)
-
-        # make sure chunking the attention yields the same result
-        sd_pipe.enable_attention_slicing(slice_size=1)
-        inputs = self.get_dummy_inputs(device)
-        output_2 = sd_pipe(**inputs)
-
-        assert np.abs(output_2.images.flatten() - output_1.images.flatten()).max() < 1e-4
-
     def test_stable_diffusion_vae_slicing(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
