@@ -4,6 +4,7 @@
 
 import argparse
 import os.path as osp
+import re
 import torch
 
 
@@ -187,7 +188,6 @@ def convert_vae_state_dict(vae_state_dict):
 # Text Encoder Conversion #
 # =========================#
 
-import re
 
 textenc_conversion_lst = [
     # (stable-diffusion, HF Diffusers)

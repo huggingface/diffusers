@@ -16,6 +16,7 @@
 
 import argparse
 import os
+import re
 import torch
 
 
@@ -645,8 +646,6 @@ def convert_ldm_clip_checkpoint(checkpoint):
 
     return text_model
 
-
-import re
 
 textenc_conversion_lst = [
     ("cond_stage_model.model.positional_embedding", "text_model.embeddings.position_embedding.weight"),
