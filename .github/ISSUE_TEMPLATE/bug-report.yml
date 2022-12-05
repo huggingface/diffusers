@@ -5,16 +5,16 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks a lot for taking the time to file an issue 🤗.
-        Issues does not only help to improve the library, but also publicly document common problems, questions, workflows for the whole community, which is extremely helpful!
-        Filing an issue is as important of a contribution as opening a PR for the library ❤️.
+        Thanks a lot for taking the time to file this issue 🤗.
+        Issues do not only help to improve the library, but also publicly document common problems, questions, workflows for the whole community!
+        Thus, issues are of the same importance as pull requests when contributing to this library ❤️.
         In order to make your issue as **useful for the community as possible**, let's try to stick to some simple guidelines:
         - 1. Please try to be as precise and concise as possible.
-             *Give your issue a fitting title. Assume that someone which very limited knowledge of diffusers can understand your issue by adding links to code, documentation other issues, pull requests etc...*
-        - 2. If your issue is about something not working, **always** provide a reproducibel code snippet. The reader should be able to **only copy-paste your code snippet into a Python shell to reproduce the error**.
-             *The community cannot solve your issue if it cannot reproduce it. If your bug is related to training, add your training script and make everything needed to train public. If your bug is for inference, just add a simple Python code snippet.*
+             *Give your issue a fitting title. Assume that someone which very limited knowledge of diffusers can understand your issue. Add links to the source code, documentation other issues, pull requests etc...*
+        - 2. If your issue is about something not working, **always** provide a reproducible code snippet. The reader should be able to reproduce your issue by **only copy-pasting your code snippet into a Python shell**.
+             *The community cannot solve your issue if it cannot reproduce it. If your bug is related to training, add your training script and make everything needed to train public. Otherwise, just add a simple Python code snippet.*
         - 3. Add the **minimum amount of code / context that is needed to understand, reproduce your issue**.
-             *`diffusers` is getting many issues every day. Make sure your issue is about one bug and one bug only. Make sure you add only the context, code needed to understand your issues - nothing more. Generally, every issue is a way of documenting this library, try to make a good documentation entry.*
+             *Make the life of maintainers easy. `diffusers` is getting many issues every day. Make sure your issue is about one bug and one bug only. Make sure you add only the context, code needed to understand your issues - nothing more. Generally, every issue is a way of documenting this library, try to make it a good documentation entry.*
   - type: textarea
     id: bug-description
     attributes:
