@@ -15,6 +15,10 @@ body:
              *The community cannot solve your issue if it cannot reproduce it. If your bug is related to training, add your training script and make everything needed to train public. Otherwise, just add a simple Python code snippet.*
         - 3. Add the **minimum amount of code / context that is needed to understand, reproduce your issue**.
              *Make the life of maintainers easy. `diffusers` is getting many issues every day. Make sure your issue is about one bug and one bug only. Make sure you add only the context, code needed to understand your issues - nothing more. Generally, every issue is a way of documenting this library, try to make it a good documentation entry.*
+  - type: markdown
+    attributes:
+      value: |
+        For more in-detail information on how to write good issues you can have a look [here](https://huggingface.co/course/chapter8/5?fw=pt)
   - type: textarea
     id: bug-description
     attributes:
