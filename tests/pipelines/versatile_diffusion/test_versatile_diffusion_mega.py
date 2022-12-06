@@ -23,8 +23,6 @@ import torch
 from diffusers import VersatileDiffusionPipeline
 from diffusers.utils.testing_utils import load_image, require_torch_gpu, slow, torch_device
 
-from ...test_pipelines_common import PipelineTesterMixin
-
 
 torch.backends.cuda.matmul.allow_tf32 = False
 

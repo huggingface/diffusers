@@ -21,8 +21,6 @@ import torch
 from diffusers import ScoreSdeVePipeline, ScoreSdeVeScheduler, UNet2DModel
 from diffusers.utils.testing_utils import require_torch, slow, torch_device
 
-from ...test_pipelines_common import PipelineTesterMixin
-
 
 torch.backends.cuda.matmul.allow_tf32 = False
 

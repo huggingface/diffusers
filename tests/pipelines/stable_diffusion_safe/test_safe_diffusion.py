@@ -27,8 +27,6 @@ from diffusers.utils import floats_tensor, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
-from ...test_pipelines_common import PipelineTesterMixin
-
 
 torch.backends.cuda.matmul.allow_tf32 = False
 

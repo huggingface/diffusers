@@ -29,8 +29,6 @@ from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_d
 from diffusers.utils.testing_utils import require_torch_gpu
 from transformers import XLMRobertaTokenizer
 
-from ...test_pipelines_common import PipelineTesterMixin
-
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
