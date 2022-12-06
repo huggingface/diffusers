@@ -91,6 +91,7 @@ _deps = [
     "isort>=5.5.4",
     "jax>=0.2.8,!=0.3.2",
     "jaxlib>=0.1.65",
+    "librosa",
     "modelcards>=0.1.4",
     "numpy",
     "parameterized",
@@ -181,6 +182,7 @@ extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "modelcards")
 extras["test"] = deps_list(
     "datasets",
+    "librosa",
     "parameterized",
     "pytest",
     "pytest-timeout",
