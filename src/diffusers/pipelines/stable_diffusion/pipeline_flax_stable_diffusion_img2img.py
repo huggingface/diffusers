@@ -275,7 +275,6 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
         return_dict: bool = True,
         jit: bool = False,
         debug: bool = False,
-        **kwargs,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
