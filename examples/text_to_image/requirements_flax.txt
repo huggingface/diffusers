@@ -1,5 +1,5 @@
-diffusers>==0.5.1
 transformers>=4.21.0
+datasets
 flax
 optax
 torch
