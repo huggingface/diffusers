@@ -11,7 +11,6 @@ import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch.utils.data import Dataset
 
-# Autocast for proper type casting half vs full
 from  torch.cuda.amp import autocast
 
 from accelerate import Accelerator
