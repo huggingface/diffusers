@@ -2,6 +2,7 @@ import contextlib
 import gc
 import inspect
 import io
+import re
 import tempfile
 import time
 import unittest
@@ -103,7 +104,7 @@ class PipelineTesterMixin:
 
         outputs = []
         times = []
-        for num_steps in [1, 3, 6]:
+        for num_steps in [3, 6, 9]:
             inputs = self.get_dummy_inputs(torch_device)
             inputs["num_inference_steps"] = num_steps
 
@@ -303,12 +304,12 @@ class PipelineTesterMixin:
         pipe.to(torch_device)
 
         inputs = self.get_dummy_inputs(torch_device)
-        num_steps = inputs["num_inference_steps"]
         with io.StringIO() as stderr, contextlib.redirect_stderr(stderr):
             _ = pipe(**inputs)
+            stderr = stderr.getvalue()
+            max_steps = re.search("/(.*?) ", stderr).group(1)
             self.assertTrue(
-                f"{num_steps}/{num_steps}" in stderr.getvalue(),
-                "Progress bar should be enabled, displaying the requested `num_inference_steps`",
+                f"{max_steps}/{max_steps}" in stderr, "Progress bar should be enabled and stopped at the max step"
             )
 
         pipe.set_progress_bar_config(disable=True)
