@@ -13,6 +13,7 @@ from datasets import load_dataset
 from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
+from diffusers.utils import check_min_version
 from huggingface_hub import HfFolder, Repository, whoami
 from onnxruntime.training.ortmodule import ORTModule
 from torchvision.transforms import (
@@ -26,6 +27,9 @@ from torchvision.transforms import (
 )
 from tqdm.auto import tqdm
 
+
+# Will error if the minimal version of diffusers is not installed. Remove at your own risks.
+check_min_version("0.10.0.dev0")
 
 logger = get_logger(__name__)
 

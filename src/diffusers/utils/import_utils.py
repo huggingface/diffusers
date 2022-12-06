@@ -180,9 +180,16 @@ if _onnx_available:
 _scipy_available = importlib.util.find_spec("scipy") is not None
 try:
     _scipy_version = importlib_metadata.version("scipy")
-    logger.debug(f"Successfully imported transformers version {_scipy_version}")
+    logger.debug(f"Successfully imported scipy version {_scipy_version}")
 except importlib_metadata.PackageNotFoundError:
     _scipy_available = False
+
+_librosa_available = importlib.util.find_spec("librosa") is not None
+try:
+    _librosa_version = importlib_metadata.version("librosa")
+    logger.debug(f"Successfully imported librosa version {_librosa_version}")
+except importlib_metadata.PackageNotFoundError:
+    _librosa_available = False
 
 _accelerate_available = importlib.util.find_spec("accelerate") is not None
 try:
@@ -244,6 +251,10 @@ def is_scipy_available():
     return _scipy_available
 
 
+def is_librosa_available():
+    return _librosa_available
+
+
 def is_xformers_available():
     return _xformers_available
 
@@ -283,6 +294,12 @@ scipy`
 """
 
 # docstyle-ignore
+LIBROSA_IMPORT_ERROR = """
+{0} requires the librosa library but it was not found in your environment.  Checkout the instructions on the
+installation page: https://librosa.org/doc/latest/install.html and follow the ones that match your environment.
+"""
+
+# docstyle-ignore
 TENSORFLOW_IMPORT_ERROR = """
 {0} requires the TensorFlow library but it was not found in your environment. Checkout the instructions on the
 installation page: https://www.tensorflow.org/install and follow the ones that match your environment.
@@ -311,6 +328,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("torch", (is_torch_available, PYTORCH_IMPORT_ERROR)),
         ("transformers", (is_transformers_available, TRANSFORMERS_IMPORT_ERROR)),
         ("unidecode", (is_unidecode_available, UNIDECODE_IMPORT_ERROR)),
+        ("librosa", (is_librosa_available, LIBROSA_IMPORT_ERROR)),
     ]
 )
 

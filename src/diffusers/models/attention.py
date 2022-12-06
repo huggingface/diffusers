@@ -174,10 +174,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             self.norm_out = nn.LayerNorm(inner_dim)
             self.out = nn.Linear(inner_dim, self.num_vector_embeds - 1)
 
-    def _set_attention_slice(self, slice_size):
-        for block in self.transformer_blocks:
-            block._set_attention_slice(slice_size)
-
     def forward(self, hidden_states, encoder_hidden_states=None, timestep=None, return_dict: bool = True):
         """
         Args:
@@ -286,6 +282,32 @@ class AttentionBlock(nn.Module):
         self.rescale_output_factor = rescale_output_factor
         self.proj_attn = nn.Linear(channels, channels, 1)
 
+        self._use_memory_efficient_attention_xformers = False
+
+    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
+        if not is_xformers_available():
+            raise ModuleNotFoundError(
+                "Refer to https://github.com/facebookresearch/xformers for more information on how to install"
+                " xformers",
+                name="xformers",
+            )
+        elif not torch.cuda.is_available():
+            raise ValueError(
+                "torch.cuda.is_available() should be True but is False. xformers' memory efficient attention is only"
+                " available for GPU "
+            )
+        else:
+            try:
+                # Make sure we can run the memory efficient attention
+                _ = xformers.ops.memory_efficient_attention(
+                    torch.randn((1, 2, 40), device="cuda"),
+                    torch.randn((1, 2, 40), device="cuda"),
+                    torch.randn((1, 2, 40), device="cuda"),
+                )
+            except Exception as e:
+                raise e
+            self._use_memory_efficient_attention_xformers = use_memory_efficient_attention_xformers
+
     def reshape_heads_to_batch_dim(self, tensor):
         batch_size, seq_len, dim = tensor.shape
         head_size = self.num_heads
@@ -320,21 +342,26 @@ class AttentionBlock(nn.Module):
         key_proj = self.reshape_heads_to_batch_dim(key_proj)
         value_proj = self.reshape_heads_to_batch_dim(value_proj)
 
-        attention_scores = torch.baddbmm(
-            torch.empty(
-                query_proj.shape[0],
-                query_proj.shape[1],
-                key_proj.shape[1],
-                dtype=query_proj.dtype,
-                device=query_proj.device,
-            ),
-            query_proj,
-            key_proj.transpose(-1, -2),
-            beta=0,
-            alpha=scale,
-        )
-        attention_probs = torch.softmax(attention_scores.float(), dim=-1).type(attention_scores.dtype)
-        hidden_states = torch.bmm(attention_probs, value_proj)
+        if self._use_memory_efficient_attention_xformers:
+            # Memory efficient attention
+            hidden_states = xformers.ops.memory_efficient_attention(query_proj, key_proj, value_proj, attn_bias=None)
+            hidden_states = hidden_states.to(query_proj.dtype)
+        else:
+            attention_scores = torch.baddbmm(
+                torch.empty(
+                    query_proj.shape[0],
+                    query_proj.shape[1],
+                    key_proj.shape[1],
+                    dtype=query_proj.dtype,
+                    device=query_proj.device,
+                ),
+                query_proj,
+                key_proj.transpose(-1, -2),
+                beta=0,
+                alpha=scale,
+            )
+            attention_probs = torch.softmax(attention_scores.float(), dim=-1).type(attention_scores.dtype)
+            hidden_states = torch.bmm(attention_probs, value_proj)
 
         # reshape hidden_states
         hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
@@ -416,10 +443,6 @@ class BasicTransformerBlock(nn.Module):
                     "Could not enable memory efficient attention. Make sure xformers is installed"
                     f" correctly and a GPU is available: {e}"
                 )
-
-    def _set_attention_slice(self, slice_size):
-        self.attn1._slice_size = slice_size
-        self.attn2._slice_size = slice_size
 
     def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
         if not is_xformers_available():
@@ -503,6 +526,7 @@ class CrossAttention(nn.Module):
         # for slice_size > 0 the attention score computation
         # is split across the batch axis to save memory
         # You can set slice_size with `set_attention_slice`
+        self.sliceable_head_dim = heads
         self._slice_size = None
         self._use_memory_efficient_attention_xformers = False
 
@@ -527,6 +551,12 @@ class CrossAttention(nn.Module):
         tensor = tensor.reshape(batch_size // head_size, head_size, seq_len, dim)
         tensor = tensor.permute(0, 2, 1, 3).reshape(batch_size // head_size, seq_len, dim * head_size)
         return tensor
+
+    def set_attention_slice(self, slice_size):
+        if slice_size is not None and slice_size > self.sliceable_head_dim:
+            raise ValueError(f"slice_size {slice_size} has to be smaller or equal to {self.sliceable_head_dim}.")
+
+        self._slice_size = slice_size
 
     def forward(self, hidden_states, context=None, mask=None):
         batch_size, sequence_length, _ = hidden_states.shape
