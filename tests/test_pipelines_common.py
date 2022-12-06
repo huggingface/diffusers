@@ -306,7 +306,7 @@ class PipelineTesterMixin:
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_accelerate_available(),
-        reason="XFormers attention is only available with CUDA and `accelerate` installed",
+        reason="CPU offload is only available with CUDA and `accelerate` installed",
     )
     def test_cpu_offload_forward_pass(self):
         if not self.test_cpu_offload:
