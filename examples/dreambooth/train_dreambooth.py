@@ -692,8 +692,8 @@ def main(args):
                     if accelerator.is_main_process:
                         pipeline = DiffusionPipeline.from_pretrained(
                             args.pretrained_model_name_or_path,
-                            unet=accelerator.unwrap_model(unet),
-                            text_encoder=accelerator.unwrap_model(text_encoder),
+                            unet=accelerator.unwrap_model(unet, True),
+                            text_encoder=accelerator.unwrap_model(text_encoder, True),
                             revision=args.revision,
                         )
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
