@@ -24,9 +24,9 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class InpaintByExampleImageEncoder(CLIPPreTrainedModel):
-    def __init__(self, config):
+    def __init__(self, config, proj_size=768):
         super().__init__(config)
-        self.proj_size = 768
+        self.proj_size = proj_size
 
         self.model = CLIPVisionModel(config)
         self.mapper = InpaintByExampleMapper(config)

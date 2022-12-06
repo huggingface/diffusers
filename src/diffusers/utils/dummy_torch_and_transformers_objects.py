@@ -49,7 +49,7 @@ class CycleDiffusionPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class LDMTextToImagePipeline(metaclass=DummyObject):
+class InpaintByExamplePipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -64,7 +64,7 @@ class LDMTextToImagePipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class InpaintByExamplePipeline(metaclass=DummyObject):
+class LDMTextToImagePipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):

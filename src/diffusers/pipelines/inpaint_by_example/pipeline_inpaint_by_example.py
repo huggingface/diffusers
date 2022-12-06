@@ -350,6 +350,8 @@ class InpaintByExamplePipeline(DiffusionPipeline):
 
         if do_classifier_free_guidance:
             uncond_embeddings = self.image_encoder.uncond_vector
+            uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt, 1)
+            uncond_embeddings = uncond_embeddings.view(bs_embed * num_images_per_prompt, 1, -1)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch

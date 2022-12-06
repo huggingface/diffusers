@@ -14,26 +14,20 @@
 # limitations under the License.
 
 import gc
+import random
 import unittest
 
 import numpy as np
 import torch
 
-from ...test_pipelines_common import PipelineTesterMixin
-import random
-
-from diffusers import (
-    AutoencoderKL,
-    PNDMScheduler,
-    InpaintByExamplePipeline,
-    UNet2DConditionModel,
-    UNet2DModel,
-)
+from diffusers import AutoencoderKL, InpaintByExamplePipeline, PNDMScheduler, UNet2DConditionModel, UNet2DModel
 from diffusers.pipelines.inpaint_by_example import InpaintByExampleImageEncoder
 from diffusers.utils import floats_tensor, load_image, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 from PIL import Image
 from transformers import CLIPVisionConfig
+
+from ...test_pipelines_common import PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -125,9 +119,15 @@ class InpaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             image_size=32,
             patch_size=4,
         )
-        return InpaintByExampleImageEncoder(config)
+        return InpaintByExampleImageEncoder(config, proj_size=32)
 
-    def test_stable_diffusion_inpaint(self):
+    def convert_to_pt(self, image):
+        image = np.array(image.convert("RGB"))
+        image = image[None].transpose(0, 3, 1, 2)
+        image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
+        return image
+
+    def test_inpaint_by_example_inpaint(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet_inpaint
         scheduler = PNDMScheduler(skip_prk_steps=True)
@@ -136,6 +136,10 @@ class InpaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image = self.dummy_image.cpu().permute(0, 2, 3, 1)[0]
         init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((64, 64))
         mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((64, 64))
+
+        example_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((32, 32))
+        example_image = self.convert_to_pt(example_image)
+
         image_encoder = self.dummy_image_encoder
 
         # make sure here that pndm scheduler skips prk
@@ -152,7 +156,7 @@ class InpaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         generator = torch.Generator(device=device).manual_seed(0)
         output = pipe(
-            example_image=init_image,
+            example_image=example_image,
             generator=generator,
             guidance_scale=6.0,
             num_inference_steps=2,
@@ -165,7 +169,7 @@ class InpaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         generator = torch.Generator(device=device).manual_seed(0)
         image_from_tuple = pipe(
-            example_image=init_image,
+            example_image=example_image,
             generator=generator,
             guidance_scale=6.0,
             num_inference_steps=2,
@@ -179,17 +183,21 @@ class InpaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4723, 0.5731, 0.3939, 0.5441, 0.5922, 0.4392, 0.5059, 0.4651, 0.4474])
+        expected_slice = np.array([0.4608, 0.573, 0.4089, 0.5238, 0.5764, 0.4526, 0.5006, 0.4621, 0.4583])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
-    def test_stable_diffusion_inpaint_image_tensor(self):
+    def test_inpaint_by_example_image_tensor(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet_inpaint
         scheduler = PNDMScheduler(skip_prk_steps=True)
         vae = self.dummy_vae
         image_encoder = self.dummy_image_encoder
+
+        image = self.dummy_image.cpu().permute(0, 2, 3, 1)[0]
+        example_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((32, 32))
+        example_image = self.convert_to_pt(example_image)
 
         image = self.dummy_image.repeat(1, 1, 2, 2)
         mask_image = image / 2
@@ -208,7 +216,7 @@ class InpaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         generator = torch.Generator(device=device).manual_seed(0)
         output = pipe(
-            example_image=image,
+            example_image=example_image,
             generator=generator,
             guidance_scale=6.0,
             num_inference_steps=2,
@@ -226,7 +234,7 @@ class InpaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         generator = torch.Generator(device=device).manual_seed(0)
         output = pipe(
-            example_image=image,
+            example_image=example_image,
             generator=generator,
             guidance_scale=6.0,
             num_inference_steps=2,
@@ -239,7 +247,7 @@ class InpaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert out_1.shape == (1, 64, 64, 3)
         assert np.abs(out_1.flatten() - out_2.flatten()).max() < 5e-2
 
-    def test_stable_diffusion_inpaint_with_num_images_per_prompt(self):
+    def test_inpaint_by_example_inpaint_with_num_images_per_prompt(self):
         device = "cpu"
         unet = self.dummy_cond_unet_inpaint
         scheduler = PNDMScheduler(skip_prk_steps=True)
@@ -248,6 +256,9 @@ class InpaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image = self.dummy_image.cpu().permute(0, 2, 3, 1)[0]
         init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((64, 64))
         mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((64, 64))
+
+        example_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((32, 32))
+        example_image = self.convert_to_pt(example_image)
 
         image_encoder = self.dummy_image_encoder
 
@@ -265,7 +276,7 @@ class InpaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         generator = torch.Generator(device=device).manual_seed(0)
         images = pipe(
-            example_image=init_image,
+            example_image=example_image,
             generator=generator,
             guidance_scale=6.0,
             num_inference_steps=2,
@@ -279,7 +290,7 @@ class InpaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert len(images) == 2
 
     @unittest.skipIf(torch_device != "cuda", "This test requires a GPU")
-    def test_stable_diffusion_inpaint_fp16(self):
+    def test_inpaint_by_example_inpaint_fp16(self):
         """Test that stable diffusion inpaint_legacy works with fp16"""
         unet = self.dummy_cond_unet_inpaint
         scheduler = PNDMScheduler(skip_prk_steps=True)
@@ -288,9 +299,13 @@ class InpaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((64, 64))
         mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((64, 64))
 
+        example_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((32, 32))
+        example_image = self.convert_to_pt(example_image).to(torch.float16)
+
         image_encoder = self.dummy_image_encoder
 
         # put models in fp16
+        image_encoder = image_encoder.half()
         unet = unet.half()
         vae = vae.half()
 
@@ -308,7 +323,7 @@ class InpaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
         image = pipe(
-            example_image=init_image,
+            example_image=example_image,
             generator=generator,
             num_inference_steps=2,
             output_type="np",
