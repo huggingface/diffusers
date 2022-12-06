@@ -19,6 +19,12 @@ And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) e
 accelerate config
 ```
 
+Or for a default accelerate configuration without answering questions about your environment
+
+```bash
+accelerate config default
+```
+
 Or if your environment doesn't support an interactive shell e.g. a notebook
 
 ```python
