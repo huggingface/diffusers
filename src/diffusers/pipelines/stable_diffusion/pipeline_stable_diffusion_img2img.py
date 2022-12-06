@@ -428,7 +428,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 f" {type(callback_steps)}."
             )
 
-    def get_timesteps(self, num_inference_steps, strength):
+    def get_timesteps(self, num_inference_steps, strength, device):
         # get the original timestep using init_timestep
         offset = self.scheduler.config.get("steps_offset", 0)
         init_timestep = int(num_inference_steps * strength) + offset
@@ -567,7 +567,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
         # 5. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps = self.get_timesteps(num_inference_steps, strength)
+        timesteps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
         # 6. Prepare latent variables
