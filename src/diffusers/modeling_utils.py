@@ -192,7 +192,8 @@ class ModelMixin(torch.nn.Module):
         self,
         save_directory: Union[str, os.PathLike],
         is_main_process: bool = True,
-        save_function: Callable = torch.save,
+        save_function: Callable = None,
+        safe_serialization: bool = False,
     ):
         """
         Save a model and its configuration file to a directory, so that it can be re-loaded using the
@@ -207,11 +208,20 @@ class ModelMixin(torch.nn.Module):
                 the main process to avoid race conditions.
             save_function (`Callable`):
                 The function to use to save the state dictionary. Useful on distributed training like TPUs when one
-                need to replace `torch.save` by another method.
+                need to replace `torch.save` by another method. Can be configured with the environment variable
+                `DIFFUSERS_SAVE_MODE`.
+            safe_serialization (`bool`, *optional*, defaults to `False`):
+                Whether to save the model using `safetensors` or the traditional PyTorch way (that uses `pickle`).
         """
+        if safe_serialization and not is_safetensors_available():
+            raise ImportError("`safe_serialization` requires the `safetensors library: `pip install safetensors`.")
+
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
+
+        if save_function is None:
+            save_function = safetensors.torch.save_file if safe_serialization else torch.save
 
         os.makedirs(save_directory, exist_ok=True)
 
@@ -225,18 +235,21 @@ class ModelMixin(torch.nn.Module):
         # Save the model
         state_dict = model_to_save.state_dict()
 
+        weights_name = SAFETENSORS_WEIGHTS_NAME if safe_serialization else WEIGHTS_NAME
+
         # Clean the folder from a previous save
         for filename in os.listdir(save_directory):
             full_filename = os.path.join(save_directory, filename)
             # If we have a shard file that is not going to be replaced, we delete it, but only from the main process
             # in distributed settings to avoid race conditions.
-            if filename.startswith(WEIGHTS_NAME[:-4]) and os.path.isfile(full_filename) and is_main_process:
+            weights_no_suffix = weights_name.replace(".bin", "").replace(".safetensors", "")
+            if filename.startswith(weights_no_suffix) and os.path.isfile(full_filename) and is_main_process:
                 os.remove(full_filename)
 
         # Save the model
-        save_function(state_dict, os.path.join(save_directory, WEIGHTS_NAME))
+        save_function(state_dict, os.path.join(save_directory, weights_name))
 
-        logger.info(f"Model weights saved in {os.path.join(save_directory, WEIGHTS_NAME)}")
+        logger.info(f"Model weights saved in {os.path.join(save_directory, weights_name)}")
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
@@ -473,6 +486,21 @@ class ModelMixin(torch.nn.Module):
             model = cls.from_config(config, **unused_kwargs)
 
             state_dict = load_state_dict(model_file)
+            dtype = set(v.dtype for v in state_dict.values())
+
+            if len(dtype) > 1 and torch.float32 not in dtype:
+                raise ValueError(
+                    f"The weights of the model file {model_file} have a mixture of incompatible dtypes {dtype}. Please"
+                    f" make sure that {model_file} weights have only one dtype."
+                )
+            elif len(dtype) > 1 and torch.float32 in dtype:
+                dtype = torch.float32
+            else:
+                dtype = dtype.pop()
+
+            # move model to correct dtype
+            model = model.to(dtype)
+
             model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
                 model,
                 state_dict,
@@ -746,15 +774,86 @@ class ModelMixin(torch.nn.Module):
             return sum(p.numel() for p in self.parameters() if p.requires_grad or not only_trainable)
 
 
-def unwrap_model(model: torch.nn.Module) -> torch.nn.Module:
-    """
-    Recursively unwraps a model from potential containers (as used in distributed training).
-
-    Args:
-        model (`torch.nn.Module`): The model to unwrap.
-    """
-    # since there could be multiple levels of wrapping, unwrap recursively
-    if hasattr(model, "module"):
-        return unwrap_model(model.module)
+def _get_model_file(
+    pretrained_model_name_or_path,
+    *,
+    weights_name,
+    subfolder,
+    cache_dir,
+    force_download,
+    proxies,
+    resume_download,
+    local_files_only,
+    use_auth_token,
+    user_agent,
+    revision,
+):
+    pretrained_model_name_or_path = str(pretrained_model_name_or_path)
+    if os.path.isdir(pretrained_model_name_or_path):
+        if os.path.isfile(os.path.join(pretrained_model_name_or_path, weights_name)):
+            # Load from a PyTorch checkpoint
+            model_file = os.path.join(pretrained_model_name_or_path, weights_name)
+            return model_file
+        elif subfolder is not None and os.path.isfile(
+            os.path.join(pretrained_model_name_or_path, subfolder, weights_name)
+        ):
+            model_file = os.path.join(pretrained_model_name_or_path, subfolder, weights_name)
+            return model_file
+        else:
+            raise EnvironmentError(
+                f"Error no file named {weights_name} found in directory {pretrained_model_name_or_path}."
+            )
     else:
-        return model
+        try:
+            # Load from URL or cache if already cached
+            model_file = hf_hub_download(
+                pretrained_model_name_or_path,
+                filename=weights_name,
+                cache_dir=cache_dir,
+                force_download=force_download,
+                proxies=proxies,
+                resume_download=resume_download,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                user_agent=user_agent,
+                subfolder=subfolder,
+                revision=revision,
+            )
+            return model_file
+
+        except RepositoryNotFoundError:
+            raise EnvironmentError(
+                f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier "
+                "listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a "
+                "token having permission to this repo with `use_auth_token` or log in with `huggingface-cli "
+                "login`."
+            )
+        except RevisionNotFoundError:
+            raise EnvironmentError(
+                f"{revision} is not a valid git identifier (branch name, tag name or commit id) that exists for "
+                "this model name. Check the model page at "
+                f"'https://huggingface.co/{pretrained_model_name_or_path}' for available revisions."
+            )
+        except EntryNotFoundError:
+            raise EnvironmentError(
+                f"{pretrained_model_name_or_path} does not appear to have a file named {weights_name}."
+            )
+        except HTTPError as err:
+            raise EnvironmentError(
+                f"There was a specific connection error when trying to load {pretrained_model_name_or_path}:\n{err}"
+            )
+        except ValueError:
+            raise EnvironmentError(
+                f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load this model, couldn't find it"
+                f" in the cached files and it looks like {pretrained_model_name_or_path} is not the path to a"
+                f" directory containing a file named {weights_name} or"
+                " \nCheckout your internet connection or see how to run the library in"
+                " offline mode at 'https://huggingface.co/docs/diffusers/installation#offline-mode'."
+            )
+        except EnvironmentError:
+            raise EnvironmentError(
+                f"Can't load the model for '{pretrained_model_name_or_path}'. If you were trying to load it from "
+                "'https://huggingface.co/models', make sure you don't have a local directory with the same name. "
+                f"Otherwise, make sure '{pretrained_model_name_or_path}' is the correct path to a directory "
+                f"containing a file named {weights_name}"
+            )

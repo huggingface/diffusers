@@ -557,6 +557,46 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert np.abs(output_2.images.flatten() - output_1.images.flatten()).max() < 1e-4
 
+    def test_stable_diffusion_vae_slicing(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        unet = self.dummy_cond_unet
+        scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        # make sure here that pndm scheduler skips prk
+        sd_pipe = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A painting of a squirrel eating a burger"
+
+        image_count = 4
+
+        generator = torch.Generator(device=device).manual_seed(0)
+        output_1 = sd_pipe(
+            [prompt] * image_count, generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np"
+        )
+
+        # make sure sliced vae decode yields the same result
+        sd_pipe.enable_vae_slicing()
+        generator = torch.Generator(device=device).manual_seed(0)
+        output_2 = sd_pipe(
+            [prompt] * image_count, generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np"
+        )
+
+        # there is a small discrepancy at image borders vs. full batch decode
+        assert np.abs(output_2.images.flatten() - output_1.images.flatten()).max() < 3e-3
+
     def test_stable_diffusion_negative_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet
@@ -885,6 +925,45 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         mem_bytes = torch.cuda.max_memory_allocated()
         assert mem_bytes > 3.75 * 10**9
         assert np.abs(image_chunked.flatten() - image.flatten()).max() < 1e-3
+
+    def test_stable_diffusion_vae_slicing(self):
+        torch.cuda.reset_peak_memory_stats()
+        model_id = "CompVis/stable-diffusion-v1-4"
+        pipe = StableDiffusionPipeline.from_pretrained(model_id, revision="fp16", torch_dtype=torch.float16)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        prompt = "a photograph of an astronaut riding a horse"
+
+        # enable vae slicing
+        pipe.enable_vae_slicing()
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        with torch.autocast(torch_device):
+            output_chunked = pipe(
+                [prompt] * 4, generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
+            )
+            image_chunked = output_chunked.images
+
+        mem_bytes = torch.cuda.max_memory_allocated()
+        torch.cuda.reset_peak_memory_stats()
+        # make sure that less than 4 GB is allocated
+        assert mem_bytes < 4e9
+
+        # disable vae slicing
+        pipe.disable_vae_slicing()
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        with torch.autocast(torch_device):
+            output = pipe(
+                [prompt] * 4, generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
+            )
+            image = output.images
+
+        # make sure that more than 4 GB is allocated
+        mem_bytes = torch.cuda.max_memory_allocated()
+        assert mem_bytes > 4e9
+        # There is a small discrepancy at the image borders vs. a fully batched version.
+        assert np.abs(image_chunked.flatten() - image.flatten()).max() < 3e-3
 
     def test_stable_diffusion_text2img_pipeline_fp16(self):
         torch.cuda.reset_peak_memory_stats()

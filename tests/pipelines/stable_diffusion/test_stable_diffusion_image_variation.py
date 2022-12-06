@@ -357,7 +357,7 @@ class StableDiffusionImageVariationPipelineIntegrationTests(unittest.TestCase):
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array([2.285, 2.703, 1.969, 0.696, -1.323, 0.9253, -0.5464, -1.521, -2.537])
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-2
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
 
         test_callback_fn.has_been_called = False
 
