@@ -23,13 +23,13 @@ from ...utils import logging
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class InpaintByExampleImageEncoder(CLIPPreTrainedModel):
+class PaintByExampleImageEncoder(CLIPPreTrainedModel):
     def __init__(self, config, proj_size=768):
         super().__init__(config)
         self.proj_size = proj_size
 
         self.model = CLIPVisionModel(config)
-        self.mapper = InpaintByExampleMapper(config)
+        self.mapper = PaintByExampleMapper(config)
         self.final_layer_norm = nn.LayerNorm(config.hidden_size)
         self.proj_out = nn.Linear(config.hidden_size, self.proj_size)
 
@@ -45,7 +45,7 @@ class InpaintByExampleImageEncoder(CLIPPreTrainedModel):
         return latent_states
 
 
-class InpaintByExampleMapper(nn.Module):
+class PaintByExampleMapper(nn.Module):
     def __init__(self, config):
         super().__init__()
         num_layers = (config.num_hidden_layers + 1) // 5

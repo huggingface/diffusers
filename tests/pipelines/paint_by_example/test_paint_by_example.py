@@ -20,8 +20,8 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import AutoencoderKL, InpaintByExamplePipeline, PNDMScheduler, UNet2DConditionModel, UNet2DModel
-from diffusers.pipelines.inpaint_by_example import InpaintByExampleImageEncoder
+from diffusers import AutoencoderKL, PaintByExamplePipeline, PNDMScheduler, UNet2DConditionModel, UNet2DModel
+from diffusers.pipelines.paint_by_example import PaintByExampleImageEncoder
 from diffusers.utils import floats_tensor, load_image, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 from PIL import Image
@@ -33,7 +33,7 @@ from ...test_pipelines_common import PipelineTesterMixin
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class InpaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class PaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -119,7 +119,7 @@ class InpaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             image_size=32,
             patch_size=4,
         )
-        return InpaintByExampleImageEncoder(config, proj_size=32)
+        return PaintByExampleImageEncoder(config, proj_size=32)
 
     def convert_to_pt(self, image):
         image = np.array(image.convert("RGB"))
@@ -127,7 +127,7 @@ class InpaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
         return image
 
-    def test_inpaint_by_example_inpaint(self):
+    def test_paint_by_example_inpaint(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet_inpaint
         scheduler = PNDMScheduler(skip_prk_steps=True)
@@ -143,7 +143,7 @@ class InpaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_encoder = self.dummy_image_encoder
 
         # make sure here that pndm scheduler skips prk
-        pipe = InpaintByExamplePipeline(
+        pipe = PaintByExamplePipeline(
             unet=unet,
             scheduler=scheduler,
             vae=vae,
@@ -183,12 +183,12 @@ class InpaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4608, 0.573, 0.4089, 0.5238, 0.5764, 0.4526, 0.5006, 0.4621, 0.4583])
+        expected_slice = np.array([0.4397, 0.5553, 0.3802, 0.5222, 0.5811, 0.4342, 0.494, 0.4577, 0.4428])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
-    def test_inpaint_by_example_image_tensor(self):
+    def test_paint_by_example_image_tensor(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet_inpaint
         scheduler = PNDMScheduler(skip_prk_steps=True)
@@ -203,7 +203,7 @@ class InpaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         mask_image = image / 2
 
         # make sure here that pndm scheduler skips prk
-        pipe = InpaintByExamplePipeline(
+        pipe = PaintByExamplePipeline(
             unet=unet,
             scheduler=scheduler,
             vae=vae,
@@ -247,7 +247,7 @@ class InpaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert out_1.shape == (1, 64, 64, 3)
         assert np.abs(out_1.flatten() - out_2.flatten()).max() < 5e-2
 
-    def test_inpaint_by_example_inpaint_with_num_images_per_prompt(self):
+    def test_paint_by_example_inpaint_with_num_images_per_prompt(self):
         device = "cpu"
         unet = self.dummy_cond_unet_inpaint
         scheduler = PNDMScheduler(skip_prk_steps=True)
@@ -263,7 +263,7 @@ class InpaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_encoder = self.dummy_image_encoder
 
         # make sure here that pndm scheduler skips prk
-        pipe = InpaintByExamplePipeline(
+        pipe = PaintByExamplePipeline(
             unet=unet,
             scheduler=scheduler,
             vae=vae,
@@ -290,7 +290,7 @@ class InpaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert len(images) == 2
 
     @unittest.skipIf(torch_device != "cuda", "This test requires a GPU")
-    def test_inpaint_by_example_inpaint_fp16(self):
+    def test_paint_by_example_inpaint_fp16(self):
         """Test that stable diffusion inpaint_legacy works with fp16"""
         unet = self.dummy_cond_unet_inpaint
         scheduler = PNDMScheduler(skip_prk_steps=True)
@@ -310,7 +310,7 @@ class InpaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         vae = vae.half()
 
         # make sure here that pndm scheduler skips prk
-        pipe = InpaintByExamplePipeline(
+        pipe = PaintByExamplePipeline(
             unet=unet,
             scheduler=scheduler,
             vae=vae,
@@ -336,14 +336,14 @@ class InpaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 @slow
 @require_torch_gpu
-class InpaintByExamplePipelineIntegrationTests(unittest.TestCase):
+class PaintByExamplePipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_inpaint_by_example(self):
+    def test_paint_by_example(self):
         # make sure here that pndm scheduler skips prk
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
@@ -358,7 +358,7 @@ class InpaintByExamplePipelineIntegrationTests(unittest.TestCase):
             "/paint_by_example/panda.jpg"
         )
 
-        pipe = InpaintByExamplePipeline.from_pretrained("patrickvonplaten/new_inpaint_test")
+        pipe = PaintByExamplePipeline.from_pretrained("patrickvonplaten/new_inpaint_test")
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 

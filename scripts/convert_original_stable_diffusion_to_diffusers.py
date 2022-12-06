@@ -40,8 +40,8 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
-from diffusers.pipelines.inpaint_by_example import InpaintByExampleImageEncoder, InpaintByExamplePipeline
 from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
+from diffusers.pipelines.paint_by_example import PaintByExampleImageEncoder, PaintByExamplePipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from transformers import AutoFeatureExtractor, BertTokenizerFast, CLIPTextModel, CLIPTokenizer, CLIPVisionConfig
 
@@ -648,9 +648,9 @@ def convert_ldm_clip_checkpoint(checkpoint):
     return text_model
 
 
-def convert_inpaint_by_example_checkpoint(checkpoint):
+def convert_paint_by_example_checkpoint(checkpoint):
     config = CLIPVisionConfig.from_pretrained("openai/clip-vit-large-patch14")
-    model = InpaintByExampleImageEncoder(config)
+    model = PaintByExampleImageEncoder(config)
 
     keys = list(checkpoint.keys())
 
@@ -906,11 +906,11 @@ if __name__ == "__main__":
             feature_extractor=None,
             requires_safety_checker=False,
         )
-    elif model_type == "InpaintByExample":
-        vision_model = convert_inpaint_by_example_checkpoint(checkpoint)
+    elif model_type == "PaintByExample":
+        vision_model = convert_paint_by_example_checkpoint(checkpoint)
         tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
         feature_extractor = AutoFeatureExtractor.from_pretrained("CompVis/stable-diffusion-safety-checker")
-        pipe = InpaintByExamplePipeline(
+        pipe = PaintByExamplePipeline(
             vae=vae,
             image_encoder=vision_model,
             unet=unet,

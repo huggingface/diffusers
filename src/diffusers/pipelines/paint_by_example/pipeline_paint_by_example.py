@@ -28,7 +28,7 @@ from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import logging
 from ..stable_diffusion import StableDiffusionPipelineOutput
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
-from .image_encoder import InpaintByExampleImageEncoder
+from .image_encoder import PaintByExampleImageEncoder
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -131,7 +131,7 @@ def prepare_mask_and_masked_image(image, mask):
     return mask, masked_image
 
 
-class InpaintByExamplePipeline(DiffusionPipeline):
+class PaintByExamplePipeline(DiffusionPipeline):
     r"""
     Pipeline for text-guided image inpainting using Stable Diffusion. *This is an experimental feature*.
 
@@ -163,7 +163,7 @@ class InpaintByExamplePipeline(DiffusionPipeline):
     def __init__(
         self,
         vae: AutoencoderKL,
-        image_encoder: InpaintByExampleImageEncoder,
+        image_encoder: PaintByExampleImageEncoder,
         unet: UNet2DConditionModel,
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
         safety_checker: StableDiffusionSafetyChecker,
