@@ -419,7 +419,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
 
         depth_mask = torch.nn.functional.interpolate(
             depth_mask.unsqueeze(1),
-            size=(image.size[0] // self.vae_scale_factor, image.size[1] // self.vae_scale_factor),
+            size=(image.height // self.vae_scale_factor, image.width // self.vae_scale_factor),
             mode="bicubic",
             align_corners=False,
         )
