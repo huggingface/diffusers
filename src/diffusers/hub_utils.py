@@ -46,6 +46,7 @@ logger = logging.get_logger(__name__)
 
 MODEL_CARD_TEMPLATE_PATH = Path(__file__).parent / "utils" / "model_card_template.md"
 SESSION_ID = uuid4().hex
+HF_HUB_OFFLINE = os.getenv("HF_HUB_OFFLINE", "").upper() in ENV_VARS_TRUE_VALUES
 DISABLE_TELEMETRY = os.getenv("DISABLE_TELEMETRY", "").upper() in ENV_VARS_TRUE_VALUES
 HUGGINGFACE_CO_TELEMETRY = HUGGINGFACE_CO_RESOLVE_ENDPOINT + "/api/telemetry/"
 
@@ -82,6 +83,8 @@ def send_telemetry(data: Dict, name: str):
         data: the fields to track, e.g. {"example_name": "dreambooth"}
         name: a unique name to differentiate the telemetry logs, e.g. "diffusers_examples" or "diffusers_notebooks"
     """
+    if DISABLE_TELEMETRY or HF_HUB_OFFLINE:
+        pass
 
     headers = {"user-agent": http_user_agent(data)}
     endpoint = HUGGINGFACE_CO_TELEMETRY + name
