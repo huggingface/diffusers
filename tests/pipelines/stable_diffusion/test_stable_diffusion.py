@@ -91,21 +91,6 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return model
 
     @property
-    def dummy_cond_unet_inpaint(self):
-        torch.manual_seed(0)
-        model = UNet2DConditionModel(
-            block_out_channels=(32, 64),
-            layers_per_block=2,
-            sample_size=32,
-            in_channels=9,
-            out_channels=4,
-            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
-            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
-            cross_attention_dim=32,
-        )
-        return model
-
-    @property
     def dummy_vq_model(self):
         torch.manual_seed(0)
         model = VQModel(

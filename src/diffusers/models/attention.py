@@ -417,7 +417,7 @@ class BasicTransformerBlock(nn.Module):
             bias=attention_bias,
             cross_attention_dim=cross_attention_dim if only_cross_attention else None,
         )  # is a self-attention
-        self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
+        self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn)
 
         # 2. Cross-Attn
         if cross_attention_dim is not None:
@@ -429,13 +429,18 @@ class BasicTransformerBlock(nn.Module):
                 dropout=dropout,
                 bias=attention_bias,
             )  # is self-attn if context is none
+        else:
+            self.attn2 = None
+
+        self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
+
+        if cross_attention_dim is not None:
             self.norm2 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
         else:
             self.attn2 = None
 
         # 3. Feed-forward
         self.norm3 = nn.LayerNorm(dim)
-        self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn)
 
         # if xformers is installed try to use memory_efficient_attention by default
         if is_xformers_available():
