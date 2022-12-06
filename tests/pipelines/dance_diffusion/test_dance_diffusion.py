@@ -59,7 +59,10 @@ class DanceDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return components
 
     def get_dummy_inputs(self, device, seed=0):
-        generator = torch.Generator(device=device).manual_seed(seed)
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "generator": generator,
             "num_inference_steps": 4,
