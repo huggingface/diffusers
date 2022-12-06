@@ -104,6 +104,8 @@ class FlaxBasicTransformerBlock(nn.Module):
             Hidden states dimension inside each head
         dropout (:obj:`float`, *optional*, defaults to 0.0):
             Dropout rate
+        only_cross_attention (`bool`, defaults to `False`):
+            Whether to only apply cross attention.
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
     """
@@ -111,10 +113,11 @@ class FlaxBasicTransformerBlock(nn.Module):
     n_heads: int
     d_head: int
     dropout: float = 0.0
+    only_cross_attention: bool = False
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
-        # self attention
+        # self attention (or cross_attention if only_cross_attention is True)
         self.attn1 = FlaxAttentionBlock(self.dim, self.n_heads, self.d_head, self.dropout, dtype=self.dtype)
         # cross attention
         self.attn2 = FlaxAttentionBlock(self.dim, self.n_heads, self.d_head, self.dropout, dtype=self.dtype)
@@ -126,7 +129,10 @@ class FlaxBasicTransformerBlock(nn.Module):
     def __call__(self, hidden_states, context, deterministic=True):
         # self attention
         residual = hidden_states
-        hidden_states = self.attn1(self.norm1(hidden_states), deterministic=deterministic)
+        if self.only_cross_attention:
+            hidden_states = self.attn1(self.norm1(hidden_states), context, deterministic=deterministic)
+        else:
+            hidden_states = self.attn1(self.norm1(hidden_states), deterministic=deterministic)
         hidden_states = hidden_states + residual
 
         # cross attention
@@ -159,6 +165,8 @@ class FlaxTransformer2DModel(nn.Module):
             Number of transformers block
         dropout (:obj:`float`, *optional*, defaults to 0.0):
             Dropout rate
+        use_linear_projection (`bool`, defaults to `False`): tbd
+        only_cross_attention (`bool`, defaults to `False`): tbd
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
     """
@@ -167,49 +175,70 @@ class FlaxTransformer2DModel(nn.Module):
     d_head: int
     depth: int = 1
     dropout: float = 0.0
+    use_linear_projection: bool = False
+    only_cross_attention: bool = False
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
         self.norm = nn.GroupNorm(num_groups=32, epsilon=1e-5)
 
         inner_dim = self.n_heads * self.d_head
-        self.proj_in = nn.Conv(
-            inner_dim,
-            kernel_size=(1, 1),
-            strides=(1, 1),
-            padding="VALID",
-            dtype=self.dtype,
-        )
+        if self.use_linear_projection:
+            self.proj_in = nn.Dense(inner_dim, dtype=self.dtype)
+        else:
+            self.proj_in = nn.Conv(
+                inner_dim,
+                kernel_size=(1, 1),
+                strides=(1, 1),
+                padding="VALID",
+                dtype=self.dtype,
+            )
 
         self.transformer_blocks = [
-            FlaxBasicTransformerBlock(inner_dim, self.n_heads, self.d_head, dropout=self.dropout, dtype=self.dtype)
+            FlaxBasicTransformerBlock(
+                inner_dim,
+                self.n_heads,
+                self.d_head,
+                dropout=self.dropout,
+                only_cross_attention=self.only_cross_attention,
+                dtype=self.dtype,
+            )
             for _ in range(self.depth)
         ]
 
-        self.proj_out = nn.Conv(
-            inner_dim,
-            kernel_size=(1, 1),
-            strides=(1, 1),
-            padding="VALID",
-            dtype=self.dtype,
-        )
+        if self.use_linear_projection:
+            self.proj_out = nn.Dense(inner_dim, dtype=self.dtype)
+        else:
+            self.proj_out = nn.Conv(
+                inner_dim,
+                kernel_size=(1, 1),
+                strides=(1, 1),
+                padding="VALID",
+                dtype=self.dtype,
+            )
 
     def __call__(self, hidden_states, context, deterministic=True):
         batch, height, width, channels = hidden_states.shape
         residual = hidden_states
         hidden_states = self.norm(hidden_states)
-        hidden_states = self.proj_in(hidden_states)
-
-        hidden_states = hidden_states.reshape(batch, height * width, channels)
+        if self.use_linear_projection:
+            hidden_states = hidden_states.reshape(batch, height * width, channels)
+            hidden_states = self.proj_in(hidden_states)
+        else:
+            hidden_states = self.proj_in(hidden_states)
+            hidden_states = hidden_states.reshape(batch, height * width, channels)
 
         for transformer_block in self.transformer_blocks:
             hidden_states = transformer_block(hidden_states, context, deterministic=deterministic)
 
-        hidden_states = hidden_states.reshape(batch, height, width, channels)
+        if self.use_linear_projection:
+            hidden_states = self.proj_out(hidden_states)
+            hidden_states = hidden_states.reshape(batch, height, width, channels)
+        else:
+            hidden_states = hidden_states.reshape(batch, height, width, channels)
+            hidden_states = self.proj_out(hidden_states)
 
-        hidden_states = self.proj_out(hidden_states)
         hidden_states = hidden_states + residual
-
         return hidden_states
 
 

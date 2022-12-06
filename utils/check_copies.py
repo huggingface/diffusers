@@ -153,6 +153,10 @@ def is_copy_consistent(filename, overwrite=False):
         observed_code_lines = lines[start_index:line_index]
         observed_code = "".join(observed_code_lines)
 
+        # Remove any nested `Copied from` comments to avoid circular copies
+        theoretical_code = [line for line in theoretical_code.split("\n") if _re_copy_warning.search(line) is None]
+        theoretical_code = "\n".join(theoretical_code)
+
         # Before comparing, use the `replace_pattern` on the original code.
         if len(replace_pattern) > 0:
             patterns = replace_pattern.replace("with", "").split(",")

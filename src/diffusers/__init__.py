@@ -9,7 +9,7 @@ from .utils import (
 )
 
 
-__version__ = "0.8.0.dev0"
+__version__ = "0.10.0.dev0"
 
 from .configuration_utils import ConfigMixin
 from .onnx_utils import OnnxRuntimeModel
@@ -30,11 +30,14 @@ if is_torch_available():
     )
     from .pipeline_utils import DiffusionPipeline
     from .pipelines import (
+        AudioDiffusionPipeline,
         DanceDiffusionPipeline,
         DDIMPipeline,
         DDPMPipeline,
         KarrasVePipeline,
         LDMPipeline,
+        LDMSuperResolutionPipeline,
+        Mel,
         PNDMPipeline,
         RePaintPipeline,
         ScoreSdeVePipeline,
@@ -45,8 +48,11 @@ if is_torch_available():
         DPMSolverMultistepScheduler,
         EulerAncestralDiscreteScheduler,
         EulerDiscreteScheduler,
+        HeunDiscreteScheduler,
         IPNDMScheduler,
         KarrasVeScheduler,
+        KDPM2AncestralDiscreteScheduler,
+        KDPM2DiscreteScheduler,
         PNDMScheduler,
         RePaintScheduler,
         SchedulerMixin,
@@ -64,12 +70,21 @@ else:
 
 if is_torch_available() and is_transformers_available():
     from .pipelines import (
+        AltDiffusionImg2ImgPipeline,
+        AltDiffusionPipeline,
         CycleDiffusionPipeline,
         LDMTextToImagePipeline,
+        StableDiffusionImageVariationPipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
         StableDiffusionInpaintPipelineLegacy,
         StableDiffusionPipeline,
+        StableDiffusionPipelineSafe,
+        StableDiffusionUpscalePipeline,
+        VersatileDiffusionDualGuidedPipeline,
+        VersatileDiffusionImageVariationPipeline,
+        VersatileDiffusionPipeline,
+        VersatileDiffusionTextToImagePipeline,
         VQDiffusionPipeline,
     )
 else:
@@ -79,6 +94,7 @@ if is_torch_available() and is_transformers_available() and is_onnx_available():
     from .pipelines import (
         OnnxStableDiffusionImg2ImgPipeline,
         OnnxStableDiffusionInpaintPipeline,
+        OnnxStableDiffusionInpaintPipelineLegacy,
         OnnxStableDiffusionPipeline,
         StableDiffusionOnnxPipeline,
     )

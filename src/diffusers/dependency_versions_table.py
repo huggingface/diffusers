@@ -2,7 +2,7 @@
 # 1. modify the `_deps` dict in setup.py
 # 2. run `make deps_table_update``
 deps = {
-    "Pillow": "Pillow<10.0",
+    "Pillow": "Pillow",
     "accelerate": "accelerate>=0.11.0",
     "black": "black==22.8",
     "datasets": "datasets",
@@ -15,12 +15,15 @@ deps = {
     "isort": "isort>=5.5.4",
     "jax": "jax>=0.2.8,!=0.3.2",
     "jaxlib": "jaxlib>=0.1.65",
+    "librosa": "librosa",
     "modelcards": "modelcards>=0.1.4",
     "numpy": "numpy",
     "parameterized": "parameterized",
     "pytest": "pytest",
     "pytest-timeout": "pytest-timeout",
     "pytest-xdist": "pytest-xdist",
+    "safetensors": "safetensors",
+    "sentencepiece": "sentencepiece>=0.1.91,!=0.1.92",
     "scipy": "scipy",
     "regex": "regex!=2019.12.17",
     "requests": "requests",

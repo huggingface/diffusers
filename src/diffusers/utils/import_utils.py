@@ -42,6 +42,7 @@ ENV_VARS_TRUE_AND_AUTO_VALUES = ENV_VARS_TRUE_VALUES.union({"AUTO"})
 USE_TF = os.environ.get("USE_TF", "AUTO").upper()
 USE_TORCH = os.environ.get("USE_TORCH", "AUTO").upper()
 USE_JAX = os.environ.get("USE_FLAX", "AUTO").upper()
+USE_SAFETENSORS = os.environ.get("USE_SAFETENSORS", "AUTO").upper()
 
 STR_OPERATION_TO_FUNC = {">": op.gt, ">=": op.ge, "==": op.eq, "!=": op.ne, "<=": op.le, "<": op.lt}
 
@@ -55,7 +56,7 @@ if USE_TORCH in ENV_VARS_TRUE_AND_AUTO_VALUES and USE_TF not in ENV_VARS_TRUE_VA
         except importlib_metadata.PackageNotFoundError:
             _torch_available = False
 else:
-    logger.info("Disabling PyTorch because USE_TF is set")
+    logger.info("Disabling PyTorch because USE_TORCH is set")
     _torch_available = False
 
 
@@ -109,6 +110,17 @@ if USE_JAX in ENV_VARS_TRUE_AND_AUTO_VALUES:
 else:
     _flax_available = False
 
+if USE_SAFETENSORS in ENV_VARS_TRUE_AND_AUTO_VALUES:
+    _safetensors_available = importlib.util.find_spec("safetensors") is not None
+    if _safetensors_available:
+        try:
+            _safetensors_version = importlib_metadata.version("safetensors")
+            logger.info(f"Safetensors version {_safetensors_version} available.")
+        except importlib_metadata.PackageNotFoundError:
+            _safetensors_available = False
+else:
+    logger.info("Disabling Safetensors because USE_TF is set")
+    _safetensors_available = False
 
 _transformers_available = importlib.util.find_spec("transformers") is not None
 try:
@@ -145,7 +157,13 @@ except importlib_metadata.PackageNotFoundError:
 _onnxruntime_version = "N/A"
 _onnx_available = importlib.util.find_spec("onnxruntime") is not None
 if _onnx_available:
-    candidates = ("onnxruntime", "onnxruntime-gpu", "onnxruntime-directml", "onnxruntime-openvino")
+    candidates = (
+        "onnxruntime",
+        "onnxruntime-gpu",
+        "onnxruntime-directml",
+        "onnxruntime-openvino",
+        "ort_nightly_directml",
+    )
     _onnxruntime_version = None
     # For the metadata, we have to look for both onnxruntime and onnxruntime-gpu
     for pkg in candidates:
@@ -162,9 +180,16 @@ if _onnx_available:
 _scipy_available = importlib.util.find_spec("scipy") is not None
 try:
     _scipy_version = importlib_metadata.version("scipy")
-    logger.debug(f"Successfully imported transformers version {_scipy_version}")
+    logger.debug(f"Successfully imported scipy version {_scipy_version}")
 except importlib_metadata.PackageNotFoundError:
     _scipy_available = False
+
+_librosa_available = importlib.util.find_spec("librosa") is not None
+try:
+    _librosa_version = importlib_metadata.version("librosa")
+    logger.debug(f"Successfully imported librosa version {_librosa_version}")
+except importlib_metadata.PackageNotFoundError:
+    _librosa_available = False
 
 _accelerate_available = importlib.util.find_spec("accelerate") is not None
 try:
@@ -188,6 +213,10 @@ except importlib_metadata.PackageNotFoundError:
 
 def is_torch_available():
     return _torch_available
+
+
+def is_safetensors_available():
+    return _safetensors_available
 
 
 def is_tf_available():
@@ -220,6 +249,10 @@ def is_onnx_available():
 
 def is_scipy_available():
     return _scipy_available
+
+
+def is_librosa_available():
+    return _librosa_available
 
 
 def is_xformers_available():
@@ -261,6 +294,12 @@ scipy`
 """
 
 # docstyle-ignore
+LIBROSA_IMPORT_ERROR = """
+{0} requires the librosa library but it was not found in your environment.  Checkout the instructions on the
+installation page: https://librosa.org/doc/latest/install.html and follow the ones that match your environment.
+"""
+
+# docstyle-ignore
 TENSORFLOW_IMPORT_ERROR = """
 {0} requires the TensorFlow library but it was not found in your environment. Checkout the instructions on the
 installation page: https://www.tensorflow.org/install and follow the ones that match your environment.
@@ -289,6 +328,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("torch", (is_torch_available, PYTORCH_IMPORT_ERROR)),
         ("transformers", (is_transformers_available, TRANSFORMERS_IMPORT_ERROR)),
         ("unidecode", (is_unidecode_available, UNIDECODE_IMPORT_ERROR)),
+        ("librosa", (is_librosa_available, LIBROSA_IMPORT_ERROR)),
     ]
 )
 
@@ -302,6 +342,17 @@ def requires_backends(obj, backends):
     failed = [msg.format(name) for available, msg in checks if not available()]
     if failed:
         raise ImportError("".join(failed))
+
+    if name in [
+        "VersatileDiffusionTextToImagePipeline",
+        "VersatileDiffusionPipeline",
+        "VersatileDiffusionDualGuidedPipeline",
+        "StableDiffusionImageVariationPipeline",
+    ] and is_transformers_version("<", "4.25.0.dev0"):
+        raise ImportError(
+            f"You need to install `transformers` from 'main' in order to use {name}: \n```\n pip install"
+            " git+https://github.com/huggingface/transformers \n```"
+        )
 
 
 class DummyObject(type):
@@ -347,3 +398,17 @@ def is_torch_version(operation: str, version: str):
             A string version of PyTorch
     """
     return compare_versions(parse(_torch_version), operation, version)
+
+
+def is_transformers_version(operation: str, version: str):
+    """
+    Args:
+    Compares the current Transformers version to a given reference with an operation.
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A string version of PyTorch
+    """
+    if not _transformers_available:
+        return False
+    return compare_versions(parse(_transformers_version), operation, version)
