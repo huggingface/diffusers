@@ -358,7 +358,7 @@ class PaintByExamplePipelineIntegrationTests(unittest.TestCase):
             "/paint_by_example/panda.jpg"
         )
 
-        pipe = PaintByExamplePipeline.from_pretrained("patrickvonplaten/new_inpaint_test")
+        pipe = PaintByExamplePipeline.from_pretrained("Fantasy-Studio/Paint-by-Example")
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 

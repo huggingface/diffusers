@@ -59,7 +59,7 @@ mask_image = download_image(mask_url).resize((512, 512))
 example_image = download_image(example_url).resize((512, 512))
 
 pipe = DiffusionPipeline.from_pretrained(
-    "patrickvonplaten/new_inpaint_test",
+    "Fantasy-Studio/Paint-by-Example",
     torch_dtype=torch.float16,
 )
 pipe = pipe.to("cuda")
