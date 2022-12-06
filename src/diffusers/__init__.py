@@ -129,6 +129,12 @@ from .schedulers import (
     OneFlowPNDMScheduler,
     OneFlowDPMSolverMultistepScheduler,
     OneFlowEulerDiscreteScheduler,
+    OneFlowEulerAncestralDiscreteScheduler,
+    OneFlowHeunDiscreteScheduler,
+    OneFlowIPNDMScheduler,
+    OneFlowLMSDiscreteScheduler,
+    OneFlowScoreSdeVeScheduler,
+    OneFlowVQDiffusionScheduler,
     OneFlowSchedulerMixin
 )
 

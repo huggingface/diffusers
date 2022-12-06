@@ -257,7 +257,11 @@ class OneFlowDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                     dynamic_max_val,
                     self.config.sample_max_value * torch.ones_like(dynamic_max_val).to(dynamic_max_val.device),
                 )[(...,) + (None,) * (x0_pred.ndim - 1)]
-                x0_pred = torch.clamp(x0_pred, -dynamic_max_val, dynamic_max_val) / dynamic_max_val
+
+                # TODO(Liang Depeng): oneflow.clamp support `min` and `max` as `oneflow.tensor`.
+                # x0_pred = torch.clamp(x0_pred, -dynamic_max_val, dynamic_max_val) / dynamic_max_val
+                x0_pred = torch.clamp(x0_pred, (-dynamic_max_val).item(), dynamic_max_val.item()) / dynamic_max_val.item()
+                
                 x0_pred = x0_pred.type(orig_dtype)
             return x0_pred
         # DPM-Solver needs to solve an integral of the noise prediction model.
