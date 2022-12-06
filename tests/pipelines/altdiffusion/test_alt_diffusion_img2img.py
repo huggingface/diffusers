@@ -35,7 +35,7 @@ from ...test_pipelines_common import PipelineTesterMixin
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class AltDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()

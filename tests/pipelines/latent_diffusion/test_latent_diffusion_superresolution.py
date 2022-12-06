@@ -29,7 +29,7 @@ from ...test_pipelines_common import PipelineTesterMixin
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class LDMSuperResolutionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class LDMSuperResolutionPipelineFastTests(unittest.TestCase):
     @property
     def dummy_image(self):
         batch_size = 1

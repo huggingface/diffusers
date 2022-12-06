@@ -27,7 +27,7 @@ from ...test_pipelines_common import PipelineTesterMixin
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class ScoreSdeVeipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class ScoreSdeVeipelineFastTests(unittest.TestCase):
     @property
     def dummy_uncond_unet(self):
         torch.manual_seed(0)

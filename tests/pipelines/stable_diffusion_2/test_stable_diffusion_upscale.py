@@ -32,7 +32,7 @@ from ...test_pipelines_common import PipelineTesterMixin
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class StableDiffusionUpscalePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionUpscalePipelineFastTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()

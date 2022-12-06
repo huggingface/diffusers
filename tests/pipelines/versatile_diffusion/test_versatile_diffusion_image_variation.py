@@ -27,7 +27,7 @@ from ...test_pipelines_common import PipelineTesterMixin
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class VersatileDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class VersatileDiffusionImageVariationPipelineFastTests(unittest.TestCase):
     pass
 
 
