@@ -307,7 +307,10 @@ class PipelineTesterMixin:
         with io.StringIO() as stderr, contextlib.redirect_stderr(stderr):
             _ = pipe(**inputs)
             stderr = stderr.getvalue()
+            # we can't calculate the number of progress steps beforehand e.g. for strength-dependent img2img,
+            # so we just match "5" in "#####| 1/5 [00:01<00:00]"
             max_steps = re.search("/(.*?) ", stderr).group(1)
+            self.assertTrue(max_steps is not None and len(max_steps) > 0)
             self.assertTrue(
                 f"{max_steps}/{max_steps}" in stderr, "Progress bar should be enabled and stopped at the max step"
             )
