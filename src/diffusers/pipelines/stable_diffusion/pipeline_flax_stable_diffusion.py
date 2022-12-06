@@ -276,7 +276,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         num_inference_steps: int = 50,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        guidance_scale: float = 7.5,
+        guidance_scale: Union[float, jnp.array] = 7.5,
         latents: jnp.array = None,
         return_dict: bool = True,
         jit: bool = False,
@@ -325,6 +325,12 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
+
+        if isinstance(guidance_scale, float):
+            guidance_scale = jnp.array([guidance_scale] * prompt_ids.shape[0])
+            if len(prompt_ids.shape) > 2:
+                # Assume sharded
+                guidance_scale = guidance_scale.reshape(prompt_ids.shape[:2])
 
         if jit:
             images = _p_generate(
@@ -379,7 +385,11 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
 
 
 # TODO: maybe use a config dict instead of so many static argnums
-@partial(jax.pmap, in_axes=(None, 0, 0, 0, None, None, None, None, 0, 0), static_broadcasted_argnums=(0, 4, 5, 6))
+@partial(
+    jax.pmap,
+    in_axes=(None, 0, 0, 0, None, None, None, 0, 0, 0),
+    static_broadcasted_argnums=(0, 4, 5, 6),
+)
 def _p_generate(
     pipe,
     prompt_ids,
