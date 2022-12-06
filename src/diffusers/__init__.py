@@ -30,12 +30,14 @@ if is_torch_available():
     )
     from .pipeline_utils import DiffusionPipeline
     from .pipelines import (
+        AudioDiffusionPipeline,
         DanceDiffusionPipeline,
         DDIMPipeline,
         DDPMPipeline,
         KarrasVePipeline,
         LDMPipeline,
         LDMSuperResolutionPipeline,
+        Mel,
         PNDMPipeline,
         RePaintPipeline,
         ScoreSdeVePipeline,
@@ -72,7 +74,7 @@ if is_torch_available() and is_transformers_available():
         AltDiffusionPipeline,
         CycleDiffusionPipeline,
         LDMTextToImagePipeline,
-        PaintByExamplePipeline,
+        InpaintByExamplePipeline,
         StableDiffusionImageVariationPipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,

@@ -11,5 +11,5 @@ from ...utils import BaseOutput, is_torch_available, is_transformers_available
 
 
 if is_transformers_available() and is_torch_available():
-    from .image_encoder import PaintByExampleImageEncoder
-    from .pipeline_paint_by_example_inpaint import PaintByExamplePipeline
+    from .image_encoder import InpaintByExampleImageEncoder
+    from .pipeline_inpaint_by_example import InpaintByExamplePipeline

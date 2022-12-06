@@ -19,7 +19,7 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import PaintByExamplePipeline
+from diffusers import InpaintByExamplePipeline
 from diffusers.utils import load_image, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 
@@ -29,29 +29,29 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 @slow
 @require_torch_gpu
-class PaintByExamplePipelineIntegrationTests(unittest.TestCase):
+class InpaintByExamplePipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_paint_by_example(self):
+    def test_inpaint_by_example(self):
         # make sure here that pndm scheduler skips prk
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/paint_by_example/dog_in_bucket.png"
+            "/inpaint_by_example/dog_in_bucket.png"
         )
         mask_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/paint_by_example/mask.png"
+            "/inpaint_by_example/mask.png"
         )
         example_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/paint_by_example/panda.jpg"
+            "/inpaint_by_example/panda.jpg"
         )
 
-        pipe = PaintByExamplePipeline.from_pretrained("patrickvonplaten/new_inpaint_test")
+        pipe = InpaintByExamplePipeline.from_pretrained("patrickvonplaten/new_inpaint_test")
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
