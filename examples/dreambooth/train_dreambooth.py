@@ -11,7 +11,7 @@ import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch.utils.data import Dataset
 
-from  torch.cuda.amp import autocast
+from torch.cuda.amp import autocast
 
 from accelerate import Accelerator
 from accelerate.logging import get_logger
