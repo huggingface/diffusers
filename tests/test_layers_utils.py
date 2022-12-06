@@ -320,7 +320,7 @@ class Transformer2DModelTests(unittest.TestCase):
         output_slice = attention_scores[0, -1, -3:, -3:]
 
         expected_slice = torch.tensor(
-            [0.0143, -0.6909, -2.1547, -1.8893, 1.4097, 0.1359, -0.2521, -1.3359, 0.2598], device=torch_device
+            [-0.2555, -0.8877, -2.4739, -2.2251, 1.2714, 0.0807, -0.4161, -1.6408, -0.0471], device=torch_device
         )
         assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
 
@@ -353,10 +353,10 @@ class Transformer2DModelTests(unittest.TestCase):
         output_slice_2 = attention_scores_2[0, -1, -3:, -3:]
 
         expected_slice_1 = torch.tensor(
-            [-0.3879, -1.0718, -1.6189, -1.5231, 1.2793, 0.2219, -0.1198, -1.2412, -0.1283], device=torch_device
+            [-0.1874, -0.9704, -1.4290, -1.3357, 1.5138, 0.3036, -0.0976, -1.1667, 0.1283], device=torch_device
         )
         expected_slice_2 = torch.tensor(
-            [-0.5045, -1.1262, -1.7097, -1.5950, 1.2692, 0.0615, -0.2580, -1.2566, -0.3300], device=torch_device
+            [-0.3493, -1.0924, -1.6161, -1.5016, 1.4245, 0.1367, -0.2526, -1.3109, -0.0547], device=torch_device
         )
 
         assert torch.allclose(output_slice_1.flatten(), expected_slice_1, atol=1e-3)
