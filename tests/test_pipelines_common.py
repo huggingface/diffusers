@@ -1,5 +1,7 @@
+import contextlib
 import gc
 import inspect
+import io
 import tempfile
 import time
 import unittest
@@ -295,3 +297,22 @@ class PipelineTesterMixin:
 
         max_diff = np.abs(output_with_offload.images - output_without_offload.images).max()
         self.assertLess(max_diff, 1e-5, "XFormers attention should not affect the inference results")
+
+    def test_progress_bar(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        num_steps = inputs["num_inference_steps"]
+        with io.StringIO() as stderr, contextlib.redirect_stderr(stderr):
+            _ = pipe(**inputs)
+            self.assertTrue(
+                f"{num_steps}/{num_steps}" in stderr.getvalue(),
+                "Progress bar should be enabled, displaying the requested `num_inference_steps`",
+            )
+
+        pipe.set_progress_bar_config(disable=True)
+        with io.StringIO() as stderr, contextlib.redirect_stderr(stderr):
+            _ = pipe(**inputs)
+            self.assertTrue(stderr.getvalue() == "", "Progress bar should be disabled")
