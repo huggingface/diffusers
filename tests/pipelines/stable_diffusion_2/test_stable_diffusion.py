@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import gc
-import tempfile
 import time
 import unittest
 
