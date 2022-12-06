@@ -542,7 +542,7 @@ def main():
                 autocast_context = torch.autocast("cuda")
                 gradient_scaler = torch.cuda.amp.GradScaler()
             else:
-                autocast_context = nullcontext
+                autocast_context = nullcontext()
                 gradient_scaler = None
             with accelerator.accumulate(text_encoder), autocast_context:
                 # Convert images to latent space
