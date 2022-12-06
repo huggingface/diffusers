@@ -87,7 +87,10 @@ class StableDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unitte
 
     def get_dummy_inputs(self, device, seed=0):
         image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
-        generator = torch.Generator(device=device).manual_seed(seed)
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "image": image,
             "generator": generator,

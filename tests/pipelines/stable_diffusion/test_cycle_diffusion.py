@@ -91,7 +91,10 @@ class CycleDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_inputs(self, device, seed=0):
         image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
-        generator = torch.Generator(device=device).manual_seed(seed)
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "prompt": "An astronaut riding an elephant",
             "source_prompt": "An astronaut riding a horse",

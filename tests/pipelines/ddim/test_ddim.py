@@ -46,8 +46,12 @@ class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return components
 
     def get_dummy_inputs(self, device, seed=0):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
-            "generator": torch.Generator(device=device).manual_seed(seed),
+            "generator": generator,
             "num_inference_steps": 2,
             "output_type": "numpy",
         }
