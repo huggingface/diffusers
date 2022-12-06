@@ -22,13 +22,11 @@ from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
 from diffusers.utils import deprecate
 from diffusers.utils.testing_utils import require_torch_gpu, slow, torch_device
 
-from ...test_pipelines_common import PipelineTesterMixin
-
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class DDPMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class DDPMPipelineFastTests(unittest.TestCase):
     @property
     def dummy_uncond_unet(self):
         torch.manual_seed(0)
