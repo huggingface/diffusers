@@ -69,18 +69,6 @@ class DanceDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         }
         return inputs
 
-    def test_dict_tuple_outputs_equivalent(self):
-        # FIXME: this test fails with MPS
-        pass
-
-    def test_save_load_local(self):
-        # FIXME: this test fails with MPS
-        pass
-
-    def test_save_load_optional_components(self):
-        # FIXME: this test fails with MPS
-        pass
-
     def test_dance_diffusion(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
