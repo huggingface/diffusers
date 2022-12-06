@@ -243,13 +243,13 @@ class PipelineTesterMixin:
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
-        output_without_slicing = pipe(**inputs)
+        output_without_slicing = pipe(**inputs)[0]
 
         pipe.enable_attention_slicing(slice_size=1)
         inputs = self.get_dummy_inputs(torch_device)
-        output_with_slicing = pipe(**inputs)
+        output_with_slicing = pipe(**inputs)[0]
 
-        max_diff = np.abs(output_with_slicing.images - output_without_slicing.images).max()
+        max_diff = np.abs(output_with_slicing - output_without_slicing).max()
         self.assertLess(max_diff, 1e-5, "Attention slicing should not affect the inference results")
 
     @unittest.skipIf(
@@ -266,13 +266,13 @@ class PipelineTesterMixin:
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
-        output_without_offload = pipe(**inputs)
+        output_without_offload = pipe(**inputs)[0]
 
         pipe.enable_sequential_cpu_offload()
         inputs = self.get_dummy_inputs(torch_device)
-        output_with_offload = pipe(**inputs)
+        output_with_offload = pipe(**inputs)[0]
 
-        max_diff = np.abs(output_with_offload.images - output_without_offload.images).max()
+        max_diff = np.abs(output_with_offload - output_without_offload).max()
         self.assertLess(max_diff, 1e-5, "CPU offloading should not affect the inference results")
 
     @unittest.skipIf(
@@ -289,13 +289,13 @@ class PipelineTesterMixin:
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
-        output_without_offload = pipe(**inputs)
+        output_without_offload = pipe(**inputs)[0]
 
         pipe.enable_xformers_memory_efficient_attention()
         inputs = self.get_dummy_inputs(torch_device)
-        output_with_offload = pipe(**inputs)
+        output_with_offload = pipe(**inputs)[0]
 
-        max_diff = np.abs(output_with_offload.images - output_without_offload.images).max()
+        max_diff = np.abs(output_with_offload - output_without_offload).max()
         self.assertLess(max_diff, 1e-5, "XFormers attention should not affect the inference results")
 
     def test_progress_bar(self):
