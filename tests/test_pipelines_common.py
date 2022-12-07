@@ -302,7 +302,7 @@ class PipelineTesterMixin:
         output_with_slicing = pipe(**inputs)[0]
 
         max_diff = np.abs(output_with_slicing - output_without_slicing).max()
-        self.assertLess(max_diff, 1e-5, "Attention slicing should not affect the inference results")
+        self.assertLess(max_diff, 1e-3, "Attention slicing should not affect the inference results")
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_accelerate_available(),
