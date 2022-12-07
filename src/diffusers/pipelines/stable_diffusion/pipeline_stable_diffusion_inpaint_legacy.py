@@ -563,7 +563,8 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
                 # masking
-                init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, torch.tensor([t]))
+                t_minus_one = t - self.scheduler.config.num_train_timesteps // self.scheduler.num_inference_steps
+                init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, torch.tensor([t_minus_one]))
 
                 latents = (init_latents_proper * mask) + (latents * (1 - mask))
 
