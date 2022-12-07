@@ -312,10 +312,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         else:
             attention_mask = None
 
-        text_embeddings = self.text_encoder(
-            text_input_ids.to(device),
-            attention_mask=attention_mask,
-        )
+        text_embeddings = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
         text_embeddings = text_embeddings[0]
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
