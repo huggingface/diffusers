@@ -28,6 +28,7 @@ else:
 if is_torch_available() and is_transformers_available():
     from .alt_diffusion import AltDiffusionImg2ImgPipeline, AltDiffusionPipeline
     from .latent_diffusion import LDMTextToImagePipeline
+    from .paint_by_example import PaintByExamplePipeline
     from .stable_diffusion import (
         CycleDiffusionPipeline,
         StableDiffusionImageVariationPipeline,
