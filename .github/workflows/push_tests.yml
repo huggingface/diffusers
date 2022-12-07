@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
 
 env:
   DIFFUSERS_IS_CI: yes
@@ -22,6 +19,16 @@ jobs:
       fail-fast: false
       matrix:
         config:
+          - name: Slow PyTorch CUDA tests on Ubuntu
+            framework: pytorch
+            runner: docker-gpu
+            image: diffusers/diffusers-pytorch-cuda
+            report: torch_cuda
+          - name: Slow Flax TPU tests on Ubuntu
+            framework: flax
+            runner: docker-tpu
+            image: diffusers/diffusers-flax-tpu
+            report: flax_tpu
           - name: Slow ONNXRuntime CUDA tests on Ubuntu
             framework: onnxruntime
             runner: docker-gpu
