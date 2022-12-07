@@ -1,3 +1,7 @@
+__version__ = "0.10.0.dev0"
+
+from .configuration_utils import ConfigMixin
+from .onnx_utils import OnnxRuntimeModel
 from .utils import (
     is_flax_available,
     is_inflect_available,
@@ -6,14 +10,8 @@ from .utils import (
     is_torch_available,
     is_transformers_available,
     is_unidecode_available,
+    logging,
 )
-
-
-__version__ = "0.10.0.dev0"
-
-from .configuration_utils import ConfigMixin
-from .onnx_utils import OnnxRuntimeModel
-from .utils import logging
 
 
 if is_torch_available():
@@ -30,12 +28,14 @@ if is_torch_available():
     )
     from .pipeline_utils import DiffusionPipeline
     from .pipelines import (
+        AudioDiffusionPipeline,
         DanceDiffusionPipeline,
         DDIMPipeline,
         DDPMPipeline,
         KarrasVePipeline,
         LDMPipeline,
         LDMSuperResolutionPipeline,
+        Mel,
         PNDMPipeline,
         RePaintPipeline,
         ScoreSdeVePipeline,
@@ -73,6 +73,7 @@ if is_torch_available() and is_transformers_available():
         CycleDiffusionPipeline,
         LDMTextToImagePipeline,
         StableDiffusionDepth2ImgPipeline,
+        PaintByExamplePipeline,
         StableDiffusionImageVariationPipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
