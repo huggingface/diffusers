@@ -19,7 +19,7 @@ import inspect
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -812,7 +812,7 @@ class DiffusionPipeline(ConfigMixin):
     def set_progress_bar_config(self, **kwargs):
         self._progress_bar_config = kwargs
 
-    def enable_xformers_memory_efficient_attention(self):
+    def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
         r"""
         Enable memory efficient attention as implemented in xformers.
 
@@ -822,7 +822,7 @@ class DiffusionPipeline(ConfigMixin):
         Warning: When Memory Efficient Attention and Sliced attention are both enabled, the Memory Efficient Attention
         is used.
         """
-        self.set_use_memory_efficient_attention_xformers(True)
+        self.set_use_memory_efficient_attention_xformers(True, attention_op)
 
     def disable_xformers_memory_efficient_attention(self):
         r"""
@@ -830,13 +830,15 @@ class DiffusionPipeline(ConfigMixin):
         """
         self.set_use_memory_efficient_attention_xformers(False)
 
-    def set_use_memory_efficient_attention_xformers(self, valid: bool) -> None:
+    def set_use_memory_efficient_attention_xformers(
+        self, valid: bool, attention_op: Optional[Callable] = None
+    ) -> None:
         # Recursively walk through all the children.
         # Any children which exposes the set_use_memory_efficient_attention_xformers method
         # gets the message
         def fn_recursive_set_mem_eff(module: torch.nn.Module):
             if hasattr(module, "set_use_memory_efficient_attention_xformers"):
-                module.set_use_memory_efficient_attention_xformers(valid)
+                module.set_use_memory_efficient_attention_xformers(valid, attention_op)
 
             for child in module.children():
                 fn_recursive_set_mem_eff(child)
