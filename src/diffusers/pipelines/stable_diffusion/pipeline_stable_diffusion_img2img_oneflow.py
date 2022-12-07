@@ -333,7 +333,7 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         untruncated_ids = self.tokenizer(prompt, padding="max_length", return_tensors="np").input_ids
         untruncated_ids = torch.from_numpy(untruncated_ids)
 
-        if not torch.all(torch.equal(text_input_ids, untruncated_ids)):
+        if not torch.equal(text_input_ids, untruncated_ids):
             removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1])
             logger.warning(
                 "The following part of your input was truncated because CLIP can only handle sequences up to"
