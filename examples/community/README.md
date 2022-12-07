@@ -776,7 +776,7 @@ Some examples along with the merge details:
 ![Stable plus Waifu plus openjourney add_diff 0.5](https://huggingface.co/datasets/NagaSaiAbhinay/CheckpointMergerSamples/resolve/main/stable_waifu_openjourney_add_diff_0.5.png)
 
 
-### Stable Diffusion Comparions
+### Stable Diffusion Comparisons
 
 This Community Pipeline enables the comparison between the 4 checkpoints that exist for Stable Diffusion. They can be found through the following links:
 1. [Stable Diffusion v1.1](https://huggingface.co/CompVis/stable-diffusion-v1-1)
