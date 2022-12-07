@@ -38,25 +38,11 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 
 class StableDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    def tearDown(self):
-        # clean up the VRAM after each test
-        super().tearDown()
-        gc.collect()
-        torch.cuda.empty_cache()
+    pipeline_class = StableDiffusionImageVariationPipeline
 
-    @property
-    def dummy_image(self):
-        batch_size = 1
-        num_channels = 3
-        sizes = (32, 32)
-
-        image = floats_tensor((batch_size, num_channels) + sizes, rng=random.Random(0)).to(torch_device)
-        return image
-
-    @property
-    def dummy_cond_unet(self):
+    def get_dummy_components(self):
         torch.manual_seed(0)
-        model = UNet2DConditionModel(
+        unet = UNet2DConditionModel(
             block_out_channels=(32, 64),
             layers_per_block=2,
             sample_size=32,
@@ -66,12 +52,9 @@ class StableDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unitte
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=32,
         )
-        return model
-
-    @property
-    def dummy_vae(self):
+        scheduler = PNDMScheduler(skip_prk_steps=True)
         torch.manual_seed(0)
-        model = AutoencoderKL(
+        vae = AutoencoderKL(
             block_out_channels=[32, 64],
             in_channels=3,
             out_channels=3,
@@ -79,12 +62,8 @@ class StableDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unitte
             up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
             latent_channels=4,
         )
-        return model
-
-    @property
-    def dummy_image_encoder(self):
         torch.manual_seed(0)
-        config = CLIPVisionConfig(
+        image_encoder_config = CLIPVisionConfig(
             hidden_size=32,
             projection_dim=32,
             intermediate_size=37,
@@ -94,102 +73,58 @@ class StableDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unitte
             image_size=32,
             patch_size=4,
         )
-        return CLIPVisionModelWithProjection(config)
+        image_encoder = CLIPVisionModelWithProjection(image_encoder_config)
 
-    @property
-    def dummy_extractor(self):
-        def extract(*args, **kwargs):
-            class Out:
-                def __init__(self):
-                    self.pixel_values = torch.ones([0])
+        components = {
+            "unet": unet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "image_encoder": image_encoder,
+            "safety_checker": None,
+            "feature_extractor": None,
+        }
+        return components
 
-                def to(self, device):
-                    self.pixel_values.to(device)
-                    return self
-
-            return Out()
-
-        return extract
+    def get_dummy_inputs(self, device, seed=0):
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
+        inputs = {
+            "image": image,
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 6.0,
+            "output_type": "numpy",
+        }
+        return inputs
 
     def test_stable_diffusion_img_variation_default_case(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        unet = self.dummy_cond_unet
-        scheduler = PNDMScheduler(skip_prk_steps=True)
-        vae = self.dummy_vae
-        image_encoder = self.dummy_image_encoder
-
-        init_image = self.dummy_image.to(device)
-
-        # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionImageVariationPipeline(
-            unet=unet,
-            scheduler=scheduler,
-            vae=vae,
-            image_encoder=image_encoder,
-            safety_checker=None,
-            feature_extractor=self.dummy_extractor,
-        )
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionImageVariationPipeline(**components)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator(device=device).manual_seed(0)
-        output = sd_pipe(
-            init_image,
-            generator=generator,
-            guidance_scale=6.0,
-            num_inference_steps=2,
-            output_type="np",
-        )
-
-        image = output.images
-
-        generator = torch.Generator(device=device).manual_seed(0)
-        image_from_tuple = sd_pipe(
-            init_image,
-            generator=generator,
-            guidance_scale=6.0,
-            num_inference_steps=2,
-            output_type="np",
-            return_dict=False,
-        )[0]
-
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
-        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5093, 0.5717, 0.4806, 0.4891, 0.5552, 0.4594, 0.5177, 0.4894, 0.4904])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_img_variation_multiple_images(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        unet = self.dummy_cond_unet
-        scheduler = PNDMScheduler(skip_prk_steps=True)
-        vae = self.dummy_vae
-        image_encoder = self.dummy_image_encoder
-
-        init_image = self.dummy_image.to(device).repeat(2, 1, 1, 1)
-
-        # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionImageVariationPipeline(
-            unet=unet,
-            scheduler=scheduler,
-            vae=vae,
-            image_encoder=image_encoder,
-            safety_checker=None,
-            feature_extractor=self.dummy_extractor,
-        )
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionImageVariationPipeline(**components)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator(device=device).manual_seed(0)
-        output = sd_pipe(
-            init_image,
-            generator=generator,
-            guidance_scale=6.0,
-            num_inference_steps=2,
-            output_type="np",
-        )
+        inputs = self.get_dummy_inputs(device)
+        inputs["image"] = inputs["image"].repeat(2, 1, 1, 1)
+        output = sd_pipe(**inputs)
 
         image = output.images
 
@@ -201,102 +136,39 @@ class StableDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unitte
 
     def test_stable_diffusion_img_variation_num_images_per_prompt(self):
         device = "cpu"
-        unet = self.dummy_cond_unet
-        scheduler = PNDMScheduler(skip_prk_steps=True)
-        vae = self.dummy_vae
-        image_encoder = self.dummy_image_encoder
-
-        init_image = self.dummy_image.to(device)
-
-        # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionImageVariationPipeline(
-            unet=unet,
-            scheduler=scheduler,
-            vae=vae,
-            image_encoder=image_encoder,
-            safety_checker=None,
-            feature_extractor=self.dummy_extractor,
-        )
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionImageVariationPipeline(**components)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
         # test num_images_per_prompt=1 (default)
-        images = sd_pipe(
-            init_image,
-            num_inference_steps=2,
-            output_type="np",
-        ).images
+        inputs = self.get_dummy_inputs(device)
+        images = sd_pipe(**inputs).images
 
         assert images.shape == (1, 64, 64, 3)
 
         # test num_images_per_prompt=1 (default) for batch of images
         batch_size = 2
-        images = sd_pipe(
-            init_image.repeat(batch_size, 1, 1, 1),
-            num_inference_steps=2,
-            output_type="np",
-        ).images
+        inputs = self.get_dummy_inputs(device)
+        inputs["image"] = inputs["image"].repeat(batch_size, 1, 1, 1)
+        images = sd_pipe(**inputs).images
 
         assert images.shape == (batch_size, 64, 64, 3)
 
         # test num_images_per_prompt for single prompt
         num_images_per_prompt = 2
-        images = sd_pipe(
-            init_image,
-            num_inference_steps=2,
-            output_type="np",
-            num_images_per_prompt=num_images_per_prompt,
-        ).images
+        inputs = self.get_dummy_inputs(device)
+        images = sd_pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
 
         assert images.shape == (num_images_per_prompt, 64, 64, 3)
 
         # test num_images_per_prompt for batch of prompts
         batch_size = 2
-        images = sd_pipe(
-            init_image.repeat(batch_size, 1, 1, 1),
-            num_inference_steps=2,
-            output_type="np",
-            num_images_per_prompt=num_images_per_prompt,
-        ).images
+        inputs = self.get_dummy_inputs(device)
+        inputs["image"] = inputs["image"].repeat(batch_size, 1, 1, 1)
+        images = sd_pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
 
         assert images.shape == (batch_size * num_images_per_prompt, 64, 64, 3)
-
-    @unittest.skipIf(torch_device != "cuda", "This test requires a GPU")
-    def test_stable_diffusion_img_variation_fp16(self):
-        """Test that stable diffusion img2img works with fp16"""
-        unet = self.dummy_cond_unet
-        scheduler = PNDMScheduler(skip_prk_steps=True)
-        vae = self.dummy_vae
-        image_encoder = self.dummy_image_encoder
-
-        init_image = self.dummy_image.to(torch_device).float()
-
-        # put models in fp16
-        unet = unet.half()
-        vae = vae.half()
-        image_encoder = image_encoder.half()
-
-        # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionImageVariationPipeline(
-            unet=unet,
-            scheduler=scheduler,
-            vae=vae,
-            image_encoder=image_encoder,
-            safety_checker=None,
-            feature_extractor=self.dummy_extractor,
-        )
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = sd_pipe(
-            init_image,
-            generator=generator,
-            num_inference_steps=2,
-            output_type="np",
-        ).images
-
-        assert image.shape == (1, 64, 64, 3)
 
 
 @slow

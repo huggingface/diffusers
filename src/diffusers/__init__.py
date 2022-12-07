@@ -1,3 +1,7 @@
+__version__ = "0.10.0.dev0"
+
+from .configuration_utils import ConfigMixin
+from .onnx_utils import OnnxRuntimeModel
 from .utils import (
     is_flax_available,
     is_inflect_available,
@@ -6,14 +10,8 @@ from .utils import (
     is_torch_available,
     is_transformers_available,
     is_unidecode_available,
+    logging,
 )
-
-
-__version__ = "0.10.0.dev0"
-
-from .configuration_utils import ConfigMixin
-from .onnx_utils import OnnxRuntimeModel
-from .utils import logging
 
 
 if is_torch_available():
