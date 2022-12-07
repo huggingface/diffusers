@@ -1,4 +1,10 @@
-from ..utils import is_flax_available, is_onnx_available, is_torch_available, is_transformers_available
+from ..utils import (
+    is_flax_available,
+    is_librosa_available,
+    is_onnx_available,
+    is_torch_available,
+    is_transformers_available,
+)
 
 
 if is_torch_available():
@@ -14,9 +20,15 @@ if is_torch_available():
 else:
     from ..utils.dummy_pt_objects import *  # noqa F403
 
+if is_torch_available() and is_librosa_available():
+    from .audio_diffusion import AudioDiffusionPipeline, Mel
+else:
+    from ..utils.dummy_torch_and_librosa_objects import AudioDiffusionPipeline, Mel  # noqa F403
+
 if is_torch_available() and is_transformers_available():
     from .alt_diffusion import AltDiffusionImg2ImgPipeline, AltDiffusionPipeline
     from .latent_diffusion import LDMTextToImagePipeline
+    from .paint_by_example import PaintByExamplePipeline
     from .stable_diffusion import (
         CycleDiffusionPipeline,
         StableDiffusionImageVariationPipeline,

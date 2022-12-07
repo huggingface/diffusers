@@ -49,6 +49,8 @@
     title: "OpenVINO"
   - local: optimization/mps
     title: "MPS"
+  - local: optimization/habana
+    title: "Habana Gaudi"
   title: "Optimization/Special Hardware"
 - sections:
   - local: training/overview
@@ -100,6 +102,8 @@
       title: "Latent Diffusion"
     - local: api/pipelines/latent_diffusion_uncond
       title: "Unconditional Latent Diffusion"
+    - local: api/pipelines/paint_by_example
+      title: "PaintByExample"
     - local: api/pipelines/pndm
       title: "PNDM"
     - local: api/pipelines/score_sde_ve
@@ -120,6 +124,8 @@
       title: "VQ Diffusion"
     - local: api/pipelines/repaint
       title: "RePaint"
+    - local: api/pipelines/audio_diffusion
+      title: "Audio Diffusion"
     title: "Pipelines"
   - sections:
     - local: api/experimental/rl
