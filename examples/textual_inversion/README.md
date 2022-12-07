@@ -79,7 +79,6 @@ accelerate launch textual_inversion.py \
 ```
 
 A full training run takes ~1 hour on one V100 GPU.
-Add flag `--amp_data_type=bf16` if you want to use bf16 for unet forward to accelerate finetune. A full training by this flag run takes ~30 min on one V100 GPU.
 
 ### Inference
 

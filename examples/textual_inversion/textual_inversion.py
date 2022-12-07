@@ -203,13 +203,6 @@ def parse_args():
             "and an Nvidia Ampere GPU."
         ),
     )
-    parser.add_argument(
-        "--amp_data_type",
-        type=str,
-        default="fp32",
-        choices=["fp32", "bf16"],
-        help="Whether to use amp bf16",
-    )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
 
     args = parser.parse_args()
@@ -510,9 +503,15 @@ def main():
         text_encoder, optimizer, train_dataloader, lr_scheduler
     )
 
+    weight_dtype = torch.float32
+    if accelerator.mixed_precision == "fp16":
+        weight_dtype = torch.float16
+    elif accelerator.mixed_precision == "bf16":
+        weight_dtype = torch.bfloat16
+
     # Move vae and unet to device
-    vae.to(accelerator.device)
-    unet.to(accelerator.device)
+    unet.to(accelerator.device, dtype=weight_dtype)
+    vae.to(accelerator.device, dtype=weight_dtype)
 
     # Keep vae and unet in eval model as we don't train these
     vae.eval()
@@ -550,11 +549,11 @@ def main():
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(text_encoder):
                 # Convert images to latent space
-                latents = vae.encode(batch["pixel_values"]).latent_dist.sample().detach()
+                latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
                 latents = latents * 0.18215
 
                 # Sample noise that we'll add to the latents
-                noise = torch.randn(latents.shape).to(latents.device)
+                noise = torch.randn(latents.shape).to(latents.device).to(dtype=weight_dtype)
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
                 timesteps = torch.randint(
@@ -566,7 +565,10 @@ def main():
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 # Get the text embedding for conditioning
-                encoder_hidden_states = text_encoder(batch["input_ids"])[0]
+                encoder_hidden_states = text_encoder(batch["input_ids"])[0].to(dtype=weight_dtype).to(dtype=weight_dtype)
+
+                # Predict the noise residual
+                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
@@ -575,16 +577,8 @@ def main():
                     target = noise_scheduler.get_velocity(latents, noise, timesteps)
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
-                    
-                # Predict the noise residual
-                if args.amp_data_type == "bf16":
-                    with torch.autocast(device_type=str(accelerator.device), dtype=torch.bfloat16):
-                        model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
-                        loss = F.mse_loss(model_pred, target, reduction="none").mean([1, 2, 3]).mean()
-                else:
-                    model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
-                    loss = F.mse_loss(model_pred, target, reduction="none").mean([1, 2, 3]).mean()
 
+                loss = F.mse_loss(model_pred.float(), target.float(), reduction="none").mean([1, 2, 3]).mean()
                 accelerator.backward(loss)
 
                 # Zero out the gradients for all token embeddings except the newly added
