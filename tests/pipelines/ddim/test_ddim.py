@@ -28,10 +28,11 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 
 class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    @property
-    def dummy_uncond_unet(self):
+    pipeline_class = DDIMPipeline
+
+    def get_dummy_components(self):
         torch.manual_seed(0)
-        model = UNet2DModel(
+        unet = UNet2DModel(
             block_out_channels=(32, 64),
             layers_per_block=2,
             sample_size=32,
@@ -40,32 +41,40 @@ class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             down_block_types=("DownBlock2D", "AttnDownBlock2D"),
             up_block_types=("AttnUpBlock2D", "UpBlock2D"),
         )
-        return model
+        scheduler = DDIMScheduler()
+        components = {"unet": unet, "scheduler": scheduler}
+        return components
+
+    def get_dummy_inputs(self, device, seed=0):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
+        inputs = {
+            "generator": generator,
+            "num_inference_steps": 2,
+            "output_type": "numpy",
+        }
+        return inputs
 
     def test_inference(self):
         device = "cpu"
-        unet = self.dummy_uncond_unet
-        scheduler = DDIMScheduler()
 
-        ddpm = DDIMPipeline(unet=unet, scheduler=scheduler)
-        ddpm.to(device)
-        ddpm.set_progress_bar_config(disable=None)
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator(device=device).manual_seed(0)
-        image = ddpm(generator=generator, num_inference_steps=2, output_type="numpy").images
-
-        generator = torch.Generator(device=device).manual_seed(0)
-        image_from_tuple = ddpm(generator=generator, num_inference_steps=2, output_type="numpy", return_dict=False)[0]
-
+        inputs = self.get_dummy_inputs(device)
+        image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
-        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 32, 32, 3)
+        self.assertEqual(image.shape, (1, 32, 32, 3))
         expected_slice = np.array(
             [1.000e00, 5.717e-01, 4.717e-01, 1.000e00, 0.000e00, 1.000e00, 3.000e-04, 0.000e00, 9.000e-04]
         )
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
+        self.assertLessEqual(max_diff, 1e-3)
 
 
 @slow
