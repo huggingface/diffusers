@@ -74,7 +74,7 @@ def read_init():
     backend_specific_objects = {}
     # Go through the end of the file
     while line_index < len(lines):
-        # If the line is an if is_backend_available, we grab all objects associated.
+        # If the line contains is_backend_available, we grab all objects associated with the `else` block
         backend = find_backend(lines[line_index])
         if backend is not None:
             while not lines[line_index].startswith("else:"):
