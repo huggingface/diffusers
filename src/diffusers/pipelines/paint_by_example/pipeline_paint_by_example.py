@@ -79,9 +79,9 @@ def prepare_mask_and_masked_image(image, mask):
         if mask.ndim == 3:
             # Batched mask
             if mask.shape[0] == image.shape[0]:
-                 mask = mask.unsqueeze(1)
-             else:
-                 mask = mask.unsqueeze(0)
+                mask = mask.unsqueeze(1)
+            else:
+                mask = mask.unsqueeze(0)
 
         assert image.ndim == 4 and mask.ndim == 4, "Image and Mask must have 4 dimensions"
         assert image.shape[-2:] == mask.shape[-2:], "Image and Mask must have the same spatial dimensions"
@@ -110,8 +110,10 @@ def prepare_mask_and_masked_image(image, mask):
     else:
         if isinstance(image, PIL.Image.Image):
             image = np.array(image.convert("RGB"))
+
         image = image[None].transpose(0, 3, 1, 2)
         image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
+
         if isinstance(mask, PIL.Image.Image):
             mask = np.array(mask.convert("L"))
             mask = mask.astype(np.float32) / 255.0
@@ -384,10 +386,10 @@ class PaintByExamplePipeline(DiffusionPipeline):
         Args:
             example_image (`torch.FloatTensor` or `PIL.Image.Image` or `List[PIL.Image.Image]`):
                 The exemplar image to guide the image generation.
-            image (`PIL.Image.Image`):
+            image (`torch.FloatTensor` or `PIL.Image.Image` or `List[PIL.Image.Image]`):
                 `Image`, or tensor representing an image batch which will be inpainted, *i.e.* parts of the image will
                 be masked out with `mask_image` and repainted according to `prompt`.
-            mask_image (`PIL.Image.Image`):
+            mask_image (`torch.FloatTensor` or `PIL.Image.Image` or `List[PIL.Image.Image]`):
                 `Image`, or tensor representing an image batch, to mask `image`. White pixels in the mask will be
                 repainted, while black pixels will be preserved. If `mask_image` is a PIL image, it will be converted
                 to a single channel (luminance) before use. If it's a tensor, it should contain one color channel (L)
