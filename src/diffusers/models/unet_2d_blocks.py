@@ -343,6 +343,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
     ):
         super().__init__()
 
+        self.has_cross_attention = True
         self.attention_type = attention_type
         self.attn_num_head_channels = attn_num_head_channels
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
@@ -526,6 +527,7 @@ class CrossAttnDownBlock2D(nn.Module):
         resnets = []
         attentions = []
 
+        self.has_cross_attention = True
         self.attention_type = attention_type
         self.attn_num_head_channels = attn_num_head_channels
 
@@ -1110,6 +1112,7 @@ class CrossAttnUpBlock2D(nn.Module):
         resnets = []
         attentions = []
 
+        self.has_cross_attention = True
         self.attention_type = attention_type
         self.attn_num_head_channels = attn_num_head_channels
 
