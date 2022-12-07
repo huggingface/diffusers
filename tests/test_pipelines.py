@@ -57,29 +57,6 @@ from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextConfig, CLIPTe
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-def test_progress_bar(capsys):
-    model = UNet2DModel(
-        block_out_channels=(32, 64),
-        layers_per_block=2,
-        sample_size=32,
-        in_channels=3,
-        out_channels=3,
-        down_block_types=("DownBlock2D", "AttnDownBlock2D"),
-        up_block_types=("AttnUpBlock2D", "UpBlock2D"),
-    )
-    scheduler = DDPMScheduler(num_train_timesteps=10)
-
-    ddpm = DDPMPipeline(model, scheduler).to(torch_device)
-    ddpm(output_type="numpy").images
-    captured = capsys.readouterr()
-    assert "10/10" in captured.err, "Progress bar has to be displayed"
-
-    ddpm.set_progress_bar_config(disable=True)
-    ddpm(output_type="numpy").images
-    captured = capsys.readouterr()
-    assert captured.err == "", "Progress bar should be disabled"
-
-
 class DownloadTests(unittest.TestCase):
     def test_download_only_pytorch(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -108,7 +85,7 @@ class DownloadTests(unittest.TestCase):
         pipe_2 = StableDiffusionPipeline.from_pretrained(local_path)
 
         pipe = pipe.to(torch_device)
-        pipe_2 = pipe.to(torch_device)
+        pipe_2 = pipe_2.to(torch_device)
         if torch_device == "mps":
             # device type MPS is not supported for torch.Generator() api.
             generator = torch.manual_seed(0)
