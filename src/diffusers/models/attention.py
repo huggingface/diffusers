@@ -101,6 +101,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         num_embeds_ada_norm: Optional[int] = None,
         use_linear_projection: bool = False,
         only_cross_attention: bool = False,
+        upcast_attention: bool = False,
     ):
         super().__init__()
         self.use_linear_projection = use_linear_projection
@@ -159,6 +160,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     num_embeds_ada_norm=num_embeds_ada_norm,
                     attention_bias=attention_bias,
                     only_cross_attention=only_cross_attention,
+                    upcast_attention=upcast_attention,
                 )
                 for d in range(num_layers)
             ]
@@ -403,6 +405,7 @@ class BasicTransformerBlock(nn.Module):
         num_embeds_ada_norm: Optional[int] = None,
         attention_bias: bool = False,
         only_cross_attention: bool = False,
+        upcast_attention: bool = False,
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
@@ -416,6 +419,7 @@ class BasicTransformerBlock(nn.Module):
             dropout=dropout,
             bias=attention_bias,
             cross_attention_dim=cross_attention_dim if only_cross_attention else None,
+            upcast_attention=upcast_attention,
         )  # is a self-attention
         self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn)
 
@@ -428,6 +432,7 @@ class BasicTransformerBlock(nn.Module):
                 dim_head=attention_head_dim,
                 dropout=dropout,
                 bias=attention_bias,
+                upcast_attention=upcast_attention,
             )  # is self-attn if context is none
         else:
             self.attn2 = None
@@ -525,10 +530,12 @@ class CrossAttention(nn.Module):
         dim_head: int = 64,
         dropout: float = 0.0,
         bias=False,
+        upcast_attention: bool = False,
     ):
         super().__init__()
         inner_dim = dim_head * heads
         cross_attention_dim = cross_attention_dim if cross_attention_dim is not None else query_dim
+        self.upcast_attention = upcast_attention
 
         self.scale = dim_head**-0.5
         self.heads = heads
@@ -601,6 +608,10 @@ class CrossAttention(nn.Module):
         return hidden_states
 
     def _attention(self, query, key, value):
+        if self.upcast_attention:
+            query = query.float()
+            key = key.float()
+
         attention_scores = torch.baddbmm(
             torch.empty(query.shape[0], query.shape[1], key.shape[1], dtype=query.dtype, device=query.device),
             query,
@@ -609,8 +620,11 @@ class CrossAttention(nn.Module):
             alpha=self.scale,
         )
         attention_probs = attention_scores.softmax(dim=-1)
-        # compute attention output
 
+        # cast back to the original dtype
+        attention_probs = attention_probs.to(value.dtype)
+
+        # compute attention output
         hidden_states = torch.bmm(attention_probs, value)
 
         # reshape hidden_states
@@ -626,6 +640,14 @@ class CrossAttention(nn.Module):
         for i in range(hidden_states.shape[0] // slice_size):
             start_idx = i * slice_size
             end_idx = (i + 1) * slice_size
+
+            query_slice = query[start_idx:end_idx]
+            key_slice = key[start_idx:end_idx]
+
+            if self.upcast_attention:
+                query_slice = query_slice.float()
+                key_slice = key_slice.float()
+
             attn_slice = torch.baddbmm(
                 torch.empty(slice_size, query.shape[1], key.shape[1], dtype=query.dtype, device=query.device),
                 query[start_idx:end_idx],
@@ -634,6 +656,9 @@ class CrossAttention(nn.Module):
                 alpha=self.scale,
             )
             attn_slice = attn_slice.softmax(dim=-1)
+
+            # cast back to the original dtype
+            attn_slice = attn_slice.to(value.dtype)
             attn_slice = torch.bmm(attn_slice, value[start_idx:end_idx])
 
             hidden_states[start_idx:end_idx] = attn_slice
