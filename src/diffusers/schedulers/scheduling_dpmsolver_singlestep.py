@@ -21,7 +21,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, deprecate
+from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS
 from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
@@ -117,7 +117,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
     """
 
     _compatibles = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
-    _deprecated_kwargs = ["predict_epsilon"]
+    order = 1
 
     @register_to_config
     def __init__(
@@ -135,18 +135,9 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         algorithm_type: str = "dpmsolver++",
         solver_type: str = "midpoint",
         lower_order_final: bool = True,
-        **kwargs,
     ):
-        message = (
-            "Please make sure to instantiate your scheduler with `prediction_type` instead. E.g. `scheduler ="
-            " DPMSolverSinglestepScheduler.from_pretrained(<model_id>, prediction_type='epsilon')`."
-        )
-        predict_epsilon = deprecate("predict_epsilon", "0.10.0", message, take_from=kwargs)
-        if predict_epsilon is not None:
-            self.register_to_config(prediction_type="epsilon" if predict_epsilon else "sample")
-
         if trained_betas is not None:
-            self.betas = torch.from_numpy(trained_betas)
+            self.betas = torch.tensor(trained_betas, dtype=torch.float32)
         elif beta_schedule == "linear":
             self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
@@ -280,14 +271,18 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
 
             if self.config.thresholding:
                 # Dynamic thresholding in https://arxiv.org/abs/2205.11487
+                dtype = x0_pred.dtype
                 dynamic_max_val = torch.quantile(
-                    torch.abs(x0_pred).reshape((x0_pred.shape[0], -1)), self.config.dynamic_thresholding_ratio, dim=1
+                    torch.abs(x0_pred).reshape((x0_pred.shape[0], -1)).float(),
+                    self.config.dynamic_thresholding_ratio,
+                    dim=1,
                 )
                 dynamic_max_val = torch.maximum(
                     dynamic_max_val,
                     self.config.sample_max_value * torch.ones_like(dynamic_max_val).to(dynamic_max_val.device),
                 )[(...,) + (None,) * (x0_pred.ndim - 1)]
                 x0_pred = torch.clamp(x0_pred, -dynamic_max_val, dynamic_max_val) / dynamic_max_val
+                x0_pred = x0_pred.to(dtype)
             return x0_pred
         # DPM-Solver needs to solve an integral of the noise prediction model.
         elif self.config.algorithm_type == "dpmsolver":
