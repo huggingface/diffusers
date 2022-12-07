@@ -42,6 +42,8 @@ from .safety_checker_flax import FlaxStableDiffusionSafetyChecker
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+# Set to True to use python for loop instead of jax.fori_loop for easier debugging
+DEBUG = False
 
 class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
     r"""
@@ -259,7 +261,12 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
-        latents, _ = jax.lax.fori_loop(0, num_inference_steps, loop_body, (latents, scheduler_state))
+        if DEBUG:
+            # run with python for loop
+            for i in range(num_inference_steps):
+                latents, scheduler_state = loop_body(i, (latents, scheduler_state))
+        else:
+            latents, _ = jax.lax.fori_loop(0, num_inference_steps, loop_body, (latents, scheduler_state))
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
