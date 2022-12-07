@@ -281,7 +281,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1]
 
         assert image.shape == (1, 768, 768, 3)
-        expected_slice = np.array([0.4438, 0.4421, 0.4562, 0.4528, 0.4453, 0.4372, 0.4528, 0.4431, 0.4501])
+        expected_slice = np.array([0.0461, 0.0483, 0.0566, 0.0512, 0.0446, 0.0751, 0.0664, 0.0551, 0.0488])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_v_pred_euler(self):
