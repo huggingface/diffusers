@@ -32,7 +32,7 @@ def deprecate(*args, take_from: Optional[Union[Dict, Any]] = None, standard_warn
 
         if warning is not None:
             warning = warning + " " if standard_warn else ""
-            warnings.warn(warning + message, FutureWarning)
+            warnings.warn(warning + message, FutureWarning, stacklevel=2)
 
     if isinstance(deprecated_kwargs, dict) and len(deprecated_kwargs) > 0:
         call_frame = inspect.getouterframes(inspect.currentframe())[1]

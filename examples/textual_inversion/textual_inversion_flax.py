@@ -24,6 +24,7 @@ from diffusers import (
     FlaxUNet2DConditionModel,
 )
 from diffusers.pipelines.stable_diffusion import FlaxStableDiffusionSafetyChecker
+from diffusers.utils import check_min_version
 from flax import jax_utils
 from flax.training import train_state
 from flax.training.common_utils import shard
@@ -54,6 +55,9 @@ else:
         "nearest": PIL.Image.NEAREST,
     }
 # ------------------------------------------------------------------------------
+
+# Will error if the minimal version of diffusers is not installed. Remove at your own risks.
+check_min_version("0.10.0.dev0")
 
 logger = logging.getLogger(__name__)
 
