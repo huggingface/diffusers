@@ -45,6 +45,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # Set to True to use python for loop instead of jax.fori_loop for easier debugging
 DEBUG = False
 
+
 class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.
@@ -334,6 +335,8 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         width = width or self.unet.config.sample_size * self.vae_scale_factor
 
         if isinstance(guidance_scale, float):
+            # Convert to a tensor so each device gets a copy. Follow the prompt_ids for
+            # shape information, as they may be sharded (when `jit` is `True`), or not.
             guidance_scale = jnp.array([guidance_scale] * prompt_ids.shape[0])
             if len(prompt_ids.shape) > 2:
                 # Assume sharded
@@ -391,7 +394,8 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         return FlaxStableDiffusionPipelineOutput(images=images, nsfw_content_detected=has_nsfw_concept)
 
 
-# TODO: maybe use a config dict instead of so many static argnums
+# Static argnums are pipe, num_inference_steps, height, width. A change would trigger recompilation.
+# Non-static args are (sharded) input tensors mapped over their first dimension (hence, `0`).
 @partial(
     jax.pmap,
     in_axes=(None, 0, 0, 0, None, None, None, 0, 0, 0),
