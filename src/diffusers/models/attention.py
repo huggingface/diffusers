@@ -649,7 +649,7 @@ class CrossAttention(nn.Module):
                 key_slice = key_slice.float()
 
             attn_slice = torch.baddbmm(
-                torch.empty(slice_size, query.shape[1], key.shape[1], dtype=query.dtype, device=query.device),
+                torch.empty(slice_size, query.shape[1], key.shape[1], dtype=query_slice.dtype, device=query.device),
                 query_slice,
                 key_slice.transpose(-1, -2),
                 beta=0,
