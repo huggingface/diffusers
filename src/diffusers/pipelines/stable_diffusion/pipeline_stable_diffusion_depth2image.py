@@ -412,8 +412,9 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
         pixel_values = self.feature_extractor(images=image, return_tensors="pt").pixel_values
         pixel_values = pixel_values.to(device=device)
 
+        # The DPT-Hybrid model uses batch-norm layers which are not compatible with fp16.
+        # So we use `torch.autocast` here for half precision inference.
         context_manger = torch.autocast("cuda", dtype=dtype) if device.type == "cuda" else contextlib.nullcontext
-        # get depth mask
         with context_manger:
             depth_mask = self.depth_estimator(pixel_values).predicted_depth
 
