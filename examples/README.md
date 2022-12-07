@@ -54,7 +54,7 @@ Examples that are useful for the community, but are either not yet deemed popula
 
 ## Research Projects
 
-We also provide **research_projects** examples that can be used to accelerate the training (fine-tuning) and inference. These examples are useful and offer the extended capablities which are complementary to the official examples. You may refer to [research_projects](https://github.com/huggingface/diffusers/tree/main/examples/research_projects) for details.
+We also provide **research_projects** examples that are maintained by the community as defined in the respective research project folders. These examples are useful and offer the extended capabilities which are complementary to the official examples. You may refer to [research_projects](https://github.com/huggingface/diffusers/tree/main/examples/research_projects) for details.
 
 ## Important note
 
