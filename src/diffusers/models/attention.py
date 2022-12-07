@@ -406,6 +406,9 @@ class BasicTransformerBlock(nn.Module):
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
+        self.use_ada_layer_norm = num_embeds_ada_norm is not None
+
+        # 1. Self-Attn
         self.attn1 = CrossAttention(
             query_dim=dim,
             heads=num_attention_heads,
@@ -415,23 +418,28 @@ class BasicTransformerBlock(nn.Module):
             cross_attention_dim=cross_attention_dim if only_cross_attention else None,
         )  # is a self-attention
         self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn)
-        self.attn2 = CrossAttention(
-            query_dim=dim,
-            cross_attention_dim=cross_attention_dim,
-            heads=num_attention_heads,
-            dim_head=attention_head_dim,
-            dropout=dropout,
-            bias=attention_bias,
-        )  # is self-attn if context is none
 
-        # layer norms
-        self.use_ada_layer_norm = num_embeds_ada_norm is not None
-        if self.use_ada_layer_norm:
-            self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm)
-            self.norm2 = AdaLayerNorm(dim, num_embeds_ada_norm)
+        # 2. Cross-Attn
+        if cross_attention_dim is not None:
+            self.attn2 = CrossAttention(
+                query_dim=dim,
+                cross_attention_dim=cross_attention_dim,
+                heads=num_attention_heads,
+                dim_head=attention_head_dim,
+                dropout=dropout,
+                bias=attention_bias,
+            )  # is self-attn if context is none
         else:
-            self.norm1 = nn.LayerNorm(dim)
-            self.norm2 = nn.LayerNorm(dim)
+            self.attn2 = None
+
+        self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
+
+        if cross_attention_dim is not None:
+            self.norm2 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
+        else:
+            self.norm2 = None
+
+        # 3. Feed-forward
         self.norm3 = nn.LayerNorm(dim)
 
         # if xformers is installed try to use memory_efficient_attention by default
@@ -481,11 +489,12 @@ class BasicTransformerBlock(nn.Module):
         else:
             hidden_states = self.attn1(norm_hidden_states) + hidden_states
 
-        # 2. Cross-Attention
-        norm_hidden_states = (
-            self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
-        )
-        hidden_states = self.attn2(norm_hidden_states, context=context) + hidden_states
+        if self.attn2 is not None:
+            # 2. Cross-Attention
+            norm_hidden_states = (
+                self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
+            )
+            hidden_states = self.attn2(norm_hidden_states, context=context) + hidden_states
 
         # 3. Feed-forward
         hidden_states = self.ff(self.norm3(hidden_states)) + hidden_states
@@ -666,14 +675,16 @@ class FeedForward(nn.Module):
         inner_dim = int(dim * mult)
         dim_out = dim_out if dim_out is not None else dim
 
-        if activation_fn == "geglu":
-            geglu = GEGLU(dim, inner_dim)
+        if activation_fn == "gelu":
+            act_fn = GELU(dim, inner_dim)
+        elif activation_fn == "geglu":
+            act_fn = GEGLU(dim, inner_dim)
         elif activation_fn == "geglu-approximate":
-            geglu = ApproximateGELU(dim, inner_dim)
+            act_fn = ApproximateGELU(dim, inner_dim)
 
         self.net = nn.ModuleList([])
         # project in
-        self.net.append(geglu)
+        self.net.append(act_fn)
         # project dropout
         self.net.append(nn.Dropout(dropout))
         # project out
@@ -682,6 +693,27 @@ class FeedForward(nn.Module):
     def forward(self, hidden_states):
         for module in self.net:
             hidden_states = module(hidden_states)
+        return hidden_states
+
+
+class GELU(nn.Module):
+    r"""
+    GELU activation function
+    """
+
+    def __init__(self, dim_in: int, dim_out: int):
+        super().__init__()
+        self.proj = nn.Linear(dim_in, dim_out)
+
+    def gelu(self, gate):
+        if gate.device.type != "mps":
+            return F.gelu(gate)
+        # mps: gelu is not implemented for float16
+        return F.gelu(gate.to(dtype=torch.float32)).to(dtype=gate.dtype)
+
+    def forward(self, hidden_states):
+        hidden_states = self.proj(hidden_states)
+        hidden_states = self.gelu(hidden_states)
         return hidden_states
 
 
