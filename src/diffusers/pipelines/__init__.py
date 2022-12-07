@@ -77,6 +77,6 @@ try:
     if not (is_flax_available() and is_transformers_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from .utils.dummy_flax_and_transformers_objects import *  # noqa F403
+    from ..utils.dummy_flax_and_transformers_objects import *  # noqa F403
 else:
     from .stable_diffusion import FlaxStableDiffusionPipeline
