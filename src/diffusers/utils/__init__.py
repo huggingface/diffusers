@@ -90,6 +90,7 @@ _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS = [
     "HeunDiscreteScheduler",
     "EulerAncestralDiscreteScheduler",
     "DPMSolverMultistepScheduler",
+    "DPMSolverSinglestepScheduler",
 ]
 
 
