@@ -72,6 +72,7 @@ if is_torch_available() and is_transformers_available():
         AltDiffusionPipeline,
         CycleDiffusionPipeline,
         LDMTextToImagePipeline,
+        PaintByExamplePipeline,
         StableDiffusionImageVariationPipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
