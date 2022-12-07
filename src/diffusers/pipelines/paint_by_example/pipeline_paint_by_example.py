@@ -457,7 +457,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
 
         # 2. Preprocess mask and image
         mask, masked_image = prepare_mask_and_masked_image(image, mask_image)
-        width, height = masked_image.shape[-2:]
+        height, width = masked_image.shape[-2:]
 
         # 3. Check inputs
         self.check_inputs(example_image, height, width, callback_steps)
