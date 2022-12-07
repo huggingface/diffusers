@@ -96,10 +96,10 @@ class DDIMPipeline(DiffusionPipeline):
 
         if self.device.type == "mps":
             # randn does not work reproducibly on mps
-            image = torch.randn(image_shape, generator=generator)
+            image = torch.randn(image_shape, generator=generator, dtype=self.unet.dtype)
             image = image.to(self.device)
         else:
-            image = torch.randn(image_shape, generator=generator, device=self.device)
+            image = torch.randn(image_shape, generator=generator, device=self.device, dtype=self.unet.dtype)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)

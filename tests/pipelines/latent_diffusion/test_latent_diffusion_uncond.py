@@ -22,13 +22,11 @@ from diffusers import DDIMScheduler, LDMPipeline, UNet2DModel, VQModel
 from diffusers.utils.testing_utils import require_torch, slow, torch_device
 from transformers import CLIPTextConfig, CLIPTextModel
 
-from ...test_pipelines_common import PipelineTesterMixin
-
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class LDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class LDMPipelineFastTests(unittest.TestCase):
     @property
     def dummy_uncond_unet(self):
         torch.manual_seed(0)
