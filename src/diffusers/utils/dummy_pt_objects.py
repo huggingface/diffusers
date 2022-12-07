@@ -362,6 +362,21 @@ class DPMSolverMultistepScheduler(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class DPMSolverSinglestepScheduler(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class EulerAncestralDiscreteScheduler(metaclass=DummyObject):
     _backends = ["torch"]
 
