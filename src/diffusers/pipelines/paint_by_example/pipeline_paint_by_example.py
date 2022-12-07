@@ -36,7 +36,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 def prepare_mask_and_masked_image(image, mask):
     """
-    Prepares a pair (image, mask) to be consumed by the Stable Diffusion pipeline. This means that those inputs will be
+    Prepares a pair (image, mask) to be consumed by the Paint by Example pipeline. This means that those inputs will be
     converted to ``torch.Tensor`` with shapes ``batch x channels x height x width`` where ``channels`` is ``3`` for the
     ``image`` and ``1`` for the ``mask``.
 
@@ -77,17 +77,16 @@ def prepare_mask_and_masked_image(image, mask):
 
         # Batch single mask or add channel dim
         if mask.ndim == 3:
-            # Single batched mask, no channel dim or single mask not batched but channel dim
-            if mask.shape[0] == 1:
-                mask = mask.unsqueeze(0)
-
-            # Batched masks no channel dim
-            else:
-                mask = mask.unsqueeze(1)
+            # Batched mask
+            if mask.shape[0] == image.shape[0]:
+                 mask = mask.unsqueeze(1)
+             else:
+                 mask = mask.unsqueeze(0)
 
         assert image.ndim == 4 and mask.ndim == 4, "Image and Mask must have 4 dimensions"
         assert image.shape[-2:] == mask.shape[-2:], "Image and Mask must have the same spatial dimensions"
         assert image.shape[0] == mask.shape[0], "Image and Mask must have the same batch size"
+        assert image.mask[1] == 1, "Mask image must have a single channel"
 
         # Check image is in [-1, 1]
         if image.min() < -1 or image.max() > 1:
@@ -383,8 +382,8 @@ class PaintByExamplePipeline(DiffusionPipeline):
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`):
-                The prompt or prompts to guide the image generation.
+            example_image (`torch.FloatTensor` or `PIL.Image.Image` or `List[PIL.Image.Image]`):
+                The exemplar image to guide the image generation.
             image (`PIL.Image.Image`):
                 `Image`, or tensor representing an image batch which will be inpainted, *i.e.* parts of the image will
                 be masked out with `mask_image` and repainted according to `prompt`.

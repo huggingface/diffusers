@@ -437,7 +437,7 @@ class BasicTransformerBlock(nn.Module):
         if cross_attention_dim is not None:
             self.norm2 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
         else:
-            self.attn2 = None
+            self.norm2 = None
 
         # 3. Feed-forward
         self.norm3 = nn.LayerNorm(dim)
