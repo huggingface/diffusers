@@ -62,6 +62,7 @@ def save_progress(text_encoder, placeholder_token_id, accelerator, args, save_pa
     learned_embeds_dict = {args.placeholder_token: learned_embeds.detach().cpu()}
     torch.save(learned_embeds_dict, save_path)
 
+
 def load_progress(text_encoder, placeholder_token_id, accelerator, args, save_path):
     logger.info("Loading embeddings")
     learned_embeds_dict = torch.load(save_path)
@@ -467,7 +468,9 @@ def main():
     freeze_params(params_to_freeze)
 
     if os.path.exists(os.path.join(args.output_dir, "learned_embeds.bin")):
-        load_progress(text_encoder, placeholder_token_id, accelerator, args, os.path.join(args.output_dir, "learned_embeds.bin"))
+        load_progress(
+            text_encoder, placeholder_token_id, accelerator, args, os.path.join(args.output_dir, "learned_embeds.bin")
+        )
 
     if args.scale_lr:
         args.learning_rate = (
