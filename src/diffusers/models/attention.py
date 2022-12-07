@@ -42,6 +42,7 @@ class Transformer2DModelOutput(BaseOutput):
 if is_xformers_available():
     import xformers
     import xformers.ops
+    mem_attn_op = xformers.ops.MemoryEfficientAttentionCutlassOp if hasattr(xformers.ops, "MemoryEfficientAttentionCutlassOp") else None
 else:
     xformers = None
 
@@ -305,6 +306,7 @@ class AttentionBlock(nn.Module):
                     torch.randn((1, 2, 40), device="cuda"),
                     torch.randn((1, 2, 40), device="cuda"),
                     torch.randn((1, 2, 40), device="cuda"),
+                    op=mem_attn_op
                 )
             except Exception as e:
                 raise e
@@ -346,7 +348,7 @@ class AttentionBlock(nn.Module):
 
         if self._use_memory_efficient_attention_xformers:
             # Memory efficient attention
-            hidden_states = xformers.ops.memory_efficient_attention(query_proj, key_proj, value_proj, attn_bias=None)
+            hidden_states = xformers.ops.memory_efficient_attention(query_proj, key_proj, value_proj, attn_bias=None, op=mem_attn_op)
             hidden_states = hidden_states.to(query_proj.dtype)
         else:
             attention_scores = torch.baddbmm(
@@ -477,6 +479,7 @@ class BasicTransformerBlock(nn.Module):
                     torch.randn((1, 2, 40), device="cuda"),
                     torch.randn((1, 2, 40), device="cuda"),
                     torch.randn((1, 2, 40), device="cuda"),
+                    op=mem_attn_op
                 )
             except Exception as e:
                 raise e
@@ -671,7 +674,7 @@ class CrossAttention(nn.Module):
         query = query.contiguous()
         key = key.contiguous()
         value = value.contiguous()
-        hidden_states = xformers.ops.memory_efficient_attention(query, key, value, attn_bias=None)
+        hidden_states = xformers.ops.memory_efficient_attention(query, key, value, attn_bias=None, op=mem_attn_op)
         hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
         return hidden_states
 
