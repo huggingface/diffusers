@@ -443,8 +443,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
             (nsfw) content, according to the `safety_checker`.
         """
         # 0. Default height and width to unet
-        height = height or self.unet.config.sample_size * self.vae_scale_factor
-        width = width or self.unet.config.sample_size * self.vae_scale_factor
+        width, height = image.size
 
         # 1. Check inputs
         self.check_inputs(example_image, height, width, callback_steps)
