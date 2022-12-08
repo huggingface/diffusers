@@ -5,7 +5,7 @@ import math
 import os
 from pathlib import Path
 from typing import Optional
-
+import json
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
@@ -230,10 +230,10 @@ class DreamBoothDataset(Dataset):
     def __init__(
         self,
         instance_data_root,
-        instance_prompt,
+        instance_prompt_file,
         tokenizer,
         class_data_root=None,
-        class_prompt=None,
+        class_prompt_file=None,
         size=512,
         center_crop=False,
     ):
@@ -247,7 +247,9 @@ class DreamBoothDataset(Dataset):
 
         self.instance_images_path = list(Path(instance_data_root).iterdir())
         self.num_instance_images = len(self.instance_images_path)
-        self.instance_prompt = instance_prompt
+        f = open(instance_prompt_file)
+        self.instance_prompts = json.load(f)
+        f.close()
         self._length = self.num_instance_images
 
         if class_data_root is not None:
@@ -256,7 +258,9 @@ class DreamBoothDataset(Dataset):
             self.class_images_path = list(self.class_data_root.iterdir())
             self.num_class_images = len(self.class_images_path)
             self._length = max(self.num_class_images, self.num_instance_images)
-            self.class_prompt = class_prompt
+            f = open(class_prompt_file)
+            self.class_prompts = json.load(f)
+            f.close()
         else:
             self.class_data_root = None
 
@@ -279,7 +283,7 @@ class DreamBoothDataset(Dataset):
             instance_image = instance_image.convert("RGB")
         example["instance_images"] = self.image_transforms(instance_image)
         example["instance_prompt_ids"] = self.tokenizer(
-            self.instance_prompt,
+            self.instance_prompts.get(self.instance_images_path[index % self.num_instance_images]),
             padding="do_not_pad",
             truncation=True,
             max_length=self.tokenizer.model_max_length,
@@ -291,7 +295,7 @@ class DreamBoothDataset(Dataset):
                 class_image = class_image.convert("RGB")
             example["class_images"] = self.image_transforms(class_image)
             example["class_prompt_ids"] = self.tokenizer(
-                self.class_prompt,
+                self.class_prompts.get(self.class_images_path[index % self.num_class_images])
                 padding="do_not_pad",
                 truncation=True,
                 max_length=self.tokenizer.model_max_length,

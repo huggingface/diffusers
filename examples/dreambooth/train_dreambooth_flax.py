@@ -230,6 +230,7 @@ class DreamBoothDataset(Dataset):
 
         f = open(instance_prompt_file)
         self.instance_prompts = json.load(f)
+        f.close()
         self._length = self.num_instance_images
 
         if class_data_root is not None:
