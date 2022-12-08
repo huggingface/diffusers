@@ -51,6 +51,7 @@ def preprocess_image(image):
     return 2.0 * image - 1.0
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint_legacy.preprocess_mask
 def preprocess_mask(mask):
     mask = mask.convert("L")
     w, h = mask.size
