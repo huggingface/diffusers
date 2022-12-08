@@ -102,6 +102,8 @@
       title: "Latent Diffusion"
     - local: api/pipelines/latent_diffusion_uncond
       title: "Unconditional Latent Diffusion"
+    - local: api/pipelines/paint_by_example
+      title: "PaintByExample"
     - local: api/pipelines/pndm
       title: "PNDM"
     - local: api/pipelines/score_sde_ve
