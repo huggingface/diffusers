@@ -7,6 +7,7 @@ The `train_dreambooth.py` script shows how to implement the training procedure a
 
 ### Installing the dependencies
 run !git install https://github.com/arifsaeed/diffusers.git
+pip install git+file:///workspace/diffusers#egg=diffusers
 Before running the scripts, make sure to install the library's training dependencies:
 
 ```bash
@@ -166,10 +167,13 @@ Pass the `--train_text_encoder` argument to the script to enable training `text_
 **_Note: Training text encoder requires more memory, with this option the training won't fit on 16GB GPU. It needs at least 24GB VRAM._**
 
 ```bash
-export MODEL_NAME="768-v-ema.ckpt"
-export INSTANCE_DIR="/home/arif/Documents/design/sandpit/hf-diffusers/diffusers/examples/dreambooth/renwa"
-export CLASS_DIR="/home/arif/Documents/design/sandpit/hf-diffusers/diffusers/examples/dreambooth/regularisationimages/woman"
-export OUTPUT_DIR="/home/arif/Documents/design/sandpit/hf-diffusers/diffusers/examples/dreambooth/output"
+export MODEL_NAME="stabilityai/stable-diffusion-2"
+export INSTANCE_DIR="/workspace/diffusers/examples/dreambooth/allinstanceimages"
+export INSTACE_PROMPT_DIR="/workspace/diffusers/examples/dreambooth/prompts/instanceprompts.pickle"
+export CLASS_PROMPT_DIR="/workspace/diffusers/examples/dreambooth/prompts/classprompts.pickle"
+export CLASS_DIR="/workspace/diffusers/examples/dreambooth/allclassimages"
+export OUTPUT_DIR="/workspace/diffusers/examples/dreambooth/output"
+
 
 accelerate launch train_dreambooth.py \
   --pretrained_model_name_or_path=$MODEL_NAME  \
@@ -178,16 +182,15 @@ accelerate launch train_dreambooth.py \
   --class_data_dir=$CLASS_DIR \
   --output_dir=$OUTPUT_DIR \
   --with_prior_preservation --prior_loss_weight=1.0 \
-  --instance_prompt="a photo of renwa" \
-  --class_prompt="a photo of a woman" \
-  --resolution=512 \
+  --instance_prompt=$INSTACE_PROMPT_DIR \
+  --class_prompt=$CLASS_PROMPT_DIR \
+  --resolution=768 \
   --train_batch_size=1 \
-  --use_8bit_adam \
   --gradient_checkpointing \
   --learning_rate=2e-6 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
-  --num_class_images=200 \
+  --num_class_images=1732 \
   --max_train_steps=800
 ```
 

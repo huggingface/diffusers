@@ -3,6 +3,7 @@ import hashlib
 import itertools
 import math
 import os
+import pickle5 as pickle
 from pathlib import Path
 from typing import Optional
 import json
@@ -220,6 +221,10 @@ def parse_args(input_args=None):
 
     return args
 
+def get_prompts(promptsfile):
+    with open(promptsfile , 'rb') as handle:
+        b = pickle.load(handle)
+    return b
 
 class DreamBoothDataset(Dataset):
     """
@@ -240,27 +245,27 @@ class DreamBoothDataset(Dataset):
         self.size = size
         self.center_crop = center_crop
         self.tokenizer = tokenizer
+        print("**********TOKENIZER MODEL MAX LENGTH*********************")
+        print(self.tokenizer.model_max_length)
 
         self.instance_data_root = Path(instance_data_root)
         if not self.instance_data_root.exists():
             raise ValueError("Instance images root doesn't exists.")
 
         self.instance_images_path = list(Path(instance_data_root).iterdir())
-        self.num_instance_images = len(self.instance_images_path)
-        f = open(instance_prompt_file)
-        self.instance_prompts = json.load(f)
-        f.close()
+        
+
+        self.instance_prompts = get_prompts(instance_prompt_file)
+        self.num_instance_images = len(self.instance_prompts)
         self._length = self.num_instance_images
 
         if class_data_root is not None:
             self.class_data_root = Path(class_data_root)
             self.class_data_root.mkdir(parents=True, exist_ok=True)
             self.class_images_path = list(self.class_data_root.iterdir())
-            self.num_class_images = len(self.class_images_path)
-            self._length = max(self.num_class_images, self.num_instance_images)
-            f = open(class_prompt_file)
-            self.class_prompts = json.load(f)
-            f.close()
+            self.class_prompts = get_prompts(class_prompt_file)
+            self.num_class_images = len(self.class_prompts)
+            self._length = max(self.num_class_images, self.num_instance_images)            
         else:
             self.class_data_root = None
 
@@ -295,7 +300,7 @@ class DreamBoothDataset(Dataset):
                 class_image = class_image.convert("RGB")
             example["class_images"] = self.image_transforms(class_image)
             example["class_prompt_ids"] = self.tokenizer(
-                self.class_prompts.get(self.class_images_path[index % self.num_class_images])
+                self.class_prompts.get(self.class_images_path[index % self.num_class_images]),
                 padding="do_not_pad",
                 truncation=True,
                 max_length=self.tokenizer.model_max_length,
@@ -409,17 +414,21 @@ def main(args):
         elif args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
 
+            
+    token ='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'
     # Load the tokenizer
     if args.tokenizer_name:
         tokenizer = CLIPTokenizer.from_pretrained(
             args.tokenizer_name,
             revision=args.revision,
+            use_auth_token=token,
         )
     elif args.pretrained_model_name_or_path:
         tokenizer = CLIPTokenizer.from_pretrained(
             args.pretrained_model_name_or_path,
             subfolder="tokenizer",
             revision=args.revision,
+            use_auth_token=token,
         )
 
     # Load models and create wrapper for stable diffusion
@@ -427,16 +436,19 @@ def main(args):
         args.pretrained_model_name_or_path,
         subfolder="text_encoder",
         revision=args.revision,
+        use_auth_token=token,
     )
     vae = AutoencoderKL.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="vae",
         revision=args.revision,
+        use_auth_token=token,
     )
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="unet",
         revision=args.revision,
+        use_auth_token=token,
     )
 
     vae.requires_grad_(False)
@@ -481,9 +493,9 @@ def main(args):
 
     train_dataset = DreamBoothDataset(
         instance_data_root=args.instance_data_dir,
-        instance_prompt=args.instance_prompt,
+        instance_prompt_file=args.instance_prompt,
         class_data_root=args.class_data_dir if args.with_prior_preservation else None,
-        class_prompt=args.class_prompt,
+        class_prompt_file=args.class_prompt,
         tokenizer=tokenizer,
         size=args.resolution,
         center_crop=args.center_crop,
