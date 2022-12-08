@@ -409,7 +409,7 @@ class StableDiffusionRepaintPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        init_image: Union[torch.FloatTensor, PIL.Image.Image],
+        image: Union[torch.FloatTensor, PIL.Image.Image],
         mask_image: Union[torch.FloatTensor, PIL.Image.Image],
         num_inference_steps: Optional[int] = 50,
         jump_length: Optional[int] = 10,
@@ -430,11 +430,11 @@ class StableDiffusionRepaintPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
-            init_image (`torch.FloatTensor` or `PIL.Image.Image`):
+            image (`torch.FloatTensor` or `PIL.Image.Image`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
                 process. This is the image whose masked region will be inpainted.
             mask_image (`torch.FloatTensor` or `PIL.Image.Image`):
-                `Image`, or tensor representing an image batch, to mask `init_image`. White pixels in the mask will be
+                `Image`, or tensor representing an image batch, to mask `image`. White pixels in the mask will be
                 replaced by noise and therefore repainted, while black pixels will be preserved. If `mask_image` is a
                 PIL image, it will be converted to a single channel (luminance) before use. If it's a tensor, it should
                 contain one color channel (L) instead of 3, so the expected shape would be `(B, H, W, 1)`.
@@ -501,8 +501,8 @@ class StableDiffusionRepaintPipeline(DiffusionPipeline):
         )
 
         # 4. Preprocess image and mask
-        if not isinstance(init_image, torch.FloatTensor):
-            init_image = preprocess_image(init_image)
+        if not isinstance(image, torch.FloatTensor):
+            image = preprocess_image(image)
 
         if not isinstance(mask_image, torch.FloatTensor):
             mask_image = preprocess_mask(mask_image)
@@ -517,7 +517,7 @@ class StableDiffusionRepaintPipeline(DiffusionPipeline):
         # 6. Prepare latent variables
         # encode the init image into latents and scale the latents
         latents, init_latents_orig = self.prepare_latents(
-            init_image, latent_timestep, batch_size, num_images_per_prompt, text_embeddings.dtype, device, generator
+            image, latent_timestep, batch_size, num_images_per_prompt, text_embeddings.dtype, device, generator
         )
 
         # 7. Prepare mask latent
