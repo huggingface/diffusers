@@ -393,12 +393,9 @@ class StableDiffusionRepaintPipeline(DiffusionPipeline):
         return extra_step_kwargs
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.check_inputs
-    def check_inputs(self, prompt, strength, callback_steps):
+    def check_inputs(self, prompt, callback_steps):
         if not isinstance(prompt, str) and not isinstance(prompt, list):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-
-        if strength < 0 or strength > 1:
-            raise ValueError(f"The value of strength should in [1.0, 1.0] but is {strength}")
 
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
@@ -407,18 +404,6 @@ class StableDiffusionRepaintPipeline(DiffusionPipeline):
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
             )
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.get_timesteps
-    def get_timesteps(self, num_inference_steps, strength, device):
-        # get the original timestep using init_timestep
-        offset = self.scheduler.config.get("steps_offset", 0)
-        init_timestep = int(num_inference_steps * strength) + offset
-        init_timestep = min(init_timestep, num_inference_steps)
-
-        t_start = max(num_inference_steps - init_timestep + offset, 0)
-        timesteps = self.scheduler.timesteps[t_start:]
-
-        return timesteps
 
     def prepare_latents(self, init_image, timestep, batch_size, num_images_per_prompt, dtype, device, generator):
         init_image = init_image.to(device=self.device, dtype=dtype)
@@ -468,14 +453,9 @@ class StableDiffusionRepaintPipeline(DiffusionPipeline):
                 replaced by noise and therefore repainted, while black pixels will be preserved. If `mask_image` is a
                 PIL image, it will be converted to a single channel (luminance) before use. If it's a tensor, it should
                 contain one color channel (L) instead of 3, so the expected shape would be `(B, H, W, 1)`.
-            strength (`float`, *optional*, defaults to 0.8):
-                Conceptually, indicates how much to inpaint the masked area. Must be between 0 and 1. When `strength`
-                is 1, the denoising process will be run on the masked area for the full number of iterations specified
-                in `num_inference_steps`. `init_image` will be used as a reference for the masked area, adding more
-                noise to that region the larger the `strength`. If `strength` is 0, no inpainting will occur.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The reference number of denoising steps. More denoising steps usually lead to a higher quality image at
-                the expense of slower inference. This parameter will be modulated by `strength`, as explained above.
+                the expense of slower inference.
             jump_length (`int`, *optional*, defaults to 10):
                 The number of steps taken forward in time before going backward in time for a single jump ("j" in
                 RePaint paper). Take a look at Figure 9 and 10 in https://arxiv.org/pdf/2201.09865.pdf.
@@ -520,7 +500,7 @@ class StableDiffusionRepaintPipeline(DiffusionPipeline):
             (nsfw) content, according to the `safety_checker`.
         """
         # 1. Check inputs
-        self.check_inputs(prompt, strength, callback_steps)
+        self.check_inputs(prompt, callback_steps)
 
         # 2. Define call parameters
         batch_size = 1 if isinstance(prompt, str) else len(prompt)
@@ -546,7 +526,7 @@ class StableDiffusionRepaintPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps, jump_length, jump_n_sample, self.device)
         self.scheduler.eta = eta
 
-        timesteps = self.get_timesteps(num_inference_steps, 1.0, device)
+        timesteps = self.timesteps
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
         # 6. Prepare latent variables
@@ -562,15 +542,15 @@ class StableDiffusionRepaintPipeline(DiffusionPipeline):
         t_last = timesteps[0] + 1
         # 9. Denoising loop
         for i, t in enumerate(self.progress_bar(timesteps)):
+            if t >= t_last:
+                # compute the reverse: x_t-1 -> x_t
+                latents = self.scheduler.undo_step(latents, t_last, generator)
+                t_last = t
+                continue
+
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-
-            if t >= t_last:
-                # compute the reverse: x_t-1 -> x_t
-                latents = self.scheduler.undo_step(latent_model_input, t_last, generator)
-                t_last = t
-                continue
 
             # predict the noise residual
             noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
