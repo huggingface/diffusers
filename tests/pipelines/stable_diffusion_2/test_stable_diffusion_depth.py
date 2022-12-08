@@ -54,6 +54,7 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionDepth2ImgPipeline
+    test_save_load_optional_components = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)
