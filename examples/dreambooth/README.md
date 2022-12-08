@@ -6,7 +6,7 @@ The `train_dreambooth.py` script shows how to implement the training procedure a
 ## Running locally with PyTorch
 
 ### Installing the dependencies
-
+run !git install https://github.com/arifsaeed/diffusers.git
 Before running the scripts, make sure to install the library's training dependencies:
 
 ```bash
