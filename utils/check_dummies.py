@@ -91,7 +91,8 @@ def read_init():
                     objects.append(line[8:-2])
                 line_index += 1
 
-            backend_specific_objects[backend] = objects
+            if len(objects) > 0:
+                backend_specific_objects[backend] = objects
         else:
             line_index += 1
 
