@@ -285,6 +285,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         inputs = self.get_dummy_inputs(device)
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
+        print(image_slice.flatten())
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.6071, 0.5035, 0.4378, 0.5776, 0.5753, 0.4316, 0.4513, 0.5263, 0.4546])
@@ -302,6 +303,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         output = sd_pipe(**inputs, negative_prompt=negative_prompt)
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
+        print(image_slice.flatten())
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.5825, 0.5135, 0.4095, 0.5452, 0.6059, 0.4211, 0.3994, 0.5177, 0.4335])
@@ -372,6 +374,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         inputs["image"] = Image.fromarray(inputs["image"][0].permute(1, 2, 0).numpy().astype(np.uint8))
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
+        print(image_slice.flatten())
 
         expected_slice = np.array([0.53232, 0.47015, 0.40868, 0.45651, 0.4891, 0.4668, 0.4287, 0.48822, 0.47439])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
