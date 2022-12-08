@@ -31,5 +31,5 @@ deps = {
     "tensorboard": "tensorboard",
     "torch": "torch>=1.4",
     "torchvision": "torchvision",
-    "transformers": "transformers>=4.21.0",
+    "transformers": "transformers>=4.25.1",
 }
