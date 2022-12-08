@@ -39,7 +39,6 @@ class StableDiffusionPipelineOutput(BaseOutput):
 if is_transformers_available() and is_torch_available():
     from .pipeline_cycle_diffusion import CycleDiffusionPipeline
     from .pipeline_stable_diffusion import StableDiffusionPipeline
-    from .pipeline_stable_diffusion_depth2img import StableDiffusionDepth2ImgPipeline
     from .pipeline_stable_diffusion_img2img import StableDiffusionImg2ImgPipeline
     from .pipeline_stable_diffusion_inpaint import StableDiffusionInpaintPipeline
     from .pipeline_stable_diffusion_inpaint_legacy import StableDiffusionInpaintPipelineLegacy
@@ -53,6 +52,16 @@ except OptionalDependencyNotAvailable:
     from ...utils.dummy_torch_and_transformers_objects import StableDiffusionImageVariationPipeline
 else:
     from .pipeline_stable_diffusion_image_variation import StableDiffusionImageVariationPipeline
+
+
+try:
+    if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.26.0.dev0")):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ...utils.dummy_torch_and_transformers_objects import StableDiffusionDepth2ImgPipeline
+else:
+    from .pipeline_stable_diffusion_depth2img import StableDiffusionDepth2ImgPipeline
+
 
 try:
     if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):

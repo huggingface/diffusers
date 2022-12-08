@@ -48,7 +48,7 @@ from ...test_pipelines_common import PipelineTesterMixin
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class StableDiffusiondepth2imgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionDepth2ImgPipeline
     test_save_load_optional_components = False
 
@@ -150,11 +150,8 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         }
         return inputs
 
+    @unittest.skipIf(torch_device == "mps", reason="The depth model does not support MPS yet")
     def test_save_load_local(self):
-        if torch_device == "mps":
-            # FIXME: inconsistent outputs on MPS
-            return
-
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
@@ -232,9 +229,6 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         reason="CPU offload is only available with CUDA and `accelerate` installed",
     )
     def test_cpu_offload_forward_pass(self):
-        if not self.test_cpu_offload:
-            return
-
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
@@ -250,10 +244,8 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         max_diff = np.abs(output_with_offload - output_without_offload).max()
         self.assertLess(max_diff, 3e-5, "CPU offloading should not affect the inference results")
 
+    @unittest.skipIf(torch_device == "mps", reason="The depth model does not support MPS yet")
     def test_dict_tuple_outputs_equivalent(self):
-        if torch_device == "mps":
-            return
-
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
@@ -269,17 +261,15 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         max_diff = np.abs(output - output_tuple).max()
         self.assertLess(max_diff, 3e-5)
 
+    @unittest.skipIf(torch_device == "mps", reason="The depth model does not support MPS yet")
     def test_num_inference_steps_consistent(self):
-        if torch_device == "mps":
-            return
         super().test_num_inference_steps_consistent()
 
+    @unittest.skipIf(torch_device == "mps", reason="The depth model does not support MPS yet")
     def test_progress_bar(self):
-        if torch_device == "mps":
-            return
         super().test_progress_bar()
 
-    def test_stable_diffusion_img2img_default_case(self):
+    def test_stable_diffusion_depth2img_default_case(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionDepth2ImgPipeline(**components)
@@ -297,7 +287,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             expected_slice = np.array([0.6907, 0.5135, 0.4688, 0.5169, 0.5738, 0.4600, 0.4435, 0.5640, 0.4653])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
-    def test_stable_diffusion_img2img_negative_prompt(self):
+    def test_stable_diffusion_depth2img_negative_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionDepth2ImgPipeline(**components)
@@ -317,7 +307,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             expected_slice = np.array([0.755, 0.521, 0.473, 0.554, 0.629, 0.442, 0.440, 0.582, 0.449])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
-    def test_stable_diffusion_img2img_multiple_init_images(self):
+    def test_stable_diffusion_depth2img_multiple_init_images(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionDepth2ImgPipeline(**components)
@@ -338,7 +328,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             expected_slice = np.array([0.6475, 0.6302, 0.5627, 0.5222, 0.4318, 0.5489, 0.5079, 0.4419, 0.4494])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
-    def test_stable_diffusion_img2img_num_images_per_prompt(self):
+    def test_stable_diffusion_depth2img_num_images_per_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionDepth2ImgPipeline(**components)
@@ -374,7 +364,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
 
         assert images.shape == (batch_size * num_images_per_prompt, 32, 32, 3)
 
-    def test_stable_diffusion_img2img_pil(self):
+    def test_stable_diffusion_depth2img_pil(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionDepth2ImgPipeline(**components)
@@ -396,14 +386,14 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
 
 @slow
 @require_torch_gpu
-class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
+class StableDiffusionDepth2ImgPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_stable_diffusion_img2img_pipeline_default(self):
+    def test_stable_diffusion_depth2img_pipeline_default(self):
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/depth2img/two_cats.png"
         )
@@ -430,10 +420,10 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (480, 640, 3)
-        # img2img is flaky across GPUs even in fp32, so using MAE here
+        # depth2img is flaky across GPUs even in fp32, so using MAE here
         assert np.abs(expected_image - image).max() < 1e-3
 
-    def test_stable_diffusion_img2img_pipeline_k_lms(self):
+    def test_stable_diffusion_depth2img_pipeline_k_lms(self):
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/depth2img/two_cats.png"
         )
@@ -463,7 +453,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (480, 640, 3)
         assert np.abs(expected_image - image).max() < 1e-3
 
-    def test_stable_diffusion_img2img_pipeline_ddim(self):
+    def test_stable_diffusion_depth2img_pipeline_ddim(self):
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/depth2img/two_cats.png"
         )
@@ -493,7 +483,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (480, 640, 3)
         assert np.abs(expected_image - image).max() < 1e-3
 
-    def test_stable_diffusion_img2img_intermediate_state(self):
+    def test_stable_diffusion_depth2img_intermediate_state(self):
         number_of_steps = 0
 
         def test_callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
@@ -550,7 +540,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
 
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/img2img/sketch-mountains-input.jpg"
+            "/depth2img/sketch-mountains-input.jpg"
         )
         init_image = init_image.resize((768, 512))
 
