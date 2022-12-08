@@ -275,6 +275,16 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         max_diff = np.abs(output - output_tuple).max()
         self.assertLess(max_diff, 3e-5)
 
+    def test_num_inference_steps_consistent(self):
+        if torch_device == "mps":
+            return
+        super().test_num_inference_steps_consistent()
+
+    def test_progress_bar(self):
+        if torch_device == "mps":
+            return
+        super().test_progress_bar()
+
     def test_stable_diffusion_img2img_default_case(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -325,7 +335,6 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         inputs["image"] = inputs["image"].repeat(2, 1, 1, 1)
         image = sd_pipe(**inputs).images
         image_slice = image[-1, -3:, -3:, -1]
-        print(image_slice.flatten())
 
         assert image.shape == (2, 32, 32, 3)
 
