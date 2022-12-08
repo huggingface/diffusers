@@ -19,6 +19,9 @@ from diffusers.utils.testing_utils import require_torch, torch_device
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
+ALLOWED_REQUIRED_ARGS = ["prompt", "image", "mask_image", "example_image"]
+
+
 @require_torch
 class PipelineTesterMixin:
     """
@@ -122,15 +125,90 @@ class PipelineTesterMixin:
         required_parameters = set(required_parameters)
         optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
 
-        allowed_required_params = ["prompt", "image", "mask_image", "example_image"]
         for param in required_parameters:
-            assert param in allowed_required_params
+            assert param in ALLOWED_REQUIRED_ARGS
 
         optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
 
         required_optional_params = ["generator", "num_inference_steps", "return_dict"]
         for param in required_optional_params:
             assert param in optional_parameters
+
+    def test_inference_batch_consistent(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        # batchify inputs
+        for batch_size in [2, 4, 13]:
+            batched_inputs = {}
+            for name, value in inputs.items():
+                if name in ALLOWED_REQUIRED_ARGS:
+                    # prompt is string
+                    if name == "prompt":
+                        len_prompt = len(value)
+                        # make unequal batch sizes
+                        batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
+                    # or else we have images
+                    else:
+                        batched_inputs[name] = batch_size * [value]
+                else:
+                    batched_inputs[name] = value
+
+            batched_inputs["num_inference_steps"] = 2
+            batched_inputs["output_type"] = None
+            output = pipe(**batched_inputs)
+
+            assert len(output[0]) == batch_size
+
+            batched_inputs["output_type"] = "np"
+            output = pipe(**batched_inputs)[0]
+
+            assert output.shape[0] == batch_size
+
+    def test_inference_generator_equality(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        # batchify inputs
+        batched_inputs = {}
+        batch_size = 2
+        for name, value in inputs.items():
+            if name in ALLOWED_REQUIRED_ARGS:
+                # prompt is string
+                if name == "prompt":
+                    len_prompt = len(value)
+                    # make unequal batch sizes
+                    batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
+                # or else we have images
+                else:
+                    batched_inputs[name] = batch_size * [value]
+            else:
+                batched_inputs[name] = value
+
+        batched_inputs["num_inference_steps"] = 2
+        batched_inputs["output_type"] = "np"
+        seeds = [0, 44]  # make sure length is equal to batch_size
+        generators = [torch.Generator(device=torch_device).manual_seed(s) for s in seeds]
+        batched_inputs["generator"] = generators
+
+        output_batch = pipe(**batched_inputs)[0]
+
+        generators = [torch.Generator(device=torch_device).manual_seed(s) for s in seeds]
+        for i, seed in enumerate(seeds):
+            inputs = {k: v[i] if isinstance(v, list) else v for k, v in batched_inputs.items()}
+            inputs["generator"] = generators[i]
+
+            output_single = pipe(**inputs)[0]
+
+            assert np.abs(output_single - output_batch[i]).sum() < 1e-4
 
     def test_num_inference_steps_consistent(self):
         components = self.get_dummy_components()

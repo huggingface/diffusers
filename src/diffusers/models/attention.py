@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
-import warnings
 from dataclasses import dataclass
 from typing import Optional
 
@@ -23,8 +22,11 @@ from torch import nn
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ..models.embeddings import ImagePositionalEmbeddings
-from ..utils import BaseOutput
+from ..utils import BaseOutput, logging
 from ..utils.import_utils import is_xformers_available
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 @dataclass
@@ -450,9 +452,10 @@ class BasicTransformerBlock(nn.Module):
         # if xformers is installed try to use memory_efficient_attention by default
         if is_xformers_available():
             try:
+                logger.info("xformers detected. Memory efficient attention is automatically enabled.")
                 self.set_use_memory_efficient_attention_xformers(True)
             except Exception as e:
-                warnings.warn(
+                logger.warning(
                     "Could not enable memory efficient attention. Make sure xformers is installed"
                     f" correctly and a GPU is available: {e}"
                 )
