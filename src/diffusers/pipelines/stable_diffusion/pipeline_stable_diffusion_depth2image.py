@@ -373,22 +373,27 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
         return latents
 
     def prepare_depth_mask(self, image, batch_size, do_classifier_free_guidance, dtype, device):
-        width, height = image.size
-        width, height = map(lambda dim: dim - dim % 32, (width, height))  # resize to integer multiple of 32
-        image = image.resize((width, height), resample=PIL_INTERPOLATION["lanczos"])
+        if isinstance(image, PIL.Image.Image):
+            width, height = image.size
+            width, height = map(lambda dim: dim - dim % 32, (width, height))  # resize to integer multiple of 32
+            image = image.resize((width, height), resample=PIL_INTERPOLATION["lanczos"])
+            width, height = image.size
+        else:
+            image = [img for img in image]
+            width, height = image[0].shape[-2:]
 
         pixel_values = self.feature_extractor(images=image, return_tensors="pt").pixel_values
         pixel_values = pixel_values.to(device=device)
 
         # The DPT-Hybrid model uses batch-norm layers which are not compatible with fp16.
         # So we use `torch.autocast` here for half precision inference.
-        context_manger = torch.autocast("cuda", dtype=dtype) if device.type == "cuda" else contextlib.nullcontext
+        context_manger = torch.autocast("cuda", dtype=dtype) if device.type == "cuda" else contextlib.nullcontext()
         with context_manger:
             depth_mask = self.depth_estimator(pixel_values).predicted_depth
 
         depth_mask = torch.nn.functional.interpolate(
             depth_mask.unsqueeze(1),
-            size=(image.height // self.vae_scale_factor, image.width // self.vae_scale_factor),
+            size=(height // self.vae_scale_factor, width // self.vae_scale_factor),
             mode="bicubic",
             align_corners=False,
         )
@@ -501,6 +506,8 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
         # 5. Preprocess image
         if isinstance(image, PIL.Image.Image):
             image = preprocess(image)
+        else:
+            image = 2.0 * image - 1.0
 
         # 6. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
