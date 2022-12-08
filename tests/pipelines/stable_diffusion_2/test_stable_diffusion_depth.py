@@ -563,7 +563,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         model_id = "stabilityai/stable-diffusion-2-depth"
         lms = LMSDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler")
         pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(
-            model_id, scheduler=lms, safety_checker=None, device_map="auto", revision="fp16", torch_dtype=torch.float16
+            model_id, scheduler=lms, safety_checker=None, revision="fp16", torch_dtype=torch.float16
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
