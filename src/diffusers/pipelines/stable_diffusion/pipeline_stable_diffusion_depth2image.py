@@ -366,7 +366,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
 
         return latents
 
-    def prepare_depth_mask(self, image, depth_map, batch_size, do_classifier_free_guidance, dtype, device):
+    def prepare_depth_map(self, image, depth_map, batch_size, do_classifier_free_guidance, dtype, device):
         if isinstance(image, PIL.Image.Image):
             width, height = image.size
             width, height = map(lambda dim: dim - dim % 32, (width, height))  # resize to integer multiple of 32
@@ -497,7 +497,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
         )
 
         # 4. Prepare depth mask
-        depth_mask = self.prepare_depth_mask(
+        depth_mask = self.prepare_depth_map(
             image,
             depth_map,
             batch_size * num_images_per_prompt,
