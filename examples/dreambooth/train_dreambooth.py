@@ -164,6 +164,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
     )
+    parser.add_argument("--modeltoken", type=str)
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
@@ -421,15 +422,21 @@ def main(args):
         tokenizer = CLIPTokenizer.from_pretrained(
             args.tokenizer_name,
             revision=args.revision,
-            use_auth_token=token,
+            use_auth_token=args.modeltoken,
         )
     elif args.pretrained_model_name_or_path:
         tokenizer = CLIPTokenizer.from_pretrained(
             args.pretrained_model_name_or_path,
             subfolder="tokenizer",
             revision=args.revision,
-            use_auth_token=token,
+            use_auth_token=args.modeltoken,
         )
+
+
+
+
+
+
 
 
     # Load models and create wrapper for stable diffusion
@@ -437,19 +444,19 @@ def main(args):
         args.pretrained_model_name_or_path,
         subfolder="text_encoder",
         revision=args.revision,
-        use_auth_token=token,
+        use_auth_token=args.modeltoken,
     )
     vae = AutoencoderKL.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="vae",
         revision=args.revision,
-        use_auth_token=token,
+        use_auth_token=args.modeltoken,
     )
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="unet",
         revision=args.revision,
-        use_auth_token=token,
+        use_auth_token=args.modeltoken,
     )
 
     vae.requires_grad_(False)
