@@ -433,4 +433,4 @@ def is_transformers_version(operation: str, version: str):
 
 
 class OptionalDependencyNotAvailable(BaseException):
-    """Internally used error class for signalling an optional dependency was not found."""
+    """An error indicating that an optional dependency of Diffusers was not found in the environment."""
