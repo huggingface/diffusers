@@ -90,22 +90,6 @@ class PipelineTesterMixin:
         max_diff = np.abs(output - output_loaded).max()
         self.assertLess(max_diff, 1e-5)
 
-    def test_signature(self):
-        assert hasattr(self.pipeline_class, "__call__"), f"{self.pipeline_class} should have a `__call__` method"
-        parameters = inspect.signature(self.pipeline_class.__call__).parameters
-        required_parameters = {k: v for k, v in parameters.items() if v.default == inspect._empty}
-        required_parameters.pop("self")
-
-        allowed_required_params = ["prompt", "image", "mask_image", "example_image"]
-        for param in required_parameters.keys():
-            assert param in allowed_required_params
-
-        optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
-
-        required_optional_params = ["generator", "num_inference_steps"]
-        for param in required_optional_params:
-            assert param in optional_parameters
-
     def test_dict_tuple_outputs_equivalent(self):
         if torch_device == "mps" and self.pipeline_class in (
             DanceDiffusionPipeline,
@@ -131,10 +115,21 @@ class PipelineTesterMixin:
         self.assertLess(max_diff, 1e-5)
 
     def test_pipeline_call_implements_required_args(self):
-        required_args = ["num_inference_steps", "generator", "return_dict"]
+        assert hasattr(self.pipeline_class, "__call__"), f"{self.pipeline_class} should have a `__call__` method"
+        parameters = inspect.signature(self.pipeline_class.__call__).parameters
+        required_parameters = set({k for k, v in parameters.items() if v.default == inspect._empty})
+        required_parameters.pop("self")
+        optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
 
-        for arg in required_args:
-            self.assertTrue(arg in inspect.signature(self.pipeline_class.__call__).parameters)
+        allowed_required_params = ["prompt", "image", "mask_image", "example_image"]
+        for param in required_parameters:
+            assert param in allowed_required_params
+
+        optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
+
+        required_optional_params = ["generator", "num_inference_steps", "return_dict"]
+        for param in required_optional_params:
+            assert param in optional_parameters
 
     def test_num_inference_steps_consistent(self):
         components = self.get_dummy_components()
