@@ -105,7 +105,7 @@ try:
     if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from .utils.dummy_torch_and_transformers_and_onnx_objects import *  # noqa F403
+    from .utils.dummy_torch_and_transformers_and_k_diffusion_objects import *  # noqa F403
 else:
     from .pipelines import StableDiffusionKDiffusionPipeline
 
