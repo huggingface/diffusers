@@ -29,7 +29,7 @@ from PIL import Image
 from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
-from .hub_utils import http_user_agent
+from .hub_utils import http_user_agent, send_telemetry
 from .modeling_flax_utils import FLAX_WEIGHTS_NAME, FlaxModelMixin
 from .schedulers.scheduling_utils_flax import SCHEDULER_CONFIG_NAME, FlaxSchedulerMixin
 from .utils import CONFIG_NAME, DIFFUSERS_CACHE, BaseOutput, is_transformers_available, logging
@@ -317,8 +317,8 @@ class FlaxDiffusionPipeline(ConfigMixin):
             allow_patterns = [os.path.join(k, "*") for k in folder_names]
             allow_patterns += [FLAX_WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, cls.config_name]
 
-            # make sure we don't download PyTorch weights
-            ignore_patterns = "*.bin"
+            # make sure we don't download PyTorch weights, unless when using from_pt
+            ignore_patterns = "*.bin" if not from_pt else []
 
             if cls != FlaxDiffusionPipeline:
                 requested_pipeline_class = cls.__name__
@@ -346,8 +346,16 @@ class FlaxDiffusionPipeline(ConfigMixin):
                 ignore_patterns=ignore_patterns,
                 user_agent=user_agent,
             )
+            send_telemetry(
+                {"pipeline_class": requested_pipeline_class, "pipeline_path": "hub", "framework": "flax"},
+                name="diffusers_from_pretrained",
+            )
         else:
             cached_folder = pretrained_model_name_or_path
+            send_telemetry(
+                {"pipeline_class": cls.__name__, "pipeline_path": "local", "framework": "flax"},
+                name="diffusers_from_pretrained",
+            )
 
         config_dict = cls.load_config(cached_folder)
 
@@ -411,13 +419,13 @@ class FlaxDiffusionPipeline(ConfigMixin):
                             f" {expected_class_obj}"
                         )
                 elif passed_class_obj[name] is None:
-                    logger.warn(
+                    logger.warning(
                         f"You have passed `None` for {name} to disable its functionality in {pipeline_class}. Note"
                         f" that this might lead to problems when using {pipeline_class} and is not recommended."
                     )
                     sub_model_should_be_defined = False
                 else:
-                    logger.warn(
+                    logger.warning(
                         f"You have passed a non-standard module {passed_class_obj[name]}. We cannot verify whether it"
                         " has the correct type"
                     )

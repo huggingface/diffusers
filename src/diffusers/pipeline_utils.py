@@ -18,6 +18,7 @@ import importlib
 import inspect
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
@@ -25,14 +26,14 @@ import torch
 
 import diffusers
 import PIL
-from huggingface_hub import snapshot_download
+from huggingface_hub import model_info, snapshot_download
 from packaging import version
 from PIL import Image
 from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
 from .dynamic_modules_utils import get_class_from_dynamic_module
-from .hub_utils import http_user_agent
+from .hub_utils import http_user_agent, send_telemetry
 from .modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
 from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from .utils import (
@@ -43,6 +44,7 @@ from .utils import (
     BaseOutput,
     deprecate,
     is_accelerate_available,
+    is_safetensors_available,
     is_torch_version,
     is_transformers_available,
     logging,
@@ -57,6 +59,7 @@ if is_transformers_available():
 INDEX_FILE = "diffusion_pytorch_model.bin"
 CUSTOM_PIPELINE_FILE_NAME = "pipeline.py"
 DUMMY_MODULES_FOLDER = "diffusers.utils"
+TRANSFORMERS_DUMMY_MODULES_FOLDER = "transformers.utils"
 
 
 logger = logging.get_logger(__name__)
@@ -76,6 +79,9 @@ LOADABLE_CLASSES = {
         "FeatureExtractionMixin": ["save_pretrained", "from_pretrained"],
         "ProcessorMixin": ["save_pretrained", "from_pretrained"],
         "ImageProcessingMixin": ["save_pretrained", "from_pretrained"],
+    },
+    "onnxruntime.training": {
+        "ORTModule": ["save_pretrained", "from_pretrained"],
     },
 }
 
@@ -112,6 +118,23 @@ class AudioPipelineOutput(BaseOutput):
     audios: np.ndarray
 
 
+def is_safetensors_compatible(info) -> bool:
+    filenames = set(sibling.rfilename for sibling in info.siblings)
+    pt_filenames = set(filename for filename in filenames if filename.endswith(".bin"))
+    is_safetensors_compatible = any(file.endswith(".safetensors") for file in filenames)
+    for pt_filename in pt_filenames:
+        prefix, raw = os.path.split(pt_filename)
+        if raw == "pytorch_model.bin":
+            # transformers specific
+            sf_filename = os.path.join(prefix, "model.safetensors")
+        else:
+            sf_filename = pt_filename[: -len(".bin")] + ".safetensors"
+        if is_safetensors_compatible and sf_filename not in filenames:
+            logger.warning(f"{sf_filename} not found")
+            is_safetensors_compatible = False
+    return is_safetensors_compatible
+
+
 class DiffusionPipeline(ConfigMixin):
     r"""
     Base class for all models.
@@ -124,10 +147,13 @@ class DiffusionPipeline(ConfigMixin):
 
     Class attributes:
 
-        - **config_name** ([`str`]) -- name of the config file that will store the class and module names of all
+        - **config_name** (`str`) -- name of the config file that will store the class and module names of all
           components of the diffusion pipeline.
+        - **_optional_components** (List[`str`]) -- list of all components that are optional so they don't have to be
+          passed for the pipeline to function (should be overridden by subclasses).
     """
     config_name = "model_index.json"
+    _optional_components = []
 
     def register_modules(self, **kwargs):
         # import it here to avoid circular import
@@ -162,7 +188,11 @@ class DiffusionPipeline(ConfigMixin):
             # set models
             setattr(self, name, module)
 
-    def save_pretrained(self, save_directory: Union[str, os.PathLike]):
+    def save_pretrained(
+        self,
+        save_directory: Union[str, os.PathLike],
+        safe_serialization: bool = False,
+    ):
         """
         Save all variables of the pipeline that can be saved and loaded as well as the pipelines configuration file to
         a directory. A pipeline variable can be saved and loaded if its class implements both a save and loading
@@ -171,6 +201,8 @@ class DiffusionPipeline(ConfigMixin):
         Arguments:
             save_directory (`str` or `os.PathLike`):
                 Directory to which to save. Will be created if it doesn't exist.
+            safe_serialization (`bool`, *optional*, defaults to `False`):
+                Whether to save the model using `safetensors` or the traditional PyTorch way (that uses `pickle`).
         """
         self.save_config(save_directory)
 
@@ -179,12 +211,19 @@ class DiffusionPipeline(ConfigMixin):
         model_index_dict.pop("_diffusers_version")
         model_index_dict.pop("_module", None)
 
+        expected_modules, optional_kwargs = self._get_signature_keys(self)
+
+        def is_saveable_module(name, value):
+            if name not in expected_modules:
+                return False
+            if name in self._optional_components and value[0] is None:
+                return False
+            return True
+
+        model_index_dict = {k: v for k, v in model_index_dict.items() if is_saveable_module(k, v)}
+
         for pipeline_component_name in model_index_dict.keys():
             sub_model = getattr(self, pipeline_component_name)
-            if sub_model is None:
-                # edge case for saving a pipeline with safety_checker=None
-                continue
-
             model_cls = sub_model.__class__
 
             save_method_name = None
@@ -201,7 +240,16 @@ class DiffusionPipeline(ConfigMixin):
                     break
 
             save_method = getattr(sub_model, save_method_name)
-            save_method(os.path.join(save_directory, pipeline_component_name))
+
+            # Call the save method with the argument safe_serialization only if it's supported
+            save_method_signature = inspect.signature(save_method)
+            save_method_accept_safe = "safe_serialization" in save_method_signature.parameters
+            if save_method_accept_safe:
+                save_method(
+                    os.path.join(save_directory, pipeline_component_name), safe_serialization=safe_serialization
+                )
+            else:
+                save_method(os.path.join(save_directory, pipeline_component_name))
 
     def to(self, torch_device: Optional[Union[str, torch.device]] = None):
         if torch_device is None:
@@ -344,7 +392,8 @@ class DiffusionPipeline(ConfigMixin):
                 also tries to not use more than 1x model size in CPU memory (including peak memory) while loading the
                 model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
                 setting this argument to `True` will raise an error.
-
+            return_cached_folder (`bool`, *optional*, defaults to `False`):
+                If set to `True`, path to downloaded cached folder will be returned in addition to loaded pipeline.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load - and saveable variables - *i.e.* the pipeline components - of the
                 specific pipeline class. The overwritten components are then directly passed to the pipelines
@@ -397,33 +446,7 @@ class DiffusionPipeline(ConfigMixin):
         sess_options = kwargs.pop("sess_options", None)
         device_map = kwargs.pop("device_map", None)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
-
-        if low_cpu_mem_usage and not is_accelerate_available():
-            low_cpu_mem_usage = False
-            logger.warn(
-                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
-                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
-                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
-                " install accelerate\n```\n."
-            )
-
-        if device_map is not None and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `device_map=None`."
-            )
-
-        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `low_cpu_mem_usage=False`."
-            )
-
-        if low_cpu_mem_usage is False and device_map is not None:
-            raise ValueError(
-                f"You cannot set `low_cpu_mem_usage` to False while using device_map={device_map} for loading and"
-                " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
-            )
+        return_cached_folder = kwargs.pop("return_cached_folder", False)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -444,7 +467,7 @@ class DiffusionPipeline(ConfigMixin):
             allow_patterns += [WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, ONNX_WEIGHTS_NAME, cls.config_name]
 
             # make sure we don't download flax weights
-            ignore_patterns = "*.msgpack"
+            ignore_patterns = ["*.msgpack"]
 
             if custom_pipeline is not None:
                 allow_patterns += [CUSTOM_PIPELINE_FILE_NAME]
@@ -454,9 +477,19 @@ class DiffusionPipeline(ConfigMixin):
             else:
                 requested_pipeline_class = config_dict.get("_class_name", cls.__name__)
             user_agent = {"pipeline_class": requested_pipeline_class}
-            if custom_pipeline is not None:
+            if custom_pipeline is not None and not custom_pipeline.endswith(".py"):
                 user_agent["custom_pipeline"] = custom_pipeline
+
             user_agent = http_user_agent(user_agent)
+
+            if is_safetensors_available():
+                info = model_info(
+                    pretrained_model_name_or_path,
+                    use_auth_token=use_auth_token,
+                    revision=revision,
+                )
+                if is_safetensors_compatible(info):
+                    ignore_patterns.append("*.bin")
 
             # download all allow_patterns
             cached_folder = snapshot_download(
@@ -471,17 +504,31 @@ class DiffusionPipeline(ConfigMixin):
                 ignore_patterns=ignore_patterns,
                 user_agent=user_agent,
             )
+            send_telemetry(
+                {"pipeline_class": requested_pipeline_class, "pipeline_path": "hub", "framework": "pytorch"},
+                name="diffusers_from_pretrained",
+            )
         else:
             cached_folder = pretrained_model_name_or_path
+            send_telemetry(
+                {"pipeline_class": cls.__name__, "pipeline_path": "local", "framework": "pytorch"},
+                name="diffusers_from_pretrained",
+            )
 
         config_dict = cls.load_config(cached_folder)
 
         # 2. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
         if custom_pipeline is not None:
-            pipeline_class = get_class_from_dynamic_module(
-                custom_pipeline, module_file=CUSTOM_PIPELINE_FILE_NAME, cache_dir=custom_pipeline
-            )
+            if custom_pipeline.endswith(".py"):
+                path = Path(custom_pipeline)
+                # decompose into folder & file
+                file_name = path.name
+                custom_pipeline = path.parent.absolute()
+            else:
+                file_name = CUSTOM_PIPELINE_FILE_NAME
+
+            pipeline_class = get_class_from_dynamic_module(custom_pipeline, module_file=file_name, cache_dir=cache_dir)
         elif cls != DiffusionPipeline:
             pipeline_class = cls
         else:
@@ -510,38 +557,74 @@ class DiffusionPipeline(ConfigMixin):
         # some modules can be passed directly to the init
         # in this case they are already instantiated in `kwargs`
         # extract them here
-        expected_modules = set(inspect.signature(pipeline_class.__init__).parameters.keys()) - set(["self"])
+        expected_modules, optional_kwargs = cls._get_signature_keys(pipeline_class)
         passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
+        passed_pipe_kwargs = {k: kwargs.pop(k) for k in optional_kwargs if k in kwargs}
 
         init_dict, unused_kwargs, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
 
-        if len(unused_kwargs) > 0:
-            logger.warning(f"Keyword arguments {unused_kwargs} not recognized.")
+        # define init kwargs
+        init_kwargs = {k: init_dict.pop(k) for k in optional_kwargs if k in init_dict}
+        init_kwargs = {**init_kwargs, **passed_pipe_kwargs}
 
-        init_kwargs = {}
+        # remove `null` components
+        def load_module(name, value):
+            if value[0] is None:
+                return False
+            if name in passed_class_obj and passed_class_obj[name] is None:
+                return False
+            return True
+
+        init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
+
+        if len(unused_kwargs) > 0:
+            logger.warning(
+                f"Keyword arguments {unused_kwargs} are not expected by {pipeline_class.__name__} and will be ignored."
+            )
+
+        if low_cpu_mem_usage and not is_accelerate_available():
+            low_cpu_mem_usage = False
+            logger.warning(
+                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                " install accelerate\n```\n."
+            )
+
+        if device_map is not None and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError(
+                "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `device_map=None`."
+            )
+
+        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError(
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `low_cpu_mem_usage=False`."
+            )
+
+        if low_cpu_mem_usage is False and device_map is not None:
+            raise ValueError(
+                f"You cannot set `low_cpu_mem_usage` to False while using device_map={device_map} for loading and"
+                " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
+            )
 
         # import it here to avoid circular import
         from diffusers import pipelines
 
         # 3. Load each module in the pipeline
         for name, (library_name, class_name) in init_dict.items():
-            if class_name is None:
-                # edge case for when the pipeline was saved with safety_checker=None
-                init_kwargs[name] = None
-                continue
-
             # 3.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
             if class_name.startswith("Flax"):
                 class_name = class_name[4:]
 
             is_pipeline_module = hasattr(pipelines, library_name)
             loaded_sub_model = None
-            sub_model_should_be_defined = True
 
             # if the model is in a pipeline module, then we load it from the pipeline
             if name in passed_class_obj:
                 # 1. check that passed_class_obj has correct parent class
-                if not is_pipeline_module and passed_class_obj[name] is not None:
+                if not is_pipeline_module:
                     library = importlib.import_module(library_name)
                     class_obj = getattr(library, class_name)
                     importable_classes = LOADABLE_CLASSES[library_name]
@@ -557,14 +640,8 @@ class DiffusionPipeline(ConfigMixin):
                             f"{passed_class_obj[name]} is of type: {type(passed_class_obj[name])}, but should be"
                             f" {expected_class_obj}"
                         )
-                elif passed_class_obj[name] is None:
-                    logger.warn(
-                        f"You have passed `None` for {name} to disable its functionality in {pipeline_class}. Note"
-                        f" that this might lead to problems when using {pipeline_class} and is not recommended."
-                    )
-                    sub_model_should_be_defined = False
                 else:
-                    logger.warn(
+                    logger.warning(
                         f"You have passed a non-standard module {passed_class_obj[name]}. We cannot verify whether it"
                         " has the correct type"
                     )
@@ -584,7 +661,7 @@ class DiffusionPipeline(ConfigMixin):
                 importable_classes = LOADABLE_CLASSES[library_name]
                 class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
 
-            if loaded_sub_model is None and sub_model_should_be_defined:
+            if loaded_sub_model is None:
                 load_method_name = None
                 for class_name, class_candidate in class_candidates.items():
                     if class_candidate is not None and issubclass(class_obj, class_candidate):
@@ -592,7 +669,10 @@ class DiffusionPipeline(ConfigMixin):
 
                 if load_method_name is None:
                     none_module = class_obj.__module__
-                    if none_module.startswith(DUMMY_MODULES_FOLDER) and "dummy" in none_module:
+                    is_dummy_path = none_module.startswith(DUMMY_MODULES_FOLDER) or none_module.startswith(
+                        TRANSFORMERS_DUMMY_MODULES_FOLDER
+                    )
+                    if is_dummy_path and "dummy" in none_module:
                         # call class_obj for nice error message of missing requirements
                         class_obj()
 
@@ -635,18 +715,31 @@ class DiffusionPipeline(ConfigMixin):
 
         # 4. Potentially add passed objects if expected
         missing_modules = set(expected_modules) - set(init_kwargs.keys())
-        if len(missing_modules) > 0 and missing_modules <= set(passed_class_obj.keys()):
+        passed_modules = list(passed_class_obj.keys())
+        optional_modules = pipeline_class._optional_components
+        if len(missing_modules) > 0 and missing_modules <= set(passed_modules + optional_modules):
             for module in missing_modules:
-                init_kwargs[module] = passed_class_obj[module]
+                init_kwargs[module] = passed_class_obj.get(module, None)
         elif len(missing_modules) > 0:
-            passed_modules = set(list(init_kwargs.keys()) + list(passed_class_obj.keys()))
+            passed_modules = set(list(init_kwargs.keys()) + list(passed_class_obj.keys())) - optional_kwargs
             raise ValueError(
                 f"Pipeline {pipeline_class} expected {expected_modules}, but only {passed_modules} were passed."
             )
 
         # 5. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)
+
+        if return_cached_folder:
+            return model, cached_folder
         return model
+
+    @staticmethod
+    def _get_signature_keys(obj):
+        parameters = inspect.signature(obj.__init__).parameters
+        required_parameters = {k: v for k, v in parameters.items() if v.default == inspect._empty}
+        optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
+        expected_modules = set(required_parameters.keys()) - set(["self"])
+        return expected_modules, optional_parameters
 
     @property
     def components(self) -> Dict[str, Any]:
@@ -664,16 +757,18 @@ class DiffusionPipeline(ConfigMixin):
         ...     StableDiffusionInpaintPipeline,
         ... )
 
-        >>> img2text = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
-        >>> img2img = StableDiffusionImg2ImgPipeline(**img2text.components)
-        >>> inpaint = StableDiffusionInpaintPipeline(**img2text.components)
+        >>> text2img = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> img2img = StableDiffusionImg2ImgPipeline(**text2img.components)
+        >>> inpaint = StableDiffusionInpaintPipeline(**text2img.components)
         ```
 
         Returns:
             A dictionaly containing all the modules needed to initialize the pipeline.
         """
-        components = {k: getattr(self, k) for k in self.config.keys() if not k.startswith("_")}
-        expected_modules = set(inspect.signature(self.__init__).parameters.keys()) - set(["self"])
+        expected_modules, optional_parameters = self._get_signature_keys(self)
+        components = {
+            k: getattr(self, k) for k in self.config.keys() if not k.startswith("_") and k not in optional_parameters
+        }
 
         if set(components.keys()) != expected_modules:
             raise ValueError(
@@ -699,7 +794,7 @@ class DiffusionPipeline(ConfigMixin):
 
         return pil_images
 
-    def progress_bar(self, iterable):
+    def progress_bar(self, iterable=None, total=None):
         if not hasattr(self, "_progress_bar_config"):
             self._progress_bar_config = {}
         elif not isinstance(self._progress_bar_config, dict):
@@ -707,7 +802,78 @@ class DiffusionPipeline(ConfigMixin):
                 f"`self._progress_bar_config` should be of type `dict`, but is {type(self._progress_bar_config)}."
             )
 
-        return tqdm(iterable, **self._progress_bar_config)
+        if iterable is not None:
+            return tqdm(iterable, **self._progress_bar_config)
+        elif total is not None:
+            return tqdm(total=total, **self._progress_bar_config)
+        else:
+            raise ValueError("Either `total` or `iterable` has to be defined.")
 
     def set_progress_bar_config(self, **kwargs):
         self._progress_bar_config = kwargs
+
+    def enable_xformers_memory_efficient_attention(self):
+        r"""
+        Enable memory efficient attention as implemented in xformers.
+
+        When this option is enabled, you should observe lower GPU memory usage and a potential speed up at inference
+        time. Speed up at training time is not guaranteed.
+
+        Warning: When Memory Efficient Attention and Sliced attention are both enabled, the Memory Efficient Attention
+        is used.
+        """
+        self.set_use_memory_efficient_attention_xformers(True)
+
+    def disable_xformers_memory_efficient_attention(self):
+        r"""
+        Disable memory efficient attention as implemented in xformers.
+        """
+        self.set_use_memory_efficient_attention_xformers(False)
+
+    def set_use_memory_efficient_attention_xformers(self, valid: bool) -> None:
+        # Recursively walk through all the children.
+        # Any children which exposes the set_use_memory_efficient_attention_xformers method
+        # gets the message
+        def fn_recursive_set_mem_eff(module: torch.nn.Module):
+            if hasattr(module, "set_use_memory_efficient_attention_xformers"):
+                module.set_use_memory_efficient_attention_xformers(valid)
+
+            for child in module.children():
+                fn_recursive_set_mem_eff(child)
+
+        module_names, _, _ = self.extract_init_dict(dict(self.config))
+        for module_name in module_names:
+            module = getattr(self, module_name)
+            if isinstance(module, torch.nn.Module):
+                fn_recursive_set_mem_eff(module)
+
+    def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
+        r"""
+        Enable sliced attention computation.
+
+        When this option is enabled, the attention module will split the input tensor in slices, to compute attention
+        in several steps. This is useful to save some memory in exchange for a small speed decrease.
+
+        Args:
+            slice_size (`str` or `int`, *optional*, defaults to `"auto"`):
+                When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
+                `"max"`, maxium amount of memory will be saved by running only one slice at a time. If a number is
+                provided, uses as many slices as `attention_head_dim // slice_size`. In this case, `attention_head_dim`
+                must be a multiple of `slice_size`.
+        """
+        self.set_attention_slice(slice_size)
+
+    def disable_attention_slicing(self):
+        r"""
+        Disable sliced attention computation. If `enable_attention_slicing` was previously invoked, this method will go
+        back to computing attention in one step.
+        """
+        # set slice_size = `None` to disable `attention slicing`
+        self.enable_attention_slicing(None)
+
+    def set_attention_slice(self, slice_size: Optional[int]):
+        module_names, _, _ = self.extract_init_dict(dict(self.config))
+        for module_name in module_names:
+            module = getattr(self, module_name)
+            if isinstance(module, torch.nn.Module) and hasattr(module, "set_attention_slice"):
+                module.set_attention_slice(slice_size)

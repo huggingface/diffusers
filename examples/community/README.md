@@ -20,6 +20,10 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | Imagic Stable Diffusion | Stable Diffusion Pipeline that enables writing a text prompt to edit an existing image| [Imagic Stable Diffusion](#imagic-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Mark Rich](https://github.com/MarkRich) |
 | Multilingual Stable Diffusion| Stable Diffusion Pipeline that supports prompts in 50 different languages.                                                                                                                                                                                                                                                                                                     | [Multilingual Stable Diffusion](#multilingual-stable-diffusion-pipeline)                                                                 | -                                                                                                                                                                                                                  |                        [Juan Carlos Piñeros](https://github.com/juancopi81) |
 | Image to Image Inpainting Stable Diffusion | Stable Diffusion Pipeline that enables the overlaying of two images and subsequent inpainting| [Image to Image Inpainting Stable Diffusion](#image-to-image-inpainting-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Alex McKinney](https://github.com/vvvm23) |
+| Text Based Inpainting Stable Diffusion | Stable Diffusion Inpainting Pipeline that enables passing a text prompt to generate the mask for inpainting| [Text Based Inpainting Stable Diffusion](#image-to-image-inpainting-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Dhruv Karan](https://github.com/unography) |
+| Bit Diffusion | Diffusion on discrete data | [Bit Diffusion](#bit-diffusion) | -  |[Stuti R.](https://github.com/kingstut) |
+| K-Diffusion Stable Diffusion | Run Stable Diffusion with any of [K-Diffusion's samplers](https://github.com/crowsonkb/k-diffusion/blob/master/k_diffusion/sampling.py) | [Stable Diffusion with K Diffusion](#stable-diffusion-with-k-diffusion) | -  | [Patrick von Platen](https://github.com/patrickvonplaten/) |
+| Checkpoint Merger Pipeline | Diffusion Pipeline that enables merging of saved model checkpoints | [Checkpoint Merger Pipeline](#checkpoint-merger-pipeline)                   | -                                                                                                                                                                                                                  | [Naga Sai Abhinay Devarinti](https://github.com/Abhinay1997/) |
 
 
 
@@ -163,7 +167,7 @@ init_image = download_image("https://raw.githubusercontent.com/CompVis/stable-di
 
 prompt = "A fantasy landscape, trending on artstation"
 
-images = pipe.img2img(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5).images
+images = pipe.img2img(prompt=prompt, image=init_image, strength=0.75, guidance_scale=7.5).images
 
 ### Inpainting
 
@@ -173,7 +177,7 @@ init_image = download_image(img_url).resize((512, 512))
 mask_image = download_image(mask_url).resize((512, 512))
 
 prompt = "a cat sitting on a bench"
-images = pipe.inpaint(prompt=prompt, init_image=init_image, mask_image=mask_image, strength=0.75).images
+images = pipe.inpaint(prompt=prompt, image=init_image, mask_image=mask_image, strength=0.75).images
 ```
 
 As shown above this one pipeline can run all both "text-to-image", "image-to-image", and "inpainting" in one pipeline.
@@ -342,7 +346,6 @@ out = pipe(
 )
 ```
 
-
 ### Composable Stable diffusion 
 
 [Composable Stable Diffusion](https://energy-based-model.github.io/Compositional-Visual-Generation-with-Composable-Diffusion-Models/) proposes conjunction and negation (negative prompts) operators for compositional generation with conditional diffusion models.
@@ -369,7 +372,7 @@ def dummy(images, **kwargs):
 pipe.safety_checker = dummy
 
 images = []
-generator = th.Generator("cuda").manual_seed(0)
+generator = torch.Generator("cuda").manual_seed(0)
 
 seed = 0
 prompt = "a forest | a camel"
@@ -398,6 +401,7 @@ import requests
 from PIL import Image
 from io import BytesIO
 import torch
+import os
 from diffusers import DiffusionPipeline, DDIMScheduler
 has_cuda = torch.cuda.is_available()
 device = torch.device('cpu' if not has_cuda else 'cuda')
@@ -408,7 +412,7 @@ pipe = DiffusionPipeline.from_pretrained(
     custom_pipeline="imagic_stable_diffusion",
     scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", clip_sample=False, set_alpha_to_one=False)
 ).to(device)
-generator = th.Generator("cuda").manual_seed(0)
+generator = torch.Generator("cuda").manual_seed(0)
 seed = 0
 prompt = "A photo of Barack Obama smiling with a big grin"
 url = 'https://www.dropbox.com/s/6tlwzr73jd1r9yk/obama.png?dl=1'
@@ -417,17 +421,16 @@ init_image = Image.open(BytesIO(response.content)).convert("RGB")
 init_image = init_image.resize((512, 512))
 res = pipe.train(
     prompt,
-    init_image,
-    guidance_scale=7.5,
-    num_inference_steps=50,
+    image=init_image,
     generator=generator)
-res = pipe(alpha=1)
+res = pipe(alpha=1, guidance_scale=7.5, num_inference_steps=50)
+os.makedirs("imagic", exist_ok=True)
 image = res.images[0]
 image.save('./imagic/imagic_image_alpha_1.png')
-res = pipe(alpha=1.5)
+res = pipe(alpha=1.5, guidance_scale=7.5, num_inference_steps=50)
 image = res.images[0]
 image.save('./imagic/imagic_image_alpha_1_5.png')
-res = pipe(alpha=2)
+res = pipe(alpha=2, guidance_scale=7.5, num_inference_steps=50)
 image = res.images[0]
 image.save('./imagic/imagic_image_alpha_2.png')
 ```
@@ -598,7 +601,7 @@ For example, this could be used to place a logo on a shirt and make it blend sea
 import PIL
 import torch
 
-from diffusers import StableDiffusionInpaintPipeline
+from diffusers import DiffusionPipeline
 
 image_path = "./path-to-image.png"
 inner_image_path = "./path-to-inner-image.png"
@@ -608,13 +611,166 @@ init_image = PIL.Image.open(image_path).convert("RGB").resize((512, 512))
 inner_image = PIL.Image.open(inner_image_path).convert("RGBA").resize((512, 512))
 mask_image = PIL.Image.open(mask_path).convert("RGB").resize((512, 512))
 
-pipe = StableDiffusionInpaintPipeline.from_pretrained(
+pipe = DiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-inpainting",
+    custom_pipeline="img2img_inpainting",
     revision="fp16",
-    torch_dtype=torch.float16,
+    torch_dtype=torch.float16
 )
 pipe = pipe.to("cuda")
 
 prompt = "Your prompt here!"
 image = pipe(prompt=prompt, image=init_image, inner_image=inner_image, mask_image=mask_image).images[0]
 ```
+
+![2 by 2 grid demonstrating image to image inpainting.](https://user-images.githubusercontent.com/44398246/203506577-ec303be4-887e-4ebd-a773-c83fcb3dd01a.png)
+
+### Text Based Inpainting Stable Diffusion
+
+Use a text prompt to generate the mask for the area to be inpainted.
+Currently uses the CLIPSeg model for mask generation, then calls the standard Stable Diffusion Inpainting pipeline to perform the inpainting.
+
+```python
+from transformers import CLIPSegProcessor, CLIPSegForImageSegmentation
+from diffusers import DiffusionPipeline
+
+from PIL import Image
+import requests
+from torch import autocast
+
+processor = CLIPSegProcessor.from_pretrained("CIDAS/clipseg-rd64-refined")
+model = CLIPSegForImageSegmentation.from_pretrained("CIDAS/clipseg-rd64-refined")
+
+pipe = DiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-inpainting",
+    custom_pipeline="text_inpainting",
+    segmentation_model=model,
+    segmentation_processor=processor
+)
+pipe = pipe.to("cuda")
+
+
+url = "https://github.com/timojl/clipseg/blob/master/example_image.jpg?raw=true"
+image = Image.open(requests.get(url, stream=True).raw).resize((512, 512))
+text = "a glass"  # will mask out this text
+prompt = "a cup"  # the masked out region will be replaced with this
+
+with autocast("cuda"):
+    image = pipe(image=image, text=text, prompt=prompt).images[0]
+```
+
+### Bit Diffusion 
+Based https://arxiv.org/abs/2208.04202, this is used for diffusion on discrete data - eg, discreate image data, DNA sequence data. An unconditional discreate image can be generated like this: 
+
+```python
+from diffusers import DiffusionPipeline
+pipe = DiffusionPipeline.from_pretrained("google/ddpm-cifar10-32", custom_pipeline="bit_diffusion")
+image = pipe().images[0]
+
+```
+
+### Stable Diffusion with K Diffusion
+
+Make sure you have @crowsonkb's https://github.com/crowsonkb/k-diffusion installed:
+
+```
+pip install k-diffusion
+```
+
+You can use the community pipeline as follows:
+
+```python
+from diffusers import DiffusionPipeline
+
+pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", custom_pipeline="sd_text2img_k_diffusion")
+pipe = pipe.to("cuda")
+
+prompt = "an astronaut riding a horse on mars"
+pipe.set_scheduler("sample_heun")
+generator = torch.Generator(device="cuda").manual_seed(seed)
+image = pipe(prompt, generator=generator, num_inference_steps=20).images[0]
+
+image.save("./astronaut_heun_k_diffusion.png")
+```
+
+To make sure that K Diffusion and `diffusers` yield the same results:
+
+**Diffusers**:
+```python
+from diffusers import DiffusionPipeline, EulerDiscreteScheduler
+
+seed = 33
+
+pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config)
+pipe = pipe.to("cuda")
+
+generator = torch.Generator(device="cuda").manual_seed(seed)
+image = pipe(prompt, generator=generator, num_inference_steps=50).images[0]
+```
+
+![diffusers_euler](https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/k_diffusion/astronaut_euler.png)
+
+**K Diffusion**:
+```python
+from diffusers import DiffusionPipeline, EulerDiscreteScheduler
+
+seed = 33
+
+pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", custom_pipeline="sd_text2img_k_diffusion")
+pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config)
+pipe = pipe.to("cuda")
+
+pipe.set_scheduler("sample_euler")
+generator = torch.Generator(device="cuda").manual_seed(seed)
+image = pipe(prompt, generator=generator, num_inference_steps=50).images[0]
+```
+
+![diffusers_euler](https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/k_diffusion/astronaut_euler_k_diffusion.png)
+
+### Checkpoint Merger Pipeline
+Based on the AUTOMATIC1111/webui for checkpoint merging. This is a custom pipeline that merges upto 3 pretrained model checkpoints as long as they are in the HuggingFace model_index.json format.
+
+The checkpoint merging is currently memory intensive as it modifies the weights of a DiffusionPipeline object in place. Expect atleast 13GB RAM Usage on Kaggle GPU kernels and
+on colab you might run out of the 12GB memory even while merging two checkpoints.
+
+Usage:-
+```python
+from diffusers import DiffusionPipeline
+
+#Return a CheckpointMergerPipeline class that allows you to merge checkpoints. 
+#The checkpoint passed here is ignored. But still pass one of the checkpoints you plan to 
+#merge for convenience
+pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", custom_pipeline="checkpoint_merger")
+
+#There are multiple possible scenarios:
+#The pipeline with the merged checkpoints is returned in all the scenarios
+
+#Compatible checkpoints a.k.a matched model_index.json files. Ignores the meta attributes in model_index.json during comparision.( attrs with _ as prefix )
+merged_pipe = pipe.merge(["CompVis/stable-diffusion-v1-4","CompVis/stable-diffusion-v1-2"], interp = "sigmoid", alpha = 0.4)
+
+#Incompatible checkpoints in model_index.json but merge might be possible. Use force = True to ignore model_index.json compatibility
+merged_pipe_1 = pipe.merge(["CompVis/stable-diffusion-v1-4","hakurei/waifu-diffusion"], force = True, interp = "sigmoid", alpha = 0.4)
+
+#Three checkpoint merging. Only "add_difference" method actually works on all three checkpoints. Using any other options will ignore the 3rd checkpoint.
+merged_pipe_2 = pipe.merge(["CompVis/stable-diffusion-v1-4","hakurei/waifu-diffusion","prompthero/openjourney"], force = True, interp = "add_difference", alpha = 0.4)
+
+prompt = "An astronaut riding a horse on Mars"
+
+image = merged_pipe(prompt).images[0]
+
+```
+Some examples along with the merge details:
+
+1. "CompVis/stable-diffusion-v1-4" + "hakurei/waifu-diffusion" ; Sigmoid interpolation; alpha = 0.8 
+
+![Stable plus Waifu Sigmoid 0.8](https://huggingface.co/datasets/NagaSaiAbhinay/CheckpointMergerSamples/resolve/main/stability_v1_4_waifu_sig_0.8.png)
+
+2. "hakurei/waifu-diffusion" + "prompthero/openjourney" ; Inverse Sigmoid interpolation; alpha = 0.8 
+
+![Stable plus Waifu Sigmoid 0.8](https://huggingface.co/datasets/NagaSaiAbhinay/CheckpointMergerSamples/resolve/main/waifu_openjourney_inv_sig_0.8.png)
+
+
+3. "CompVis/stable-diffusion-v1-4" + "hakurei/waifu-diffusion" + "prompthero/openjourney"; Add Difference interpolation; alpha = 0.5 
+
+![Stable plus Waifu plus openjourney add_diff 0.5](https://huggingface.co/datasets/NagaSaiAbhinay/CheckpointMergerSamples/resolve/main/stable_waifu_openjourney_add_diff_0.5.png)
