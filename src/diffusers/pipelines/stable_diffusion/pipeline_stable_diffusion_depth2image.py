@@ -404,7 +404,8 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
         depth_mask = depth_mask.to(dtype)
 
         # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
-        depth_mask = depth_mask.repeat(batch_size, 1, 1, 1)
+        if depth_mask.shape[0] < batch_size:
+            depth_mask = depth_mask.repeat(batch_size, 1, 1, 1)
 
         depth_mask = torch.cat([depth_mask] * 2) if do_classifier_free_guidance else depth_mask
         return depth_mask
