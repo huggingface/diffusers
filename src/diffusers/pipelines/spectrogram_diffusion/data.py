@@ -95,6 +95,24 @@ class Event:
     value: int
 
 
+class Tokenizer:
+    def __init__(self, regular_ids: int):
+        # The special tokens: 0=PAD, 1=EOS, and 2=UNK
+        self._num_special_tokens = 3
+        self._num_regular_tokens = regular_ids
+
+    def encode(self, token_ids):
+        encoded = []
+        for token_id in token_ids:
+            if not 0 <= token_id < self._num_regular_tokens:
+                raise ValueError(
+                    f"token_id {token_id} does not fall within valid range of " f"[0, {self._num_regular_tokens})"
+                )
+            encoded.append(token_id + self._num_special_tokens)
+
+        return encoded
+
+
 class Codec:
     """Encode and decode events.
 
