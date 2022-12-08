@@ -27,6 +27,8 @@ if is_transformers_available():
             f"`diffusers` requires transformers >= 4.25.1 to function correctly, but {transformers.__version__} was"
             " found in your environment. You can upgrade it with pip: `pip install transformers --upgrade`"
         )
+else:
+    pass
 
 try:
     if not is_torch_available():
