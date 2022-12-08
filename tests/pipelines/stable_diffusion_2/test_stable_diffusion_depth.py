@@ -584,5 +584,5 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         )
 
         mem_bytes = torch.cuda.max_memory_allocated()
-        # make sure that less than 2.2 GB is allocated
-        assert mem_bytes < 2.2 * 10**9
+        # make sure that less than 2.9 GB is allocated
+        assert mem_bytes < 2.9 * 10**9
