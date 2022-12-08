@@ -1,5 +1,6 @@
 from ..utils import (
     is_flax_available,
+    is_k_diffusion_available,
     is_librosa_available,
     is_onnx_available,
     is_torch_available,
@@ -55,6 +56,9 @@ if is_transformers_available() and is_onnx_available():
         OnnxStableDiffusionPipeline,
         StableDiffusionOnnxPipeline,
     )
+
+if is_torch_available() and is_transformers_available() and is_k_diffusion_available():
+    from .stable_diffusion import StableDiffusionKDiffusionPipeline
 
 if is_transformers_available() and is_flax_available():
     from .stable_diffusion import FlaxStableDiffusionPipeline

@@ -686,7 +686,7 @@ pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", custom
 pipe = pipe.to("cuda")
 
 prompt = "an astronaut riding a horse on mars"
-pipe.set_sampler("sample_heun")
+pipe.set_scheduler("sample_heun")
 generator = torch.Generator(device="cuda").manual_seed(seed)
 image = pipe(prompt, generator=generator, num_inference_steps=20).images[0]
 
@@ -721,7 +721,7 @@ pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", custom
 pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config)
 pipe = pipe.to("cuda")
 
-pipe.set_sampler("sample_euler")
+pipe.set_scheduler("sample_euler")
 generator = torch.Generator(device="cuda").manual_seed(seed)
 image = pipe(prompt, generator=generator, num_inference_steps=50).images[0]
 ```

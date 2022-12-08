@@ -210,9 +210,9 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _xformers_available = False
 
-_k_diffusion_available = importlib.util.find_spec("k-diffusion") is not None
+_k_diffusion_available = importlib.util.find_spec("k_diffusion") is not None
 try:
-    _k_diffusion_version = importlib_metadata.version("k-diffusion")
+    _k_diffusion_version = importlib_metadata.version("k_diffusion")
     logger.debug(f"Successfully imported k-diffusion version {_k_diffusion_version}")
 except importlib_metadata.PackageNotFoundError:
     _k_diffusion_available = False
@@ -328,6 +328,12 @@ UNIDECODE_IMPORT_ERROR = """
 Unidecode`
 """
 
+# docstyle-ignore
+K_DIFFUSION_IMPORT_ERROR = """
+{0} requires the k-diffusion library but it was not found in your environment. You can install it with pip: `pip
+install k-diffusion`
+"""
+
 
 BACKENDS_MAPPING = OrderedDict(
     [
@@ -340,6 +346,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("transformers", (is_transformers_available, TRANSFORMERS_IMPORT_ERROR)),
         ("unidecode", (is_unidecode_available, UNIDECODE_IMPORT_ERROR)),
         ("librosa", (is_librosa_available, LIBROSA_IMPORT_ERROR)),
+        ("k_diffusion", (is_k_diffusion_available, K_DIFFUSION_IMPORT_ERROR)),
     ]
 )
 

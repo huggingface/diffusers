@@ -17,11 +17,12 @@ from typing import Callable, List, Optional, Union
 
 import torch
 
-from diffusers import LMSDiscreteScheduler
-from diffusers.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.utils import is_accelerate_available, logging
 from k_diffusion.external import CompVisDenoiser, CompVisVDenoiser
+
+from ... import DiffusionPipeline
+from ...schedulers import LMSDiscreteScheduler
+from ...utils import is_accelerate_available, logging
+from . import StableDiffusionPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -107,6 +108,8 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline):
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
+        self.register_to_config(requires_safety_checker=requires_safety_checker)
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
         model = ModelWrapper(unet, scheduler.alphas_cumprod)
         if scheduler.prediction_type == "v_prediction":
@@ -114,7 +117,7 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline):
         else:
             self.k_diffusion_model = CompVisDenoiser(model)
 
-    def set_sampler(self, scheduler_type: str):
+    def set_scheduler(self, scheduler_type: str):
         library = importlib.import_module("k_diffusion")
         sampling = getattr(library, "sampling")
         self.sampler = getattr(sampling, scheduler_type)
@@ -133,9 +136,14 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline):
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.safety_checker]:
+        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
+
+        if self.safety_checker is not None:
+            # TODO(Patrick) - there is currently a bug with cpu offload of nn.Parameter in accelerate
+            # fix by only offloading self.safety_checker for now
+            cpu_offload(self.safety_checker.vision_model, device)
 
     @property
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
@@ -297,9 +305,8 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline):
                 f" {type(callback_steps)}."
             )
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // 8, width // 8)
+        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if latents is None:
             if device.type == "mps":
                 # randn does not work reproducibly on mps
