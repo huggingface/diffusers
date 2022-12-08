@@ -411,14 +411,11 @@ class StableDiffusionRepaintPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.get_timesteps
     def get_timesteps(self, num_inference_steps, strength, device):
         # get the original timestep using init_timestep
-        # TODO: steps_offset is usually 1, so this effectively cuts the first step out when strength=1.0, is that desired? (for inpaint/img2img)
         offset = self.scheduler.config.get("steps_offset", 0)
-
         init_timestep = int(num_inference_steps * strength) + offset
         init_timestep = min(init_timestep, num_inference_steps)
 
         t_start = max(num_inference_steps - init_timestep + offset, 0)
-
         timesteps = self.scheduler.timesteps[t_start:]
 
         return timesteps
