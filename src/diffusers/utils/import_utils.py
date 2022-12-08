@@ -210,6 +210,13 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _xformers_available = False
 
+_k_diffusion_available = importlib.util.find_spec("k_diffusion") is not None
+try:
+    _k_diffusion_version = importlib_metadata.version("k_diffusion")
+    logger.debug(f"Successfully imported k-diffusion version {_k_diffusion_version}")
+except importlib_metadata.PackageNotFoundError:
+    _k_diffusion_available = False
+
 
 def is_torch_available():
     return _torch_available
@@ -263,6 +270,10 @@ def is_accelerate_available():
     return _accelerate_available
 
 
+def is_k_diffusion_available():
+    return _k_diffusion_available
+
+
 # docstyle-ignore
 FLAX_IMPORT_ERROR = """
 {0} requires the FLAX library but it was not found in your environment. Checkout the instructions on the
@@ -300,12 +311,6 @@ installation page: https://librosa.org/doc/latest/install.html and follow the on
 """
 
 # docstyle-ignore
-TENSORFLOW_IMPORT_ERROR = """
-{0} requires the TensorFlow library but it was not found in your environment. Checkout the instructions on the
-installation page: https://www.tensorflow.org/install and follow the ones that match your environment.
-"""
-
-# docstyle-ignore
 TRANSFORMERS_IMPORT_ERROR = """
 {0} requires the transformers library but it was not found in your environment. You can install it with pip: `pip
 install transformers`
@@ -317,6 +322,12 @@ UNIDECODE_IMPORT_ERROR = """
 Unidecode`
 """
 
+# docstyle-ignore
+K_DIFFUSION_IMPORT_ERROR = """
+{0} requires the k-diffusion library but it was not found in your environment. You can install it with pip: `pip
+install k-diffusion`
+"""
+
 
 BACKENDS_MAPPING = OrderedDict(
     [
@@ -324,11 +335,11 @@ BACKENDS_MAPPING = OrderedDict(
         ("inflect", (is_inflect_available, INFLECT_IMPORT_ERROR)),
         ("onnx", (is_onnx_available, ONNX_IMPORT_ERROR)),
         ("scipy", (is_scipy_available, SCIPY_IMPORT_ERROR)),
-        ("tf", (is_tf_available, TENSORFLOW_IMPORT_ERROR)),
         ("torch", (is_torch_available, PYTORCH_IMPORT_ERROR)),
         ("transformers", (is_transformers_available, TRANSFORMERS_IMPORT_ERROR)),
         ("unidecode", (is_unidecode_available, UNIDECODE_IMPORT_ERROR)),
         ("librosa", (is_librosa_available, LIBROSA_IMPORT_ERROR)),
+        ("k_diffusion", (is_k_diffusion_available, K_DIFFUSION_IMPORT_ERROR)),
     ]
 )
 
@@ -343,12 +354,7 @@ def requires_backends(obj, backends):
     if failed:
         raise ImportError("".join(failed))
 
-    if name in [
-        "VersatileDiffusionTextToImagePipeline",
-        "VersatileDiffusionPipeline",
-        "VersatileDiffusionDualGuidedPipeline",
-        "StableDiffusionImageVariationPipeline",
-    ] and is_transformers_version("<", "4.25.0.dev0"):
+    if name in ["StableDiffusionDepth2ImgPipeline"] and is_transformers_version("<", "4.26.0.dev0"):
         raise ImportError(
             f"You need to install `transformers` from 'main' in order to use {name}: \n```\n pip install"
             " git+https://github.com/huggingface/transformers \n```"
@@ -412,3 +418,7 @@ def is_transformers_version(operation: str, version: str):
     if not _transformers_available:
         return False
     return compare_versions(parse(_transformers_version), operation, version)
+
+
+class OptionalDependencyNotAvailable(BaseException):
+    """An error indicating that an optional dependency of Diffusers was not found in the environment."""

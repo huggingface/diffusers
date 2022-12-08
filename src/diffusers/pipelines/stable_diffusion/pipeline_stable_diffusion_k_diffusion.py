@@ -13,16 +13,16 @@
 # limitations under the License.
 
 import importlib
-import warnings
 from typing import Callable, List, Optional, Union
 
 import torch
 
-from diffusers import LMSDiscreteScheduler
-from diffusers.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.utils import is_accelerate_available, logging
 from k_diffusion.external import CompVisDenoiser, CompVisVDenoiser
+
+from ... import DiffusionPipeline
+from ...schedulers import LMSDiscreteScheduler
+from ...utils import is_accelerate_available, logging
+from . import StableDiffusionPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -42,12 +42,18 @@ class ModelWrapper:
         return self.model(*args, encoder_hidden_states=encoder_hidden_states, **kwargs).sample
 
 
-class StableDiffusionPipeline(DiffusionPipeline):
+class StableDiffusionKDiffusionPipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+
+    <Tip warning={true}>
+
+        This is an experimental pipeline and is likely to change in the future.
+
+    </Tip>
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -80,18 +86,16 @@ class StableDiffusionPipeline(DiffusionPipeline):
         scheduler,
         safety_checker,
         feature_extractor,
+        requires_safety_checker: bool = True,
     ):
         super().__init__()
 
-        if safety_checker is None:
-            logger.warning(
-                f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
-                " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
-                " results in services or applications open to the public. Both the diffusers team and Hugging Face"
-                " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
-                " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
-                " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
-            )
+        logger.info(
+            f"{self.__class__} is an experimntal pipeline and is likely to change in the future. We recommend to use"
+            " this pipeline for fast experimentation / iteration if needed, but advice to rely on existing pipelines"
+            " as defined in https://huggingface.co/docs/diffusers/api/schedulers#implemented-schedulers for"
+            " production settings."
+        )
 
         # get correct sigmas from LMS
         scheduler = LMSDiscreteScheduler.from_config(scheduler.config)
@@ -104,6 +108,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
+        self.register_to_config(requires_safety_checker=requires_safety_checker)
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
         model = ModelWrapper(unet, scheduler.alphas_cumprod)
         if scheduler.prediction_type == "v_prediction":
@@ -111,42 +117,12 @@ class StableDiffusionPipeline(DiffusionPipeline):
         else:
             self.k_diffusion_model = CompVisDenoiser(model)
 
-    def set_sampler(self, scheduler_type: str):
-        warnings.warn("The `set_sampler` method is deprecated, please use `set_scheduler` instead.")
-        return self.set_scheduler(scheduler_type)
-
     def set_scheduler(self, scheduler_type: str):
         library = importlib.import_module("k_diffusion")
         sampling = getattr(library, "sampling")
         self.sampler = getattr(sampling, scheduler_type)
 
-    def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
-        r"""
-        Enable sliced attention computation.
-
-        When this option is enabled, the attention module will split the input tensor in slices, to compute attention
-        in several steps. This is useful to save some memory in exchange for a small speed decrease.
-
-        Args:
-            slice_size (`str` or `int`, *optional*, defaults to `"auto"`):
-                When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
-                a number is provided, uses as many slices as `attention_head_dim // slice_size`. In this case,
-                `attention_head_dim` must be a multiple of `slice_size`.
-        """
-        if slice_size == "auto":
-            # half the attention head size is usually a good trade-off between
-            # speed and memory
-            slice_size = self.unet.config.attention_head_dim // 2
-        self.unet.set_attention_slice(slice_size)
-
-    def disable_attention_slicing(self):
-        r"""
-        Disable sliced attention computation. If `enable_attention_slicing` was previously invoked, this method will go
-        back to computing attention in one step.
-        """
-        # set slice_size = `None` to disable `attention slicing`
-        self.enable_attention_slicing(None)
-
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
@@ -160,11 +136,17 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.safety_checker]:
+        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
 
+        if self.safety_checker is not None:
+            # TODO(Patrick) - there is currently a bug with cpu offload of nn.Parameter in accelerate
+            # fix by only offloading self.safety_checker for now
+            cpu_offload(self.safety_checker.vision_model, device)
+
     @property
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
     def _execution_device(self):
         r"""
         Returns the device on which the pipeline's models will be executed. After calling
@@ -182,6 +164,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -287,6 +270,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         return text_embeddings
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is not None:
             safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
@@ -297,6 +281,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             has_nsfw_concept = None
         return image, has_nsfw_concept
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
         latents = 1 / 0.18215 * latents
         image = self.vae.decode(latents).sample
@@ -321,7 +306,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             )
 
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // 8, width // 8)
+        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if latents is None:
             if device.type == "mps":
                 # randn does not work reproducibly on mps
@@ -353,7 +338,6 @@ class StableDiffusionPipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
-        **kwargs,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -449,6 +433,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         self.k_diffusion_model.sigmas = self.k_diffusion_model.sigmas.to(latents.device)
         self.k_diffusion_model.log_sigmas = self.k_diffusion_model.log_sigmas.to(latents.device)
 
+        # 6. Define model function
         def model_fn(x, t):
             latent_model_input = torch.cat([x] * 2)
 
@@ -458,6 +443,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
             return noise_pred
 
+        # 7. Run k-diffusion solver
         latents = self.sampler(model_fn, latents, sigmas)
 
         # 8. Post-processing

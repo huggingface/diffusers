@@ -31,6 +31,7 @@ def get_down_block(
     dual_cross_attention=False,
     use_linear_projection=False,
     only_cross_attention=False,
+    upcast_attention=False,
 ):
     down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
     if down_block_type == "DownBlockFlat":
@@ -83,6 +84,7 @@ def get_up_block(
     dual_cross_attention=False,
     use_linear_projection=False,
     only_cross_attention=False,
+    upcast_attention=False,
 ):
     up_block_type = up_block_type[7:] if up_block_type.startswith("UNetRes") else up_block_type
     if up_block_type == "UpBlockFlat":
