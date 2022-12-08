@@ -13,16 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-import tempfile
-
-from diffusers.utils.import_utils import is_accelerate_available
-
-
-os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
-
 import gc
 import random
+import tempfile
 import unittest
 
 import numpy as np
@@ -37,6 +30,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
+from diffusers.utils.import_utils import is_accelerate_available
 from diffusers.utils.testing_utils import require_torch_gpu
 from PIL import Image
 from transformers import (
