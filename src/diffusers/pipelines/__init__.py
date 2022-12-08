@@ -1,4 +1,5 @@
 from ..utils import (
+    OptionalDependencyNotAvailable,
     is_flax_available,
     is_k_diffusion_available,
     is_librosa_available,
@@ -8,7 +9,12 @@ from ..utils import (
 )
 
 
-if is_torch_available():
+try:
+    if not is_torch_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils.dummy_pt_objects import *  # noqa F403
+else:
     from .dance_diffusion import DanceDiffusionPipeline
     from .ddim import DDIMPipeline
     from .ddpm import DDPMPipeline
@@ -18,15 +24,21 @@ if is_torch_available():
     from .repaint import RePaintPipeline
     from .score_sde_ve import ScoreSdeVePipeline
     from .stochastic_karras_ve import KarrasVePipeline
-else:
-    from ..utils.dummy_pt_objects import *  # noqa F403
 
-if is_torch_available() and is_librosa_available():
+try:
+    if not (is_torch_available() and is_librosa_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils.dummy_torch_and_librosa_objects import *  # noqa F403
+else:
     from .audio_diffusion import AudioDiffusionPipeline, Mel
-else:
-    from ..utils.dummy_torch_and_librosa_objects import AudioDiffusionPipeline, Mel  # noqa F403
 
-if is_torch_available() and is_transformers_available():
+try:
+    if not (is_torch_available() and is_transformers_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils.dummy_torch_and_transformers_objects import *  # noqa F403
+else:
     from .alt_diffusion import AltDiffusionImg2ImgPipeline, AltDiffusionPipeline
     from .latent_diffusion import LDMTextToImagePipeline
     from .paint_by_example import PaintByExamplePipeline
@@ -48,7 +60,12 @@ if is_torch_available() and is_transformers_available():
     )
     from .vq_diffusion import VQDiffusionPipeline
 
-if is_transformers_available() and is_onnx_available():
+try:
+    if not (is_torch_available() and is_transformers_available() and is_onnx_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils.dummy_torch_and_transformers_and_onnx_objects import *  # noqa F403
+else:
     from .stable_diffusion import (
         OnnxStableDiffusionImg2ImgPipeline,
         OnnxStableDiffusionInpaintPipeline,
@@ -57,8 +74,19 @@ if is_transformers_available() and is_onnx_available():
         StableDiffusionOnnxPipeline,
     )
 
-if is_torch_available() and is_transformers_available() and is_k_diffusion_available():
+try:
+    if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils.dummy_torch_and_transformers_and_k_diffusion_objects import *  # noqa F403
+else:
     from .stable_diffusion import StableDiffusionKDiffusionPipeline
 
-if is_transformers_available() and is_flax_available():
+
+try:
+    if not (is_flax_available() and is_transformers_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils.dummy_flax_and_transformers_objects import *  # noqa F403
+else:
     from .stable_diffusion import FlaxStableDiffusionPipeline

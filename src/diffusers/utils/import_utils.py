@@ -430,3 +430,7 @@ def is_transformers_version(operation: str, version: str):
     if not _transformers_available:
         return False
     return compare_versions(parse(_transformers_version), operation, version)
+
+
+class OptionalDependencyNotAvailable(BaseException):
+    """An error indicating that an optional dependency of Diffusers was not found in the environment."""
