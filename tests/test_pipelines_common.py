@@ -19,7 +19,7 @@ from diffusers.utils.testing_utils import require_torch, torch_device
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-ALLOWED_REQUIRED_ARGS = ["prompt", "image", "mask_image", "example_image"]
+ALLOWED_REQUIRED_ARGS = ["source_prompt", "prompt", "image", "mask_image", "example_image"]
 
 
 @require_torch
@@ -133,6 +133,47 @@ class PipelineTesterMixin:
         required_optional_params = ["generator", "num_inference_steps", "return_dict"]
         for param in required_optional_params:
             assert param in optional_parameters
+
+    def test_inference_batch_image_pil_torch(self):
+        inputs = self.get_dummy_inputs(torch_device)
+
+        allowed_image_args = [v for v in ALLOWED_REQUIRED_ARGS if v != "prompt"]
+
+        if set(allowed_image_args) - set(inputs.keys()) == set(allowed_image_args):
+            # pipeline has no allowed required image args, so no need to test
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        # batchify inputs
+        for batch_size in [2, 4, 13]:
+            batched_inputs = {}
+            for name, value in inputs.items():
+                if name in allowed_image_args:
+                    batched_inputs[name] = batch_size * [value]
+                else:
+                    batched_inputs[name] = value
+
+            batched_inputs["num_inference_steps"] = 2
+            batched_inputs["output_type"] = "np"
+            batched_inputs["generator"] = torch.Generator(torch_device).manual_seed(33)
+            output = pipe(**batched_inputs)
+
+            for name in allowed_image_args:
+                # convert pil to torch
+                if name in batched_inputs:
+                    batched_inputs = torch.tensor(pipe.pil_to_numpy(value), dtype=torch.float32, device=torch_device)
+            batched_inputs["num_inference_steps"] = 2
+            batched_inputs["output_type"] = "np"
+
+            batched_inputs["generator"] = torch.Generator(torch_device).manual_seed(33)
+            output_torch_image = pipe(**batched_inputs)
+
+            max_diff = np.abs(output - output_torch_image).max()
+            self.assertLess(max_diff, 1e-4)
 
     def test_inference_batch_consistent(self):
         components = self.get_dummy_components()
