@@ -48,6 +48,7 @@ from ...test_pipelines_common import PipelineTesterMixin
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
+@unittest.skipIf(torch_device == "mps", reason="The depth model does not support MPS yet")
 class StableDiffusiondepth2imgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionDepth2ImgPipeline
     test_save_load_optional_components = False
