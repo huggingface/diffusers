@@ -212,7 +212,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
 
         max_diff = np.abs(output - output_loaded).max()
         self.assertLess(max_diff, 2e-2, "The output of the fp16 pipeline changed after saving and loading.")
-    
+
     @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
     def test_float16_inference(self):
         components = self.get_dummy_components()
@@ -232,7 +232,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
 
         max_diff = np.abs(output - output_fp16).max()
         self.assertLess(max_diff, 1.3e-2, "The outputs of the fp16 and fp32 pipelines are too different.")
-    
+
     @unittest.skipIf(
         torch_device != "cuda" or not is_accelerate_available(),
         reason="CPU offload is only available with CUDA and `accelerate` installed",
@@ -255,7 +255,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
 
         max_diff = np.abs(output_with_offload - output_without_offload).max()
         self.assertLess(max_diff, 3e-5, "CPU offloading should not affect the inference results")
-    
+
     def test_dict_tuple_outputs_equivalent(self):
         if torch_device == "mps":
             return
@@ -285,10 +285,12 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         inputs = self.get_dummy_inputs(device)
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
-        print(image_slice.flatten())
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.6071, 0.5035, 0.4378, 0.5776, 0.5753, 0.4316, 0.4513, 0.5263, 0.4546])
+        if torch_device == "mps":
+            expected_slice = np.array([0.6071, 0.5035, 0.4378, 0.5776, 0.5753, 0.4316, 0.4513, 0.5263, 0.4546])
+        else:
+            expected_slice = np.array([0.6907, 0.5135, 0.4688, 0.5169, 0.5738, 0.4600, 0.4435, 0.5640, 0.4653])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_img2img_negative_prompt(self):
@@ -303,10 +305,12 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         output = sd_pipe(**inputs, negative_prompt=negative_prompt)
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
-        print(image_slice.flatten())
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.5825, 0.5135, 0.4095, 0.5452, 0.6059, 0.4211, 0.3994, 0.5177, 0.4335])
+        if torch_device == "mps":
+            expected_slice = np.array([0.5825, 0.5135, 0.4095, 0.5452, 0.6059, 0.4211, 0.3994, 0.5177, 0.4335])
+        else:
+            expected_slice = np.array([0.755, 0.521, 0.473, 0.554, 0.629, 0.442, 0.440, 0.582, 0.449])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_img2img_multiple_init_images(self):
@@ -321,6 +325,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         inputs["image"] = inputs["image"].repeat(2, 1, 1, 1)
         image = sd_pipe(**inputs).images
         image_slice = image[-1, -3:, -3:, -1]
+        print(image_slice.flatten())
 
         assert image.shape == (2, 32, 32, 3)
         expected_slice = np.array([0.6501, 0.5150, 0.4939, 0.6688, 0.5437, 0.5758, 0.5115, 0.4406, 0.4551])
@@ -374,9 +379,11 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         inputs["image"] = Image.fromarray(inputs["image"][0].permute(1, 2, 0).numpy().astype(np.uint8))
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
-        print(image_slice.flatten())
 
-        expected_slice = np.array([0.53232, 0.47015, 0.40868, 0.45651, 0.4891, 0.4668, 0.4287, 0.48822, 0.47439])
+        if torch_device == "mps":
+            expected_slice = np.array([0.53232, 0.47015, 0.40868, 0.45651, 0.4891, 0.4668, 0.4287, 0.48822, 0.47439])
+        else:
+            expected_slice = np.array([0.6853, 0.3740, 0.4856, 0.7130, 0.7402, 0.5535, 0.4828, 0.6182, 0.5053])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
 
