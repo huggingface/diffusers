@@ -192,6 +192,7 @@ accelerate launch train_dreambooth.py \
   --lr_warmup_steps=0 \
   --num_class_images=1732 \
   --max_train_steps=800
+  --modeltoken=<ADD MODEL TOKEN>
 ```
 
 ### Inference
