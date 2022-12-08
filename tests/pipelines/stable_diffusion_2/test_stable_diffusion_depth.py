@@ -150,11 +150,8 @@ class StableDiffusiondepth2imgPipelineFastTests(PipelineTesterMixin, unittest.Te
         }
         return inputs
 
+    @unittest.skipIf(torch_device == "mps", reason="The depth model does not support MPS yet")
     def test_save_load_local(self):
-        if torch_device == "mps":
-            # FIXME: inconsistent outputs on MPS
-            return
-
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
@@ -232,9 +229,6 @@ class StableDiffusiondepth2imgPipelineFastTests(PipelineTesterMixin, unittest.Te
         reason="CPU offload is only available with CUDA and `accelerate` installed",
     )
     def test_cpu_offload_forward_pass(self):
-        if not self.test_cpu_offload:
-            return
-
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
@@ -250,10 +244,8 @@ class StableDiffusiondepth2imgPipelineFastTests(PipelineTesterMixin, unittest.Te
         max_diff = np.abs(output_with_offload - output_without_offload).max()
         self.assertLess(max_diff, 3e-5, "CPU offloading should not affect the inference results")
 
+    @unittest.skipIf(torch_device == "mps", reason="The depth model does not support MPS yet")
     def test_dict_tuple_outputs_equivalent(self):
-        if torch_device == "mps":
-            return
-
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
@@ -269,14 +261,12 @@ class StableDiffusiondepth2imgPipelineFastTests(PipelineTesterMixin, unittest.Te
         max_diff = np.abs(output - output_tuple).max()
         self.assertLess(max_diff, 3e-5)
 
+    @unittest.skipIf(torch_device == "mps", reason="The depth model does not support MPS yet")
     def test_num_inference_steps_consistent(self):
-        if torch_device == "mps":
-            return
         super().test_num_inference_steps_consistent()
 
+    @unittest.skipIf(torch_device == "mps", reason="The depth model does not support MPS yet")
     def test_progress_bar(self):
-        if torch_device == "mps":
-            return
         super().test_progress_bar()
 
     def test_stable_diffusion_depth2img_default_case(self):
