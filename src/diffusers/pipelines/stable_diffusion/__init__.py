@@ -10,6 +10,7 @@ from ...utils import (
     BaseOutput,
     OptionalDependencyNotAvailable,
     is_flax_available,
+    is_k_diffusion_available,
     is_onnx_available,
     is_torch_available,
     is_transformers_available,
@@ -51,6 +52,9 @@ except OptionalDependencyNotAvailable:
     from ...utils.dummy_torch_and_transformers_objects import StableDiffusionImageVariationPipeline
 else:
     from .pipeline_stable_diffusion_image_variation import StableDiffusionImageVariationPipeline
+
+if is_transformers_available() and is_torch_available() and is_k_diffusion_available():
+    from .pipeline_stable_diffusion_k_diffusion import StableDiffusionKDiffusionPipeline
 
 if is_transformers_available() and is_onnx_available():
     from .pipeline_onnx_stable_diffusion import OnnxStableDiffusionPipeline, StableDiffusionOnnxPipeline
