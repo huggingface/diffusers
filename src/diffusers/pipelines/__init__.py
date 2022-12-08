@@ -44,6 +44,7 @@ else:
     from .paint_by_example import PaintByExamplePipeline
     from .stable_diffusion import (
         CycleDiffusionPipeline,
+        StableDiffusionDepth2ImgPipeline,
         StableDiffusionImageVariationPipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,

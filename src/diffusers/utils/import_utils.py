@@ -311,12 +311,6 @@ installation page: https://librosa.org/doc/latest/install.html and follow the on
 """
 
 # docstyle-ignore
-TENSORFLOW_IMPORT_ERROR = """
-{0} requires the TensorFlow library but it was not found in your environment. Checkout the instructions on the
-installation page: https://www.tensorflow.org/install and follow the ones that match your environment.
-"""
-
-# docstyle-ignore
 TRANSFORMERS_IMPORT_ERROR = """
 {0} requires the transformers library but it was not found in your environment. You can install it with pip: `pip
 install transformers`
@@ -341,7 +335,6 @@ BACKENDS_MAPPING = OrderedDict(
         ("inflect", (is_inflect_available, INFLECT_IMPORT_ERROR)),
         ("onnx", (is_onnx_available, ONNX_IMPORT_ERROR)),
         ("scipy", (is_scipy_available, SCIPY_IMPORT_ERROR)),
-        ("tf", (is_tf_available, TENSORFLOW_IMPORT_ERROR)),
         ("torch", (is_torch_available, PYTORCH_IMPORT_ERROR)),
         ("transformers", (is_transformers_available, TRANSFORMERS_IMPORT_ERROR)),
         ("unidecode", (is_unidecode_available, UNIDECODE_IMPORT_ERROR)),
@@ -361,12 +354,7 @@ def requires_backends(obj, backends):
     if failed:
         raise ImportError("".join(failed))
 
-    if name in [
-        "VersatileDiffusionTextToImagePipeline",
-        "VersatileDiffusionPipeline",
-        "VersatileDiffusionDualGuidedPipeline",
-        "StableDiffusionImageVariationPipeline",
-    ] and is_transformers_version("<", "4.25.0.dev0"):
+    if name in ["StableDiffusionDepth2ImgPipeline"] and is_transformers_version("<", "4.26.0.dev0"):
         raise ImportError(
             f"You need to install `transformers` from 'main' in order to use {name}: \n```\n pip install"
             " git+https://github.com/huggingface/transformers \n```"
