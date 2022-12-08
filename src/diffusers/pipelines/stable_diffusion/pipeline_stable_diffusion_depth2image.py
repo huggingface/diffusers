@@ -507,7 +507,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
         if isinstance(image, PIL.Image.Image):
             image = preprocess(image)
         else:
-            image = 2.0 * image - 1.0
+            image = 2.0 * (image / 255.0) - 1.0
 
         # 6. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
