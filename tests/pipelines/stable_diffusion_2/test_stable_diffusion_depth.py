@@ -255,6 +255,25 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
 
         max_diff = np.abs(output_with_offload - output_without_offload).max()
         self.assertLess(max_diff, 3e-5, "CPU offloading should not affect the inference results")
+    
+    def test_dict_tuple_outputs_equivalent(self):
+        if torch_device == "mps":
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        # Warmup pass when using mps (see #372)
+        if torch_device == "mps":
+            _ = pipe(**self.get_dummy_inputs(torch_device))
+
+        output = pipe(**self.get_dummy_inputs(torch_device))[0]
+        output_tuple = pipe(**self.get_dummy_inputs(torch_device), return_dict=False)[0]
+
+        max_diff = np.abs(output - output_tuple).max()
+        self.assertLess(max_diff, 3e-5)
 
     def test_stable_diffusion_img2img_default_case(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
