@@ -288,7 +288,7 @@ class DreamBoothDataset(Dataset):
             instance_image = instance_image.convert("RGB")
         example["instance_images"] = self.image_transforms(instance_image)
         example["instance_prompt_ids"] = self.tokenizer(
-            self.instance_prompts.get(self.instance_images_path[index % self.num_instance_images]),
+            self.instance_prompts.get(self.instance_images_path[index % self.num_instance_images].name),
             padding="do_not_pad",
             truncation=True,
             max_length=self.tokenizer.model_max_length,
@@ -300,7 +300,7 @@ class DreamBoothDataset(Dataset):
                 class_image = class_image.convert("RGB")
             example["class_images"] = self.image_transforms(class_image)
             example["class_prompt_ids"] = self.tokenizer(
-                self.class_prompts.get(self.class_images_path[index % self.num_class_images]),
+                self.class_prompts.get(self.class_images_path[index % self.num_class_images].name),
                 padding="do_not_pad",
                 truncation=True,
                 max_length=self.tokenizer.model_max_length,
@@ -415,7 +415,7 @@ def main(args):
             os.makedirs(args.output_dir, exist_ok=True)
 
             
-    token ='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'
+    
     # Load the tokenizer
     if args.tokenizer_name:
         tokenizer = CLIPTokenizer.from_pretrained(
@@ -430,6 +430,7 @@ def main(args):
             revision=args.revision,
             use_auth_token=token,
         )
+
 
     # Load models and create wrapper for stable diffusion
     text_encoder = CLIPTextModel.from_pretrained(

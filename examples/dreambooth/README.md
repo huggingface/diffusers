@@ -168,11 +168,11 @@ Pass the `--train_text_encoder` argument to the script to enable training `text_
 
 ```bash
 export MODEL_NAME="stabilityai/stable-diffusion-2"
-export INSTANCE_DIR="/workspace/diffusers/examples/dreambooth/allinstanceimages"
-export INSTACE_PROMPT_DIR="/workspace/diffusers/examples/dreambooth/prompts/instanceprompts.pickle"
-export CLASS_PROMPT_DIR="/workspace/diffusers/examples/dreambooth/prompts/classprompts.pickle"
-export CLASS_DIR="/workspace/diffusers/examples/dreambooth/allclassimages"
-export OUTPUT_DIR="/workspace/diffusers/examples/dreambooth/output"
+export INSTANCE_DIR="/home/arif/Documents/design/sandpit/arif_diffusers/diffusers/examples/dreambooth/allinstanceimages"
+export INSTACE_PROMPT_DIR="/home/arif/Documents/design/sandpit/arif_diffusers/diffusers/examples/dreambooth/prompts/instanceprompts.pickle"
+export CLASS_PROMPT_DIR="/home/arif/Documents/design/sandpit/arif_diffusers/diffusers/examples/dreambooth/prompts/classprompts.pickle"
+export CLASS_DIR="/home/arif/Documents/design/sandpit/arif_diffusers/diffusers/examples/dreambooth/allclassimages"
+export OUTPUT_DIR="/home/arif/Documents/design/sandpit/arif_diffusers/diffusers/examples/dreambooth/output"
 
 
 accelerate launch train_dreambooth.py \
