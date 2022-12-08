@@ -90,6 +90,22 @@ class PipelineTesterMixin:
         max_diff = np.abs(output - output_loaded).max()
         self.assertLess(max_diff, 1e-5)
 
+    def test_signature(self):
+        assert hasattr(self.pipeline_class, "__call__"), f"{self.pipeline_class} should have a `__call__` method"
+        parameters = inspect.signature(self.pipeline_class.__call__).parameters
+        required_parameters = {k: v for k, v in parameters.items() if v.default == inspect._empty}
+        required_parameters.pop("self")
+
+        allowed_required_params = ["prompt", "image", "mask_image", "example_image"]
+        for param in required_parameters.keys():
+            assert param in allowed_required_params
+
+        optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
+
+        required_optional_params = ["generator", "num_inference_steps"]
+        for param in required_optional_params:
+            assert param in optional_parameters
+
     def test_dict_tuple_outputs_equivalent(self):
         if torch_device == "mps" and self.pipeline_class in (
             DanceDiffusionPipeline,
