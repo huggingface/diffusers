@@ -30,11 +30,11 @@ check_min_version("0.10.0.dev0")
 logger = get_logger(__name__)
 
 
-def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str):
+def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision: str):
     text_encoder_config = PretrainedConfig.from_pretrained(
         pretrained_model_name_or_path,
         subfolder="text_encoder",
-        revision=args.revision,
+        revision=revision,
     )
     model_class = text_encoder_config.architectures[0]
 
@@ -469,7 +469,7 @@ def main(args):
         )
 
     # import correct text encoder class
-    text_encoder_cls = import_model_class_from_model_name_or_path(args.pretrained_model_name_or_path)
+    text_encoder_cls = import_model_class_from_model_name_or_path(args.pretrained_model_name_or_path, args.revision)
 
     # Load models and create wrapper for stable diffusion
     text_encoder = text_encoder_cls.from_pretrained(
