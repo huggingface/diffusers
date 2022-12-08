@@ -60,7 +60,6 @@ except OptionalDependencyNotAvailable:
     from ...utils.dummy_torch_and_transformers_and_k_diffusion_objects import *  # noqa F403
 else:
     from .pipeline_stable_diffusion_k_diffusion import StableDiffusionKDiffusionPipeline
-    from .pipeline_stable_diffusion_k_diffusion import StableDiffusionKDiffusionPipeline
 
 if is_transformers_available() and is_onnx_available():
     from .pipeline_onnx_stable_diffusion import OnnxStableDiffusionPipeline, StableDiffusionOnnxPipeline
