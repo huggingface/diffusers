@@ -15,6 +15,7 @@ deps = {
     "isort": "isort>=5.5.4",
     "jax": "jax>=0.2.8,!=0.3.2",
     "jaxlib": "jaxlib>=0.1.65",
+    "k-diffusion": "k-diffusion",
     "librosa": "librosa",
     "modelcards": "modelcards>=0.1.4",
     "numpy": "numpy",

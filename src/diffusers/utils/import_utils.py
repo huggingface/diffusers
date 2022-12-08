@@ -210,6 +210,13 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _xformers_available = False
 
+_k_diffusion_available = importlib.util.find_spec("k-diffusion") is not None
+try:
+    _k_diffusion_version = importlib_metadata.version("k-diffusion")
+    logger.debug(f"Successfully imported k-diffusion version {_k_diffusion_version}")
+except importlib_metadata.PackageNotFoundError:
+    _k_diffusion_available = False
+
 
 def is_torch_available():
     return _torch_available
@@ -261,6 +268,10 @@ def is_xformers_available():
 
 def is_accelerate_available():
     return _accelerate_available
+
+
+def is_k_diffusion_available():
+    return _k_diffusion_available
 
 
 # docstyle-ignore
