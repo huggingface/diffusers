@@ -117,7 +117,7 @@ class PipelineTesterMixin:
     def test_pipeline_call_implements_required_args(self):
         assert hasattr(self.pipeline_class, "__call__"), f"{self.pipeline_class} should have a `__call__` method"
         parameters = inspect.signature(self.pipeline_class.__call__).parameters
-        required_parameters = {k for k, v in parameters.items() if v.default == inspect._empty}
+        required_parameters = {k: v for k, v in parameters.items() if v.default == inspect._empty}
         required_parameters.pop("self")
         required_parameters = set(required_parameters)
         optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
