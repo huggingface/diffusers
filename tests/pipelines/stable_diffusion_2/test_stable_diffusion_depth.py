@@ -16,6 +16,8 @@
 import os
 import tempfile
 
+from diffusers.utils.import_utils import is_accelerate_available
+
 
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
@@ -230,6 +232,29 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
 
         max_diff = np.abs(output - output_fp16).max()
         self.assertLess(max_diff, 1.3e-2, "The outputs of the fp16 and fp32 pipelines are too different.")
+    
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_accelerate_available(),
+        reason="CPU offload is only available with CUDA and `accelerate` installed",
+    )
+    def test_cpu_offload_forward_pass(self):
+        if not self.test_cpu_offload:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_without_offload = pipe(**inputs)[0]
+
+        pipe.enable_sequential_cpu_offload()
+        inputs = self.get_dummy_inputs(torch_device)
+        output_with_offload = pipe(**inputs)[0]
+
+        max_diff = np.abs(output_with_offload - output_without_offload).max()
+        self.assertLess(max_diff, 3e-5, "CPU offloading should not affect the inference results")
 
     def test_stable_diffusion_img2img_default_case(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
