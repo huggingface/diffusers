@@ -366,7 +366,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
 
         return latents
 
-    def prepare_depth_mask(self, image, batch_size, do_classifier_free_guidance, dtype, device):
+    def prepare_depth_mask(self, image, depth_map, batch_size, do_classifier_free_guidance, dtype, device):
         if isinstance(image, PIL.Image.Image):
             width, height = image.size
             width, height = map(lambda dim: dim - dim % 32, (width, height))  # resize to integer multiple of 32
@@ -376,39 +376,42 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
             image = [img for img in image]
             width, height = image[0].shape[-2:]
 
-        pixel_values = self.feature_extractor(images=image, return_tensors="pt").pixel_values
-        pixel_values = pixel_values.to(device=device)
+        if depth_map is None:
+            pixel_values = self.feature_extractor(images=image, return_tensors="pt").pixel_values
+            pixel_values = pixel_values.to(device=device)
+            # The DPT-Hybrid model uses batch-norm layers which are not compatible with fp16.
+            # So we use `torch.autocast` here for half precision inference.
+            context_manger = torch.autocast("cuda", dtype=dtype) if device.type == "cuda" else contextlib.nullcontext()
+            with context_manger:
+                depth_map = self.depth_estimator(pixel_values).predicted_depth
+        else:
+            depth_map = depth_map.to(device=device, dtype=dtype)
 
-        # The DPT-Hybrid model uses batch-norm layers which are not compatible with fp16.
-        # So we use `torch.autocast` here for half precision inference.
-        context_manger = torch.autocast("cuda", dtype=dtype) if device.type == "cuda" else contextlib.nullcontext()
-        with context_manger:
-            depth_mask = self.depth_estimator(pixel_values).predicted_depth
-
-        depth_mask = torch.nn.functional.interpolate(
-            depth_mask.unsqueeze(1),
+        depth_map = torch.nn.functional.interpolate(
+            depth_map.unsqueeze(1),
             size=(height // self.vae_scale_factor, width // self.vae_scale_factor),
             mode="bicubic",
             align_corners=False,
         )
 
-        depth_min = torch.amin(depth_mask, dim=[1, 2, 3], keepdim=True)
-        depth_max = torch.amax(depth_mask, dim=[1, 2, 3], keepdim=True)
-        depth_mask = 2.0 * (depth_mask - depth_min) / (depth_max - depth_min) - 1.0
-        depth_mask = depth_mask.to(dtype)
+        depth_min = torch.amin(depth_map, dim=[1, 2, 3], keepdim=True)
+        depth_max = torch.amax(depth_map, dim=[1, 2, 3], keepdim=True)
+        depth_map = 2.0 * (depth_map - depth_min) / (depth_max - depth_min) - 1.0
+        depth_map = depth_map.to(dtype)
 
         # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
-        if depth_mask.shape[0] < batch_size:
-            depth_mask = depth_mask.repeat(batch_size, 1, 1, 1)
+        if depth_map.shape[0] < batch_size:
+            depth_map = depth_map.repeat(batch_size, 1, 1, 1)
 
-        depth_mask = torch.cat([depth_mask] * 2) if do_classifier_free_guidance else depth_mask
-        return depth_mask
+        depth_map = torch.cat([depth_map] * 2) if do_classifier_free_guidance else depth_map
+        return depth_map
 
     @torch.no_grad()
     def __call__(
         self,
         prompt: Union[str, List[str]],
         image: Union[torch.FloatTensor, PIL.Image.Image],
+        depth_map: Optional[torch.FloatTensor] = None,
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
@@ -495,7 +498,12 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
 
         # 4. Prepare depth mask
         depth_mask = self.prepare_depth_mask(
-            image, batch_size * num_images_per_prompt, do_classifier_free_guidance, text_embeddings.dtype, device
+            image,
+            depth_map,
+            batch_size * num_images_per_prompt,
+            do_classifier_free_guidance,
+            text_embeddings.dtype,
+            device,
         )
 
         # 5. Preprocess image
