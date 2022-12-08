@@ -5,6 +5,7 @@ from .onnx_utils import OnnxRuntimeModel
 from .utils import (
     is_flax_available,
     is_inflect_available,
+    is_k_diffusion_available,
     is_onnx_available,
     is_scipy_available,
     is_torch_available,
@@ -89,6 +90,11 @@ if is_torch_available() and is_transformers_available():
     )
 else:
     from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
+
+if is_torch_available() and is_transformers_available() and is_k_diffusion_available():
+    from .pipelines import StableDiffusionKDiffusionPipeline
+else:
+    from .utils.dummy_torch_and_transformers_and_k_diffusion_objects import *  # noqa F403
 
 if is_torch_available() and is_transformers_available() and is_onnx_available():
     from .pipelines import (
