@@ -1,4 +1,4 @@
-__version__ = "0.10.0"
+__version__ = "0.10.2"
 
 from .configuration_utils import ConfigMixin
 from .onnx_utils import OnnxRuntimeModel
