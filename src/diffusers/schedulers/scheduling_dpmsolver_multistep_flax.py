@@ -228,7 +228,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
                 the shape of the samples to be generated.
         """
         timesteps = (
-            jnp.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps + 1)
+            jnp.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps)
             .round()[::-1][:-1]
             .astype(jnp.int32)
         )
