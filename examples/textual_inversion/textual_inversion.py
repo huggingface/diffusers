@@ -20,6 +20,7 @@ from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, StableDiffusi
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from diffusers.utils import check_min_version
+from diffusers.utils.import_utils import is_xformers_available
 from huggingface_hub import HfFolder, Repository, whoami
 
 # TODO: remove and import from diffusers.utils when the new version of diffusers is released
@@ -438,6 +439,15 @@ def main():
         subfolder="unet",
         revision=args.revision,
     )
+
+    if is_xformers_available():
+        try:
+            unet.enable_xformers_memory_efficient_attention(True)
+        except Exception as e:
+            logger.warning(
+                "Could not enable memory efficient attention. Make sure xformers is installed"
+                f" correctly and a GPU is available: {e}"
+            )
 
     # Resize the token embeddings as we are adding new special tokens to the tokenizer
     text_encoder.resize_token_embeddings(len(tokenizer))

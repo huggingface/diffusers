@@ -18,6 +18,7 @@ from datasets import load_dataset
 from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
+from diffusers.utils.import_utils import is_xformers_available
 from huggingface_hub import HfFolder, Repository, whoami
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -363,6 +364,15 @@ def main():
         subfolder="unet",
         revision=args.revision,
     )
+
+    if is_xformers_available():
+        try:
+            unet.enable_xformers_memory_efficient_attention(True)
+        except Exception as e:
+            logger.warning(
+                "Could not enable memory efficient attention. Make sure xformers is installed"
+                f" correctly and a GPU is available: {e}"
+            )
 
     # Freeze vae and text_encoder
     vae.requires_grad_(False)
