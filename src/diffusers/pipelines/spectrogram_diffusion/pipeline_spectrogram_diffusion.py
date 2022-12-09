@@ -608,20 +608,20 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
         events = [note_representation_processor_chain(event, codec, note_representation_config) for event in events]
         input_tokens = [tokenizer.encode(event["inputs"]) for event in events]
 
-        pred_mel = np.zeros([1, TARGET_FEATURE_LENGTH, self.n_dims])
+        pred_mel = np.zeros([1, TARGET_FEATURE_LENGTH, self.n_dims], dtype=np.float32)
         full_pred_mel = np.zeros([1, 0, self.n_dims], np.float32)
 
         for i, encoder_input_tokens in enumerate(input_tokens):
-            encoder_continuous_inputs = pred_mel[:1]
+            encoder_continuous_inputs = torch.from_numpy(pred_mel[:1].copy()).to(self.device)
             if i == 0:
                 # The first chunk has no previous context.
-                encoder_continuous_mask = np.zeros((1, TARGET_FEATURE_LENGTH))
+                encoder_continuous_mask = np.zeros((1, TARGET_FEATURE_LENGTH), dtype=np.bool)
             else:
                 # The full song pipeline does not feed in a context feature, so the mask
                 # will be all 0s after the feature converter. Because we know we're
                 # feeding in a full context chunk from the previous prediction, set it
                 # to all 1s.
-                encoder_continuous_mask = np.ones((1, TARGET_FEATURE_LENGTH))
+                encoder_continuous_mask = np.ones((1, TARGET_FEATURE_LENGTH), dtype=np.bool)
 
                 target_shape = encoder_continuous_inputs.shape
                 encoder_continuous_inputs = self.scale_features(
@@ -629,9 +629,9 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
                 )
 
                 encodings_and_masks = self.encode(
-                    input_tokens=encoder_input_tokens.to(self.device),
-                    continuous_inputs=encoder_continuous_inputs.to(self.device),
-                    continuous_mask=encoder_continuous_mask.to(self.device),
+                    input_tokens=torch.IntTensor([encoder_input_tokens]).to(self.device),
+                    continuous_inputs=encoder_continuous_inputs,
+                    continuous_mask=torch.from_numpy(encoder_continuous_mask.copy()).to(self.device),
                 )
 
                 # Sample gaussian noise to begin loop
@@ -656,6 +656,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
                 pred_mel = mel.cpu().numpy()
 
             full_pred_mel = np.concatenate([full_pred_mel, pred_mel[:1]], axis=1)
+            print("Generated segment", i)
 
         full_pred_audio = self.melgan(input_features=full_pred_mel.astype(np.float32))
 
