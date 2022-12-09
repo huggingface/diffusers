@@ -22,7 +22,6 @@ import torch
 import torch.nn.functional as F
 
 import note_seq
-from immutabledict import immutabledict
 
 
 INPUT_FEATURE_LENGTH = 2048
@@ -36,44 +35,42 @@ DEFAULT_STEPS_PER_SECOND = 100
 DEFAULT_MAX_SHIFT_SECONDS = 10
 DEFAULT_NUM_VELOCITY_BINS = 1
 
-SLAKH_CLASS_PROGRAMS = immutabledict(
-    {
-        "Acoustic Piano": 0,
-        "Electric Piano": 4,
-        "Chromatic Percussion": 8,
-        "Organ": 16,
-        "Acoustic Guitar": 24,
-        "Clean Electric Guitar": 26,
-        "Distorted Electric Guitar": 29,
-        "Acoustic Bass": 32,
-        "Electric Bass": 33,
-        "Violin": 40,
-        "Viola": 41,
-        "Cello": 42,
-        "Contrabass": 43,
-        "Orchestral Harp": 46,
-        "Timpani": 47,
-        "String Ensemble": 48,
-        "Synth Strings": 50,
-        "Choir and Voice": 52,
-        "Orchestral Hit": 55,
-        "Trumpet": 56,
-        "Trombone": 57,
-        "Tuba": 58,
-        "French Horn": 60,
-        "Brass Section": 61,
-        "Soprano/Alto Sax": 64,
-        "Tenor Sax": 66,
-        "Baritone Sax": 67,
-        "Oboe": 68,
-        "English Horn": 69,
-        "Bassoon": 70,
-        "Clarinet": 71,
-        "Pipe": 73,
-        "Synth Lead": 80,
-        "Synth Pad": 88,
-    }
-)
+SLAKH_CLASS_PROGRAMS = {
+    "Acoustic Piano": 0,
+    "Electric Piano": 4,
+    "Chromatic Percussion": 8,
+    "Organ": 16,
+    "Acoustic Guitar": 24,
+    "Clean Electric Guitar": 26,
+    "Distorted Electric Guitar": 29,
+    "Acoustic Bass": 32,
+    "Electric Bass": 33,
+    "Violin": 40,
+    "Viola": 41,
+    "Cello": 42,
+    "Contrabass": 43,
+    "Orchestral Harp": 46,
+    "Timpani": 47,
+    "String Ensemble": 48,
+    "Synth Strings": 50,
+    "Choir and Voice": 52,
+    "Orchestral Hit": 55,
+    "Trumpet": 56,
+    "Trombone": 57,
+    "Tuba": 58,
+    "French Horn": 60,
+    "Brass Section": 61,
+    "Soprano/Alto Sax": 64,
+    "Tenor Sax": 66,
+    "Baritone Sax": 67,
+    "Oboe": 68,
+    "English Horn": 69,
+    "Bassoon": 70,
+    "Clarinet": 71,
+    "Pipe": 73,
+    "Synth Lead": 80,
+    "Synth Pad": 88,
+}
 
 
 @dataclasses.dataclass
