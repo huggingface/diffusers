@@ -23,7 +23,6 @@ import torch
 from diffusers import UNet2DConditionModel, UNet2DModel
 from diffusers.utils import (
     floats_tensor,
-    is_xformers_available,
     load_hf_numpy,
     logging,
     require_torch_gpu,
@@ -33,6 +32,7 @@ from diffusers.utils import (
 )
 from parameterized import parameterized
 
+from ...utils.import_utils import is_xformers_available
 from ..test_modeling_common import ModelTesterMixin
 
 
