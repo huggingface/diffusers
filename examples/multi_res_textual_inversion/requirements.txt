@@ -1,0 +1,7 @@
+diffusers[torch]==0.7.0
+transformers==4.21.0
+scipy 
+ftfy
+gdown
+accelerate
+bitsandbytes
