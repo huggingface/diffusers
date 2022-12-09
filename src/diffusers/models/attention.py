@@ -176,7 +176,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             self.norm_out = nn.LayerNorm(inner_dim)
             self.out = nn.Linear(inner_dim, self.num_vector_embeds - 1)
 
-    def forward(self, hidden_states, encoder_hidden_states=None, timestep=None, cross_attention_inputs=None, return_dict: bool = True):
+    def forward(self, hidden_states, encoder_hidden_states=None, timestep=None, cross_attention_kwargs=None, return_dict: bool = True):
         """
         Args:
             hidden_states ( When discrete, `torch.LongTensor` of shape `(batch size, num latent pixels)`.
@@ -214,7 +214,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # 2. Blocks
         for block in self.transformer_blocks:
-            hidden_states = block(hidden_states, context=encoder_hidden_states, timestep=timestep, cross_attention_inputs=cross_attention_inputs)
+            hidden_states = block(hidden_states, context=encoder_hidden_states, timestep=timestep, cross_attention_kwargs=cross_attention_kwargs)
 
         # 3. Output
         if self.is_input_continuous:
@@ -457,14 +457,14 @@ class BasicTransformerBlock(nn.Module):
 #                    f" correctly and a GPU is available: {e}"
 #                )
 
-    def forward(self, hidden_states, context=None, timestep=None, cross_attention_inputs=None):
+    def forward(self, hidden_states, context=None, timestep=None, cross_attention_kwargs=None):
         # 1. Self-Attention
         norm_hidden_states = (
             self.norm1(hidden_states, timestep) if self.use_ada_layer_norm else self.norm1(hidden_states)
         )
 
         if self.only_cross_attention:
-            hidden_states = self.attn1(norm_hidden_states, context=context, cross_attention_inputs=cross_attention_inputs) + hidden_states
+            hidden_states = self.attn1(norm_hidden_states, context=context, cross_attention_kwargs=cross_attention_kwargs) + hidden_states
         else:
             hidden_states = self.attn1(norm_hidden_states) + hidden_states
 
@@ -473,7 +473,7 @@ class BasicTransformerBlock(nn.Module):
             norm_hidden_states = (
                 self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
             )
-            hidden_states = self.attn2(norm_hidden_states, context=context, cross_attention_inputs=cross_attention_inputs) + hidden_states
+            hidden_states = self.attn2(norm_hidden_states, context=context, cross_attention_kwargs=cross_attention_kwargs) + hidden_states
 
         # 3. Feed-forward
         hidden_states = self.ff(self.norm3(hidden_states)) + hidden_states
@@ -561,16 +561,16 @@ class CrossAttention(nn.Module):
         self._slice_size = slice_size
         self.attn_fn = SlicedAttentionProc(self.heads, self.upcast_attention)
 
-    def set_attn_proc(self, attn_proc: CrossAttentionProcMixin):
+    def set_cross_attn_proc(self, attn_proc: CrossAttentionProcMixin):
         if not isinstance(attn_proc, CrossAttentionProcMixin):
             subclass = attn_proc.__bases__ if hasattr(attn_proc, "__bases__") else None
             raise ValueError(f"`attn_proc` should be a subclass of {CrossAttentionProc}, but is of type {type(attn_proc)} and a subclass of {subclass}.")
         self.attn_proc = attn_proc
 
-    def forward(self, hidden_states, context=None, cross_attention_inputs=None):
+    def forward(self, hidden_states, context=None, cross_attention_kwargs=None):
         # attn
-        cross_attention_inputs = cross_attention_inputs if cross_attention_inputs is not None else {}
-        hidden_states = self.attn(hidden_states, self.to_q, self.to_k, self.to_v, context=context, **cross_attention_inputs)
+        cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
+        hidden_states = self.attn(hidden_states, self.to_q, self.to_k, self.to_v, context=context, **cross_attention_kwargs)
         # linear proj
         hidden_states = self.to_out[0](hidden_states)
         # dropout
