@@ -23,6 +23,7 @@ import torch
 from diffusers import UNet2DConditionModel, UNet2DModel
 from diffusers.utils import (
     floats_tensor,
+    is_xformers_available,
     load_hf_numpy,
     logging,
     require_torch_gpu,
@@ -254,6 +255,20 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
+
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_xformers_enable_works(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+
+        model.enable_xformers_memory_efficient_attention()
+
+        assert (
+            model.mid_block.attentions[0].transformer_blocks[0].attn1._use_memory_efficient_attention_xformers
+        ), "xformers is not enabled"
 
     @unittest.skipIf(torch_device == "mps", "Gradient checkpointing skipped on MPS")
     def test_gradient_checkpointing(self):
