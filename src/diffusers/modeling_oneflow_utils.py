@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from genericpath import isdir
 import os
 from functools import partial
 from typing import Callable, List, Optional, Tuple, Union
@@ -26,43 +25,34 @@ from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
 
-from .utils import CONFIG_NAME, DIFFUSERS_CACHE, HUGGINGFACE_CO_RESOLVE_ENDPOINT, WEIGHTS_NAME, logging
-import numpy as np
+from . import __version__
+from .utils import (
+    CONFIG_NAME,
+    DIFFUSERS_CACHE,
+    HUGGINGFACE_CO_RESOLVE_ENDPOINT,
+    SAFETENSORS_WEIGHTS_NAME,
+    WEIGHTS_NAME,
+    is_accelerate_available,
+    is_safetensors_available,
+    is_torch_version,
+    logging,
+)
 
 
 logger = logging.get_logger(__name__)
 
 
-def index_cast(indices):
-    if isinstance(indices, torch.Tensor):
-        return indices.to(dtype=torch.int32)
-    else:
-        return indices
+if is_torch_version(">=", "1.9.0"):
+    _LOW_CPU_MEM_USAGE_DEFAULT = True
+else:
+    _LOW_CPU_MEM_USAGE_DEFAULT = False
 
-def extract_scalar(t, device=None):
-    if t.is_lazy:
-        if device is None:
-            return t
-        else:
-            return t.to(device=device)
-    if isinstance(t, torch.Tensor) and t.size() == torch.Size([]) and t.device == torch.device("cpu"):
-        return t.item()
-    return t
 
-def from_numpy_if_needed(*args):
-    if len(args) == 1:
-        if isinstance(args[0], np.ndarray):
-            return torch.from_numpy(args[0])
-        if isinstance(args[0], np.float32):
-            return args[0].item()
-        else:
-            return args[0]
-    return [torch.from_numpy(a) if isinstance(a, np.ndarray) else a for a in args]
+if is_accelerate_available():
+    import accelerate
+    from accelerate.utils import set_module_tensor_to_device
+    from accelerate.utils.versions import is_torch_version
 
-def print_dtype(*args):
-    for a in args:
-        if isinstance(a, torch.Tensor):
-            print(a.dtype)
 
 def get_parameter_device(parameter: torch.nn.Module):
     try:
@@ -96,13 +86,13 @@ def get_parameter_dtype(parameter: torch.nn.Module):
 
 def load_state_dict(checkpoint_file: Union[str, os.PathLike]):
     """
-    Reads a PyTorch checkpoint file, returning properly formatted errors if they arise.
+    Reads a checkpoint file, returning properly formatted errors if they arise.
     """
     try:
         # this is oneflow saved model, a dir
         if os.path.isdir(checkpoint_file):
             return torch.load(checkpoint_file, map_location="cpu")
-        else:
+        elif os.path.basename(checkpoint_file) == WEIGHTS_NAME:
             import torch as og_torch
             torch_parameters = og_torch.load(checkpoint_file, map_location="cpu")
             oneflow_parameters = dict()
@@ -110,7 +100,7 @@ def load_state_dict(checkpoint_file: Union[str, os.PathLike]):
                 if value.is_cuda:
                     raise ValueError(f"torch model is not on cpu, it is on {value.device}")
                 val = value.detach().cpu().numpy()
-                oneflow_parameters[key] = val
+                oneflow_parameters[key] = torch.from_numpy(val)
             return oneflow_parameters
     except Exception as e:
         try:
@@ -128,7 +118,7 @@ def load_state_dict(checkpoint_file: Union[str, os.PathLike]):
                     ) from e
         except (UnicodeDecodeError, ValueError):
             raise OSError(
-                f"Unable to load weights from pytorch checkpoint file for '{checkpoint_file}' "
+                f"Unable to load weights from checkpoint file for '{checkpoint_file}' "
                 f"at '{checkpoint_file}'. "
                 "If you tried to load a PyTorch model from a TF 2.0 checkpoint, please set from_tf=True."
             )
@@ -153,7 +143,6 @@ def _load_state_dict_into_model(model_to_load, state_dict):
     load(model_to_load)
 
     return error_msgs
-
 
 class OneFlowModelMixin(torch.nn.Module):
     r"""
@@ -311,10 +300,24 @@ class OneFlowModelMixin(torch.nn.Module):
                 Mirror source to accelerate downloads in China. If you are from China and have an accessibility
                 problem, you can set this option to resolve it. Note that we do not guarantee the timeliness or safety.
                 Please refer to the mirror site for more information.
+            device_map (`str` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
+                A map that specifies where each submodule should go. It doesn't need to be refined to each
+                parameter/buffer name, once a given module name is inside, every submodule of it will be sent to the
+                same device.
+
+                To have Accelerate compute the most optimized `device_map` automatically, set `device_map="auto"`. For
+                more information about each option see [designing a device
+                map](https://hf.co/docs/accelerate/main/en/usage_guides/big_modeling#designing-a-device-map).
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
+                Speed up model loading by not initializing the weights and only loading the pre-trained weights. This
+                also tries to not use more than 1x model size in CPU memory (including peak memory) while loading the
+                model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
+                setting this argument to `True` will raise an error.
 
         <Tip>
 
-        Passing `use_auth_token=True`` is required when you want to use a private model.
+         It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
+         models](https://huggingface.co/docs/hub/models-gated#gated-models).
 
         </Tip>
 
@@ -335,27 +338,174 @@ class OneFlowModelMixin(torch.nn.Module):
         local_files_only = kwargs.pop("local_files_only", False)
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
-        from_auto_class = kwargs.pop("_from_auto", False)
         torch_dtype = kwargs.pop("torch_dtype", None)
         subfolder = kwargs.pop("subfolder", None)
+        device_map = kwargs.pop("device_map", None)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
 
-        user_agent = {"file_type": "model", "framework": "pytorch", "from_auto_class": from_auto_class}
+        if low_cpu_mem_usage and not is_accelerate_available():
+            low_cpu_mem_usage = False
+            logger.warning(
+                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                " install accelerate\n```\n."
+            )
+
+        if device_map is not None and not is_accelerate_available():
+            raise NotImplementedError(
+                "Loading and dispatching requires `accelerate`. Please make sure to install accelerate or set"
+                " `device_map=None`. You can install accelerate with `pip install accelerate`."
+            )
+
+        # Check if we can handle device_map and dispatching the weights
+        if device_map is not None and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError(
+                "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `device_map=None`."
+            )
+
+        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError(
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `low_cpu_mem_usage=False`."
+            )
+
+        if low_cpu_mem_usage is False and device_map is not None:
+            raise ValueError(
+                f"You cannot set `low_cpu_mem_usage` to `False` while using device_map={device_map} for loading and"
+                " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
+            )
+
+        user_agent = {
+            "diffusers": __version__,
+            "file_type": "model",
+            "framework": "pytorch",
+        }
 
         # Load config if we don't provide a configuration
         config_path = pretrained_model_name_or_path
-        model, unused_kwargs = cls.from_config(
-            config_path,
-            cache_dir=cache_dir,
-            return_unused_kwargs=True,
-            force_download=force_download,
-            resume_download=resume_download,
-            proxies=proxies,
-            local_files_only=local_files_only,
-            use_auth_token=use_auth_token,
-            revision=revision,
-            subfolder=subfolder,
-            **kwargs,
-        )
+
+        # This variable will flag if we're loading a sharded checkpoint. In this case the archive file is just the
+        # Load model
+
+        model_file = None
+        if is_safetensors_available():
+            try:
+                model_file = _get_model_file(
+                    pretrained_model_name_or_path,
+                    weights_name=SAFETENSORS_WEIGHTS_NAME,
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    resume_download=resume_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    use_auth_token=use_auth_token,
+                    revision=revision,
+                    subfolder=subfolder,
+                    user_agent=user_agent,
+                )
+            except:
+                pass
+        if model_file is None:
+            model_file = _get_model_file(
+                pretrained_model_name_or_path,
+                weights_name=WEIGHTS_NAME,
+                cache_dir=cache_dir,
+                force_download=force_download,
+                resume_download=resume_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                revision=revision,
+                subfolder=subfolder,
+                user_agent=user_agent,
+            )
+
+        if low_cpu_mem_usage:
+            # Instantiate model with empty weights
+            with accelerate.init_empty_weights():
+                config, unused_kwargs = cls.load_config(
+                    config_path,
+                    cache_dir=cache_dir,
+                    return_unused_kwargs=True,
+                    force_download=force_download,
+                    resume_download=resume_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    use_auth_token=use_auth_token,
+                    revision=revision,
+                    subfolder=subfolder,
+                    device_map=device_map,
+                    **kwargs,
+                )
+                model = cls.from_config(config, **unused_kwargs)
+
+            # if device_map is Non,e load the state dict on move the params from meta device to the cpu
+            if device_map is None:
+                param_device = "cpu"
+                state_dict = load_state_dict(model_file)
+                # move the parms from meta device to cpu
+                for param_name, param in state_dict.items():
+                    set_module_tensor_to_device(model, param_name, param_device, value=param)
+            else:  # else let accelerate handle loading and dispatching.
+                # Load weights and dispatch according to the device_map
+                # by deafult the device_map is None and the weights are loaded on the CPU
+                accelerate.load_checkpoint_and_dispatch(model, model_file, device_map)
+
+            loading_info = {
+                "missing_keys": [],
+                "unexpected_keys": [],
+                "mismatched_keys": [],
+                "error_msgs": [],
+            }
+        else:
+            config, unused_kwargs = cls.load_config(
+                config_path,
+                cache_dir=cache_dir,
+                return_unused_kwargs=True,
+                force_download=force_download,
+                resume_download=resume_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                revision=revision,
+                subfolder=subfolder,
+                device_map=device_map,
+                **kwargs,
+            )
+            model = cls.from_config(config, **unused_kwargs)
+
+            state_dict = load_state_dict(model_file)
+            dtype = set(v.dtype for v in state_dict.values())
+
+            if len(dtype) > 1 and torch.float32 not in dtype:
+                raise ValueError(
+                    f"The weights of the model file {model_file} have a mixture of incompatible dtypes {dtype}. Please"
+                    f" make sure that {model_file} weights have only one dtype."
+                )
+            elif len(dtype) > 1 and torch.float32 in dtype:
+                dtype = torch.float32
+            else:
+                dtype = dtype.pop()
+
+            # move model to correct dtype
+            model = model.to(dtype)
+
+            model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
+                model,
+                state_dict,
+                model_file,
+                pretrained_model_name_or_path,
+                ignore_mismatched_sizes=ignore_mismatched_sizes,
+            )
+
+            loading_info = {
+                "missing_keys": missing_keys,
+                "unexpected_keys": unexpected_keys,
+                "mismatched_keys": mismatched_keys,
+                "error_msgs": error_msgs,
+            }
 
         if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
             raise ValueError(
@@ -365,104 +515,10 @@ class OneFlowModelMixin(torch.nn.Module):
             model = model.to(torch_dtype)
 
         model.register_to_config(_name_or_path=pretrained_model_name_or_path)
-        # This variable will flag if we're loading a sharded checkpoint. In this case the archive file is just the
-        # Load model
-        pretrained_model_name_or_path = str(pretrained_model_name_or_path)
-        if os.path.isdir(pretrained_model_name_or_path):
-            if os.path.isfile(os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)):
-                # Load from a PyTorch checkpoint
-                model_file = os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)
-            elif subfolder is not None and os.path.isfile(
-                os.path.join(pretrained_model_name_or_path, subfolder, WEIGHTS_NAME)
-            ):
-                model_file = os.path.join(pretrained_model_name_or_path, subfolder, WEIGHTS_NAME)
-            # model saved by oneflow, a directory
-            elif os.path.isdir(os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)):
-                # Load from a PyTorch checkpoint
-                model_file = os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)
-            elif subfolder is not None and os.path.isdir(
-                os.path.join(pretrained_model_name_or_path, subfolder, WEIGHTS_NAME)
-            ):
-                model_file = os.path.join(pretrained_model_name_or_path, subfolder, WEIGHTS_NAME)
-            else:
-                raise EnvironmentError(
-                    f"Error no file named {WEIGHTS_NAME} found in directory {pretrained_model_name_or_path}."
-                )
-        else:
-            try:
-                # Load from URL or cache if already cached
-                model_file = hf_hub_download(
-                    pretrained_model_name_or_path,
-                    filename=WEIGHTS_NAME,
-                    cache_dir=cache_dir,
-                    force_download=force_download,
-                    proxies=proxies,
-                    resume_download=resume_download,
-                    local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
-                    user_agent=user_agent,
-                    subfolder=subfolder,
-                    revision=revision,
-                )
-
-            except RepositoryNotFoundError:
-                raise EnvironmentError(
-                    f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier "
-                    "listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a "
-                    "token having permission to this repo with `use_auth_token` or log in with `huggingface-cli "
-                    "login` and pass `use_auth_token=True`."
-                )
-            except RevisionNotFoundError:
-                raise EnvironmentError(
-                    f"{revision} is not a valid git identifier (branch name, tag name or commit id) that exists for "
-                    "this model name. Check the model page at "
-                    f"'https://huggingface.co/{pretrained_model_name_or_path}' for available revisions."
-                )
-            except EntryNotFoundError:
-                raise EnvironmentError(
-                    f"{pretrained_model_name_or_path} does not appear to have a file named {WEIGHTS_NAME}."
-                )
-            except HTTPError as err:
-                raise EnvironmentError(
-                    "There was a specific connection error when trying to load"
-                    f" {pretrained_model_name_or_path}:\n{err}"
-                )
-            except ValueError:
-                raise EnvironmentError(
-                    f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load this model, couldn't find it"
-                    f" in the cached files and it looks like {pretrained_model_name_or_path} is not the path to a"
-                    f" directory containing a file named {WEIGHTS_NAME} or"
-                    " \nCheckout your internet connection or see how to run the library in"
-                    " offline mode at 'https://huggingface.co/docs/diffusers/installation#offline-mode'."
-                )
-            except EnvironmentError:
-                raise EnvironmentError(
-                    f"Can't load the model for '{pretrained_model_name_or_path}'. If you were trying to load it from "
-                    "'https://huggingface.co/models', make sure you don't have a local directory with the same name. "
-                    f"Otherwise, make sure '{pretrained_model_name_or_path}' is the correct path to a directory "
-                    f"containing a file named {WEIGHTS_NAME}"
-                )
-
-            # restore default dtype
-        state_dict = load_state_dict(model_file)
-        model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
-            model,
-            state_dict,
-            model_file,
-            pretrained_model_name_or_path,
-            ignore_mismatched_sizes=ignore_mismatched_sizes,
-        )
 
         # Set model in evaluation mode to deactivate DropOut modules by default
         model.eval()
-
         if output_loading_info:
-            loading_info = {
-                "missing_keys": missing_keys,
-                "unexpected_keys": unexpected_keys,
-                "mismatched_keys": mismatched_keys,
-                "error_msgs": error_msgs,
-            }
             return model, loading_info
 
         return model
@@ -615,15 +671,86 @@ class OneFlowModelMixin(torch.nn.Module):
             return sum(p.numel() for p in self.parameters() if p.requires_grad or not only_trainable)
 
 
-def unwrap_model(model: torch.nn.Module) -> torch.nn.Module:
-    """
-    Recursively unwraps a model from potential containers (as used in distributed training).
-
-    Args:
-        model (`torch.nn.Module`): The model to unwrap.
-    """
-    # since there could be multiple levels of wrapping, unwrap recursively
-    if hasattr(model, "module"):
-        return unwrap_model(model.module)
+def _get_model_file(
+    pretrained_model_name_or_path,
+    *,
+    weights_name,
+    subfolder,
+    cache_dir,
+    force_download,
+    proxies,
+    resume_download,
+    local_files_only,
+    use_auth_token,
+    user_agent,
+    revision,
+):
+    pretrained_model_name_or_path = str(pretrained_model_name_or_path)
+    if os.path.isdir(pretrained_model_name_or_path):
+        if os.path.isfile(os.path.join(pretrained_model_name_or_path, weights_name)):
+            # Load from a PyTorch checkpoint
+            model_file = os.path.join(pretrained_model_name_or_path, weights_name)
+            return model_file
+        elif subfolder is not None and os.path.isfile(
+            os.path.join(pretrained_model_name_or_path, subfolder, weights_name)
+        ):
+            model_file = os.path.join(pretrained_model_name_or_path, subfolder, weights_name)
+            return model_file
+        else:
+            raise EnvironmentError(
+                f"Error no file named {weights_name} found in directory {pretrained_model_name_or_path}."
+            )
     else:
-        return model
+        try:
+            # Load from URL or cache if already cached
+            model_file = hf_hub_download(
+                pretrained_model_name_or_path,
+                filename=weights_name,
+                cache_dir=cache_dir,
+                force_download=force_download,
+                proxies=proxies,
+                resume_download=resume_download,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                user_agent=user_agent,
+                subfolder=subfolder,
+                revision=revision,
+            )
+            return model_file
+
+        except RepositoryNotFoundError:
+            raise EnvironmentError(
+                f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier "
+                "listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a "
+                "token having permission to this repo with `use_auth_token` or log in with `huggingface-cli "
+                "login`."
+            )
+        except RevisionNotFoundError:
+            raise EnvironmentError(
+                f"{revision} is not a valid git identifier (branch name, tag name or commit id) that exists for "
+                "this model name. Check the model page at "
+                f"'https://huggingface.co/{pretrained_model_name_or_path}' for available revisions."
+            )
+        except EntryNotFoundError:
+            raise EnvironmentError(
+                f"{pretrained_model_name_or_path} does not appear to have a file named {weights_name}."
+            )
+        except HTTPError as err:
+            raise EnvironmentError(
+                f"There was a specific connection error when trying to load {pretrained_model_name_or_path}:\n{err}"
+            )
+        except ValueError:
+            raise EnvironmentError(
+                f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load this model, couldn't find it"
+                f" in the cached files and it looks like {pretrained_model_name_or_path} is not the path to a"
+                f" directory containing a file named {weights_name} or"
+                " \nCheckout your internet connection or see how to run the library in"
+                " offline mode at 'https://huggingface.co/docs/diffusers/installation#offline-mode'."
+            )
+        except EnvironmentError:
+            raise EnvironmentError(
+                f"Can't load the model for '{pretrained_model_name_or_path}'. If you were trying to load it from "
+                "'https://huggingface.co/models', make sure you don't have a local directory with the same name. "
+                f"Otherwise, make sure '{pretrained_model_name_or_path}' is the correct path to a directory "
+                f"containing a file named {weights_name}"
+            )
