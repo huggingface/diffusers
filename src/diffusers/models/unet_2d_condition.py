@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, Dict, Any
 
 import torch
 import torch.nn as nn
@@ -22,6 +22,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ..utils import BaseOutput, logging
 from .embeddings import TimestepEmbedding, Timesteps
+from .cross_attention_processors import CrossAttentionProcMixin
 from .unet_2d_blocks import (
     CrossAttnDownBlock2D,
     CrossAttnUpBlock2D,
@@ -232,9 +233,17 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         self.conv_act = nn.SiLU()
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, kernel_size=3, padding=1)
 
-    def set_cross_attention_processor(self, cross_attention_cls):
+    def set_cross_attention_processor(self, cross_attention_cls: CrossAttentionProcMixin):
         # set recursively
+        def fn_recursive_set_cross_attn_proc(module: torch.nn.Module):
+            if hasattr(module, "set_cross_attn_proc"):
+                module.set_cross_attn_proc(cross_attention_cls)
 
+            for child in module.children():
+                fn_recursive_set_cross_attn_proc(child)
+
+        for module in self.children():
+            fn_recursive_set_cross_attn_proc(module)
 
     def set_attention_slice(self, slice_size):
         r"""
