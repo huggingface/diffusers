@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
-import warnings
 from dataclasses import dataclass
 from typing import Optional
 
@@ -446,16 +445,6 @@ class BasicTransformerBlock(nn.Module):
 
         # 3. Feed-forward
         self.norm3 = nn.LayerNorm(dim)
-
-        # if xformers is installed try to use memory_efficient_attention by default
-        if is_xformers_available():
-            try:
-                self.set_use_memory_efficient_attention_xformers(True)
-            except Exception as e:
-                warnings.warn(
-                    "Could not enable memory efficient attention. Make sure xformers is installed"
-                    f" correctly and a GPU is available: {e}"
-                )
 
     def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
         if not is_xformers_available():
