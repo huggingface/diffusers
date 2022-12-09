@@ -1,3 +1,17 @@
+# Copyright 2022 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import math
 from typing import Optional
 
@@ -21,29 +35,28 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...modeling_utils import ModelMixin
 from ...models.embeddings import get_timestep_embedding
 from ...onnx_utils import OnnxRuntimeModel
-from ...pipeline_utils import DiffusionPipeline, AudioPipelineOutput
+from ...pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from ...schedulers import DDPMScheduler
-
 from .midi_utils import (
-    program_to_slakh_program,
-    audio_to_frames,
-    SAMPLE_RATE,
-    HOP_SIZE,
-    FRAME_RATE,
     DEFAULT_MAX_SHIFT_SECONDS,
-    DEFAULT_STEPS_PER_SECOND,
     DEFAULT_NUM_VELOCITY_BINS,
+    DEFAULT_STEPS_PER_SECOND,
+    FRAME_RATE,
+    HOP_SIZE,
+    SAMPLE_RATE,
     TARGET_FEATURE_LENGTH,
-    note_sequence_to_onsets_and_offsets_and_programs,
     Codec,
     EventRange,
-    encode_and_index_events,
     NoteEncodingState,
-    note_event_data_to_events,
-    note_encoding_state_to_events,
     NoteRepresentationConfig,
-    note_representation_processor_chain,
     Tokenizer,
+    audio_to_frames,
+    encode_and_index_events,
+    note_encoding_state_to_events,
+    note_event_data_to_events,
+    note_representation_processor_chain,
+    note_sequence_to_onsets_and_offsets_and_programs,
+    program_to_slakh_program,
 )
 
 
