@@ -18,6 +18,7 @@ from transformers.models.t5.modeling_t5 import (
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...modeling_utils import ModelMixin
 from ...models.embeddings import get_timestep_embedding
+from ...onnx_utils import OnnxRuntimeModel
 from ...pipeline_utils import DiffusionPipeline, MelPipelineOutput
 from ...schedulers import DDPMScheduler
 
@@ -460,6 +461,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
         continuous_encoder: SpectrogramContEncoder,
         decoder: T5FilmDecoder,
         scheduler: DDPMScheduler,
+        melgan: OnnxRuntimeModel,
     ) -> None:
         super().__init__()
 
@@ -468,7 +470,11 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
         self.max_value = 4.0  # Largest value for most examples
 
         self.register_modules(
-            notes_encoder=notes_encoder, continuous_encoder=continuous_encoder, decoder=decoder, scheduler=scheduler
+            notes_encoder=notes_encoder,
+            continuous_encoder=continuous_encoder,
+            decoder=decoder,
+            scheduler=scheduler,
+            melgan=melgan,
         )
 
     def scale_features(self, features, output_range=(-1.0, 1.0), clip=False):

@@ -5,7 +5,7 @@ import os
 import torch
 import torch.nn as nn
 
-from diffusers import DDPMScheduler, SpectrogramDiffusionPipeline
+from diffusers import DDPMScheduler, SpectrogramDiffusionPipeline, OnnxRuntimeModel
 from diffusers.pipelines.spectrogram_diffusion import SpectrogramContEncoder, SpectrogramNotesEncoder, T5FilmDecoder
 from music_spectrogram_diffusion import inference
 from t5x import checkpoints
@@ -179,8 +179,14 @@ def main(args):
     continuous_encoder = load_continuous_encoder(t5_checkpoint["target"]["continuous_encoder"], continuous_encoder)
     decoder = load_decoder(t5_checkpoint["target"]["decoder"], decoder)
 
+    melgan = OnnxRuntimeModel.from_pretrained("kashif/soundstream_mel_decoder")
+
     pipe = SpectrogramDiffusionPipeline(
-        notes_encoder=notes_encoder, continuous_encoder=continuous_encoder, decoder=decoder, scheduler=scheduler
+        notes_encoder=notes_encoder,
+        continuous_encoder=continuous_encoder,
+        decoder=decoder,
+        scheduler=scheduler,
+        melgan=melgan,
     )
     if args.save:
         pipe.save_pretrained(args.output_path)
