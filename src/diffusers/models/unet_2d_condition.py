@@ -232,6 +232,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         self.conv_act = nn.SiLU()
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, kernel_size=3, padding=1)
 
+    def set_cross_attention_class(self, cross_attention_cls):
+        # set recursively
+
+
     def set_attention_slice(self, slice_size):
         r"""
         Enable sliced attention computation.
@@ -307,6 +311,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
         class_labels: Optional[torch.Tensor] = None,
+        cross_attention_inputs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[UNet2DConditionOutput, Tuple]:
         r"""
@@ -382,6 +387,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                     hidden_states=sample,
                     temb=emb,
                     encoder_hidden_states=encoder_hidden_states,
+                    cross_attention_inputs=cross_attention_inputs,
                 )
             else:
                 sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
@@ -389,7 +395,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             down_block_res_samples += res_samples
 
         # 4. mid
-        sample = self.mid_block(sample, emb, encoder_hidden_states=encoder_hidden_states)
+        sample = self.mid_block(sample, emb, encoder_hidden_states=encoder_hidden_states, cross_attention_inputs=cross_attention_inputs)
 
         # 5. up
         for i, upsample_block in enumerate(self.up_blocks):
@@ -409,6 +415,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
                     encoder_hidden_states=encoder_hidden_states,
+                    cross_attention_inputs=cross_attention_inputs,
                     upsample_size=upsample_size,
                 )
             else:
