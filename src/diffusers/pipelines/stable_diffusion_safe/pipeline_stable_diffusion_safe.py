@@ -182,51 +182,6 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
         """
         self._safety_text_concept = concept
 
-    def enable_xformers_memory_efficient_attention(self):
-        r"""
-        Enable memory efficient attention as implemented in xformers.
-
-        When this option is enabled, you should observe lower GPU memory usage and a potential speed up at inference
-        time. Speed up at training time is not guaranteed.
-
-        Warning: When Memory Efficient Attention and Sliced attention are both enabled, the Memory Efficient Attention
-        is used.
-        """
-        self.unet.set_use_memory_efficient_attention_xformers(True)
-
-    def disable_xformers_memory_efficient_attention(self):
-        r"""
-        Disable memory efficient attention as implemented in xformers.
-        """
-        self.unet.set_use_memory_efficient_attention_xformers(False)
-
-    def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
-        r"""
-        Enable sliced attention computation.
-
-        When this option is enabled, the attention module will split the input tensor in slices, to compute attention
-        in several steps. This is useful to save some memory in exchange for a small speed decrease.
-
-        Args:
-            slice_size (`str` or `int`, *optional*, defaults to `"auto"`):
-                When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
-                a number is provided, uses as many slices as `attention_head_dim // slice_size`. In this case,
-                `attention_head_dim` must be a multiple of `slice_size`.
-        """
-        if slice_size == "auto":
-            # half the attention head size is usually a good trade-off between
-            # speed and memory
-            slice_size = self.unet.config.attention_head_dim // 2
-        self.unet.set_attention_slice(slice_size)
-
-    def disable_attention_slicing(self):
-        r"""
-        Disable sliced attention computation. If `enable_attention_slicing` was previously invoked, this method will go
-        back to computing attention in one step.
-        """
-        # set slice_size = `None` to disable `attention slicing`
-        self.enable_attention_slicing(None)
-
     def enable_sequential_cpu_offload(self):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
@@ -729,7 +684,7 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
                 # call the callback, if provided
-                if (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0:
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)

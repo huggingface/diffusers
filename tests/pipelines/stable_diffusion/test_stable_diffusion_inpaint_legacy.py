@@ -35,13 +35,11 @@ from diffusers.utils.testing_utils import load_numpy, require_torch_gpu
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
-from ...test_pipelines_common import PipelineTesterMixin
-
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class StableDiffusionInpaintLegacyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionInpaintLegacyPipelineFastTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -191,7 +189,7 @@ class StableDiffusionInpaintLegacyPipelineFastTests(PipelineTesterMixin, unittes
             guidance_scale=6.0,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             mask_image=mask_image,
         )
 
@@ -204,7 +202,7 @@ class StableDiffusionInpaintLegacyPipelineFastTests(PipelineTesterMixin, unittes
             guidance_scale=6.0,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             mask_image=mask_image,
             return_dict=False,
         )[0]
@@ -252,7 +250,7 @@ class StableDiffusionInpaintLegacyPipelineFastTests(PipelineTesterMixin, unittes
             guidance_scale=6.0,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             mask_image=mask_image,
         )
 
@@ -295,7 +293,7 @@ class StableDiffusionInpaintLegacyPipelineFastTests(PipelineTesterMixin, unittes
             prompt,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             mask_image=mask_image,
         ).images
 
@@ -307,7 +305,7 @@ class StableDiffusionInpaintLegacyPipelineFastTests(PipelineTesterMixin, unittes
             [prompt] * batch_size,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             mask_image=mask_image,
         ).images
 
@@ -319,7 +317,7 @@ class StableDiffusionInpaintLegacyPipelineFastTests(PipelineTesterMixin, unittes
             prompt,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             mask_image=mask_image,
             num_images_per_prompt=num_images_per_prompt,
         ).images
@@ -332,7 +330,7 @@ class StableDiffusionInpaintLegacyPipelineFastTests(PipelineTesterMixin, unittes
             [prompt] * batch_size,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             mask_image=mask_image,
             num_images_per_prompt=num_images_per_prompt,
         ).images
@@ -374,7 +372,7 @@ class StableDiffusionInpaintLegacyPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         output = pipe(
             prompt=prompt,
-            init_image=init_image,
+            image=init_image,
             mask_image=mask_image,
             strength=0.75,
             guidance_scale=7.5,
@@ -416,7 +414,7 @@ class StableDiffusionInpaintLegacyPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         output = pipe(
             prompt=prompt,
-            init_image=init_image,
+            image=init_image,
             mask_image=mask_image,
             strength=0.75,
             guidance_scale=7.5,
@@ -474,7 +472,7 @@ class StableDiffusionInpaintLegacyPipelineIntegrationTests(unittest.TestCase):
         with torch.autocast(torch_device):
             pipe(
                 prompt=prompt,
-                init_image=init_image,
+                image=init_image,
                 mask_image=mask_image,
                 strength=0.75,
                 num_inference_steps=50,

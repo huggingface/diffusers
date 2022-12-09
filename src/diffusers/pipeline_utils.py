@@ -33,7 +33,7 @@ from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
 from .dynamic_modules_utils import get_class_from_dynamic_module
-from .hub_utils import http_user_agent
+from .hub_utils import http_user_agent, send_telemetry
 from .modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
 from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from .utils import (
@@ -188,7 +188,11 @@ class DiffusionPipeline(ConfigMixin):
             # set models
             setattr(self, name, module)
 
-    def save_pretrained(self, save_directory: Union[str, os.PathLike]):
+    def save_pretrained(
+        self,
+        save_directory: Union[str, os.PathLike],
+        safe_serialization: bool = False,
+    ):
         """
         Save all variables of the pipeline that can be saved and loaded as well as the pipelines configuration file to
         a directory. A pipeline variable can be saved and loaded if its class implements both a save and loading
@@ -197,6 +201,8 @@ class DiffusionPipeline(ConfigMixin):
         Arguments:
             save_directory (`str` or `os.PathLike`):
                 Directory to which to save. Will be created if it doesn't exist.
+            safe_serialization (`bool`, *optional*, defaults to `False`):
+                Whether to save the model using `safetensors` or the traditional PyTorch way (that uses `pickle`).
         """
         self.save_config(save_directory)
 
@@ -234,7 +240,16 @@ class DiffusionPipeline(ConfigMixin):
                     break
 
             save_method = getattr(sub_model, save_method_name)
-            save_method(os.path.join(save_directory, pipeline_component_name))
+
+            # Call the save method with the argument safe_serialization only if it's supported
+            save_method_signature = inspect.signature(save_method)
+            save_method_accept_safe = "safe_serialization" in save_method_signature.parameters
+            if save_method_accept_safe:
+                save_method(
+                    os.path.join(save_directory, pipeline_component_name), safe_serialization=safe_serialization
+                )
+            else:
+                save_method(os.path.join(save_directory, pipeline_component_name))
 
     def to(self, torch_device: Optional[Union[str, torch.device]] = None):
         if torch_device is None:
@@ -377,7 +392,8 @@ class DiffusionPipeline(ConfigMixin):
                 also tries to not use more than 1x model size in CPU memory (including peak memory) while loading the
                 model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
                 setting this argument to `True` will raise an error.
-
+            return_cached_folder (`bool`, *optional*, defaults to `False`):
+                If set to `True`, path to downloaded cached folder will be returned in addition to loaded pipeline.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load - and saveable variables - *i.e.* the pipeline components - of the
                 specific pipeline class. The overwritten components are then directly passed to the pipelines
@@ -430,33 +446,7 @@ class DiffusionPipeline(ConfigMixin):
         sess_options = kwargs.pop("sess_options", None)
         device_map = kwargs.pop("device_map", None)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
-
-        if low_cpu_mem_usage and not is_accelerate_available():
-            low_cpu_mem_usage = False
-            logger.warning(
-                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
-                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
-                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
-                " install accelerate\n```\n."
-            )
-
-        if device_map is not None and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `device_map=None`."
-            )
-
-        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `low_cpu_mem_usage=False`."
-            )
-
-        if low_cpu_mem_usage is False and device_map is not None:
-            raise ValueError(
-                f"You cannot set `low_cpu_mem_usage` to False while using device_map={device_map} for loading and"
-                " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
-            )
+        return_cached_folder = kwargs.pop("return_cached_folder", False)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -487,8 +477,9 @@ class DiffusionPipeline(ConfigMixin):
             else:
                 requested_pipeline_class = config_dict.get("_class_name", cls.__name__)
             user_agent = {"pipeline_class": requested_pipeline_class}
-            if custom_pipeline is not None:
+            if custom_pipeline is not None and not custom_pipeline.endswith(".py"):
                 user_agent["custom_pipeline"] = custom_pipeline
+
             user_agent = http_user_agent(user_agent)
 
             if is_safetensors_available():
@@ -513,8 +504,16 @@ class DiffusionPipeline(ConfigMixin):
                 ignore_patterns=ignore_patterns,
                 user_agent=user_agent,
             )
+            send_telemetry(
+                {"pipeline_class": requested_pipeline_class, "pipeline_path": "hub", "framework": "pytorch"},
+                name="diffusers_from_pretrained",
+            )
         else:
             cached_folder = pretrained_model_name_or_path
+            send_telemetry(
+                {"pipeline_class": cls.__name__, "pipeline_path": "local", "framework": "pytorch"},
+                name="diffusers_from_pretrained",
+            )
 
         config_dict = cls.load_config(cached_folder)
 
@@ -529,9 +528,7 @@ class DiffusionPipeline(ConfigMixin):
             else:
                 file_name = CUSTOM_PIPELINE_FILE_NAME
 
-            pipeline_class = get_class_from_dynamic_module(
-                custom_pipeline, module_file=file_name, cache_dir=custom_pipeline
-            )
+            pipeline_class = get_class_from_dynamic_module(custom_pipeline, module_file=file_name, cache_dir=cache_dir)
         elif cls != DiffusionPipeline:
             pipeline_class = cls
         else:
@@ -583,6 +580,33 @@ class DiffusionPipeline(ConfigMixin):
         if len(unused_kwargs) > 0:
             logger.warning(
                 f"Keyword arguments {unused_kwargs} are not expected by {pipeline_class.__name__} and will be ignored."
+            )
+
+        if low_cpu_mem_usage and not is_accelerate_available():
+            low_cpu_mem_usage = False
+            logger.warning(
+                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                " install accelerate\n```\n."
+            )
+
+        if device_map is not None and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError(
+                "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `device_map=None`."
+            )
+
+        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError(
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `low_cpu_mem_usage=False`."
+            )
+
+        if low_cpu_mem_usage is False and device_map is not None:
+            raise ValueError(
+                f"You cannot set `low_cpu_mem_usage` to False while using device_map={device_map} for loading and"
+                " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
             )
 
         # import it here to avoid circular import
@@ -704,6 +728,9 @@ class DiffusionPipeline(ConfigMixin):
 
         # 5. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)
+
+        if return_cached_folder:
+            return model, cached_folder
         return model
 
     @staticmethod
@@ -784,3 +811,69 @@ class DiffusionPipeline(ConfigMixin):
 
     def set_progress_bar_config(self, **kwargs):
         self._progress_bar_config = kwargs
+
+    def enable_xformers_memory_efficient_attention(self):
+        r"""
+        Enable memory efficient attention as implemented in xformers.
+
+        When this option is enabled, you should observe lower GPU memory usage and a potential speed up at inference
+        time. Speed up at training time is not guaranteed.
+
+        Warning: When Memory Efficient Attention and Sliced attention are both enabled, the Memory Efficient Attention
+        is used.
+        """
+        self.set_use_memory_efficient_attention_xformers(True)
+
+    def disable_xformers_memory_efficient_attention(self):
+        r"""
+        Disable memory efficient attention as implemented in xformers.
+        """
+        self.set_use_memory_efficient_attention_xformers(False)
+
+    def set_use_memory_efficient_attention_xformers(self, valid: bool) -> None:
+        # Recursively walk through all the children.
+        # Any children which exposes the set_use_memory_efficient_attention_xformers method
+        # gets the message
+        def fn_recursive_set_mem_eff(module: torch.nn.Module):
+            if hasattr(module, "set_use_memory_efficient_attention_xformers"):
+                module.set_use_memory_efficient_attention_xformers(valid)
+
+            for child in module.children():
+                fn_recursive_set_mem_eff(child)
+
+        module_names, _, _ = self.extract_init_dict(dict(self.config))
+        for module_name in module_names:
+            module = getattr(self, module_name)
+            if isinstance(module, torch.nn.Module):
+                fn_recursive_set_mem_eff(module)
+
+    def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
+        r"""
+        Enable sliced attention computation.
+
+        When this option is enabled, the attention module will split the input tensor in slices, to compute attention
+        in several steps. This is useful to save some memory in exchange for a small speed decrease.
+
+        Args:
+            slice_size (`str` or `int`, *optional*, defaults to `"auto"`):
+                When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
+                `"max"`, maxium amount of memory will be saved by running only one slice at a time. If a number is
+                provided, uses as many slices as `attention_head_dim // slice_size`. In this case, `attention_head_dim`
+                must be a multiple of `slice_size`.
+        """
+        self.set_attention_slice(slice_size)
+
+    def disable_attention_slicing(self):
+        r"""
+        Disable sliced attention computation. If `enable_attention_slicing` was previously invoked, this method will go
+        back to computing attention in one step.
+        """
+        # set slice_size = `None` to disable `attention slicing`
+        self.enable_attention_slicing(None)
+
+    def set_attention_slice(self, slice_size: Optional[int]):
+        module_names, _, _ = self.extract_init_dict(dict(self.config))
+        for module_name in module_names:
+            module = getattr(self, module_name)
+            if isinstance(module, torch.nn.Module) and hasattr(module, "set_attention_slice"):
+                module.set_attention_slice(slice_size)

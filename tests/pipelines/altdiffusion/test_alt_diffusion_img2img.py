@@ -29,13 +29,11 @@ from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_d
 from diffusers.utils.testing_utils import require_torch_gpu
 from transformers import XLMRobertaTokenizer
 
-from ...test_pipelines_common import PipelineTesterMixin
-
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class AltDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -141,7 +139,7 @@ class AltDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
             guidance_scale=6.0,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
         )
 
         image = output.images
@@ -153,7 +151,7 @@ class AltDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
             guidance_scale=6.0,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             return_dict=False,
         )[0]
 
@@ -204,7 +202,7 @@ class AltDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
             generator=generator,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
         ).images
 
         assert image.shape == (1, 32, 32, 3)
@@ -243,7 +241,7 @@ class AltDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         output = pipe(
             prompt=prompt,
-            init_image=init_image,
+            image=init_image,
             strength=0.75,
             guidance_scale=7.5,
             generator=generator,

@@ -58,6 +58,8 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
         sd_pipe = OnnxStableDiffusionPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4",
             revision="onnx",
+            safety_checker=None,
+            feature_extractor=None,
             provider=self.gpu_provider,
             sess_options=self.gpu_options,
         )
@@ -82,6 +84,8 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
             "runwayml/stable-diffusion-v1-5",
             revision="onnx",
             scheduler=ddim_scheduler,
+            safety_checker=None,
+            feature_extractor=None,
             provider=self.gpu_provider,
             sess_options=self.gpu_options,
         )
@@ -105,6 +109,8 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
             "runwayml/stable-diffusion-v1-5",
             revision="onnx",
             scheduler=lms_scheduler,
+            safety_checker=None,
+            feature_extractor=None,
             provider=self.gpu_provider,
             sess_options=self.gpu_options,
         )
@@ -147,6 +153,8 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
         pipe = OnnxStableDiffusionPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5",
             revision="onnx",
+            safety_checker=None,
+            feature_extractor=None,
             provider=self.gpu_provider,
             sess_options=self.gpu_options,
         )
@@ -170,9 +178,10 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
         pipe = OnnxStableDiffusionPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5",
             revision="onnx",
+            safety_checker=None,
+            feature_extractor=None,
             provider=self.gpu_provider,
             sess_options=self.gpu_options,
-            safety_checker=None,
         )
         assert isinstance(pipe, OnnxStableDiffusionPipeline)
         assert pipe.safety_checker is None

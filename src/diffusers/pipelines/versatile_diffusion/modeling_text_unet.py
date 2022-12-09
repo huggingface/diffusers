@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -31,6 +31,7 @@ def get_down_block(
     dual_cross_attention=False,
     use_linear_projection=False,
     only_cross_attention=False,
+    upcast_attention=False,
 ):
     down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
     if down_block_type == "DownBlockFlat":
@@ -83,6 +84,7 @@ def get_up_block(
     dual_cross_attention=False,
     use_linear_projection=False,
     only_cross_attention=False,
+    upcast_attention=False,
 ):
     up_block_type = up_block_type[7:] if up_block_type.startswith("UNetRes") else up_block_type
     if up_block_type == "UpBlockFlat":
@@ -189,6 +191,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         dual_cross_attention: bool = False,
         use_linear_projection: bool = False,
         num_class_embeds: Optional[int] = None,
+        upcast_attention: bool = False,
     ):
         super().__init__()
 
@@ -241,6 +244,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 dual_cross_attention=dual_cross_attention,
                 use_linear_projection=use_linear_projection,
                 only_cross_attention=only_cross_attention[i],
+                upcast_attention=upcast_attention,
             )
             self.down_blocks.append(down_block)
 
@@ -257,6 +261,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             resnet_groups=norm_num_groups,
             dual_cross_attention=dual_cross_attention,
             use_linear_projection=use_linear_projection,
+            upcast_attention=upcast_attention,
         )
 
         # count how many layers upsample the images
@@ -297,6 +302,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 dual_cross_attention=dual_cross_attention,
                 use_linear_projection=use_linear_projection,
                 only_cross_attention=only_cross_attention[i],
+                upcast_attention=upcast_attention,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -307,39 +313,69 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         self.conv_out = LinearMultiDim(block_out_channels[0], out_channels, kernel_size=3, padding=1)
 
     def set_attention_slice(self, slice_size):
-        head_dims = self.config.attention_head_dim
-        head_dims = [head_dims] if isinstance(head_dims, int) else head_dims
-        if slice_size is not None and any(dim % slice_size != 0 for dim in head_dims):
+        r"""
+        Enable sliced attention computation.
+
+        When this option is enabled, the attention module will split the input tensor in slices, to compute attention
+        in several steps. This is useful to save some memory in exchange for a small speed decrease.
+
+        Args:
+            slice_size (`str` or `int` or `list(int)`, *optional*, defaults to `"auto"`):
+                When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
+                `"max"`, maxium amount of memory will be saved by running only one slice at a time. If a number is
+                provided, uses as many slices as `attention_head_dim // slice_size`. In this case, `attention_head_dim`
+                must be a multiple of `slice_size`.
+        """
+        sliceable_head_dims = []
+
+        def fn_recursive_retrieve_slicable_dims(module: torch.nn.Module):
+            if hasattr(module, "set_attention_slice"):
+                sliceable_head_dims.append(module.sliceable_head_dim)
+
+            for child in module.children():
+                fn_recursive_retrieve_slicable_dims(child)
+
+        # retrieve number of attention layers
+        for module in self.children():
+            fn_recursive_retrieve_slicable_dims(module)
+
+        num_slicable_layers = len(sliceable_head_dims)
+
+        if slice_size == "auto":
+            # half the attention head size is usually a good trade-off between
+            # speed and memory
+            slice_size = [dim // 2 for dim in sliceable_head_dims]
+        elif slice_size == "max":
+            # make smallest slice possible
+            slice_size = num_slicable_layers * [1]
+
+        slice_size = num_slicable_layers * [slice_size] if not isinstance(slice_size, list) else slice_size
+
+        if len(slice_size) != len(sliceable_head_dims):
             raise ValueError(
-                f"Make sure slice_size {slice_size} is a common divisor of "
-                f"the number of heads used in cross_attention: {head_dims}"
-            )
-        if slice_size is not None and slice_size > min(head_dims):
-            raise ValueError(
-                f"slice_size {slice_size} has to be smaller or equal to "
-                f"the lowest number of heads used in cross_attention: min({head_dims}) = {min(head_dims)}"
+                f"You have provided {len(slice_size)}, but {self.config} has {len(sliceable_head_dims)} different"
+                f" attention layers. Make sure to match `len(slice_size)` to be {len(sliceable_head_dims)}."
             )
 
-        for block in self.down_blocks:
-            if hasattr(block, "attentions") and block.attentions is not None:
-                block.set_attention_slice(slice_size)
+        for i in range(len(slice_size)):
+            size = slice_size[i]
+            dim = sliceable_head_dims[i]
+            if size is not None and size > dim:
+                raise ValueError(f"size {size} has to be smaller or equal to {dim}.")
 
-        self.mid_block.set_attention_slice(slice_size)
+        # Recursively walk through all the children.
+        # Any children which exposes the set_attention_slice method
+        # gets the message
+        def fn_recursive_set_attention_slice(module: torch.nn.Module, slice_size: List[int]):
+            if hasattr(module, "set_attention_slice"):
+                module.set_attention_slice(slice_size.pop())
 
-        for block in self.up_blocks:
-            if hasattr(block, "attentions") and block.attentions is not None:
-                block.set_attention_slice(slice_size)
+            for child in module.children():
+                fn_recursive_set_attention_slice(child, slice_size)
 
-    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
-        for block in self.down_blocks:
-            if hasattr(block, "attentions") and block.attentions is not None:
-                block.set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
-
-        self.mid_block.set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
-
-        for block in self.up_blocks:
-            if hasattr(block, "attentions") and block.attentions is not None:
-                block.set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
+        reversed_slice_size = list(reversed(slice_size))
+        for module in self.children():
+            fn_recursive_set_attention_slice(module, reversed_slice_size)
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (CrossAttnDownBlockFlat, DownBlockFlat, CrossAttnUpBlockFlat, UpBlockFlat)):
@@ -357,7 +393,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         Args:
             sample (`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
             timestep (`torch.FloatTensor` or `float` or `int`): (batch) timesteps
-            encoder_hidden_states (`torch.FloatTensor`): (batch, channel, height, width) encoder hidden states
+            encoder_hidden_states (`torch.FloatTensor`): (batch, sequence_length, feature_dim) encoder hidden states
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
 
@@ -388,8 +424,14 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         timesteps = timestep
         if not torch.is_tensor(timesteps):
             # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
-            timesteps = torch.tensor([timesteps], dtype=torch.long, device=sample.device)
-        elif torch.is_tensor(timesteps) and len(timesteps.shape) == 0:
+            # This would be a good case for the `match` statement (Python 3.10+)
+            is_mps = sample.device.type == "mps"
+            if isinstance(timestep, float):
+                dtype = torch.float32 if is_mps else torch.float64
+            else:
+                dtype = torch.int32 if is_mps else torch.int64
+            timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
+        elif len(timesteps.shape) == 0:
             timesteps = timesteps[None].to(sample.device)
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
@@ -415,7 +457,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         # 3. down
         down_block_res_samples = (sample,)
         for downsample_block in self.down_blocks:
-            if hasattr(downsample_block, "attentions") and downsample_block.attentions is not None:
+            if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
                 sample, res_samples = downsample_block(
                     hidden_states=sample,
                     temb=emb,
@@ -441,7 +483,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             if not is_final_block and forward_upsample_size:
                 upsample_size = down_block_res_samples[-1].shape[2:]
 
-            if hasattr(upsample_block, "attentions") and upsample_block.attentions is not None:
+            if hasattr(upsample_block, "has_cross_attention") and upsample_block.has_cross_attention:
                 sample = upsample_block(
                     hidden_states=sample,
                     temb=emb,
@@ -680,11 +722,13 @@ class CrossAttnDownBlockFlat(nn.Module):
         dual_cross_attention=False,
         use_linear_projection=False,
         only_cross_attention=False,
+        upcast_attention=False,
     ):
         super().__init__()
         resnets = []
         attentions = []
 
+        self.has_cross_attention = True
         self.attention_type = attention_type
         self.attn_num_head_channels = attn_num_head_channels
 
@@ -715,6 +759,7 @@ class CrossAttnDownBlockFlat(nn.Module):
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
                         only_cross_attention=only_cross_attention,
+                        upcast_attention=upcast_attention,
                     )
                 )
             else:
@@ -743,27 +788,6 @@ class CrossAttnDownBlockFlat(nn.Module):
             self.downsamplers = None
 
         self.gradient_checkpointing = False
-
-    def set_attention_slice(self, slice_size):
-        head_dims = self.attn_num_head_channels
-        head_dims = [head_dims] if isinstance(head_dims, int) else head_dims
-        if slice_size is not None and any(dim % slice_size != 0 for dim in head_dims):
-            raise ValueError(
-                f"Make sure slice_size {slice_size} is a common divisor of "
-                f"the number of heads used in cross_attention: {head_dims}"
-            )
-        if slice_size is not None and slice_size > min(head_dims):
-            raise ValueError(
-                f"slice_size {slice_size} has to be smaller or equal to "
-                f"the lowest number of heads used in cross_attention: min({head_dims}) = {min(head_dims)}"
-            )
-
-        for attn in self.attentions:
-            attn._set_attention_slice(slice_size)
-
-    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
-        for attn in self.attentions:
-            attn._set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
 
     def forward(self, hidden_states, temb=None, encoder_hidden_states=None):
         output_states = ()
@@ -897,11 +921,13 @@ class CrossAttnUpBlockFlat(nn.Module):
         dual_cross_attention=False,
         use_linear_projection=False,
         only_cross_attention=False,
+        upcast_attention=False,
     ):
         super().__init__()
         resnets = []
         attentions = []
 
+        self.has_cross_attention = True
         self.attention_type = attention_type
         self.attn_num_head_channels = attn_num_head_channels
 
@@ -934,6 +960,7 @@ class CrossAttnUpBlockFlat(nn.Module):
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
                         only_cross_attention=only_cross_attention,
+                        upcast_attention=upcast_attention,
                     )
                 )
             else:
@@ -956,29 +983,6 @@ class CrossAttnUpBlockFlat(nn.Module):
             self.upsamplers = None
 
         self.gradient_checkpointing = False
-
-    def set_attention_slice(self, slice_size):
-        head_dims = self.attn_num_head_channels
-        head_dims = [head_dims] if isinstance(head_dims, int) else head_dims
-        if slice_size is not None and any(dim % slice_size != 0 for dim in head_dims):
-            raise ValueError(
-                f"Make sure slice_size {slice_size} is a common divisor of "
-                f"the number of heads used in cross_attention: {head_dims}"
-            )
-        if slice_size is not None and slice_size > min(head_dims):
-            raise ValueError(
-                f"slice_size {slice_size} has to be smaller or equal to "
-                f"the lowest number of heads used in cross_attention: min({head_dims}) = {min(head_dims)}"
-            )
-
-        for attn in self.attentions:
-            attn._set_attention_slice(slice_size)
-
-        self.gradient_checkpointing = False
-
-    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
-        for attn in self.attentions:
-            attn._set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
 
     def forward(
         self,
@@ -1039,9 +1043,11 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         cross_attention_dim=1280,
         dual_cross_attention=False,
         use_linear_projection=False,
+        upcast_attention=False,
     ):
         super().__init__()
 
+        self.has_cross_attention = True
         self.attention_type = attention_type
         self.attn_num_head_channels = attn_num_head_channels
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
@@ -1074,6 +1080,7 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
+                        upcast_attention=upcast_attention,
                     )
                 )
             else:
@@ -1104,27 +1111,6 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
 
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
-
-    def set_attention_slice(self, slice_size):
-        head_dims = self.attn_num_head_channels
-        head_dims = [head_dims] if isinstance(head_dims, int) else head_dims
-        if slice_size is not None and any(dim % slice_size != 0 for dim in head_dims):
-            raise ValueError(
-                f"Make sure slice_size {slice_size} is a common divisor of "
-                f"the number of heads used in cross_attention: {head_dims}"
-            )
-        if slice_size is not None and slice_size > min(head_dims):
-            raise ValueError(
-                f"slice_size {slice_size} has to be smaller or equal to "
-                f"the lowest number of heads used in cross_attention: min({head_dims}) = {min(head_dims)}"
-            )
-
-        for attn in self.attentions:
-            attn._set_attention_slice(slice_size)
-
-    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
-        for attn in self.attentions:
-            attn._set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
 
     def forward(self, hidden_states, temb=None, encoder_hidden_states=None):
         hidden_states = self.resnets[0](hidden_states, temb)

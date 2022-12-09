@@ -11,12 +11,11 @@ import torch.nn.functional as F
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from datasets import load_dataset
-from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel, __version__
+from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
-from diffusers.utils import deprecate
+from diffusers.utils import check_min_version
 from huggingface_hub import HfFolder, Repository, whoami
-from packaging import version
 from torchvision.transforms import (
     CenterCrop,
     Compose,
@@ -29,8 +28,11 @@ from torchvision.transforms import (
 from tqdm.auto import tqdm
 
 
+# Will error if the minimal version of diffusers is not installed. Remove at your own risks.
+check_min_version("0.10.0.dev0")
+
+
 logger = get_logger(__name__)
-diffusers_version = version.parse(version.parse(__version__).base_version)
 
 
 def _extract_into_tensor(arr, timesteps, broadcast_shape):
@@ -417,11 +419,7 @@ def main(args):
                     scheduler=noise_scheduler,
                 )
 
-                deprecate("todo: remove this check", "0.10.0", "when the most used version is >= 0.8.0")
-                if diffusers_version < version.parse("0.8.0"):
-                    generator = torch.manual_seed(0)
-                else:
-                    generator = torch.Generator(device=pipeline.device).manual_seed(0)
+                generator = torch.Generator(device=pipeline.device).manual_seed(0)
                 # run pipeline in inference (sample random noise and denoise)
                 images = pipeline(
                     generator=generator,

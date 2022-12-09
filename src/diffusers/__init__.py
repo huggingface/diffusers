@@ -1,22 +1,41 @@
+__version__ = "0.10.0"
+
+from .configuration_utils import ConfigMixin
+from .onnx_utils import OnnxRuntimeModel
 from .utils import (
+    OptionalDependencyNotAvailable,
     is_flax_available,
     is_inflect_available,
+    is_k_diffusion_available,
+    is_librosa_available,
     is_onnx_available,
     is_scipy_available,
     is_torch_available,
     is_transformers_available,
+    is_transformers_version,
     is_unidecode_available,
+    logging,
 )
 
 
-__version__ = "0.9.0"
+# Make sure `transformers` is up to date
+if is_transformers_available():
+    import transformers
 
-from .configuration_utils import ConfigMixin
-from .onnx_utils import OnnxRuntimeModel
-from .utils import logging
+    if is_transformers_version("<", "4.25.1"):
+        raise ImportError(
+            f"`diffusers` requires transformers >= 4.25.1 to function correctly, but {transformers.__version__} was"
+            " found in your environment. You can upgrade it with pip: `pip install transformers --upgrade`"
+        )
+else:
+    pass
 
-
-if is_torch_available():
+try:
+    if not is_torch_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils.dummy_pt_objects import *  # noqa F403
+else:
     from .modeling_utils import ModelMixin
     from .models import AutoencoderKL, Transformer2DModel, UNet1DModel, UNet2DConditionModel, UNet2DModel, VQModel
     from .optimization import (
@@ -45,11 +64,14 @@ if is_torch_available():
         DDIMScheduler,
         DDPMScheduler,
         DPMSolverMultistepScheduler,
+        DPMSolverSinglestepScheduler,
         EulerAncestralDiscreteScheduler,
         EulerDiscreteScheduler,
         HeunDiscreteScheduler,
         IPNDMScheduler,
         KarrasVeScheduler,
+        KDPM2AncestralDiscreteScheduler,
+        KDPM2DiscreteScheduler,
         PNDMScheduler,
         RePaintScheduler,
         SchedulerMixin,
@@ -57,20 +79,29 @@ if is_torch_available():
         VQDiffusionScheduler,
     )
     from .training_utils import EMAModel
-else:
-    from .utils.dummy_pt_objects import *  # noqa F403
 
-if is_torch_available() and is_scipy_available():
-    from .schedulers import LMSDiscreteScheduler
-else:
+try:
+    if not (is_torch_available() and is_scipy_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
     from .utils.dummy_torch_and_scipy_objects import *  # noqa F403
+else:
+    from .schedulers import LMSDiscreteScheduler
 
-if is_torch_available() and is_transformers_available():
+
+try:
+    if not (is_torch_available() and is_transformers_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
+else:
     from .pipelines import (
         AltDiffusionImg2ImgPipeline,
         AltDiffusionPipeline,
         CycleDiffusionPipeline,
         LDMTextToImagePipeline,
+        PaintByExamplePipeline,
+        StableDiffusionDepth2ImgPipeline,
         StableDiffusionImageVariationPipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
@@ -84,10 +115,21 @@ if is_torch_available() and is_transformers_available():
         VersatileDiffusionTextToImagePipeline,
         VQDiffusionPipeline,
     )
-else:
-    from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
 
-if is_torch_available() and is_transformers_available() and is_onnx_available():
+try:
+    if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils.dummy_torch_and_transformers_and_k_diffusion_objects import *  # noqa F403
+else:
+    from .pipelines import StableDiffusionKDiffusionPipeline
+
+try:
+    if not (is_torch_available() and is_transformers_available() and is_onnx_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils.dummy_torch_and_transformers_and_onnx_objects import *  # noqa F403
+else:
     from .pipelines import (
         OnnxStableDiffusionImg2ImgPipeline,
         OnnxStableDiffusionInpaintPipeline,
@@ -95,10 +137,21 @@ if is_torch_available() and is_transformers_available() and is_onnx_available():
         OnnxStableDiffusionPipeline,
         StableDiffusionOnnxPipeline,
     )
-else:
-    from .utils.dummy_torch_and_transformers_and_onnx_objects import *  # noqa F403
 
-if is_flax_available():
+try:
+    if not (is_torch_available() and is_librosa_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils.dummy_torch_and_librosa_objects import *  # noqa F403
+else:
+    from .pipelines import AudioDiffusionPipeline, Mel
+
+try:
+    if not is_flax_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils.dummy_flax_objects import *  # noqa F403
+else:
     from .modeling_flax_utils import FlaxModelMixin
     from .models.unet_2d_condition_flax import FlaxUNet2DConditionModel
     from .models.vae_flax import FlaxAutoencoderKL
@@ -113,10 +166,11 @@ if is_flax_available():
         FlaxSchedulerMixin,
         FlaxScoreSdeVeScheduler,
     )
-else:
-    from .utils.dummy_flax_objects import *  # noqa F403
 
-if is_flax_available() and is_transformers_available():
-    from .pipelines import FlaxStableDiffusionPipeline
-else:
+try:
+    if not (is_flax_available() and is_transformers_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
     from .utils.dummy_flax_and_transformers_objects import *  # noqa F403
+else:
+    from .pipelines import FlaxStableDiffusionPipeline
