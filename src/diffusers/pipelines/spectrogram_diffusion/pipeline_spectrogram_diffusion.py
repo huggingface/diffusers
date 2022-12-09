@@ -1,9 +1,11 @@
 import math
 from typing import Optional
 
+import numpy as np
 import torch
 import torch.nn as nn
 
+import note_seq
 from transformers.modeling_utils import ModuleUtilsMixin
 from transformers.models.t5.modeling_t5 import (
     T5Attention,
@@ -19,8 +21,30 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...modeling_utils import ModelMixin
 from ...models.embeddings import get_timestep_embedding
 from ...onnx_utils import OnnxRuntimeModel
-from ...pipeline_utils import DiffusionPipeline, MelPipelineOutput
+from ...pipeline_utils import DiffusionPipeline, AudioPipelineOutput
 from ...schedulers import DDPMScheduler
+
+from .midi_utils import (
+    program_to_slakh_program,
+    audio_to_frames,
+    SAMPLE_RATE,
+    HOP_SIZE,
+    FRAME_RATE,
+    DEFAULT_MAX_SHIFT_SECONDS,
+    DEFAULT_STEPS_PER_SECOND,
+    DEFAULT_NUM_VELOCITY_BINS,
+    TARGET_FEATURE_LENGTH,
+    note_sequence_to_onsets_and_offsets_and_programs,
+    Codec,
+    EventRange,
+    encode_and_index_events,
+    NoteEncodingState,
+    note_event_data_to_events,
+    note_encoding_state_to_events,
+    NoteRepresentationConfig,
+    note_representation_processor_chain,
+    Tokenizer,
+)
 
 
 class FiLMLayer(nn.Module):
@@ -468,6 +492,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
         # From MELGAN
         self.min_value = math.log(1e-5)  # Matches MelGAN training.
         self.max_value = 4.0  # Largest value for most examples
+        self.n_dims = 128
 
         self.register_modules(
             notes_encoder=notes_encoder,
@@ -526,43 +551,102 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        encoder_input_tokens,
-        encoder_continuous_inputs,
-        encoder_continuous_mask,
+        midi_file,
         generator: Optional[torch.Generator] = None,
         num_inference_steps: int = 1000,
         return_dict: bool = True,
     ):
-        target_shape = encoder_continuous_inputs.shape
-        encoder_continuous_inputs = self.scale_features(encoder_continuous_inputs, output_range=[-1.0, 1.0], clip=True)
+        ns = note_seq.midi_file_to_note_sequence(midi_file)
+        ns_sus = note_seq.apply_sustain_control_changes(ns)
 
-        encodings_and_masks = self.encode(
-            input_tokens=encoder_input_tokens,
-            continuous_inputs=encoder_continuous_inputs,
-            continuous_mask=encoder_continuous_mask,
+        for note in ns_sus.notes:
+            if not note.is_drum:
+                note.program = program_to_slakh_program(note.program)
+
+        samples = np.zeros(int(ns_sus.total_time * SAMPLE_RATE))
+
+        _, frame_times = audio_to_frames(samples, HOP_SIZE, FRAME_RATE)
+        times, values = note_sequence_to_onsets_and_offsets_and_programs(ns_sus)
+
+        codec = Codec(
+            max_shift_steps=DEFAULT_MAX_SHIFT_SECONDS * DEFAULT_STEPS_PER_SECOND,
+            steps_per_second=DEFAULT_STEPS_PER_SECOND,
+            event_ranges=[
+                EventRange("pitch", note_seq.MIN_MIDI_PITCH, note_seq.MAX_MIDI_PITCH),
+                EventRange("velocity", 0, DEFAULT_NUM_VELOCITY_BINS),
+                EventRange("tie", 0, 0),
+                EventRange("program", note_seq.MIN_MIDI_PROGRAM, note_seq.MAX_MIDI_PROGRAM),
+                EventRange("drum", note_seq.MIN_MIDI_PITCH, note_seq.MAX_MIDI_PITCH),
+            ],
+        )
+        tokenizer = Tokenizer(codec.num_classes)
+
+        events = encode_and_index_events(
+            state=NoteEncodingState(),
+            event_times=times,
+            event_values=values,
+            frame_times=frame_times,
+            codec=codec,
+            encode_event_fn=note_event_data_to_events,
+            encoding_state_to_events_fn=note_encoding_state_to_events,
         )
 
-        # Sample gaussian noise to begin loop
-        x = torch.randn(target_shape, generator=generator)
-        x = x.to(self.device)
+        note_representation_config = NoteRepresentationConfig(onsets_only=False, include_ties=True)
+        events = [note_representation_processor_chain(event, codec, note_representation_config) for event in events]
+        input_tokens = [tokenizer.encode(event["inputs"]) for event in events]
 
-        # set step values
-        self.scheduler.set_timesteps(num_inference_steps)
+        pred_mel = np.zeros([1, TARGET_FEATURE_LENGTH, self.n_dims])
+        full_pred_mel = np.zeros([1, 0, self.n_dims], np.float32)
 
-        for t in self.progress_bar(self.scheduler.timesteps):
-            output = self.decode(
-                encodings_and_masks=encodings_and_masks,
-                input_tokens=x,
-                noise_time=t / num_inference_steps,  # rescale to [0, 1)
-            )
+        for i, encoder_input_tokens in enumerate(input_tokens):
+            encoder_continuous_inputs = pred_mel[:1]
+            if i == 0:
+                # The first chunk has no previous context.
+                encoder_continuous_mask = np.zeros((1, TARGET_FEATURE_LENGTH))
+            else:
+                # The full song pipeline does not feed in a context feature, so the mask
+                # will be all 0s after the feature converter. Because we know we're
+                # feeding in a full context chunk from the previous prediction, set it
+                # to all 1s.
+                encoder_continuous_mask = np.ones((1, TARGET_FEATURE_LENGTH))
 
-            # 2. compute previous output: x_t -> x_t-1
-            x = self.scheduler.step(output, t, x, generator=generator).prev_sample
+                target_shape = encoder_continuous_inputs.shape
+                encoder_continuous_inputs = self.scale_features(
+                    encoder_continuous_inputs, output_range=[-1.0, 1.0], clip=True
+                )
 
-        mel = self.scale_to_features(x, input_range=[-1.0, 1.0])
-        mel = mel.cpu().numpy()
+                encodings_and_masks = self.encode(
+                    input_tokens=encoder_input_tokens.to(self.device),
+                    continuous_inputs=encoder_continuous_inputs.to(self.device),
+                    continuous_mask=encoder_continuous_mask.to(self.device),
+                )
+
+                # Sample gaussian noise to begin loop
+                x = torch.randn(target_shape, generator=generator)
+                x = x.to(self.device)
+
+                # set step values
+                self.scheduler.set_timesteps(num_inference_steps)
+
+                # Denoising diffusion loop
+                for t in self.progress_bar(self.scheduler.timesteps):
+                    output = self.decode(
+                        encodings_and_masks=encodings_and_masks,
+                        input_tokens=x,
+                        noise_time=t / num_inference_steps,  # rescale to [0, 1)
+                    )
+
+                    # Compute previous output: x_t -> x_t-1
+                    x = self.scheduler.step(output, t, x, generator=generator).prev_sample
+
+                mel = self.scale_to_features(x, input_range=[-1.0, 1.0])
+                pred_mel = mel.cpu().numpy()
+
+            full_pred_mel = np.concatenate([full_pred_mel, pred_mel[:1]], axis=1)
+
+        full_pred_audio = self.melgan(input_features=full_pred_mel.astype(np.float32))
 
         if not return_dict:
-            return (mel,)
+            return (full_pred_audio,)
 
-        return MelPipelineOutput(mels=mel)
+        return AudioPipelineOutput(audios=full_pred_audio)

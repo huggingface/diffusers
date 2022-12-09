@@ -9,8 +9,8 @@ import torch
 import torch.nn.functional as F
 
 
-INPUT_FEATURE_LENGTHS = 2048
-TARGET_FEATURE_LENGTHS = 256
+INPUT_FEATURE_LENGTH = 2048
+TARGET_FEATURE_LENGTH = 256
 
 SAMPLE_RATE = 16000
 HOP_SIZE = 320
@@ -116,8 +116,8 @@ class Tokenizer:
         # Add EOS token
         encoded.append(1)
 
-        # Pad to till INPUT_FEATURE_LENGTHS
-        encoded = encoded + [0] * (INPUT_FEATURE_LENGTHS - len(encoded))
+        # Pad to till INPUT_FEATURE_LENGTH
+        encoded = encoded + [0] * (INPUT_FEATURE_LENGTH - len(encoded))
 
         return encoded
 
@@ -428,9 +428,9 @@ def encode_and_index_events(
 
     events = np.array(events).astype(np.int32)
     state_events = np.array(state_events).astype(np.int32)
-    event_start_indices = segment(np.array(event_start_indices).astype(np.int32), TARGET_FEATURE_LENGTHS)
-    event_end_indices = segment(np.array(event_end_indices).astype(np.int32), TARGET_FEATURE_LENGTHS)
-    state_event_indices = segment(np.array(state_event_indices).astype(np.int32), TARGET_FEATURE_LENGTHS)
+    event_start_indices = segment(np.array(event_start_indices).astype(np.int32), TARGET_FEATURE_LENGTH)
+    event_end_indices = segment(np.array(event_end_indices).astype(np.int32), TARGET_FEATURE_LENGTH)
+    state_event_indices = segment(np.array(state_event_indices).astype(np.int32), TARGET_FEATURE_LENGTH)
 
     outputs = []
     for start_indices, end_indices, event_indices in zip(event_start_indices, event_end_indices, state_event_indices):

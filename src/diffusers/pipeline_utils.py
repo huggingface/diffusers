@@ -118,20 +118,6 @@ class AudioPipelineOutput(BaseOutput):
     audios: np.ndarray
 
 
-@dataclass
-class MelPipelineOutput(BaseOutput):
-    """
-    Output class for Mel pipelines.
-
-    Args:
-        mels (`np.ndarray`)
-            List of denoised samples of shape `(batch_size, time, num_channels)`. Numpy array present the denoised mel
-            samples of the diffusion pipeline.
-    """
-
-    mels: np.ndarray
-
-
 def is_safetensors_compatible(info) -> bool:
     filenames = set(sibling.rfilename for sibling in info.siblings)
     pt_filenames = set(filename for filename in filenames if filename.endswith(".bin"))
