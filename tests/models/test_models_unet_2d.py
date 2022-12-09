@@ -32,7 +32,7 @@ from diffusers.utils import (
 )
 from parameterized import parameterized
 
-from ...utils.import_utils import is_xformers_available
+from diffusers.utils.import_utils import is_xformers_available
 from ..test_modeling_common import ModelTesterMixin
 
 
