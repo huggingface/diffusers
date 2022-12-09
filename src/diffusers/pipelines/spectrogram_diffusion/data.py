@@ -9,6 +9,9 @@ import torch
 import torch.nn.functional as F
 
 
+INPUT_FEATURE_LENGTHS = 2048
+TARGET_FEATURE_LENGTHS = 256
+
 SAMPLE_RATE = 16000
 HOP_SIZE = 320
 FRAME_RATE = int(SAMPLE_RATE // HOP_SIZE)
@@ -109,6 +112,12 @@ class Tokenizer:
                     f"token_id {token_id} does not fall within valid range of " f"[0, {self._num_regular_tokens})"
                 )
             encoded.append(token_id + self._num_special_tokens)
+
+        # Add EOS token
+        encoded.append(1)
+
+        # Pad to till INPUT_FEATURE_LENGTHS
+        encoded = encoded + [0] * (INPUT_FEATURE_LENGTHS - len(encoded))
 
         return encoded
 
@@ -274,6 +283,11 @@ def num_velocity_bins_from_codec(codec: Codec):
     return hi - lo
 
 
+# segment an array into segments of length n
+def segment(a, n):
+    return [a[i : i + n] for i in range(0, len(a), n)]
+
+
 def velocity_to_bin(velocity, num_velocity_bins):
     if velocity == 0:
         return 0
@@ -412,16 +426,22 @@ def encode_and_index_events(
     # begins.
     event_end_indices = event_start_indices[1:] + [len(events)]
 
-    events = np.array(events)
-    state_events = np.array(state_events)
-    event_start_indices = np.array(event_start_indices)
-    event_end_indices = np.array(event_end_indices)
-    state_event_indices = np.array(state_event_indices)
+    events = np.array(events).astype(np.int32)
+    state_events = np.array(state_events).astype(np.int32)
+    event_start_indices = segment(np.array(event_start_indices).astype(np.int32), TARGET_FEATURE_LENGTHS)
+    event_end_indices = segment(np.array(event_end_indices).astype(np.int32), TARGET_FEATURE_LENGTHS)
+    state_event_indices = segment(np.array(state_event_indices).astype(np.int32), TARGET_FEATURE_LENGTHS)
 
-    return {
-        "inputs": events.astype(np.int32),
-        "event_start_indices": event_start_indices.astype(np.int32),
-        "event_end_indices": event_end_indices.astype(np.int32),
-        "state_events": state_events.astype(np.int32),
-        "state_event_indices": state_event_indices.astype(np.int32),
-    }
+    outputs = []
+    for start_indices, end_indices, event_indices in zip(event_start_indices, event_end_indices, state_event_indices):
+        outputs.append(
+            {
+                "inputs": events,
+                "event_start_indices": start_indices,
+                "event_end_indices": end_indices,
+                "state_events": state_events,
+                "state_event_indices": event_indices,
+            }
+        )
+
+    return outputs
