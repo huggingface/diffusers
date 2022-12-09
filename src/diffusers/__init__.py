@@ -18,18 +18,6 @@ from .utils import (
 )
 
 
-# Make sure `transformers` is up to date
-if is_transformers_available():
-    import transformers
-
-    if is_transformers_version("<", "4.25.1"):
-        raise ImportError(
-            f"`diffusers` requires transformers >= 4.25.1 to function correctly, but {transformers.__version__} was"
-            " found in your environment. You can upgrade it with pip: `pip install transformers --upgrade`"
-        )
-else:
-    pass
-
 try:
     if not is_torch_available():
         raise OptionalDependencyNotAvailable()
