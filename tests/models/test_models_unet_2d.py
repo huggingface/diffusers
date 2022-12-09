@@ -30,9 +30,9 @@ from diffusers.utils import (
     torch_all_close,
     torch_device,
 )
+from diffusers.utils.import_utils import is_xformers_available
 from parameterized import parameterized
 
-from diffusers.utils.import_utils import is_xformers_available
 from ..test_modeling_common import ModelTesterMixin
 
 
