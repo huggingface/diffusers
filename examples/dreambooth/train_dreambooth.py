@@ -695,6 +695,7 @@ def main(args):
                         # unwrapped and the mixed precision hooks are removed, so training crashes
                         # when the unwrapped models are used for further training.
                         # This is only supported in newer versions of `accelerate`.
+                        # TODO(Pedro, Suraj): Remove `accepts_keep_fp32_wrapper` when forcing newer accelerate versions
                         accepts_keep_fp32_wrapper = "keep_fp32_wrapper" in set(
                             inspect.signature(accelerator.unwrap_model).parameters.keys()
                         )
