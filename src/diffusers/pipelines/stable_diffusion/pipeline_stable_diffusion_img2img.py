@@ -381,11 +381,9 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
     def get_timesteps(self, num_inference_steps, strength, device):
         # get the original timestep using init_timestep
-        offset = self.scheduler.config.get("steps_offset", 0)
-        init_timestep = int(num_inference_steps * strength) + offset
-        init_timestep = min(init_timestep, num_inference_steps)
+        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
 
-        t_start = max(num_inference_steps - init_timestep + offset, 0)
+        t_start = max(num_inference_steps - init_timestep, 0)
         timesteps = self.scheduler.timesteps[t_start:]
 
         return timesteps, num_inference_steps - t_start
