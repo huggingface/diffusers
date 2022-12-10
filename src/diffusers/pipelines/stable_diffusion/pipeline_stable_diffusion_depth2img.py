@@ -323,14 +323,17 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.get_timesteps
     def get_timesteps(self, num_inference_steps, strength, device):
         # get the original timestep using init_timestep
-        offset = self.scheduler.config.get("steps_offset", 0)
-        init_timestep = int(num_inference_steps * strength) + offset
-        init_timestep = min(init_timestep, num_inference_steps)
+        if not strength < 1.0:
+            raise ValueError(f"strength={strength} is too high for the original image to be taken into account. Make sure that strength < 1.0.")
 
-        t_start = max(num_inference_steps - init_timestep + offset, 0)
+        init_timestep = int(num_inference_steps * strength)
+
+        t_start = num_inference_steps - init_timestep
+
         timesteps = self.scheduler.timesteps[t_start:]
+        latent_timestep = self.scheduler.timesteps[t_start - 1]
 
-        return timesteps, num_inference_steps - t_start
+        return timesteps, latent_timestep, num_inference_steps - t_start
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.prepare_latents
     def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
@@ -358,11 +361,11 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
             init_latents = torch.cat([init_latents] * num_images_per_prompt, dim=0)
 
         # add noise to latents using the timesteps
+        torch.manual_seed(0)
         noise = torch.randn(init_latents.shape, generator=generator, device=device, dtype=dtype)
 
         # get latents
-        init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
-        latents = init_latents
+        latents = self.scheduler.add_noise(init_latents, noise, timestep)
 
         return latents
 
