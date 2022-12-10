@@ -439,6 +439,7 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline):
         # 6. Define model function
         def model_fn(x, t):
             latent_model_input = torch.cat([x] * 2)
+            t = torch.cat([t] * 2)
 
             noise_pred = self.k_diffusion_model(latent_model_input, t, cond=text_embeddings)
 
