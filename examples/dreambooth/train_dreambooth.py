@@ -691,10 +691,10 @@ def main(args):
 
                 if global_step % args.save_steps == 0:
                     if accelerator.is_main_process:
-                        # newer versions of accelerate allow the 'keep_fp32_wrapper' arg. without passing
-                        # it, the models will be unwrapped, and when they are then used for further training,
-                        # we will crash. pass this, but only to newer versions of accelerate. fixes
-                        # https://github.com/huggingface/diffusers/issues/1566
+                        # When 'keep_fp32_wrapper' is `False` (the default), then the models are
+                        # unwrapped and the mixed precision hooks are removed, so training crashes
+                        # when the unwrapped models are used for further training.
+                        # This is only supported in newer versions of `accelerate`.
                         accepts_keep_fp32_wrapper = "keep_fp32_wrapper" in set(
                             inspect.signature(accelerator.unwrap_model).parameters.keys()
                         )
