@@ -520,7 +520,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
 
         # 6. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps, num_inference_steps, latent_timestep = self.get_timesteps(num_inference_steps, strength, device)
+        timesteps, latent_timestep, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = latent_timestep.repeat(batch_size * num_images_per_prompt)
 
         # 7. Prepare latent variables
