@@ -66,7 +66,7 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        image: Union[torch.Tensor, PIL.Image.Image],
+        image: Union[torch.Tensor, PIL.Image.Image] = None,
         batch_size: Optional[int] = 1,
         num_inference_steps: Optional[int] = 100,
         eta: Optional[float] = 0.0,
