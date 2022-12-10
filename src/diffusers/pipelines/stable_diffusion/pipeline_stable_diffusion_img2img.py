@@ -532,7 +532,6 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         latent_timestep = latent_timestep.repeat(batch_size * num_images_per_prompt)
 
         # 6. Prepare latent variables
-        torch.manual_seed(0)
         latents = self.prepare_latents(
             image, latent_timestep, batch_size, num_images_per_prompt, text_embeddings.dtype, device, generator
         )
