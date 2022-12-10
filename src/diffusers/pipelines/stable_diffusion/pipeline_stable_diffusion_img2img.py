@@ -382,7 +382,10 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
     def get_timesteps(self, num_inference_steps, strength, device):
         # get the original timestep using init_timestep
         if not strength < 1.0:
-            raise ValueError(f"strength={strength} is too high for the original image to be taken into account. Make sure that strength < 1.0.")
+            raise ValueError(
+                f"strength={strength} is too high for the original image to be taken into account. Make sure that"
+                " strength < 1.0."
+            )
 
         init_timestep = int(num_inference_steps * strength)
 
