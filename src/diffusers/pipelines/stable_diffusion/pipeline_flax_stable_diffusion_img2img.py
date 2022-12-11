@@ -107,19 +107,19 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
             feature_extractor=feature_extractor,
         )
 
-    def prepare_inputs(self, prompt: Union[str, List[str]], init_image: Union[Image.Image, List[Image.Image]]):
+    def prepare_inputs(self, prompt: Union[str, List[str]], image: Union[Image.Image, List[Image.Image]]):
         if not isinstance(prompt, (str, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
-        if not isinstance(init_image, (Image.Image, list)):
-            raise ValueError(f"init_image has to be of type `PIL.Image.Image` or list but is {type(init_image)}")
+        if not isinstance(image, (Image.Image, list)):
+            raise ValueError(f"image has to be of type `PIL.Image.Image` or list but is {type(image)}")
 
-        if isinstance(init_image, Image.Image):
-            init_image = [init_image]
-        processed_images = []
-        for img in init_image:
-            processed_images.append(preprocess(img, self.dtype))
-        processed_images = jnp.array(processed_images).squeeze()
+        if isinstance(image, Image.Image):
+            image = [image]
+        processed_image = []
+        for img in image:
+            processed_image.append(preprocess(img, self.dtype))
+        processed_image = jnp.array(processed_image).squeeze()
 
         text_input = self.tokenizer(
             prompt,
@@ -128,7 +128,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
             truncation=True,
             return_tensors="np",
         )
-        return text_input.input_ids, processed_images
+        return text_input.input_ids, processed_image
 
     def _get_has_nsfw_concepts(self, features, params):
         has_nsfw_concepts = self.safety_checker(features, params)
@@ -177,7 +177,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
     def _generate(
         self,
         prompt_ids: jnp.array,
-        init_image: jnp.array,
+        image: jnp.array,
         params: Union[Dict, FrozenDict],
         prng_seed: jax.random.PRNGKey,
         strength: float = 0.8,
@@ -205,7 +205,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
         context = jnp.concatenate([uncond_embeddings, text_embeddings])
 
         # Create init_latents
-        init_latent_dist = self.vae.apply({"params": params["vae"]}, init_image, method=self.vae.encode).latent_dist
+        init_latent_dist = self.vae.apply({"params": params["vae"]}, image, method=self.vae.encode).latent_dist
         init_latents = init_latent_dist.sample(key=prng_seed).transpose((0, 3, 1, 2))
         init_latents = 0.18215 * init_latents
         latents_shape = (batch_size, self.unet.in_channels, height // 8, width // 8)
@@ -236,7 +236,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
 
             # compute the previous noisy sample x_t -> x_t-1
             latents, scheduler_state = self.scheduler.step(scheduler_state, noise_pred, t, latents).to_tuple()
-            return latents, timestep, scheduler_state
+            return latents, timesteps, scheduler_state
 
         scheduler_state = self.scheduler.set_timesteps(
             params["scheduler"], num_inference_steps=num_inference_steps, shape=latents_shape
@@ -264,7 +264,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
     def __call__(
         self,
         prompt_ids: jnp.array,
-        init_images: jnp.array,
+        image: jnp.array,
         params: Union[Dict, FrozenDict],
         prng_seed: Union[jax.random.KeyArray, jax.Array],
         num_inference_steps: int = 50,
@@ -282,7 +282,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
         Args:
             prompt_ids (`jnp.array`):
                 The prompt or prompts to guide the image generation.
-            init_image (`jnp.array`):
+            image (`jnp.array`):
                 Array representing an image batch, that will be used as the starting point for the
                 process.
             params (`Dict` or `FrozenDict`): Dictionary containing the model parameters/weights
@@ -301,8 +301,8 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
             strength (`float`, *optional*, defaults to 0.8):
-                Conceptually, indicates how much to transform the reference `init_image`. Must be between 0 and 1.
-                `init_image` will be used as a starting point, adding more noise to it the larger the `strength`. The
+                Conceptually, indicates how much to transform the reference `image`. Must be between 0 and 1.
+                `image` will be used as a starting point, adding more noise to it the larger the `strength`. The
                 number of denoising steps depends on the amount of noise initially added. When `strength` is 1, added
                 noise will be maximum and the denoising process will run for the full number of iterations specified in
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -320,10 +320,10 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
             "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
         """
         if jit:
-            images = _p_generate(
+            image  = _p_generate(
                 self,
                 prompt_ids,
-                init_images,
+                image,
                 params,
                 prng_seed,
                 strength,
@@ -334,9 +334,9 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
                 debug,
             )
         else:
-            images = self._generate(
+            image = self._generate(
                 prompt_ids,
-                init_images,
+                image,
                 params,
                 prng_seed,
                 strength,
@@ -349,27 +349,27 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
 
         if self.safety_checker is not None:
             safety_params = params["safety_checker"]
-            images_uint8_casted = (images * 255).round().astype("uint8")
-            num_devices, batch_size = images.shape[:2]
+            image_uint8_casted = (image * 255).round().astype("uint8")
+            num_devices, batch_size = image.shape[:2]
 
-            images_uint8_casted = np.asarray(images_uint8_casted).reshape(num_devices * batch_size, height, width, 3)
-            images_uint8_casted, has_nsfw_concept = self._run_safety_checker(images_uint8_casted, safety_params, jit)
-            images = np.asarray(images)
+            image_uint8_casted = np.asarray(image_uint8_casted).reshape(num_devices * batch_size, height, width, 3)
+            image_uint8_casted, has_nsfw_concept = self._run_safety_checker(image_uint8_casted, safety_params, jit)
+            image = np.asarray(image)
 
             # block images
             if any(has_nsfw_concept):
                 for i, is_nsfw in enumerate(has_nsfw_concept):
                     if is_nsfw:
-                        images[i] = np.asarray(images_uint8_casted[i])
+                        image[i] = np.asarray(image_uint8_casted[i])
 
-            images = images.reshape(num_devices, batch_size, height, width, 3)
+            image = image.reshape(num_devices, batch_size, height, width, 3)
         else:
             has_nsfw_concept = False
 
         if not return_dict:
-            return (images, has_nsfw_concept)
+            return (image, has_nsfw_concept)
 
-        return FlaxStableDiffusionPipelineOutput(images=images, nsfw_content_detected=has_nsfw_concept)
+        return FlaxStableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
 
 
 # TODO: maybe use a config dict instead of so many static argnums
@@ -377,7 +377,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
 def _p_generate(
     pipe,
     prompt_ids,
-    init_images,
+    image,
     params,
     prng_seed,
     strength,
@@ -388,7 +388,7 @@ def _p_generate(
     debug,
 ):
     return pipe._generate(
-        prompt_ids, init_images, params, prng_seed, strength, num_inference_steps, height, width, guidance_scale, debug
+        prompt_ids, image, params, prng_seed, strength, num_inference_steps, height, width, guidance_scale, debug
     )
 
 
