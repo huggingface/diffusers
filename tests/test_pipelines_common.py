@@ -134,6 +134,9 @@ class PipelineTesterMixin:
                         len_prompt = len(value)
                         # make unequal batch sizes
                         batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
+
+                        # make last batch super long
+                        batched_inputs[name][-1] = 2000 * "very long"
                     # or else we have images
                     else:
                         batched_inputs[name] = batch_size * [value]
