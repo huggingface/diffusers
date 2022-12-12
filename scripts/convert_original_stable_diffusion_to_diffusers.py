@@ -17,6 +17,7 @@
 import argparse
 import os
 import re
+
 import torch
 
 
@@ -647,6 +648,7 @@ def convert_ldm_clip_checkpoint(checkpoint):
 
     return text_model
 
+
 textenc_conversion_lst = [
     ("cond_stage_model.model.positional_embedding", "text_model.embeddings.position_embedding.weight"),
     ("cond_stage_model.model.token_embedding.weight", "text_model.embeddings.token_embedding.weight"),
@@ -737,6 +739,7 @@ def convert_paint_by_example_checkpoint(checkpoint):
     model.uncond_vector.data = torch.nn.Parameter(checkpoint["learnable_vector"])
     return model
 
+
 def convert_open_clip_checkpoint(checkpoint):
     text_model = CLIPTextModel.from_pretrained("stabilityai/stable-diffusion-2", subfolder="text_encoder")
 
@@ -774,16 +777,6 @@ def convert_open_clip_checkpoint(checkpoint):
 
     text_model.load_state_dict(text_model_dict)
 
-    # SKIP for now - need openclip -> HF conversion script here
-    #    keys = list(checkpoint.keys())
-    #
-    #    text_model_dict = {}
-    #    for key in keys:
-    #        if key.startswith("cond_stage_model.model.transformer"):
-    #            text_model_dict[key[len("cond_stage_model.model.transformer.") :]] = checkpoint[key]
-    #
-    #    text_model.load_state_dict(text_model_dict)
-
     return text_model
 
 
@@ -808,7 +801,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--scheduler_type",
-        default="default",  # will be either PNDM (for SD 1.x) or DDPM (for SD 2.0)
+        default="pndm",
         type=str,
         help="Type of scheduler to use. Should be one of ['pndm', 'lms', 'ddim', 'euler', 'euler-ancest', 'dpm']",
     )
@@ -845,6 +838,15 @@ if __name__ == "__main__":
             " higher quality images for inference. Non-EMA weights are usually better to continue fine-tuning."
         ),
     )
+    parser.add_argument(
+        "--upcast_attn",
+        default=False,
+        type=bool,
+        help=(
+            "Whether the attention computation should always be upcasted. This is necessary when running stable"
+            " diffusion 2.1."
+        ),
+    )
     parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output model.")
     args = parser.parse_args()
 
@@ -855,6 +857,7 @@ if __name__ == "__main__":
     global_step = checkpoint["global_step"]
     checkpoint = checkpoint["state_dict"]
 
+    upcast_attention = False
     if args.original_config_file is None:
         key_name = "model.diffusion_model.input_blocks.2.1.transformer_blocks.0.attn2.to_k.weight"
 
@@ -864,6 +867,10 @@ if __name__ == "__main__":
                 "wget https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/v2-inference-v.yaml"
             )
             args.original_config_file = "./v2-inference-v.yaml"
+
+            if global_step == 110000:
+                # v2.1 needs to upcast attention
+                upcast_attention = True
         else:
             # model_type = "v1"
             os.system(
@@ -909,14 +916,6 @@ if __name__ == "__main__":
         prediction_type=prediction_type,
     )
 
-    if args.scheduler_type == "default":
-        # All of the 2.0 models use OpenCLIP and all use DDPM scheduler by default.
-        text_model_type = original_config.model.params.cond_stage_config.target.split(".")[-1]
-        if text_model_type == "FrozenOpenCLIPEmbedder":
-            args.scheduler_type = "ddim"
-        else:
-            args.scheduler_type = "pndm"
-
     if args.scheduler_type == "pndm":
         config = dict(scheduler.config)
         config["skip_prk_steps"] = True
@@ -938,6 +937,7 @@ if __name__ == "__main__":
 
     # Convert the UNet2DConditionModel model.
     unet_config = create_unet_diffusers_config(original_config, image_size=image_size)
+    unet_config["upcast_attention"] = upcast_attention
     unet = UNet2DConditionModel(**unet_config)
 
     converted_unet_checkpoint = convert_ldm_unet_checkpoint(

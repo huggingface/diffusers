@@ -5,6 +5,7 @@
 import argparse
 import os.path as osp
 import re
+
 import torch
 
 
@@ -238,9 +239,6 @@ def convert_text_enc_state_dict_v20(text_enc_dict: dict[str, torch.Tensor]):
             continue
 
         relabelled_key = textenc_pattern.sub(lambda m: protected[re.escape(m.group(0))], k)
-        #        if relabelled_key != k:
-        #            print(f"{k} -> {relabelled_key}")
-
         new_state_dict[relabelled_key] = v
 
     for k_pre, tensors in capture_qkv_weight.items():
