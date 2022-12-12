@@ -62,6 +62,8 @@ class OnnxStableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         pipe = OnnxStableDiffusionImg2ImgPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4",
             revision="onnx",
+            safety_checker=None,
+            feature_extractor=None,
             provider=self.gpu_provider,
             sess_options=self.gpu_options,
         )
@@ -100,6 +102,8 @@ class OnnxStableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
             "runwayml/stable-diffusion-v1-5",
             revision="onnx",
             scheduler=lms_scheduler,
+            safety_checker=None,
+            feature_extractor=None,
             provider=self.gpu_provider,
             sess_options=self.gpu_options,
         )
@@ -113,7 +117,7 @@ class OnnxStableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
             image=init_image,
             strength=0.75,
             guidance_scale=7.5,
-            num_inference_steps=10,
+            num_inference_steps=20,
             generator=generator,
             output_type="np",
         )
@@ -121,6 +125,6 @@ class OnnxStableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         image_slice = images[0, 255:258, 383:386, -1]
 
         assert images.shape == (1, 512, 768, 3)
-        expected_slice = np.array([0.7950, 0.7923, 0.7903, 0.5516, 0.5501, 0.5476, 0.4965, 0.4933, 0.4910])
+        expected_slice = np.array([0.8043, 0.926, 0.9581, 0.8119, 0.8954, 0.913, 0.7209, 0.7463, 0.7431])
         # TODO: lower the tolerance after finding the cause of onnxruntime reproducibility issues
         assert np.abs(image_slice.flatten() - expected_slice).max() < 2e-2
