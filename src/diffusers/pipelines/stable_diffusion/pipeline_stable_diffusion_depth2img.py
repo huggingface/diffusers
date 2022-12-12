@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
 import inspect
 from typing import Callable, List, Optional, Union
 
@@ -21,11 +22,11 @@ import torch
 import PIL
 from diffusers.utils import is_accelerate_available
 from packaging import version
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPTextModel, CLIPTokenizer, DPTFeatureExtractor, DPTForDepthEstimation
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...pipeline_utils import DiffusionPipeline
+from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import (
     DDIMScheduler,
     DPMSolverMultistepScheduler,
@@ -35,8 +36,6 @@ from ...schedulers import (
     PNDMScheduler,
 )
 from ...utils import PIL_INTERPOLATION, deprecate, logging
-from . import StableDiffusionPipelineOutput
-from .safety_checker import StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -52,7 +51,7 @@ def preprocess(image):
     return 2.0 * image - 1.0
 
 
-class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
+class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
     r"""
     Pipeline for text-guided image to image generation using Stable Diffusion.
 
@@ -73,15 +72,8 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
-        safety_checker ([`StableDiffusionSafetyChecker`]):
-            Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
-        feature_extractor ([`CLIPFeatureExtractor`]):
-            Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
-    _optional_components = ["safety_checker", "feature_extractor"]
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.__init__
     def __init__(
         self,
         vae: AutoencoderKL,
@@ -96,54 +88,10 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             EulerAncestralDiscreteScheduler,
             DPMSolverMultistepScheduler,
         ],
-        safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPFeatureExtractor,
-        requires_safety_checker: bool = True,
+        depth_estimator: DPTForDepthEstimation,
+        feature_extractor: DPTFeatureExtractor,
     ):
         super().__init__()
-
-        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
-            deprecation_message = (
-                f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
-                f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
-                "to update the config accordingly as leaving `steps_offset` might led to incorrect results"
-                " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub,"
-                " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
-                " file"
-            )
-            deprecate("steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False)
-            new_config = dict(scheduler.config)
-            new_config["steps_offset"] = 1
-            scheduler._internal_dict = FrozenDict(new_config)
-
-        if hasattr(scheduler.config, "clip_sample") and scheduler.config.clip_sample is True:
-            deprecation_message = (
-                f"The configuration file of this scheduler: {scheduler} has not set the configuration `clip_sample`."
-                " `clip_sample` should be set to False in the configuration file. Please make sure to update the"
-                " config accordingly as not setting `clip_sample` in the config might lead to incorrect results in"
-                " future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be very"
-                " nice if you could open a Pull request for the `scheduler/scheduler_config.json` file"
-            )
-            deprecate("clip_sample not set", "1.0.0", deprecation_message, standard_warn=False)
-            new_config = dict(scheduler.config)
-            new_config["clip_sample"] = False
-            scheduler._internal_dict = FrozenDict(new_config)
-
-        if safety_checker is None and requires_safety_checker:
-            logger.warning(
-                f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
-                " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
-                " results in services or applications open to the public. Both the diffusers team and Hugging Face"
-                " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
-                " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
-                " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
-            )
-
-        if safety_checker is not None and feature_extractor is None:
-            raise ValueError(
-                "Make sure to define a feature extractor when loading {self.__class__} if you want to use the safety"
-                " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
-            )
 
         is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
             version.parse(unet.config._diffusers_version).base_version
@@ -152,7 +100,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
             deprecation_message = (
                 "The configuration file of the unet has set the default `sample_size` to smaller than"
-                " 64 which seems highly unlikely. If your checkpoint is a fine-tuned version of any of the"
+                " 64 which seems highly unlikely .If you're checkpoint is a fine-tuned version of any of the"
                 " following: \n- CompVis/stable-diffusion-v1-4 \n- CompVis/stable-diffusion-v1-3 \n-"
                 " CompVis/stable-diffusion-v1-2 \n- CompVis/stable-diffusion-v1-1 \n- runwayml/stable-diffusion-v1-5"
                 " \n- runwayml/stable-diffusion-inpainting \n you should change 'sample_size' to 64 in the"
@@ -172,13 +120,11 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             tokenizer=tokenizer,
             unet=unet,
             scheduler=scheduler,
-            safety_checker=safety_checker,
+            depth_estimator=depth_estimator,
             feature_extractor=feature_extractor,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.register_to_config(requires_safety_checker=requires_safety_checker)
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
@@ -192,14 +138,9 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
+        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.depth_estimator]:
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
-
-        if self.safety_checker is not None:
-            # TODO(Patrick) - there is currently a bug with cpu offload of nn.Parameter in accelerate
-            # fix by only offloading self.safety_checker for now
-            cpu_offload(self.safety_checker.vision_model, device)
 
     @property
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
@@ -379,6 +320,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 f" {type(callback_steps)}."
             )
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.get_timesteps
     def get_timesteps(self, num_inference_steps, strength, device):
         # get the original timestep using init_timestep
         init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
@@ -388,6 +330,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
         return timesteps, num_inference_steps - t_start
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.prepare_latents
     def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
         image = image.to(device=device, dtype=dtype)
         init_latent_dist = self.vae.encode(image).latent_dist
@@ -421,11 +364,52 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
         return latents
 
+    def prepare_depth_map(self, image, depth_map, batch_size, do_classifier_free_guidance, dtype, device):
+        if isinstance(image, PIL.Image.Image):
+            width, height = image.size
+            width, height = map(lambda dim: dim - dim % 32, (width, height))  # resize to integer multiple of 32
+            image = image.resize((width, height), resample=PIL_INTERPOLATION["lanczos"])
+            width, height = image.size
+        else:
+            image = [img for img in image]
+            width, height = image[0].shape[-2:]
+
+        if depth_map is None:
+            pixel_values = self.feature_extractor(images=image, return_tensors="pt").pixel_values
+            pixel_values = pixel_values.to(device=device)
+            # The DPT-Hybrid model uses batch-norm layers which are not compatible with fp16.
+            # So we use `torch.autocast` here for half precision inference.
+            context_manger = torch.autocast("cuda", dtype=dtype) if device.type == "cuda" else contextlib.nullcontext()
+            with context_manger:
+                depth_map = self.depth_estimator(pixel_values).predicted_depth
+        else:
+            depth_map = depth_map.to(device=device, dtype=dtype)
+
+        depth_map = torch.nn.functional.interpolate(
+            depth_map.unsqueeze(1),
+            size=(height // self.vae_scale_factor, width // self.vae_scale_factor),
+            mode="bicubic",
+            align_corners=False,
+        )
+
+        depth_min = torch.amin(depth_map, dim=[1, 2, 3], keepdim=True)
+        depth_max = torch.amax(depth_map, dim=[1, 2, 3], keepdim=True)
+        depth_map = 2.0 * (depth_map - depth_min) / (depth_max - depth_min) - 1.0
+        depth_map = depth_map.to(dtype)
+
+        # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
+        if depth_map.shape[0] < batch_size:
+            depth_map = depth_map.repeat(batch_size, 1, 1, 1)
+
+        depth_map = torch.cat([depth_map] * 2) if do_classifier_free_guidance else depth_map
+        return depth_map
+
     @torch.no_grad()
     def __call__(
         self,
         prompt: Union[str, List[str]],
         image: Union[torch.FloatTensor, PIL.Image.Image],
+        depth_map: Optional[torch.FloatTensor] = None,
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
@@ -437,7 +421,6 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
-        **kwargs,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -494,10 +477,6 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
-        message = "Please use `image` instead of `init_image`."
-        init_image = deprecate("init_image", "0.12.0", message, take_from=kwargs)
-        image = init_image or image
-
         # 1. Check inputs
         self.check_inputs(prompt, strength, callback_steps)
 
@@ -514,30 +493,43 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
 
-        # 4. Preprocess image
+        # 4. Prepare depth mask
+        depth_mask = self.prepare_depth_map(
+            image,
+            depth_map,
+            batch_size * num_images_per_prompt,
+            do_classifier_free_guidance,
+            text_embeddings.dtype,
+            device,
+        )
+
+        # 5. Preprocess image
         if isinstance(image, PIL.Image.Image):
             image = preprocess(image)
+        else:
+            image = 2.0 * (image / 255.0) - 1.0
 
-        # 5. set timesteps
+        # 6. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
-        # 6. Prepare latent variables
+        # 7. Prepare latent variables
         latents = self.prepare_latents(
             image, latent_timestep, batch_size, num_images_per_prompt, text_embeddings.dtype, device, generator
         )
 
-        # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        # 8. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 8. Denoising loop
+        # 9. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                latent_model_input = torch.cat([latent_model_input, depth_mask], dim=1)
 
                 # predict the noise residual
                 noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
@@ -556,17 +548,14 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
-        # 9. Post-processing
+        # 10. Post-processing
         image = self.decode_latents(latents)
-
-        # 10. Run safety checker
-        image, has_nsfw_concept = self.run_safety_checker(image, device, text_embeddings.dtype)
 
         # 11. Convert to PIL
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
         if not return_dict:
-            return (image, has_nsfw_concept)
+            return (image,)
 
-        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+        return ImagePipelineOutput(images=image)
