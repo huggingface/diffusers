@@ -559,7 +559,7 @@ class CrossAttention(nn.Module):
             raise ValueError(f"slice_size {slice_size} has to be smaller or equal to {self.sliceable_head_dim}.")
 
         self._slice_size = slice_size
-        self.attn_fn = SlicedAttentionProc(self.heads, self.upcast_attention)
+        self.attn_proc = SlicedAttentionProc(self.heads, self.upcast_attention)
 
     def set_cross_attn_proc(self, attn_proc: CrossAttentionProcMixin):
         if not isinstance(attn_proc, CrossAttentionProcMixin):
@@ -570,7 +570,7 @@ class CrossAttention(nn.Module):
     def forward(self, hidden_states, context=None, cross_attention_kwargs=None):
         # attn
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
-        hidden_states = self.attn(hidden_states, self.to_q, self.to_k, self.to_v, context=context, **cross_attention_kwargs)
+        hidden_states = self.attn_proc(hidden_states, self.to_q, self.to_k, self.to_v, context=context, **cross_attention_kwargs)
         # linear proj
         hidden_states = self.to_out[0](hidden_states)
         # dropout
