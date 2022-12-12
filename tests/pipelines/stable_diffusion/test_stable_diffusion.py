@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import gc
+import random
 import tempfile
 import time
 import unittest
@@ -32,8 +33,8 @@ from diffusers import (
     UNet2DConditionModel,
     logging,
 )
-from diffusers.utils import load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
+from diffusers.utils import load_numpy, slow, nightly, torch_device
+from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu, floats_tensor
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from ...test_pipelines_common import PipelineTesterMixin
@@ -435,7 +436,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 @slow
 @require_torch_gpu
-class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
+class StableDiffusionPipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -710,3 +711,42 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         mem_bytes = torch.cuda.max_memory_allocated()
         # make sure that less than 2.8 GB is allocated
         assert mem_bytes < 2.8 * 10**9
+
+
+@nightly
+@require_torch_gpu
+class StableDiffusionPipelineNightlyTests(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def get_inputs(self, device, seed=0):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
+        latents = np.random.RandomState(0).standard_normal((1, 4, 64, 64)).astype(np.float32)
+        latents = torch.from_numpy(latents).to(device)
+        inputs = {
+            "prompt": "a photograph of an astronaut riding a horse",
+            "latents": latents,
+            "generator": generator,
+            "num_inference_steps": 50,
+            "guidance_scale": 7.5,
+            "output_type": "numpy",
+        }
+        return inputs
+
+    def test_stable_diffusion_1_4_pndm(self):
+        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.0856, 0.0690, 0.0358, 0.0493, 0.0607, 0.0496, 0.0517, 0.0446, 0.0346])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

@@ -58,6 +58,7 @@ if is_torch_available():
         parse_flag_from_env,
         require_torch_gpu,
         slow,
+        nightly,
         torch_all_close,
         torch_device,
     )
