@@ -108,19 +108,28 @@ def prepare_mask_and_masked_image(image, mask):
         raise TypeError(f"`mask` is a torch.Tensor but `image` (type: {type(image)} is not")
     else:
         # preprocess image
-        if isinstance(image, PIL.Image.Image):
+        if isinstance(image, (PIL.Image.Image, np.ndarray)):
             image = [image]
 
-        image = np.concatenate([np.array(i.convert("RGB"))[None, :] for i in image], axis=0)
+        if isinstance(image, list) and isinstance(image[0], PIL.Image.Image):
+            image = [np.array(i.convert("RGB"))[None, :] for i in image]
+            image = np.concatenate(image, axis=0)
+        elif isinstance(image, list) and isinstance(image[0], np.ndarray):
+            image = np.concatenate([i[None, :] for i in image], axis=0)
+
         image = image.transpose(0, 3, 1, 2)
         image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
 
         # preprocess mask
-        if isinstance(mask, PIL.Image.Image):
+        if isinstance(mask, (PIL.Image.Image, np.ndarray)):
             mask = [mask]
 
-        mask = np.concatenate([np.array(m.convert("L"))[None, None, :] for m in mask], axis=0)
-        mask = mask.astype(np.float32) / 255.0
+        if isinstance(mask, list) and isinstance(mask[0], PIL.Image.Image):
+            mask = np.concatenate([np.array(m.convert("L"))[None, None, :] for m in mask], axis=0)
+            mask = mask.astype(np.float32) / 255.0
+        elif isinstance(mask, list) and isinstance(mask[0], np.ndarray):
+            mask = np.concatenate([m[None, None, :] for m in mask], axis=0)
+
         mask[mask < 0.5] = 0
         mask[mask >= 0.5] = 1
         mask = torch.from_numpy(mask)
