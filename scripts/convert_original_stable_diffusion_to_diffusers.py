@@ -925,6 +925,8 @@ if __name__ == "__main__":
         set_alpha_to_one=False,
         prediction_type=prediction_type,
     )
+    # make sure scheduler works correctly with DDIM
+    scheduler.register_to_config(clip_sample=False)
 
     if args.scheduler_type == "pndm":
         config = dict(scheduler.config)
