@@ -377,14 +377,8 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
         return latents
 
     def prepare_depth_map(self, image, depth_map, batch_size, do_classifier_free_guidance, dtype, device):
-        if isinstance(image, PIL.Image.Image):
-            width, height = image.size
-            width, height = map(lambda dim: dim - dim % 32, (width, height))  # resize to integer multiple of 32
-            image = image.resize((width, height), resample=PIL_INTERPOLATION["lanczos"])
-            width, height = image.size
-        else:
-            image = [img for img in image]
-            width, height = image[0].shape[-2:]
+        image = [img for img in image]
+        width, height = image[0].shape[-2:]
 
         if depth_map is None:
             pixel_values = self.feature_extractor(images=image, return_tensors="pt").pixel_values
@@ -505,7 +499,10 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
 
-        # 4. Prepare depth mask
+        # 4. Preprocess image
+        image = preprocess(image)
+
+        # 5. Prepare depth mask
         depth_mask = self.prepare_depth_map(
             image,
             depth_map,
@@ -514,9 +511,6 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
             text_embeddings.dtype,
             device,
         )
-
-        # 5. Preprocess image
-        image = preprocess(image)
 
         # 6. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)

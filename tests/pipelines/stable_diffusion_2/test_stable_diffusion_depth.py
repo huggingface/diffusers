@@ -136,7 +136,9 @@ class StableDiffusiondepth2imgPipelineFastTests(PipelineTesterMixin, unittest.Te
         return components
 
     def get_dummy_inputs(self, device, seed=0):
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed))
+        image = image.cpu().permute(0, 2, 3, 1)[0]
+        image = Image.fromarray(np.uint8(image)).convert("RGB").resize((32, 32))
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
