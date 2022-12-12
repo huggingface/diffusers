@@ -1,5 +1,6 @@
 import argparse
 import hashlib
+import inspect
 import itertools
 import math
 import os
@@ -17,6 +18,7 @@ from accelerate.utils import set_seed
 from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
+from diffusers.utils.import_utils import is_xformers_available
 from huggingface_hub import HfFolder, Repository, whoami
 from PIL import Image
 from torchvision import transforms
@@ -30,11 +32,11 @@ check_min_version("0.10.0.dev0")
 logger = get_logger(__name__)
 
 
-def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str):
+def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision: str):
     text_encoder_config = PretrainedConfig.from_pretrained(
         pretrained_model_name_or_path,
         subfolder="text_encoder",
-        revision=args.revision,
+        revision=revision,
     )
     model_class = text_encoder_config.architectures[0]
 
@@ -469,7 +471,7 @@ def main(args):
         )
 
     # import correct text encoder class
-    text_encoder_cls = import_model_class_from_model_name_or_path(args.pretrained_model_name_or_path)
+    text_encoder_cls = import_model_class_from_model_name_or_path(args.pretrained_model_name_or_path, args.revision)
 
     # Load models and create wrapper for stable diffusion
     text_encoder = text_encoder_cls.from_pretrained(
@@ -487,6 +489,15 @@ def main(args):
         subfolder="unet",
         revision=args.revision,
     )
+
+    if is_xformers_available():
+        try:
+            unet.enable_xformers_memory_efficient_attention()
+        except Exception as e:
+            logger.warning(
+                "Could not enable memory efficient attention. Make sure xformers is installed"
+                f" correctly and a GPU is available: {e}"
+            )
 
     vae.requires_grad_(False)
     if not args.train_text_encoder:
@@ -680,10 +691,19 @@ def main(args):
 
                 if global_step % args.save_steps == 0:
                     if accelerator.is_main_process:
+                        # When 'keep_fp32_wrapper' is `False` (the default), then the models are
+                        # unwrapped and the mixed precision hooks are removed, so training crashes
+                        # when the unwrapped models are used for further training.
+                        # This is only supported in newer versions of `accelerate`.
+                        # TODO(Pedro, Suraj): Remove `accepts_keep_fp32_wrapper` when forcing newer accelerate versions
+                        accepts_keep_fp32_wrapper = "keep_fp32_wrapper" in set(
+                            inspect.signature(accelerator.unwrap_model).parameters.keys()
+                        )
+                        extra_args = {"keep_fp32_wrapper": True} if accepts_keep_fp32_wrapper else {}
                         pipeline = DiffusionPipeline.from_pretrained(
                             args.pretrained_model_name_or_path,
-                            unet=accelerator.unwrap_model(unet),
-                            text_encoder=accelerator.unwrap_model(text_encoder),
+                            unet=accelerator.unwrap_model(unet, **extra_args),
+                            text_encoder=accelerator.unwrap_model(text_encoder, **extra_args),
                             revision=args.revision,
                         )
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")

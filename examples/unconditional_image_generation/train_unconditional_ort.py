@@ -77,7 +77,7 @@ def main(args):
         ),
     )
     model = ORTModule(model)
-    noise_scheduler = DDPMScheduler(num_train_timesteps=1000, tensor_format="pt")
+    noise_scheduler = DDPMScheduler(num_train_timesteps=1000)
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,

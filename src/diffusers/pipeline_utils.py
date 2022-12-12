@@ -33,7 +33,7 @@ from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
 from .dynamic_modules_utils import get_class_from_dynamic_module
-from .hub_utils import http_user_agent
+from .hub_utils import http_user_agent, send_telemetry
 from .modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
 from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from .utils import (
@@ -477,7 +477,7 @@ class DiffusionPipeline(ConfigMixin):
             else:
                 requested_pipeline_class = config_dict.get("_class_name", cls.__name__)
             user_agent = {"pipeline_class": requested_pipeline_class}
-            if custom_pipeline is not None:
+            if custom_pipeline is not None and not custom_pipeline.endswith(".py"):
                 user_agent["custom_pipeline"] = custom_pipeline
 
             user_agent = http_user_agent(user_agent)
@@ -504,8 +504,16 @@ class DiffusionPipeline(ConfigMixin):
                 ignore_patterns=ignore_patterns,
                 user_agent=user_agent,
             )
+            send_telemetry(
+                {"pipeline_class": requested_pipeline_class, "pipeline_path": "hub", "framework": "pytorch"},
+                name="diffusers_from_pretrained",
+            )
         else:
             cached_folder = pretrained_model_name_or_path
+            send_telemetry(
+                {"pipeline_class": cls.__name__, "pipeline_path": "local", "framework": "pytorch"},
+                name="diffusers_from_pretrained",
+            )
 
         config_dict = cls.load_config(cached_folder)
 

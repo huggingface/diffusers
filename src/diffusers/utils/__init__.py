@@ -26,9 +26,11 @@ from .import_utils import (
     USE_TF,
     USE_TORCH,
     DummyObject,
+    OptionalDependencyNotAvailable,
     is_accelerate_available,
     is_flax_available,
     is_inflect_available,
+    is_k_diffusion_available,
     is_librosa_available,
     is_modelcards_available,
     is_onnx_available,
@@ -90,6 +92,7 @@ _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS = [
     "HeunDiscreteScheduler",
     "EulerAncestralDiscreteScheduler",
     "DPMSolverMultistepScheduler",
+    "DPMSolverSinglestepScheduler",
 ]
 
 

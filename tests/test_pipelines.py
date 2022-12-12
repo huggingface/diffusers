@@ -26,7 +26,6 @@ import torch
 
 import PIL
 import safetensors.torch
-import transformers
 from diffusers import (
     AutoencoderKL,
     DDIMPipeline,
@@ -533,9 +532,8 @@ class PipelineFastTests(unittest.TestCase):
 
             # Validate that the text encoder safetensor exists and are of the correct format
             text_encoder_path = os.path.join(tmpdirname, "text_encoder", "model.safetensors")
-            if transformers.__version__ >= "4.25.1":
-                assert os.path.exists(text_encoder_path), f"Could not find {text_encoder_path}"
-                _ = safetensors.torch.load_file(text_encoder_path)
+            assert os.path.exists(text_encoder_path), f"Could not find {text_encoder_path}"
+            _ = safetensors.torch.load_file(text_encoder_path)
 
             pipeline = StableDiffusionPipeline.from_pretrained(tmpdirname)
             assert pipeline.unet is not None
