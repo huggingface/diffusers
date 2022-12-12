@@ -172,6 +172,8 @@ class PipelineTesterMixin:
 
             assert output.shape[0] == batch_size
 
+        logger.setLevel(level=diffusers.logging.WARNING)
+
     def test_dict_tuple_outputs_equivalent(self):
         if torch_device == "mps" and self.pipeline_class in (
             DanceDiffusionPipeline,

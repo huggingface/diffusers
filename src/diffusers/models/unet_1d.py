@@ -207,13 +207,10 @@ class UNet1DModel(ModelMixin, ConfigMixin):
 
         # 1. time
         timesteps = timestep
-        batch_size = sample.shape[0]
         if not torch.is_tensor(timesteps):
             timesteps = torch.tensor([timesteps], dtype=torch.long, device=sample.device)
         elif torch.is_tensor(timesteps) and len(timesteps.shape) == 0:
             timesteps = timesteps[None].to(sample.device)
-
-        timesteps = timesteps.broadcast_to(batch_size)
 
         timestep_embed = self.time_proj(timesteps)
         if self.config.use_timestep_embedding:
@@ -221,6 +218,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         else:
             timestep_embed = timestep_embed[..., None]
             timestep_embed = timestep_embed.repeat([1, 1, sample.shape[2]]).to(sample.dtype)
+            timestep_embed = timestep_embed.broadcast_to((sample.shape[:1] + timestep_embed.shape[1:]))
 
         # 2. down
         down_block_res_samples = ()

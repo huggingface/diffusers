@@ -319,7 +319,7 @@ class StableDiffusiondepth2imgPipelineFastTests(PipelineTesterMixin, unittest.Te
 
         inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"]] * 2
-        inputs["image"] = inputs["image"].repeat(2, 1, 1, 1)
+        inputs["image"] = 2 * [inputs["image"]]
         image = sd_pipe(**inputs).images
         image_slice = image[-1, -3:, -3:, -1]
 
@@ -376,7 +376,6 @@ class StableDiffusiondepth2imgPipelineFastTests(PipelineTesterMixin, unittest.Te
 
         inputs = self.get_dummy_inputs(device)
 
-        inputs["image"] = Image.fromarray(inputs["image"][0].permute(1, 2, 0).numpy().astype(np.uint8))
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
 
