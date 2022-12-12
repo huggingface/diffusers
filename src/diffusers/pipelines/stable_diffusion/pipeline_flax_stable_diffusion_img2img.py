@@ -242,7 +242,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
         )
 
         t_start = self.get_timestep_start(num_inference_steps, strength, scheduler_state)
-        latent_timestep = scheduler_state.timesteps[t_start:t_start+1].repeat(batch_size)
+        latent_timestep = scheduler_state.timesteps[t_start : t_start + 1].repeat(batch_size)
         init_latents = self.scheduler.add_noise(init_latents, noise, latent_timestep)
         latents = init_latents
 
@@ -251,7 +251,9 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
             for i in range(t_start, len(scheduler_state.timesteps)):
                 latents, scheduler_state = loop_body(i, (latents, scheduler_state))
         else:
-            latents, _ = jax.lax.fori_loop(t_start, len(scheduler_state.timesteps), loop_body, (latents, scheduler_state))
+            latents, _ = jax.lax.fori_loop(
+                t_start, len(scheduler_state.timesteps), loop_body, (latents, scheduler_state)
+            )
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
@@ -319,7 +321,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
             "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
         """
         if jit:
-            image  = _p_generate(
+            image = _p_generate(
                 self,
                 prompt_ids,
                 image,
