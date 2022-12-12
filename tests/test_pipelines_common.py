@@ -195,7 +195,7 @@ class PipelineTesterMixin:
 
         outputs = []
         times = []
-        for num_steps in [3, 6, 9]:
+        for num_steps in [9, 6, 3]:
             inputs = self.get_dummy_inputs(torch_device)
             inputs["num_inference_steps"] = num_steps
 
@@ -209,7 +209,7 @@ class PipelineTesterMixin:
         # check that all outputs have the same shape
         self.assertTrue(all(outputs[0].shape == output.shape for output in outputs))
         # check that the inference time increases with the number of inference steps
-        self.assertTrue(all(times[i] > times[i - 1] for i in range(1, len(times))))
+        self.assertTrue(all(times[i] < times[i - 1] for i in range(1, len(times))))
 
     def test_components_function(self):
         init_components = self.get_dummy_components()

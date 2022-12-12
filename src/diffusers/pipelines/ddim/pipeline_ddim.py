@@ -46,7 +46,6 @@ class DDIMPipeline(DiffusionPipeline):
         use_clipped_model_output: Optional[bool] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""
         Args:
