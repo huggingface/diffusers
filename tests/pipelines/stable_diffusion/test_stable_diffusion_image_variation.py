@@ -127,7 +127,7 @@ class StableDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unitte
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        inputs["image"] = inputs["image"].repeat(2, 1, 1, 1)
+        inputs["image"] = 2 * [inputs["image"]]
         output = sd_pipe(**inputs)
 
         image = output.images

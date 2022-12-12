@@ -90,7 +90,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
     safety_checker: OnnxRuntimeModel
     feature_extractor: CLIPFeatureExtractor
 
-    _optional_components = ["safety_checker", "feature_extractor"]
+    _optional_components = ["safety_checker"]
 
     def __init__(
         self,
