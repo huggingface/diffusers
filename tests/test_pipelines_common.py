@@ -110,6 +110,9 @@ class PipelineTesterMixin:
         optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
 
         for param in required_parameters:
+            if param == "kwargs":
+                # kwargs can be added if arguments of pipeline call function are deprecated
+                continue
             assert param in ALLOWED_REQUIRED_ARGS
 
         optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
@@ -145,16 +148,26 @@ class PipelineTesterMixin:
                     # or else we have images
                     else:
                         batched_inputs[name] = batch_size * [value]
+                elif name == "batch_size":
+                    batched_inputs[name] = batch_size
                 else:
                     batched_inputs[name] = value
 
             batched_inputs["num_inference_steps"] = inputs["num_inference_steps"]
             batched_inputs["output_type"] = None
+
+            if self.pipeline_class.__name__ == "DanceDiffusionPipeline":
+                batched_inputs.pop("output_type")
+
             output = pipe(**batched_inputs)
 
             assert len(output[0]) == batch_size
 
             batched_inputs["output_type"] = "np"
+
+            if self.pipeline_class.__name__ == "DanceDiffusionPipeline":
+                batched_inputs.pop("output_type")
+
             output = pipe(**batched_inputs)[0]
 
             assert output.shape[0] == batch_size

@@ -497,7 +497,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
 
         # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
         if mask.shape[0] < batch_size:
-            if not batch_size % mask.shape[0]:
+            if not batch_size % mask.shape[0] == 0:
                 raise ValueError(
                     "The passed mask and the required batch size don't match. Masks are supposed to be duplicated to"
                     f" a total batch size of {batch_size}, but {mask.shape[0]} masks were passed. Make sure the number"
@@ -505,7 +505,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                 )
             mask = mask.repeat(batch_size // mask.shape[0], 1, 1, 1)
         if masked_image_latents.shape[0] < batch_size:
-            if not batch_size % masked_image_latents.shape[0]:
+            if not batch_size % masked_image_latents.shape[0] == 0:
                 raise ValueError(
                     "The passed images and the required batch size don't match. Images are supposed to be duplicated"
                     f" to a total batch size of {batch_size}, but {masked_image_latents.shape[0]} images were passed."
