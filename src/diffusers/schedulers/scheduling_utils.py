@@ -11,10 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import importlib
+import os
 from dataclasses import dataclass
-from typing import Union
+from typing import Any, Dict, Optional, Union
 
-import numpy as np
 import torch
 
 from ..utils import BaseOutput
@@ -40,86 +41,114 @@ class SchedulerOutput(BaseOutput):
 class SchedulerMixin:
     """
     Mixin containing common functions for the schedulers.
+
+    Class attributes:
+        - **_compatibles** (`List[str]`) -- A list of classes that are compatible with the parent class, so that
+          `from_config` can be used from a class different than the one used to save the config (should be overridden
+          by parent class).
     """
 
     config_name = SCHEDULER_CONFIG_NAME
-    ignore_for_config = ["tensor_format"]
+    _compatibles = []
+    has_compatibles = True
 
-    def set_format(self, tensor_format="pt"):
-        self.tensor_format = tensor_format
-        if tensor_format == "pt":
-            for key, value in vars(self).items():
-                if isinstance(value, np.ndarray):
-                    setattr(self, key, torch.from_numpy(value))
+    @classmethod
+    def from_pretrained(
+        cls,
+        pretrained_model_name_or_path: Dict[str, Any] = None,
+        subfolder: Optional[str] = None,
+        return_unused_kwargs=False,
+        **kwargs,
+    ):
+        r"""
+        Instantiate a Scheduler class from a pre-defined JSON configuration file inside a directory or Hub repo.
 
-        return self
+        Parameters:
+            pretrained_model_name_or_path (`str` or `os.PathLike`, *optional*):
+                Can be either:
 
-    def clip(self, tensor, min_value=None, max_value=None):
-        tensor_format = getattr(self, "tensor_format", "pt")
+                    - A string, the *model id* of a model repo on huggingface.co. Valid model ids should have an
+                      organization name, like `google/ddpm-celebahq-256`.
+                    - A path to a *directory* containing the schedluer configurations saved using
+                      [`~SchedulerMixin.save_pretrained`], e.g., `./my_model_directory/`.
+            subfolder (`str`, *optional*):
+                In case the relevant files are located inside a subfolder of the model repo (either remote in
+                huggingface.co or downloaded locally), you can specify the folder name here.
+            return_unused_kwargs (`bool`, *optional*, defaults to `False`):
+                Whether kwargs that are not consumed by the Python class should be returned or not.
+            cache_dir (`Union[str, os.PathLike]`, *optional*):
+                Path to a directory in which a downloaded pretrained model configuration should be cached if the
+                standard cache should not be used.
+            force_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
+                cached versions if they exist.
+            resume_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to delete incompletely received files. Will attempt to resume the download if such a
+                file exists.
+            proxies (`Dict[str, str]`, *optional*):
+                A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
+                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
+            output_loading_info(`bool`, *optional*, defaults to `False`):
+                Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
+            local_files_only(`bool`, *optional*, defaults to `False`):
+                Whether or not to only look at local files (i.e., do not try to download the model).
+            use_auth_token (`str` or *bool*, *optional*):
+                The token to use as HTTP bearer authorization for remote files. If `True`, will use the token generated
+                when running `transformers-cli login` (stored in `~/.huggingface`).
+            revision (`str`, *optional*, defaults to `"main"`):
+                The specific model version to use. It can be a branch name, a tag name, or a commit id, since we use a
+                git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
+                identifier allowed by git.
 
-        if tensor_format == "np":
-            return np.clip(tensor, min_value, max_value)
-        elif tensor_format == "pt":
-            return torch.clamp(tensor, min_value, max_value)
+        <Tip>
 
-        raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
+         It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
+         models](https://huggingface.co/docs/hub/models-gated#gated-models).
 
-    def log(self, tensor):
-        tensor_format = getattr(self, "tensor_format", "pt")
+        </Tip>
 
-        if tensor_format == "np":
-            return np.log(tensor)
-        elif tensor_format == "pt":
-            return torch.log(tensor)
+        <Tip>
 
-        raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
+        Activate the special ["offline-mode"](https://huggingface.co/transformers/installation.html#offline-mode) to
+        use this method in a firewalled environment.
 
-    def match_shape(self, values: Union[np.ndarray, torch.Tensor], broadcast_array: Union[np.ndarray, torch.Tensor]):
+        </Tip>
+
         """
-        Turns a 1-D array into an array or tensor with len(broadcast_array.shape) dims.
+        config, kwargs = cls.load_config(
+            pretrained_model_name_or_path=pretrained_model_name_or_path,
+            subfolder=subfolder,
+            return_unused_kwargs=True,
+            **kwargs,
+        )
+        return cls.from_config(config, return_unused_kwargs=return_unused_kwargs, **kwargs)
+
+    def save_pretrained(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
+        """
+        Save a scheduler configuration object to the directory `save_directory`, so that it can be re-loaded using the
+        [`~SchedulerMixin.from_pretrained`] class method.
 
         Args:
-            values: an array or tensor of values to extract.
-            broadcast_array: an array with a larger shape of K dimensions with the batch
-                dimension equal to the length of timesteps.
-        Returns:
-            a tensor of shape [batch_size, 1, ...] where the shape has K dims.
+            save_directory (`str` or `os.PathLike`):
+                Directory where the configuration JSON file will be saved (will be created if it does not exist).
         """
+        self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
 
-        tensor_format = getattr(self, "tensor_format", "pt")
-        values = values.flatten()
+    @property
+    def compatibles(self):
+        """
+        Returns all schedulers that are compatible with this scheduler
 
-        while len(values.shape) < len(broadcast_array.shape):
-            values = values[..., None]
-        if tensor_format == "pt":
-            values = values.to(broadcast_array.device)
+        Returns:
+            `List[SchedulerMixin]`: List of compatible schedulers
+        """
+        return self._get_compatibles()
 
-        return values
-
-    def norm(self, tensor):
-        tensor_format = getattr(self, "tensor_format", "pt")
-        if tensor_format == "np":
-            return np.linalg.norm(tensor)
-        elif tensor_format == "pt":
-            return torch.norm(tensor.reshape(tensor.shape[0], -1), dim=-1).mean()
-
-        raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
-
-    def randn_like(self, tensor, generator=None):
-        tensor_format = getattr(self, "tensor_format", "pt")
-        if tensor_format == "np":
-            return np.random.randn(*np.shape(tensor))
-        elif tensor_format == "pt":
-            # return torch.randn_like(tensor)
-            return torch.randn(tensor.shape, layout=tensor.layout, generator=generator).to(tensor.device)
-
-        raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
-
-    def zeros_like(self, tensor):
-        tensor_format = getattr(self, "tensor_format", "pt")
-        if tensor_format == "np":
-            return np.zeros_like(tensor)
-        elif tensor_format == "pt":
-            return torch.zeros_like(tensor)
-
-        raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
+    @classmethod
+    def _get_compatibles(cls):
+        compatible_classes_str = list(set([cls.__name__] + cls._compatibles))
+        diffusers_library = importlib.import_module(__name__.split(".")[0])
+        compatible_classes = [
+            getattr(diffusers_library, c) for c in compatible_classes_str if hasattr(diffusers_library, c)
+        ]
+        return compatible_classes

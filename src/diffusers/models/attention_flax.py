@@ -17,6 +17,22 @@ import jax.numpy as jnp
 
 
 class FlaxAttentionBlock(nn.Module):
+    r"""
+    A Flax multi-head attention module as described in: https://arxiv.org/abs/1706.03762
+
+    Parameters:
+        query_dim (:obj:`int`):
+            Input hidden states dimension
+        heads (:obj:`int`, *optional*, defaults to 8):
+            Number of heads
+        dim_head (:obj:`int`, *optional*, defaults to 64):
+            Hidden states dimension inside each head
+        dropout (:obj:`float`, *optional*, defaults to 0.0):
+            Dropout rate
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
+
+    """
     query_dim: int
     heads: int = 8
     dim_head: int = 64
@@ -74,14 +90,34 @@ class FlaxAttentionBlock(nn.Module):
 
 
 class FlaxBasicTransformerBlock(nn.Module):
+    r"""
+    A Flax transformer block layer with `GLU` (Gated Linear Unit) activation function as described in:
+    https://arxiv.org/abs/1706.03762
+
+
+    Parameters:
+        dim (:obj:`int`):
+            Inner hidden states dimension
+        n_heads (:obj:`int`):
+            Number of heads
+        d_head (:obj:`int`):
+            Hidden states dimension inside each head
+        dropout (:obj:`float`, *optional*, defaults to 0.0):
+            Dropout rate
+        only_cross_attention (`bool`, defaults to `False`):
+            Whether to only apply cross attention.
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
+    """
     dim: int
     n_heads: int
     d_head: int
     dropout: float = 0.0
+    only_cross_attention: bool = False
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
-        # self attention
+        # self attention (or cross_attention if only_cross_attention is True)
         self.attn1 = FlaxAttentionBlock(self.dim, self.n_heads, self.d_head, self.dropout, dtype=self.dtype)
         # cross attention
         self.attn2 = FlaxAttentionBlock(self.dim, self.n_heads, self.d_head, self.dropout, dtype=self.dtype)
@@ -93,7 +129,10 @@ class FlaxBasicTransformerBlock(nn.Module):
     def __call__(self, hidden_states, context, deterministic=True):
         # self attention
         residual = hidden_states
-        hidden_states = self.attn1(self.norm1(hidden_states), deterministic=deterministic)
+        if self.only_cross_attention:
+            hidden_states = self.attn1(self.norm1(hidden_states), context, deterministic=deterministic)
+        else:
+            hidden_states = self.attn1(self.norm1(hidden_states), deterministic=deterministic)
         hidden_states = hidden_states + residual
 
         # cross attention
@@ -109,59 +148,113 @@ class FlaxBasicTransformerBlock(nn.Module):
         return hidden_states
 
 
-class FlaxSpatialTransformer(nn.Module):
+class FlaxTransformer2DModel(nn.Module):
+    r"""
+    A Spatial Transformer layer with Gated Linear Unit (GLU) activation function as described in:
+    https://arxiv.org/pdf/1506.02025.pdf
+
+
+    Parameters:
+        in_channels (:obj:`int`):
+            Input number of channels
+        n_heads (:obj:`int`):
+            Number of heads
+        d_head (:obj:`int`):
+            Hidden states dimension inside each head
+        depth (:obj:`int`, *optional*, defaults to 1):
+            Number of transformers block
+        dropout (:obj:`float`, *optional*, defaults to 0.0):
+            Dropout rate
+        use_linear_projection (`bool`, defaults to `False`): tbd
+        only_cross_attention (`bool`, defaults to `False`): tbd
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
+    """
     in_channels: int
     n_heads: int
     d_head: int
     depth: int = 1
     dropout: float = 0.0
+    use_linear_projection: bool = False
+    only_cross_attention: bool = False
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
         self.norm = nn.GroupNorm(num_groups=32, epsilon=1e-5)
 
         inner_dim = self.n_heads * self.d_head
-        self.proj_in = nn.Conv(
-            inner_dim,
-            kernel_size=(1, 1),
-            strides=(1, 1),
-            padding="VALID",
-            dtype=self.dtype,
-        )
+        if self.use_linear_projection:
+            self.proj_in = nn.Dense(inner_dim, dtype=self.dtype)
+        else:
+            self.proj_in = nn.Conv(
+                inner_dim,
+                kernel_size=(1, 1),
+                strides=(1, 1),
+                padding="VALID",
+                dtype=self.dtype,
+            )
 
         self.transformer_blocks = [
-            FlaxBasicTransformerBlock(inner_dim, self.n_heads, self.d_head, dropout=self.dropout, dtype=self.dtype)
+            FlaxBasicTransformerBlock(
+                inner_dim,
+                self.n_heads,
+                self.d_head,
+                dropout=self.dropout,
+                only_cross_attention=self.only_cross_attention,
+                dtype=self.dtype,
+            )
             for _ in range(self.depth)
         ]
 
-        self.proj_out = nn.Conv(
-            inner_dim,
-            kernel_size=(1, 1),
-            strides=(1, 1),
-            padding="VALID",
-            dtype=self.dtype,
-        )
+        if self.use_linear_projection:
+            self.proj_out = nn.Dense(inner_dim, dtype=self.dtype)
+        else:
+            self.proj_out = nn.Conv(
+                inner_dim,
+                kernel_size=(1, 1),
+                strides=(1, 1),
+                padding="VALID",
+                dtype=self.dtype,
+            )
 
     def __call__(self, hidden_states, context, deterministic=True):
         batch, height, width, channels = hidden_states.shape
         residual = hidden_states
         hidden_states = self.norm(hidden_states)
-        hidden_states = self.proj_in(hidden_states)
-
-        hidden_states = hidden_states.reshape(batch, height * width, channels)
+        if self.use_linear_projection:
+            hidden_states = hidden_states.reshape(batch, height * width, channels)
+            hidden_states = self.proj_in(hidden_states)
+        else:
+            hidden_states = self.proj_in(hidden_states)
+            hidden_states = hidden_states.reshape(batch, height * width, channels)
 
         for transformer_block in self.transformer_blocks:
             hidden_states = transformer_block(hidden_states, context, deterministic=deterministic)
 
-        hidden_states = hidden_states.reshape(batch, height, width, channels)
+        if self.use_linear_projection:
+            hidden_states = self.proj_out(hidden_states)
+            hidden_states = hidden_states.reshape(batch, height, width, channels)
+        else:
+            hidden_states = hidden_states.reshape(batch, height, width, channels)
+            hidden_states = self.proj_out(hidden_states)
 
-        hidden_states = self.proj_out(hidden_states)
         hidden_states = hidden_states + residual
-
         return hidden_states
 
 
 class FlaxGluFeedForward(nn.Module):
+    r"""
+    Flax module that encapsulates two Linear layers separated by a gated linear unit activation from:
+    https://arxiv.org/abs/2002.05202
+
+    Parameters:
+        dim (:obj:`int`):
+            Inner hidden states dimension
+        dropout (:obj:`float`, *optional*, defaults to 0.0):
+            Dropout rate
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
+    """
     dim: int
     dropout: float = 0.0
     dtype: jnp.dtype = jnp.float32
@@ -179,6 +272,18 @@ class FlaxGluFeedForward(nn.Module):
 
 
 class FlaxGEGLU(nn.Module):
+    r"""
+    Flax implementation of a Linear layer followed by the variant of the gated linear unit activation function from
+    https://arxiv.org/abs/2002.05202.
+
+    Parameters:
+        dim (:obj:`int`):
+            Input hidden states dimension
+        dropout (:obj:`float`, *optional*, defaults to 0.0):
+            Dropout rate
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
+    """
     dim: int
     dropout: float = 0.0
     dtype: jnp.dtype = jnp.float32

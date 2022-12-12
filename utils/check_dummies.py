@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2020 The HuggingFace Inc. team.
+# Copyright 2022 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -38,6 +38,14 @@ class {0}(metaclass=DummyObject):
 
     def __init__(self, *args, **kwargs):
         requires_backends(self, {1})
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, {1})
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, {1})
 """
 
 
@@ -66,13 +74,15 @@ def read_init():
     backend_specific_objects = {}
     # Go through the end of the file
     while line_index < len(lines):
-        # If the line is an if is_backend_available, we grab all objects associated.
+        # If the line contains is_backend_available, we grab all objects associated with the `else` block
         backend = find_backend(lines[line_index])
         if backend is not None:
-            objects = []
-            line_index += 1
-            # Until we unindent, add backend objects to the list
             while not lines[line_index].startswith("else:"):
+                line_index += 1
+            line_index += 1
+            objects = []
+            # Until we unindent, add backend objects to the list
+            while line_index < len(lines) and len(lines[line_index]) > 1:
                 line = lines[line_index]
                 single_line_import_search = _re_single_line_import.search(line)
                 if single_line_import_search is not None:
@@ -81,7 +91,8 @@ def read_init():
                     objects.append(line[8:-2])
                 line_index += 1
 
-            backend_specific_objects[backend] = objects
+            if len(objects) > 0:
+                backend_specific_objects[backend] = objects
         else:
             line_index += 1
 
@@ -98,9 +109,10 @@ def create_dummy_object(name, backend_name):
         return DUMMY_CLASS.format(name, backend_name)
 
 
-def create_dummy_files():
+def create_dummy_files(backend_specific_objects=None):
     """Create the content of the dummy files."""
-    backend_specific_objects = read_init()
+    if backend_specific_objects is None:
+        backend_specific_objects = read_init()
     # For special correspondence backend to module name as used in the function requires_modulename
     dummy_files = {}
 

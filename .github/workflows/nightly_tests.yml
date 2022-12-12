@@ -1,0 +1,66 @@
+name: Nightly integration tests
+
+on:
+  schedule:
+    - cron: "0 0 * * *" # every day at midnight
+
+env:
+  DIFFUSERS_IS_CI: yes
+  HF_HOME: /mnt/cache
+  OMP_NUM_THREADS: 8
+  MKL_NUM_THREADS: 8
+  PYTEST_TIMEOUT: 1000
+  RUN_SLOW: yes
+
+jobs:
+  run_slow_tests_apple_m1:
+    name: Slow PyTorch MPS tests on MacOS
+    runs-on: [ self-hosted, apple-m1 ]
+
+    steps:
+      - name: Checkout diffusers
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+
+      - name: Clean checkout
+        shell: arch -arch arm64 bash {0}
+        run: |
+          git clean -fxd
+
+      - name: Setup miniconda
+        uses: ./.github/actions/setup-miniconda
+        with:
+          python-version: 3.9
+
+      - name: Install dependencies
+        shell: arch -arch arm64 bash {0}
+        run: |
+          ${CONDA_RUN} python -m pip install --upgrade pip
+          ${CONDA_RUN} python -m pip install -e .[quality,test]
+          ${CONDA_RUN} python -m pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu
+          ${CONDA_RUN} python -m pip install git+https://github.com/huggingface/accelerate
+
+      - name: Environment
+        shell: arch -arch arm64 bash {0}
+        run: |
+          ${CONDA_RUN} python utils/print_env.py
+
+      - name: Run slow PyTorch tests on M1 (MPS)
+        shell: arch -arch arm64 bash {0}
+        env:
+          HF_HOME: /System/Volumes/Data/mnt/cache
+          HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        run: |
+          ${CONDA_RUN} python -m pytest -n 1 -s -v --make-reports=tests_torch_mps tests/
+
+      - name: Failure short reports
+        if: ${{ failure() }}
+        run: cat reports/tests_torch_mps_failures_short.txt
+
+      - name: Test suite reports artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: torch_mps_test_reports
+          path: reports
