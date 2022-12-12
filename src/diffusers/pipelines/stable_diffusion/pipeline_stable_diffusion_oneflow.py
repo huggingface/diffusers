@@ -49,8 +49,7 @@ class UNetGraph(flow.nn.Graph):
         super().__init__()
         self.unet = unet
         self.config.enable_cudnn_conv_heuristic_search_algo(False)
-        # TODO: this now has negative impact on performance
-        # self.config.allow_fused_add_to_output(True)
+        self.config.allow_fuse_add_to_output(True)
 
     def build(self, latent_model_input, t, text_embeddings):
         text_embeddings = torch._C.amp_white_identity(text_embeddings)
