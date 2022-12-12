@@ -23,13 +23,11 @@ from diffusers import DDIMScheduler, LDMSuperResolutionPipeline, UNet2DModel, VQ
 from diffusers.utils import PIL_INTERPOLATION, floats_tensor, load_image, slow, torch_device
 from diffusers.utils.testing_utils import require_torch
 
-from ...test_pipelines_common import PipelineTesterMixin
-
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class LDMSuperResolutionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class LDMSuperResolutionPipelineFastTests(unittest.TestCase):
     @property
     def dummy_image(self):
         batch_size = 1

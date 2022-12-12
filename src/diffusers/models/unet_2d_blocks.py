@@ -35,6 +35,7 @@ def get_down_block(
     dual_cross_attention=False,
     use_linear_projection=False,
     only_cross_attention=False,
+    upcast_attention=False,
 ):
     down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
     if down_block_type == "DownBlock2D":
@@ -80,6 +81,7 @@ def get_down_block(
             dual_cross_attention=dual_cross_attention,
             use_linear_projection=use_linear_projection,
             only_cross_attention=only_cross_attention,
+            upcast_attention=upcast_attention,
         )
     elif down_block_type == "SkipDownBlock2D":
         return SkipDownBlock2D(
@@ -146,6 +148,7 @@ def get_up_block(
     dual_cross_attention=False,
     use_linear_projection=False,
     only_cross_attention=False,
+    upcast_attention=False,
 ):
     up_block_type = up_block_type[7:] if up_block_type.startswith("UNetRes") else up_block_type
     if up_block_type == "UpBlock2D":
@@ -178,6 +181,7 @@ def get_up_block(
             dual_cross_attention=dual_cross_attention,
             use_linear_projection=use_linear_projection,
             only_cross_attention=only_cross_attention,
+            upcast_attention=upcast_attention,
         )
     elif up_block_type == "AttnUpBlock2D":
         return AttnUpBlock2D(
@@ -335,9 +339,11 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         cross_attention_dim=1280,
         dual_cross_attention=False,
         use_linear_projection=False,
+        upcast_attention=False,
     ):
         super().__init__()
 
+        self.has_cross_attention = True
         self.attention_type = attention_type
         self.attn_num_head_channels = attn_num_head_channels
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
@@ -370,6 +376,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
+                        upcast_attention=upcast_attention,
                     )
                 )
             else:
@@ -400,23 +407,6 @@ class UNetMidBlock2DCrossAttn(nn.Module):
 
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
-
-    def set_attention_slice(self, slice_size):
-        head_dims = self.attn_num_head_channels
-        head_dims = [head_dims] if isinstance(head_dims, int) else head_dims
-        if slice_size is not None and any(dim % slice_size != 0 for dim in head_dims):
-            raise ValueError(
-                f"Make sure slice_size {slice_size} is a common divisor of "
-                f"the number of heads used in cross_attention: {head_dims}"
-            )
-        if slice_size is not None and slice_size > min(head_dims):
-            raise ValueError(
-                f"slice_size {slice_size} has to be smaller or equal to "
-                f"the lowest number of heads used in cross_attention: min({head_dims}) = {min(head_dims)}"
-            )
-
-        for attn in self.attentions:
-            attn._set_attention_slice(slice_size)
 
     def forward(self, hidden_states, temb=None, encoder_hidden_states=None):
         hidden_states = self.resnets[0](hidden_states, temb)
@@ -531,11 +521,13 @@ class CrossAttnDownBlock2D(nn.Module):
         dual_cross_attention=False,
         use_linear_projection=False,
         only_cross_attention=False,
+        upcast_attention=False,
     ):
         super().__init__()
         resnets = []
         attentions = []
 
+        self.has_cross_attention = True
         self.attention_type = attention_type
         self.attn_num_head_channels = attn_num_head_channels
 
@@ -566,6 +558,7 @@ class CrossAttnDownBlock2D(nn.Module):
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
                         only_cross_attention=only_cross_attention,
+                        upcast_attention=upcast_attention,
                     )
                 )
             else:
@@ -594,23 +587,6 @@ class CrossAttnDownBlock2D(nn.Module):
             self.downsamplers = None
 
         self.gradient_checkpointing = False
-
-    def set_attention_slice(self, slice_size):
-        head_dims = self.attn_num_head_channels
-        head_dims = [head_dims] if isinstance(head_dims, int) else head_dims
-        if slice_size is not None and any(dim % slice_size != 0 for dim in head_dims):
-            raise ValueError(
-                f"Make sure slice_size {slice_size} is a common divisor of "
-                f"the number of heads used in cross_attention: {head_dims}"
-            )
-        if slice_size is not None and slice_size > min(head_dims):
-            raise ValueError(
-                f"slice_size {slice_size} has to be smaller or equal to "
-                f"the lowest number of heads used in cross_attention: min({head_dims}) = {min(head_dims)}"
-            )
-
-        for attn in self.attentions:
-            attn._set_attention_slice(slice_size)
 
     def forward(self, hidden_states, temb=None, encoder_hidden_states=None):
         output_states = ()
@@ -1130,11 +1106,13 @@ class CrossAttnUpBlock2D(nn.Module):
         dual_cross_attention=False,
         use_linear_projection=False,
         only_cross_attention=False,
+        upcast_attention=False,
     ):
         super().__init__()
         resnets = []
         attentions = []
 
+        self.has_cross_attention = True
         self.attention_type = attention_type
         self.attn_num_head_channels = attn_num_head_channels
 
@@ -1167,6 +1145,7 @@ class CrossAttnUpBlock2D(nn.Module):
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
                         only_cross_attention=only_cross_attention,
+                        upcast_attention=upcast_attention,
                     )
                 )
             else:
@@ -1187,25 +1166,6 @@ class CrossAttnUpBlock2D(nn.Module):
             self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
-
-        self.gradient_checkpointing = False
-
-    def set_attention_slice(self, slice_size):
-        head_dims = self.attn_num_head_channels
-        head_dims = [head_dims] if isinstance(head_dims, int) else head_dims
-        if slice_size is not None and any(dim % slice_size != 0 for dim in head_dims):
-            raise ValueError(
-                f"Make sure slice_size {slice_size} is a common divisor of "
-                f"the number of heads used in cross_attention: {head_dims}"
-            )
-        if slice_size is not None and slice_size > min(head_dims):
-            raise ValueError(
-                f"slice_size {slice_size} has to be smaller or equal to "
-                f"the lowest number of heads used in cross_attention: min({head_dims}) = {min(head_dims)}"
-            )
-
-        for attn in self.attentions:
-            attn._set_attention_slice(slice_size)
 
         self.gradient_checkpointing = False
 

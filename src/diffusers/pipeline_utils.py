@@ -33,7 +33,7 @@ from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
 from .dynamic_modules_utils import get_class_from_dynamic_module
-from .hub_utils import http_user_agent
+from .hub_utils import http_user_agent, send_telemetry
 from .modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
 from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from .utils import (
@@ -477,8 +477,9 @@ class DiffusionPipeline(ConfigMixin):
             else:
                 requested_pipeline_class = config_dict.get("_class_name", cls.__name__)
             user_agent = {"pipeline_class": requested_pipeline_class}
-            if custom_pipeline is not None:
+            if custom_pipeline is not None and not custom_pipeline.endswith(".py"):
                 user_agent["custom_pipeline"] = custom_pipeline
+
             user_agent = http_user_agent(user_agent)
 
             if is_safetensors_available():
@@ -503,8 +504,16 @@ class DiffusionPipeline(ConfigMixin):
                 ignore_patterns=ignore_patterns,
                 user_agent=user_agent,
             )
+            send_telemetry(
+                {"pipeline_class": requested_pipeline_class, "pipeline_path": "hub", "framework": "pytorch"},
+                name="diffusers_from_pretrained",
+            )
         else:
             cached_folder = pretrained_model_name_or_path
+            send_telemetry(
+                {"pipeline_class": cls.__name__, "pipeline_path": "local", "framework": "pytorch"},
+                name="diffusers_from_pretrained",
+            )
 
         config_dict = cls.load_config(cached_folder)
 
@@ -519,9 +528,7 @@ class DiffusionPipeline(ConfigMixin):
             else:
                 file_name = CUSTOM_PIPELINE_FILE_NAME
 
-            pipeline_class = get_class_from_dynamic_module(
-                custom_pipeline, module_file=file_name, cache_dir=custom_pipeline
-            )
+            pipeline_class = get_class_from_dynamic_module(custom_pipeline, module_file=file_name, cache_dir=cache_dir)
         elif cls != DiffusionPipeline:
             pipeline_class = cls
         else:
@@ -839,3 +846,34 @@ class DiffusionPipeline(ConfigMixin):
             module = getattr(self, module_name)
             if isinstance(module, torch.nn.Module):
                 fn_recursive_set_mem_eff(module)
+
+    def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
+        r"""
+        Enable sliced attention computation.
+
+        When this option is enabled, the attention module will split the input tensor in slices, to compute attention
+        in several steps. This is useful to save some memory in exchange for a small speed decrease.
+
+        Args:
+            slice_size (`str` or `int`, *optional*, defaults to `"auto"`):
+                When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
+                `"max"`, maxium amount of memory will be saved by running only one slice at a time. If a number is
+                provided, uses as many slices as `attention_head_dim // slice_size`. In this case, `attention_head_dim`
+                must be a multiple of `slice_size`.
+        """
+        self.set_attention_slice(slice_size)
+
+    def disable_attention_slicing(self):
+        r"""
+        Disable sliced attention computation. If `enable_attention_slicing` was previously invoked, this method will go
+        back to computing attention in one step.
+        """
+        # set slice_size = `None` to disable `attention slicing`
+        self.enable_attention_slicing(None)
+
+    def set_attention_slice(self, slice_size: Optional[int]):
+        module_names, _, _ = self.extract_init_dict(dict(self.config))
+        for module_name in module_names:
+            module = getattr(self, module_name)
+            if isinstance(module, torch.nn.Module) and hasattr(module, "set_attention_slice"):
+                module.set_attention_slice(slice_size)

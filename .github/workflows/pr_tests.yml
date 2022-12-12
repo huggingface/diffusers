@@ -14,7 +14,6 @@ env:
   OMP_NUM_THREADS: 4
   MKL_NUM_THREADS: 4
   PYTEST_TIMEOUT: 60
-  MPS_TORCH_VERSION: 1.13.0
 
 jobs:
   run_fast_tests:
@@ -58,6 +57,7 @@ jobs:
 
     - name: Install dependencies
       run: |
+        apt-get update && apt-get install libsndfile1-dev -y
         python -m pip install -e .[quality,test]
         python -m pip install git+https://github.com/huggingface/accelerate
         python -m pip install -U git+https://github.com/huggingface/transformers
@@ -126,7 +126,7 @@ jobs:
       run: |
         ${CONDA_RUN} python -m pip install --upgrade pip
         ${CONDA_RUN} python -m pip install -e .[quality,test]
-        ${CONDA_RUN} python -m pip install --pre torch==${MPS_TORCH_VERSION} --extra-index-url https://download.pytorch.org/whl/test/cpu
+        ${CONDA_RUN} python -m pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu
         ${CONDA_RUN} python -m pip install git+https://github.com/huggingface/accelerate
         ${CONDA_RUN} python -m pip install -U git+https://github.com/huggingface/transformers
 
@@ -137,6 +137,9 @@ jobs:
 
     - name: Run fast PyTorch tests on M1 (MPS)
       shell: arch -arch arm64 bash {0}
+      env:
+        HF_HOME: /System/Volumes/Data/mnt/cache
+        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       run: |
         ${CONDA_RUN} python -m pytest -n 0 -s -v --make-reports=tests_torch_mps tests/
 
