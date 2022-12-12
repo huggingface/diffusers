@@ -70,6 +70,8 @@ class StableDiffusionOnnxInpaintLegacyPipelineIntegrationTests(unittest.TestCase
         pipe = OnnxStableDiffusionInpaintPipelineLegacy.from_pretrained(
             "CompVis/stable-diffusion-v1-4",
             revision="onnx",
+            safety_checker=None,
+            feature_extractor=None,
             provider=self.gpu_provider,
             sess_options=self.gpu_options,
         )
@@ -80,7 +82,7 @@ class StableDiffusionOnnxInpaintLegacyPipelineIntegrationTests(unittest.TestCase
         generator = np.random.RandomState(0)
         output = pipe(
             prompt=prompt,
-            init_image=init_image,
+            image=init_image,
             mask_image=mask_image,
             strength=0.75,
             guidance_scale=7.5,

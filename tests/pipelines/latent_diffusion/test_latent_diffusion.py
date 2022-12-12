@@ -22,13 +22,11 @@ from diffusers import AutoencoderKL, DDIMScheduler, LDMTextToImagePipeline, UNet
 from diffusers.utils.testing_utils import require_torch, slow, torch_device
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
-from ...test_pipelines_common import PipelineTesterMixin
-
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class LDMTextToImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class LDMTextToImagePipelineFastTests(unittest.TestCase):
     @property
     def dummy_cond_unet(self):
         torch.manual_seed(0)

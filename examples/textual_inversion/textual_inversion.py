@@ -19,6 +19,8 @@ from accelerate.utils import set_seed
 from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
+from diffusers.utils import check_min_version
+from diffusers.utils.import_utils import is_xformers_available
 from huggingface_hub import HfFolder, Repository, whoami
 
 # TODO: remove and import from diffusers.utils when the new version of diffusers is released
@@ -48,14 +50,18 @@ else:
 # ------------------------------------------------------------------------------
 
 
+# Will error if the minimal version of diffusers is not installed. Remove at your own risks.
+check_min_version("0.10.0.dev0")
+
+
 logger = get_logger(__name__)
 
 
-def save_progress(text_encoder, placeholder_token_id, accelerator, args):
+def save_progress(text_encoder, placeholder_token_id, accelerator, args, save_path):
     logger.info("Saving embeddings")
     learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_id]
     learned_embeds_dict = {args.placeholder_token: learned_embeds.detach().cpu()}
-    torch.save(learned_embeds_dict, os.path.join(args.output_dir, "learned_embeds.bin"))
+    torch.save(learned_embeds_dict, save_path)
 
 
 def parse_args():
@@ -67,11 +73,24 @@ def parse_args():
         help="Save learned_embeds.bin every X updates steps.",
     )
     parser.add_argument(
+        "--only_save_embeds",
+        action="store_true",
+        default=False,
+        help="Save only the embeddings for the new concept.",
+    )
+    parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
         default=None,
         required=True,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--revision",
+        type=str,
+        default=None,
+        required=False,
+        help="Revision of pretrained model identifier from huggingface.co/models.",
     )
     parser.add_argument(
         "--tokenizer_name",
@@ -405,9 +424,30 @@ def main():
     placeholder_token_id = tokenizer.convert_tokens_to_ids(args.placeholder_token)
 
     # Load models and create wrapper for stable diffusion
-    text_encoder = CLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder")
-    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
-    unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
+    text_encoder = CLIPTextModel.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="text_encoder",
+        revision=args.revision,
+    )
+    vae = AutoencoderKL.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="vae",
+        revision=args.revision,
+    )
+    unet = UNet2DConditionModel.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="unet",
+        revision=args.revision,
+    )
+
+    if is_xformers_available():
+        try:
+            unet.enable_xformers_memory_efficient_attention()
+        except Exception as e:
+            logger.warning(
+                "Could not enable memory efficient attention. Make sure xformers is installed"
+                f" correctly and a GPU is available: {e}"
+            )
 
     # Resize the token embeddings as we are adding new special tokens to the tokenizer
     text_encoder.resize_token_embeddings(len(tokenizer))
@@ -441,7 +481,7 @@ def main():
         eps=args.adam_epsilon,
     )
 
-    noise_scheduler = DDPMScheduler.from_config(args.pretrained_model_name_or_path, subfolder="scheduler")
+    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
 
     train_dataset = TextualInversionDataset(
         data_root=args.train_data_dir,
@@ -532,9 +572,17 @@ def main():
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0]
 
                 # Predict the noise residual
-                noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
 
-                loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
+                # Get the target for loss depending on the prediction type
+                if noise_scheduler.config.prediction_type == "epsilon":
+                    target = noise
+                elif noise_scheduler.config.prediction_type == "v_prediction":
+                    target = noise_scheduler.get_velocity(latents, noise, timesteps)
+                else:
+                    raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+
+                loss = F.mse_loss(model_pred, target, reduction="none").mean([1, 2, 3]).mean()
                 accelerator.backward(loss)
 
                 # Zero out the gradients for all token embeddings except the newly added
@@ -556,7 +604,8 @@ def main():
                 progress_bar.update(1)
                 global_step += 1
                 if global_step % args.save_steps == 0:
-                    save_progress(text_encoder, placeholder_token_id, accelerator, args)
+                    save_path = os.path.join(args.output_dir, f"learned_embeds-steps-{global_step}.bin")
+                    save_progress(text_encoder, placeholder_token_id, accelerator, args, save_path)
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
@@ -569,18 +618,25 @@ def main():
 
     # Create the pipeline using using the trained modules and save it.
     if accelerator.is_main_process:
-        pipeline = StableDiffusionPipeline(
-            text_encoder=accelerator.unwrap_model(text_encoder),
-            vae=vae,
-            unet=unet,
-            tokenizer=tokenizer,
-            scheduler=PNDMScheduler.from_config(args.pretrained_model_name_or_path, subfolder="scheduler"),
-            safety_checker=StableDiffusionSafetyChecker.from_pretrained("CompVis/stable-diffusion-safety-checker"),
-            feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
-        )
-        pipeline.save_pretrained(args.output_dir)
-        # Also save the newly trained embeddings
-        save_progress(text_encoder, placeholder_token_id, accelerator, args)
+        if args.push_to_hub and args.only_save_embeds:
+            logger.warn("Enabling full model saving because --push_to_hub=True was specified.")
+            save_full_model = True
+        else:
+            save_full_model = not args.only_save_embeds
+        if save_full_model:
+            pipeline = StableDiffusionPipeline(
+                text_encoder=accelerator.unwrap_model(text_encoder),
+                vae=vae,
+                unet=unet,
+                tokenizer=tokenizer,
+                scheduler=PNDMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler"),
+                safety_checker=StableDiffusionSafetyChecker.from_pretrained("CompVis/stable-diffusion-safety-checker"),
+                feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
+            )
+            pipeline.save_pretrained(args.output_dir)
+        # Save the newly trained embeddings
+        save_path = os.path.join(args.output_dir, "learned_embeds.bin")
+        save_progress(text_encoder, placeholder_token_id, accelerator, args, save_path)
 
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)

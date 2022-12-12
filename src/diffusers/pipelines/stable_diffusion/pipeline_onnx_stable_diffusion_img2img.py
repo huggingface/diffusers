@@ -19,7 +19,6 @@ import numpy as np
 import torch
 
 import PIL
-from packaging import version
 from transformers import CLIPFeatureExtractor, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
@@ -78,6 +77,8 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
     safety_checker: OnnxRuntimeModel
     feature_extractor: CLIPFeatureExtractor
 
+    _optional_components = ["safety_checker", "feature_extractor"]
+
     def __init__(
         self,
         vae_encoder: OnnxRuntimeModel,
@@ -134,27 +135,6 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 "Make sure to define a feature extractor when loading {self.__class__} if you want to use the safety"
                 " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
             )
-
-        is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
-            version.parse(unet.config._diffusers_version).base_version
-        ) < version.parse("0.9.0.dev0")
-        is_unet_sample_size_less_64 = hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
-        if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
-            deprecation_message = (
-                "The configuration file of the unet has set the default `sample_size` to smaller than"
-                " 64 which seems highly unlikely .If you're checkpoint is a fine-tuned version of any of the"
-                " following: \n- CompVis/stable-diffusion-v1-4 \n- CompVis/stable-diffusion-v1-3 \n-"
-                " CompVis/stable-diffusion-v1-2 \n- CompVis/stable-diffusion-v1-1 \n- runwayml/stable-diffusion-v1-5"
-                " \n- runwayml/stable-diffusion-inpainting \n you should change 'sample_size' to 64 in the"
-                " configuration file. Please make sure to update the config accordingly as leaving `sample_size=32`"
-                " in the config might lead to incorrect results in future versions. If you have downloaded this"
-                " checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for"
-                " the `unet/config.json` file"
-            )
-            deprecate("sample_size<64", "1.0.0", deprecation_message, standard_warn=False)
-            new_config = dict(unet.config)
-            new_config["sample_size"] = 64
-            unet._internal_dict = FrozenDict(new_config)
 
         self.register_modules(
             vae_encoder=vae_encoder,
@@ -249,7 +229,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        init_image: Union[np.ndarray, PIL.Image.Image],
+        image: Union[np.ndarray, PIL.Image.Image],
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
@@ -269,15 +249,15 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
-            init_image (`np.ndarray` or `PIL.Image.Image`):
+            image (`np.ndarray` or `PIL.Image.Image`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
                 process.
             strength (`float`, *optional*, defaults to 0.8):
-                Conceptually, indicates how much to transform the reference `init_image`. Must be between 0 and 1.
-                `init_image` will be used as a starting point, adding more noise to it the larger the `strength`. The
-                number of denoising steps depends on the amount of noise initially added. When `strength` is 1, added
-                noise will be maximum and the denoising process will run for the full number of iterations specified in
-                `num_inference_steps`. A value of 1, therefore, essentially ignores `init_image`.
+                Conceptually, indicates how much to transform the reference `image`. Must be between 0 and 1. `image`
+                will be used as a starting point, adding more noise to it the larger the `strength`. The number of
+                denoising steps depends on the amount of noise initially added. When `strength` is 1, added noise will
+                be maximum and the denoising process will run for the full number of iterations specified in
+                `num_inference_steps`. A value of 1, therefore, essentially ignores `image`.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference. This parameter will be modulated by `strength`.
@@ -317,6 +297,10 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
+        message = "Please use `image` instead of `init_image`."
+        init_image = deprecate("init_image", "0.12.0", message, take_from=kwargs)
+        image = init_image or image
+
         if isinstance(prompt, str):
             batch_size = 1
         elif isinstance(prompt, list):
@@ -341,8 +325,8 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
 
-        if isinstance(init_image, PIL.Image.Image):
-            init_image = preprocess(init_image)
+        if isinstance(image, PIL.Image.Image):
+            image = preprocess(image)
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -354,9 +338,9 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         )
 
         latents_dtype = text_embeddings.dtype
-        init_image = init_image.astype(latents_dtype)
+        image = image.astype(latents_dtype)
         # encode the init image into latents and scale the latents
-        init_latents = self.vae_encoder(sample=init_image)[0]
+        init_latents = self.vae_encoder(sample=image)[0]
         init_latents = 0.18215 * init_latents
 
         if isinstance(prompt, str):
@@ -365,16 +349,16 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             # expand init_latents for batch_size
             deprecation_message = (
                 f"You have passed {len(prompt)} text prompts (`prompt`), but only {init_latents.shape[0]} initial"
-                " images (`init_image`). Initial images are now duplicating to match the number of text prompts. Note"
+                " images (`image`). Initial images are now duplicating to match the number of text prompts. Note"
                 " that this behavior is deprecated and will be removed in a version 1.0.0. Please make sure to update"
-                " your script to pass as many init images as text prompts to suppress this warning."
+                " your script to pass as many initial images as text prompts to suppress this warning."
             )
-            deprecate("len(prompt) != len(init_image)", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate("len(prompt) != len(image)", "1.0.0", deprecation_message, standard_warn=False)
             additional_image_per_prompt = len(prompt) // init_latents.shape[0]
             init_latents = np.concatenate([init_latents] * additional_image_per_prompt * num_images_per_prompt, axis=0)
         elif len(prompt) > init_latents.shape[0] and len(prompt) % init_latents.shape[0] != 0:
             raise ValueError(
-                f"Cannot duplicate `init_image` of batch size {init_latents.shape[0]} to {len(prompt)} text prompts."
+                f"Cannot duplicate `image` of batch size {init_latents.shape[0]} to {len(prompt)} text prompts."
             )
         else:
             init_latents = np.concatenate([init_latents] * num_images_per_prompt, axis=0)

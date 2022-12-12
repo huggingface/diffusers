@@ -11,12 +11,11 @@ import torch.nn.functional as F
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from datasets import load_dataset
-from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel, __version__
+from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
-from diffusers.utils import deprecate
+from diffusers.utils import check_min_version
 from huggingface_hub import HfFolder, Repository, whoami
-from packaging import version
 from torchvision.transforms import (
     CenterCrop,
     Compose,
@@ -29,8 +28,11 @@ from torchvision.transforms import (
 from tqdm.auto import tqdm
 
 
+# Will error if the minimal version of diffusers is not installed. Remove at your own risks.
+check_min_version("0.10.0.dev0")
+
+
 logger = get_logger(__name__)
-diffusers_version = version.parse(version.parse(__version__).base_version)
 
 
 def _extract_into_tensor(arr, timesteps, broadcast_shape):
@@ -194,9 +196,10 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--predict_epsilon",
-        action="store_true",
-        default=True,
+        "--prediction_type",
+        type=str,
+        default="epsilon",
+        choices=["epsilon", "sample"],
         help="Whether the model should predict the 'epsilon'/noise error or directly the reconstructed image 'x0'.",
     )
 
@@ -256,13 +259,13 @@ def main(args):
             "UpBlock2D",
         ),
     )
-    accepts_predict_epsilon = "predict_epsilon" in set(inspect.signature(DDPMScheduler.__init__).parameters.keys())
+    accepts_prediction_type = "prediction_type" in set(inspect.signature(DDPMScheduler.__init__).parameters.keys())
 
-    if accepts_predict_epsilon:
+    if accepts_prediction_type:
         noise_scheduler = DDPMScheduler(
             num_train_timesteps=args.ddpm_num_steps,
             beta_schedule=args.ddpm_beta_schedule,
-            predict_epsilon=args.predict_epsilon,
+            prediction_type=args.prediction_type,
         )
     else:
         noise_scheduler = DDPMScheduler(num_train_timesteps=args.ddpm_num_steps, beta_schedule=args.ddpm_beta_schedule)
@@ -319,7 +322,12 @@ def main(args):
 
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
 
-    ema_model = EMAModel(model, inv_gamma=args.ema_inv_gamma, power=args.ema_power, max_value=args.ema_max_decay)
+    ema_model = EMAModel(
+        accelerator.unwrap_model(model),
+        inv_gamma=args.ema_inv_gamma,
+        power=args.ema_power,
+        max_value=args.ema_max_decay,
+    )
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -365,9 +373,9 @@ def main(args):
                 # Predict the noise residual
                 model_output = model(noisy_images, timesteps).sample
 
-                if args.predict_epsilon:
+                if args.prediction_type == "epsilon":
                     loss = F.mse_loss(model_output, noise)  # this could have different weights!
-                else:
+                elif args.prediction_type == "sample":
                     alpha_t = _extract_into_tensor(
                         noise_scheduler.alphas_cumprod, timesteps, (clean_images.shape[0], 1, 1, 1)
                     )
@@ -376,6 +384,8 @@ def main(args):
                         model_output, clean_images, reduction="none"
                     )  # use SNR weighting from distillation paper
                     loss = loss.mean()
+                else:
+                    raise ValueError(f"Unsupported prediction type: {args.prediction_type}")
 
                 accelerator.backward(loss)
 
@@ -409,11 +419,7 @@ def main(args):
                     scheduler=noise_scheduler,
                 )
 
-                deprecate("todo: remove this check", "0.10.0", "when the most used version is >= 0.8.0")
-                if diffusers_version < version.parse("0.8.0"):
-                    generator = torch.manual_seed(0)
-                else:
-                    generator = torch.Generator(device=pipeline.device).manual_seed(0)
+                generator = torch.Generator(device=pipeline.device).manual_seed(0)
                 # run pipeline in inference (sample random noise and denoise)
                 images = pipeline(
                     generator=generator,

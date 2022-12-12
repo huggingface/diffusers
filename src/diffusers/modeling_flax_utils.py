@@ -28,6 +28,7 @@ from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, R
 from requests import HTTPError
 
 from . import __version__, is_torch_available
+from .hub_utils import send_telemetry
 from .modeling_flax_pytorch_utils import convert_pytorch_state_dict_to_flax
 from .utils import (
     CONFIG_NAME,
@@ -332,13 +333,17 @@ class FlaxModelMixin:
             elif os.path.isfile(os.path.join(pretrained_path_with_subfolder, WEIGHTS_NAME)):
                 raise EnvironmentError(
                     f"{WEIGHTS_NAME} file found in directory {pretrained_path_with_subfolder}. Please load the model"
-                    " using  `from_pt=True`."
+                    " using `from_pt=True`."
                 )
             else:
                 raise EnvironmentError(
                     f"Error no file named {FLAX_WEIGHTS_NAME} or {WEIGHTS_NAME} found in directory "
                     f"{pretrained_path_with_subfolder}."
                 )
+            send_telemetry(
+                {"model_class": cls.__name__, "model_path": "local", "framework": "flax"},
+                name="diffusers_from_pretrained",
+            )
         else:
             try:
                 model_file = hf_hub_download(
@@ -353,6 +358,10 @@ class FlaxModelMixin:
                     user_agent=user_agent,
                     subfolder=subfolder,
                     revision=revision,
+                )
+                send_telemetry(
+                    {"model_class": cls.__name__, "model_path": "hub", "framework": "flax"},
+                    name="diffusers_from_pretrained",
                 )
 
             except RepositoryNotFoundError:

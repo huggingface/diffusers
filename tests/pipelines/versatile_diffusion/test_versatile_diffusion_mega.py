@@ -23,13 +23,11 @@ import torch
 from diffusers import VersatileDiffusionPipeline
 from diffusers.utils.testing_utils import load_image, require_torch_gpu, slow, torch_device
 
-from ...test_pipelines_common import PipelineTesterMixin
-
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class VersatileDiffusionMegaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class VersatileDiffusionMegaPipelineFastTests(unittest.TestCase):
     pass
 
 
@@ -42,7 +40,7 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_from_pretrained_save_pretrained(self):
+    def test_from_save_pretrained(self):
         pipe = VersatileDiffusionPipeline.from_pretrained("shi-labs/versatile-diffusion", torch_dtype=torch.float16)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -104,8 +102,8 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.014, 0.0112, 0.0136, 0.0145, 0.0107, 0.0113, 0.0272, 0.0215, 0.0216])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        expected_slice = np.array([0.0081, 0.0032, 0.0002, 0.0056, 0.0027, 0.0000, 0.0051, 0.0020, 0.0007])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-2
 
         prompt = "A painting of a squirrel eating a burger "
         generator = torch.Generator(device=torch_device).manual_seed(0)
@@ -117,13 +115,12 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.0408, 0.0181, 0.0, 0.0388, 0.0046, 0.0461, 0.0411, 0.0, 0.0222])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-2
 
-        pipe = VersatileDiffusionPipeline.from_pretrained("shi-labs/versatile-diffusion", torch_dtype=torch.float16)
-        image = pipe.image_variation(init_image, generator=generator, output_type="numpy").images[0]
+        image = pipe.image_variation(init_image, generator=generator, output_type="numpy").images
 
         image_slice = image[0, 253:256, 253:256, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.0657, 0.0529, 0.0455, 0.0802, 0.0570, 0.0179, 0.0267, 0.0483, 0.0769])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        expected_slice = np.array([0.3403, 0.1809, 0.0938, 0.3855, 0.2393, 0.1243, 0.4028, 0.3110, 0.1799])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-2

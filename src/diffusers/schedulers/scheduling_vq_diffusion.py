@@ -138,6 +138,8 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
             The ending cumulative gamma value.
     """
 
+    order = 1
+
     @register_to_config
     def __init__(
         self,

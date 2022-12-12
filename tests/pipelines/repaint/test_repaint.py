@@ -19,7 +19,7 @@ import numpy as np
 import torch
 
 from diffusers import RePaintPipeline, RePaintScheduler, UNet2DModel
-from diffusers.utils.testing_utils import load_image, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import load_image, load_numpy, require_torch_gpu, slow, torch_device
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -36,11 +36,10 @@ class RepaintPipelineIntegrationTests(unittest.TestCase):
         mask_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/repaint/mask_256.png"
         )
-        expected_image = load_image(
+        expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/"
-            "repaint/celeba_hq_256_result.png"
+            "repaint/celeba_hq_256_result.npy"
         )
-        expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
         model_id = "google/ddpm-ema-celebahq-256"
         unet = UNet2DModel.from_pretrained(model_id)
