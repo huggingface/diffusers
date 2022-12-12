@@ -164,15 +164,14 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
 
         return images, has_nsfw_concepts
 
-    def get_timesteps(self, num_inference_steps, strength, scheduler_state):
+    def get_timestep_start(self, num_inference_steps, strength, scheduler_state):
         # get the original timestep using init_timestep
         offset = self.scheduler.config.get("steps_offset", 0)
         init_timestep = int(num_inference_steps * strength) + offset
         init_timestep = min(init_timestep, num_inference_steps)
         t_start = max(num_inference_steps - init_timestep + offset, 0)
-        timesteps = scheduler_state.timesteps[t_start:]
 
-        return timesteps
+        return t_start
 
     def _generate(
         self,
@@ -212,13 +211,13 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
         noise = jax.random.normal(prng_seed, shape=latents_shape, dtype=self.dtype)
 
         def loop_body(step, args):
-            latents, timesteps, scheduler_state = args
+            latents, scheduler_state = args
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             latents_input = jnp.concatenate([latents] * 2)
 
-            t = jnp.array(timesteps, dtype=jnp.int32)[step]
+            t = jnp.array(scheduler_state.timesteps, dtype=jnp.int32)[step]
             timestep = jnp.broadcast_to(t, latents_input.shape[0])
 
             latents_input = self.scheduler.scale_model_input(scheduler_state, latents_input, t)
@@ -236,23 +235,23 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
 
             # compute the previous noisy sample x_t -> x_t-1
             latents, scheduler_state = self.scheduler.step(scheduler_state, noise_pred, t, latents).to_tuple()
-            return latents, timesteps, scheduler_state
+            return latents, scheduler_state
 
         scheduler_state = self.scheduler.set_timesteps(
             params["scheduler"], num_inference_steps=num_inference_steps, shape=latents_shape
         )
 
-        timesteps = self.get_timesteps(num_inference_steps, strength, scheduler_state)
-        latent_timestep = timesteps[:1].repeat(batch_size)
+        t_start = self.get_timestep_start(num_inference_steps, strength, scheduler_state)
+        latent_timestep = scheduler_state.timesteps[t_start:t_start+1].repeat(batch_size)
         init_latents = self.scheduler.add_noise(init_latents, noise, latent_timestep)
         latents = init_latents
 
         if debug:
             # run with python for loop
-            for i in range(len(timesteps)):
-                latents, timesteps, scheduler_state = loop_body(i, (latents, timesteps, scheduler_state))
+            for i in range(t_start, len(scheduler_state.timesteps)):
+                latents, scheduler_state = loop_body(i, (latents, scheduler_state))
         else:
-            latents, _, _ = jax.lax.fori_loop(0, len(timesteps), loop_body, (latents, timesteps, scheduler_state))
+            latents, _ = jax.lax.fori_loop(t_start, len(scheduler_state.timesteps), loop_body, (latents, scheduler_state))
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
