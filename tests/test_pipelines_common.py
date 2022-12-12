@@ -123,6 +123,7 @@ class PipelineTesterMixin:
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
+        inputs["num_inference_steps"] = 1
 
         # batchify inputs
         for batch_size in [2, 4, 13]:
