@@ -32,15 +32,23 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 def preprocess(image):
-    # resize to multiple of 64
-    width, height = image.size
-    width = width - width % 64
-    height = height - height % 64
-    image = image.resize((width, height))
+    if isinstance(image, torch.Tensor):
+        return image
+    elif isinstance(image, PIL.Image.Image):
+        image = [image]
 
-    image = np.array(image.convert("RGB"))
-    image = image[None].transpose(0, 3, 1, 2)
-    image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
+    if isinstance(image[0], PIL.Image.Image):
+        w, h = image[0].size
+        w, h = map(lambda x: x - x % 64, (w, h))  # resize to integer multiple of 32
+
+        image = [np.array(i.resize((w, h)[None, :])) for i in image]
+        image = np.concatenate(image, axis=0)
+        image = np.array(image).astype(np.float32) / 255.0
+        image = image.transpose(0, 3, 1, 2)
+        image = 2.0 * image - 1.0
+        image = torch.from_numpy(image)
+    elif isinstance(image[0], torch.Tensor):
+        image = torch.cat(image, dim=0)
     return image
 
 
@@ -407,10 +415,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
         )
 
         # 4. Preprocess image
-        image = [image] if isinstance(image, PIL.Image.Image) else image
-        if isinstance(image, list):
-            image = [preprocess(img) for img in image]
-            image = torch.cat(image, dim=0)
+        image = preprocess(image)
         image = image.to(dtype=text_embeddings.dtype, device=device)
 
         # 5. set timesteps

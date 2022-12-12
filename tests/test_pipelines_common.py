@@ -11,6 +11,7 @@ from typing import Callable, Union
 import numpy as np
 import torch
 
+import diffusers
 from diffusers import (
     CycleDiffusionPipeline,
     DanceDiffusionPipeline,
@@ -18,6 +19,7 @@ from diffusers import (
     StableDiffusionDepth2ImgPipeline,
     StableDiffusionImg2ImgPipeline,
 )
+from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_xformers_available
 from diffusers.utils.testing_utils import require_torch, torch_device
 
@@ -123,7 +125,9 @@ class PipelineTesterMixin:
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
-        inputs["num_inference_steps"] = 1
+
+        logger = logging.get_logger(pipe.__module__)
+        logger.setLevel(level=diffusers.logging.FATAL)
 
         # batchify inputs
         for batch_size in [2, 4, 13]:
@@ -144,7 +148,7 @@ class PipelineTesterMixin:
                 else:
                     batched_inputs[name] = value
 
-            batched_inputs["num_inference_steps"] = 2
+            batched_inputs["num_inference_steps"] = inputs["num_inference_steps"]
             batched_inputs["output_type"] = None
             output = pipe(**batched_inputs)
 
