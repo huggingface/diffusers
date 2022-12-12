@@ -1,5 +1,7 @@
 ## Diffusers examples with Intel optimizations
 
+**This research project is not actively maintained by the diffusers team. For any questions or comments, please make sure to tag @hshen14 .**
+
 This aims to provide diffusers examples with Intel optimizations such as Bfloat16 for training/fine-tuning acceleration and 8-bit integer (INT8) for inference acceleration on Intel platforms.
 
 ## Accelerating the fine-tuning for textual inversion
