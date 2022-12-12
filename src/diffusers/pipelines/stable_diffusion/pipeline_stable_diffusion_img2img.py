@@ -52,7 +52,7 @@ def preprocess(image):
         w, h = image[0].size
         w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
 
-        image = [np.array(i.resize((w, h), resample=PIL_INTERPOLATION["lanczos"])[None, :]) for i in image]
+        image = [np.array(i.resize((w, h), resample=PIL_INTERPOLATION["lanczos"]))[None, :] for i in image]
         image = np.concatenate(image, axis=0)
         image = np.array(image).astype(np.float32) / 255.0
         image = image.transpose(0, 3, 1, 2)
