@@ -105,6 +105,7 @@ else:
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
         StableDiffusionInpaintPipelineLegacy,
+        StableDiffusionRepaintPipeline,
         StableDiffusionPipeline,
         StableDiffusionPipelineSafe,
         StableDiffusionUpscalePipeline,
