@@ -1,5 +1,6 @@
 import argparse
 import hashlib
+import inspect
 import itertools
 import math
 import os
@@ -17,6 +18,7 @@ from accelerate.utils import set_seed
 from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
+from diffusers.utils.import_utils import is_xformers_available
 from huggingface_hub import HfFolder, Repository, whoami
 from PIL import Image
 from torchvision import transforms
@@ -488,6 +490,15 @@ def main(args):
         revision=args.revision,
     )
 
+    if is_xformers_available():
+        try:
+            unet.enable_xformers_memory_efficient_attention()
+        except Exception as e:
+            logger.warning(
+                "Could not enable memory efficient attention. Make sure xformers is installed"
+                f" correctly and a GPU is available: {e}"
+            )
+
     vae.requires_grad_(False)
     if not args.train_text_encoder:
         text_encoder.requires_grad_(False)
@@ -680,10 +691,19 @@ def main(args):
 
                 if global_step % args.save_steps == 0:
                     if accelerator.is_main_process:
+                        # When 'keep_fp32_wrapper' is `False` (the default), then the models are
+                        # unwrapped and the mixed precision hooks are removed, so training crashes
+                        # when the unwrapped models are used for further training.
+                        # This is only supported in newer versions of `accelerate`.
+                        # TODO(Pedro, Suraj): Remove `accepts_keep_fp32_wrapper` when forcing newer accelerate versions
+                        accepts_keep_fp32_wrapper = "keep_fp32_wrapper" in set(
+                            inspect.signature(accelerator.unwrap_model).parameters.keys()
+                        )
+                        extra_args = {"keep_fp32_wrapper": True} if accepts_keep_fp32_wrapper else {}
                         pipeline = DiffusionPipeline.from_pretrained(
                             args.pretrained_model_name_or_path,
-                            unet=accelerator.unwrap_model(unet),
-                            text_encoder=accelerator.unwrap_model(text_encoder),
+                            unet=accelerator.unwrap_model(unet, **extra_args),
+                            text_encoder=accelerator.unwrap_model(text_encoder, **extra_args),
                             revision=args.revision,
                         )
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")

@@ -13,10 +13,15 @@
 # limitations under the License.
 
 
-from ..utils import is_flax_available, is_scipy_available, is_torch_available
+from ..utils import OptionalDependencyNotAvailable, is_flax_available, is_scipy_available, is_torch_available
 
 
-if is_torch_available():
+try:
+    if not is_torch_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils.dummy_pt_objects import *  # noqa F403
+else:
     from .scheduling_ddim import DDIMScheduler
     from .scheduling_ddpm import DDPMScheduler
     from .scheduling_dpmsolver_multistep import DPMSolverMultistepScheduler
@@ -34,10 +39,13 @@ if is_torch_available():
     from .scheduling_sde_vp import ScoreSdeVpScheduler
     from .scheduling_utils import SchedulerMixin
     from .scheduling_vq_diffusion import VQDiffusionScheduler
-else:
-    from ..utils.dummy_pt_objects import *  # noqa F403
 
-if is_flax_available():
+try:
+    if not is_flax_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils.dummy_flax_objects import *  # noqa F403
+else:
     from .scheduling_ddim_flax import FlaxDDIMScheduler
     from .scheduling_ddpm_flax import FlaxDDPMScheduler
     from .scheduling_dpmsolver_multistep_flax import FlaxDPMSolverMultistepScheduler
@@ -46,11 +54,12 @@ if is_flax_available():
     from .scheduling_pndm_flax import FlaxPNDMScheduler
     from .scheduling_sde_ve_flax import FlaxScoreSdeVeScheduler
     from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput, broadcast_to_shape_from_left
-else:
-    from ..utils.dummy_flax_objects import *  # noqa F403
 
 
-if is_scipy_available() and is_torch_available():
-    from .scheduling_lms_discrete import LMSDiscreteScheduler
-else:
+try:
+    if not (is_torch_available() and is_scipy_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
     from ..utils.dummy_torch_and_scipy_objects import *  # noqa F403
+else:
+    from .scheduling_lms_discrete import LMSDiscreteScheduler
