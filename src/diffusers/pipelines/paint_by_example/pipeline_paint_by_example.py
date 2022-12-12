@@ -271,7 +271,8 @@ class PaintByExamplePipeline(DiffusionPipeline):
             and not isinstance(image, list)
         ):
             raise ValueError(
-                f"`image` has to be of type `torch.FloatTensor` or `PIL.Image.Image` or `list` but is {type(image)}"
+                "`image` has to be of type `torch.FloatTensor` or `PIL.Image.Image` or `List[PIL.Image.Image]` but is"
+                f" {type(image)}"
             )
 
         if height % 8 != 0 or width % 8 != 0:
