@@ -284,8 +284,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
             prompt_ids (`jnp.array`):
                 The prompt or prompts to guide the image generation.
             image (`jnp.array`):
-                Array representing an image batch, that will be used as the starting point for the
-                process.
+                Array representing an image batch, that will be used as the starting point for the process.
             params (`Dict` or `FrozenDict`): Dictionary containing the model parameters/weights
             prng_seed (`jax.random.KeyArray` or `jax.Array`): Array containing random number generator key
             num_inference_steps (`int`, *optional*, defaults to 50):
@@ -302,10 +301,10 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
             strength (`float`, *optional*, defaults to 0.8):
-                Conceptually, indicates how much to transform the reference `image`. Must be between 0 and 1.
-                `image` will be used as a starting point, adding more noise to it the larger the `strength`. The
-                number of denoising steps depends on the amount of noise initially added. When `strength` is 1, added
-                noise will be maximum and the denoising process will run for the full number of iterations specified in
+                Conceptually, indicates how much to transform the reference `image`. Must be between 0 and 1. `image`
+                will be used as a starting point, adding more noise to it the larger the `strength`. The number of
+                denoising steps depends on the amount of noise initially added. When `strength` is 1, added noise will
+                be maximum and the denoising process will run for the full number of iterations specified in
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.FlaxStableDiffusionPipelineOutput`] instead of
                 a plain tuple.
