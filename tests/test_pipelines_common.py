@@ -99,7 +99,7 @@ class PipelineTesterMixin:
         output_loaded = pipe_loaded(**inputs)[0]
 
         max_diff = np.abs(output - output_loaded).max()
-        self.assertLess(max_diff, 1e-5)
+        self.assertLess(max_diff, 1e-4)
 
     def test_pipeline_call_implements_required_args(self):
         assert hasattr(self.pipeline_class, "__call__"), f"{self.pipeline_class} should have a `__call__` method"
@@ -196,7 +196,7 @@ class PipelineTesterMixin:
         output_tuple = pipe(**self.get_dummy_inputs(torch_device), return_dict=False)[0]
 
         max_diff = np.abs(output - output_tuple).max()
-        self.assertLess(max_diff, 1e-5)
+        self.assertLess(max_diff, 1e-4)
 
     def test_num_inference_steps_consistent(self):
         components = self.get_dummy_components()
@@ -329,7 +329,7 @@ class PipelineTesterMixin:
         output_loaded = pipe_loaded(**inputs)[0]
 
         max_diff = np.abs(output - output_loaded).max()
-        self.assertLess(max_diff, 1e-5)
+        self.assertLess(max_diff, 1e-4)
 
     @unittest.skipIf(torch_device != "cuda", reason="CUDA and CPU are required to switch devices")
     def test_to_device(self):
@@ -404,7 +404,7 @@ class PipelineTesterMixin:
         output_with_offload = pipe(**inputs)[0]
 
         max_diff = np.abs(output_with_offload - output_without_offload).max()
-        self.assertLess(max_diff, 1e-5, "CPU offloading should not affect the inference results")
+        self.assertLess(max_diff, 1e-4, "CPU offloading should not affect the inference results")
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
@@ -427,7 +427,7 @@ class PipelineTesterMixin:
         output_with_offload = pipe(**inputs)[0]
 
         max_diff = np.abs(output_with_offload - output_without_offload).max()
-        self.assertLess(max_diff, 1e-5, "XFormers attention should not affect the inference results")
+        self.assertLess(max_diff, 1e-4, "XFormers attention should not affect the inference results")
 
     def test_progress_bar(self):
         components = self.get_dummy_components()
