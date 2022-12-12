@@ -676,10 +676,10 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def get_inputs(self, device, seed=0):
+    def get_inputs(self, device, dtype=torch.float32, seed=0):
         generator = torch.Generator(device=device).manual_seed(seed)
-        latents = np.random.RandomState(seed).standard_normal((1, 4, 64, 64)).astype(np.float32)
-        latents = torch.from_numpy(latents).to(device)
+        latents = np.random.RandomState(seed).standard_normal((1, 4, 64, 64))
+        latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
         inputs = {
             "prompt": "a photograph of an astronaut riding a horse",
             "latents": latents,
@@ -701,4 +701,4 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main/stable_diffusion_text2img/stable_diffusion_1_4_pndm.npy"
         )
 
-        assert np.allclose(image, expected_image, atol=1e-4)
+        assert np.allclose(image, expected_image, atol=1e-3)

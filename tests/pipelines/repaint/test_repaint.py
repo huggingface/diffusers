@@ -13,21 +13,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import unittest
 
 import numpy as np
 import torch
 
 from diffusers import RePaintPipeline, RePaintScheduler, UNet2DModel
-from diffusers.utils.testing_utils import load_image, load_numpy, require_torch_gpu, slow, torch_device
-
+from diffusers.utils.testing_utils import load_image, load_numpy, require_torch_gpu, torch_device, nightly
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
-
-@slow
+@nightly
 @require_torch_gpu
-class RepaintPipelineIntegrationTests(unittest.TestCase):
+class RepaintPipelineNightlyTests(unittest.TestCase):
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def test_celebahq(self):
         original_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/"
