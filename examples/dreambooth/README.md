@@ -246,6 +246,18 @@ image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
 image.save("dog-bucket.png")
 ```
 
+### Training with instance captions
+
+The trainer looks for text files in the same directory as your instance images. If it finds them, the text caption in the files will be used instead of what was passed in via "--instance_prompt". For instance, if you run the prior "sks" examples and your instance directory looks like this:
+
+```
+img1.jpg
+img1.txt (with contents "photo of sks dog jumping for joy")
+img2.jpg
+img3.jpg
+```
+
+then "photo of sks dog" will be used for img1 and img3, but "photo of sks dog jumping for joy" will be used for img1.
 
 ## Running with Flax/JAX
 

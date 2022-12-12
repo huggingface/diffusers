@@ -1,5 +1,6 @@
 import argparse
 import hashlib
+import imghdr
 import inspect
 import itertools
 import math
@@ -271,10 +272,32 @@ class DreamBoothDataset(Dataset):
         if not self.instance_data_root.exists():
             raise ValueError("Instance images root doesn't exists.")
 
-        self.instance_images_path = list(Path(instance_data_root).iterdir())
+        self.instance_images_path = []
+        self.instance_images_prompt = []
+
+        # Load .txt captions for each image file, if it exists. Otherwise, use param
+        # instance_prompt.
+        for instance_path in Path(instance_data_root).iterdir():
+            # TODO: imghdr and PIL.Image may support different formats. PIL.Image doesn't have a way
+            # of asking "is this file openable?" besides try/except handling.
+            if imghdr.what(instance_path) is None:
+                continue
+            self.instance_images_path.append(instance_path)
+
+            text_path = instance_path.with_suffix(".txt")
+            if text_path.exists():
+                with open(text_path, "r") as text_file:
+                    self.instance_images_prompt.append(text_file.read().strip())
+            else:
+                self.instance_images_prompt.append(instance_prompt)
+
         self.num_instance_images = len(self.instance_images_path)
-        self.instance_prompt = instance_prompt
         self._length = self.num_instance_images
+
+        for i in range(self.num_instance_images):
+            path = self.instance_images_path[i]
+            prompt = self.instance_images_prompt[i]
+            print(f'{path.name}: "{prompt}"')
 
         if class_data_root is not None:
             self.class_data_root = Path(class_data_root)
@@ -300,12 +323,15 @@ class DreamBoothDataset(Dataset):
 
     def __getitem__(self, index):
         example = {}
-        instance_image = Image.open(self.instance_images_path[index % self.num_instance_images])
+        instance_filename = self.instance_images_path[index % self.num_instance_images]
+        instance_prompt = self.instance_images_prompt[index % self.num_instance_images]
+        instance_image = Image.open(instance_filename)
         if not instance_image.mode == "RGB":
             instance_image = instance_image.convert("RGB")
+
         example["instance_images"] = self.image_transforms(instance_image)
         example["instance_prompt_ids"] = self.tokenizer(
-            self.instance_prompt,
+            instance_prompt,
             truncation=True,
             padding="max_length",
             max_length=self.tokenizer.model_max_length,
