@@ -18,7 +18,7 @@ class UnetSchedulerOneForwardPipeline(DiffusionPipeline):
 
         model_output = self.unet(image, timestep).sample
         scheduler_output = self.scheduler.step(model_output, timestep, image).prev_sample
-        
+
         result = scheduler_output - scheduler_output + torch.ones_like(scheduler_output)
 
         return result
