@@ -84,7 +84,7 @@ def send_telemetry(data: Dict, name: str):
         name: a unique name to differentiate the telemetry logs, e.g. "diffusers_examples" or "diffusers_notebooks"
     """
     if DISABLE_TELEMETRY or HF_HUB_OFFLINE:
-        pass
+        return
 
     headers = {"user-agent": http_user_agent(data)}
     endpoint = HUGGINGFACE_CO_TELEMETRY + name
