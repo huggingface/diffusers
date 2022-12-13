@@ -285,7 +285,7 @@ def get_cached_module_file(
             resolved_module_file = cached_download(
                 github_url,
                 cache_dir=cache_dir,
-                force_download=force_download,
+                force_download=True,
                 proxies=proxies,
                 resume_download=resume_download,
                 local_files_only=local_files_only,
