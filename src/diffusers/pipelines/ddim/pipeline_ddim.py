@@ -82,7 +82,7 @@ class DDIMPipeline(DiffusionPipeline):
             )
             deprecate(
                 "generator.device == 'cpu'",
-                "0.11.0",
+                "0.12.0",
                 message,
             )
             generator = None
