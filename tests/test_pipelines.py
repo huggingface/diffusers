@@ -16,13 +16,14 @@
 import gc
 import json
 import os
-import torch
 import random
 import shutil
+import sys
 import tempfile
 import unittest
 
 import numpy as np
+import torch
 
 import PIL
 import safetensors.torch
@@ -209,16 +210,27 @@ class CustomPipelineTests(unittest.TestCase):
 
     def test_load_custom_github(self):
         pipeline = DiffusionPipeline.from_pretrained(
-            "google/ddpm-cifar10-32", custom_pipeline="one_step_unet", custom_revision="0.10.2"
+            "google/ddpm-cifar10-32", custom_pipeline="one_step_unet", custom_revision="main"
         )
-        pipeline = pipeline.to(torch_device)
-        # NOTE that `"CustomPipeline"` is not a class that is defined in this library, but solely on the Hub
-        # under https://huggingface.co/hf-internal-testing/diffusers-dummy-pipeline/blob/main/pipeline.py#L24
 
+        # make sure that on "main" pipeline gives only ones because of: https://github.com/huggingface/diffusers/pull/1690
         with torch.no_grad():
             output = pipeline()
 
-        
+        assert output.numel() == output.sum()
+
+        # hack since Python doesn't like overwriting modules: https://stackoverflow.com/questions/3105801/unload-a-module-in-python
+        # Could in the future work with hashes instead.
+        del sys.modules["diffusers_modules.git.one_step_unet"]
+
+        pipeline = DiffusionPipeline.from_pretrained(
+            "google/ddpm-cifar10-32", custom_pipeline="one_step_unet", custom_revision="0.10.2"
+        )
+        with torch.no_grad():
+            output = pipeline()
+
+        assert output.numel() != output.sum()
+
         assert pipeline.__class__.__name__ == "UnetSchedulerOneForwardPipeline"
 
     def test_run_custom_pipeline(self):
