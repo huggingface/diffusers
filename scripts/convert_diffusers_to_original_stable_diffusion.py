@@ -260,8 +260,6 @@ def convert_text_enc_state_dict(text_enc_dict):
     return text_enc_dict
 
 
-IS_V20_MODEL = True
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
