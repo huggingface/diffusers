@@ -16,13 +16,13 @@
 import gc
 import json
 import os
+import torch
 import random
 import shutil
 import tempfile
 import unittest
 
 import numpy as np
-import torch
 
 import PIL
 import safetensors.torch
@@ -214,6 +214,11 @@ class CustomPipelineTests(unittest.TestCase):
         pipeline = pipeline.to(torch_device)
         # NOTE that `"CustomPipeline"` is not a class that is defined in this library, but solely on the Hub
         # under https://huggingface.co/hf-internal-testing/diffusers-dummy-pipeline/blob/main/pipeline.py#L24
+
+        with torch.no_grad():
+            output = pipeline()
+
+        
         assert pipeline.__class__.__name__ == "UnetSchedulerOneForwardPipeline"
 
     def test_run_custom_pipeline(self):
