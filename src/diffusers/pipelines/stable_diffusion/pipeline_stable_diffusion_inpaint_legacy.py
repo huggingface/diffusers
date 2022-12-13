@@ -432,7 +432,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         guidance_scale: Optional[float] = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
-        add_predicted_noise: Optional[bool] = True,
+        add_predicted_noise: Optional[bool] = False,
         eta: Optional[float] = 0.0,
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
