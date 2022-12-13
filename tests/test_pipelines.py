@@ -208,7 +208,9 @@ class CustomPipelineTests(unittest.TestCase):
         assert pipeline.__class__.__name__ == "CustomPipeline"
 
     def test_load_custom_github(self):
-        pipeline = DiffusionPipeline.from_pretrained("google/ddpm-cifar10-32", custom_pipeline="one_step_unet")
+        pipeline = DiffusionPipeline.from_pretrained(
+            "google/ddpm-cifar10-32", custom_pipeline="one_step_unet", custom_revision="0.10.2"
+        )
         pipeline = pipeline.to(torch_device)
         # NOTE that `"CustomPipeline"` is not a class that is defined in this library, but solely on the Hub
         # under https://huggingface.co/hf-internal-testing/diffusers-dummy-pipeline/blob/main/pipeline.py#L24

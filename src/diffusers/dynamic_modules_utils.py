@@ -266,10 +266,19 @@ def get_cached_module_file(
         latest_version = "v" + ".".join(__version__.split(".")[:3])
 
         # retrieve github version that matches
-        github_version = latest_version if latest_version in available_versions else "main"
+        if revision is None:
+            revision = latest_version if latest_version in available_versions else "main"
+            logger.info(f"Defaulting to latest_version: {revision}.")
+        elif revision in available_versions + ["main"]:
+            revision = f"v{revision}"
+        else:
+            raise ValueError(
+                f"`custom_revision`: {revision} does not exist. Please make sure to choose one of"
+                f" {', '.join(available_versions + ['main'])}."
+            )
 
         # community pipeline on GitHub
-        github_url = COMMUNITY_PIPELINES_URL.format(revision=github_version, pipeline=pretrained_model_name_or_path)
+        github_url = COMMUNITY_PIPELINES_URL.format(revision=revision, pipeline=pretrained_model_name_or_path)
         try:
             resolved_module_file = cached_download(
                 github_url,
