@@ -247,7 +247,7 @@ def parse_args():
         type=int,
         default=500,
         help=(
-            "Save a checkpoint of the training state every X updates. These checkpoints are only suitable for resuming"
+            "Save a checkpoint of the training state every X updates. These checkpoints can be used both as final checkpoints in case they are better than the last checkpoint and are suitable for resuming"
             " training using `--resume_from_checkpoint`."
         ),
     )
@@ -654,7 +654,7 @@ def main():
         if args.resume_from_checkpoint != "latest":
             path = os.path.basename(args.resume_from_checkpoint)
         else:
-            # Get the mos recent checkpoint
+            # Get the most recent checkpoint
             dirs = os.listdir(args.output_dir)
             dirs = [d for d in dirs if d.startswith("checkpoint")]
             dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
