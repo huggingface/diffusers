@@ -16,24 +16,34 @@
 
 import importlib
 import inspect
+import json
 import os
 import re
 import shutil
 import sys
+from distutils.version import StrictVersion
 from pathlib import Path
 from typing import Dict, Optional, Union
+from urllib import request
 
 from huggingface_hub import HfFolder, cached_download, hf_hub_download, model_info
 
+from . import __version__
 from .utils import DIFFUSERS_DYNAMIC_MODULE_NAME, HF_MODULES_CACHE, logging
 
 
 COMMUNITY_PIPELINES_URL = (
-    "https://raw.githubusercontent.com/huggingface/diffusers/main/examples/community/{pipeline}.py"
+    "https://raw.githubusercontent.com/huggingface/diffusers/{revision}/examples/community/{pipeline}.py"
 )
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+def get_diffusers_versions():
+    url = "https://pypi.org/pypi/diffusers/json"
+    releases = json.loads(request.urlopen(url).read())["releases"].keys()
+    return sorted(releases, key=StrictVersion)
 
 
 def init_hf_modules():
@@ -251,8 +261,15 @@ def get_cached_module_file(
         resolved_module_file = module_file_or_url
         submodule = "local"
     elif pretrained_model_name_or_path.count("/") == 0:
+        available_versions = get_diffusers_versions()
+        # cut ".dev0"
+        latest_version = "v" + ".".join(__version__.split(".")[:3])
+
+        # retrieve github version that matches
+        github_version = latest_version if latest_version in available_versions else "main"
+
         # community pipeline on GitHub
-        github_url = COMMUNITY_PIPELINES_URL.format(pipeline=pretrained_model_name_or_path)
+        github_url = COMMUNITY_PIPELINES_URL.format(revision=github_version, pipeline=pretrained_model_name_or_path)
         try:
             resolved_module_file = cached_download(
                 github_url,
