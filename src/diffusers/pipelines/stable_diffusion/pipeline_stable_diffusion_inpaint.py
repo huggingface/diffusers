@@ -501,7 +501,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                 raise ValueError(
                     "The passed mask and the required batch size don't match. Masks are supposed to be duplicated to"
                     f" a total batch size of {batch_size}, but {mask.shape[0]} masks were passed. Make sure the number"
-                    " of images that you pass is divisble by the total requested batch size."
+                    " of masks that you pass is divisible by the total requested batch size."
                 )
             mask = mask.repeat(batch_size // mask.shape[0], 1, 1, 1)
         if masked_image_latents.shape[0] < batch_size:
@@ -509,7 +509,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                 raise ValueError(
                     "The passed images and the required batch size don't match. Images are supposed to be duplicated"
                     f" to a total batch size of {batch_size}, but {masked_image_latents.shape[0]} images were passed."
-                    " Make sure the number of images that you pass is divisble by the total requested batch size."
+                    " Make sure the number of images that you pass is divisible by the total requested batch size."
                 )
             masked_image_latents = masked_image_latents.repeat(batch_size // masked_image_latents.shape[0], 1, 1, 1)
 
