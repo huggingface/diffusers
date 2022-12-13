@@ -589,7 +589,7 @@ def main():
     # keep original embeddings as reference
     orig_embeds_params = text_encoder.get_input_embeddings().weight.data.clone()
 
-    for epoch in range(args.num_train_epochs):
+    for epoch in range(first_epoch, args.num_train_epochs):
         text_encoder.train()
         for step, batch in enumerate(train_dataloader):
             # Skip steps until we reach the resumed step
