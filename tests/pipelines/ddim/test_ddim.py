@@ -52,6 +52,7 @@ class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
+            "batch_size": 1,
             "generator": generator,
             "num_inference_steps": 2,
             "output_type": "numpy",
