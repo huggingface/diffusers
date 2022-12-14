@@ -26,6 +26,7 @@ from .unet_2d_blocks import (
     CrossAttnDownBlock2D,
     CrossAttnUpBlock2D,
     DownBlock2D,
+    UnCLIPUNetMidBlock2DCrossAttn,
     UNetMidBlock2DCrossAttn,
     UpBlock2D,
     get_down_block,
@@ -98,6 +99,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             "DownBlock2D",
         ),
         up_block_types: Tuple[str] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
+        mid_block_type: str = "UNetMidBlock2DCrossAttn",
         only_cross_attention: Union[bool, Tuple[bool]] = False,
         block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
         layers_per_block: int = 2,
@@ -112,6 +114,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         use_linear_projection: bool = False,
         num_class_embeds: Optional[int] = None,
         upcast_attention: bool = False,
+        resnet_time_scale_shift: str = "default",
     ):
         super().__init__()
 
@@ -165,24 +168,40 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 use_linear_projection=use_linear_projection,
                 only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
+                resnet_time_scale_shift=resnet_time_scale_shift,
             )
             self.down_blocks.append(down_block)
 
         # mid
-        self.mid_block = UNetMidBlock2DCrossAttn(
-            in_channels=block_out_channels[-1],
-            temb_channels=time_embed_dim,
-            resnet_eps=norm_eps,
-            resnet_act_fn=act_fn,
-            output_scale_factor=mid_block_scale_factor,
-            resnet_time_scale_shift="default",
-            cross_attention_dim=cross_attention_dim,
-            attn_num_head_channels=attention_head_dim[-1],
-            resnet_groups=norm_num_groups,
-            dual_cross_attention=dual_cross_attention,
-            use_linear_projection=use_linear_projection,
-            upcast_attention=upcast_attention,
-        )
+        if mid_block_type == "UNetMidBlock2DCrossAttn":
+            self.mid_block = UNetMidBlock2DCrossAttn(
+                in_channels=block_out_channels[-1],
+                temb_channels=time_embed_dim,
+                resnet_eps=norm_eps,
+                resnet_act_fn=act_fn,
+                output_scale_factor=mid_block_scale_factor,
+                resnet_time_scale_shift=resnet_time_scale_shift,
+                cross_attention_dim=cross_attention_dim,
+                attn_num_head_channels=attention_head_dim[-1],
+                resnet_groups=norm_num_groups,
+                dual_cross_attention=dual_cross_attention,
+                use_linear_projection=use_linear_projection,
+                upcast_attention=upcast_attention,
+            )
+        elif mid_block_type == "UnCLIPUNetMidBlock2DCrossAttn":
+            self.mid_block = UnCLIPUNetMidBlock2DCrossAttn(
+                in_channels=block_out_channels[-1],
+                temb_channels=time_embed_dim,
+                resnet_eps=norm_eps,
+                resnet_act_fn=act_fn,
+                output_scale_factor=mid_block_scale_factor,
+                cross_attention_dim=cross_attention_dim,
+                attn_num_head_channels=attention_head_dim[-1],
+                resnet_groups=norm_num_groups,
+                resnet_time_scale_shift=resnet_time_scale_shift,
+            )
+        else:
+            raise ValueError(f"unknown mid_block_type : {mid_block_type}")
 
         # count how many layers upsample the images
         self.num_upsamplers = 0
@@ -223,6 +242,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 use_linear_projection=use_linear_projection,
                 only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
+                resnet_time_scale_shift=resnet_time_scale_shift,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -307,6 +327,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
         class_labels: Optional[torch.Tensor] = None,
+        additive_time_embeddings: Optional[torch.Tensor] = None,
+        mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> Union[UNet2DConditionOutput, Tuple]:
         r"""
@@ -371,6 +393,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
             emb = emb + class_emb
 
+        if additive_time_embeddings is not None:
+            emb = emb + additive_time_embeddings
+
         # 2. pre-process
         sample = self.conv_in(sample)
 
@@ -382,6 +407,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                     hidden_states=sample,
                     temb=emb,
                     encoder_hidden_states=encoder_hidden_states,
+                    mask=mask,
                 )
             else:
                 sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
@@ -389,7 +415,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             down_block_res_samples += res_samples
 
         # 4. mid
-        sample = self.mid_block(sample, emb, encoder_hidden_states=encoder_hidden_states)
+        sample = self.mid_block(sample, emb, encoder_hidden_states=encoder_hidden_states, mask=mask)
 
         # 5. up
         for i, upsample_block in enumerate(self.up_blocks):
@@ -410,6 +436,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                     res_hidden_states_tuple=res_samples,
                     encoder_hidden_states=encoder_hidden_states,
                     upsample_size=upsample_size,
+                    mask=mask,
                 )
             else:
                 sample = upsample_block(
