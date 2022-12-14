@@ -54,8 +54,8 @@ class RePaintPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        original_image: Union[torch.FloatTensor, PIL.Image.Image],
-        mask_image: Union[torch.FloatTensor, PIL.Image.Image],
+        original_image: Union[torch.Tensor, PIL.Image.Image],
+        mask_image: Union[torch.Tensor, PIL.Image.Image],
         num_inference_steps: int = 250,
         eta: float = 0.0,
         jump_length: int = 10,
@@ -97,10 +97,10 @@ class RePaintPipeline(DiffusionPipeline):
             generated images.
         """
 
-        if not isinstance(original_image, torch.FloatTensor):
+        if not isinstance(original_image, torch.Tensor):
             original_image = _preprocess_image(original_image)
         original_image = original_image.to(self.device)
-        if not isinstance(mask_image, torch.FloatTensor):
+        if not isinstance(mask_image, torch.Tensor):
             mask_image = _preprocess_mask(mask_image)
         mask_image = mask_image.to(self.device)
 
@@ -117,7 +117,7 @@ class RePaintPipeline(DiffusionPipeline):
         self.scheduler.eta = eta
 
         t_last = self.scheduler.timesteps[0] + 1
-        for i, t in enumerate(tqdm(self.scheduler.timesteps)):
+        for i, t in enumerate((self.scheduler.timesteps)):
             if t < t_last:
                 # predict the noise residual
                 model_output = self.unet(image, t).sample

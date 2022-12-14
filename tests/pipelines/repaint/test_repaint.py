@@ -22,8 +22,52 @@ from diffusers import RePaintPipeline, RePaintScheduler, UNet2DModel
 from diffusers.utils.testing_utils import load_image, load_numpy, require_torch_gpu, slow, torch_device
 
 
+from ...test_pipelines_common import PipelineTesterMixin
+
+
 torch.backends.cuda.matmul.allow_tf32 = False
 
+
+
+class RepaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = RePaintPipeline
+    test_cpu_offload = False
+
+    def get_dummy_components(self):
+        torch.manual_seed(0)
+        torch.manual_seed(0)
+        unet = UNet2DModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=3,
+            out_channels=3,
+            down_block_types=("DownBlock2D", "AttnDownBlock2D"),
+            up_block_types=("AttnUpBlock2D", "UpBlock2D"),
+        )
+        scheduler = RePaintScheduler()
+        components = {"unet": unet, "scheduler": scheduler}
+        return components
+
+    def get_dummy_inputs(self, device, seed=0):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
+        image = np.random.RandomState(seed).standard_normal((1, 3, 32, 32))
+        image = torch.from_numpy(image).to(device=device, dtype=torch.float32)
+        mask = (image > 0).to(device=device, dtype=torch.float32)
+        inputs = {
+            "original_image": image,
+            "mask_image": mask,
+            "generator": generator,
+            "num_inference_steps": 5,
+            "eta": 0.0,
+            "jump_length": 2,
+            "jump_n_sample": 2,
+            "output_type": "numpy",
+        }
+        return inputs
 
 @slow
 @require_torch_gpu
