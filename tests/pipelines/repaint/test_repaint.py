@@ -20,9 +20,11 @@ import numpy as np
 import torch
 
 from diffusers import RePaintPipeline, RePaintScheduler, UNet2DModel
-from diffusers.utils.testing_utils import load_image, load_numpy, require_torch_gpu, torch_device, nightly
+from diffusers.utils.testing_utils import load_image, load_numpy, nightly, require_torch_gpu, torch_device
+
 
 torch.backends.cuda.matmul.allow_tf32 = False
+
 
 @nightly
 @require_torch_gpu
