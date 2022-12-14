@@ -29,13 +29,13 @@ More precisely, 🤗 Diffusers offers:
 
 ### For PyTorch
 
-**With `pip`**
+**With `pip`** (official package)
     
 ```bash
 pip install --upgrade diffusers[torch]
 ```
 
-**With `conda`**
+**With `conda`** (maintained by the community)
 
 ```sh
 conda install -c conda-forge diffusers
