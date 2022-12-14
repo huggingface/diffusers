@@ -20,6 +20,7 @@ from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, StableDiffusi
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from diffusers.utils import check_min_version
+from diffusers.utils.import_utils import is_xformers_available
 from huggingface_hub import HfFolder, Repository, whoami
 
 # TODO: remove and import from diffusers.utils when the new version of diffusers is released
@@ -439,6 +440,15 @@ def main():
         revision=args.revision,
     )
 
+    if is_xformers_available():
+        try:
+            unet.enable_xformers_memory_efficient_attention()
+        except Exception as e:
+            logger.warning(
+                "Could not enable memory efficient attention. Make sure xformers is installed"
+                f" correctly and a GPU is available: {e}"
+            )
+
     # Resize the token embeddings as we are adding new special tokens to the tokenizer
     text_encoder.resize_token_embeddings(len(tokenizer))
 
@@ -538,6 +548,9 @@ def main():
     progress_bar.set_description("Steps")
     global_step = 0
 
+    # keep original embeddings as reference
+    orig_embeds_params = text_encoder.get_input_embeddings().weight.data.clone()
+
     for epoch in range(args.num_train_epochs):
         text_encoder.train()
         for step, batch in enumerate(train_dataloader):
@@ -575,19 +588,14 @@ def main():
                 loss = F.mse_loss(model_pred, target, reduction="none").mean([1, 2, 3]).mean()
                 accelerator.backward(loss)
 
-                # Zero out the gradients for all token embeddings except the newly added
-                # embeddings for the concept, as we only want to optimize the concept embeddings
-                if accelerator.num_processes > 1:
-                    grads = text_encoder.module.get_input_embeddings().weight.grad
-                else:
-                    grads = text_encoder.get_input_embeddings().weight.grad
-                # Get the index for tokens that we want to zero the grads for
-                index_grads_to_zero = torch.arange(len(tokenizer)) != placeholder_token_id
-                grads.data[index_grads_to_zero, :] = grads.data[index_grads_to_zero, :].fill_(0)
-
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
+
+                # Let's make sure we don't update any embedding weights besides the newly added token
+                index_no_updates = torch.arange(len(tokenizer)) != placeholder_token_id
+                with torch.no_grad():
+                    text_encoder.get_input_embeddings().weight[index_no_updates] = orig_embeds_params[index_no_updates]
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:

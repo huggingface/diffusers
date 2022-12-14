@@ -642,12 +642,12 @@ class DDPMSchedulerTest(SchedulerCommonTest):
             self.check_over_configs(prediction_type=prediction_type)
 
     def test_deprecated_predict_epsilon(self):
-        deprecate("remove this test", "0.11.0", "remove")
+        deprecate("remove this test", "0.12.0", "remove")
         for predict_epsilon in [True, False]:
             self.check_over_configs(predict_epsilon=predict_epsilon)
 
     def test_deprecated_epsilon(self):
-        deprecate("remove this test", "0.11.0", "remove")
+        deprecate("remove this test", "0.12.0", "remove")
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
 

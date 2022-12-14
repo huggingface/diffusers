@@ -16,24 +16,34 @@
 
 import importlib
 import inspect
+import json
 import os
 import re
 import shutil
 import sys
+from distutils.version import StrictVersion
 from pathlib import Path
 from typing import Dict, Optional, Union
+from urllib import request
 
 from huggingface_hub import HfFolder, cached_download, hf_hub_download, model_info
 
+from . import __version__
 from .utils import DIFFUSERS_DYNAMIC_MODULE_NAME, HF_MODULES_CACHE, logging
 
 
 COMMUNITY_PIPELINES_URL = (
-    "https://raw.githubusercontent.com/huggingface/diffusers/main/examples/community/{pipeline}.py"
+    "https://raw.githubusercontent.com/huggingface/diffusers/{revision}/examples/community/{pipeline}.py"
 )
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+def get_diffusers_versions():
+    url = "https://pypi.org/pypi/diffusers/json"
+    releases = json.loads(request.urlopen(url).read())["releases"].keys()
+    return sorted(releases, key=StrictVersion)
 
 
 def init_hf_modules():
@@ -251,8 +261,26 @@ def get_cached_module_file(
         resolved_module_file = module_file_or_url
         submodule = "local"
     elif pretrained_model_name_or_path.count("/") == 0:
+        available_versions = get_diffusers_versions()
+        # cut ".dev0"
+        latest_version = "v" + ".".join(__version__.split(".")[:3])
+
+        # retrieve github version that matches
+        if revision is None:
+            revision = latest_version if latest_version in available_versions else "main"
+            logger.info(f"Defaulting to latest_version: {revision}.")
+        elif revision in available_versions:
+            revision = f"v{revision}"
+        elif revision == "main":
+            revision = revision
+        else:
+            raise ValueError(
+                f"`custom_revision`: {revision} does not exist. Please make sure to choose one of"
+                f" {', '.join(available_versions + ['main'])}."
+            )
+
         # community pipeline on GitHub
-        github_url = COMMUNITY_PIPELINES_URL.format(pipeline=pretrained_model_name_or_path)
+        github_url = COMMUNITY_PIPELINES_URL.format(revision=revision, pipeline=pretrained_model_name_or_path)
         try:
             resolved_module_file = cached_download(
                 github_url,

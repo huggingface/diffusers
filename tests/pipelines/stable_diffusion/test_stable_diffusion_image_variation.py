@@ -29,7 +29,8 @@ from diffusers import (
 )
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
-from transformers import CLIPVisionConfig, CLIPVisionModelWithProjection
+from PIL import Image
+from transformers import CLIPImageProcessor, CLIPVisionConfig, CLIPVisionModelWithProjection
 
 from ...test_pipelines_common import PipelineTesterMixin
 
@@ -74,19 +75,22 @@ class StableDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unitte
             patch_size=4,
         )
         image_encoder = CLIPVisionModelWithProjection(image_encoder_config)
+        feature_extractor = CLIPImageProcessor(crop_size=32, size=32)
 
         components = {
             "unet": unet,
             "scheduler": scheduler,
             "vae": vae,
             "image_encoder": image_encoder,
+            "feature_extractor": feature_extractor,
             "safety_checker": None,
-            "feature_extractor": None,
         }
         return components
 
     def get_dummy_inputs(self, device, seed=0):
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed))
+        image = image.cpu().permute(0, 2, 3, 1)[0]
+        image = Image.fromarray(np.uint8(image)).convert("RGB").resize((32, 32))
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
@@ -112,7 +116,7 @@ class StableDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unitte
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5093, 0.5717, 0.4806, 0.4891, 0.5552, 0.4594, 0.5177, 0.4894, 0.4904])
+        expected_slice = np.array([0.5167, 0.5746, 0.4835, 0.4914, 0.5605, 0.4691, 0.5201, 0.4898, 0.4958])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_img_variation_multiple_images(self):
@@ -123,7 +127,7 @@ class StableDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unitte
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        inputs["image"] = inputs["image"].repeat(2, 1, 1, 1)
+        inputs["image"] = 2 * [inputs["image"]]
         output = sd_pipe(**inputs)
 
         image = output.images
@@ -131,7 +135,7 @@ class StableDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unitte
         image_slice = image[-1, -3:, -3:, -1]
 
         assert image.shape == (2, 64, 64, 3)
-        expected_slice = np.array([0.6427, 0.5452, 0.5602, 0.5478, 0.5968, 0.6211, 0.5538, 0.5514, 0.5281])
+        expected_slice = np.array([0.6568, 0.5470, 0.5684, 0.5444, 0.5945, 0.6221, 0.5508, 0.5531, 0.5263])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_img_variation_num_images_per_prompt(self):
@@ -150,7 +154,7 @@ class StableDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unitte
         # test num_images_per_prompt=1 (default) for batch of images
         batch_size = 2
         inputs = self.get_dummy_inputs(device)
-        inputs["image"] = inputs["image"].repeat(batch_size, 1, 1, 1)
+        inputs["image"] = batch_size * [inputs["image"]]
         images = sd_pipe(**inputs).images
 
         assert images.shape == (batch_size, 64, 64, 3)
@@ -165,7 +169,7 @@ class StableDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unitte
         # test num_images_per_prompt for batch of prompts
         batch_size = 2
         inputs = self.get_dummy_inputs(device)
-        inputs["image"] = inputs["image"].repeat(batch_size, 1, 1, 1)
+        inputs["image"] = batch_size * [inputs["image"]]
         images = sd_pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
 
         assert images.shape == (batch_size * num_images_per_prompt, 64, 64, 3)
