@@ -3,6 +3,7 @@ import hashlib
 import itertools
 import math
 import os
+import warnings
 from pathlib import Path
 from typing import Optional
 
@@ -255,10 +256,11 @@ def parse_args(input_args=None):
         if args.class_prompt is None:
             raise ValueError("You must specify prompt for class images.")
     else:
+        # logger is not available yet
         if args.class_data_dir is not None:
-            logger.warning("You need not use --class_data_dir without --with_prior_preservation.")
+            warnings.warn("You need not use --class_data_dir without --with_prior_preservation.")
         if args.class_prompt is not None:
-            logger.warning("You need not use --class_prompt without --with_prior_preservation.")
+            warnings.warn("You need not use --class_prompt without --with_prior_preservation.")
 
     return args
 
