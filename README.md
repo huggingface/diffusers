@@ -79,19 +79,13 @@ In order to get started, we recommend taking a look at two notebooks:
 Stable Diffusion is a text-to-image latent diffusion model created by the researchers and engineers from [CompVis](https://github.com/CompVis), [Stability AI](https://stability.ai/), [LAION](https://laion.ai/) and [RunwayML](https://runwayml.com/). It's trained on 512x512 images from a subset of the [LAION-5B](https://laion.ai/blog/laion-5b/) database. This model uses a frozen CLIP ViT-L/14 text encoder to condition the model on text prompts. With its 860M UNet and 123M text encoder, the model is relatively lightweight and runs on a GPU with at least 4GB VRAM.
 See the [model card](https://huggingface.co/CompVis/stable-diffusion) for more information.
 
-You need to accept the model license before downloading or using the Stable Diffusion weights. Please, visit the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5), read the license carefully and tick the checkbox if you agree. You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section](https://huggingface.co/docs/hub/security-tokens) of the documentation.
-
 
 ### Text-to-Image generation with Stable Diffusion
 
 First let's install
-```bash
-pip install --upgrade diffusers transformers scipy
-```
 
-Run this command to log in with your HF Hub token if you haven't before (you can skip this step if you prefer to run the model locally, follow [this](#running-the-model-locally) instead)
 ```bash
-huggingface-cli login
+pip install --upgrade diffusers transformers accelerate
 ```
 
 We recommend using the model in [half-precision (`fp16`)](https://pytorch.org/blog/accelerating-training-on-nvidia-gpus-with-pytorch-automatic-mixed-precision/) as it gives almost always the same results as full
@@ -101,7 +95,7 @@ precision while being roughly twice as fast and requiring half the amount of GPU
 import torch
 from diffusers import StableDiffusionPipeline
 
-pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, revision="fp16")
+pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
 pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
@@ -109,17 +103,16 @@ image = pipe(prompt).images[0]
 ```
 
 #### Running the model locally
-If you don't want to login to Hugging Face, you can also simply download the model folder
-(after having [accepted the license](https://huggingface.co/runwayml/stable-diffusion-v1-5)) and pass
-the path to the local folder to the `StableDiffusionPipeline`.
+
+You can also simply download the model folder and pass the path to the local folder to the `StableDiffusionPipeline`.
 
 ```
 git lfs install
 git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
 ```
 
-Assuming the folder is stored locally under `./stable-diffusion-v1-5`, you can also run stable diffusion
-without requiring an authentication token:
+Assuming the folder is stored locally under `./stable-diffusion-v1-5`, you can run stable diffusion
+as follows:
 
 ```python
 pipe = StableDiffusionPipeline.from_pretrained("./stable-diffusion-v1-5")
@@ -134,11 +127,7 @@ to using `fp16`.
 The following snippet should result in less than 4GB VRAM.
 
 ```python
-pipe = StableDiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", 
-    revision="fp16", 
-    torch_dtype=torch.float16,
-)
+pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
 pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
@@ -164,7 +153,6 @@ If you want to run Stable Diffusion on CPU or you want to have maximum precision
 please run the model in the default *full-precision* setting:
 
 ```python
-# make sure you're logged in with `huggingface-cli login`
 from diffusers import StableDiffusionPipeline
 
 pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
@@ -262,11 +250,8 @@ from diffusers import StableDiffusionImg2ImgPipeline
 # load the pipeline
 device = "cuda"
 model_id_or_path = "runwayml/stable-diffusion-v1-5"
-pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
-    model_id_or_path,
-    revision="fp16", 
-    torch_dtype=torch.float16,
-)
+pipe = StableDiffusionImg2ImgPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16)
+
 # or download via git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
 # and pass `model_id_or_path="./stable-diffusion-v1-5"`.
 pipe = pipe.to(device)
@@ -288,10 +273,7 @@ You can also run this example on colab [![Open In Colab](https://colab.research.
 
 ### In-painting using Stable Diffusion
 
-The `StableDiffusionInpaintPipeline` lets you edit specific parts of an image by providing a mask and a text prompt. It uses a model optimized for this particular task, whose license you need to accept before use.
-
-Please, visit the [model card](https://huggingface.co/runwayml/stable-diffusion-inpainting), read the license carefully and tick the checkbox if you agree. Note that this is an additional license, you need to accept it even if you accepted the text-to-image Stable Diffusion license in the past. You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section](https://huggingface.co/docs/hub/security-tokens) of the documentation.
-
+The `StableDiffusionInpaintPipeline` lets you edit specific parts of an image by providing a mask and a text prompt.
 
 ```python
 import PIL
@@ -311,11 +293,7 @@ mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data
 init_image = download_image(img_url).resize((512, 512))
 mask_image = download_image(mask_url).resize((512, 512))
 
-pipe = StableDiffusionInpaintPipeline.from_pretrained(
-    "runwayml/stable-diffusion-inpainting",
-    revision="fp16",
-    torch_dtype=torch.float16,
-)
+pipe = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16)
 pipe = pipe.to("cuda")
 
 prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
