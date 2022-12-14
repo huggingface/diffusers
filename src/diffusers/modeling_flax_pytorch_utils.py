@@ -37,6 +37,7 @@ def rename_key(key):
 # PyTorch => Flax #
 #####################
 
+
 # Adapted from https://github.com/huggingface/transformers/blob/c603c80f46881ae18b2ca50770ef65fa4033eacd/src/transformers/modeling_flax_pytorch_utils.py#L69
 # and https://github.com/patil-suraj/stable-diffusion-jax/blob/main/stable_diffusion_jax/convert_diffusers_to_jax.py
 def rename_key_and_reshape_tensor(pt_tuple_key, pt_tensor, random_flax_state_dict):

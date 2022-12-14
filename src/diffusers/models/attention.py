@@ -288,8 +288,10 @@ class AttentionBlock(nn.Module):
     def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
         if not is_xformers_available():
             raise ModuleNotFoundError(
-                "Refer to https://github.com/facebookresearch/xformers for more information on how to install"
-                " xformers",
+                (
+                    "Refer to https://github.com/facebookresearch/xformers for more information on how to install"
+                    " xformers"
+                ),
                 name="xformers",
             )
         elif not torch.cuda.is_available():
@@ -450,8 +452,10 @@ class BasicTransformerBlock(nn.Module):
         if not is_xformers_available():
             print("Here is how to install it")
             raise ModuleNotFoundError(
-                "Refer to https://github.com/facebookresearch/xformers for more information on how to install"
-                " xformers",
+                (
+                    "Refer to https://github.com/facebookresearch/xformers for more information on how to install"
+                    " xformers"
+                ),
                 name="xformers",
             )
         elif not torch.cuda.is_available():

@@ -481,13 +481,13 @@ class ComposableStableDiffusionPipeline(DiffusionPipeline):
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        if '|' in prompt:
-            prompt = [x.strip() for x in prompt.split('|')]
+        if "|" in prompt:
+            prompt = [x.strip() for x in prompt.split("|")]
             print(f"composing {prompt}...")
 
             if not weights:
                 # specify weights for prompts (excluding the unconditional score)
-                print('using equal positive weights (conjunction) for all prompts...')
+                print("using equal positive weights (conjunction) for all prompts...")
                 weights = torch.tensor([guidance_scale] * len(prompt), device=self.device).reshape(-1, 1, 1, 1)
             else:
                 # set prompt weight for each
@@ -546,7 +546,9 @@ class ComposableStableDiffusionPipeline(DiffusionPipeline):
                 # perform guidance
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + (weights * (noise_pred_text - noise_pred_uncond)).sum(dim=0, keepdims=True)
+                    noise_pred = noise_pred_uncond + (weights * (noise_pred_text - noise_pred_uncond)).sum(
+                        dim=0, keepdims=True
+                    )
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
