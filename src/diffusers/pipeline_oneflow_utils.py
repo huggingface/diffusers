@@ -451,12 +451,14 @@ class OneFlowDiffusionPipeline(ConfigMixin):
 
         if low_cpu_mem_usage and not is_accelerate_available():
             low_cpu_mem_usage = False
+            '''
             logger.warning(
                 "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
                 " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
                 " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
                 " install accelerate\n```\n."
             )
+            '''
 
         if device_map is not None and not is_torch_version(">=", "1.9.0"):
             raise NotImplementedError(
