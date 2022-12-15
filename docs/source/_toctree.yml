@@ -128,6 +128,44 @@
       title: "Audio Diffusion"
     title: "Pipelines"
   - sections:
+    - local: api/schedulers/overview
+      title: "Overview"
+    - local: api/schedulers/ddim
+      title: "DDIM"
+    - local: api/schedulers/ddpm
+      title: "DDPM"
+    - local: api/schedulers/singlestep_dpm_solver
+      title: "Singlestep DPM-Solver"
+    - local: api/schedulers/multistep_dpm_solver
+      title: "Multistep DPM-Solver"
+    - local: api/schedulers/heun
+      title: "Heun Scheduler"
+    - local: api/schedulers/dpm_discrete
+      title: "DPM Discrete Scheduler"
+    - local: api/schedulers/dpm_discrete_ancestral
+      title: "DPM Discrete Scheduler with ancestral sampling"
+    - local: api/schedulers/stochastic_karras_ve
+      title: "Stochastic Kerras VE"
+    - local: api/schedulers/lms_discrete
+      title: "Linear Multistep"
+    - local: api/schedulers/pndm
+      title: "PNDM"
+    - local: api/schedulers/score_sde_ve
+      title: "VE-SDE"
+    - local: api/schedulers/ipndm
+      title: "IPNDM"
+    - local: api/schedulers/score_sde_vp
+      title: "VP-SDE"
+    - local: api/schedulers/euler
+      title: "Euler scheduler"
+    - local: api/schedulers/euler_ancestral
+      title: "Euler Ancestral Scheduler"
+    - local: api/schedulers/vq_diffusion
+      title: "VQDiffusionScheduler"
+    - local: api/schedulers/repaint
+      title: "RePaint Scheduler"      
+    title: "Schedulers"
+  - sections:
     - local: api/experimental/rl
       title: "RL Planning"
     title: "Experimental Features"

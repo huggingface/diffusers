@@ -38,6 +38,30 @@ To this end, the design of schedulers is such that:
 - Schedulers can be used interchangeably between diffusion models in inference to find the preferred trade-off between speed and generation quality.
 - Schedulers are currently by default in PyTorch, but are designed to be framework independent (partial Jax support currently exists).
 
+## Schedulers Summary
+
+The following table summarizes all officially supported schedulers, their corresponding paper
+
+
+| Scheduler | Paper |
+|---|---|
+| [ddim](./ddim) | [**Denoising Diffusion Implicit Models**](https://arxiv.org/abs/2010.02502) |
+| [ddpm](./ddpm) | [**Denoising Diffusion Probabilistic Models**](https://arxiv.org/abs/2006.11239) |
+| [singlestep_dpm_solver](./singlestep_dpm_solver) | [**Singlestep DPM-Solver**](https://arxiv.org/abs/2206.00927) |
+| [multistep_dpm_solver](./multistep_dpm_solver) | [**Multistep DPM-Solver**](https://arxiv.org/abs/2206.00927) |
+| [heun](./heun) | [**Heun scheduler inspired by Karras et. al paper**](https://arxiv.org/abs/2206.00364) |
+| [dpm_discrete](./dpm_discrete) | [**DPM Discrete Scheduler inspired by Karras et. al paper**](https://arxiv.org/abs/2206.00364) |
+| [dpm_discrete_ancestral](./dpm_discrete_ancestral) | [**DPM Discrete Scheduler with ancestral sampling inspired by Karras et. al paper**](https://arxiv.org/abs/2206.00364) |
+| [stochastic_karras_ve](./stochastic_karras_ve) | [**Variance exploding, stochastic sampling from Karras et. al**](https://arxiv.org/abs/2206.00364) |
+| [lms_discrete](./lms_discrete) | [**Linear multistep scheduler for discrete beta schedules**](https://arxiv.org/abs/2206.00364) |
+| [pndm](./pndm) | [**Pseudo numerical methods for diffusion models (PNDM)**](https://github.com/crowsonkb/k-diffusion/blob/481677d114f6ea445aa009cf5bd7a9cdee909e47/k_diffusion/sampling.py#L181) |
+| [score_sde_ve](./score_sde_ve) | [**variance exploding stochastic differential equation (VE-SDE) scheduler**](https://arxiv.org/abs/2011.13456) |
+| [ipndm](./ipndm) | [**improved pseudo numerical methods for diffusion models (iPNDM)**](https://github.com/crowsonkb/v-diffusion-pytorch/blob/987f8985e38208345c1959b0ea767a625831cc9b/diffusion/sampling.py#L296) |
+| [score_sde_vp](./score_sde_vp) | [**Variance preserving stochastic differential equation (VP-SDE) scheduler**](https://arxiv.org/abs/2011.13456) |
+| [euler](./euler) | [**Euler scheduler**](https://arxiv.org/abs/2206.00364) |
+| [euler_ancestral](./euler_ancestral) | [**Euler Ancestral scheduler**](https://github.com/crowsonkb/k-diffusion/blob/481677d114f6ea445aa009cf5bd7a9cdee909e47/k_diffusion/sampling.py#L72) |
+| [vq_diffusion](./vq_diffusion) | [**VQDiffusionScheduler**](https://arxiv.org/abs/2111.14822) |
+| [repaint](./repaint) | [**RePaint scheduler**](https://arxiv.org/abs/2201.09865) |
 
 ## API
 
@@ -56,96 +80,4 @@ The class [`SchedulerOutput`] contains the outputs from any schedulers `step(...
 
 [[autodoc]] schedulers.scheduling_utils.SchedulerOutput
 
-### Implemented Schedulers
 
-#### Denoising diffusion implicit models (DDIM)
-
-Original paper can be found here.
-
-[[autodoc]] DDIMScheduler
-
-#### Denoising diffusion probabilistic models (DDPM)
-
-Original paper can be found [here](https://arxiv.org/abs/2010.02502).
-
-[[autodoc]] DDPMScheduler
-
-#### Multistep DPM-Solver
-
-Original paper can be found [here](https://arxiv.org/abs/2206.00927) and the [improved version](https://arxiv.org/abs/2211.01095). The original implementation can be found [here](https://github.com/LuChengTHU/dpm-solver).
-
-[[autodoc]] DPMSolverMultistepScheduler
-
-#### Variance exploding, stochastic sampling from Karras et. al
-
-Original paper can be found [here](https://arxiv.org/abs/2006.11239).
-
-[[autodoc]] KarrasVeScheduler
-
-#### Linear multistep scheduler for discrete beta schedules
-
-Original implementation can be found [here](https://arxiv.org/abs/2206.00364).
-
-
-[[autodoc]] LMSDiscreteScheduler
-
-#### Pseudo numerical methods for diffusion models (PNDM)
-
-Original implementation can be found [here](https://github.com/crowsonkb/k-diffusion/blob/481677d114f6ea445aa009cf5bd7a9cdee909e47/k_diffusion/sampling.py#L181).
-
-[[autodoc]] PNDMScheduler
-
-#### variance exploding stochastic differential equation (VE-SDE) scheduler
-
-Original paper can be found [here](https://arxiv.org/abs/2011.13456).
-
-[[autodoc]] ScoreSdeVeScheduler
-
-#### improved pseudo numerical methods for diffusion models (iPNDM)
-
-Original implementation can be found [here](https://github.com/crowsonkb/v-diffusion-pytorch/blob/987f8985e38208345c1959b0ea767a625831cc9b/diffusion/sampling.py#L296).
-
-[[autodoc]] IPNDMScheduler
-
-#### variance preserving stochastic differential equation (VP-SDE) scheduler
-
-Original paper can be found [here](https://arxiv.org/abs/2011.13456).
-
-<Tip warning={true}>
-
-Score SDE-VP is under construction.
-
-</Tip>
-
-[[autodoc]] schedulers.scheduling_sde_vp.ScoreSdeVpScheduler
-
-#### Euler scheduler
-
-Euler scheduler (Algorithm 2) from the paper [Elucidating the Design Space of Diffusion-Based Generative Models](https://arxiv.org/abs/2206.00364) by Karras et al. (2022). Based on the original [k-diffusion](https://github.com/crowsonkb/k-diffusion/blob/481677d114f6ea445aa009cf5bd7a9cdee909e47/k_diffusion/sampling.py#L51) implementation by Katherine Crowson.
-Fast scheduler which often times generates good outputs with 20-30 steps.
-
-[[autodoc]] EulerDiscreteScheduler
-
-
-#### Euler Ancestral scheduler
-
-Ancestral sampling with Euler method steps. Based on the original (k-diffusion)[https://github.com/crowsonkb/k-diffusion/blob/481677d114f6ea445aa009cf5bd7a9cdee909e47/k_diffusion/sampling.py#L72] implementation by Katherine Crowson.
-Fast scheduler which often times generates good outputs with 20-30 steps.
-
-[[autodoc]] EulerAncestralDiscreteScheduler
-
-
-#### VQDiffusionScheduler
-
-Original paper can be found [here](https://arxiv.org/abs/2111.14822)
-
-[[autodoc]] VQDiffusionScheduler
-
-#### RePaint scheduler
-
-DDPM-based inpainting scheduler for unsupervised inpainting with extreme masks. 
-Intended for use with [`RePaintPipeline`].
-Based on the paper [RePaint: Inpainting using Denoising Diffusion Probabilistic Models](https://arxiv.org/abs/2201.09865) 
-and the original implementation by Andreas Lugmayr et al.: https://github.com/andreas128/RePaint
-
-[[autodoc]] RePaintScheduler
