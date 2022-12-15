@@ -200,13 +200,13 @@ class PipelineTesterMixin:
 
                     # make last batch super long
                     batched_inputs[name][-1] = 2000 * "very long"
-                elif name == "generator":
-                    batched_inputs[name] = [torch.Generator(value.device).manual_seed(i) for i in range(batch_size)]
                 # or else we have images
                 else:
                     batched_inputs[name] = batch_size * [value]
             elif name == "batch_size":
                 batched_inputs[name] = batch_size
+            elif name == "generator":
+                batched_inputs[name] = [torch.Generator(value.device).manual_seed(i) for i in range(batch_size)]
             else:
                 batched_inputs[name] = value
 

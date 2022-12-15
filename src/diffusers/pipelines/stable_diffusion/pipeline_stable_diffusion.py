@@ -378,12 +378,25 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch sizes matches the length of the generators."
+            )
+
         if latents is None:
-            if device.type == "mps":
-                # randn does not work reproducibly on mps
-                latents = torch.randn(shape, generator=generator, device="cpu", dtype=dtype).to(device)
+            device = "cpu" if device.type == "mps" else device
+
+            if isinstance(generator, list):
+                latents = torch.cat(
+                    [
+                        torch.randn((1,) + shape[1:], generator=generator[i], device=device, dtype=dtype).to(device)
+                        for i in range(batch_size)
+                    ],
+                    dim=0,
+                )
             else:
-                latents = torch.randn(shape, generator=generator, device=device, dtype=dtype)
+                latents = torch.randn(shape, generator=generator, device=device, dtype=dtype).to(device)
         else:
             if latents.shape != shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
