@@ -23,9 +23,13 @@ import PIL
 from ...models import UNet2DModel
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import RePaintScheduler
-from ...utils import deprecate
+from ...utils import PIL_INTERPOLATION, deprecate, logging
 
 
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.preprocess
 def _preprocess_image(image: Union[List, PIL.Image.Image, torch.Tensor]):
     if isinstance(image, torch.Tensor):
         return image
@@ -33,9 +37,15 @@ def _preprocess_image(image: Union[List, PIL.Image.Image, torch.Tensor]):
         image = [image]
 
     if isinstance(image[0], PIL.Image.Image):
-        image = np.array(image.convert("RGB"))
-        image = image[None].transpose(0, 3, 1, 2)
-        image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
+        w, h = image[0].size
+        w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
+
+        image = [np.array(i.resize((w, h), resample=PIL_INTERPOLATION["lanczos"]))[None, :] for i in image]
+        image = np.concatenate(image, axis=0)
+        image = np.array(image).astype(np.float32) / 255.0
+        image = image.transpose(0, 3, 1, 2)
+        image = 2.0 * image - 1.0
+        image = torch.from_numpy(image)
     elif isinstance(image[0], torch.Tensor):
         image = torch.cat(image, dim=0)
     return image
@@ -48,9 +58,11 @@ def _preprocess_mask(mask: Union[List, PIL.Image.Image, torch.Tensor]):
         mask = [mask]
 
     if isinstance(mask[0], PIL.Image.Image):
-        mask = np.array(mask.convert("L"))
+        w, h = mask[0].size
+        w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
+        mask = [np.array(m.convert("L").resize((w, h), resample=PIL_INTERPOLATION["nearest"]))[None, :] for m in mask]
+        mask = np.concatenate(mask, axis=0)
         mask = mask.astype(np.float32) / 255.0
-        mask = mask[None, None]
         mask[mask < 0.5] = 0
         mask[mask >= 0.5] = 1
         mask = torch.from_numpy(mask)
