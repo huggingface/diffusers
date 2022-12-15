@@ -37,19 +37,6 @@ check how they look before committing for instance). You don't have to commit th
 
 ---
 
-## Building the documentation
-
-Once you have setup the `doc-builder` and additional packages, you can generate the documentation by 
-typing the following command:
-
-```bash
-doc-builder build diffusers docs/source/ --build_dir ~/tmp/test-build
-```
-
-You can adapt the `--build_dir` to set any temporary folder that you prefer. This command will create it and generate
-the MDX files that will be rendered as the documentation on the main website. You can inspect them in your favorite
-Markdown editor.
-
 ## Previewing the documentation
 
 To preview the docs, first install the `watchdog` module with:
@@ -109,7 +96,7 @@ Sections that were moved:
 
 Use the relative style to link to the new file so that the versioned docs continue to work.
 
-For an example of a rich moved section set please see the very end of [the Trainer doc](https://github.com/huggingface/transformers/blob/main/docs/source/en/main_classes/trainer.mdx).
+For an example of a rich moved section set please see the very end of [the transformers Trainer doc](https://github.com/huggingface/transformers/blob/main/docs/source/en/main_classes/trainer.mdx).
 
 
 ## Writing Documentation - Specification
@@ -122,8 +109,8 @@ although we can write them directly in Markdown.
 
 Adding a new tutorial or section is done in two steps:
 
-- Add a new file under `./source`. This file can either be ReStructuredText (.rst) or Markdown (.md).
-- Link that file in `./source/_toctree.yml` on the correct toc-tree.
+- Add a new file under `docs/source`. This file can either be ReStructuredText (.rst) or Markdown (.md).
+- Link that file in `docs/source/_toctree.yml` on the correct toc-tree.
 
 Make sure to put your new file under the proper section. It's unlikely to go in the first section (*Get Started*), so
 depending on the intended targets (beginners, more advanced users, or researchers) it should go in sections two, three, or four.
@@ -132,8 +119,8 @@ depending on the intended targets (beginners, more advanced users, or researcher
 
 When adding a new pipeline:
 
-- create a file `xxx.mdx` under `./source/api/pipelines` (don't hesitate to copy an existing file as template).
-- Link that file in (*Diffusers Summary*) section in `./source/api/pipelines/overview.mdx`, along with the link to the paper, and a colab notebook (if available).
+- create a file `xxx.mdx` under `docs/source/api/pipelines` (don't hesitate to copy an existing file as template).
+- Link that file in (*Diffusers Summary*) section in `docs/source/api/pipelines/overview.mdx`, along with the link to the paper, and a colab notebook (if available).
 - Write a short overview of the diffusion model:
     - Overview with paper & authors
     - Paper abstract
@@ -155,7 +142,7 @@ This will include every public method of the pipeline that is documented. You ca
 	- __call__
 ```
 
-You can follow the same process to create a new scheduler under the `./source/api/schedulers` folder
+You can follow the same process to create a new scheduler under the `docs/source/api/schedulers` folder
 
 ### Writing source documentation
 
@@ -268,7 +255,7 @@ to this dataset.
 
 ## Styling the docstring
 
-We have an automatic script running with the `make style` comment that will make sure that:
+We have an automatic script running with the `make style` command that will make sure that:
 - the docstrings fully take advantage of the line width
 - all code examples are formatted using black, like the code of the Transformers library
 

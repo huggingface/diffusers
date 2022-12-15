@@ -76,8 +76,6 @@
   - sections:
     - local: api/models
       title: "Models"
-    - local: api/schedulers
-      title: "Schedulers"
     - local: api/diffusion_pipeline
       title: "Diffusion Pipeline"
     - local: api/logging
