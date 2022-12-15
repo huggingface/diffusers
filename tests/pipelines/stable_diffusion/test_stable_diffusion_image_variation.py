@@ -13,8 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 import gc
+import os
 import random
 import unittest
 
@@ -28,7 +28,7 @@ from diffusers import (
     StableDiffusionImageVariationPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import floats_tensor, load_image, load_numpy, slow, nightly, torch_device
+from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 from transformers import CLIPVisionConfig, CLIPVisionModelWithProjection
 
@@ -295,6 +295,7 @@ class StableDiffusionImageVariationPipelineSlowTests(unittest.TestCase):
         mem_bytes = torch.cuda.max_memory_allocated()
         # make sure that less than 2.6 GB is allocated
         assert mem_bytes < 2.6 * 10**9
+
 
 @nightly
 @require_torch_gpu
