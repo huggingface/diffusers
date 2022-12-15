@@ -155,7 +155,8 @@ def parse_args(input_args=None):
         type=int,
         default=500,
         help=(
-            "Save a checkpoint of the training state every X updates. These checkpoints are only suitable for resuming"
+            "Save a checkpoint of the training state every X updates. These checkpoints can be used both as final"
+            " checkpoints in case they are better than the last checkpoint, and are also suitable for resuming"
             " training using `--resume_from_checkpoint`."
         ),
     )
