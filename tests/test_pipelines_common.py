@@ -16,6 +16,7 @@ from diffusers import (
     CycleDiffusionPipeline,
     DanceDiffusionPipeline,
     DiffusionPipeline,
+    RePaintPipeline,
     StableDiffusionDepth2ImgPipeline,
     StableDiffusionImg2ImgPipeline,
 )
@@ -72,6 +73,7 @@ class PipelineTesterMixin:
         if torch_device == "mps" and self.pipeline_class in (
             DanceDiffusionPipeline,
             CycleDiffusionPipeline,
+            RePaintPipeline,
             StableDiffusionImg2ImgPipeline,
         ):
             # FIXME: inconsistent outputs on MPS
@@ -178,6 +180,7 @@ class PipelineTesterMixin:
         if torch_device == "mps" and self.pipeline_class in (
             DanceDiffusionPipeline,
             CycleDiffusionPipeline,
+            RePaintPipeline,
             StableDiffusionImg2ImgPipeline,
         ):
             # FIXME: inconsistent outputs on MPS
@@ -292,6 +295,7 @@ class PipelineTesterMixin:
         if torch_device == "mps" and self.pipeline_class in (
             DanceDiffusionPipeline,
             CycleDiffusionPipeline,
+            RePaintPipeline,
             StableDiffusionImg2ImgPipeline,
         ):
             # FIXME: inconsistent outputs on MPS
@@ -358,6 +362,7 @@ class PipelineTesterMixin:
         if torch_device == "mps" and self.pipeline_class in (
             DanceDiffusionPipeline,
             CycleDiffusionPipeline,
+            RePaintPipeline,
             StableDiffusionImg2ImgPipeline,
             StableDiffusionDepth2ImgPipeline,
         ):
