@@ -23,7 +23,8 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | Text Based Inpainting Stable Diffusion | Stable Diffusion Inpainting Pipeline that enables passing a text prompt to generate the mask for inpainting| [Text Based Inpainting Stable Diffusion](#image-to-image-inpainting-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Dhruv Karan](https://github.com/unography) |
 | Bit Diffusion | Diffusion on discrete data | [Bit Diffusion](#bit-diffusion) | -  |[Stuti R.](https://github.com/kingstut) |
 | K-Diffusion Stable Diffusion | Run Stable Diffusion with any of [K-Diffusion's samplers](https://github.com/crowsonkb/k-diffusion/blob/master/k_diffusion/sampling.py) | [Stable Diffusion with K Diffusion](#stable-diffusion-with-k-diffusion) | -  | [Patrick von Platen](https://github.com/patrickvonplaten/) |
-| Checkpoint Merger Pipeline | Diffusion Pipeline that enables merging of saved model checkpoints | [Checkpoint Merger Pipeline](#checkpoint-merger-pipeline)                   | -                                                                                                                                                                                                                  | [Naga Sai Abhinay Devarinti](https://github.com/Abhinay1997/) |
+| Checkpoint Merger Pipeline | Diffusion Pipeline that enables merging of saved model checkpoints | [Checkpoint Merger Pipeline](#checkpoint-merger-pipeline)                   | -                                                                                                                                                                                                                  | [Naga Sai Abhinay Devarinti](https://github.com/Abhinay1997/) | 
+Stable Diffusion v1.1-1.4 Comparison | Run all 4 model checkpoints for Stable Diffusion and compare their results together | [Stable Diffusion Comparison](#stable-diffusion-comparisons) | - | [Suvaditya Mukherjee](https://github.com/suvadityamuk) |
 
 
 
@@ -774,3 +775,44 @@ Some examples along with the merge details:
 3. "CompVis/stable-diffusion-v1-4" + "hakurei/waifu-diffusion" + "prompthero/openjourney"; Add Difference interpolation; alpha = 0.5 
 
 ![Stable plus Waifu plus openjourney add_diff 0.5](https://huggingface.co/datasets/NagaSaiAbhinay/CheckpointMergerSamples/resolve/main/stable_waifu_openjourney_add_diff_0.5.png)
+
+
+### Stable Diffusion Comparisons
+
+This Community Pipeline enables the comparison between the 4 checkpoints that exist for Stable Diffusion. They can be found through the following links:
+1. [Stable Diffusion v1.1](https://huggingface.co/CompVis/stable-diffusion-v1-1)
+2. [Stable Diffusion v1.2](https://huggingface.co/CompVis/stable-diffusion-v1-2)
+3. [Stable Diffusion v1.3](https://huggingface.co/CompVis/stable-diffusion-v1-3)
+4. [Stable Diffusion v1.4](https://huggingface.co/CompVis/stable-diffusion-v1-4)
+
+```python
+from diffusers import DiffusionPipeline
+import matplotlib.pyplot as plt
+
+pipe = DiffusionPipeline.from_pretrained('CompVis/stable-diffusion-v1-4', custom_pipeline='suvadityamuk/StableDiffusionComparison')
+pipe.enable_attention_slicing()
+pipe = pipe.to('cuda')
+prompt = "an astronaut riding a horse on mars"
+output = pipe(prompt)
+
+plt.subplots(2,2,1)
+plt.imshow(output.images[0])
+plt.title('Stable Diffusion v1.1')
+plt.axis('off')
+plt.subplots(2,2,2)
+plt.imshow(output.images[1])
+plt.title('Stable Diffusion v1.2')
+plt.axis('off')
+plt.subplots(2,2,3)
+plt.imshow(output.images[2])
+plt.title('Stable Diffusion v1.3')
+plt.axis('off')
+plt.subplots(2,2,4)
+plt.imshow(output.images[3])
+plt.title('Stable Diffusion v1.4')
+plt.axis('off')
+
+plt.show()
+```python
+
+As a result, you can look at a grid of all 4 generated images being shown together, that captures a difference the advancement of the training between the 4 checkpoints.

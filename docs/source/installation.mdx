@@ -127,7 +127,8 @@ Our library gathers telemetry information during `from_pretrained()` requests.
 This data includes the version of Diffusers and PyTorch/Flax, the requested model or pipeline class,
 and the path to a pretrained checkpoint if it is hosted on the Hub.
 This usage data helps us debug issues and prioritize new features.
-No private data, such as paths to models saved locally on disk, is ever collected.
+Telemetry is only sent when loading models and pipelines from the HuggingFace Hub,
+and is not collected during local usage.
 
 We understand that not everyone wants to share additional information, and we respect your privacy,
 so you can disable telemetry collection by setting the `DISABLE_TELEMETRY` environment variable from your terminal:

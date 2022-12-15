@@ -26,6 +26,8 @@
       title: "Text-Guided Image-to-Image"
     - local: using-diffusers/inpaint
       title: "Text-Guided Image-Inpainting"
+    - local: using-diffusers/depth2img
+      title: "Text-Guided Depth-to-Image"
     - local: using-diffusers/custom_pipeline_examples
       title: "Community Pipelines"
     - local: using-diffusers/contribute_pipeline

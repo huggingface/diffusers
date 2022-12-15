@@ -109,16 +109,18 @@ def prepare_mask_and_masked_image(image, mask):
         raise TypeError(f"`mask` is a torch.Tensor but `image` (type: {type(image)} is not")
     else:
         if isinstance(image, PIL.Image.Image):
-            image = np.array(image.convert("RGB"))
+            image = [image]
 
-        image = image[None].transpose(0, 3, 1, 2)
+        image = np.concatenate([np.array(i.convert("RGB"))[None, :] for i in image], axis=0)
+        image = image.transpose(0, 3, 1, 2)
         image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
 
+        # preprocess mask
         if isinstance(mask, PIL.Image.Image):
-            mask = np.array(mask.convert("L"))
-            mask = mask.astype(np.float32) / 255.0
+            mask = [mask]
 
-        mask = mask[None, None]
+        mask = np.concatenate([np.array(m.convert("L"))[None, None, :] for m in mask], axis=0)
+        mask = mask.astype(np.float32) / 255.0
 
         # paint-by-example inverses the mask
         mask = 1 - mask
@@ -159,7 +161,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
-    _optional_components = ["safety_checker", "feature_extractor"]
+    _optional_components = ["safety_checker"]
 
     def __init__(
         self,
@@ -323,8 +325,22 @@ class PaintByExamplePipeline(DiffusionPipeline):
         masked_image_latents = 0.18215 * masked_image_latents
 
         # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
-        mask = mask.repeat(batch_size, 1, 1, 1)
-        masked_image_latents = masked_image_latents.repeat(batch_size, 1, 1, 1)
+        if mask.shape[0] < batch_size:
+            if not batch_size % mask.shape[0] == 0:
+                raise ValueError(
+                    "The passed mask and the required batch size don't match. Masks are supposed to be duplicated to"
+                    f" a total batch size of {batch_size}, but {mask.shape[0]} masks were passed. Make sure the number"
+                    " of masks that you pass is divisible by the total requested batch size."
+                )
+            mask = mask.repeat(batch_size // mask.shape[0], 1, 1, 1)
+        if masked_image_latents.shape[0] < batch_size:
+            if not batch_size % masked_image_latents.shape[0] == 0:
+                raise ValueError(
+                    "The passed images and the required batch size don't match. Images are supposed to be duplicated"
+                    f" to a total batch size of {batch_size}, but {masked_image_latents.shape[0]} images were passed."
+                    " Make sure the number of images that you pass is divisible by the total requested batch size."
+                )
+            masked_image_latents = masked_image_latents.repeat(batch_size // masked_image_latents.shape[0], 1, 1, 1)
 
         mask = torch.cat([mask] * 2) if do_classifier_free_guidance else mask
         masked_image_latents = (
@@ -351,7 +367,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
 
         if do_classifier_free_guidance:
             uncond_embeddings = self.image_encoder.uncond_vector
-            uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt, 1)
+            uncond_embeddings = uncond_embeddings.repeat(1, image_embeddings.shape[0], 1)
             uncond_embeddings = uncond_embeddings.view(bs_embed * num_images_per_prompt, 1, -1)
 
             # For classifier free guidance, we need to do two forward passes.

@@ -11,6 +11,7 @@ from typing import Callable, Union
 import numpy as np
 import torch
 
+import diffusers
 from diffusers import (
     CycleDiffusionPipeline,
     DanceDiffusionPipeline,
@@ -18,11 +19,15 @@ from diffusers import (
     StableDiffusionDepth2ImgPipeline,
     StableDiffusionImg2ImgPipeline,
 )
+from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_xformers_available
 from diffusers.utils.testing_utils import require_torch, torch_device
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
+
+
+ALLOWED_REQUIRED_ARGS = ["source_prompt", "prompt", "image", "mask_image", "example_image"]
 
 
 @require_torch
@@ -94,7 +99,80 @@ class PipelineTesterMixin:
         output_loaded = pipe_loaded(**inputs)[0]
 
         max_diff = np.abs(output - output_loaded).max()
-        self.assertLess(max_diff, 1e-5)
+        self.assertLess(max_diff, 1e-4)
+
+    def test_pipeline_call_implements_required_args(self):
+        assert hasattr(self.pipeline_class, "__call__"), f"{self.pipeline_class} should have a `__call__` method"
+        parameters = inspect.signature(self.pipeline_class.__call__).parameters
+        required_parameters = {k: v for k, v in parameters.items() if v.default == inspect._empty}
+        required_parameters.pop("self")
+        required_parameters = set(required_parameters)
+        optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
+
+        for param in required_parameters:
+            if param == "kwargs":
+                # kwargs can be added if arguments of pipeline call function are deprecated
+                continue
+            assert param in ALLOWED_REQUIRED_ARGS
+
+        optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
+
+        required_optional_params = ["generator", "num_inference_steps", "return_dict"]
+        for param in required_optional_params:
+            assert param in optional_parameters
+
+    def test_inference_batch_consistent(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        logger = logging.get_logger(pipe.__module__)
+        logger.setLevel(level=diffusers.logging.FATAL)
+
+        # batchify inputs
+        for batch_size in [2, 4, 13]:
+            batched_inputs = {}
+            for name, value in inputs.items():
+                if name in ALLOWED_REQUIRED_ARGS:
+                    # prompt is string
+                    if name == "prompt":
+                        len_prompt = len(value)
+                        # make unequal batch sizes
+                        batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
+
+                        # make last batch super long
+                        batched_inputs[name][-1] = 2000 * "very long"
+                    # or else we have images
+                    else:
+                        batched_inputs[name] = batch_size * [value]
+                elif name == "batch_size":
+                    batched_inputs[name] = batch_size
+                else:
+                    batched_inputs[name] = value
+
+            batched_inputs["num_inference_steps"] = inputs["num_inference_steps"]
+            batched_inputs["output_type"] = None
+
+            if self.pipeline_class.__name__ == "DanceDiffusionPipeline":
+                batched_inputs.pop("output_type")
+
+            output = pipe(**batched_inputs)
+
+            assert len(output[0]) == batch_size
+
+            batched_inputs["output_type"] = "np"
+
+            if self.pipeline_class.__name__ == "DanceDiffusionPipeline":
+                batched_inputs.pop("output_type")
+
+            output = pipe(**batched_inputs)[0]
+
+            assert output.shape[0] == batch_size
+
+        logger.setLevel(level=diffusers.logging.WARNING)
 
     def test_dict_tuple_outputs_equivalent(self):
         if torch_device == "mps" and self.pipeline_class in (
@@ -118,13 +196,7 @@ class PipelineTesterMixin:
         output_tuple = pipe(**self.get_dummy_inputs(torch_device), return_dict=False)[0]
 
         max_diff = np.abs(output - output_tuple).max()
-        self.assertLess(max_diff, 1e-5)
-
-    def test_pipeline_call_implements_required_args(self):
-        required_args = ["num_inference_steps", "generator", "return_dict"]
-
-        for arg in required_args:
-            self.assertTrue(arg in inspect.signature(self.pipeline_class.__call__).parameters)
+        self.assertLess(max_diff, 1e-4)
 
     def test_num_inference_steps_consistent(self):
         components = self.get_dummy_components()
@@ -138,7 +210,7 @@ class PipelineTesterMixin:
 
         outputs = []
         times = []
-        for num_steps in [3, 6, 9]:
+        for num_steps in [9, 6, 3]:
             inputs = self.get_dummy_inputs(torch_device)
             inputs["num_inference_steps"] = num_steps
 
@@ -152,7 +224,7 @@ class PipelineTesterMixin:
         # check that all outputs have the same shape
         self.assertTrue(all(outputs[0].shape == output.shape for output in outputs))
         # check that the inference time increases with the number of inference steps
-        self.assertTrue(all(times[i] > times[i - 1] for i in range(1, len(times))))
+        self.assertTrue(all(times[i] < times[i - 1] for i in range(1, len(times))))
 
     def test_components_function(self):
         init_components = self.get_dummy_components()
@@ -257,7 +329,7 @@ class PipelineTesterMixin:
         output_loaded = pipe_loaded(**inputs)[0]
 
         max_diff = np.abs(output - output_loaded).max()
-        self.assertLess(max_diff, 1e-5)
+        self.assertLess(max_diff, 1e-4)
 
     @unittest.skipIf(torch_device != "cuda", reason="CUDA and CPU are required to switch devices")
     def test_to_device(self):
@@ -332,7 +404,7 @@ class PipelineTesterMixin:
         output_with_offload = pipe(**inputs)[0]
 
         max_diff = np.abs(output_with_offload - output_without_offload).max()
-        self.assertLess(max_diff, 1e-5, "CPU offloading should not affect the inference results")
+        self.assertLess(max_diff, 1e-4, "CPU offloading should not affect the inference results")
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
@@ -355,7 +427,7 @@ class PipelineTesterMixin:
         output_with_offload = pipe(**inputs)[0]
 
         max_diff = np.abs(output_with_offload - output_without_offload).max()
-        self.assertLess(max_diff, 1e-5, "XFormers attention should not affect the inference results")
+        self.assertLess(max_diff, 1e-4, "XFormers attention should not affect the inference results")
 
     def test_progress_bar(self):
         components = self.get_dummy_components()
