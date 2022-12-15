@@ -385,18 +385,17 @@ class StableDiffusionPipeline(DiffusionPipeline):
             )
 
         if latents is None:
-            device = "cpu" if device.type == "mps" else device
+            rand_device = "cpu" if device.type == "mps" else device
 
             if isinstance(generator, list):
-                latents = torch.cat(
-                    [
-                        torch.randn((1,) + shape[1:], generator=generator[i], device=device, dtype=dtype).to(device)
-                        for i in range(batch_size)
-                    ],
-                    dim=0,
-                )
+                shape = (1,) + shape[1:]
+                latents = [
+                    torch.randn(shape, generator=generator[i], device=rand_device, dtype=dtype)
+                    for i in range(batch_size)
+                ]
+                latents = torch.cat(latents, dim=0).to(device)
             else:
-                latents = torch.randn(shape, generator=generator, device=device, dtype=dtype).to(device)
+                latents = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype).to(device)
         else:
             if latents.shape != shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
