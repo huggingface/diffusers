@@ -56,7 +56,7 @@ class RepaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image = torch.from_numpy(image).to(device=device, dtype=torch.float32)
         mask = (image > 0).to(device=device, dtype=torch.float32)
         inputs = {
-            "original_image": image,
+            "image": image,
             "mask_image": mask,
             "generator": generator,
             "num_inference_steps": 5,

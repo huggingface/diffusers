@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -23,22 +23,39 @@ import PIL
 from ...models import UNet2DModel
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import RePaintScheduler
+from ...utils import deprecate
 
 
-def _preprocess_image(image: PIL.Image.Image):
-    image = np.array(image.convert("RGB"))
-    image = image[None].transpose(0, 3, 1, 2)
-    image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
+def _preprocess_image(image: Union[List, PIL.Image.Image, torch.Tensor]):
+    if isinstance(image, torch.Tensor):
+        return image
+    elif isinstance(image, PIL.Image.Image):
+        image = [image]
+
+    if isinstance(image[0], PIL.Image.Image):
+        image = np.array(image.convert("RGB"))
+        image = image[None].transpose(0, 3, 1, 2)
+        image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
+    elif isinstance(image[0], torch.Tensor):
+        image = torch.cat(image, dim=0)
     return image
 
 
-def _preprocess_mask(mask: PIL.Image.Image):
-    mask = np.array(mask.convert("L"))
-    mask = mask.astype(np.float32) / 255.0
-    mask = mask[None, None]
-    mask[mask < 0.5] = 0
-    mask[mask >= 0.5] = 1
-    mask = torch.from_numpy(mask)
+def _preprocess_mask(mask: Union[List, PIL.Image.Image, torch.Tensor]):
+    if isinstance(mask, torch.Tensor):
+        return mask
+    elif isinstance(mask, PIL.Image.Image):
+        mask = [mask]
+
+    if isinstance(mask[0], PIL.Image.Image):
+        mask = np.array(mask.convert("L"))
+        mask = mask.astype(np.float32) / 255.0
+        mask = mask[None, None]
+        mask[mask < 0.5] = 0
+        mask[mask >= 0.5] = 1
+        mask = torch.from_numpy(mask)
+    elif isinstance(mask[0], torch.Tensor):
+        mask = torch.cat(mask, dim=0)
     return mask
 
 
@@ -53,7 +70,7 @@ class RePaintPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        original_image: Union[torch.Tensor, PIL.Image.Image],
+        image: Union[torch.Tensor, PIL.Image.Image],
         mask_image: Union[torch.Tensor, PIL.Image.Image],
         num_inference_steps: int = 250,
         eta: float = 0.0,
@@ -62,10 +79,11 @@ class RePaintPipeline(DiffusionPipeline):
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
+        **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""
         Args:
-            original_image (`torch.FloatTensor` or `PIL.Image.Image`):
+            image (`torch.FloatTensor` or `PIL.Image.Image`):
                 The original image to inpaint on.
             mask_image (`torch.FloatTensor` or `PIL.Image.Image`):
                 The mask_image where 0.0 values define which part of the original image to inpaint (change).
@@ -96,11 +114,13 @@ class RePaintPipeline(DiffusionPipeline):
             generated images.
         """
 
-        if not isinstance(original_image, torch.Tensor):
-            original_image = _preprocess_image(original_image)
+        message = "Please use `image` instead of `original_image`."
+        original_image = deprecate("original_image", "0.15.0", message, take_from=kwargs)
+        original_image = original_image or image
+
+        original_image = _preprocess_image(original_image)
         original_image = original_image.to(device=self.device, dtype=self.unet.dtype)
-        if not isinstance(mask_image, torch.Tensor):
-            mask_image = _preprocess_mask(mask_image)
+        mask_image = _preprocess_mask(mask_image)
         mask_image = mask_image.to(device=self.device, dtype=self.unet.dtype)
 
         # sample gaussian noise to begin the loop
