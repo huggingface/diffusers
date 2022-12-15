@@ -59,7 +59,7 @@ so that the images are similar to the first image.
 
 ```python
 prompt = [prompt + t for t in [", highly realistic", ", artsy", ", trending", ", colorful"]]
-generator = torch.Generator(device="cuda").manual_seed(0)  # 0 for the first image
+generator = [torch.Generator(device="cuda").manual_seed(0) for i in range(4)]
 ```
 
 Let's run the pipeline again.
