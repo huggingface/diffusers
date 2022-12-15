@@ -1,6 +1,8 @@
 import torch
 import random
 
+import numpy as np
+
 from PIL import Image
 from typing import NamedTuple
 from diffusers import (
@@ -10,7 +12,26 @@ from diffusers import (
 )
 
 
-RANDOM_RANGE_MAX = 2**32
+min_seed_value = np.iinfo(np.uint32).min
+max_seed_value = np.iinfo(np.uint32).max
+
+
+def new_seed() -> int:
+    return random.randint(min_seed_value, max_seed_value)
+
+
+def seed_everything(seed: int) -> int:
+    if not min_seed_value <= seed <= max_seed_value:
+        msg = f"{seed} is not in bounds, numpy accepts from {min_seed_value} to {max_seed_value}"
+        print(f"> [warning] {msg}")
+        seed = new_seed()
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    return seed
 
 
 class GeneratedImage(NamedTuple):
@@ -66,14 +87,12 @@ class StableDiffusionGenerator:
         init_image=None,
         image_guidance=0.8,
     ):
-        generator = torch.Generator(device=self.DEVICE)
-
         if seed is None or seed < 0:
-            seed = random.randrange(0, RANDOM_RANGE_MAX)
+            seed = new_seed()
+        seed_everything(seed)
 
         if init_image is not None:
             return self._generate_img2img(
-                generator=generator,
                 seed=seed,
                 prompt=prompt,
                 num_inference_steps=num_inference_steps,
@@ -86,7 +105,6 @@ class StableDiffusionGenerator:
             )
         else:
             return self._generate_txt2img(
-                generator=generator,
                 seed=seed,
                 prompt=prompt,
                 num_inference_steps=num_inference_steps,
@@ -98,7 +116,6 @@ class StableDiffusionGenerator:
 
     def _generate_txt2img(
         self,
-        generator,
         seed,
         prompt,
         batch_size,
@@ -110,7 +127,6 @@ class StableDiffusionGenerator:
         # calculate latents from seed
         latents = None
         for index in range(batch_size):
-            generator = generator.manual_seed(seed + index)
             image_latents = torch.randn(
                 (
                     1,
@@ -118,7 +134,6 @@ class StableDiffusionGenerator:
                     height // 8,
                     width // 8,
                 ),
-                generator=generator,
                 device=self.DEVICE,
                 dtype=torch.float16 if self.use_half else torch.float32
             )
@@ -139,7 +154,6 @@ class StableDiffusionGenerator:
 
     def _generate_img2img(
         self,
-        generator,
         seed,
         prompt,
         batch_size,
@@ -150,13 +164,11 @@ class StableDiffusionGenerator:
         init_image,
         image_guidance,
     ):
-        generator = generator.manual_seed(seed)
         with torch.inference_mode():
             images = self.img2img_pipe(
                 prompt,
                 num_inference_steps=num_inference_steps,
                 num_images_per_prompt=batch_size,
-                generator=generator,
                 guidance_scale=guidance_scale,
                 width=width,
                 height=height,
