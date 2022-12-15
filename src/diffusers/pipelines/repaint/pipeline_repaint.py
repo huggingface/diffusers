@@ -19,7 +19,6 @@ import numpy as np
 import torch
 
 import PIL
-from tqdm.auto import tqdm
 
 from ...models import UNet2DModel
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
@@ -99,10 +98,10 @@ class RePaintPipeline(DiffusionPipeline):
 
         if not isinstance(original_image, torch.Tensor):
             original_image = _preprocess_image(original_image)
-        original_image = original_image.to(self.device)
+        original_image = original_image.to(device=self.device, dtype=self.unet.dtype)
         if not isinstance(mask_image, torch.Tensor):
             mask_image = _preprocess_mask(mask_image)
-        mask_image = mask_image.to(self.device)
+        mask_image = mask_image.to(device=self.device, dtype=self.unet.dtype)
 
         # sample gaussian noise to begin the loop
         image = torch.randn(
@@ -110,14 +109,14 @@ class RePaintPipeline(DiffusionPipeline):
             generator=generator,
             device=self.device,
         )
-        image = image.to(self.device)
+        image = image.to(device=self.device, dtype=self.unet.dtype)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps, jump_length, jump_n_sample, self.device)
         self.scheduler.eta = eta
 
         t_last = self.scheduler.timesteps[0] + 1
-        for i, t in enumerate((self.scheduler.timesteps)):
+        for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
             if t < t_last:
                 # predict the noise residual
                 model_output = self.unet(image, t).sample

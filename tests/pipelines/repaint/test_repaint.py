@@ -21,12 +21,10 @@ import torch
 from diffusers import RePaintPipeline, RePaintScheduler, UNet2DModel
 from diffusers.utils.testing_utils import load_image, load_numpy, require_torch_gpu, slow, torch_device
 
-
 from ...test_pipelines_common import PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
-
 
 
 class RepaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -68,6 +66,22 @@ class RepaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "output_type": "numpy",
         }
         return inputs
+
+    def test_repaint(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = RePaintPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 32, 32, 3)
+        expected_slice = np.array([1.0000, 0.5426, 0.5497, 0.2200, 1.0000, 1.0000, 0.5623, 1.0000, 0.6274])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
 
 @slow
 @require_torch_gpu
