@@ -163,7 +163,7 @@ def parse_args(input_args=None):
         "--generating_progress_steps",
         type=int,
         default=500,
-        help=("Save an image generated from the model every X steps."),
+        help="Save an image generated from the model every X steps.",
     )
     parser.add_argument(
         "--resume_from_checkpoint",
