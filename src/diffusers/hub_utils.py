@@ -20,7 +20,6 @@ from pathlib import Path
 from typing import Dict, Optional, Union
 from uuid import uuid4
 
-import requests
 from huggingface_hub import HfFolder, whoami
 
 from . import __version__
@@ -56,7 +55,7 @@ def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
     Formats a user-agent string with basic info about a request.
     """
     ua = f"diffusers/{__version__}; python/{sys.version.split()[0]}; session_id/{SESSION_ID}"
-    if DISABLE_TELEMETRY:
+    if DISABLE_TELEMETRY or HF_HUB_OFFLINE:
         return ua + "; telemetry/off"
     if is_torch_available():
         ua += f"; torch/{_torch_version}"
@@ -73,27 +72,6 @@ def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
     elif isinstance(user_agent, str):
         ua += "; " + user_agent
     return ua
-
-
-def send_telemetry(data: Dict, name: str):
-    """
-    Sends logs to the Hub telemetry endpoint.
-
-    Args:
-        data: the fields to track, e.g. {"example_name": "dreambooth"}
-        name: a unique name to differentiate the telemetry logs, e.g. "diffusers_examples" or "diffusers_notebooks"
-    """
-    if DISABLE_TELEMETRY or HF_HUB_OFFLINE:
-        return
-
-    headers = {"user-agent": http_user_agent(data)}
-    endpoint = HUGGINGFACE_CO_TELEMETRY + name
-    try:
-        r = requests.head(endpoint, headers=headers)
-        r.raise_for_status()
-    except Exception:
-        # We don't want to error in case of connection errors of any kind.
-        pass
 
 
 def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
