@@ -19,35 +19,33 @@ import numpy as np
 import torch
 
 import PIL
-from PIL import Image
-
-from transformers import CLIPTextModel, CLIPTokenizer
-
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale import StableDiffusionUpscalePipeline
 from diffusers.schedulers import DDIMScheduler, DDPMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from PIL import Image
+from transformers import CLIPTextModel, CLIPTokenizer
 
 
 def make_transparency_mask(size, overlap_pixels, remove_borders=[]):
     size_x = size[0] - overlap_pixels * 2
     size_y = size[1] - overlap_pixels * 2
-    for letter in ['l', 'r']:
+    for letter in ["l", "r"]:
         if letter in remove_borders:
             size_x += overlap_pixels
-    for letter in ['t', 'b']:
+    for letter in ["t", "b"]:
         if letter in remove_borders:
             size_y += overlap_pixels
     mask = np.ones((size_y, size_x), dtype=np.uint8) * 255
-    mask = np.pad(mask, mode='linear_ramp', pad_width=overlap_pixels, end_values=0)
+    mask = np.pad(mask, mode="linear_ramp", pad_width=overlap_pixels, end_values=0)
 
-    if 'l' in remove_borders:
-        mask = mask[:, overlap_pixels:mask.shape[1]]
-    if 'r' in remove_borders:
-        mask = mask[:, 0:mask.shape[1] - overlap_pixels]
-    if 't' in remove_borders:
-        mask = mask[overlap_pixels:mask.shape[0], :]
-    if 'b' in remove_borders:
-        mask = mask[0:mask.shape[0] - overlap_pixels, :]
+    if "l" in remove_borders:
+        mask = mask[:, overlap_pixels : mask.shape[1]]
+    if "r" in remove_borders:
+        mask = mask[:, 0 : mask.shape[1] - overlap_pixels]
+    if "t" in remove_borders:
+        mask = mask[overlap_pixels : mask.shape[0], :]
+    if "b" in remove_borders:
+        mask = mask[0 : mask.shape[0] - overlap_pixels, :]
     return mask
 
 
@@ -60,7 +58,7 @@ def clamp_rect(rect: [int], min: [int], max: [int]):
         clamp(rect[0], min[0], max[0]),
         clamp(rect[1], min[1], max[1]),
         clamp(rect[2], min[0], max[0]),
-        clamp(rect[3], min[1], max[1])
+        clamp(rect[3], min[1], max[1]),
     )
 
 
@@ -75,9 +73,13 @@ def add_overlap_rect(rect: [int], overlap: int, image_size: [int]):
 
 
 def squeeze_tile(tile, original_image, original_slice, slice_x):
-    result = Image.new('RGB', (tile.size[0] + original_slice, tile.size[1]))
-    result.paste(original_image.resize((tile.size[0], tile.size[1]), Image.BICUBIC).crop(
-        (slice_x, 0, slice_x + original_slice, tile.size[1])), (0, 0))
+    result = Image.new("RGB", (tile.size[0] + original_slice, tile.size[1]))
+    result.paste(
+        original_image.resize((tile.size[0], tile.size[1]), Image.BICUBIC).crop(
+            (slice_x, 0, slice_x + original_slice, tile.size[1])
+        ),
+        (0, 0),
+    )
     result.paste(tile, (original_slice, 0))
     return result
 
@@ -121,14 +123,14 @@ class StableDiffusionTiledUpscalePipeline(StableDiffusionUpscalePipeline):
     """
 
     def __init__(
-            self,
-            vae: AutoencoderKL,
-            text_encoder: CLIPTextModel,
-            tokenizer: CLIPTokenizer,
-            unet: UNet2DConditionModel,
-            low_res_scheduler: DDPMScheduler,
-            scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
-            max_noise_level: int = 350,
+        self,
+        vae: AutoencoderKL,
+        text_encoder: CLIPTextModel,
+        tokenizer: CLIPTokenizer,
+        unet: UNet2DConditionModel,
+        low_res_scheduler: DDPMScheduler,
+        scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
+        max_noise_level: int = 350,
     ):
         super().__init__(
             vae=vae,
@@ -137,16 +139,17 @@ class StableDiffusionTiledUpscalePipeline(StableDiffusionUpscalePipeline):
             unet=unet,
             low_res_scheduler=low_res_scheduler,
             scheduler=scheduler,
-            max_noise_level=max_noise_level
+            max_noise_level=max_noise_level,
         )
 
-    def _process_tile(self, original_image_slice, x, y, tile_size, tile_border,
-                      image, final_image, **kwargs):
+    def _process_tile(self, original_image_slice, x, y, tile_size, tile_border, image, final_image, **kwargs):
         torch.manual_seed(0)
-        crop_rect = (min(image.size[0] - (tile_size + original_image_slice), x * tile_size),
-                     min(image.size[1] - (tile_size + original_image_slice), y * tile_size),
-                     min(image.size[0], (x + 1) * tile_size),
-                     min(image.size[1], (y + 1) * tile_size))
+        crop_rect = (
+            min(image.size[0] - (tile_size + original_image_slice), x * tile_size),
+            min(image.size[1] - (tile_size + original_image_slice), y * tile_size),
+            min(image.size[0], (x + 1) * tile_size),
+            min(image.size[1], (y + 1) * tile_size),
+        )
         crop_rect_with_overlap = add_overlap_rect(crop_rect, tile_border, image.size)
         tile = image.crop(crop_rect_with_overlap)
         translated_slice_x = ((crop_rect[0] + ((crop_rect[2] - crop_rect[0]) / 2)) / image.size[0]) * tile.size[0]
@@ -155,8 +158,7 @@ class StableDiffusionTiledUpscalePipeline(StableDiffusionUpscalePipeline):
         to_input = squeeze_tile(tile, image, original_image_slice, translated_slice_x)
         orig_input_size = to_input.size
         to_input = to_input.resize((tile_size, tile_size), Image.BICUBIC)
-        upscaled_tile = \
-            super(StableDiffusionTiledUpscalePipeline, self).__call__(image=to_input, **kwargs).images[0]
+        upscaled_tile = super(StableDiffusionTiledUpscalePipeline, self).__call__(image=to_input, **kwargs).images[0]
         upscaled_tile = upscaled_tile.resize((orig_input_size[0] * 4, orig_input_size[1] * 4), Image.BICUBIC)
         upscaled_tile = unsqueeze_tile(upscaled_tile, original_image_slice)
         upscaled_tile = upscaled_tile.resize((tile.size[0] * 4, tile.size[1] * 4), Image.BICUBIC)
@@ -170,29 +172,33 @@ class StableDiffusionTiledUpscalePipeline(StableDiffusionUpscalePipeline):
         elif crop_rect[3] == image.size[1]:
             remove_borders.append("b")
         transparency_mask = Image.fromarray(
-            make_transparency_mask((upscaled_tile.size[0], upscaled_tile.size[1]), tile_border * 4,
-                                   remove_borders=remove_borders), mode="L")
-        final_image.paste(upscaled_tile, (crop_rect_with_overlap[0] * 4, crop_rect_with_overlap[1] * 4),
-                          transparency_mask)
+            make_transparency_mask(
+                (upscaled_tile.size[0], upscaled_tile.size[1]), tile_border * 4, remove_borders=remove_borders
+            ),
+            mode="L",
+        )
+        final_image.paste(
+            upscaled_tile, (crop_rect_with_overlap[0] * 4, crop_rect_with_overlap[1] * 4), transparency_mask
+        )
 
     @torch.no_grad()
     def __call__(
-            self,
-            prompt: Union[str, List[str]],
-            image: Union[PIL.Image.Image, List[PIL.Image.Image]],
-            num_inference_steps: int = 75,
-            guidance_scale: float = 9.0,
-            noise_level: int = 50,
-            negative_prompt: Optional[Union[str, List[str]]] = None,
-            num_images_per_prompt: Optional[int] = 1,
-            eta: float = 0.0,
-            generator: Optional[torch.Generator] = None,
-            latents: Optional[torch.FloatTensor] = None,
-            callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-            callback_steps: Optional[int] = 1,
-            tile_size: int = 128,
-            tile_border: int = 32,
-            original_image_slice: int = 32
+        self,
+        prompt: Union[str, List[str]],
+        image: Union[PIL.Image.Image, List[PIL.Image.Image]],
+        num_inference_steps: int = 75,
+        guidance_scale: float = 9.0,
+        noise_level: int = 50,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
+        num_images_per_prompt: Optional[int] = 1,
+        eta: float = 0.0,
+        generator: Optional[torch.Generator] = None,
+        latents: Optional[torch.FloatTensor] = None,
+        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback_steps: Optional[int] = 1,
+        tile_size: int = 128,
+        tile_border: int = 32,
+        original_image_slice: int = 32,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -242,29 +248,34 @@ class StableDiffusionTiledUpscalePipeline(StableDiffusionUpscalePipeline):
 
         """
 
-        final_image = Image.new('RGB', (image.size[0] * 4, image.size[1] * 4))
+        final_image = Image.new("RGB", (image.size[0] * 4, image.size[1] * 4))
         tcx = math.ceil(image.size[0] / tile_size)
         tcy = math.ceil(image.size[1] / tile_size)
         total_tile_count = tcx * tcy
         current_count = 0
         for y in range(tcy):
             for x in range(tcx):
-                self._process_tile(original_image_slice, x, y, tile_size,
-                                   tile_border, image, final_image, prompt=prompt,
-                                   num_inference_steps=num_inference_steps,
-                                   guidance_scale=guidance_scale,
-                                   noise_level=noise_level,
-                                   negative_prompt=negative_prompt,
-                                   num_images_per_prompt=num_images_per_prompt,
-                                   eta=eta,
-                                   generator=generator,
-                                   latents=latents)
+                self._process_tile(
+                    original_image_slice,
+                    x,
+                    y,
+                    tile_size,
+                    tile_border,
+                    image,
+                    final_image,
+                    prompt=prompt,
+                    num_inference_steps=num_inference_steps,
+                    guidance_scale=guidance_scale,
+                    noise_level=noise_level,
+                    negative_prompt=negative_prompt,
+                    num_images_per_prompt=num_images_per_prompt,
+                    eta=eta,
+                    generator=generator,
+                    latents=latents,
+                )
                 current_count += 1
                 if callback is not None:
-                    callback({
-                        'progress': current_count / total_tile_count,
-                        'image': final_image
-                    })
+                    callback({"progress": current_count / total_tile_count, "image": final_image})
         return final_image
 
 
@@ -277,11 +288,11 @@ def main():
 
     def callback(obj):
         print(f"progress: {obj['progress']:.4f}")
-        obj['image'].save("diffusers_library_progress.jpg")
+        obj["image"].save("diffusers_library_progress.jpg")
 
     final_image = pipe(image=image, prompt="Black font, white background, vector", noise_level=40, callback=callback)
     final_image.save("diffusers_library.jpg")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
