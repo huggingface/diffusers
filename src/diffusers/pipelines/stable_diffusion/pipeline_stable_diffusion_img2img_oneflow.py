@@ -19,7 +19,12 @@ import numpy as np
 import oneflow as torch
 
 import PIL
-from diffusers.utils import is_accelerate_available
+
+
+def is_accelerate_available():
+    return False
+
+
 from packaging import version
 from transformers import CLIPFeatureExtractor, OneFlowCLIPTextModel as CLIPTextModel, CLIPTokenizer
 
@@ -42,6 +47,8 @@ from timeit import default_timer as timer
 import os
 
 import oneflow as flow
+
+
 class UNetGraph(flow.nn.Graph):
     def __init__(self, unet):
         super().__init__()
@@ -51,6 +58,7 @@ class UNetGraph(flow.nn.Graph):
     def build(self, latent_model_input, t, text_embeddings):
         text_embeddings = torch._C.amp_white_identity(text_embeddings)
         return self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -345,10 +353,7 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         else:
             attention_mask = None
 
-        text_embeddings = self.text_encoder(
-            text_input_ids.to(device),
-            attention_mask=attention_mask,
-        )
+        text_embeddings = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask,)
         text_embeddings = text_embeddings[0]
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
@@ -379,11 +384,7 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
             max_length = text_input_ids.shape[-1]
             uncond_input = self.tokenizer(
-                uncond_tokens,
-                padding="max_length",
-                max_length=max_length,
-                truncation=True,
-                return_tensors="np",
+                uncond_tokens, padding="max_length", max_length=max_length, truncation=True, return_tensors="np",
             )
 
             if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
@@ -392,8 +393,7 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 attention_mask = None
 
             uncond_embeddings = self.text_encoder(
-                torch.from_numpy(uncond_input.input_ids).to(device),
-                attention_mask=attention_mask,
+                torch.from_numpy(uncond_input.input_ids).to(device), attention_mask=attention_mask,
             )
             uncond_embeddings = uncond_embeddings[0]
 
@@ -638,8 +638,11 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             else:
                 while len(self.unet_graphs) >= self.unet_graphs_cache_size:
                     shape_to_del = min(self.unet_graphs.keys(), key=lambda shape: self.unet_graphs[shape][0])
-                    print("[oneflow]", f"a compiled unet (height={shape_to_del[0]}, width={shape_to_del[1]}) "
-                          "is deleted according to the LRU policy")
+                    print(
+                        "[oneflow]",
+                        f"a compiled unet (height={shape_to_del[0]}, width={shape_to_del[1]}) "
+                        "is deleted according to the LRU policy",
+                    )
                     print("[oneflow]", "cache size can be changed by `pipeline.set_unet_graphs_cache_size`")
                     del self.unet_graphs[shape_to_del]
                 print("[oneflow]", "compiling unet beforehand to make sure the progress bar is more accurate")
@@ -647,7 +650,7 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 unet_graph = UNetGraph(self.unet)
                 unet_graph._compile(latent_model_input, t, text_embeddings)
-                unet_graph(latent_model_input, t, text_embeddings) # warmup
+                unet_graph(latent_model_input, t, text_embeddings)  # warmup
                 compilation_time = timer() - compilation_start
                 print("[oneflow]", "[elapsed(s)]", "[unet compilation]", compilation_time)
                 self.unet_graphs[height, width] = (self.unet_graphs_lru_cache_time, unet_graph)

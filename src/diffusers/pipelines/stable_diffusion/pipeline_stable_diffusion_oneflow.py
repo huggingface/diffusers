@@ -18,7 +18,11 @@ from typing import Callable, List, Optional, Union
 import oneflow as torch
 import torch as og_torch
 
-from diffusers.utils import is_accelerate_available
+
+def is_accelerate_available():
+    return False
+
+
 from packaging import version
 from transformers import CLIPFeatureExtractor, OneFlowCLIPTextModel as CLIPTextModel, CLIPTokenizer
 
@@ -359,7 +363,11 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
         untruncated_ids = self.tokenizer(prompt, padding="max_length", return_tensors="np").input_ids
         untruncated_ids = torch.from_numpy(untruncated_ids)
 
-        if not torch.equal(text_input_ids, untruncated_ids):
+        if (
+            text_input_ids.shape == untruncated_ids.shape
+            and text_input_ids.numel() == untruncated_ids.numel()
+            and not torch.equal(text_input_ids, untruncated_ids)
+        ):
             removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1])
             logger.warning(
                 "The following part of your input was truncated because CLIP can only handle sequences up to"
@@ -402,11 +410,7 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
 
             max_length = text_input_ids.shape[-1]
             uncond_input = self.tokenizer(
-                uncond_tokens,
-                padding="max_length",
-                max_length=max_length,
-                truncation=True,
-                return_tensors="np",
+                uncond_tokens, padding="max_length", max_length=max_length, truncation=True, return_tensors="np",
             )
 
             if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
@@ -415,8 +419,7 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
                 attention_mask = None
 
             uncond_embeddings = self.text_encoder(
-                torch.from_numpy(uncond_input.input_ids).to(device),
-                attention_mask=attention_mask,
+                torch.from_numpy(uncond_input.input_ids).to(device), attention_mask=attention_mask,
             )
             uncond_embeddings = uncond_embeddings[0]
 
@@ -508,7 +511,9 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
             cache_size ([`int`]):
                 New cache size, i.e., the maximum number of unet graphs.
         """
-        logger.warning(f"`set_unet_graphs_cache_size` is deprecated, please use `set_graph_compile_cache_size` instead.")
+        logger.warning(
+            f"`set_unet_graphs_cache_size` is deprecated, please use `set_graph_compile_cache_size` instead."
+        )
         self.set_graph_compile_cache_size(cache_size)
 
     @torch.no_grad()

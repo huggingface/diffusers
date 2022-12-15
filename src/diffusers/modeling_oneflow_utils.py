@@ -32,11 +32,14 @@ from .utils import (
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
-    is_accelerate_available,
     is_safetensors_available,
     is_torch_version,
     logging,
 )
+
+
+def is_accelerate_available():
+    return False
 
 
 logger = logging.get_logger(__name__)
@@ -94,9 +97,10 @@ def load_state_dict(checkpoint_file: Union[str, os.PathLike]):
             return torch.load(checkpoint_file, map_location="cpu")
         elif os.path.basename(checkpoint_file) == WEIGHTS_NAME:
             import torch as og_torch
+
             torch_parameters = og_torch.load(checkpoint_file, map_location="cpu")
             oneflow_parameters = dict()
-            for key,value in torch_parameters.items():
+            for key, value in torch_parameters.items():
                 if value.is_cuda:
                     raise ValueError(f"torch model is not on cpu, it is on {value.device}")
                 val = value.detach().cpu().numpy()
@@ -143,6 +147,7 @@ def _load_state_dict_into_model(model_to_load, state_dict):
     load(model_to_load)
 
     return error_msgs
+
 
 class OneFlowModelMixin(torch.nn.Module):
     r"""
@@ -345,14 +350,14 @@ class OneFlowModelMixin(torch.nn.Module):
 
         if low_cpu_mem_usage and not is_accelerate_available():
             low_cpu_mem_usage = False
-            '''
+            """
             logger.warning(
                 "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
                 " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
                 " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
                 " install accelerate\n```\n."
             )
-            '''
+            """
 
         if device_map is not None and not is_accelerate_available():
             raise NotImplementedError(
@@ -527,12 +532,7 @@ class OneFlowModelMixin(torch.nn.Module):
 
     @classmethod
     def _load_pretrained_model(
-        cls,
-        model,
-        state_dict,
-        resolved_archive_file,
-        pretrained_model_name_or_path,
-        ignore_mismatched_sizes=False,
+        cls, model, state_dict, resolved_archive_file, pretrained_model_name_or_path, ignore_mismatched_sizes=False,
     ):
         # Retrieve missing & unexpected_keys
         model_state_dict = model.state_dict()
@@ -549,10 +549,7 @@ class OneFlowModelMixin(torch.nn.Module):
         model_to_load = model
 
         def _find_mismatched_keys(
-            state_dict,
-            model_state_dict,
-            loaded_keys,
-            ignore_mismatched_sizes,
+            state_dict, model_state_dict, loaded_keys, ignore_mismatched_sizes,
         ):
             mismatched_keys = []
             if ignore_mismatched_sizes:
@@ -572,10 +569,7 @@ class OneFlowModelMixin(torch.nn.Module):
         if state_dict is not None:
             # Whole checkpoint
             mismatched_keys = _find_mismatched_keys(
-                state_dict,
-                model_state_dict,
-                original_loaded_keys,
-                ignore_mismatched_sizes,
+                state_dict, model_state_dict, original_loaded_keys, ignore_mismatched_sizes,
             )
             error_msgs = _load_state_dict_into_model(model_to_load, state_dict)
 

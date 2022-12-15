@@ -44,12 +44,17 @@ from .utils import (
     WEIGHTS_NAME,
     BaseOutput,
     deprecate,
-    is_accelerate_available,
     is_safetensors_available,
     is_torch_version,
     is_transformers_available,
     logging,
 )
+
+
+def is_accelerate_available():
+    return False
+
+
 from .oneflow_graph_compile_cache import OneFlowGraphCompileCache
 
 
@@ -85,9 +90,7 @@ LOADABLE_CLASSES = {
         "OneFlowCLIPTextModel": ["save_pretrained", "from_pretrained"],
         "OneFlowBertModel": ["save_pretrained", "from_pretrained"],
     },
-    "onnxruntime.training": {
-        "ORTModule": ["save_pretrained", "from_pretrained"],
-    },
+    "onnxruntime.training": {"ORTModule": ["save_pretrained", "from_pretrained"],},
 }
 
 ALL_IMPORTABLE_CLASSES = {}
@@ -265,7 +268,7 @@ class OneFlowDiffusionPipeline(ConfigMixin):
                     )
                 module.to(torch_device)
             if isinstance(module, og_torch.nn.Module):
-                print(f"moving pytorch model to cuda {type(module)}: {module.device} => cuda" )
+                print(f"moving pytorch model to cuda {type(module)}: {module.device} => cuda")
                 if isinstance(torch_device, torch.device):
                     torch_device = og_torch.device(str(torch_device))
                 else:
@@ -451,14 +454,14 @@ class OneFlowDiffusionPipeline(ConfigMixin):
 
         if low_cpu_mem_usage and not is_accelerate_available():
             low_cpu_mem_usage = False
-            '''
+            """
             logger.warning(
                 "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
                 " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
                 " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
                 " install accelerate\n```\n."
             )
-            '''
+            """
 
         if device_map is not None and not is_torch_version(">=", "1.9.0"):
             raise NotImplementedError(
@@ -512,11 +515,7 @@ class OneFlowDiffusionPipeline(ConfigMixin):
             user_agent = http_user_agent(user_agent)
 
             if is_safetensors_available():
-                info = model_info(
-                    pretrained_model_name_or_path,
-                    use_auth_token=use_auth_token,
-                    revision=revision,
-                )
+                info = model_info(pretrained_model_name_or_path, use_auth_token=use_auth_token, revision=revision,)
                 if is_safetensors_compatible(info):
                     ignore_patterns.append("*.bin")
 
