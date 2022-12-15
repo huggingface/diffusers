@@ -23,7 +23,7 @@ you can install them with the following command, at the root of the code reposit
 pip install -e ".[docs]"
 ```
 
-Then you need to install our special tool that builds the documentation:
+Then you need to install our open source documentation builder tool:
 
 ```bash
 pip install git+https://github.com/huggingface/doc-builder
