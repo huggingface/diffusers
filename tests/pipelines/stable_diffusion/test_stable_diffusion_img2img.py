@@ -24,6 +24,7 @@ import torch
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
+    DPMSolverMultistepScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionImg2ImgPipeline,
@@ -381,6 +382,7 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
 
     def test_img2img_ddim(self):
         sd_pipe = StableDiffusionImg2ImgPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        sd_pipe.scheduler = DDIMScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -396,6 +398,7 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
 
     def test_img2img_lms(self):
         sd_pipe = StableDiffusionImg2ImgPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        sd_pipe.scheduler = LMSDiscreteScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -411,6 +414,7 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
 
     def test_img2img_dpm(self):
         sd_pipe = StableDiffusionImg2ImgPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        sd_pipe.scheduler = DPMSolverMultistepScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
