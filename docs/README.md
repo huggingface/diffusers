@@ -125,6 +125,7 @@ When adding a new pipeline:
     - Overview with paper & authors
     - Paper abstract
     - Tips and tricks and how to use it best
+    - Possible an end-to-end example of how to use it
 - Add all the pipeline classes that should be linked in the diffusion model. These classes should be added using our Markdown syntax. Usually as follows:
 
 ```
