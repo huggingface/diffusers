@@ -83,7 +83,7 @@ class RepaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
 
-# @slow
+@slow
 @require_torch_gpu
 class RepaintPipelineIntegrationTests(unittest.TestCase):
     def test_celebahq(self):
