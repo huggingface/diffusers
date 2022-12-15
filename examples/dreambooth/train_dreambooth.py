@@ -417,6 +417,11 @@ def main(args):
 
     if args.seed is not None:
         set_seed(args.seed)
+        g = torch.Generator(device=accelerator.device.type)
+        g.manual_seed(args.seed)
+    else:
+        g = torch.Generator(device=accelerator.device.type)
+        g.manual_seed(42)
 
     if args.with_prior_preservation:
         class_images_dir = Path(args.class_data_dir)
@@ -727,9 +732,6 @@ def main(args):
 
                 if global_step % args.generating_progress_steps == 0:
                     if accelerator.is_main_process:
-                        g = torch.Generator(device=accelerator.device.type)
-                        g.manual_seed(42)
-
                         # generate and save the image
                         pipeline = DiffusionPipeline.from_pretrained(
                             args.pretrained_model_name_or_path,
