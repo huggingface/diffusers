@@ -59,7 +59,7 @@ class StableDiffusionGenerator:
         # Init txt2img pipeline
         kwargs = dict(scheduler=euler)
         if use_half:
-            kwargs.update(dict(torch_dtype=torch.float16, revision="fp16"))
+            kwargs.update(dict(torch_dtype=torch.float16))
         self.txt2img_pipe = StableDiffusionPipeline.from_pretrained(path, **kwargs).to(self.DEVICE)
         self.txt2img_pipe.unet.to(memory_format=torch.channels_last)
         self.txt2img_pipe.enable_xformers_memory_efficient_attention()
