@@ -23,7 +23,7 @@ import torch
 
 from diffusers import (
     AutoencoderKL,
-    LMSDiscreteScheduler,
+    DPMSolverMultistepScheduler,
     PNDMScheduler,
     StableDiffusionImageVariationPipeline,
     UNet2DConditionModel,
@@ -189,7 +189,8 @@ class StableDiffusionImageVariationPipelineSlowTests(unittest.TestCase):
     def get_inputs(self, device, dtype=torch.float32, seed=0):
         generator = torch.Generator(device=device).manual_seed(seed)
         init_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/img2img/vermeer.jpg"
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_imgvar/input_image.jpg"
         )
         init_image = init_image.resize((512, 512))
         latents = np.random.RandomState(seed).standard_normal((1, 4, 64, 64))
@@ -220,30 +221,24 @@ class StableDiffusionImageVariationPipelineSlowTests(unittest.TestCase):
     def test_stable_diffusion_img_variation_intermediate_state(self):
         number_of_steps = 0
 
-        def test_callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
-            test_callback_fn.has_been_called = True
+        def callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
+            callback_fn.has_been_called = True
             nonlocal number_of_steps
             number_of_steps += 1
-            if step == 0:
+            if step == 1:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array([1.83, 1.293, -0.09705, 1.256, -2.293, 1.091, -0.0809, -0.65, -2.953])
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-3
-            elif step == 37:
+            elif step == 2:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array([2.285, 2.703, 1.969, 0.696, -1.323, 0.9253, -0.5464, -1.521, -2.537])
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
 
-        test_callback_fn.has_been_called = False
-
-        init_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/img2img/sketch-mountains-input.jpg"
-        )
-        init_image = init_image.resize((512, 512))
+        callback_fn.has_been_called = False
 
         pipe = StableDiffusionImageVariationPipeline.from_pretrained(
             "fusing/sd-image-variations-diffusers",
@@ -253,48 +248,27 @@ class StableDiffusionImageVariationPipelineSlowTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        with torch.autocast(torch_device):
-            pipe(
-                init_image,
-                num_inference_steps=50,
-                guidance_scale=7.5,
-                generator=generator,
-                callback=test_callback_fn,
-                callback_steps=1,
-            )
-        assert test_callback_fn.has_been_called
-        assert number_of_steps == 50
+        inputs = self.get_inputs(torch_device, dtype=torch.float16)
+        pipe(**inputs, callback=callback_fn, callback_steps=1)
+        assert callback_fn.has_been_called
+        assert number_of_steps == inputs["num_inference_steps"]
 
     def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()
 
-        init_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/img2img/sketch-mountains-input.jpg"
-        )
-        init_image = init_image.resize((512, 512))
-
         model_id = "fusing/sd-image-variations-diffusers"
-        lms = LMSDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler")
         pipe = StableDiffusionImageVariationPipeline.from_pretrained(
-            model_id, scheduler=lms, safety_checker=None, torch_dtype=torch.float16
+            model_id, safety_checker=None, torch_dtype=torch.float16
         )
-        pipe.to(torch_device)
+        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
         pipe.enable_sequential_cpu_offload()
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        _ = pipe(
-            init_image,
-            guidance_scale=7.5,
-            generator=generator,
-            output_type="np",
-            num_inference_steps=5,
-        )
+        inputs = self.get_inputs(torch_device, dtype=torch.float16)
+        _ = pipe(**inputs)
 
         mem_bytes = torch.cuda.max_memory_allocated()
         # make sure that less than 2.6 GB is allocated
@@ -312,7 +286,8 @@ class StableDiffusionImageVariationPipelineNightlyTests(unittest.TestCase):
     def get_inputs(self, device, dtype=torch.float32, seed=0):
         generator = torch.Generator(device=device).manual_seed(seed)
         init_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/img2img/vermeer.jpg"
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_imgvar/input_image.jpg"
         )
         init_image = init_image.resize((512, 512))
         latents = np.random.RandomState(seed).standard_normal((1, 4, 64, 64))
@@ -338,6 +313,23 @@ class StableDiffusionImageVariationPipelineNightlyTests(unittest.TestCase):
         expected_image = load_numpy(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_imgvar/lambdalabs_variations_pndm.npy"
+        )
+
+        assert np.allclose(image, expected_image, atol=1e-3)
+
+    def test_img_variation_dpm(self):
+        sd_pipe = StableDiffusionImageVariationPipeline.from_pretrained("fusing/sd-image-variations-diffusers")
+        sd_pipe.scheduler = DPMSolverMultistepScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 25
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_imgvar/lambdalabs_variations_dpm_multi.npy"
         )
 
         assert np.allclose(image, expected_image, atol=1e-3)

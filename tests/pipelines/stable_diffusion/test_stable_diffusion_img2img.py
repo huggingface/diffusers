@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import gc
+import os
 import random
 import unittest
 
@@ -28,14 +29,16 @@ from diffusers import (
     StableDiffusionImg2ImgPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
+from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 from transformers import CLIPImageProcessor, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from ...test_pipelines_common import PipelineTesterMixin
 
 
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 torch.backends.cuda.matmul.allow_tf32 = False
+torch.use_deterministic_algorithms(True)
 
 
 class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -212,12 +215,29 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
 
 @slow
 @require_torch_gpu
-class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
+class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
     def tearDown(self):
-        # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
+
+    def get_inputs(self, device, dtype=torch.float32, seed=0):
+        generator = torch.Generator(device=device).manual_seed(seed)
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/img2img/sketch-mountains-input.jpg"
+        )
+        init_image = init_image.resize((768, 512))
+        inputs = {
+            "prompt": "a fantasy landscape, concept art, high resolution",
+            "image": init_image,
+            "generator": generator,
+            "num_inference_steps": 50,
+            "strength": 0.75,
+            "guidance_scale": 7.5,
+            "output_type": "numpy",
+        }
+        return inputs
 
     def test_stable_diffusion_img2img_pipeline_default(self):
         init_image = load_image(
@@ -420,3 +440,45 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         mem_bytes = torch.cuda.max_memory_allocated()
         # make sure that less than 2.2 GB is allocated
         assert mem_bytes < 2.2 * 10**9
+
+
+@nightly
+@require_torch_gpu
+class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def get_inputs(self, device, dtype=torch.float32, seed=0):
+        generator = torch.Generator(device=device).manual_seed(seed)
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/img2img/sketch-mountains-input.jpg"
+        )
+        init_image = init_image.resize((768, 512))
+        inputs = {
+            "prompt": "a fantasy landscape, concept art, high resolution",
+            "image": init_image,
+            "generator": generator,
+            "num_inference_steps": 50,
+            "strength": 0.75,
+            "guidance_scale": 7.5,
+            "output_type": "numpy",
+        }
+        return inputs
+
+    def test_img2img_pndm(self):
+        sd_pipe = StableDiffusionImg2ImgPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_img2img/stable_diffusion_1_5_pndm.npy"
+        )
+
+        assert np.allclose(image, expected_image, atol=1e-3)
