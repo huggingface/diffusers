@@ -22,7 +22,14 @@ class GeneratedImage(NamedTuple):
 class StableDiffusionGenerator:
     DEVICE = "cuda"
 
-    def __init__(self, path: str):
+    def __init__(
+        self,
+        path: str,
+        *,
+        use_half: bool = False,
+    ):
+        self.use_half = use_half
+
         # Optimizations based on:
         # https://github.com/modal-labs/modal-examples/blob/main/06_gpu/stable_diffusion_cli.py#L108
         torch.backends.cuda.matmul.allow_tf32 = True
@@ -30,6 +37,8 @@ class StableDiffusionGenerator:
 
         # Init txt2img pipeline
         kwargs = dict(scheduler=euler)
+        if use_half:
+            kwargs.update(dict(torch_dtype=torch.float16, revision="fp16"))
         self.txt2img_pipe = StableDiffusionPipeline.from_pretrained(path, **kwargs).to(self.DEVICE)
         self.txt2img_pipe.unet.to(memory_format=torch.channels_last)
         self.txt2img_pipe.enable_xformers_memory_efficient_attention()
@@ -111,6 +120,7 @@ class StableDiffusionGenerator:
                 ),
                 generator=generator,
                 device=self.DEVICE,
+                dtype=torch.float16 if self.use_half else torch.float32
             )
             latents = image_latents if latents is None else torch.cat((latents, image_latents))
 
@@ -158,7 +168,7 @@ class StableDiffusionGenerator:
 
 
 if __name__ == "__main__":
-    g = StableDiffusionGenerator("runwayml/stable-diffusion-v1-5")
+    g = StableDiffusionGenerator("runwayml/stable-diffusion-v1-5", use_half=True)
     responses = g.generate("A beautiful, fantasy landscape", seed=142857)
     for i, res in enumerate(responses):
         res.image.save(f"test_{i}.png")
