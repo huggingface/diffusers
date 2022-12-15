@@ -160,6 +160,14 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
+        "--generating_progress_steps",
+        type=int,
+        default=500,
+        help=(
+            "Save an image generated from the model every X steps."
+        ),
+    )
+    parser.add_argument(
         "--resume_from_checkpoint",
         type=str,
         default=None,
@@ -738,6 +746,22 @@ def main(args):
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
+
+                if global_step % args.generating_progress_steps == 0:
+                    if accelerator.is_main_process:
+                        g = torch.Generator(device=accelerator.device.type)
+                        g.manual_seed(42)
+
+                        # generate and save the image
+                        pipeline = DiffusionPipeline.from_pretrained(
+                            args.pretrained_model_name_or_path,
+                            unet=accelerator.unwrap_model(unet),
+                            text_encoder=accelerator.unwrap_model(text_encoder),
+                            torch_dtype=weight_dtype,
+                        ).to(accelerator.device.type)
+
+                        image = pipeline(args.instance_prompt, generator=g).images[0]
+                        image.save(f"{args.output_dir}/logs/image_{global_step}.png")
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
