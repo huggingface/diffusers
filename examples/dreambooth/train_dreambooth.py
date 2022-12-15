@@ -34,7 +34,9 @@ logger = get_logger(__name__)
 
 def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision: str):
     text_encoder_config = PretrainedConfig.from_pretrained(
-        pretrained_model_name_or_path, subfolder="text_encoder", revision=revision,
+        pretrained_model_name_or_path,
+        subfolder="text_encoder",
+        revision=revision,
     )
     model_class = text_encoder_config.architectures[0]
 
@@ -100,7 +102,10 @@ def parse_args(input_args=None):
         help="The prompt to specify images in the same class as provided instance images.",
     )
     parser.add_argument(
-        "--with_prior_preservation", default=False, action="store_true", help="Flag to add prior preservation loss.",
+        "--with_prior_preservation",
+        default=False,
+        action="store_true",
+        help="Flag to add prior preservation loss.",
     )
     parser.add_argument("--prior_loss_weight", type=float, default=1.0, help="The weight of prior preservation loss.")
     parser.add_argument(
@@ -481,10 +486,17 @@ def main(args):
 
     # Load the tokenizer
     if args.tokenizer_name:
-        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, revision=args.revision, use_fast=False,)
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.tokenizer_name,
+            revision=args.revision,
+            use_fast=False,
+        )
     elif args.pretrained_model_name_or_path:
         tokenizer = AutoTokenizer.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, use_fast=False,
+            args.pretrained_model_name_or_path,
+            subfolder="tokenizer",
+            revision=args.revision,
+            use_fast=False,
         )
 
     # import correct text encoder class
@@ -492,11 +504,19 @@ def main(args):
 
     # Load models and create wrapper for stable diffusion
     text_encoder = text_encoder_cls.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision,
+        args.pretrained_model_name_or_path,
+        subfolder="text_encoder",
+        revision=args.revision,
     )
-    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision,)
+    vae = AutoencoderKL.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="vae",
+        revision=args.revision,
+    )
     unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision,
+        args.pretrained_model_name_or_path,
+        subfolder="unet",
+        revision=args.revision,
     )
 
     if is_xformers_available():
