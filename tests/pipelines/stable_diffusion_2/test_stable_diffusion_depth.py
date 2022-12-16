@@ -24,12 +24,13 @@ import torch
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
+    DPMSolverMultistepScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionDepth2ImgPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
+from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
 from diffusers.utils.import_utils import is_accelerate_available
 from diffusers.utils.testing_utils import require_torch_gpu
 from PIL import Image
@@ -49,7 +50,7 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 
 @unittest.skipIf(torch_device == "mps", reason="The depth model does not support MPS yet")
-class StableDiffusiondepth2imgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionDepth2ImgPipeline
     test_save_load_optional_components = False
 
@@ -275,12 +276,12 @@ class StableDiffusiondepth2imgPipelineFastTests(PipelineTesterMixin, unittest.Te
     def test_stable_diffusion_depth2img_default_case(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionDepth2ImgPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = StableDiffusionDepth2ImgPipeline(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        image = sd_pipe(**inputs).images
+        image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
@@ -293,13 +294,13 @@ class StableDiffusiondepth2imgPipelineFastTests(PipelineTesterMixin, unittest.Te
     def test_stable_diffusion_depth2img_negative_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionDepth2ImgPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = StableDiffusionDepth2ImgPipeline(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
         negative_prompt = "french fries"
-        output = sd_pipe(**inputs, negative_prompt=negative_prompt)
+        output = pipe(**inputs, negative_prompt=negative_prompt)
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
 
@@ -313,14 +314,14 @@ class StableDiffusiondepth2imgPipelineFastTests(PipelineTesterMixin, unittest.Te
     def test_stable_diffusion_depth2img_multiple_init_images(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionDepth2ImgPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = StableDiffusionDepth2ImgPipeline(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"]] * 2
         inputs["image"] = 2 * [inputs["image"]]
-        image = sd_pipe(**inputs).images
+        image = pipe(**inputs).images
         image_slice = image[-1, -3:, -3:, -1]
 
         assert image.shape == (2, 32, 32, 3)
@@ -334,13 +335,13 @@ class StableDiffusiondepth2imgPipelineFastTests(PipelineTesterMixin, unittest.Te
     def test_stable_diffusion_depth2img_num_images_per_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionDepth2ImgPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = StableDiffusionDepth2ImgPipeline(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
 
         # test num_images_per_prompt=1 (default)
         inputs = self.get_dummy_inputs(device)
-        images = sd_pipe(**inputs).images
+        images = pipe(**inputs).images
 
         assert images.shape == (1, 32, 32, 3)
 
@@ -348,14 +349,14 @@ class StableDiffusiondepth2imgPipelineFastTests(PipelineTesterMixin, unittest.Te
         batch_size = 2
         inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"]] * batch_size
-        images = sd_pipe(**inputs).images
+        images = pipe(**inputs).images
 
         assert images.shape == (batch_size, 32, 32, 3)
 
         # test num_images_per_prompt for single prompt
         num_images_per_prompt = 2
         inputs = self.get_dummy_inputs(device)
-        images = sd_pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
+        images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
 
         assert images.shape == (num_images_per_prompt, 32, 32, 3)
 
@@ -363,20 +364,20 @@ class StableDiffusiondepth2imgPipelineFastTests(PipelineTesterMixin, unittest.Te
         batch_size = 2
         inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"]] * batch_size
-        images = sd_pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
+        images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
 
         assert images.shape == (batch_size * num_images_per_prompt, 32, 32, 3)
 
     def test_stable_diffusion_depth2img_pil(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionDepth2ImgPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = StableDiffusionDepth2ImgPipeline(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
 
-        image = sd_pipe(**inputs).images
+        image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
 
         if torch_device == "mps":
@@ -388,186 +389,217 @@ class StableDiffusiondepth2imgPipelineFastTests(PipelineTesterMixin, unittest.Te
 
 @slow
 @require_torch_gpu
-class StableDiffusionDepth2ImgPipelineIntegrationTests(unittest.TestCase):
+class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
     def tearDown(self):
-        # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_stable_diffusion_depth2img_pipeline_default(self):
+    def get_inputs(self, device, dtype=torch.float32, seed=0):
+        generator = torch.Generator(device=device).manual_seed(seed)
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/depth2img/two_cats.png"
         )
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/depth2img/two_cats.npy"
-        )
+        inputs = {
+            "prompt": "two tigers",
+            "image": init_image,
+            "generator": generator,
+            "num_inference_steps": 3,
+            "strength": 0.75,
+            "guidance_scale": 7.5,
+            "output_type": "numpy",
+        }
+        return inputs
 
-        model_id = "stabilityai/stable-diffusion-2-depth"
-        pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(model_id)
+    def test_stable_diffusion_depth2img_pipeline_default(self):
+        pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-2-depth", safety_checker=None
+        )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        prompt = "two tigers"
+        inputs = self.get_inputs(torch_device)
+        image = pipe(**inputs).images
+        image_slice = image[0, 253:256, 253:256, -1].flatten()
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        output = pipe(
-            prompt=prompt,
-            image=init_image,
-            strength=0.75,
-            generator=generator,
-            output_type="np",
-        )
-        image = output.images[0]
-
-        assert image.shape == (480, 640, 3)
-        # depth2img is flaky across GPUs even in fp32, so using MAE here
-        assert np.abs(expected_image - image).max() < 1e-3
+        assert image.shape == (1, 480, 640, 3)
+        expected_slice = np.array([0.75446, 0.74692, 0.75951, 0.81611, 0.80593, 0.79992, 0.90529, 0.87921, 0.86903])
+        assert np.abs(expected_slice - image_slice).max() < 1e-4
 
     def test_stable_diffusion_depth2img_pipeline_k_lms(self):
-        init_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/depth2img/two_cats.png"
+        pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-2-depth", safety_checker=None
         )
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/depth2img/two_cats_k_lms.npy"
-        )
-
-        model_id = "stabilityai/stable-diffusion-2-depth"
-        lms = LMSDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler")
-        pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(model_id, scheduler=lms)
+        pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        prompt = "two tigers"
+        inputs = self.get_inputs(torch_device)
+        image = pipe(**inputs).images
+        image_slice = image[0, 253:256, 253:256, -1].flatten()
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        output = pipe(
-            prompt=prompt,
-            image=init_image,
-            strength=0.75,
-            generator=generator,
-            output_type="np",
-        )
-        image = output.images[0]
-
-        assert image.shape == (480, 640, 3)
-        assert np.abs(expected_image - image).max() < 5e-3
+        assert image.shape == (1, 480, 640, 3)
+        expected_slice = np.array([0.63957, 0.64879, 0.65668, 0.64385, 0.67078, 0.63588, 0.66577, 0.62180, 0.66286])
+        assert np.abs(expected_slice - image_slice).max() < 1e-4
 
     def test_stable_diffusion_depth2img_pipeline_ddim(self):
-        init_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/depth2img/two_cats.png"
+        pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-2-depth", safety_checker=None
         )
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/depth2img/two_cats_ddim.npy"
-        )
-
-        model_id = "stabilityai/stable-diffusion-2-depth"
-        ddim = DDIMScheduler.from_pretrained(model_id, subfolder="scheduler")
-        pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(model_id, scheduler=ddim)
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        prompt = "two tigers"
+        inputs = self.get_inputs(torch_device)
+        image = pipe(**inputs).images
+        image_slice = image[0, 253:256, 253:256, -1].flatten()
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        output = pipe(
-            prompt=prompt,
-            image=init_image,
-            strength=0.75,
-            generator=generator,
-            output_type="np",
-        )
-        image = output.images[0]
-
-        assert image.shape == (480, 640, 3)
-        assert np.abs(expected_image - image).max() < 1e-3
+        assert image.shape == (1, 480, 640, 3)
+        expected_slice = np.array([0.62840, 0.64191, 0.62953, 0.63653, 0.64205, 0.61574, 0.62252, 0.65827, 0.64809])
+        assert np.abs(expected_slice - image_slice).max() < 1e-4
 
     def test_stable_diffusion_depth2img_intermediate_state(self):
         number_of_steps = 0
 
-        def test_callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
-            test_callback_fn.has_been_called = True
+        def callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
+            callback_fn.has_been_called = True
             nonlocal number_of_steps
             number_of_steps += 1
             if step == 1:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 60, 80)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array(
-                    [-0.7825, 0.5786, -0.9125, -0.9885, -1.0071, 2.7126, -0.8490, 0.3776, -0.0791]
-                )
+                expected_slice = np.array([-1.148, -0.2079, -0.622, -2.477, -2.348, 0.3828, -2.055, -1.569, -1.526])
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
-            elif step == 37:
+            elif step == 2:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 60, 80)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array(
-                    [-0.6110, -0.2347, -0.5115, -1.1383, -1.4755, -0.5970, -0.9050, -0.7199, -0.8417]
-                )
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-2
+                expected_slice = np.array([-1.145, -0.2063, -0.6216, -2.469, -2.344, 0.3794, -2.05, -1.57, -1.521])
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
 
-        test_callback_fn.has_been_called = False
+        callback_fn.has_been_called = False
 
-        init_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/depth2img/two_cats.png"
+        pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-2-depth", safety_checker=None, revision="fp16", torch_dtype=torch.float16
         )
-
-        pipe = StableDiffusionDepth2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-depth")
-        pipe.to(torch_device)
+        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        prompt = "two tigers"
-
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        pipe(
-            prompt=prompt,
-            image=init_image,
-            strength=0.75,
-            num_inference_steps=50,
-            generator=generator,
-            callback=test_callback_fn,
-            callback_steps=1,
-        )
-        assert test_callback_fn.has_been_called
-        assert number_of_steps == 37
+        inputs = self.get_inputs(torch_device, dtype=torch.float16)
+        pipe(**inputs, callback=callback_fn, callback_steps=1)
+        assert callback_fn.has_been_called
+        assert number_of_steps == 2
 
     def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()
 
-        init_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/depth2img/two_cats.png"
-        )
-        init_image = init_image.resize((768, 512))
-
-        model_id = "stabilityai/stable-diffusion-2-depth"
-        lms = LMSDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler")
         pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(
-            model_id, scheduler=lms, safety_checker=None, revision="fp16", torch_dtype=torch.float16
+            "stabilityai/stable-diffusion-2-depth", safety_checker=None, revision="fp16", torch_dtype=torch.float16
         )
-        pipe.to(torch_device)
+        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
         pipe.enable_sequential_cpu_offload()
 
-        prompt = "A fantasy landscape, trending on artstation"
-
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        _ = pipe(
-            prompt=prompt,
-            image=init_image,
-            strength=0.75,
-            guidance_scale=7.5,
-            generator=generator,
-            output_type="np",
-            num_inference_steps=2,
-        )
+        inputs = self.get_inputs(torch_device, dtype=torch.float16)
+        _ = pipe(**inputs)
 
         mem_bytes = torch.cuda.max_memory_allocated()
         # make sure that less than 2.9 GB is allocated
         assert mem_bytes < 2.9 * 10**9
+
+
+@nightly
+@require_torch_gpu
+class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def get_inputs(self, device, dtype=torch.float32, seed=0):
+        generator = torch.Generator(device=device).manual_seed(seed)
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/depth2img/two_cats.png"
+        )
+        inputs = {
+            "prompt": "two tigers",
+            "image": init_image,
+            "generator": generator,
+            "num_inference_steps": 3,
+            "strength": 0.75,
+            "guidance_scale": 7.5,
+            "output_type": "numpy",
+        }
+        return inputs
+
+    def test_depth2img_pndm(self):
+        pipe = StableDiffusionDepth2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-depth")
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        image = pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_depth2img/stable_diffusion_2_0_pndm.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
+
+    def test_depth2img_ddim(self):
+        pipe = StableDiffusionDepth2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-depth")
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        image = pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_depth2img/stable_diffusion_2_0_ddim.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
+
+    def test_img2img_lms(self):
+        pipe = StableDiffusionDepth2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-depth")
+        pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        image = pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_depth2img/stable_diffusion_2_0_lms.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
+
+    def test_img2img_dpm(self):
+        pipe = StableDiffusionDepth2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-depth")
+        pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 30
+        image = pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_depth2img/stable_diffusion_2_0_dpm_multi.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3

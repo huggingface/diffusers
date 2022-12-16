@@ -55,6 +55,7 @@ if is_torch_available():
         load_hf_numpy,
         load_image,
         load_numpy,
+        nightly,
         parse_flag_from_env,
         require_torch_gpu,
         slow,
