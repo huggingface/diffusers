@@ -374,8 +374,8 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_img2img/stable_diffusion_1_5_pndm.npy"
         )
-
-        assert np.allclose(image, expected_image, atol=1e-3)
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
 
     def test_img2img_ddim(self):
         sd_pipe = StableDiffusionImg2ImgPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
@@ -390,8 +390,8 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_img2img/stable_diffusion_1_5_ddim.npy"
         )
-
-        assert np.allclose(image, expected_image, atol=1e-3)
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
 
     def test_img2img_lms(self):
         sd_pipe = StableDiffusionImg2ImgPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
@@ -406,8 +406,8 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_img2img/stable_diffusion_1_5_lms.npy"
         )
-
-        assert np.allclose(image, expected_image, atol=1e-3)
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
 
     def test_img2img_dpm(self):
         sd_pipe = StableDiffusionImg2ImgPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
@@ -423,5 +423,5 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_img2img/stable_diffusion_1_5_dpm.npy"
         )
-
-        assert np.allclose(image, expected_image, atol=1e-3)
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3

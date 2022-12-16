@@ -322,8 +322,8 @@ class StableDiffusionInpaintPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_inpaint/stable_diffusion_inpaint_ddim.npy"
         )
-
-        assert np.allclose(image, expected_image, atol=1e-3)
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
 
     def test_inpaint_pndm(self):
         sd_pipe = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-inpainting")
@@ -338,8 +338,8 @@ class StableDiffusionInpaintPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_inpaint/stable_diffusion_inpaint_pndm.npy"
         )
-
-        assert np.allclose(image, expected_image, atol=1e-3)
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
 
     def test_inpaint_lms(self):
         sd_pipe = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-inpainting")
@@ -354,8 +354,8 @@ class StableDiffusionInpaintPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_inpaint/stable_diffusion_inpaint_lms.npy"
         )
-
-        assert np.allclose(image, expected_image, atol=1e-3)
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
 
     def test_inpaint_dpm(self):
         sd_pipe = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-inpainting")
@@ -371,8 +371,8 @@ class StableDiffusionInpaintPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_inpaint/stable_diffusion_inpaint_dpm_multi.npy"
         )
-
-        assert np.allclose(image, expected_image, atol=1e-3)
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
 
 
 class StableDiffusionInpaintingPrepareMaskAndMaskedImageTests(unittest.TestCase):

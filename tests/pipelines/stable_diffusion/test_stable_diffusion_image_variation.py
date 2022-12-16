@@ -311,8 +311,8 @@ class StableDiffusionImageVariationPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_imgvar/lambdalabs_variations_pndm.npy"
         )
-
-        assert np.allclose(image, expected_image, atol=1e-3)
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
 
     def test_img_variation_dpm(self):
         sd_pipe = StableDiffusionImageVariationPipeline.from_pretrained("fusing/sd-image-variations-diffusers")
@@ -328,5 +328,5 @@ class StableDiffusionImageVariationPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_imgvar/lambdalabs_variations_dpm_multi.npy"
         )
-
-        assert np.allclose(image, expected_image, atol=1e-3)
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3

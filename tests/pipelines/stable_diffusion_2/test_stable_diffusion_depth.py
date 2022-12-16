@@ -552,8 +552,8 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_depth2img/stable_diffusion_2_0_pndm.npy"
         )
-
-        assert np.allclose(image, expected_image, atol=1e-3)
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
 
     def test_depth2img_ddim(self):
         sd_pipe = StableDiffusionDepth2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-depth")
@@ -568,8 +568,8 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_depth2img/stable_diffusion_2_0_ddim.npy"
         )
-
-        assert np.allclose(image, expected_image, atol=1e-3)
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
 
     def test_img2img_lms(self):
         sd_pipe = StableDiffusionDepth2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-depth")
@@ -584,8 +584,8 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_depth2img/stable_diffusion_2_0_lms.npy"
         )
-
-        assert np.allclose(image, expected_image, atol=1e-3)
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
 
     def test_img2img_dpm(self):
         sd_pipe = StableDiffusionDepth2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-depth")
@@ -601,5 +601,5 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_depth2img/stable_diffusion_2_0_dpm_multi.npy"
         )
-
-        assert np.allclose(image, expected_image, atol=1e-3)
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
