@@ -113,9 +113,8 @@ class DDIMPipeline(DiffusionPipeline):
             ]
             image = torch.cat(image, dim=0).to(self.device)
         else:
-            image = torch.randn(image_shape, generator=generator, device=rand_device, dtype=self.unet.dtype).to(
-                self.device
-            )
+            image = torch.randn(image_shape, generator=generator, device=rand_device, dtype=self.unet.dtype)
+            image = image.to(self.device)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)

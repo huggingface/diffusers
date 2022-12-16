@@ -94,9 +94,23 @@ class DanceDiffusionPipeline(DiffusionPipeline):
         sample_size = int(sample_size)
 
         dtype = next(iter(self.unet.parameters())).dtype
-        audio = torch.randn(
-            (batch_size, self.unet.in_channels, sample_size), generator=generator, device=self.device, dtype=dtype
-        )
+        shape = (batch_size, self.unet.in_channels, sample_size)
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch sizes matches the length of the generators."
+            )
+
+        rand_device = "cpu" if self.device.type == "mps" else self.device
+        if isinstance(generator, list):
+            shape = (1,) + shape[1:]
+            audio = [
+                torch.randn(shape, generator=generator[i], device=rand_device, dtype=self.unet.dtype)
+                for i in range(batch_size)
+            ]
+            audio = torch.cat(audio, dim=0).to(self.device)
+        else:
+            audio = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype).to(self.device)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps, device=audio.device)
