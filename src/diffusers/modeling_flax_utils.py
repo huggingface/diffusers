@@ -498,8 +498,8 @@ class FlaxModelMixin:
         self,
         save_directory: Union[str, os.PathLike],
         params: Union[Dict, FrozenDict],
+        mapping_dict: Union[Dict, OrderedDict],
         is_main_process: bool = True,
-        mapping_dict: Union[Dict, OrderedDict]
     ):
         """
         Save a model back as pytorch format. Currently, only bin file is saved. Please use original configuration file. (Experimental!)
