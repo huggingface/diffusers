@@ -29,7 +29,7 @@ from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, R
 from requests import HTTPError
 
 from . import __version__, is_torch_available
-from .modeling_flax_pytorch_utils import convert_pytorch_state_dict_to_flax
+from .modeling_flax_pytorch_utils import convert_pytorch_state_dict_to_flax, reverse_flax_into_pytorch
 from .utils import (
     CONFIG_NAME,
     DIFFUSERS_CACHE,
