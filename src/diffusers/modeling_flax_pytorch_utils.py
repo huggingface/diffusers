@@ -65,13 +65,13 @@ def rename_key_and_reshape_tensor(pt_tuple_key, pt_tensor, random_flax_state_dic
     renamed_pt_tuple_key = pt_tuple_key[:-1] + ("kernel",)
     if pt_tuple_key[-1] == "weight" and pt_tensor.ndim == 4:
         pt_tensor = pt_tensor.transpose(2, 3, 1, 0)
-        return renamed_pt_tuple_key, pt_tensor
+        return renamed_pt_tuple_key, pt_tensor, "transpose(2, 3, 1, 0)"
 
     # linear layer
     renamed_pt_tuple_key = pt_tuple_key[:-1] + ("kernel",)
     if pt_tuple_key[-1] == "weight":
         pt_tensor = pt_tensor.T
-        return renamed_pt_tuple_key, pt_tensor
+        return renamed_pt_tuple_key, pt_tensor, "T"
 
     # old PyTorch layer norm weight
     renamed_pt_tuple_key = pt_tuple_key[:-1] + ("weight",)
@@ -86,7 +86,8 @@ def rename_key_and_reshape_tensor(pt_tuple_key, pt_tensor, random_flax_state_dic
     return pt_tuple_key, pt_tensor
 
 
-def convert_pytorch_state_dict_to_flax(pt_state_dict, flax_model, init_key=42):
+def convert_pytorch_state_dict_to_flax(pt_state_dict, flax_model, init_key=42, return_mapping_dict=False):
+    mapping_dict={}
     # Step 1: Convert pytorch tensor to numpy
     pt_state_dict = {k: v.numpy() for k, v in pt_state_dict.items()}
 
@@ -102,7 +103,12 @@ def convert_pytorch_state_dict_to_flax(pt_state_dict, flax_model, init_key=42):
         pt_tuple_key = tuple(renamed_pt_key.split("."))
 
         # Correctly rename weight parameters
-        flax_key, flax_tensor = rename_key_and_reshape_tensor(pt_tuple_key, pt_tensor, random_flax_state_dict)
+        return_tuple = rename_key_and_reshape_tensor(pt_tuple_key, pt_tensor, random_flax_state_dict)
+        if len(return_tuple)==2:
+            flax_key, flax_tensor=return_tuple
+            tensor_change=None
+        elif len(return_tuple)==3:
+            flax_key, flax_tensor,tensor_change=return_tuple
 
         if flax_key in random_flax_state_dict:
             if flax_tensor.shape != random_flax_state_dict[flax_key].shape:
@@ -113,5 +119,11 @@ def convert_pytorch_state_dict_to_flax(pt_state_dict, flax_model, init_key=42):
 
         # also add unexpected weight so that warning is thrown
         flax_state_dict[flax_key] = jnp.asarray(flax_tensor)
-
+        mapping_dict[flax_key]={
+            "original_name": pt_key,
+            "tensor_change": tensor_change
+        }
+    if return_mapping_dict == True:
+        return unflatten_dict(flax_state_dict), mapping_dict
+    
     return unflatten_dict(flax_state_dict)
