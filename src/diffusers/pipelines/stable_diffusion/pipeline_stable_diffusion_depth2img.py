@@ -378,8 +378,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
         if isinstance(generator, list):
             shape = (1,) + init_latents.shape[1:]
             noise = [
-                torch.randn(shape, generator=generator[i], device=rand_device, dtype=dtype)
-                for i in range(batch_size)
+                torch.randn(shape, generator=generator[i], device=rand_device, dtype=dtype) for i in range(batch_size)
             ]
             noise = torch.cat(noise, dim=0).to(device)
         else:

@@ -504,7 +504,14 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         masked_image = masked_image.to(device=device, dtype=dtype)
 
         # encode the mask image into latents space so we can concatenate it to the latents
-        masked_image_latents = self.vae.encode(masked_image).latent_dist.sample(generator=generator)
+        if isinstance(generator, list):
+            masked_image_latents = [
+                self.vae.encode(masked_image[i : i + 1]).latent_dist.sample(generator=generator[i])
+                for i in range(batch_size)
+            ]
+            masked_image_latents = torch.cat(masked_image_latents, dim=0)
+        else:
+            masked_image_latents = self.vae.encode(masked_image).latent_dist.sample(generator=generator)
         masked_image_latents = 0.18215 * masked_image_latents
 
         # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
