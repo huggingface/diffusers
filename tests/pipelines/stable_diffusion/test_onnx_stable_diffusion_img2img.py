@@ -55,6 +55,7 @@ class OnnxStableDiffusionImg2ImgPipelineFastTests(OnnxPipelineTesterMixin, unitt
 
     def test_pipeline_default_ddim(self):
         pipe = OnnxStableDiffusionImg2ImgPipeline.from_pretrained(self.hub_checkpoint, provider="CPUExecutionProvider")
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs()
         image = pipe(**inputs).images
@@ -67,6 +68,7 @@ class OnnxStableDiffusionImg2ImgPipelineFastTests(OnnxPipelineTesterMixin, unitt
     def test_pipeline_pndm(self):
         pipe = OnnxStableDiffusionImg2ImgPipeline.from_pretrained(self.hub_checkpoint, provider="CPUExecutionProvider")
         pipe.scheduler = PNDMScheduler.from_config(pipe.scheduler.config, skip_prk_steps=True)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs()
         image = pipe(**inputs).images
@@ -79,6 +81,7 @@ class OnnxStableDiffusionImg2ImgPipelineFastTests(OnnxPipelineTesterMixin, unitt
     def test_pipeline_lms(self):
         pipe = OnnxStableDiffusionImg2ImgPipeline.from_pretrained(self.hub_checkpoint, provider="CPUExecutionProvider")
         pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
+        pipe.set_progress_bar_config(disable=None)
 
         # warmup pass to apply optimizations
         _ = pipe(**self.get_dummy_inputs())
@@ -94,6 +97,7 @@ class OnnxStableDiffusionImg2ImgPipelineFastTests(OnnxPipelineTesterMixin, unitt
     def test_pipeline_euler(self):
         pipe = OnnxStableDiffusionImg2ImgPipeline.from_pretrained(self.hub_checkpoint, provider="CPUExecutionProvider")
         pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs()
         image = pipe(**inputs).images
@@ -106,6 +110,7 @@ class OnnxStableDiffusionImg2ImgPipelineFastTests(OnnxPipelineTesterMixin, unitt
     def test_pipeline_euler_ancestral(self):
         pipe = OnnxStableDiffusionImg2ImgPipeline.from_pretrained(self.hub_checkpoint, provider="CPUExecutionProvider")
         pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(pipe.scheduler.config)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs()
         image = pipe(**inputs).images
@@ -118,6 +123,7 @@ class OnnxStableDiffusionImg2ImgPipelineFastTests(OnnxPipelineTesterMixin, unitt
     def test_pipeline_dpm_multistep(self):
         pipe = OnnxStableDiffusionImg2ImgPipeline.from_pretrained(self.hub_checkpoint, provider="CPUExecutionProvider")
         pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs()
         image = pipe(**inputs).images
