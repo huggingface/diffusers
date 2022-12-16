@@ -187,9 +187,8 @@ class StableDiffusionImageVariationPipelineSlowTests(unittest.TestCase):
         generator = torch.Generator(device=device).manual_seed(seed)
         init_image = load_image(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_imgvar/input_image.jpg"
+            "/stable_diffusion_imgvar/input_image_vermeer.png"
         )
-        init_image = init_image.resize((512, 512))
         latents = np.random.RandomState(seed).standard_normal((1, 4, 64, 64))
         latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
         inputs = {
@@ -287,9 +286,8 @@ class StableDiffusionImageVariationPipelineNightlyTests(unittest.TestCase):
         generator = torch.Generator(device=device).manual_seed(seed)
         init_image = load_image(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_imgvar/input_image.jpg"
+            "/stable_diffusion_imgvar/input_image_vermeer.png"
         )
-        init_image = init_image.resize((512, 512))
         latents = np.random.RandomState(seed).standard_normal((1, 4, 64, 64))
         latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
         inputs = {

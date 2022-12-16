@@ -110,6 +110,8 @@ class RepaintPipelineNightlyTests(unittest.TestCase):
         scheduler = RePaintScheduler.from_pretrained(model_id)
 
         repaint = RePaintPipeline(unet=unet, scheduler=scheduler).to(torch_device)
+        repaint.set_progress_bar_config(disable=None)
+        repaint.enable_attention_slicing()
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
         output = repaint(

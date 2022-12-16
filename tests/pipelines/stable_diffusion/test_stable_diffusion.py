@@ -44,7 +44,7 @@ from ...test_pipelines_common import PipelineTesterMixin
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class StableDiffusion2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionPipeline
 
     def get_dummy_components(self):
@@ -437,7 +437,7 @@ class StableDiffusion2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 @slow
 @require_torch_gpu
-class StableDiffusion2PipelineSlowTests(unittest.TestCase):
+class StableDiffusionPipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         gc.collect()

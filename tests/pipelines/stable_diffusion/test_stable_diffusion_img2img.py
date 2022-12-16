@@ -225,7 +225,6 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_img2img/sketch-mountains-input.png"
         )
-        init_image = init_image.resize((768, 512))
         inputs = {
             "prompt": "a fantasy landscape, concept art, high resolution",
             "image": init_image,
@@ -350,7 +349,6 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_img2img/sketch-mountains-input.png"
         )
-        init_image = init_image.resize((768, 512))
         inputs = {
             "prompt": "a fantasy landscape, concept art, high resolution",
             "image": init_image,
