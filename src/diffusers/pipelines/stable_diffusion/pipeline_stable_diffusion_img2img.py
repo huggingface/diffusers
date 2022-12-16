@@ -433,7 +433,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         rand_device = "cpu" if device.type == "mps" else device
         shape = init_latents.shape
         if isinstance(generator, list):
-            shape = (1,) + shape
+            shape = (1,) + shape[1:]
             noise = [
                 torch.randn(shape, generator=generator[i], device=rand_device, dtype=dtype) for i in range(batch_size)
             ]
