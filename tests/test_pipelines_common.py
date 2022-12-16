@@ -44,7 +44,7 @@ class PipelineTesterMixin:
     test_cpu_offload = True
     test_xformers_attention = True
 
-    def get_generator(seed):
+    def get_generator(self, seed):
         if torch_device == "mps":
             generator = torch.Generator("cpu").manual_seed(seed).to(torch_device)
         else:
