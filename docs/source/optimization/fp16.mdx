@@ -12,7 +12,9 @@ specific language governing permissions and limitations under the License.
 
 # Memory and speed
 
-We present some techniques and ideas to optimize 🤗 Diffusers _inference_ for memory or speed.
+We present some techniques and ideas to optimize 🤗 Diffusers _inference_ for memory or speed. As a general rule, we recommend the use of [xFormers](https://github.com/facebookresearch/xformers) for memory efficient attention, please see the recommended [installation instructions](xformers).
+
+We'll discuss how the following settings impact performance and memory.
 
 |                  | Latency | Speedup |
 | ---------------- | ------- | ------- |
@@ -340,7 +342,7 @@ Here are the speedups we obtain on a few Nvidia GPUs when running the inference 
 To leverage it just make sure you have: 
  - PyTorch > 1.12
  - Cuda available
- - Installed the [xformers](https://github.com/facebookresearch/xformers) library
+ - [Installed the xformers library](xformers).
 ```python
 from diffusers import StableDiffusionPipeline
 import torch
