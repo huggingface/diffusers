@@ -192,9 +192,9 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline):
             return_tensors="pt",
         )
         text_input_ids = text_inputs.input_ids
-        untruncated_ids = self.tokenizer(prompt, padding="max_length", return_tensors="pt").input_ids
+        untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
-        if not torch.equal(text_input_ids, untruncated_ids):
+        if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
             removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1])
             logger.warning(
                 "The following part of your input was truncated because CLIP can only handle sequences up to"
@@ -325,8 +325,8 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        height: int = 512,
-        width: int = 512,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -345,9 +345,9 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
-            height (`int`, *optional*, defaults to 512):
+            height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to 512):
+            width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
@@ -393,6 +393,9 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
+        # 0. Default height and width to unet
+        height = height or self.unet.config.sample_size * self.vae_scale_factor
+        width = width or self.unet.config.sample_size * self.vae_scale_factor
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(prompt, height, width, callback_steps)
@@ -436,6 +439,7 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline):
         # 6. Define model function
         def model_fn(x, t):
             latent_model_input = torch.cat([x] * 2)
+            t = torch.cat([t] * 2)
 
             noise_pred = self.k_diffusion_model(latent_model_input, t, cond=text_embeddings)
 

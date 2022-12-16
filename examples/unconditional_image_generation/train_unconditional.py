@@ -194,7 +194,6 @@ def parse_args():
             "and an Nvidia Ampere GPU."
         ),
     )
-
     parser.add_argument(
         "--prediction_type",
         type=str,
@@ -202,9 +201,26 @@ def parse_args():
         choices=["epsilon", "sample"],
         help="Whether the model should predict the 'epsilon'/noise error or directly the reconstructed image 'x0'.",
     )
-
     parser.add_argument("--ddpm_num_steps", type=int, default=1000)
     parser.add_argument("--ddpm_beta_schedule", type=str, default="linear")
+    parser.add_argument(
+        "--checkpointing_steps",
+        type=int,
+        default=500,
+        help=(
+            "Save a checkpoint of the training state every X updates. These checkpoints are only suitable for resuming"
+            " training using `--resume_from_checkpoint`."
+        ),
+    )
+    parser.add_argument(
+        "--resume_from_checkpoint",
+        type=str,
+        default=None,
+        help=(
+            "Whether training should be resumed from a previous checkpoint. Use a path saved by"
+            ' `--checkpointing_steps`, or `"latest"` to automatically select the last available checkpoint.'
+        ),
+    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -319,6 +335,7 @@ def main(args):
     model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, lr_scheduler
     )
+    accelerator.register_for_checkpointing(lr_scheduler)
 
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
 
@@ -351,11 +368,36 @@ def main(args):
         accelerator.init_trackers(run)
 
     global_step = 0
-    for epoch in range(args.num_epochs):
+    first_epoch = 0
+
+    if args.resume_from_checkpoint:
+        if args.resume_from_checkpoint != "latest":
+            path = os.path.basename(args.resume_from_checkpoint)
+        else:
+            # Get the most recent checkpoint
+            dirs = os.listdir(args.output_dir)
+            dirs = [d for d in dirs if d.startswith("checkpoint")]
+            dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
+            path = dirs[-1]
+        accelerator.print(f"Resuming from checkpoint {path}")
+        accelerator.load_state(os.path.join(args.output_dir, path))
+        global_step = int(path.split("-")[1])
+
+        resume_global_step = global_step * args.gradient_accumulation_steps
+        first_epoch = resume_global_step // num_update_steps_per_epoch
+        resume_step = resume_global_step % num_update_steps_per_epoch
+
+    for epoch in range(first_epoch, args.num_epochs):
         model.train()
         progress_bar = tqdm(total=num_update_steps_per_epoch, disable=not accelerator.is_local_main_process)
         progress_bar.set_description(f"Epoch {epoch}")
         for step, batch in enumerate(train_dataloader):
+            # Skip steps until we reach the resumed step
+            if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
+                if step % args.gradient_accumulation_steps == 0:
+                    progress_bar.update(1)
+                continue
+
             clean_images = batch["input"]
             # Sample noise that we'll add to the images
             noise = torch.randn(clean_images.shape).to(clean_images.device)
@@ -401,6 +443,12 @@ def main(args):
             if accelerator.sync_gradients:
                 progress_bar.update(1)
                 global_step += 1
+
+                if global_step % args.checkpointing_steps == 0:
+                    if accelerator.is_main_process:
+                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                        accelerator.save_state(save_path)
+                        logger.info(f"Saved state to {save_path}")
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
             if args.use_ema:
