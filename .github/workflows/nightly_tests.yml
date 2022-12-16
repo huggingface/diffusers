@@ -3,9 +3,6 @@ name: Nightly tests on main
 on:
   schedule:
     - cron: "0 0 * * *" # every day at midnight
-  pull_request:  # TODO: only for debugging, remove before merging!
-    branches:
-      - main
 
 env:
   DIFFUSERS_IS_CI: yes
