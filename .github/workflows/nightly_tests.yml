@@ -17,16 +17,26 @@ env:
   RUN_NIGHTLY: yes
 
 jobs:
-  run_slow_tests:
+  run_nightly_tests:
     strategy:
       fail-fast: false
       matrix:
         config:
-          - name: Slow PyTorch CUDA tests on Ubuntu
+          - name: Nightly PyTorch CUDA tests on Ubuntu
             framework: pytorch
             runner: docker-gpu
             image: diffusers/diffusers-pytorch-cuda
             report: torch_cuda
+          - name: Nightly Flax TPU tests on Ubuntu
+            framework: flax
+            runner: docker-tpu
+            image: diffusers/diffusers-flax-tpu
+            report: flax_tpu
+          - name: Nightly ONNXRuntime CUDA tests on Ubuntu
+            framework: onnxruntime
+            runner: docker-gpu
+            image: diffusers/diffusers-onnxruntime-cuda
+            report: onnx_cuda
 
     name: ${{ matrix.config.name }}
 
@@ -61,7 +71,7 @@ jobs:
         run: |
           python utils/print_env.py
 
-      - name: Run slow PyTorch CUDA tests
+      - name: Run nightly PyTorch CUDA tests
         if: ${{ matrix.config.framework == 'pytorch' }}
         env:
           HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
@@ -71,7 +81,7 @@ jobs:
             --make-reports=tests_${{ matrix.config.report }} \
             tests/
 
-      - name: Run slow Flax TPU tests
+      - name: Run nightly Flax TPU tests
         if: ${{ matrix.config.framework == 'flax' }}
         env:
           HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
@@ -81,7 +91,7 @@ jobs:
             --make-reports=tests_${{ matrix.config.report }} \
             tests/
 
-      - name: Run slow ONNXRuntime CUDA tests
+      - name: Run nightly ONNXRuntime CUDA tests
         if: ${{ matrix.config.framework == 'onnxruntime' }}
         env:
           HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
@@ -102,8 +112,8 @@ jobs:
           name: ${{ matrix.config.report }}_test_reports
           path: reports
 
-  run_slow_tests_apple_m1:
-    name: Slow PyTorch MPS tests on MacOS
+  run_nightly_tests_apple_m1:
+    name: Nightly PyTorch MPS tests on MacOS
     runs-on: [ self-hosted, apple-m1 ]
 
     steps:
@@ -135,7 +145,7 @@ jobs:
         run: |
           ${CONDA_RUN} python utils/print_env.py
 
-      - name: Run slow PyTorch tests on M1 (MPS)
+      - name: Run nightly PyTorch tests on M1 (MPS)
         shell: arch -arch arm64 bash {0}
         env:
           HF_HOME: /System/Volumes/Data/mnt/cache

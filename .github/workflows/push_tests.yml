@@ -27,6 +27,16 @@ jobs:
             runner: docker-gpu
             image: diffusers/diffusers-pytorch-cuda
             report: torch_cuda
+          - name: Slow Flax TPU tests on Ubuntu
+            framework: flax
+            runner: docker-tpu
+            image: diffusers/diffusers-flax-tpu
+            report: flax_tpu
+          - name: Slow ONNXRuntime CUDA tests on Ubuntu
+            framework: onnxruntime
+            runner: docker-gpu
+            image: diffusers/diffusers-onnxruntime-cuda
+            report: onnx_cuda
 
     name: ${{ matrix.config.name }}
 

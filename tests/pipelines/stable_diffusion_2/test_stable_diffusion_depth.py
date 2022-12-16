@@ -276,12 +276,12 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
     def test_stable_diffusion_depth2img_default_case(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionDepth2ImgPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = StableDiffusionDepth2ImgPipeline(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        image = sd_pipe(**inputs).images
+        image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
@@ -294,13 +294,13 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
     def test_stable_diffusion_depth2img_negative_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionDepth2ImgPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = StableDiffusionDepth2ImgPipeline(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
         negative_prompt = "french fries"
-        output = sd_pipe(**inputs, negative_prompt=negative_prompt)
+        output = pipe(**inputs, negative_prompt=negative_prompt)
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
 
@@ -314,14 +314,14 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
     def test_stable_diffusion_depth2img_multiple_init_images(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionDepth2ImgPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = StableDiffusionDepth2ImgPipeline(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"]] * 2
         inputs["image"] = 2 * [inputs["image"]]
-        image = sd_pipe(**inputs).images
+        image = pipe(**inputs).images
         image_slice = image[-1, -3:, -3:, -1]
 
         assert image.shape == (2, 32, 32, 3)
@@ -335,13 +335,13 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
     def test_stable_diffusion_depth2img_num_images_per_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionDepth2ImgPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = StableDiffusionDepth2ImgPipeline(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
 
         # test num_images_per_prompt=1 (default)
         inputs = self.get_dummy_inputs(device)
-        images = sd_pipe(**inputs).images
+        images = pipe(**inputs).images
 
         assert images.shape == (1, 32, 32, 3)
 
@@ -349,14 +349,14 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
         batch_size = 2
         inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"]] * batch_size
-        images = sd_pipe(**inputs).images
+        images = pipe(**inputs).images
 
         assert images.shape == (batch_size, 32, 32, 3)
 
         # test num_images_per_prompt for single prompt
         num_images_per_prompt = 2
         inputs = self.get_dummy_inputs(device)
-        images = sd_pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
+        images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
 
         assert images.shape == (num_images_per_prompt, 32, 32, 3)
 
@@ -364,20 +364,20 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
         batch_size = 2
         inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"]] * batch_size
-        images = sd_pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
+        images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
 
         assert images.shape == (batch_size * num_images_per_prompt, 32, 32, 3)
 
     def test_stable_diffusion_depth2img_pil(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionDepth2ImgPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = StableDiffusionDepth2ImgPipeline(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
 
-        image = sd_pipe(**inputs).images
+        image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
 
         if torch_device == "mps":
@@ -541,12 +541,12 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
         return inputs
 
     def test_depth2img_pndm(self):
-        sd_pipe = StableDiffusionDepth2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-depth")
-        sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = StableDiffusionDepth2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-depth")
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images[0]
+        image = pipe(**inputs).images[0]
 
         expected_image = load_numpy(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
@@ -556,13 +556,13 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
         assert max_diff < 1e-3
 
     def test_depth2img_ddim(self):
-        sd_pipe = StableDiffusionDepth2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-depth")
-        sd_pipe.scheduler = DDIMScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = StableDiffusionDepth2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-depth")
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images[0]
+        image = pipe(**inputs).images[0]
 
         expected_image = load_numpy(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
@@ -572,13 +572,13 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
         assert max_diff < 1e-3
 
     def test_img2img_lms(self):
-        sd_pipe = StableDiffusionDepth2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-depth")
-        sd_pipe.scheduler = LMSDiscreteScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = StableDiffusionDepth2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-depth")
+        pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images[0]
+        image = pipe(**inputs).images[0]
 
         expected_image = load_numpy(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
@@ -588,14 +588,14 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
         assert max_diff < 1e-3
 
     def test_img2img_dpm(self):
-        sd_pipe = StableDiffusionDepth2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-depth")
-        sd_pipe.scheduler = DPMSolverMultistepScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = StableDiffusionDepth2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-depth")
+        pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
         inputs["num_inference_steps"] = 30
-        image = sd_pipe(**inputs).images[0]
+        image = pipe(**inputs).images[0]
 
         expected_image = load_numpy(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
