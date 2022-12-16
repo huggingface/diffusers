@@ -673,8 +673,6 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
 
                 # call the callback, if provided
                 if (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0:
-                    # sync vm to get correct profiling result
-                    flow._oneflow_internal.eager.Sync()
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
