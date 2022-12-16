@@ -15,7 +15,6 @@
 
 
 import gc
-import os
 import tempfile
 import time
 import unittest
@@ -42,9 +41,7 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 from ...test_pipelines_common import PipelineTesterMixin
 
 
-os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 torch.backends.cuda.matmul.allow_tf32 = False
-torch.use_deterministic_algorithms(True)
 
 
 class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):

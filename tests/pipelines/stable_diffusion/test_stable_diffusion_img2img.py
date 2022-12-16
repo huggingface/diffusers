@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import gc
-import os
 import random
 import unittest
 
@@ -37,9 +36,7 @@ from transformers import CLIPImageProcessor, CLIPTextConfig, CLIPTextModel, CLIP
 from ...test_pipelines_common import PipelineTesterMixin
 
 
-os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 torch.backends.cuda.matmul.allow_tf32 = False
-torch.use_deterministic_algorithms(True)
 
 
 class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
