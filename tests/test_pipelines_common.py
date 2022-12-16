@@ -44,6 +44,13 @@ class PipelineTesterMixin:
     test_cpu_offload = True
     test_xformers_attention = True
 
+    def get_generator(seed):
+        if torch_device == "mps":
+            generator = torch.Generator("cpu").manual_seed(seed).to(torch_device)
+        else:
+            generator = torch.Generator(torch_device).manual_seed(seed)
+        return generator
+
     @property
     def pipeline_class(self) -> Union[Callable, DiffusionPipeline]:
         raise NotImplementedError(
@@ -212,7 +219,7 @@ class PipelineTesterMixin:
             elif name == "batch_size":
                 batched_inputs[name] = batch_size
             elif name == "generator":
-                batched_inputs[name] = [torch.Generator(value.device).manual_seed(i) for i in range(batch_size)]
+                batched_inputs[name] = [self.get_generator(i) for i in range(batch_size)]
             else:
                 batched_inputs[name] = value
 
@@ -224,7 +231,7 @@ class PipelineTesterMixin:
         output_batch = pipe(**batched_inputs)
         assert output_batch[0].shape[0] == batch_size
 
-        inputs["generator"] = torch.Generator(torch_device).manual_seed(0)
+        inputs["generator"] = self.get_generator(0)
 
         output = pipe(**inputs)
 
