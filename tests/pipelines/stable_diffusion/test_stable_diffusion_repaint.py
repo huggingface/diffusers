@@ -60,8 +60,8 @@ class StableDiffusionRepaintPipelineIntegrationTests(unittest.TestCase):
             "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
         )
         expected_image = load_numpy(
-            #"https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/in_paint"
-            "./red_cat_sitting_on_a_park_bench_repaint.npy"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/repaint"
+            "/red_cat_sitting_on_a_park_bench_repaint.npy"
         )
 
         model_id = "CompVis/stable-diffusion-v1-4"
