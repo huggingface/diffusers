@@ -14,28 +14,14 @@
 # limitations under the License.
 
 import gc
-import random
 import unittest
 
 import numpy as np
 import torch
 
-from diffusers import (
-    AutoencoderKL,
-    LMSDiscreteScheduler,
-    PNDMScheduler,
-    RePaintScheduler,
-    StableDiffusionInpaintPipeline,
-    StableDiffusionInpaintPipelineLegacy,
-    StableDiffusionRepaintPipeline,
-    UNet2DConditionModel,
-    UNet2DModel,
-    VQModel,
-)
-from diffusers.utils import floats_tensor, load_image, slow, torch_device
+from diffusers import RePaintScheduler, StableDiffusionRepaintPipeline
+from diffusers.utils import load_image, slow, torch_device
 from diffusers.utils.testing_utils import load_numpy, require_torch_gpu
-from PIL import Image
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
