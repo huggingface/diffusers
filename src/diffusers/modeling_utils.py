@@ -489,10 +489,11 @@ class ModelMixin(torch.nn.Module):
                 # move the parms from meta device to cpu
                 for param_name, param in state_dict.items():
                     set_module_tensor_to_device(model, param_name, param_device, value=param)
+                    # TODO(Patrick) - check whether dtype conversion should be handled here or kwarg is added
             else:  # else let accelerate handle loading and dispatching.
                 # Load weights and dispatch according to the device_map
                 # by deafult the device_map is None and the weights are loaded on the CPU
-                accelerate.load_checkpoint_and_dispatch(model, model_file, device_map)
+                accelerate.load_checkpoint_and_dispatch(model, model_file, device_map, dtype=torch_dtype)
 
             loading_info = {
                 "missing_keys": [],
