@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 
@@ -45,7 +45,7 @@ class DanceDiffusionPipeline(DiffusionPipeline):
         self,
         batch_size: int = 1,
         num_inference_steps: int = 100,
-        generator: Optional[torch.Generator] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         audio_length_in_s: Optional[float] = None,
         return_dict: bool = True,
     ) -> Union[AudioPipelineOutput, Tuple]:
@@ -57,8 +57,8 @@ class DanceDiffusionPipeline(DiffusionPipeline):
                 The number of denoising steps. More denoising steps usually lead to a higher quality audio sample at
                 the expense of slower inference.
             generator (`torch.Generator`, *optional*):
-                A [torch generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
-                deterministic.
+                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
+                to make generation deterministic.
             audio_length_in_s (`float`, *optional*, defaults to `self.unet.config.sample_size/self.unet.config.sample_rate`):
                 The length of the generated audio sample in seconds. Note that the output of the pipeline, *i.e.*
                 `sample_size`, will be `audio_length_in_s` * `self.unet.sample_rate`.
