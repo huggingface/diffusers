@@ -138,11 +138,15 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         # get the initial random noise unless the user supplied it
         latents_shape = (batch_size, self.unet.in_channels, height // 8, width // 8)
         if latents is None:
-            latents = torch.randn(
-                latents_shape,
-                generator=generator,
-                device=self.device,
-            )
+            if self.device.type == "mps":
+                # randn does not work reproducibly on mps
+                latents = torch.randn(latents_shape, generator=generator, device="cpu").to(self.device)
+            else:
+                latents = torch.randn(
+                    latents_shape,
+                    generator=generator,
+                    device=self.device,
+                )
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
