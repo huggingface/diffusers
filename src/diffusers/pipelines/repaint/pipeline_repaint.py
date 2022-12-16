@@ -135,15 +135,9 @@ class RePaintPipeline(DiffusionPipeline):
         mask_image = _preprocess_mask(mask_image)
         mask_image = mask_image.to(device=self.device, dtype=self.unet.dtype)
 
-        # sample gaussian noise to begin the loop
-        image = torch.randn(
-            original_image.shape,
-            generator=generator,
-            device=self.device,
-        )
-        image = image.to(device=self.device, dtype=self.unet.dtype)
-
         batch_size = original_image.shape[0]
+
+        # sample gaussian noise to begin the loop
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -168,6 +162,7 @@ class RePaintPipeline(DiffusionPipeline):
         self.scheduler.eta = eta
 
         t_last = self.scheduler.timesteps[0] + 1
+        generator = generator[0] if isinstance(generator, list) else generator
         for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
             if t < t_last:
                 # predict the noise residual
