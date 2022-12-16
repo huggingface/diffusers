@@ -203,7 +203,9 @@ class StableDiffusionImageVariationPipelineSlowTests(unittest.TestCase):
         return inputs
 
     def test_stable_diffusion_img_variation_pipeline_default(self):
-        sd_pipe = StableDiffusionImageVariationPipeline.from_pretrained("lambdalabs/sd-image-variations-diffusers")
+        sd_pipe = StableDiffusionImageVariationPipeline.from_pretrained(
+            "lambdalabs/sd-image-variations-diffusers", safety_checker=None
+        )
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -212,7 +214,7 @@ class StableDiffusionImageVariationPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.43625, 0.43554, 0.36670, 0.40660, 0.39703, 0.38658, 0.43936, 0.43557, 0.40592])
+        expected_slice = np.array([0.84491, 0.90789, 0.75708, 0.78734, 0.83485, 0.70099, 0.66938, 0.68727, 0.61379])
         assert np.abs(image_slice - expected_slice).max() < 1e-4
 
     def test_stable_diffusion_img_variation_intermediate_state(self):
@@ -226,19 +228,20 @@ class StableDiffusionImageVariationPipelineSlowTests(unittest.TestCase):
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([1.83, 1.293, -0.09705, 1.256, -2.293, 1.091, -0.0809, -0.65, -2.953])
+                expected_slice = np.array([-0.1572, 0.2837, -0.798, -0.1201, -1.304, 0.7754, -2.12, 0.0443, 1.627])
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-3
             elif step == 2:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([2.285, 2.703, 1.969, 0.696, -1.323, 0.9253, -0.5464, -1.521, -2.537])
+                expected_slice = np.array([0.6143, 1.734, 1.158, -2.145, -1.926, 0.748, -0.7246, 0.994, 1.539])
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
 
         callback_fn.has_been_called = False
 
         pipe = StableDiffusionImageVariationPipeline.from_pretrained(
             "fusing/sd-image-variations-diffusers",
+            safety_checker=None,
             torch_dtype=torch.float16,
         )
         pipe.to(torch_device)

@@ -27,7 +27,7 @@ from diffusers import (
     OnnxStableDiffusionPipeline,
     PNDMScheduler,
 )
-from diffusers.utils.testing_utils import is_onnx_available, require_onnxruntime, require_torch_gpu, slow
+from diffusers.utils.testing_utils import is_onnx_available, nightly, require_onnxruntime, require_torch_gpu
 
 from ...test_pipelines_onnx_common import OnnxPipelineTesterMixin
 
@@ -128,7 +128,7 @@ class OnnxStableDiffusionPipelineFastTests(OnnxPipelineTesterMixin, unittest.Tes
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
 
-@slow
+@nightly
 @require_onnxruntime
 @require_torch_gpu
 class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):

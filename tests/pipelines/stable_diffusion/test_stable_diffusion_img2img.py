@@ -223,7 +223,7 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
         generator = torch.Generator(device=device).manual_seed(seed)
         init_image = load_image(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_img2img/sketch-mountains-input.jpg"
+            "/stable_diffusion_img2img/sketch-mountains-input.png"
         )
         init_image = init_image.resize((768, 512))
         inputs = {
@@ -249,7 +249,7 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 768, 3)
         expected_slice = np.array([0.27150, 0.14849, 0.15605, 0.26740, 0.16954, 0.18204, 0.31470, 0.26311, 0.24525])
-        assert np.abs(expected_slice - image_slice).max() < 1e-4
+        assert np.abs(expected_slice - image_slice).max() < 1e-3
 
     def test_stable_diffusion_img2img_k_lms(self):
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
@@ -264,7 +264,7 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 768, 3)
         expected_slice = np.array([0.04890, 0.04862, 0.06422, 0.04655, 0.05108, 0.05307, 0.05926, 0.08759, 0.06852])
-        assert np.abs(expected_slice - image_slice).max() < 1e-4
+        assert np.abs(expected_slice - image_slice).max() < 1e-3
 
     def test_stable_diffusion_img2img_ddim(self):
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
@@ -279,7 +279,7 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 768, 3)
         expected_slice = np.array([0.06069, 0.05703, 0.08054, 0.05797, 0.06286, 0.06234, 0.08438, 0.11151, 0.08068])
-        assert np.abs(expected_slice - image_slice).max() < 1e-4
+        assert np.abs(expected_slice - image_slice).max() < 1e-3
 
     def test_stable_diffusion_img2img_intermediate_state(self):
         number_of_steps = 0
@@ -348,7 +348,7 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
         generator = torch.Generator(device=device).manual_seed(seed)
         init_image = load_image(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_img2img/sketch-mountains-input.jpg"
+            "/stable_diffusion_img2img/sketch-mountains-input.png"
         )
         init_image = init_image.resize((768, 512))
         inputs = {
