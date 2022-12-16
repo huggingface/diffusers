@@ -36,7 +36,9 @@ pip install git+https://github.com/huggingface/diffusers
 pip install -U -r diffusers/examples/dreambooth/requirements.txt
 ```
 
-Then initialize and configure a [🤗 Accelerate](https://github.com/huggingface/accelerate/) environment with:
+xFormers is not part of the training requirements, but [we recommend you install it if you can](../optimization/xformers). It could make your training faster and less memory intensive.
+
+After all dependencies have been set up you can configure a [🤗 Accelerate](https://github.com/huggingface/accelerate/) environment with:
 
 ```bash
 accelerate config
