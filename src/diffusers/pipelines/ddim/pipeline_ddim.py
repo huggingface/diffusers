@@ -74,7 +74,7 @@ class DDIMPipeline(DiffusionPipeline):
             generated images.
         """
 
-        if generator is not None and generator.device.type != self.device.type and self.device.type != "mps":
+        if generator is not None and isinstance(generator, torch.Generator) and generator.device.type != self.device.type and self.device.type != "mps":
             message = (
                 f"The `generator` device is `{generator.device}` and does not match the pipeline "
                 f"device `{self.device}`, so the `generator` will be ignored. "
@@ -93,12 +93,22 @@ class DDIMPipeline(DiffusionPipeline):
         else:
             image_shape = (batch_size, self.unet.in_channels, *self.unet.sample_size)
 
-        if self.device.type == "mps":
-            # randn does not work reproducibly on mps
-            image = torch.randn(image_shape, generator=generator, dtype=self.unet.dtype)
-            image = image.to(self.device)
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch sizes matches the length of the generators."
+            )
+
+        rand_device = "cpu" if self.device.type == "mps" else self.device
+        if isinstance(generator, list):
+            shape = (1,) + image_shape[1:]
+            image = [
+                torch.randn(shape, generator=generator[i], device=rand_device, dtype=self.unet.dtype)
+                for i in range(batch_size)
+            ]
+            image = torch.cat(image, dim=0).to(self.device)
         else:
-            image = torch.randn(image_shape, generator=generator, device=self.device, dtype=self.unet.dtype)
+            image = torch.randn(image_shape, generator=generator, device=rand_device, dtype=self.unet.dtype).to(self.device)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)
