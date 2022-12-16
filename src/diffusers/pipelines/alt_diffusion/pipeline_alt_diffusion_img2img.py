@@ -418,8 +418,22 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
         else:
             init_latents = torch.cat([init_latents] * num_images_per_prompt, dim=0)
 
-        # add noise to latents using the timesteps
-        noise = torch.randn(init_latents.shape, generator=generator, device=device, dtype=dtype)
+        batch_size = init_latents.shape[0]
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch sizes matches the length of the generators."
+            )
+
+        rand_device = "cpu" if device.type == "mps" else device
+        if isinstance(generator, list):
+            shape = (1,) + init_latents.shape[1:]
+            noise = [
+                torch.randn(shape, generator=generator[i], device=rand_device, dtype=dtype) for i in range(batch_size)
+            ]
+            noise = torch.cat(noise, dim=0).to(device)
+        else:
+            noise = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype).to(device)
 
         # get latents
         init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
