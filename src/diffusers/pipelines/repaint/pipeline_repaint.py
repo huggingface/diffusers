@@ -143,6 +143,26 @@ class RePaintPipeline(DiffusionPipeline):
         )
         image = image.to(device=self.device, dtype=self.unet.dtype)
 
+        batch_size = original_image.shape[0]
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch sizes matches the length of the generators."
+            )
+
+        rand_device = "cpu" if self.device.type == "mps" else self.device
+        image_shape = original_image.shape
+        if isinstance(generator, list):
+            shape = (1,) + image_shape[1:]
+            image = [
+                torch.randn(shape, generator=generator[i], device=rand_device, dtype=self.unet.dtype)
+                for i in range(batch_size)
+            ]
+            image = torch.cat(image, dim=0).to(self.device)
+        else:
+            image = torch.randn(image_shape, generator=generator, device=rand_device, dtype=self.unet.dtype)
+            image = image.to(self.device)
+
         # set step values
         self.scheduler.set_timesteps(num_inference_steps, jump_length, jump_n_sample, self.device)
         self.scheduler.eta = eta

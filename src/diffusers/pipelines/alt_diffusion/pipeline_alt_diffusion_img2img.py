@@ -396,8 +396,22 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
 
     def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
         image = image.to(device=device, dtype=dtype)
-        init_latent_dist = self.vae.encode(image).latent_dist
-        init_latents = init_latent_dist.sample(generator=generator)
+
+        batch_size = image.shape[0]
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch sizes matches the length of the generators."
+            )
+
+        if isinstance(generator, list):
+            init_latents = [
+                self.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)
+            ]
+            init_latents = torch.cat(init_latents, dim=0)
+        else:
+            init_latents = self.vae.encode(image).latent_dist.sample(generator)
+
         init_latents = 0.18215 * init_latents
 
         if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
@@ -417,13 +431,6 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
             )
         else:
             init_latents = torch.cat([init_latents] * num_images_per_prompt, dim=0)
-
-        batch_size = init_latents.shape[0]
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch sizes matches the length of the generators."
-            )
 
         rand_device = "cpu" if device.type == "mps" else device
         shape = init_latents.shape
