@@ -386,7 +386,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
 
 @nightly
 @require_torch_gpu
-class StableDiffusionPipelineNightlyTests(unittest.TestCase):
+class StableDiffusion2PipelineNightlyTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         gc.collect()
