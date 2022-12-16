@@ -45,6 +45,8 @@
 - sections:
   - local: optimization/fp16
     title: "Memory and Speed"
+  - local: optimization/xformers
+    title: "xFormers"
   - local: optimization/onnx
     title: "ONNX"
   - local: optimization/open_vino
