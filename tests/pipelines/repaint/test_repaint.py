@@ -13,13 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import unittest
 
 import numpy as np
 import torch
 
 from diffusers import RePaintPipeline, RePaintScheduler, UNet2DModel
-from diffusers.utils.testing_utils import load_image, load_numpy, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import load_image, load_numpy, nightly, require_torch_gpu, torch_device
 
 from ...test_pipelines_common import PipelineTesterMixin
 
@@ -83,9 +84,14 @@ class RepaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
 
-@slow
+@nightly
 @require_torch_gpu
-class RepaintPipelineIntegrationTests(unittest.TestCase):
+class RepaintPipelineNightlyTests(unittest.TestCase):
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def test_celebahq(self):
         original_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/"
@@ -104,6 +110,8 @@ class RepaintPipelineIntegrationTests(unittest.TestCase):
         scheduler = RePaintScheduler.from_pretrained(model_id)
 
         repaint = RePaintPipeline(unet=unet, scheduler=scheduler).to(torch_device)
+        repaint.set_progress_bar_config(disable=None)
+        repaint.enable_attention_slicing()
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
         output = repaint(

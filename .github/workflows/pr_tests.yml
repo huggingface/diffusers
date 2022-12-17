@@ -1,4 +1,4 @@
-name: Run fast tests
+name: Fast tests for PRs
 
 on:
   pull_request:

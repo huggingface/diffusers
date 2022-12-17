@@ -23,12 +23,13 @@ import torch
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
+    DPMSolverMultistepScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionImg2ImgPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
+from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 from transformers import CLIPImageProcessor, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -212,211 +213,213 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
 
 @slow
 @require_torch_gpu
-class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
+class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
     def tearDown(self):
-        # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_stable_diffusion_img2img_pipeline_default(self):
+    def get_inputs(self, device, dtype=torch.float32, seed=0):
+        generator = torch.Generator(device=device).manual_seed(seed)
         init_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/img2img/sketch-mountains-input.jpg"
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_img2img/sketch-mountains-input.png"
         )
-        init_image = init_image.resize((768, 512))
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/img2img/fantasy_landscape.npy"
-        )
+        inputs = {
+            "prompt": "a fantasy landscape, concept art, high resolution",
+            "image": init_image,
+            "generator": generator,
+            "num_inference_steps": 3,
+            "strength": 0.75,
+            "guidance_scale": 7.5,
+            "output_type": "numpy",
+        }
+        return inputs
 
-        model_id = "CompVis/stable-diffusion-v1-4"
-        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
-            model_id,
-            safety_checker=None,
-        )
+    def test_stable_diffusion_img2img_default(self):
+        pipe = StableDiffusionImg2ImgPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        prompt = "A fantasy landscape, trending on artstation"
+        inputs = self.get_inputs(torch_device)
+        image = pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1].flatten()
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        output = pipe(
-            prompt=prompt,
-            image=init_image,
-            strength=0.75,
-            guidance_scale=7.5,
-            generator=generator,
-            output_type="np",
-        )
-        image = output.images[0]
+        assert image.shape == (1, 512, 768, 3)
+        expected_slice = np.array([0.27150, 0.14849, 0.15605, 0.26740, 0.16954, 0.18204, 0.31470, 0.26311, 0.24525])
+        assert np.abs(expected_slice - image_slice).max() < 1e-3
 
-        assert image.shape == (512, 768, 3)
-        # img2img is flaky across GPUs even in fp32, so using MAE here
-        assert np.abs(expected_image - image).max() < 1e-3
-
-    def test_stable_diffusion_img2img_pipeline_k_lms(self):
-        init_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/img2img/sketch-mountains-input.jpg"
-        )
-        init_image = init_image.resize((768, 512))
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/img2img/fantasy_landscape_k_lms.npy"
-        )
-
-        model_id = "CompVis/stable-diffusion-v1-4"
-        lms = LMSDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler")
-        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
-            model_id,
-            scheduler=lms,
-            safety_checker=None,
-        )
+    def test_stable_diffusion_img2img_k_lms(self):
+        pipe = StableDiffusionImg2ImgPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
+        pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        prompt = "A fantasy landscape, trending on artstation"
+        inputs = self.get_inputs(torch_device)
+        image = pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1].flatten()
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        output = pipe(
-            prompt=prompt,
-            image=init_image,
-            strength=0.75,
-            guidance_scale=7.5,
-            generator=generator,
-            output_type="np",
-        )
-        image = output.images[0]
+        assert image.shape == (1, 512, 768, 3)
+        expected_slice = np.array([0.04890, 0.04862, 0.06422, 0.04655, 0.05108, 0.05307, 0.05926, 0.08759, 0.06852])
+        assert np.abs(expected_slice - image_slice).max() < 1e-3
 
-        assert image.shape == (512, 768, 3)
-        assert np.abs(expected_image - image).max() < 1e-3
-
-    def test_stable_diffusion_img2img_pipeline_ddim(self):
-        init_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/img2img/sketch-mountains-input.jpg"
-        )
-        init_image = init_image.resize((768, 512))
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/img2img/fantasy_landscape_ddim.npy"
-        )
-
-        model_id = "CompVis/stable-diffusion-v1-4"
-        ddim = DDIMScheduler.from_pretrained(model_id, subfolder="scheduler")
-        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
-            model_id,
-            scheduler=ddim,
-            safety_checker=None,
-        )
+    def test_stable_diffusion_img2img_ddim(self):
+        pipe = StableDiffusionImg2ImgPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        prompt = "A fantasy landscape, trending on artstation"
+        inputs = self.get_inputs(torch_device)
+        image = pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1].flatten()
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        output = pipe(
-            prompt=prompt,
-            image=init_image,
-            strength=0.75,
-            guidance_scale=7.5,
-            generator=generator,
-            output_type="np",
-        )
-        image = output.images[0]
-
-        assert image.shape == (512, 768, 3)
-        assert np.abs(expected_image - image).max() < 1e-3
+        assert image.shape == (1, 512, 768, 3)
+        expected_slice = np.array([0.06069, 0.05703, 0.08054, 0.05797, 0.06286, 0.06234, 0.08438, 0.11151, 0.08068])
+        assert np.abs(expected_slice - image_slice).max() < 1e-3
 
     def test_stable_diffusion_img2img_intermediate_state(self):
         number_of_steps = 0
 
-        def test_callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
-            test_callback_fn.has_been_called = True
+        def callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
+            callback_fn.has_been_called = True
             nonlocal number_of_steps
             number_of_steps += 1
-            if step == 0:
+            if step == 1:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 96)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([0.9052, -0.0184, 0.4810, 0.2898, 0.5851, 1.4920, 0.5362, 1.9838, 0.0530])
+                expected_slice = np.array([0.7705, 0.1045, 0.5, 3.393, 3.723, 4.273, 2.467, 3.486, 1.758])
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
-            elif step == 37:
+            elif step == 2:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 96)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([0.7071, 0.7831, 0.8300, 1.8140, 1.7840, 1.9402, 1.3651, 1.6590, 1.2828])
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-2
+                expected_slice = np.array([0.765, 0.1047, 0.4973, 3.375, 3.709, 4.258, 2.451, 3.46, 1.755])
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
 
-        test_callback_fn.has_been_called = False
-
-        init_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/img2img/sketch-mountains-input.jpg"
-        )
-        init_image = init_image.resize((768, 512))
+        callback_fn.has_been_called = False
 
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4",
-            revision="fp16",
-            torch_dtype=torch.float16,
+            "CompVis/stable-diffusion-v1-4", safety_checker=None, revision="fp16", torch_dtype=torch.float16
         )
-        pipe.to(torch_device)
+        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        prompt = "A fantasy landscape, trending on artstation"
-
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        with torch.autocast(torch_device):
-            pipe(
-                prompt=prompt,
-                image=init_image,
-                strength=0.75,
-                num_inference_steps=50,
-                guidance_scale=7.5,
-                generator=generator,
-                callback=test_callback_fn,
-                callback_steps=1,
-            )
-        assert test_callback_fn.has_been_called
-        assert number_of_steps == 37
+        inputs = self.get_inputs(torch_device, dtype=torch.float16)
+        pipe(**inputs, callback=callback_fn, callback_steps=1)
+        assert callback_fn.has_been_called
+        assert number_of_steps == 2
 
     def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()
 
-        init_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/img2img/sketch-mountains-input.jpg"
-        )
-        init_image = init_image.resize((768, 512))
-
-        model_id = "CompVis/stable-diffusion-v1-4"
-        lms = LMSDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler")
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
-            model_id, scheduler=lms, safety_checker=None, device_map="auto", revision="fp16", torch_dtype=torch.float16
+            "CompVis/stable-diffusion-v1-4", safety_checker=None, revision="fp16", torch_dtype=torch.float16
         )
-        pipe.to(torch_device)
+        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
         pipe.enable_sequential_cpu_offload()
 
-        prompt = "A fantasy landscape, trending on artstation"
-
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        _ = pipe(
-            prompt=prompt,
-            image=init_image,
-            strength=0.75,
-            guidance_scale=7.5,
-            generator=generator,
-            output_type="np",
-            num_inference_steps=5,
-        )
+        inputs = self.get_inputs(torch_device, dtype=torch.float16)
+        _ = pipe(**inputs)
 
         mem_bytes = torch.cuda.max_memory_allocated()
         # make sure that less than 2.2 GB is allocated
         assert mem_bytes < 2.2 * 10**9
+
+
+@nightly
+@require_torch_gpu
+class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def get_inputs(self, device, dtype=torch.float32, seed=0):
+        generator = torch.Generator(device=device).manual_seed(seed)
+        init_image = load_image(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_img2img/sketch-mountains-input.png"
+        )
+        inputs = {
+            "prompt": "a fantasy landscape, concept art, high resolution",
+            "image": init_image,
+            "generator": generator,
+            "num_inference_steps": 50,
+            "strength": 0.75,
+            "guidance_scale": 7.5,
+            "output_type": "numpy",
+        }
+        return inputs
+
+    def test_img2img_pndm(self):
+        sd_pipe = StableDiffusionImg2ImgPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_img2img/stable_diffusion_1_5_pndm.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
+
+    def test_img2img_ddim(self):
+        sd_pipe = StableDiffusionImg2ImgPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        sd_pipe.scheduler = DDIMScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_img2img/stable_diffusion_1_5_ddim.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
+
+    def test_img2img_lms(self):
+        sd_pipe = StableDiffusionImg2ImgPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        sd_pipe.scheduler = LMSDiscreteScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_img2img/stable_diffusion_1_5_lms.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
+
+    def test_img2img_dpm(self):
+        sd_pipe = StableDiffusionImg2ImgPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        sd_pipe.scheduler = DPMSolverMultistepScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 30
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_img2img/stable_diffusion_1_5_dpm.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3

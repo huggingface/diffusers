@@ -1,4 +1,4 @@
-name: Nightly integration tests
+name: Nightly tests on main
 
 on:
   schedule:
@@ -9,12 +9,108 @@ env:
   HF_HOME: /mnt/cache
   OMP_NUM_THREADS: 8
   MKL_NUM_THREADS: 8
-  PYTEST_TIMEOUT: 1000
+  PYTEST_TIMEOUT: 600
   RUN_SLOW: yes
+  RUN_NIGHTLY: yes
 
 jobs:
-  run_slow_tests_apple_m1:
-    name: Slow PyTorch MPS tests on MacOS
+  run_nightly_tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: Nightly PyTorch CUDA tests on Ubuntu
+            framework: pytorch
+            runner: docker-gpu
+            image: diffusers/diffusers-pytorch-cuda
+            report: torch_cuda
+          - name: Nightly Flax TPU tests on Ubuntu
+            framework: flax
+            runner: docker-tpu
+            image: diffusers/diffusers-flax-tpu
+            report: flax_tpu
+          - name: Nightly ONNXRuntime CUDA tests on Ubuntu
+            framework: onnxruntime
+            runner: docker-gpu
+            image: diffusers/diffusers-onnxruntime-cuda
+            report: onnx_cuda
+
+    name: ${{ matrix.config.name }}
+
+    runs-on: ${{ matrix.config.runner }}
+
+    container:
+      image: ${{ matrix.config.image }}
+      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ ${{ matrix.config.runner == 'docker-tpu' && '--privileged' || '--gpus 0'}}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout diffusers
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+
+      - name: NVIDIA-SMI
+        if: ${{ matrix.config.runner == 'docker-gpu' }}
+        run: |
+          nvidia-smi
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -e .[quality,test]
+          python -m pip install git+https://github.com/huggingface/accelerate
+          python -m pip install -U git+https://github.com/huggingface/transformers
+
+      - name: Environment
+        run: |
+          python utils/print_env.py
+
+      - name: Run nightly PyTorch CUDA tests
+        if: ${{ matrix.config.framework == 'pytorch' }}
+        env:
+          HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        run: |
+          python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
+            -s -v -k "not Flax and not Onnx" \
+            --make-reports=tests_${{ matrix.config.report }} \
+            tests/
+
+      - name: Run nightly Flax TPU tests
+        if: ${{ matrix.config.framework == 'flax' }}
+        env:
+          HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        run: |
+          python -m pytest -n 0 \
+            -s -v -k "Flax" \
+            --make-reports=tests_${{ matrix.config.report }} \
+            tests/
+
+      - name: Run nightly ONNXRuntime CUDA tests
+        if: ${{ matrix.config.framework == 'onnxruntime' }}
+        env:
+          HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        run: |
+          python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
+            -s -v -k "Onnx" \
+            --make-reports=tests_${{ matrix.config.report }} \
+            tests/
+
+      - name: Failure short reports
+        if: ${{ failure() }}
+        run: cat reports/tests_${{ matrix.config.report }}_failures_short.txt
+
+      - name: Test suite reports artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.config.report }}_test_reports
+          path: reports
+
+  run_nightly_tests_apple_m1:
+    name: Nightly PyTorch MPS tests on MacOS
     runs-on: [ self-hosted, apple-m1 ]
 
     steps:
@@ -46,7 +142,7 @@ jobs:
         run: |
           ${CONDA_RUN} python utils/print_env.py
 
-      - name: Run slow PyTorch tests on M1 (MPS)
+      - name: Run nightly PyTorch tests on M1 (MPS)
         shell: arch -arch arm64 bash {0}
         env:
           HF_HOME: /System/Volumes/Data/mnt/cache

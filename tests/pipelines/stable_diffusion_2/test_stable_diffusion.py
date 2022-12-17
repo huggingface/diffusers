@@ -22,6 +22,7 @@ import torch
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
+    DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
     LMSDiscreteScheduler,
@@ -30,7 +31,7 @@ from diffusers import (
     UNet2DConditionModel,
     logging,
 )
-from diffusers.utils import load_numpy, slow, torch_device
+from diffusers.utils import load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -239,170 +240,116 @@ class StableDiffusion2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 @slow
 @require_torch_gpu
-class StableDiffusion2PipelineIntegrationTests(unittest.TestCase):
+class StableDiffusion2PipelineSlowTests(unittest.TestCase):
     def tearDown(self):
-        # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_stable_diffusion(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-base")
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+    def get_inputs(self, device, dtype=torch.float32, seed=0):
+        generator = torch.Generator(device=device).manual_seed(seed)
+        latents = np.random.RandomState(seed).standard_normal((1, 4, 64, 64))
+        latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
+        inputs = {
+            "prompt": "a photograph of an astronaut riding a horse",
+            "latents": latents,
+            "generator": generator,
+            "num_inference_steps": 3,
+            "guidance_scale": 7.5,
+            "output_type": "numpy",
+        }
+        return inputs
 
-        prompt = "A painting of a squirrel eating a burger"
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        output = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=20, output_type="np")
+    def test_stable_diffusion_default_ddim(self):
+        pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-base")
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
 
-        image = output.images
-        image_slice = image[0, 253:256, 253:256, -1]
-
-        assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.0788, 0.0823, 0.1091, 0.1165, 0.1263, 0.1459, 0.1317, 0.1507, 0.1551])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-
-    def test_stable_diffusion_ddim(self):
-        scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-2-base", subfolder="scheduler")
-        sd_pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-base", scheduler=scheduler)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        prompt = "A painting of a squirrel eating a burger"
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-
-        output = sd_pipe([prompt], generator=generator, num_inference_steps=5, output_type="numpy")
-        image = output.images
-
-        image_slice = image[0, 253:256, 253:256, -1]
+        inputs = self.get_inputs(torch_device)
+        image = pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.0642, 0.0382, 0.0408, 0.0395, 0.0227, 0.0942, 0.0749, 0.0669, 0.0248])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        expected_slice = np.array([0.49493, 0.47896, 0.40798, 0.54214, 0.53212, 0.48202, 0.47656, 0.46329, 0.48506])
+        assert np.abs(image_slice - expected_slice).max() < 1e-4
+
+    def test_stable_diffusion_pndm(self):
+        pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-base")
+        pipe.scheduler = PNDMScheduler.from_config(pipe.scheduler.config)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        image = pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1].flatten()
+
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.49493, 0.47896, 0.40798, 0.54214, 0.53212, 0.48202, 0.47656, 0.46329, 0.48506])
+        assert np.abs(image_slice - expected_slice).max() < 1e-4
 
     def test_stable_diffusion_k_lms(self):
-        scheduler = LMSDiscreteScheduler.from_pretrained("stabilityai/stable-diffusion-2-base", subfolder="scheduler")
-        sd_pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-base", scheduler=scheduler)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-base")
+        pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
 
-        prompt = "a photograph of an astronaut riding a horse"
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = sd_pipe(
-            [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=5, output_type="numpy"
-        ).images
+        inputs = self.get_inputs(torch_device)
+        image = pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1].flatten()
 
-        image_slice = image[0, 253:256, 253:256, -1]
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.0548, 0.0626, 0.0612, 0.0611, 0.0706, 0.0586, 0.0843, 0.0333, 0.1197])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        expected_slice = np.array([0.10440, 0.13115, 0.11100, 0.10141, 0.11440, 0.07215, 0.11332, 0.09693, 0.10006])
+        assert np.abs(image_slice - expected_slice).max() < 1e-4
 
     def test_stable_diffusion_attention_slicing(self):
         torch.cuda.reset_peak_memory_stats()
-        model_id = "stabilityai/stable-diffusion-2-base"
-        pipe = StableDiffusionPipeline.from_pretrained(model_id, revision="fp16", torch_dtype=torch.float16)
-        pipe.to(torch_device)
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-2-base", revision="fp16", torch_dtype=torch.float16
+        )
+        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        prompt = "a photograph of an astronaut riding a horse"
-
-        # make attention efficient
+        # enable attention slicing
         pipe.enable_attention_slicing()
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        with torch.autocast(torch_device):
-            output_chunked = pipe(
-                [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
-            )
-            image_chunked = output_chunked.images
+        inputs = self.get_inputs(torch_device, dtype=torch.float16)
+        image_sliced = pipe(**inputs).images
 
         mem_bytes = torch.cuda.max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()
-        # make sure that less than 3.75 GB is allocated
-        assert mem_bytes < 3.75 * 10**9
+        # make sure that less than 3.3 GB is allocated
+        assert mem_bytes < 3.3 * 10**9
 
-        # disable chunking
+        # disable slicing
         pipe.disable_attention_slicing()
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        with torch.autocast(torch_device):
-            output = pipe(
-                [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
-            )
-            image = output.images
+        inputs = self.get_inputs(torch_device, dtype=torch.float16)
+        image = pipe(**inputs).images
 
-        # make sure that more than 3.75 GB is allocated
+        # make sure that more than 3.3 GB is allocated
         mem_bytes = torch.cuda.max_memory_allocated()
-        assert mem_bytes > 3.75 * 10**9
-        assert np.abs(image_chunked.flatten() - image.flatten()).max() < 1e-3
-
-    def test_stable_diffusion_same_quality(self):
-        torch.cuda.reset_peak_memory_stats()
-        model_id = "stabilityai/stable-diffusion-2-base"
-        pipe = StableDiffusionPipeline.from_pretrained(model_id, revision="fp16", torch_dtype=torch.float16)
-        pipe = pipe.to(torch_device)
-        pipe.enable_attention_slicing()
-        pipe.set_progress_bar_config(disable=None)
-
-        prompt = "a photograph of an astronaut riding a horse"
-
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        output_chunked = pipe(
-            [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
-        )
-        image_chunked = output_chunked.images
-
-        pipe = StableDiffusionPipeline.from_pretrained(model_id)
-        pipe = pipe.to(torch_device)
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        output = pipe([prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy")
-        image = output.images
-
-        # Make sure results are close enough
-        diff = np.abs(image_chunked.flatten() - image.flatten())
-        # They ARE different since ops are not run always at the same precision
-        # however, they should be extremely close.
-        assert diff.mean() < 5e-2
-
-    def test_stable_diffusion_text2img_pipeline_default(self):
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd2-text2img/astronaut_riding_a_horse.npy"
-        )
-
-        model_id = "stabilityai/stable-diffusion-2-base"
-        pipe = StableDiffusionPipeline.from_pretrained(model_id, safety_checker=None)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        pipe.enable_attention_slicing()
-
-        prompt = "astronaut riding a horse"
-
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        output = pipe(prompt=prompt, guidance_scale=7.5, generator=generator, output_type="np")
-        image = output.images[0]
-
-        assert image.shape == (512, 512, 3)
-        assert np.abs(expected_image - image).max() < 5e-3
+        assert mem_bytes > 3.3 * 10**9
+        assert np.abs(image_sliced - image).max() < 1e-3
 
     def test_stable_diffusion_text2img_intermediate_state(self):
         number_of_steps = 0
 
-        def test_callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
-            test_callback_fn.has_been_called = True
+        def callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
+            callback_fn.has_been_called = True
             nonlocal number_of_steps
             number_of_steps += 1
-            if step == 0:
+            if step == 1:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([1.8606, 1.3169, -0.0691, 1.2374, -2.309, 1.077, -0.1084, -0.6774, -2.9594])
+                expected_slice = np.array([-0.3857, -0.4507, -1.167, 0.074, -1.108, 0.7183, -1.822, 0.1915, 1.283])
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-3
-            elif step == 20:
+            elif step == 2:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([1.0757, 1.1860, 1.1410, 0.4645, -0.2476, 0.6100, -0.7755, -0.8841, -0.9497])
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
+                expected_slice = np.array([0.268, -0.2095, -0.7744, -0.541, -0.79, 0.3926, -0.7754, 0.465, 1.291])
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-2
 
-        test_callback_fn.has_been_called = False
+        callback_fn.has_been_called = False
 
         pipe = StableDiffusionPipeline.from_pretrained(
             "stabilityai/stable-diffusion-2-base", revision="fp16", torch_dtype=torch.float16
@@ -411,37 +358,139 @@ class StableDiffusion2PipelineIntegrationTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        prompt = "Andromeda galaxy in a bottle"
-
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        with torch.autocast(torch_device):
-            pipe(
-                prompt=prompt,
-                num_inference_steps=20,
-                guidance_scale=7.5,
-                generator=generator,
-                callback=test_callback_fn,
-                callback_steps=1,
-            )
-        assert test_callback_fn.has_been_called
-        assert number_of_steps == 20
+        inputs = self.get_inputs(torch_device, dtype=torch.float16)
+        pipe(**inputs, callback=callback_fn, callback_steps=1)
+        assert callback_fn.has_been_called
+        assert number_of_steps == inputs["num_inference_steps"]
 
     def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()
 
-        pipeline_id = "stabilityai/stable-diffusion-2-base"
-        prompt = "Andromeda galaxy in a bottle"
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-2-base", revision="fp16", torch_dtype=torch.float16
+        )
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing(1)
+        pipe.enable_sequential_cpu_offload()
 
-        pipeline = StableDiffusionPipeline.from_pretrained(pipeline_id, revision="fp16", torch_dtype=torch.float16)
-        pipeline = pipeline.to(torch_device)
-        pipeline.enable_attention_slicing(1)
-        pipeline.enable_sequential_cpu_offload()
-
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        _ = pipeline(prompt, generator=generator, num_inference_steps=5)
+        inputs = self.get_inputs(torch_device, dtype=torch.float16)
+        _ = pipe(**inputs)
 
         mem_bytes = torch.cuda.max_memory_allocated()
         # make sure that less than 2.8 GB is allocated
         assert mem_bytes < 2.8 * 10**9
+
+
+@nightly
+@require_torch_gpu
+class StableDiffusion2PipelineNightlyTests(unittest.TestCase):
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def get_inputs(self, device, dtype=torch.float32, seed=0):
+        generator = torch.Generator(device=device).manual_seed(seed)
+        latents = np.random.RandomState(seed).standard_normal((1, 4, 64, 64))
+        latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
+        inputs = {
+            "prompt": "a photograph of an astronaut riding a horse",
+            "latents": latents,
+            "generator": generator,
+            "num_inference_steps": 50,
+            "guidance_scale": 7.5,
+            "output_type": "numpy",
+        }
+        return inputs
+
+    def test_stable_diffusion_2_0_default_ddim(self):
+        sd_pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-base").to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_2_text2img/stable_diffusion_2_0_base_ddim.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
+
+    def test_stable_diffusion_2_1_default_pndm(self):
+        sd_pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1-base").to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_2_text2img/stable_diffusion_2_1_base_pndm.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
+
+    def test_stable_diffusion_ddim(self):
+        sd_pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1-base").to(torch_device)
+        sd_pipe.scheduler = DDIMScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_2_text2img/stable_diffusion_2_1_base_ddim.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
+
+    def test_stable_diffusion_lms(self):
+        sd_pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1-base").to(torch_device)
+        sd_pipe.scheduler = LMSDiscreteScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_2_text2img/stable_diffusion_2_1_base_lms.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
+
+    def test_stable_diffusion_euler(self):
+        sd_pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1-base").to(torch_device)
+        sd_pipe.scheduler = EulerDiscreteScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_2_text2img/stable_diffusion_2_1_base_euler.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
+
+    def test_stable_diffusion_dpm(self):
+        sd_pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1-base").to(torch_device)
+        sd_pipe.scheduler = DPMSolverMultistepScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 25
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_2_text2img/stable_diffusion_2_1_base_dpm_multi.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
