@@ -345,8 +345,22 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.prepare_latents
     def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
         image = image.to(device=device, dtype=dtype)
-        init_latent_dist = self.vae.encode(image).latent_dist
-        init_latents = init_latent_dist.sample(generator=generator)
+
+        batch_size = batch_size * num_images_per_prompt
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+
+        if isinstance(generator, list):
+            init_latents = [
+                self.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)
+            ]
+            init_latents = torch.cat(init_latents, dim=0)
+        else:
+            init_latents = self.vae.encode(image).latent_dist.sample(generator)
+
         init_latents = 0.18215 * init_latents
 
         if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
@@ -359,16 +373,24 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
             )
             deprecate("len(prompt) != len(image)", "1.0.0", deprecation_message, standard_warn=False)
             additional_image_per_prompt = batch_size // init_latents.shape[0]
-            init_latents = torch.cat([init_latents] * additional_image_per_prompt * num_images_per_prompt, dim=0)
+            init_latents = torch.cat([init_latents] * additional_image_per_prompt, dim=0)
         elif batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
             raise ValueError(
                 f"Cannot duplicate `image` of batch size {init_latents.shape[0]} to {batch_size} text prompts."
             )
         else:
-            init_latents = torch.cat([init_latents] * num_images_per_prompt, dim=0)
+            init_latents = torch.cat([init_latents], dim=0)
 
-        # add noise to latents using the timesteps
-        noise = torch.randn(init_latents.shape, generator=generator, device=device, dtype=dtype)
+        rand_device = "cpu" if device.type == "mps" else device
+        shape = init_latents.shape
+        if isinstance(generator, list):
+            shape = (1,) + shape[1:]
+            noise = [
+                torch.randn(shape, generator=generator[i], device=rand_device, dtype=dtype) for i in range(batch_size)
+            ]
+            noise = torch.cat(noise, dim=0).to(device)
+        else:
+            noise = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype).to(device)
 
         # get latents
         init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
@@ -429,7 +451,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: Optional[float] = 0.0,
-        generator: Optional[torch.Generator] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
@@ -468,8 +490,8 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
                 Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
                 [`schedulers.DDIMScheduler`], will be ignored for others.
             generator (`torch.Generator`, *optional*):
-                A [torch generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
-                deterministic.
+                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
+                to make generation deterministic.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
