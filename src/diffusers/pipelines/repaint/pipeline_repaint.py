@@ -88,7 +88,7 @@ class RePaintPipeline(DiffusionPipeline):
         eta: float = 0.0,
         jump_length: int = 10,
         jump_n_sample: int = 10,
-        generator: Optional[torch.Generator] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         **kwargs,
@@ -112,8 +112,8 @@ class RePaintPipeline(DiffusionPipeline):
                 The number of times we will make forward time jump for a given chosen time sample. Take a look at
                 Figure 9 and 10 in https://arxiv.org/pdf/2201.09865.pdf.
             generator (`torch.Generator`, *optional*):
-                A [torch generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
-                deterministic.
+                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
+                to make generation deterministic.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -135,19 +135,34 @@ class RePaintPipeline(DiffusionPipeline):
         mask_image = _preprocess_mask(mask_image)
         mask_image = mask_image.to(device=self.device, dtype=self.unet.dtype)
 
+        batch_size = original_image.shape[0]
+
         # sample gaussian noise to begin the loop
-        image = torch.randn(
-            original_image.shape,
-            generator=generator,
-            device=self.device,
-        )
-        image = image.to(device=self.device, dtype=self.unet.dtype)
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+
+        rand_device = "cpu" if self.device.type == "mps" else self.device
+        image_shape = original_image.shape
+        if isinstance(generator, list):
+            shape = (1,) + image_shape[1:]
+            image = [
+                torch.randn(shape, generator=generator[i], device=rand_device, dtype=self.unet.dtype)
+                for i in range(batch_size)
+            ]
+            image = torch.cat(image, dim=0).to(self.device)
+        else:
+            image = torch.randn(image_shape, generator=generator, device=rand_device, dtype=self.unet.dtype)
+            image = image.to(self.device)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps, jump_length, jump_n_sample, self.device)
         self.scheduler.eta = eta
 
         t_last = self.scheduler.timesteps[0] + 1
+        generator = generator[0] if isinstance(generator, list) else generator
         for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
             if t < t_last:
                 # predict the noise residual
