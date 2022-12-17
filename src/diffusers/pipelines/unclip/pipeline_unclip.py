@@ -162,8 +162,6 @@ class UnCLIPPipeline(DiffusionPipeline):
         decoder_guidance_scale: float = 8.0,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
     ):
         if isinstance(prompt, str):
             batch_size = 1
@@ -180,84 +178,8 @@ class UnCLIPPipeline(DiffusionPipeline):
             prompt, num_images_per_prompt, do_classifier_free_guidance
         )
 
-        if (callback_steps is None) or (
-            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
-        ):
-            raise ValueError(
-                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                f" {type(callback_steps)}."
-            )
+        # prior
 
-        prior_latents = self._prior(
-            batch_size=batch_size,
-            text_embeddings=text_embeddings,
-            generator=generator,
-            do_classifier_free_guidance=do_classifier_free_guidance,
-            text_encoder_hidden_states=text_encoder_hidden_states,
-            text_mask=text_mask,
-            prior_guidance_scale=prior_guidance_scale,
-            callback=callback,
-            callback_steps=callback_steps,
-            prior_latents=prior_latents,
-            prior_num_inference_steps=prior_num_inference_steps,
-        )
-
-        image_embeddings = prior_latents
-
-        decoder_latents = self._decoder(
-            image_embeddings=image_embeddings,
-            text_embeddings=text_embeddings,
-            text_encoder_hidden_states=text_encoder_hidden_states,
-            text_mask=text_mask,
-            do_classifier_free_guidance=do_classifier_free_guidance,
-            batch_size=batch_size,
-            generator=generator,
-            decoder_guidance_scale=decoder_guidance_scale,
-            callback_steps=callback_steps,
-            callback=callback,
-            decoder_latents=decoder_latents,
-            decoder_num_inference_steps=decoder_num_inference_steps,
-        )
-
-        image_small = decoder_latents
-
-        image = self._super_res(
-            batch_size=batch_size,
-            image_small=image_small,
-            super_res_latents=super_res_latents,
-            generator=generator,
-            callback_steps=callback_steps,
-            callback=callback,
-            super_res_num_inference_steps=super_res_num_inference_steps,
-        )
-
-        image = image * 0.5 + 0.5
-        image = image.clamp(0, 1)
-        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
-
-        if output_type == "pil":
-            image = self.numpy_to_pil(image)
-
-        if not return_dict:
-            return (image,)
-
-        return ImagePipelineOutput(images=image)
-
-    def _prior(
-        self,
-        *,
-        batch_size,
-        text_embeddings,
-        generator,
-        do_classifier_free_guidance,
-        text_encoder_hidden_states,
-        text_mask,
-        prior_guidance_scale,
-        callback,
-        callback_steps,
-        prior_latents,
-        prior_num_inference_steps,
-    ):
         self.prior_scheduler.set_timesteps(prior_num_inference_steps, device=self.device)
         prior_timesteps_tensor = self.prior_scheduler.timesteps
 
@@ -303,30 +225,14 @@ class UnCLIPPipeline(DiffusionPipeline):
                 learned_range_log=True,
             ).prev_sample
 
-            # call the callback, if provided
-            if callback is not None and i % callback_steps == 0:
-                callback(i, t, prior_latents)
-
         prior_latents = self.prior.post_process_latents(prior_latents)
 
-        return prior_latents
+        image_embeddings = prior_latents
 
-    def _decoder(
-        self,
-        *,
-        image_embeddings,
-        text_embeddings,
-        text_mask,
-        text_encoder_hidden_states,
-        do_classifier_free_guidance,
-        batch_size,
-        generator,
-        decoder_guidance_scale,
-        callback_steps,
-        callback,
-        decoder_latents,
-        decoder_num_inference_steps,
-    ):
+        # done prior
+
+        # decoder
+
         text_encoder_hidden_states, additive_clip_time_embeddings = self.text_proj(
             image_embeddings=image_embeddings,
             text_embeddings=text_embeddings,
@@ -380,25 +286,14 @@ class UnCLIPPipeline(DiffusionPipeline):
                 noise_pred, t, decoder_latents, prev_timestep=prev_timestep, learned_range_log=True
             ).prev_sample
 
-            # call the callback, if provided
-            if callback is not None and i % callback_steps == 0:
-                callback(i, t, decoder_latents)
-
         decoder_latents = decoder_latents.clamp(-1, 1)
 
-        return decoder_latents
+        image_small = decoder_latents
 
-    def _super_res(
-        self,
-        *,
-        batch_size,
-        image_small,
-        super_res_latents,
-        generator,
-        callback_steps,
-        callback,
-        super_res_num_inference_steps,
-    ):
+        # done decoder
+
+        # super res
+
         self.super_res_scheduler.set_timesteps(super_res_num_inference_steps, device=self.device)
         super_res_timesteps_tensor = self.super_res_scheduler.timesteps
 
@@ -447,10 +342,20 @@ class UnCLIPPipeline(DiffusionPipeline):
                 noise_pred, t, super_res_latents, prev_timestep=prev_timestep, learned_range_log=True
             ).prev_sample
 
-            # call the callback, if provided
-            if callback is not None and i % callback_steps == 0:
-                callback(i, t, super_res_latents)
-
         image = super_res_latents
 
-        return image
+        # done super res
+
+        # post processing
+
+        image = image * 0.5 + 0.5
+        image = image.clamp(0, 1)
+        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
+
+        if output_type == "pil":
+            image = self.numpy_to_pil(image)
+
+        if not return_dict:
+            return (image,)
+
+        return ImagePipelineOutput(images=image)
