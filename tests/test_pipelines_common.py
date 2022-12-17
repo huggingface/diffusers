@@ -44,6 +44,11 @@ class PipelineTesterMixin:
     test_cpu_offload = True
     test_xformers_attention = True
 
+    def get_generator(self, seed):
+        device = torch_device if torch_device != "mps" else "cpu"
+        generator = torch.Generator(device).manual_seed(seed)
+        return generator
+
     @property
     def pipeline_class(self) -> Union[Callable, DiffusionPipeline]:
         raise NotImplementedError(
@@ -175,6 +180,64 @@ class PipelineTesterMixin:
             assert output.shape[0] == batch_size
 
         logger.setLevel(level=diffusers.logging.WARNING)
+
+    def test_inference_batch_single_identical(self):
+        if self.pipeline_class.__name__ in ["CycleDiffusionPipeline", "RePaintPipeline"]:
+            # RePaint can hardly be made deterministic since the scheduler is currently always
+            # indeterministic
+            # CycleDiffusion is also slighly undeterministic
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        logger = logging.get_logger(pipe.__module__)
+        logger.setLevel(level=diffusers.logging.FATAL)
+
+        # batchify inputs
+        batched_inputs = {}
+        batch_size = 3
+        for name, value in inputs.items():
+            if name in ALLOWED_REQUIRED_ARGS:
+                # prompt is string
+                if name == "prompt":
+                    len_prompt = len(value)
+                    # make unequal batch sizes
+                    batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
+
+                    # make last batch super long
+                    batched_inputs[name][-1] = 2000 * "very long"
+                # or else we have images
+                else:
+                    batched_inputs[name] = batch_size * [value]
+            elif name == "batch_size":
+                batched_inputs[name] = batch_size
+            elif name == "generator":
+                batched_inputs[name] = [self.get_generator(i) for i in range(batch_size)]
+            else:
+                batched_inputs[name] = value
+
+        batched_inputs["num_inference_steps"] = inputs["num_inference_steps"]
+
+        if self.pipeline_class.__name__ != "DanceDiffusionPipeline":
+            batched_inputs["output_type"] = "np"
+
+        output_batch = pipe(**batched_inputs)
+        assert output_batch[0].shape[0] == batch_size
+
+        inputs["generator"] = self.get_generator(0)
+
+        output = pipe(**inputs)
+
+        if torch_device != "mps":
+            # TODO(Pedro) - not sure why, but not at all reproducible at the moment it seems
+            # make sure that batched and non-batched is identical
+            assert np.abs(output_batch[0][0] - output[0][0]).max() < 1e-4
+            logger.setLevel(level=diffusers.logging.WARNING)
 
     def test_dict_tuple_outputs_equivalent(self):
         if torch_device == "mps" and self.pipeline_class in (
