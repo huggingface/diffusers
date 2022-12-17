@@ -43,8 +43,6 @@ from ...test_pipelines_common import PipelineTesterMixin
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
-#test_logger = logging.get_logger(__name__)
-
 
 class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionPipeline
@@ -381,40 +379,36 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-
         do_classifier_free_guidance = True
         negative_prompt = None
         num_images_per_prompt = 1
-        #logger = logging.get_logger("diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion")
-        #test_logger.warning(logger)
+        logger = logging.get_logger("diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion")
 
         prompt = 25 * "@"
-        #with CaptureLogger(logger) as cap_logger_3:
-        text_embeddings_3 = sd_pipe._encode_prompt(
+        with CaptureLogger(logger) as cap_logger_3:
+            text_embeddings_3 = sd_pipe._encode_prompt(
                 prompt, torch_device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
             )
 
         prompt = 100 * "@"
-        #with CaptureLogger(logger) as cap_logger:
-        text_embeddings = sd_pipe._encode_prompt(
+        with CaptureLogger(logger) as cap_logger:
+            text_embeddings = sd_pipe._encode_prompt(
                 prompt, torch_device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
             )
 
         negative_prompt = "Hello"
-        #with CaptureLogger(logger) as cap_logger_2:
-        text_embeddings_2 = sd_pipe._encode_prompt(
+        with CaptureLogger(logger) as cap_logger_2:
+            text_embeddings_2 = sd_pipe._encode_prompt(
                 prompt, torch_device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
             )
 
         assert text_embeddings_3.shape == text_embeddings_2.shape == text_embeddings.shape
         assert text_embeddings.shape[1] == 77
 
-        #test_logger.warning(cap_logger.out)
-
-        #assert cap_logger.out == cap_logger_2.out
+        assert cap_logger.out == cap_logger_2.out
         # 100 - 77 + 1 (BOS token) + 1 (EOS token) = 25
-        #assert cap_logger.out.count("@") == 25
-        #assert cap_logger_3.out == ""
+        assert cap_logger.out.count("@") == 25
+        assert cap_logger_3.out == ""
 
     def test_stable_diffusion_height_width_opt(self):
         components = self.get_dummy_components()
