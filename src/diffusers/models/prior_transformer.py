@@ -69,12 +69,12 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         self.norm_out = nn.LayerNorm(inner_dim)
         self.proj_to_clip_embeddings = nn.Linear(inner_dim, clip_embeddings_dim)
 
-        causal_mask = torch.full(
+        causal_attention_mask = torch.full(
             [clip_num_embeddings + additional_embeddings, clip_num_embeddings + additional_embeddings], float("-inf")
         )
-        causal_mask.triu_(1)
-        causal_mask = causal_mask[None, ...]
-        self.register_buffer("causal_mask", causal_mask, persistent=False)
+        causal_attention_mask.triu_(1)
+        causal_attention_mask = causal_attention_mask[None, ...]
+        self.register_buffer("causal_attention_mask", causal_attention_mask, persistent=False)
 
         self.clip_mean = nn.Parameter(torch.zeros(1, clip_embeddings_dim))
         self.clip_std = nn.Parameter(torch.zeros(1, clip_embeddings_dim))
@@ -102,8 +102,7 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         timesteps_projected = self.time_proj(timesteps)
 
         # timesteps does not contain any weights and will always return f32 tensors
-        # but time_embedding might actually be running in fp16. so we need to cast here.
-        # there might be better ways to encapsulate this.
+        # but time_embedding might be fp16, so we need to cast here.
         timesteps_projected = timesteps_projected.to(dtype=self.dtype)
         time_embeddings = self.time_embedding(timesteps_projected)
 
@@ -127,10 +126,10 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         hidden_states = hidden_states + positional_embeddings
 
         text_mask = F.pad(text_mask, (0, self.additional_embeddings), value=0.0)
-        mask = (text_mask[:, None, :] + self.causal_mask).to(hidden_states.dtype)
+        attention_mask = (text_mask[:, None, :] + self.causal_attention_mask).to(hidden_states.dtype)
 
         for block in self.transformer_blocks:
-            hidden_states = block(hidden_states, mask=mask)
+            hidden_states = block(hidden_states, attention_mask=attention_mask)
 
         hidden_states = self.norm_out(hidden_states)
         hidden_states = hidden_states[:, -1]

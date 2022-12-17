@@ -265,7 +265,7 @@ class UnCLIPPipeline(DiffusionPipeline):
                 timestep=t,
                 encoder_hidden_states=text_encoder_hidden_states,
                 additive_time_embeddings=additive_clip_time_embeddings,
-                mask=decoder_text_mask,
+                attention_mask=decoder_text_mask,
             ).sample
 
             if do_classifier_free_guidance:

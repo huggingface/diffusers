@@ -175,7 +175,9 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             self.norm_out = nn.LayerNorm(inner_dim)
             self.out = nn.Linear(inner_dim, self.num_vector_embeds - 1)
 
-    def forward(self, hidden_states, encoder_hidden_states=None, timestep=None, mask=None, return_dict: bool = True):
+    def forward(
+        self, hidden_states, encoder_hidden_states=None, timestep=None, attention_mask=None, return_dict: bool = True
+    ):
         """
         Args:
             hidden_states ( When discrete, `torch.LongTensor` of shape `(batch size, num latent pixels)`.
@@ -186,7 +188,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 self-attention.
             timestep ( `torch.long`, *optional*):
                 Optional timestep to be applied as an embedding in AdaLayerNorm's. Used to indicate denoising step.
-            mask (`torch.FloatTensor`, *optional*):
+            attention_mask (`torch.FloatTensor`, *optional*):
                 Optional attention mask to be applied in CrossAttention
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
@@ -215,7 +217,9 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # 2. Blocks
         for block in self.transformer_blocks:
-            hidden_states = block(hidden_states, context=encoder_hidden_states, timestep=timestep, mask=mask)
+            hidden_states = block(
+                hidden_states, context=encoder_hidden_states, timestep=timestep, attention_mask=attention_mask
+            )
 
         # 3. Output
         if self.is_input_continuous:
@@ -501,23 +505,25 @@ class BasicTransformerBlock(nn.Module):
             self.attn1._use_memory_efficient_attention_xformers = use_memory_efficient_attention_xformers
             self.attn2._use_memory_efficient_attention_xformers = use_memory_efficient_attention_xformers
 
-    def forward(self, hidden_states, context=None, timestep=None, mask=None):
+    def forward(self, hidden_states, context=None, timestep=None, attention_mask=None):
         # 1. Self-Attention
         norm_hidden_states = (
             self.norm1(hidden_states, timestep) if self.use_ada_layer_norm else self.norm1(hidden_states)
         )
 
         if self.only_cross_attention:
-            hidden_states = self.attn1(norm_hidden_states, context, mask=mask) + hidden_states
+            hidden_states = self.attn1(norm_hidden_states, context, attention_mask=attention_mask) + hidden_states
         else:
-            hidden_states = self.attn1(norm_hidden_states, mask=mask) + hidden_states
+            hidden_states = self.attn1(norm_hidden_states, attention_mask=attention_mask) + hidden_states
 
         if self.attn2 is not None:
             # 2. Cross-Attention
             norm_hidden_states = (
                 self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
             )
-            hidden_states = self.attn2(norm_hidden_states, context=context, mask=mask) + hidden_states
+            hidden_states = (
+                self.attn2(norm_hidden_states, context=context, attention_mask=attention_mask) + hidden_states
+            )
 
         # 3. Feed-forward
         hidden_states = self.ff(self.norm3(hidden_states)) + hidden_states
@@ -593,7 +599,7 @@ class CrossAttention(nn.Module):
 
         self._slice_size = slice_size
 
-    def forward(self, hidden_states, context=None, mask=None):
+    def forward(self, hidden_states, context=None, attention_mask=None):
         batch_size, sequence_length, _ = hidden_states.shape
 
         query = self.to_q(hidden_states)
@@ -607,18 +613,17 @@ class CrossAttention(nn.Module):
         key = self.reshape_heads_to_batch_dim(key)
         value = self.reshape_heads_to_batch_dim(value)
 
-        if mask is not None:
-            mask = mask.repeat_interleave(self.heads, dim=0)
+        if attention_mask is not None:
+            attention_mask = attention_mask.repeat_interleave(self.heads, dim=0)
 
         # attention, what we cannot get enough of
         if self._use_memory_efficient_attention_xformers:
-            # TODO mask
-            hidden_states = self._memory_efficient_attention_xformers(query, key, value)
+            hidden_states = self._memory_efficient_attention_xformers(query, key, value, attention_mask)
             # Some versions of xformers return output in fp32, cast it back to the dtype of the input
             hidden_states = hidden_states.to(query.dtype)
         else:
             if self._slice_size is None or query.shape[0] // self._slice_size == 1:
-                hidden_states = self._attention(query, key, value, mask)
+                hidden_states = self._attention(query, key, value, attention_mask)
             else:
                 # TODO mask
                 hidden_states = self._sliced_attention(query, key, value, sequence_length, dim)
@@ -629,7 +634,7 @@ class CrossAttention(nn.Module):
         hidden_states = self.to_out[1](hidden_states)
         return hidden_states
 
-    def _attention(self, query, key, value, mask=None):
+    def _attention(self, query, key, value, attention_mask=None):
         if self.upcast_attention:
             query = query.float()
             key = key.float()
@@ -642,8 +647,8 @@ class CrossAttention(nn.Module):
             alpha=self.scale,
         )
 
-        if mask is not None:
-            attention_scores = attention_scores + mask
+        if attention_mask is not None:
+            attention_scores = attention_scores + attention_mask
 
         attention_probs = attention_scores.softmax(dim=-1)
 
@@ -693,7 +698,8 @@ class CrossAttention(nn.Module):
         hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
         return hidden_states
 
-    def _memory_efficient_attention_xformers(self, query, key, value):
+    def _memory_efficient_attention_xformers(self, query, key, value, attention_mask):
+        # TODO attention_mask
         query = query.contiguous()
         key = key.contiguous()
         value = value.contiguous()
@@ -904,7 +910,9 @@ class DualTransformer2DModel(nn.Module):
         # E.g. `(1, 0)` means that we'll use `transformers[1](conditions[0])` and `transformers[0](conditions[1])`
         self.transformer_index_for_condition = [1, 0]
 
-    def forward(self, hidden_states, encoder_hidden_states, timestep=None, mask=None, return_dict: bool = True):
+    def forward(
+        self, hidden_states, encoder_hidden_states, timestep=None, attention_mask=None, return_dict: bool = True
+    ):
         """
         Args:
             hidden_states ( When discrete, `torch.LongTensor` of shape `(batch size, num latent pixels)`.
@@ -915,7 +923,7 @@ class DualTransformer2DModel(nn.Module):
                 self-attention.
             timestep ( `torch.long`, *optional*):
                 Optional timestep to be applied as an embedding in AdaLayerNorm's. Used to indicate denoising step.
-            mask (`torch.FloatTensor`, *optional*):
+            attention_mask (`torch.FloatTensor`, *optional*):
                 Optional attention mask to be applied in CrossAttention
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
@@ -934,7 +942,11 @@ class DualTransformer2DModel(nn.Module):
             condition_state = encoder_hidden_states[:, tokens_start : tokens_start + self.condition_lengths[i]]
             transformer_index = self.transformer_index_for_condition[i]
             encoded_state = self.transformers[transformer_index](
-                input_states, encoder_hidden_states=condition_state, timestep=timestep, mask=mask, return_dict=False
+                input_states,
+                encoder_hidden_states=condition_state,
+                timestep=timestep,
+                attention_mask=attention_mask,
+                return_dict=False,
             )[0]
             encoded_states.append(encoded_state - input_states)
             tokens_start += self.condition_lengths[i]

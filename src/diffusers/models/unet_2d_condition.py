@@ -328,7 +328,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         encoder_hidden_states: torch.Tensor,
         class_labels: Optional[torch.Tensor] = None,
         additive_time_embeddings: Optional[torch.Tensor] = None,
-        mask: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> Union[UNet2DConditionOutput, Tuple]:
         r"""
@@ -407,7 +407,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                     hidden_states=sample,
                     temb=emb,
                     encoder_hidden_states=encoder_hidden_states,
-                    mask=mask,
+                    attention_mask=attention_mask,
                 )
             else:
                 sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
@@ -415,7 +415,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             down_block_res_samples += res_samples
 
         # 4. mid
-        sample = self.mid_block(sample, emb, encoder_hidden_states=encoder_hidden_states, mask=mask)
+        sample = self.mid_block(
+            sample, emb, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask
+        )
 
         # 5. up
         for i, upsample_block in enumerate(self.up_blocks):
@@ -436,7 +438,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                     res_hidden_states_tuple=res_samples,
                     encoder_hidden_states=encoder_hidden_states,
                     upsample_size=upsample_size,
-                    mask=mask,
+                    attention_mask=attention_mask,
                 )
             else:
                 sample = upsample_block(

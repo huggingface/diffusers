@@ -407,7 +407,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         encoder_hidden_states: torch.Tensor,
         class_labels: Optional[torch.Tensor] = None,
         additive_time_embeddings: Optional[torch.Tensor] = None,
-        mask: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> Union[UNet2DConditionOutput, Tuple]:
         r"""
@@ -486,7 +486,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                     hidden_states=sample,
                     temb=emb,
                     encoder_hidden_states=encoder_hidden_states,
-                    mask=mask,
+                    attention_mask=attention_mask,
                 )
             else:
                 sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
@@ -494,7 +494,9 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             down_block_res_samples += res_samples
 
         # 4. mid
-        sample = self.mid_block(sample, emb, encoder_hidden_states=encoder_hidden_states, mask=mask)
+        sample = self.mid_block(
+            sample, emb, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask
+        )
 
         # 5. up
         for i, upsample_block in enumerate(self.up_blocks):
@@ -515,7 +517,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                     res_hidden_states_tuple=res_samples,
                     encoder_hidden_states=encoder_hidden_states,
                     upsample_size=upsample_size,
-                    mask=mask,
+                    attention_mask=attention_mask,
                 )
             else:
                 sample = upsample_block(
@@ -815,7 +817,7 @@ class CrossAttnDownBlockFlat(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, hidden_states, temb=None, encoder_hidden_states=None, mask=None):
+    def forward(self, hidden_states, temb=None, encoder_hidden_states=None, attention_mask=None):
         output_states = ()
 
         for resnet, attn in zip(self.resnets, self.attentions):
@@ -836,11 +838,13 @@ class CrossAttnDownBlockFlat(nn.Module):
                     hidden_states,
                     encoder_hidden_states,
                     None,  # timestep
-                    mask,
+                    attention_mask,
                 )[0]
             else:
                 hidden_states = resnet(hidden_states, temb)
-                hidden_states = attn(hidden_states, encoder_hidden_states=encoder_hidden_states, mask=mask).sample
+                hidden_states = attn(
+                    hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask
+                ).sample
 
             output_states += (hidden_states,)
 
@@ -1021,7 +1025,7 @@ class CrossAttnUpBlockFlat(nn.Module):
         temb=None,
         encoder_hidden_states=None,
         upsample_size=None,
-        mask=None,
+        attention_mask=None,
     ):
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
@@ -1046,11 +1050,13 @@ class CrossAttnUpBlockFlat(nn.Module):
                     hidden_states,
                     encoder_hidden_states,
                     None,  # timestep
-                    mask,
+                    attention_mask,
                 )[0]
             else:
                 hidden_states = resnet(hidden_states, temb)
-                hidden_states = attn(hidden_states, encoder_hidden_states=encoder_hidden_states, mask=mask).sample
+                hidden_states = attn(
+                    hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask
+                ).sample
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -1147,10 +1153,12 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
-    def forward(self, hidden_states, temb=None, encoder_hidden_states=None, mask=None):
+    def forward(self, hidden_states, temb=None, encoder_hidden_states=None, attention_mask=None):
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
-            hidden_states = attn(hidden_states, encoder_hidden_states=encoder_hidden_states, mask=mask).sample
+            hidden_states = attn(
+                hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask
+            ).sample
             hidden_states = resnet(hidden_states, temb)
 
         return hidden_states
@@ -1243,10 +1251,12 @@ class UnCLIPUNetMidBlockFlatCrossAttn(nn.Module):
         for attn in self.attentions:
             attn._set_attention_slice(slice_size)
 
-    def forward(self, hidden_states, temb=None, encoder_hidden_states=None, mask=None):
+    def forward(self, hidden_states, temb=None, encoder_hidden_states=None, attention_mask=None):
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
-            hidden_states = attn(hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=mask)
+            hidden_states = attn(
+                hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask
+            )
             hidden_states = resnet(hidden_states, temb)
 
         return hidden_states
