@@ -249,6 +249,14 @@ class StableDiffusionPipeline(DiffusionPipeline):
         )
         text_input_ids = text_inputs.input_ids
         untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+        logger.warning(
+            f"trunc shape {text_input_ids.shape} {untruncated_ids.shape} {batch_size}"
+        )
+        logger.warning(f"{text_input_ids}")
+        logger.warning(f"{untruncated_ids}")
+        logger.warning(f"{torch.equal(text_input_ids, untruncated_ids)}")
+        removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.tokenizer.model_max_length - 1: -1])
+        logger.warning(f"{self.tokenizer.model_max_length} --- {removed_text}")
 
         if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
             removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1])
