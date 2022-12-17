@@ -71,6 +71,7 @@ else:
         RePaintScheduler,
         SchedulerMixin,
         ScoreSdeVeScheduler,
+        UNCLIPScheduler,
         VQDiffusionScheduler,
     )
     from .training_utils import EMAModel

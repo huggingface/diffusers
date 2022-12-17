@@ -8,7 +8,7 @@ from torch.nn import functional as F
 
 from diffusers import PriorTransformer, UNet2DConditionModel, UNet2DModel
 from diffusers.pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from diffusers.schedulers import DDPMScheduler
+from diffusers.schedulers import UNCLIPScheduler
 from transformers import CLIPTextModelWithProjection, CLIPTokenizer
 
 from ...utils import logging
@@ -27,9 +27,9 @@ class UnCLIPPipeline(DiffusionPipeline):
     super_res_first: UNet2DModel
     super_res_last: UNet2DModel
 
-    prior_scheduler: DDPMScheduler
-    decoder_scheduler: DDPMScheduler
-    super_res_scheduler: DDPMScheduler
+    prior_scheduler: UNCLIPScheduler
+    decoder_scheduler: UNCLIPScheduler
+    super_res_scheduler: UNCLIPScheduler
 
     def __init__(
         self,
@@ -40,9 +40,9 @@ class UnCLIPPipeline(DiffusionPipeline):
         text_proj: UnCLIPTextProjModel,
         super_res_first: UNet2DModel,
         super_res_last: UNet2DModel,
-        prior_scheduler: DDPMScheduler,
-        decoder_scheduler: DDPMScheduler,
-        super_res_scheduler: DDPMScheduler,
+        prior_scheduler: UNCLIPScheduler,
+        decoder_scheduler: UNCLIPScheduler,
+        super_res_scheduler: UNCLIPScheduler,
     ):
         super().__init__()
 
@@ -222,7 +222,6 @@ class UnCLIPPipeline(DiffusionPipeline):
                 sample=prior_latents,
                 generator=generator,
                 prev_timestep=prev_timestep,
-                learned_range_log=True,
             ).prev_sample
 
         prior_latents = self.prior.post_process_latents(prior_latents)
@@ -283,7 +282,7 @@ class UnCLIPPipeline(DiffusionPipeline):
 
             # compute the previous noisy sample x_t -> x_t-1
             decoder_latents = self.decoder_scheduler.step(
-                noise_pred, t, decoder_latents, prev_timestep=prev_timestep, learned_range_log=True
+                noise_pred, t, decoder_latents, prev_timestep=prev_timestep
             ).prev_sample
 
         decoder_latents = decoder_latents.clamp(-1, 1)
@@ -339,7 +338,7 @@ class UnCLIPPipeline(DiffusionPipeline):
 
             # compute the previous noisy sample x_t -> x_t-1
             super_res_latents = self.super_res_scheduler.step(
-                noise_pred, t, super_res_latents, prev_timestep=prev_timestep, learned_range_log=True
+                noise_pred, t, super_res_latents, prev_timestep=prev_timestep
             ).prev_sample
 
         image = super_res_latents

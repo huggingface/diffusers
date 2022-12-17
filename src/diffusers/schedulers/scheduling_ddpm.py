@@ -119,7 +119,6 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
         variance_type: str = "fixed_small",
         clip_sample: bool = True,
-        clip_sample_range: Optional[float] = 1,
         prediction_type: str = "epsilon",
         **kwargs,
     ):
@@ -192,26 +191,14 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         )[::-1].copy()
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
-    def _get_variance(
-        self, t, predicted_variance=None, variance_type=None, prev_timestep=None, learned_range_log=False
-    ):
-        if prev_timestep is None:
-            prev_timestep = t - 1
-
+    def _get_variance(self, t, predicted_variance=None, variance_type=None):
         alpha_prod_t = self.alphas_cumprod[t]
-        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.one
-        beta_prod_t = 1 - alpha_prod_t
-        beta_prod_t_prev = 1 - alpha_prod_t_prev
-
-        if prev_timestep == t - 1:
-            beta = self.betas[t]
-        else:
-            beta = 1 - alpha_prod_t / alpha_prod_t_prev
+        alpha_prod_t_prev = self.alphas_cumprod[t - 1] if t > 0 else self.one
 
         # For t > 0, compute predicted variance βt (see formula (6) and (7) from https://arxiv.org/pdf/2006.11239.pdf)
         # and sample from it to get previous sample
         # x_{t-1} ~ N(pred_prev_sample, variance) == add variance to pred_sample
-        variance = beta_prod_t_prev / beta_prod_t * beta
+        variance = (1 - alpha_prod_t_prev) / (1 - alpha_prod_t) * self.betas[t]
 
         if variance_type is None:
             variance_type = self.config.variance_type
@@ -224,20 +211,15 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             variance = torch.log(torch.clamp(variance, min=1e-20))
             variance = torch.exp(0.5 * variance)
         elif variance_type == "fixed_large":
-            variance = beta
+            variance = self.betas[t]
         elif variance_type == "fixed_large_log":
             # Glide max_log
-            variance = torch.log(beta)
+            variance = torch.log(self.betas[t])
         elif variance_type == "learned":
             return predicted_variance
         elif variance_type == "learned_range":
-            if learned_range_log:
-                min_log = variance.log()
-                max_log = beta.log()
-            else:
-                min_log = variance
-                max_log = beta
-
+            min_log = variance
+            max_log = self.betas[t]
             frac = (predicted_variance + 1) / 2
             variance = frac * max_log + (1 - frac) * min_log
 
@@ -249,8 +231,6 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         timestep: int,
         sample: torch.FloatTensor,
         generator=None,
-        prev_timestep=None,
-        learned_range_log: bool = False,
         return_dict: bool = True,
         **kwargs,
     ) -> Union[DDPMSchedulerOutput, Tuple]:
@@ -276,7 +256,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             "Please make sure to instantiate your scheduler with `prediction_type` instead. E.g. `scheduler ="
             " DDPMScheduler.from_pretrained(<model_id>, prediction_type='epsilon')`."
         )
-        predict_epsilon = deprecate("predict_epsilon", "0.12.0", message, take_from=kwargs)
+        predict_epsilon = deprecate("predict_epsilon", "0.11.0", message, take_from=kwargs)
         if predict_epsilon is not None:
             new_config = dict(self.config)
             new_config["prediction_type"] = "epsilon" if predict_epsilon else "sample"
@@ -290,20 +270,10 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             predicted_variance = None
 
         # 1. compute alphas, betas
-        if prev_timestep is None:
-            prev_timestep = t - 1
-
         alpha_prod_t = self.alphas_cumprod[t]
-        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.one
+        alpha_prod_t_prev = self.alphas_cumprod[t - 1] if t > 0 else self.one
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
-
-        if prev_timestep == t - 1:
-            beta = self.betas[t]
-            alpha = self.alphas[t]
-        else:
-            beta = 1 - alpha_prod_t / alpha_prod_t_prev
-            alpha = 1 - beta
 
         # 2. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (15) from https://arxiv.org/pdf/2006.11239.pdf
@@ -321,14 +291,12 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         # 3. Clip "predicted x_0"
         if self.config.clip_sample:
-            pred_original_sample = torch.clamp(
-                pred_original_sample, -self.config.clip_sample_range, self.config.clip_sample_range
-            )
+            pred_original_sample = torch.clamp(pred_original_sample, -1, 1)
 
         # 4. Compute coefficients for pred_original_sample x_0 and current sample x_t
         # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
-        pred_original_sample_coeff = (alpha_prod_t_prev ** (0.5) * beta) / beta_prod_t
-        current_sample_coeff = alpha ** (0.5) * beta_prod_t_prev / beta_prod_t
+        pred_original_sample_coeff = (alpha_prod_t_prev ** (0.5) * self.betas[t]) / beta_prod_t
+        current_sample_coeff = self.alphas[t] ** (0.5) * beta_prod_t_prev / beta_prod_t
 
         # 5. Compute predicted previous sample µ_t
         # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
@@ -346,22 +314,10 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
                 variance_noise = torch.randn(
                     model_output.shape, generator=generator, device=device, dtype=model_output.dtype
                 )
-
-            variance = self._get_variance(
-                t,
-                predicted_variance=predicted_variance,
-                prev_timestep=prev_timestep,
-                learned_range_log=learned_range_log,
-            )
-
             if self.variance_type == "fixed_small_log":
-                variance = variance
-            elif self.variance_type == "learned_range" and learned_range_log:
-                variance = (0.5 * variance).exp()
+                variance = self._get_variance(t, predicted_variance=predicted_variance) * variance_noise
             else:
-                variance = variance ** (0.5)
-
-            variance = variance * variance_noise
+                variance = (self._get_variance(t, predicted_variance=predicted_variance) ** 0.5) * variance_noise
 
         pred_prev_sample = pred_prev_sample + variance
 

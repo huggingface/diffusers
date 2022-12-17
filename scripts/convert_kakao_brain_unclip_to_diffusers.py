@@ -8,6 +8,7 @@ from diffusers import UnCLIPPipeline, UNet2DConditionModel, UNet2DModel
 from diffusers.models.prior_transformer import PriorTransformer
 from diffusers.pipelines.unclip.text_proj import UnCLIPTextProjModel
 from diffusers.schedulers import DDPMScheduler
+from diffusers.schedulers.scheduling_unclip import UNCLIPScheduler
 from transformers import CLIPTextModelWithProjection, CLIPTokenizer
 
 
@@ -1089,26 +1090,23 @@ if __name__ == "__main__":
             args=args, checkpoint_map_location=checkpoint_map_location
         )
 
-        prior_scheduler = DDPMScheduler(
+        prior_scheduler = UNCLIPScheduler(
             variance_type="fixed_small_log",
             prediction_type="sample",
             num_train_timesteps=1000,
-            beta_schedule="squaredcos_cap_v2",
             clip_sample_range=5.0,
         )
 
-        decoder_scheduler = DDPMScheduler(
+        decoder_scheduler = UNCLIPScheduler(
             variance_type="learned_range",
             prediction_type="epsilon",
             num_train_timesteps=1000,
-            beta_schedule="squaredcos_cap_v2",
         )
 
-        super_res_scheduler = DDPMScheduler(
+        super_res_scheduler = UNCLIPScheduler(
             variance_type="fixed_small_log",
             prediction_type="epsilon",
             num_train_timesteps=1000,
-            beta_schedule="squaredcos_cap_v2",
         )
 
         print(f"saving Kakao Brain unCLIP to {args.dump_path}")
