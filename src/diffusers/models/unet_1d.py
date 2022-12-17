@@ -218,6 +218,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         else:
             timestep_embed = timestep_embed[..., None]
             timestep_embed = timestep_embed.repeat([1, 1, sample.shape[2]]).to(sample.dtype)
+            timestep_embed = timestep_embed.broadcast_to((sample.shape[:1] + timestep_embed.shape[1:]))
 
         # 2. down
         down_block_res_samples = ()

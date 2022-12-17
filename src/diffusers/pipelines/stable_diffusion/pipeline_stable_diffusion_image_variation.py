@@ -65,7 +65,7 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
-    _optional_components = ["safety_checker", "feature_extractor"]
+    _optional_components = ["safety_checker"]
 
     def __init__(
         self,
@@ -240,7 +240,8 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
             and not isinstance(image, list)
         ):
             raise ValueError(
-                f"`image` has to be of type `torch.FloatTensor` or `PIL.Image.Image` or `list` but is {type(image)}"
+                "`image` has to be of type `torch.FloatTensor` or `PIL.Image.Image` or `List[PIL.Image.Image]` but is"
+                f" {type(image)}"
             )
 
         if height % 8 != 0 or width % 8 != 0:

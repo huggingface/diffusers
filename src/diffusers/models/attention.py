@@ -446,17 +446,7 @@ class BasicTransformerBlock(nn.Module):
 
         # 3. Feed-forward
         self.norm3 = nn.LayerNorm(dim)
-
-        # if xformers is installed try to use memory_efficient_attention by default
-#        if is_xformers_available():
-#            try:
-#                self.set_use_memory_efficient_attention_xformers(True)
-#            except Exception as e:
-#                warnings.warn(
-#                    "Could not enable memory efficient attention. Make sure xformers is installed"
-#                    f" correctly and a GPU is available: {e}"
-#                )
-
+        
     def forward(self, hidden_states, context=None, timestep=None, cross_attention_kwargs=None):
         # 1. Self-Attention
         norm_hidden_states = (
