@@ -141,7 +141,7 @@ class RePaintPipeline(DiffusionPipeline):
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch sizes matches the length of the generators."
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
         rand_device = "cpu" if self.device.type == "mps" else self.device
