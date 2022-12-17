@@ -4,6 +4,13 @@ import random
 import numpy as np
 
 from PIL import Image
+from torch import Tensor
+from typing import List
+from typing import Type
+from typing import Tuple
+from typing import Union
+from typing import Callable
+from typing import Optional
 from typing import NamedTuple
 from diffusers import (
     EulerAncestralDiscreteScheduler,
@@ -32,6 +39,56 @@ def seed_everything(seed: int) -> int:
     torch.cuda.manual_seed_all(seed)
 
     return seed
+
+
+def slerp(
+    x1: Tensor,
+    x2: Tensor,
+    r1: Union[float, Tensor],
+    r2: Optional[Union[float, Tensor]] = None,
+    *,
+    dot_threshold: float = 0.9995,
+) -> Tensor:
+    if r2 is None:
+        r2 = 1.0 - r1
+    b, *shape = x1.shape
+    x1 = x1.view(b, -1)
+    x2 = x2.view(b, -1)
+    low_norm = x1 / torch.norm(x1, dim=1, keepdim=True)
+    high_norm = x2 / torch.norm(x2, dim=1, keepdim=True)
+    dot = (low_norm * high_norm).sum(1)
+    overflow_mask = dot > dot_threshold
+    out = torch.zeros_like(x1)
+    out[overflow_mask] = r1 * x1 + r2 * x2
+    normal_mask = ~overflow_mask
+    omega = torch.acos(dot[normal_mask])
+    so = torch.sin(omega)
+    x1_part = (torch.sin(r1 * omega) / so).unsqueeze(1) * x1
+    x2_part = (torch.sin(r2 * omega) / so).unsqueeze(1) * x2
+    out[normal_mask] = x1_part + x2_part
+    return out.view(b, *shape)
+
+
+def set_seed_and_variations(
+    seed: int,
+    get_noise: Callable[[], Tensor],
+    get_new_z: Callable[[Tensor], Tensor],
+    variations: Optional[List[Tuple[int, float]]],
+) -> Tuple[Tensor, Tensor]:
+    seed_everything(seed)
+    z_noise = get_noise()
+    if variations is not None:
+        for v_seed, v_weight in variations:
+            seed_everything(v_seed)
+            v_noise = get_noise()
+            z_noise = slerp(v_noise, z_noise, v_weight)
+    z = get_new_z(z_noise)
+    # for some samplers (e.g. EulerAncestralDiscreteScheduler), they will
+    # re-sample noises during the sampling process, so we need to set back to the
+    # original seed to make results consistent
+    seed_everything(seed)
+    get_noise()
+    return z, z_noise
 
 
 class GeneratedImage(NamedTuple):
@@ -80,6 +137,7 @@ class StableDiffusionGenerator:
         prompt,
         batch_size=1,
         seed=None,
+        variations=None,
         width=512,
         height=512,
         num_inference_steps=40,
@@ -106,6 +164,7 @@ class StableDiffusionGenerator:
         else:
             return self._generate_txt2img(
                 seed=seed,
+                variations=variations,
                 prompt=prompt,
                 num_inference_steps=num_inference_steps,
                 batch_size=batch_size,
@@ -117,6 +176,7 @@ class StableDiffusionGenerator:
     def _generate_txt2img(
         self,
         seed,
+        variations,
         prompt,
         batch_size,
         width,
@@ -126,16 +186,22 @@ class StableDiffusionGenerator:
     ):
         # calculate latents from seed
         latents = None
+        z_shape = (
+            1,
+            self.txt2img_pipe.unet.in_channels,
+            height // 8,
+            width // 8,
+        )
+        z_kwargs = dict(
+            device=self.DEVICE,
+            dtype=torch.float16 if self.use_half else torch.float32,
+        )
         for index in range(batch_size):
-            image_latents = torch.randn(
-                (
-                    1,
-                    self.img2img_pipe.unet.in_channels,
-                    height // 8,
-                    width // 8,
-                ),
-                device=self.DEVICE,
-                dtype=torch.float16 if self.use_half else torch.float32
+            image_latents, _ = set_seed_and_variations(
+                seed + index,
+                lambda: torch.randn(z_shape, **z_kwargs),
+                lambda noise: noise,
+                variations,
             )
             latents = image_latents if latents is None else torch.cat((latents, image_latents))
 
