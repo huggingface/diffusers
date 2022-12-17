@@ -43,6 +43,8 @@ from ...test_pipelines_common import PipelineTesterMixin
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
+test_logger = logging.get_logger(__name__)
+
 
 class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionPipeline
@@ -383,6 +385,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         negative_prompt = None
         num_images_per_prompt = 1
         logger = logging.get_logger("diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion")
+        test_logger.warning(logger)
 
         prompt = 25 * "@"
         with CaptureLogger(logger) as cap_logger_3:
@@ -404,6 +407,8 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert text_embeddings_3.shape == text_embeddings_2.shape == text_embeddings.shape
         assert text_embeddings.shape[1] == 77
+
+        test_logger.warning(cap_logger.out)
 
         assert cap_logger.out == cap_logger_2.out
         # 100 - 77 + 1 (BOS token) + 1 (EOS token) = 25
