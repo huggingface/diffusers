@@ -13,6 +13,7 @@ from typing import Callable
 from typing import Optional
 from typing import NamedTuple
 from diffusers import (
+    SchedulerMixin,
     EulerAncestralDiscreteScheduler,
     StableDiffusionImg2ImgPipeline,
     StableDiffusionPipeline,
@@ -105,13 +106,15 @@ class StableDiffusionGenerator:
         path: str,
         *,
         use_half: bool = False,
+        sampler_base: Optional[Type[SchedulerMixin]] = None,
     ):
         self.use_half = use_half
 
         # Optimizations based on:
         # https://github.com/modal-labs/modal-examples/blob/main/06_gpu/stable_diffusion_cli.py#L108
         torch.backends.cuda.matmul.allow_tf32 = True
-        euler = EulerAncestralDiscreteScheduler.from_pretrained(path, subfolder="scheduler")
+        sampler_base = sampler_base or EulerAncestralDiscreteScheduler
+        euler = sampler_base.from_pretrained(path, subfolder="scheduler")
 
         # Init txt2img pipeline
         kwargs = dict(scheduler=euler)
