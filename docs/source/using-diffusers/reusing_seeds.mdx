@@ -59,6 +59,7 @@ so that the images are similar to the first image.
 ```python
 prompt = [prompt + t for t in [", highly realistic", ", artsy", ", trending", ", colorful"]]
 generator = [torch.Generator(device="cuda").manual_seed(0) for i in range(4)]
+```
 
 We create 4 generators with seed `0`, which is the first seed we used before.
 
