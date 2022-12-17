@@ -332,6 +332,9 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 f" {type(callback_steps)}."
             )
 
+        if generator is None:
+            generator = np.random
+
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
 
