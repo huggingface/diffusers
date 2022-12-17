@@ -128,29 +128,24 @@ class LDMTextToImagePipeline(DiffusionPipeline):
 
         # get unconditional embeddings for classifier free guidance
         if guidance_scale != 1.0:
-            uncond_input = self.tokenizer([""] * batch_size, padding="max_length", max_length=77, return_tensors="pt")
+            uncond_input = self.tokenizer(
+                [""] * batch_size, padding="max_length", max_length=77, truncation=True, return_tensors="pt"
+            )
             uncond_embeddings = self.bert(uncond_input.input_ids.to(self.device))[0]
 
         # get prompt text embeddings
-        text_input = self.tokenizer(prompt, padding="max_length", max_length=77, return_tensors="pt")
+        text_input = self.tokenizer(prompt, padding="max_length", max_length=77, truncation=True, return_tensors="pt")
         text_embeddings = self.bert(text_input.input_ids.to(self.device))[0]
 
         # get the initial random noise unless the user supplied it
         latents_shape = (batch_size, self.unet.in_channels, height // 8, width // 8)
         if latents is None:
-            if self.device.type == "mps":
-                # randn does not work reproducibly on mps
-                latents = torch.randn(latents_shape, generator=generator, device="cpu").to(self.device)
-            else:
-                latents = torch.randn(
-                    latents_shape,
-                    generator=generator,
-                    device=self.device,
-                )
+            rand_device = "cpu" if self.device.type == "mps" else self.device
+            latents = torch.randn(latents_shape, generator=generator, device=rand_device, dtype=text_embeddings.dtype)
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
-            latents = latents.to(self.device)
+        latents = latents.to(self.device)
 
         self.scheduler.set_timesteps(num_inference_steps)
 
