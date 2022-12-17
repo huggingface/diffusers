@@ -16,6 +16,7 @@ from typing import Optional
 from typing import NamedTuple
 from diffusers import (
     SchedulerMixin,
+    EulerDiscreteScheduler,
     EulerAncestralDiscreteScheduler,
     StableDiffusionImg2ImgPipeline,
     StableDiffusionPipeline,
@@ -263,7 +264,19 @@ def inference(prompt: str, seed: int, variations=None) -> Tensor:
 
 
 if __name__ == "__main__":
-    g = StableDiffusionGenerator("runwayml/stable-diffusion-v1-5", use_half=True)
-    responses = g.generate("A beautiful, fantasy landscape", seed=142857)
-    for i, res in enumerate(responses):
-        res.image.save(f"test_{i}.png")
+    # Change this to `EulerDiscreteScheduler` to obtain a more interpolation-ish image
+    base = EulerAncestralDiscreteScheduler
+    g = StableDiffusionGenerator("runwayml/stable-diffusion-v1-5", use_half=True, sampler_base=base)
+    p = "A beautiful, fantasy landscape"
+    seed_a = 123
+    seed_b = 321
+    num_interpolation = 7
+    images = [inference(p, seed_a)]
+    for i in range(num_interpolation):
+        images.append(inference(p, seed_a, variations=[(seed_b, (i + 1) / (num_interpolation + 1))]))
+    images.append(inference(p, seed_b))
+    # You may notice that the first 8 pictures are much alike to each other than the last one.
+    # This is as expected because the last picture used `seed_b` to seed the re-sampled noises of the
+    # EulerAncestralDiscreteScheduler, while the first 8 pictures used `seed_a`.
+    # In order to obtain a more interpolation-ish image, we can change the `base` to `EulerDiscreteScheduler`
+    save_images(torch.cat(images), "test.png")
