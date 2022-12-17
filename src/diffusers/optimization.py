@@ -122,7 +122,7 @@ def get_cosine_schedule_with_warmup(
         num_training_steps (`int`):
             The total number of training steps.
         num_periods (`float`, *optional*, defaults to 0.5):
-            The number of periods of the cosine function in a schedule (the defaults is to just decrease 
+            The number of periods of the cosine function in a schedule (the defaults is to just decrease
             from the max value to 0 following a half-cosine).
         last_epoch (`int`, *optional*, defaults to -1):
             The index of the last epoch when resuming training.
@@ -241,7 +241,7 @@ def get_scheduler(
     num_warmup_steps: Optional[int] = None,
     num_training_steps: Optional[int] = None,
     num_cycles: int = 1,
-    power: float = 1.0
+    power: float = 1.0,
 ):
     """
     Unified API to get any scheduler from its name.
@@ -282,22 +282,12 @@ def get_scheduler(
 
     if name == SchedulerType.COSINE_WITH_RESTARTS:
         return schedule_func(
-        optimizer,
-        num_warmup_steps=num_warmup_steps,
-        num_training_steps=num_training_steps,
-        num_cycles=num_cycles
-    )
+            optimizer, num_warmup_steps=num_warmup_steps, num_training_steps=num_training_steps, num_cycles=num_cycles
+        )
 
     if name == SchedulerType.POLYNOMIAL:
         return schedule_func(
-        optimizer,
-        num_warmup_steps=num_warmup_steps,
-        num_training_steps=num_training_steps,
-        power=power
-    )
+            optimizer, num_warmup_steps=num_warmup_steps, num_training_steps=num_training_steps, power=power
+        )
 
-    return schedule_func(
-        optimizer,
-        num_warmup_steps=num_warmup_steps,
-        num_training_steps=num_training_steps
-    )
+    return schedule_func(optimizer, num_warmup_steps=num_warmup_steps, num_training_steps=num_training_steps)
