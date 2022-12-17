@@ -1,5 +1,7 @@
+import math
 import torch
 import random
+import torchvision
 
 import numpy as np
 
@@ -246,6 +248,18 @@ class StableDiffusionGenerator:
                 strength=image_guidance,
             ).images
         return [GeneratedImage(image=image, seed=seed, index=index) for index, image in enumerate(images)]
+
+
+def save_images(arr: Tensor, path: str, n_row: Optional[int] = None) -> None:
+    if n_row is None:
+        n_row = math.ceil(math.sqrt(len(arr)))
+    torchvision.utils.save_image(arr, path, normalize=True, nrow=n_row)
+
+
+def inference(prompt: str, seed: int, variations=None) -> Tensor:
+    image = g.generate(prompt, seed=seed, variations=variations)[0].image
+    array = np.array(image).transpose([2, 0, 1])[None, ...].astype(np.float32)
+    return torch.from_numpy(array) / 255.0
 
 
 if __name__ == "__main__":
