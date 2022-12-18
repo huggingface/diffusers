@@ -81,8 +81,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             up to but not more than steps than `num_embeds_ada_norm`.
         attention_bias (`bool`, *optional*):
             Configure if the TransformerBlocks' attention should contain a bias parameter.
-        upcast_attention (`bool`, *optional*, defaults to False): In attention blocks, ensures projected query and key
-            values are upcast to float32 before matrix multiplication.
     """
 
     @register_to_config
