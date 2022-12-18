@@ -47,7 +47,7 @@ from diffusers import (
 )
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
-from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, slow, torch_device
+from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, nightly, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir, require_torch_gpu
 from parameterized import parameterized
 from PIL import Image
@@ -674,6 +674,7 @@ class PipelineFastTests(unittest.TestCase):
 
 
 @slow
+@require_torch_gpu
 class PipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
@@ -815,6 +816,16 @@ class PipelineSlowTests(unittest.TestCase):
         images = pipe(generator=generator, num_inference_steps=4).images
         assert isinstance(images, list)
         assert isinstance(images[0], PIL.Image.Image)
+
+
+@nightly
+@require_torch_gpu
+class PipelineNightlyTests(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
 
     def test_ddpm_ddim_equality_batched(self):
         seed = 0
