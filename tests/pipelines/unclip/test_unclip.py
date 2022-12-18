@@ -21,7 +21,7 @@ import torch
 
 from diffusers import PriorTransformer, UnCLIPPipeline, UnCLIPScheduler, UNet2DConditionModel, UNet2DModel
 from diffusers.pipelines.unclip.text_proj import UnCLIPTextProjModel
-from diffusers.utils import load_numpy, slow, torch_device
+from diffusers.utils import slow
 from diffusers.utils.testing_utils import require_torch_gpu
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
