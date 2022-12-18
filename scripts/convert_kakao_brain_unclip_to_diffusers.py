@@ -248,6 +248,7 @@ DECODER_CONFIG = {
     "cross_attention_dim": 1536,
     "attention_head_dim": 64,
     "resnet_time_scale_shift": "scale_shift",
+    "class_embed_type": "identity",
 }
 
 
