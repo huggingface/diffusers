@@ -3,7 +3,7 @@ import tempfile
 
 import torch
 
-from accelerate import init_empty_weights, load_checkpoint_and_dispatch
+from accelerate import load_checkpoint_and_dispatch
 from diffusers import UnCLIPPipeline, UNet2DConditionModel, UNet2DModel
 from diffusers.models.prior_transformer import PriorTransformer
 from diffusers.pipelines.unclip.text_proj import UnCLIPTextProjModel
@@ -823,12 +823,6 @@ def attention_to_diffusers_checkpoint(checkpoint, *, diffusers_attention_prefix,
 
     diffusers_checkpoint.update(
         {
-            #            f"{diffusers_attention_prefix}.query.weight": q_weight,
-            #            f"{diffusers_attention_prefix}.query.bias": q_bias,
-            #            f"{diffusers_attention_prefix}.key.weight": k_weight,
-            #            f"{diffusers_attention_prefix}.key.bias": k_bias,
-            #            f"{diffusers_attention_prefix}.value.weight": v_weight,
-            #            f"{diffusers_attention_prefix}.value.bias": v_bias,
             f"{diffusers_attention_prefix}.to_q.weight": q_weight,
             f"{diffusers_attention_prefix}.to_q.bias": q_bias,
             f"{diffusers_attention_prefix}.to_k.weight": k_weight,

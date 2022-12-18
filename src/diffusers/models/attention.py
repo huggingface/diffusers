@@ -273,7 +273,6 @@ class AttentionBlock(nn.Module):
         norm_num_groups: int = 32,
         rescale_output_factor: float = 1.0,
         eps: float = 1e-5,
-        cross_attention_dim: Optional[int] = None,
     ):
         super().__init__()
         self.channels = channels
@@ -287,34 +286,10 @@ class AttentionBlock(nn.Module):
         self.key = nn.Linear(channels, channels)
         self.value = nn.Linear(channels, channels)
 
-        if cross_attention_dim is not None:
-            self.context_key = nn.Linear(cross_attention_dim, channels)
-            self.context_value = nn.Linear(cross_attention_dim, channels)
-
         self.rescale_output_factor = rescale_output_factor
         self.proj_attn = nn.Linear(channels, channels)
 
         self._use_memory_efficient_attention_xformers = False
-
-        self.cross_attn = CrossAttention(
-            query_dim=channels,
-            cross_attention_dim=channels,
-            heads=self.num_heads,
-            dim_head=num_head_channels,
-            added_kv_proj_dim=cross_attention_dim,
-            norm_num_groups=norm_num_groups,
-            bias=True,
-            upcast_softmax=True,
-        )
-
-        self.cross_attn.group_norm = self.group_norm
-        self.cross_attn.to_q = self.query
-        self.cross_attn.to_k = self.key
-        self.cross_attn.to_v = self.value
-        self.cross_attn.to_out[0] = self.proj_attn
-
-        self.cross_attn.add_k_proj = self.context_key
-        self.cross_attn.add_v_proj = self.context_value
 
     def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
         if not is_xformers_available():
@@ -355,19 +330,6 @@ class AttentionBlock(nn.Module):
         return tensor
 
     def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None):
-        hid_new = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
-
-        if attention_mask is not None:
-            attention_mask = (1 - attention_mask.to(hidden_states.dtype)) * -10000.0
-            target_length = hidden_states.shape[2:].numel()
-            attention_mask = F.pad(attention_mask, (0, target_length), value=0.0)
-            attention_mask = attention_mask.repeat_interleave(self.num_heads, dim=0)
-            attention_mask = attention_mask.unsqueeze(1)
-
-        out = self.cross_attn(
-            hidden_states=hid_new, context=encoder_hidden_states.transpose(1, 2), attention_mask=attention_mask
-        )
-
         residual = hidden_states
         batch, channel, height, width = hidden_states.shape
 
@@ -429,10 +391,7 @@ class AttentionBlock(nn.Module):
         # compute next hidden_states
         hidden_states = self.proj_attn(hidden_states)
 
-        print("Diff", (out - hidden_states).abs().sum())
-        print("Diff", (out - hidden_states).abs().max())
-
-        hidden_states = out.transpose(-1, -2).reshape(batch, channel, height, width)
+        hidden_states = hidden_states.transpose(-1, -2).reshape(batch, channel, height, width)
 
         # res connect and rescale
         hidden_states = (hidden_states + residual) / self.rescale_output_factor
@@ -685,7 +644,6 @@ class CrossAttention(nn.Module):
             if self._slice_size is None or query.shape[0] // self._slice_size == 1:
                 hidden_states = self._attention(query, key, value, attention_mask)
             else:
-                # TODO mask
                 hidden_states = self._sliced_attention(query, key, value, sequence_length, dim)
 
         # linear proj
