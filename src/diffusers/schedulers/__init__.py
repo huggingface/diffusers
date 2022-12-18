@@ -37,6 +37,7 @@ else:
     from .scheduling_repaint import RePaintScheduler
     from .scheduling_sde_ve import ScoreSdeVeScheduler
     from .scheduling_sde_vp import ScoreSdeVpScheduler
+    from .scheduling_unclip import UnCLIPScheduler
     from .scheduling_utils import SchedulerMixin
     from .scheduling_vq_diffusion import VQDiffusionScheduler
 
