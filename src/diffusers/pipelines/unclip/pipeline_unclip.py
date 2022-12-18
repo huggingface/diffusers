@@ -1,7 +1,7 @@
 # TODO License
 
 import inspect
-from typing import Callable, List, Optional, Union
+from typing import List, Optional, Union
 
 import torch
 from torch.nn import functional as F

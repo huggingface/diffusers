@@ -66,7 +66,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         in_channels (`int`, *optional*):
             Pass if the input is continuous. The number of channels in the input and output.
         num_layers (`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
-        dropout (`float`, *optional*, defaults to 0.1): The dropout probability to use.
+        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
         cross_attention_dim (`int`, *optional*): The number of context dimensions to use.
         sample_size (`int`, *optional*): Pass if the input is discrete. The width of the latent images.
             Note that this is fixed at training time as it is used for learning a number of position embeddings. See
@@ -81,6 +81,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             up to but not more than steps than `num_embeds_ada_norm`.
         attention_bias (`bool`, *optional*):
             Configure if the TransformerBlocks' attention should contain a bias parameter.
+        upcast_attention (`bool`, *optional*, defaults to False): In attention blocks, ensures projected query and key
+            values are upcast to float32 before matrix multiplication.
     """
 
     @register_to_config

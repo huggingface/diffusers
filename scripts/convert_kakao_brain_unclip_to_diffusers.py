@@ -7,7 +7,6 @@ from accelerate import init_empty_weights, load_checkpoint_and_dispatch
 from diffusers import UnCLIPPipeline, UNet2DConditionModel, UNet2DModel
 from diffusers.models.prior_transformer import PriorTransformer
 from diffusers.pipelines.unclip.text_proj import UnCLIPTextProjModel
-from diffusers.schedulers import DDPMScheduler
 from diffusers.schedulers.scheduling_unclip import UNCLIPScheduler
 from transformers import CLIPTextModelWithProjection, CLIPTokenizer
 

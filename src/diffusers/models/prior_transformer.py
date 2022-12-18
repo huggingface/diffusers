@@ -14,10 +14,42 @@ from .embeddings import TimestepEmbedding, Timesteps
 
 @dataclass
 class PriorTransformerOutput(BaseOutput):
+    """
+    Args:
+        predicted_image_embedding (`torch.FloatTensor` of shape `(batch_size, clip_embeddings_dim)`):
+            The predicted CLIP image embedding conditioned on the CLIP text embedding input.
+    """
+
     predicted_image_embedding: torch.FloatTensor
 
 
 class PriorTransformer(ModelMixin, ConfigMixin):
+    """
+    The prior transformer from unCLIP is used to predict CLIP image embeddings from CLIP text embeddings. Note that the
+    transformer predicts the image embeddings through a denoising diffusion process.
+
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods the library
+    implements for all the models (such as downloading or saving, etc.)
+
+    For more details, see the original paper: https://arxiv.org/abs/2204.06125
+
+    Parameters:
+        num_attention_heads (`int`, *optional*, defaults to 32): The number of heads to use for multi-head attention.
+        attention_head_dim (`int`, *optional*, defaults to 64): The number of channels in each head.
+        num_layers (`int`, *optional*, defaults to 20): The number of layers of Transformer blocks to use.
+        clip_embeddings_dim (`int`, *optional*, defaults to 768): The dimension of the CLIP embeddings. Note that CLIP
+            image embeddings and text embeddings are both the same dimension.
+        clip_num_embeddings (`int`, *optional*, defaults to 77): The max number of clip embeddings allowed. I.e. the
+            length of the prompt after it has been tokenized.
+        additional_embeddings (`int`, *optional*, defaults to 4): The number of additional tokens appended to the
+            projected hidden_states. The actual length of the used hidden_states is `clip_num_embeddings +
+            additional_embeddings`.
+        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
+        upcast_attention (`bool`, *optional*, defaults to False): In attention blocks, ensures projected query and key
+            values are upcast to float32 before matrix multiplication.
+
+    """
+
     @register_to_config
     def __init__(
         self,
@@ -88,6 +120,27 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         text_mask: torch.BoolTensor,
         return_dict: bool = True,
     ):
+        """
+        Args:
+            hidden_states (`torch.FloatTensor` of shape `(batch_size, clip_embeddings_dim)`):
+                x_t, the currently predicted image embeddings.
+            timestep (`torch.long`):
+                Current denoising step.
+            text_embeddings (`torch.FloatTensor` of shape `(batch_size, clip_embeddings_dim)`):
+                Text embeddings the denoising process is conditioned on.
+            text_encoder_hidden_states (`torch.FloatTensor` of shape `(batch_size, clip_num_embeddings, clip_embeddings_dim)`):
+                Hidden states of the text embeddings the denoising process is conditioned on.
+            text_mask (`torch.BoolTensor` of shape `(batch_size, clip_num_embeddings)`):
+                Text mask for the text embeddings.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`models.prior_transformer.PriorTransformerOutput`] instead of a plain
+                tuple.
+
+        Returns:
+            [`~models.prior_transformer.PriorTransformerOutput`] or `tuple`:
+            [`~models.prior_transformer.PriorTransformerOutput`] if `return_dict` is True, otherwise a `tuple`. When
+            returning a tuple, the first element is the sample tensor.
+        """
         batch_size = hidden_states.shape[0]
 
         timesteps = timestep
