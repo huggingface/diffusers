@@ -55,6 +55,8 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         down_block_types (`Tuple[str]`, *optional*, defaults to :
             obj:`("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D")`): Tuple of downsample block
             types.
+        mid_block_type (`str`, *optional*, defaults to `"UNetMidBlock2D"`):
+            The mid block type. Choose from `UNetMidBlock2D` or `UnCLIPUNetMidBlock2D`.
         up_block_types (`Tuple[str]`, *optional*, defaults to :
             obj:`("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D")`): Tuple of upsample block types.
         block_out_channels (`Tuple[int]`, *optional*, defaults to :
@@ -66,6 +68,8 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         attention_head_dim (`int`, *optional*, defaults to `8`): The attention head dimension.
         norm_num_groups (`int`, *optional*, defaults to `32`): The number of groups for the normalization.
         norm_eps (`float`, *optional*, defaults to `1e-5`): The epsilon for the normalization.
+        resnet_time_scale_shift (`str`, *optional*, defaults to `"default"`): Time scale shift config
+            for resnet blocks, see [`~models.resnet.ResnetBlock2D`]. Choose from `default` or `scale_shift`.
     """
 
     @register_to_config
@@ -79,6 +83,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         freq_shift: int = 0,
         flip_sin_to_cos: bool = True,
         down_block_types: Tuple[str] = ("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"),
+        mid_block_type: str = "UNetMidBlock2D",
         up_block_types: Tuple[str] = ("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"),
         block_out_channels: Tuple[int] = (224, 448, 672, 896),
         layers_per_block: int = 2,
@@ -89,7 +94,6 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         norm_num_groups: int = 32,
         norm_eps: float = 1e-5,
         resnet_time_scale_shift: str = "default",
-        mid_block_type: str = "UNetMidBlock2D",
     ):
         super().__init__()
 

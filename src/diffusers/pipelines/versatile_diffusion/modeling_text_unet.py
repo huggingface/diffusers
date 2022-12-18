@@ -141,6 +141,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         freq_shift (`int`, *optional*, defaults to 0): The frequency shift to apply to the time embedding.
         down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlockFlat", "CrossAttnDownBlockFlat", "CrossAttnDownBlockFlat", "DownBlockFlat")`):
             The tuple of downsample blocks to use.
+        mid_block_type (`str`, *optional*, defaults to `"UNetMidBlockFlatCrossAttn"`):
+            The mid block type. Choose from `UNetMidBlockFlatCrossAttn` or `UnCLIPUNetMidBlockFlatCrossAttn`.
         up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlockFlat", "CrossAttnUpBlockFlat", "CrossAttnUpBlockFlat", "CrossAttnUpBlockFlat",)`):
             The tuple of upsample blocks to use.
         block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
@@ -153,6 +155,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         norm_eps (`float`, *optional*, defaults to 1e-5): The epsilon to use for the normalization.
         cross_attention_dim (`int`, *optional*, defaults to 1280): The dimension of the cross attention features.
         attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
+        resnet_time_scale_shift (`str`, *optional*, defaults to `"default"`): Time scale shift config
+            for resnet blocks, see [`~models.resnet.ResnetBlockFlat`]. Choose from `default` or `scale_shift`.
     """
 
     _supports_gradient_checkpointing = True
@@ -172,13 +176,13 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             "CrossAttnDownBlockFlat",
             "DownBlockFlat",
         ),
+        mid_block_type: str = "UNetMidBlockFlatCrossAttn",
         up_block_types: Tuple[str] = (
             "UpBlockFlat",
             "CrossAttnUpBlockFlat",
             "CrossAttnUpBlockFlat",
             "CrossAttnUpBlockFlat",
         ),
-        mid_block_type: str = "UNetMidBlockFlatCrossAttn",
         only_cross_attention: Union[bool, Tuple[bool]] = False,
         block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
         layers_per_block: int = 2,
