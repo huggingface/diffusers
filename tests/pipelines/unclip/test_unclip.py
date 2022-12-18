@@ -21,7 +21,7 @@ import torch
 
 from diffusers import PriorTransformer, UnCLIPPipeline, UnCLIPScheduler, UNet2DConditionModel, UNet2DModel
 from diffusers.pipelines.unclip.text_proj import UnCLIPTextProjModel
-from diffusers.utils import slow
+from diffusers.utils import load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
@@ -249,8 +249,34 @@ class UnCLIPPipelineFastTests(unittest.TestCase):
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
 
-# TODO
 @slow
 @require_torch_gpu
 class UnCLIPPipelineIntegrationTests(unittest.TestCase):
-    ...
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_unclip_karlo(self):
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/karlo_v1_alpha/horse.npy"
+        )
+
+        pipeline = UnCLIPPipeline.from_pretrained("kakaobrain/karlo-v1-alpha")
+        pipeline = pipeline.to(torch_device)
+        pipeline.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        output = pipeline(
+            "horse",
+            num_images_per_prompt=1,
+            generator=generator,
+            output_type="np",
+        )
+
+        image = output.images[0]
+
+        assert image.shape == (256, 256, 3)
+        assert np.abs(expected_image - image).max() < 1e-2
