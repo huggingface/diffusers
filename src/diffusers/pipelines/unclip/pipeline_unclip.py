@@ -193,9 +193,9 @@ class UnCLIPPipeline(DiffusionPipeline):
         self.prior_scheduler.set_timesteps(prior_num_inference_steps, device=self.device)
         prior_timesteps_tensor = self.prior_scheduler.timesteps
 
-        clip_embeddings_dim = self.prior.clip_embeddings_dim
+        embedding_dim = self.prior.embeddings_dim
         prior_latents = self.prepare_latents(
-            (batch_size, clip_embeddings_dim),
+            (batch_size, embedding_dim),
             text_embeddings.dtype,
             self.device,
             generator,
@@ -210,8 +210,8 @@ class UnCLIPPipeline(DiffusionPipeline):
             predicted_image_embedding = self.prior(
                 latent_model_input,
                 timestep=t,
-                text_embeddings=text_embeddings,
-                text_encoder_hidden_states=text_encoder_hidden_states,
+                proj_embedding=text_embeddings,
+                encoder_hidden_states=text_encoder_hidden_states,
                 attention_mask=text_mask,
             ).predicted_image_embedding
 

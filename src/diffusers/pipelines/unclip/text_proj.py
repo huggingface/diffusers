@@ -33,24 +33,24 @@ class UnCLIPTextProjModel(ModelMixin, ConfigMixin):
         self,
         *,
         clip_extra_context_tokens: int = 4,
-        clip_embeddings_dim: int = 768,
+        embedding_dim: int = 768,
         time_embed_dim: int,
         cross_attention_dim,
     ):
         super().__init__()
 
-        self.learned_classifier_free_guidance_embeddings = nn.Parameter(torch.zeros(clip_embeddings_dim))
+        self.learned_classifier_free_guidance_embeddings = nn.Parameter(torch.zeros(embeddings_dim))
 
         # parameters for additional clip time embeddings
-        self.text_embeddings_proj = nn.Linear(clip_embeddings_dim, time_embed_dim)
-        self.clip_image_embeddings_project_to_time_embeddings = nn.Linear(clip_embeddings_dim, time_embed_dim)
+        self.text_embeddings_proj = nn.Linear(embeddings_dim, time_embed_dim)
+        self.clip_image_embeddings_project_to_time_embeddings = nn.Linear(embeddings_dim, time_embed_dim)
 
         # parameters for encoder hidden states
         self.clip_extra_context_tokens = clip_extra_context_tokens
         self.clip_extra_context_tokens_proj = nn.Linear(
-            clip_embeddings_dim, self.clip_extra_context_tokens * cross_attention_dim
+            embedding_dim, self.clip_extra_context_tokens * cross_attention_dim
         )
-        self.text_encoder_hidden_states_proj = nn.Linear(clip_embeddings_dim, cross_attention_dim)
+        self.text_encoder_hidden_states_proj = nn.Linear(embeddings_dim, cross_attention_dim)
         self.text_encoder_hidden_states_norm = nn.LayerNorm(cross_attention_dim)
 
     def forward(self, *, image_embeddings, text_embeddings, text_encoder_hidden_states, do_classifier_free_guidance):

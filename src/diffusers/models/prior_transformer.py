@@ -16,7 +16,7 @@ from .embeddings import TimestepEmbedding, Timesteps
 class PriorTransformerOutput(BaseOutput):
     """
     Args:
-        predicted_image_embedding (`torch.FloatTensor` of shape `(batch_size, clip_embeddings_dim)`):
+        predicted_image_embedding (`torch.FloatTensor` of shape `(batch_size, embedding_dim)`):
             The predicted CLIP image embedding conditioned on the CLIP text embedding input.
     """
 
@@ -37,12 +37,12 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         num_attention_heads (`int`, *optional*, defaults to 32): The number of heads to use for multi-head attention.
         attention_head_dim (`int`, *optional*, defaults to 64): The number of channels in each head.
         num_layers (`int`, *optional*, defaults to 20): The number of layers of Transformer blocks to use.
-        clip_embeddings_dim (`int`, *optional*, defaults to 768): The dimension of the CLIP embeddings. Note that CLIP
+        embedding_dim (`int`, *optional*, defaults to 768): The dimension of the CLIP embeddings. Note that CLIP
             image embeddings and text embeddings are both the same dimension.
-        clip_num_embeddings (`int`, *optional*, defaults to 77): The max number of clip embeddings allowed. I.e. the
+        num_embeddings (`int`, *optional*, defaults to 77): The max number of clip embeddings allowed. I.e. the
             length of the prompt after it has been tokenized.
         additional_embeddings (`int`, *optional*, defaults to 4): The number of additional tokens appended to the
-            projected hidden_states. The actual length of the used hidden_states is `clip_num_embeddings +
+            projected hidden_states. The actual length of the used hidden_states is `num_embeddings +
             additional_embeddings`.
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
         upcast_attention (`bool`, *optional*, defaults to False): In attention blocks, ensures projected query and key
@@ -56,8 +56,8 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         num_attention_heads: int = 32,
         attention_head_dim: int = 64,
         num_layers: int = 20,
-        clip_embeddings_dim: int = 768,
-        clip_num_embeddings=77,
+        embedding_dim: int = 768,
+        num_embeddings=77,
         additional_embeddings=4,
         dropout: float = 0.0,
         upcast_attention: bool = False,
@@ -71,13 +71,13 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         self.time_proj = Timesteps(inner_dim, True, 0)
         self.time_embedding = TimestepEmbedding(inner_dim, inner_dim)
 
-        self.proj_in = nn.Linear(clip_embeddings_dim, inner_dim)
+        self.proj_in = nn.Linear(embeddings_dim, inner_dim)
 
-        self.text_embeddings_proj = nn.Linear(clip_embeddings_dim, inner_dim)
-        self.text_encoder_hidden_states_proj = nn.Linear(clip_embeddings_dim, inner_dim)
+        self.text_embeddings_proj = nn.Linear(embeddings_dim, inner_dim)
+        self.text_encoder_hidden_states_proj = nn.Linear(embeddings_dim, inner_dim)
 
         self.positional_embedding = nn.Parameter(
-            torch.zeros(1, clip_num_embeddings + additional_embeddings, inner_dim)
+            torch.zeros(1, num_embeddings + additional_embeddings, inner_dim)
         )
 
         # TODO - better name. I can't tell what this is
@@ -99,38 +99,38 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         )
 
         self.norm_out = nn.LayerNorm(inner_dim)
-        self.proj_to_clip_embeddings = nn.Linear(inner_dim, clip_embeddings_dim)
+        self.proj_to_clip_embeddings = nn.Linear(inner_dim, embedding_dim)
 
         causal_attention_mask = torch.full(
-            [clip_num_embeddings + additional_embeddings, clip_num_embeddings + additional_embeddings], float("-inf")
+            [num_embeddings + additional_embeddings, num_embeddings + additional_embeddings], float("-inf")
         )
         causal_attention_mask.triu_(1)
         causal_attention_mask = causal_attention_mask[None, ...]
         self.register_buffer("causal_attention_mask", causal_attention_mask, persistent=False)
 
-        self.clip_mean = nn.Parameter(torch.zeros(1, clip_embeddings_dim))
-        self.clip_std = nn.Parameter(torch.zeros(1, clip_embeddings_dim))
+        self.clip_mean = nn.Parameter(torch.zeros(1, embedding_dim))
+        self.clip_std = nn.Parameter(torch.zeros(1, embedding_dim))
 
     def forward(
         self,
         hidden_states,
         timestep: Union[torch.Tensor, float, int],
-        text_embeddings: torch.FloatTensor,
-        text_encoder_hidden_states: torch.FloatTensor,
+        proj_embedding: torch.FloatTensor,
+        encoder_hidden_states: torch.FloatTensor,
         attention_mask: Optional[torch.BoolTensor] = None,
         return_dict: bool = True,
     ):
         """
         Args:
-            hidden_states (`torch.FloatTensor` of shape `(batch_size, clip_embeddings_dim)`):
+            hidden_states (`torch.FloatTensor` of shape `(batch_size, embedding_dim)`):
                 x_t, the currently predicted image embeddings.
             timestep (`torch.long`):
                 Current denoising step.
-            text_embeddings (`torch.FloatTensor` of shape `(batch_size, clip_embeddings_dim)`):
-                Text embeddings the denoising process is conditioned on.
-            text_encoder_hidden_states (`torch.FloatTensor` of shape `(batch_size, clip_num_embeddings, clip_embeddings_dim)`):
+            proj_embedding (`torch.FloatTensor` of shape `(batch_size, embedding_dim)`):
+                Projected embedding vector the denoising process is conditioned on.
+            encoder_hidden_states (`torch.FloatTensor` of shape `(batch_size, num_embeddings, embedding_dim)`):
                 Hidden states of the text embeddings the denoising process is conditioned on.
-            attention_mask (`torch.BoolTensor` of shape `(batch_size, clip_num_embeddings)`):
+            attention_mask (`torch.BoolTensor` of shape `(batch_size, num_embeddings)`):
                 Text mask for the text embeddings.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.prior_transformer.PriorTransformerOutput`] instead of a plain
@@ -159,16 +159,16 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         timesteps_projected = timesteps_projected.to(dtype=self.dtype)
         time_embeddings = self.time_embedding(timesteps_projected)
 
-        text_embeddings = self.text_embeddings_proj(text_embeddings)
-        text_encoder_hidden_states = self.text_encoder_hidden_states_proj(text_encoder_hidden_states)
+        proj_embeddings = self.text_embeddings_proj(proj_embedding)
+        encoder_hidden_states = self.text_encoder_hidden_states_proj(encoder_hidden_states)
         hidden_states = self.proj_in(hidden_states)
         prd_embedding = self.prd_embedding.to(hidden_states.dtype).expand(batch_size, -1, -1)
         positional_embeddings = self.positional_embedding.to(hidden_states.dtype)
 
         hidden_states = torch.cat(
             [
-                text_encoder_hidden_states,
-                text_embeddings[:, None, :],
+                encoder_hidden_states,
+                proj_embeddings[:, None, :],
                 time_embeddings[:, None, :],
                 hidden_states[:, None, :],
                 prd_embedding,
