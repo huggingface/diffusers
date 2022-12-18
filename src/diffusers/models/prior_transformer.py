@@ -73,9 +73,7 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         self.text_embeddings_proj = nn.Linear(embedding_dim, inner_dim)
         self.text_encoder_hidden_states_proj = nn.Linear(embedding_dim, inner_dim)
 
-        self.positional_embedding = nn.Parameter(
-            torch.zeros(1, num_embeddings + additional_embeddings, inner_dim)
-        )
+        self.positional_embedding = nn.Parameter(torch.zeros(1, num_embeddings + additional_embeddings, inner_dim))
 
         # TODO - better name. I can't tell what this is
         self.prd_embedding = nn.Parameter(torch.zeros(1, 1, inner_dim))

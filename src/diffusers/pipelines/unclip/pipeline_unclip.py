@@ -193,7 +193,7 @@ class UnCLIPPipeline(DiffusionPipeline):
         self.prior_scheduler.set_timesteps(prior_num_inference_steps, device=self.device)
         prior_timesteps_tensor = self.prior_scheduler.timesteps
 
-        embedding_dim = self.prior.embeddings_dim
+        embedding_dim = self.prior.config.embedding_dim
         prior_latents = self.prepare_latents(
             (batch_size, embedding_dim),
             text_embeddings.dtype,
