@@ -183,8 +183,8 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.FloatTensor,
         timestep: int,
         sample: torch.FloatTensor,
+        prev_timestep: Optional[int] = None,
         generator=None,
-        prev_timestep=None,
         return_dict: bool = True,
     ) -> Union[UnCLIPSchedulerOutput, Tuple]:
         """
@@ -196,12 +196,14 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
             timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
+            prev_timestep (`int`, *optional*): The previous timestep to predict the previous sample at.
+                Used to dynamically compute beta. If not given, `t-1` is used and the pre-computed beta is used.
             generator: random number generator.
-            return_dict (`bool`): option for returning tuple rather than DDPMSchedulerOutput class
+            return_dict (`bool`): option for returning tuple rather than UnCLIPSchedulerOutput class
 
         Returns:
-            [`~schedulers.scheduling_utils.DDPMSchedulerOutput`] or `tuple`:
-            [`~schedulers.scheduling_utils.DDPMSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
+            [`~schedulers.scheduling_utils.UnCLIPSchedulerOutput`] or `tuple`:
+            [`~schedulers.scheduling_utils.UnCLIPSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is the sample tensor.
 
         """
