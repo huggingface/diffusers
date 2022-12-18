@@ -45,8 +45,6 @@ class PriorTransformer(ModelMixin, ConfigMixin):
             projected hidden_states. The actual length of the used hidden_states is `num_embeddings +
             additional_embeddings`.
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        upcast_attention (`bool`, *optional*, defaults to False): In attention blocks, ensures projected query and key
-            values are upcast to float32 before matrix multiplication.
 
     """
 
@@ -60,7 +58,6 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         num_embeddings=77,
         additional_embeddings=4,
         dropout: float = 0.0,
-        upcast_attention: bool = False,
     ):
         super().__init__()
         self.num_attention_heads = num_attention_heads
@@ -71,10 +68,10 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         self.time_proj = Timesteps(inner_dim, True, 0)
         self.time_embedding = TimestepEmbedding(inner_dim, inner_dim)
 
-        self.proj_in = nn.Linear(embeddings_dim, inner_dim)
+        self.proj_in = nn.Linear(embedding_dim, inner_dim)
 
-        self.text_embeddings_proj = nn.Linear(embeddings_dim, inner_dim)
-        self.text_encoder_hidden_states_proj = nn.Linear(embeddings_dim, inner_dim)
+        self.text_embeddings_proj = nn.Linear(embedding_dim, inner_dim)
+        self.text_encoder_hidden_states_proj = nn.Linear(embedding_dim, inner_dim)
 
         self.positional_embedding = nn.Parameter(
             torch.zeros(1, num_embeddings + additional_embeddings, inner_dim)
@@ -92,7 +89,6 @@ class PriorTransformer(ModelMixin, ConfigMixin):
                     dropout=dropout,
                     activation_fn="gelu",
                     attention_bias=True,
-                    upcast_attention=upcast_attention,
                 )
                 for d in range(num_layers)
             ]
