@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Union
+from typing import Optional, Union
 
 import torch
 import torch.nn.functional as F
@@ -117,7 +117,7 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         timestep: Union[torch.Tensor, float, int],
         text_embeddings: torch.FloatTensor,
         text_encoder_hidden_states: torch.FloatTensor,
-        text_mask: torch.BoolTensor,
+        attention_mask: Optional[torch.BoolTensor] = None,
         return_dict: bool = True,
     ):
         """
@@ -130,7 +130,7 @@ class PriorTransformer(ModelMixin, ConfigMixin):
                 Text embeddings the denoising process is conditioned on.
             text_encoder_hidden_states (`torch.FloatTensor` of shape `(batch_size, clip_num_embeddings, clip_embeddings_dim)`):
                 Hidden states of the text embeddings the denoising process is conditioned on.
-            text_mask (`torch.BoolTensor` of shape `(batch_size, clip_num_embeddings)`):
+            attention_mask (`torch.BoolTensor` of shape `(batch_size, clip_num_embeddings)`):
                 Text mask for the text embeddings.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.prior_transformer.PriorTransformerOutput`] instead of a plain
@@ -178,8 +178,10 @@ class PriorTransformer(ModelMixin, ConfigMixin):
 
         hidden_states = hidden_states + positional_embeddings
 
-        text_mask = F.pad(text_mask, (0, self.additional_embeddings), value=0.0)
-        attention_mask = (text_mask[:, None, :] + self.causal_attention_mask).to(hidden_states.dtype)
+        if attention_mask is not None:
+            attention_mask = (1 - attention_mask.to(hidden_states.dtype)) * -10000.0
+            attention_mask = F.pad(attention_mask, (0, self.additional_embeddings), value=0.0)
+            attention_mask = (attention_mask[:, None, :] + self.causal_attention_mask).to(hidden_states.dtype)
 
         for block in self.transformer_blocks:
             hidden_states = block(hidden_states, attention_mask=attention_mask)

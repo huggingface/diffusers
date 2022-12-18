@@ -154,8 +154,6 @@ class UnCLIPPipeline(DiffusionPipeline):
 
             text_mask = torch.cat([uncond_text_mask, text_mask])
 
-        text_mask = torch.where(text_mask, 0.0, -10.0).type(text_embeddings.dtype)
-
         return text_embeddings, text_encoder_hidden_states, text_mask
 
     @torch.no_grad()
@@ -214,7 +212,7 @@ class UnCLIPPipeline(DiffusionPipeline):
                 timestep=t,
                 text_embeddings=text_embeddings,
                 text_encoder_hidden_states=text_encoder_hidden_states,
-                text_mask=text_mask,
+                attention_mask=text_mask,
             ).predicted_image_embedding
 
             if do_classifier_free_guidance:
@@ -251,7 +249,7 @@ class UnCLIPPipeline(DiffusionPipeline):
             do_classifier_free_guidance=do_classifier_free_guidance,
         )
 
-        decoder_text_mask = F.pad(text_mask, (self.text_proj.clip_extra_context_tokens, 0), value=0.0)
+        decoder_text_mask = F.pad(text_mask, (self.text_proj.clip_extra_context_tokens, 0), value=1)
 
         self.decoder_scheduler.set_timesteps(decoder_num_inference_steps, device=self.device)
         decoder_timesteps_tensor = self.decoder_scheduler.timesteps
