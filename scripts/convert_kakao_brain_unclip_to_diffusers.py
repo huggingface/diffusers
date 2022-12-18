@@ -471,6 +471,7 @@ def super_res_unet_first_steps_original_checkpoint_to_diffusers_checkpoint(model
 SUPER_RES_UNET_LAST_STEP_PREFIX = "model_last_step"
 
 SUPER_RES_UNET_LAST_STEP_CONFIG = {
+    "sample_size": 256,
     "layers_per_block": 3,
     "down_block_types": (
         "ResnetDownsampleBlock2D",
