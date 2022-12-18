@@ -67,7 +67,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             Pass if the input is continuous. The number of channels in the input and output.
         num_layers (`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        cross_attention_dim (`int`, *optional*): The number of context dimensions to use.
+        cross_attention_dim (`int`, *optional*): The number of encoder_hidden_states dimensions to use.
         sample_size (`int`, *optional*): Pass if the input is discrete. The width of the latent images.
             Note that this is fixed at training time as it is used for learning a number of position embeddings. See
             `ImagePositionalEmbeddings`.
@@ -181,7 +181,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             hidden_states ( When discrete, `torch.LongTensor` of shape `(batch size, num latent pixels)`.
                 When continous, `torch.FloatTensor` of shape `(batch size, channel, height, width)`): Input
                 hidden_states
-            encoder_hidden_states ( `torch.LongTensor` of shape `(batch size, context dim)`, *optional*):
+            encoder_hidden_states ( `torch.LongTensor` of shape `(batch size, encoder_hidden_states dim)`, *optional*):
                 Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
                 self-attention.
             timestep ( `torch.long`, *optional*):
@@ -213,7 +213,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # 2. Blocks
         for block in self.transformer_blocks:
-            hidden_states = block(hidden_states, context=encoder_hidden_states, timestep=timestep)
+            hidden_states = block(hidden_states, encoder_hidden_states=encoder_hidden_states, timestep=timestep)
 
         # 3. Output
         if self.is_input_continuous:
@@ -388,7 +388,7 @@ class BasicTransformerBlock(nn.Module):
         num_attention_heads (`int`): The number of heads to use for multi-head attention.
         attention_head_dim (`int`): The number of channels in each head.
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        cross_attention_dim (`int`, *optional*): The size of the context vector for cross attention.
+        cross_attention_dim (`int`, *optional*): The size of the encoder_hidden_states vector for cross attention.
         activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
         num_embeds_ada_norm (:
             obj: `int`, *optional*): The number of diffusion steps used during training. See `Transformer2DModel`.
@@ -435,7 +435,7 @@ class BasicTransformerBlock(nn.Module):
                 dropout=dropout,
                 bias=attention_bias,
                 upcast_attention=upcast_attention,
-            )  # is self-attn if context is none
+            )  # is self-attn if encoder_hidden_states is none
         else:
             self.attn2 = None
 
@@ -475,14 +475,16 @@ class BasicTransformerBlock(nn.Module):
             self.attn1._use_memory_efficient_attention_xformers = use_memory_efficient_attention_xformers
             self.attn2._use_memory_efficient_attention_xformers = use_memory_efficient_attention_xformers
 
-    def forward(self, hidden_states, context=None, timestep=None, attention_mask=None):
+    def forward(self, hidden_states, encoder_hidden_states=None, timestep=None, attention_mask=None):
         # 1. Self-Attention
         norm_hidden_states = (
             self.norm1(hidden_states, timestep) if self.use_ada_layer_norm else self.norm1(hidden_states)
         )
 
         if self.only_cross_attention:
-            hidden_states = self.attn1(norm_hidden_states, context, attention_mask=attention_mask) + hidden_states
+            hidden_states = (
+                self.attn1(norm_hidden_states, encoder_hidden_states, attention_mask=attention_mask) + hidden_states
+            )
         else:
             hidden_states = self.attn1(norm_hidden_states, attention_mask=attention_mask) + hidden_states
 
@@ -492,7 +494,10 @@ class BasicTransformerBlock(nn.Module):
                 self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
             )
             hidden_states = (
-                self.attn2(norm_hidden_states, context=context, attention_mask=attention_mask) + hidden_states
+                self.attn2(
+                    norm_hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask
+                )
+                + hidden_states
             )
 
         # 3. Feed-forward
@@ -508,7 +513,7 @@ class CrossAttention(nn.Module):
     Parameters:
         query_dim (`int`): The number of channels in the query.
         cross_attention_dim (`int`, *optional*):
-            The number of channels in the context. If not given, defaults to `query_dim`.
+            The number of channels in the encoder_hidden_states. If not given, defaults to `query_dim`.
         heads (`int`,  *optional*, defaults to 8): The number of heads to use for multi-head attention.
         dim_head (`int`,  *optional*, defaults to 64): The number of channels in each head.
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
@@ -586,7 +591,7 @@ class CrossAttention(nn.Module):
     def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None):
         batch_size, sequence_length, _ = hidden_states.shape
 
-        context = encoder_hidden_states
+        encoder_hidden_states = encoder_hidden_states
 
         if self.group_norm is not None:
             hidden_states = self.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
@@ -598,20 +603,20 @@ class CrossAttention(nn.Module):
         if self.added_kv_proj_dim is not None:
             key = self.to_k(hidden_states)
             value = self.to_v(hidden_states)
-            context_key_proj = self.add_k_proj(context)
-            context_value_proj = self.add_v_proj(context)
+            encoder_hidden_states_key_proj = self.add_k_proj(encoder_hidden_states)
+            encoder_hidden_states_value_proj = self.add_v_proj(encoder_hidden_states)
 
             key = self.reshape_heads_to_batch_dim(key)
             value = self.reshape_heads_to_batch_dim(value)
-            context_key_proj = self.reshape_heads_to_batch_dim(context_key_proj)
-            context_value_proj = self.reshape_heads_to_batch_dim(context_value_proj)
+            encoder_hidden_states_key_proj = self.reshape_heads_to_batch_dim(encoder_hidden_states_key_proj)
+            encoder_hidden_states_value_proj = self.reshape_heads_to_batch_dim(encoder_hidden_states_value_proj)
 
-            key = torch.concat([context_key_proj, key], dim=1)
-            value = torch.concat([context_value_proj, value], dim=1)
+            key = torch.concat([encoder_hidden_states_key_proj, key], dim=1)
+            value = torch.concat([encoder_hidden_states_value_proj, value], dim=1)
         else:
-            context = context if context is not None else hidden_states
-            key = self.to_k(context)
-            value = self.to_v(context)
+            encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
+            key = self.to_k(encoder_hidden_states)
+            value = self.to_v(encoder_hidden_states)
 
             key = self.reshape_heads_to_batch_dim(key)
             value = self.reshape_heads_to_batch_dim(value)
@@ -853,7 +858,7 @@ class DualTransformer2DModel(nn.Module):
             Pass if the input is continuous. The number of channels in the input and output.
         num_layers (`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
         dropout (`float`, *optional*, defaults to 0.1): The dropout probability to use.
-        cross_attention_dim (`int`, *optional*): The number of context dimensions to use.
+        cross_attention_dim (`int`, *optional*): The number of encoder_hidden_states dimensions to use.
         sample_size (`int`, *optional*): Pass if the input is discrete. The width of the latent images.
             Note that this is fixed at training time as it is used for learning a number of position embeddings. See
             `ImagePositionalEmbeddings`.
@@ -926,7 +931,7 @@ class DualTransformer2DModel(nn.Module):
             hidden_states ( When discrete, `torch.LongTensor` of shape `(batch size, num latent pixels)`.
                 When continuous, `torch.FloatTensor` of shape `(batch size, channel, height, width)`): Input
                 hidden_states
-            encoder_hidden_states ( `torch.LongTensor` of shape `(batch size, context dim)`, *optional*):
+            encoder_hidden_states ( `torch.LongTensor` of shape `(batch size, encoder_hidden_states dim)`, *optional*):
                 Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
                 self-attention.
             timestep ( `torch.long`, *optional*):

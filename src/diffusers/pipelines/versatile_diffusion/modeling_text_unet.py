@@ -6,8 +6,9 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...modeling_utils import ModelMixin
-from ...models.attention import AttentionBlock, DualTransformer2DModel, Transformer2DModel
+from ...models.attention import CrossAttention, DualTransformer2DModel, Transformer2DModel
 from ...models.embeddings import TimestepEmbedding, Timesteps
+from ...models.unet_2d_blocks import UNetMidBlock2DSimpleCrossAttn as UNetMidBlockFlatSimpleCrossAttn
 from ...models.unet_2d_condition import UNet2DConditionOutput
 from ...utils import logging
 
