@@ -230,7 +230,7 @@ DECODER_CONFIG = {
     "sample_size": 64,
     "layers_per_block": 3,
     "down_block_types": (
-        "UnCLIPDownBlock2D",
+        "ResnetDownsampleBlock2D",
         "SimpleCrossAttnDownBlock2D",
         "SimpleCrossAttnDownBlock2D",
         "SimpleCrossAttnDownBlock2D",
@@ -239,7 +239,7 @@ DECODER_CONFIG = {
         "SimpleCrossAttnUpBlock2D",
         "SimpleCrossAttnUpBlock2D",
         "SimpleCrossAttnUpBlock2D",
-        "UnCLIPUpBlock2D",
+        "ResnetUpsampleBlock2D",
     ),
     "mid_block_type": "UNetMidBlock2DSimpleCrossAttn",
     "block_out_channels": (320, 640, 960, 1280),
@@ -378,12 +378,22 @@ SUPER_RES_UNET_FIRST_STEPS_PREFIX = "model_first_steps"
 SUPER_RES_UNET_FIRST_STEPS_CONFIG = {
     "sample_size": 256,
     "layers_per_block": 3,
-    "down_block_types": ("UnCLIPDownBlock2D", "UnCLIPDownBlock2D", "UnCLIPDownBlock2D", "UnCLIPDownBlock2D"),
-    "up_block_types": ("UnCLIPUpBlock2D", "UnCLIPUpBlock2D", "UnCLIPUpBlock2D", "UnCLIPUpBlock2D"),
-    "mid_block_type": "UnCLIPUNetMidBlock2D",
+    "down_block_types": (
+        "ResnetDownsampleBlock2D",
+        "ResnetDownsampleBlock2D",
+        "ResnetDownsampleBlock2D",
+        "ResnetDownsampleBlock2D",
+    ),
+    "up_block_types": (
+        "ResnetUpsampleBlock2D",
+        "ResnetUpsampleBlock2D",
+        "ResnetUpsampleBlock2D",
+        "ResnetUpsampleBlock2D",
+    ),
     "block_out_channels": (320, 640, 960, 1280),
     "in_channels": 6,
     "out_channels": 3,
+    "add_attention": False,
 }
 
 
@@ -462,12 +472,22 @@ SUPER_RES_UNET_LAST_STEP_PREFIX = "model_last_step"
 
 SUPER_RES_UNET_LAST_STEP_CONFIG = {
     "layers_per_block": 3,
-    "down_block_types": ("UnCLIPDownBlock2D", "UnCLIPDownBlock2D", "UnCLIPDownBlock2D", "UnCLIPDownBlock2D"),
-    "up_block_types": ("UnCLIPUpBlock2D", "UnCLIPUpBlock2D", "UnCLIPUpBlock2D", "UnCLIPUpBlock2D"),
-    "mid_block_type": "UnCLIPUNetMidBlock2D",
+    "down_block_types": (
+        "ResnetDownsampleBlock2D",
+        "ResnetDownsampleBlock2D",
+        "ResnetDownsampleBlock2D",
+        "ResnetDownsampleBlock2D",
+    ),
+    "up_block_types": (
+        "ResnetUpsampleBlock2D",
+        "ResnetUpsampleBlock2D",
+        "ResnetUpsampleBlock2D",
+        "ResnetUpsampleBlock2D",
+    ),
     "block_out_channels": (320, 640, 960, 1280),
     "in_channels": 6,
     "out_channels": 3,
+    "add_attention": False,
 }
 
 
@@ -680,7 +700,7 @@ def unet_midblock_to_diffusers_checkpoint(model, checkpoint, *, original_unet_pr
 
     # optional block 1
 
-    if hasattr(model.mid_block, "attentions"):
+    if hasattr(model.mid_block, "attentions") and model.mid_block.attentions[0] is not None:
         diffusers_checkpoint.update(
             attention_to_diffusers_checkpoint(
                 checkpoint,

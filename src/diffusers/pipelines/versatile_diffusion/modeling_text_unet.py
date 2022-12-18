@@ -767,7 +767,6 @@ class CrossAttnDownBlockFlat(nn.Module):
         resnet_pre_norm: bool = True,
         attn_num_head_channels=1,
         cross_attention_dim=1280,
-        attention_type="default",
         output_scale_factor=1.0,
         downsample_padding=1,
         add_downsample=True,
@@ -781,7 +780,6 @@ class CrossAttnDownBlockFlat(nn.Module):
         attentions = []
 
         self.has_cross_attention = True
-        self.attention_type = attention_type
         self.attn_num_head_channels = attn_num_head_channels
 
         for i in range(num_layers):
@@ -970,7 +968,6 @@ class CrossAttnUpBlockFlat(nn.Module):
         resnet_pre_norm: bool = True,
         attn_num_head_channels=1,
         cross_attention_dim=1280,
-        attention_type="default",
         output_scale_factor=1.0,
         add_upsample=True,
         dual_cross_attention=False,
@@ -983,7 +980,6 @@ class CrossAttnUpBlockFlat(nn.Module):
         attentions = []
 
         self.has_cross_attention = True
-        self.attention_type = attention_type
         self.attn_num_head_channels = attn_num_head_channels
 
         for i in range(num_layers):
@@ -1097,7 +1093,6 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
         attn_num_head_channels=1,
-        attention_type="default",
         output_scale_factor=1.0,
         cross_attention_dim=1280,
         dual_cross_attention=False,
@@ -1107,7 +1102,6 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         super().__init__()
 
         self.has_cross_attention = True
-        self.attention_type = attention_type
         self.attn_num_head_channels = attn_num_head_channels
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
 
@@ -1195,7 +1189,6 @@ class UnCLIPUNetMidBlockFlatCrossAttn(nn.Module):
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
         attn_num_head_channels=1,
-        attention_type="default",
         output_scale_factor=1.0,
         cross_attention_dim=1280,
     ):
@@ -1203,7 +1196,6 @@ class UnCLIPUNetMidBlockFlatCrossAttn(nn.Module):
 
         self.has_cross_attention = True
 
-        self.attention_type = attention_type
         self.attn_num_head_channels = attn_num_head_channels
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
 

@@ -21,7 +21,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ..utils import BaseOutput
 from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
-from .unet_2d_blocks import UnCLIPUNetMidBlock2D, UNetMidBlock2D, get_down_block, get_up_block
+from .unet_2d_blocks import UNetMidBlock2D, get_down_block, get_up_block
 
 
 @dataclass
@@ -83,7 +83,6 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         freq_shift: int = 0,
         flip_sin_to_cos: bool = True,
         down_block_types: Tuple[str] = ("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"),
-        mid_block_type: str = "UNetMidBlock2D",
         up_block_types: Tuple[str] = ("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"),
         block_out_channels: Tuple[int] = (224, 448, 672, 896),
         layers_per_block: int = 2,
@@ -94,6 +93,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         norm_num_groups: int = 32,
         norm_eps: float = 1e-5,
         resnet_time_scale_shift: str = "default",
+        add_attention: bool = True,
     ):
         super().__init__()
 
@@ -141,29 +141,17 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             self.down_blocks.append(down_block)
 
         # mid
-        if mid_block_type == "UNetMidBlock2D":
-            self.mid_block = UNetMidBlock2D(
-                in_channels=block_out_channels[-1],
-                temb_channels=time_embed_dim,
-                resnet_eps=norm_eps,
-                resnet_act_fn=act_fn,
-                output_scale_factor=mid_block_scale_factor,
-                resnet_time_scale_shift=resnet_time_scale_shift,
-                attn_num_head_channels=attention_head_dim,
-                resnet_groups=norm_num_groups,
-            )
-        elif mid_block_type == "UnCLIPUNetMidBlock2D":
-            self.mid_block = UnCLIPUNetMidBlock2D(
-                in_channels=block_out_channels[-1],
-                temb_channels=time_embed_dim,
-                resnet_eps=norm_eps,
-                resnet_act_fn=act_fn,
-                output_scale_factor=mid_block_scale_factor,
-                resnet_time_scale_shift=resnet_time_scale_shift,
-                resnet_groups=norm_num_groups,
-            )
-        else:
-            raise ValueError(f"unknown mid_block_type : {mid_block_type}")
+        self.mid_block = UNetMidBlock2D(
+            in_channels=block_out_channels[-1],
+            temb_channels=time_embed_dim,
+            resnet_eps=norm_eps,
+            resnet_act_fn=act_fn,
+            output_scale_factor=mid_block_scale_factor,
+            resnet_time_scale_shift=resnet_time_scale_shift,
+            attn_num_head_channels=attention_head_dim,
+            resnet_groups=norm_num_groups,
+            add_attention=add_attention,
+        )
 
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
