@@ -260,8 +260,6 @@ class AttentionBlock(nn.Module):
         norm_num_groups (`int`, *optional*, defaults to 32): The number of groups to use for group norm.
         rescale_output_factor (`float`, *optional*, defaults to 1.0): The factor to rescale the output by.
         eps (`float`, *optional*, defaults to 1e-5): The epsilon value to use for group norm.
-        cross_attention_dim (`int`, *optional*):
-            The number of channels in the cross attention input. If not given, block only does self attention.
     """
 
     # IMPORTANT;TODO(Patrick, William) - this class will be deprecated soon. Do not use it anymore
@@ -351,7 +349,7 @@ class AttentionBlock(nn.Module):
 
         if self._use_memory_efficient_attention_xformers:
             # Memory efficient attention
-            hidden_states = xformers.ops.memory_efficient_attention(query_proj, key_proj, value_proj)
+            hidden_states = xformers.ops.memory_efficient_attention(query_proj, key_proj, value_proj, attn_bias=None)
             hidden_states = hidden_states.to(query_proj.dtype)
         else:
             attention_scores = torch.baddbmm(

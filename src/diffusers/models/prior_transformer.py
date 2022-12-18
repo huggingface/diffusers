@@ -75,7 +75,6 @@ class PriorTransformer(ModelMixin, ConfigMixin):
 
         self.positional_embedding = nn.Parameter(torch.zeros(1, num_embeddings + additional_embeddings, inner_dim))
 
-        # TODO - better name. I can't tell what this is
         self.prd_embedding = nn.Parameter(torch.zeros(1, 1, inner_dim))
 
         self.transformer_blocks = nn.ModuleList(

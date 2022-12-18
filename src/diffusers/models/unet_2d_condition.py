@@ -27,8 +27,8 @@ from .unet_2d_blocks import (
     CrossAttnDownBlock2D,
     CrossAttnUpBlock2D,
     DownBlock2D,
-    UnCLIPUNetMidBlock2DCrossAttn,
     UNetMidBlock2DCrossAttn,
+    UNetMidBlock2DSimpleCrossAttn,
     UpBlock2D,
     get_down_block,
     get_up_block,
@@ -69,7 +69,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
             The tuple of downsample blocks to use.
         mid_block_type (`str`, *optional*, defaults to `"UNetMidBlock2DCrossAttn"`):
-            The mid block type. Choose from `UNetMidBlock2DCrossAttn` or `UnCLIPUNetMidBlock2DCrossAttn`.
+            The mid block type. Choose from `UNetMidBlock2DCrossAttn` or `UNetMidBlock2DSimpleCrossAttn`.
         up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D",)`):
             The tuple of upsample blocks to use.
         block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
@@ -202,8 +202,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 use_linear_projection=use_linear_projection,
                 upcast_attention=upcast_attention,
             )
-        elif mid_block_type == "UnCLIPUNetMidBlock2DCrossAttn":
-            self.mid_block = UnCLIPUNetMidBlock2DCrossAttn(
+        elif mid_block_type == "UNetMidBlock2DSimpleCrossAttn":
+            self.mid_block = UNetMidBlock2DSimpleCrossAttn(
                 in_channels=block_out_channels[-1],
                 temb_channels=time_embed_dim,
                 resnet_eps=norm_eps,

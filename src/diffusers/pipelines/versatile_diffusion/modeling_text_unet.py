@@ -142,7 +142,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlockFlat", "CrossAttnDownBlockFlat", "CrossAttnDownBlockFlat", "DownBlockFlat")`):
             The tuple of downsample blocks to use.
         mid_block_type (`str`, *optional*, defaults to `"UNetMidBlockFlatCrossAttn"`):
-            The mid block type. Choose from `UNetMidBlockFlatCrossAttn` or `UnCLIPUNetMidBlockFlatCrossAttn`.
+            The mid block type. Choose from `UNetMidBlockFlatCrossAttn` or `UNetMidBlockFlatSimpleCrossAttn`.
         up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlockFlat", "CrossAttnUpBlockFlat", "CrossAttnUpBlockFlat", "CrossAttnUpBlockFlat",)`):
             The tuple of upsample blocks to use.
         block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
@@ -280,8 +280,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 use_linear_projection=use_linear_projection,
                 upcast_attention=upcast_attention,
             )
-        elif mid_block_type == "UnCLIPUNetMidBlockFlatCrossAttn":
-            self.mid_block = UnCLIPUNetMidBlockFlatCrossAttn(
+        elif mid_block_type == "UNetMidBlockFlatSimpleCrossAttn":
+            self.mid_block = UNetMidBlockFlatSimpleCrossAttn(
                 in_channels=block_out_channels[-1],
                 temb_channels=time_embed_dim,
                 resnet_eps=norm_eps,
@@ -448,6 +448,11 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         if any(s % default_overall_up_factor != 0 for s in sample.shape[-2:]):
             logger.info("Forward upsample size to force interpolation output size.")
             forward_upsample_size = True
+
+        # prepare attention_mask
+        if attention_mask is not None:
+            attention_mask = (1 - attention_mask.to(sample.dtype)) * -10000.0
+            attention_mask = attention_mask.unsqueeze(1)
 
         # 0. center input if necessary
         if self.config.center_input_sample:
@@ -1176,7 +1181,7 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         return hidden_states
 
 
-# Copied from diffusers.models.unet_2d_blocks.UnCLIPUNetMidBlock2DCrossAttn with UnCLIPUNetMidBlock2DCrossAttn->UNetMidBlockFlatCrossAttn, ResnetBlock2D->ResnetBlockFlat
+# Copied from diffusers.models.unet_2d_blocks.UNetMidBlock2DSimpleCrossAttn with UNetMidBlock2DSimpleCrossAttn->UNetMidBlockFlatCrossAttn, ResnetBlock2D->ResnetBlockFlat
 class UnCLIPUNetMidBlockFlatCrossAttn(nn.Module):
     def __init__(
         self,
@@ -1202,6 +1207,8 @@ class UnCLIPUNetMidBlockFlatCrossAttn(nn.Module):
         self.attn_num_head_channels = attn_num_head_channels
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
 
+        self.num_heads = in_channels // self.attn_num_head_channels
+
         # there is always at least one resnet
         resnets = [
             ResnetBlockFlat(
@@ -1221,11 +1228,15 @@ class UnCLIPUNetMidBlockFlatCrossAttn(nn.Module):
 
         for _ in range(num_layers):
             attentions.append(
-                AttentionBlock(
-                    channels=in_channels,
-                    num_head_channels=attn_num_head_channels,
+                CrossAttention(
+                    query_dim=in_channels,
+                    cross_attention_dim=in_channels,
+                    heads=self.num_heads,
+                    dim_head=attn_num_head_channels,
+                    added_kv_proj_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                    cross_attention_dim=cross_attention_dim,
+                    bias=True,
+                    upcast_softmax=True,
                 )
             )
             resnets.append(
@@ -1266,9 +1277,18 @@ class UnCLIPUNetMidBlockFlatCrossAttn(nn.Module):
     def forward(self, hidden_states, temb=None, encoder_hidden_states=None, attention_mask=None):
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
+            # attn
+            residual = hidden_states
+            hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
             hidden_states = attn(
-                hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask
+                hidden_states,
+                encoder_hidden_states=encoder_hidden_states.transpose(1, 2),
+                attention_mask=attention_mask,
             )
+            hidden_states = hidden_states.transpose(-1, -2).reshape(residual.shape)
+            hidden_states = hidden_states + residual
+
+            # resnet
             hidden_states = resnet(hidden_states, temb)
 
         return hidden_states

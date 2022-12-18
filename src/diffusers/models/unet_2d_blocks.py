@@ -99,10 +99,10 @@ def get_down_block(
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
-    elif down_block_type == "UnCLIPCrossAttnDownBlock2D":
+    elif down_block_type == "SimpleCrossAttnDownBlock2D":
         if cross_attention_dim is None:
-            raise ValueError("cross_attention_dim must be specified for UnCLIPCrossAttnDownBlock2D")
-        return UnCLIPCrossAttnDownBlock2D(
+            raise ValueError("cross_attention_dim must be specified for SimpleCrossAttnDownBlock2D")
+        return SimpleCrossAttnDownBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
             out_channels=out_channels,
@@ -235,10 +235,10 @@ def get_up_block(
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
-    elif up_block_type == "UnCLIPCrossAttnUpBlock2D":
+    elif up_block_type == "SimpleCrossAttnUpBlock2D":
         if cross_attention_dim is None:
-            raise ValueError("cross_attention_dim must be specified for UnCLIPCrossAttnUpBlock2D")
-        return UnCLIPCrossAttnUpBlock2D(
+            raise ValueError("cross_attention_dim must be specified for SimpleCrossAttnUpBlock2D")
+        return SimpleCrossAttnUpBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
             out_channels=out_channels,
@@ -315,6 +315,65 @@ def get_up_block(
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     raise ValueError(f"{up_block_type} does not exist.")
+
+
+class UnCLIPUNetMidBlock2D(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        temb_channels: int,
+        dropout: float = 0.0,
+        num_layers: int = 1,
+        resnet_eps: float = 1e-6,
+        resnet_time_scale_shift: str = "default",
+        resnet_act_fn: str = "swish",
+        resnet_groups: int = 32,
+        resnet_pre_norm: bool = True,
+        output_scale_factor=1.0,
+    ):
+        super().__init__()
+
+        resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
+
+        # there is always at least one resnet
+        resnets = [
+            ResnetBlock2D(
+                in_channels=in_channels,
+                out_channels=in_channels,
+                temb_channels=temb_channels,
+                eps=resnet_eps,
+                groups=resnet_groups,
+                dropout=dropout,
+                time_embedding_norm=resnet_time_scale_shift,
+                non_linearity=resnet_act_fn,
+                output_scale_factor=output_scale_factor,
+                pre_norm=resnet_pre_norm,
+            )
+        ]
+
+        for _ in range(num_layers):
+            resnets.append(
+                ResnetBlock2D(
+                    in_channels=in_channels,
+                    out_channels=in_channels,
+                    temb_channels=temb_channels,
+                    eps=resnet_eps,
+                    groups=resnet_groups,
+                    dropout=dropout,
+                    time_embedding_norm=resnet_time_scale_shift,
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
+                    pre_norm=resnet_pre_norm,
+                )
+            )
+
+        self.resnets = nn.ModuleList(resnets)
+
+    def forward(self, hidden_states, temb=None):
+        for resnet in self.resnets:
+            hidden_states = resnet(hidden_states, temb)
+
+        return hidden_states
 
 
 class UNetMidBlock2D(nn.Module):
@@ -492,66 +551,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         return hidden_states
 
 
-class UnCLIPUNetMidBlock2D(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        temb_channels: int,
-        dropout: float = 0.0,
-        num_layers: int = 1,
-        resnet_eps: float = 1e-6,
-        resnet_time_scale_shift: str = "default",
-        resnet_act_fn: str = "swish",
-        resnet_groups: int = 32,
-        resnet_pre_norm: bool = True,
-        output_scale_factor=1.0,
-    ):
-        super().__init__()
-
-        resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
-
-        # there is always at least one resnet
-        resnets = [
-            ResnetBlock2D(
-                in_channels=in_channels,
-                out_channels=in_channels,
-                temb_channels=temb_channels,
-                eps=resnet_eps,
-                groups=resnet_groups,
-                dropout=dropout,
-                time_embedding_norm=resnet_time_scale_shift,
-                non_linearity=resnet_act_fn,
-                output_scale_factor=output_scale_factor,
-                pre_norm=resnet_pre_norm,
-            )
-        ]
-
-        for _ in range(num_layers):
-            resnets.append(
-                ResnetBlock2D(
-                    in_channels=in_channels,
-                    out_channels=in_channels,
-                    temb_channels=temb_channels,
-                    eps=resnet_eps,
-                    groups=resnet_groups,
-                    dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
-                    non_linearity=resnet_act_fn,
-                    output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
-                )
-            )
-
-        self.resnets = nn.ModuleList(resnets)
-
-    def forward(self, hidden_states, temb=None):
-        for resnet in self.resnets:
-            hidden_states = resnet(hidden_states, temb)
-
-        return hidden_states
-
-
-class UnCLIPUNetMidBlock2DCrossAttn(nn.Module):
+class UNetMidBlock2DSimpleCrossAttn(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -1343,7 +1343,7 @@ class UnCLIPDownBlock2D(nn.Module):
         return hidden_states, output_states
 
 
-class UnCLIPCrossAttnDownBlock2D(nn.Module):
+class SimpleCrossAttnDownBlock2D(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -2154,7 +2154,7 @@ class UnCLIPUpBlock2D(nn.Module):
         return hidden_states
 
 
-class UnCLIPCrossAttnUpBlock2D(nn.Module):
+class SimpleCrossAttnUpBlock2D(nn.Module):
     def __init__(
         self,
         in_channels: int,
