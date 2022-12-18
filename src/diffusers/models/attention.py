@@ -264,6 +264,8 @@ class AttentionBlock(nn.Module):
             The number of channels in the cross attention input. If not given, block only does self attention.
     """
 
+    # IMPORTANT;TODO(Patrick, William) - this class will be deprecated soon. Do not use it anymore
+
     def __init__(
         self,
         channels: int,
@@ -293,6 +295,26 @@ class AttentionBlock(nn.Module):
         self.proj_attn = nn.Linear(channels, channels)
 
         self._use_memory_efficient_attention_xformers = False
+
+        self.cross_attn = CrossAttention(
+            query_dim=channels,
+            cross_attention_dim=channels,
+            heads=self.num_heads,
+            dim_head=num_head_channels,
+            added_kv_proj_dim=cross_attention_dim,
+            norm_num_groups=norm_num_groups,
+            bias=True,
+            upcast_softmax=True,
+        )
+
+        self.cross_attn.group_norm = self.group_norm
+        self.cross_attn.to_q = self.query
+        self.cross_attn.to_k = self.key
+        self.cross_attn.to_v = self.value
+        self.cross_attn.to_out[0] = self.proj_attn
+
+        self.cross_attn.add_k_proj = self.context_key
+        self.cross_attn.add_v_proj = self.context_value
 
     def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
         if not is_xformers_available():
@@ -333,6 +355,19 @@ class AttentionBlock(nn.Module):
         return tensor
 
     def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None):
+        hid_new = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
+
+        if attention_mask is not None:
+            attention_mask = (1 - attention_mask.to(hidden_states.dtype)) * -10000.0
+            target_length = hidden_states.shape[2:].numel()
+            attention_mask = F.pad(attention_mask, (0, target_length), value=0.0)
+            attention_mask = attention_mask.repeat_interleave(self.num_heads, dim=0)
+            attention_mask = attention_mask.unsqueeze(1)
+
+        out = self.cross_attn(
+            hidden_states=hid_new, context=encoder_hidden_states.transpose(1, 2), attention_mask=attention_mask
+        )
+
         residual = hidden_states
         batch, channel, height, width = hidden_states.shape
 
@@ -362,12 +397,6 @@ class AttentionBlock(nn.Module):
             context_value_proj = self.reshape_heads_to_batch_dim(context_value_proj)
             key_proj = torch.concat([context_key_proj, key_proj], dim=1)
             value_proj = torch.concat([context_value_proj, value_proj], dim=1)
-
-        if attention_mask is not None:
-            attention_mask = (1 - attention_mask.to(hidden_states.dtype)) * -10000.0
-            attention_mask = F.pad(attention_mask, (0, query_proj.shape[1]), value=0.0)
-            attention_mask = attention_mask.repeat_interleave(self.num_heads, dim=0)
-            attention_mask = attention_mask.unsqueeze(1)
 
         if self._use_memory_efficient_attention_xformers:
             # Memory efficient attention
@@ -399,7 +428,11 @@ class AttentionBlock(nn.Module):
 
         # compute next hidden_states
         hidden_states = self.proj_attn(hidden_states)
-        hidden_states = hidden_states.transpose(-1, -2).reshape(batch, channel, height, width)
+
+        print("Diff", (out - hidden_states).abs().sum())
+        print("Diff", (out - hidden_states).abs().max())
+
+        hidden_states = out.transpose(-1, -2).reshape(batch, channel, height, width)
 
         # res connect and rescale
         hidden_states = (hidden_states + residual) / self.rescale_output_factor
@@ -552,11 +585,15 @@ class CrossAttention(nn.Module):
         dropout: float = 0.0,
         bias=False,
         upcast_attention: bool = False,
+        upcast_softmax: bool = False,
+        added_kv_proj_dim: Optional[int] = None,
+        norm_num_groups: Optional[int] = None,
     ):
         super().__init__()
         inner_dim = dim_head * heads
         cross_attention_dim = cross_attention_dim if cross_attention_dim is not None else query_dim
         self.upcast_attention = upcast_attention
+        self.upcast_softmax = upcast_softmax
 
         self.scale = dim_head**-0.5
 
@@ -567,10 +604,20 @@ class CrossAttention(nn.Module):
         self.sliceable_head_dim = heads
         self._slice_size = None
         self._use_memory_efficient_attention_xformers = False
+        self.added_kv_proj_dim = added_kv_proj_dim
+
+        if norm_num_groups is not None:
+            self.group_norm = nn.GroupNorm(num_channels=inner_dim, num_groups=norm_num_groups, eps=1e-5, affine=True)
+        else:
+            self.group_norm = None
 
         self.to_q = nn.Linear(query_dim, inner_dim, bias=bias)
         self.to_k = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
         self.to_v = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
+
+        if self.added_kv_proj_dim is not None:
+            self.add_k_proj = nn.Linear(added_kv_proj_dim, cross_attention_dim)
+            self.add_v_proj = nn.Linear(added_kv_proj_dim, cross_attention_dim)
 
         self.to_out = nn.ModuleList([])
         self.to_out.append(nn.Linear(inner_dim, query_dim))
@@ -596,22 +643,38 @@ class CrossAttention(nn.Module):
 
         self._slice_size = slice_size
 
-    def forward(self, hidden_states, context=None, attention_mask=None):
+    def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None):
         batch_size, sequence_length, _ = hidden_states.shape
 
-        query = self.to_q(hidden_states)
-        context = context if context is not None else hidden_states
-        key = self.to_k(context)
-        value = self.to_v(context)
+        context = encoder_hidden_states
 
+        if self.group_norm is not None:
+            hidden_states = self.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+
+        query = self.to_q(hidden_states)
+        query = self.reshape_heads_to_batch_dim(query)
         dim = query.shape[-1]
 
-        query = self.reshape_heads_to_batch_dim(query)
-        key = self.reshape_heads_to_batch_dim(key)
-        value = self.reshape_heads_to_batch_dim(value)
+        if self.added_kv_proj_dim is not None:
+            key = self.to_k(hidden_states)
+            value = self.to_v(hidden_states)
+            context_key_proj = self.add_k_proj(context)
+            context_value_proj = self.add_v_proj(context)
 
-        if attention_mask is not None:
-            attention_mask = attention_mask.repeat_interleave(self.heads, dim=0)
+            key = self.reshape_heads_to_batch_dim(key)
+            value = self.reshape_heads_to_batch_dim(value)
+            context_key_proj = self.reshape_heads_to_batch_dim(context_key_proj)
+            context_value_proj = self.reshape_heads_to_batch_dim(context_value_proj)
+
+            key = torch.concat([context_key_proj, key], dim=1)
+            value = torch.concat([context_value_proj, value], dim=1)
+        else:
+            context = context if context is not None else hidden_states
+            key = self.to_k(context)
+            value = self.to_v(context)
+
+            key = self.reshape_heads_to_batch_dim(key)
+            value = self.reshape_heads_to_batch_dim(value)
 
         # attention, what we cannot get enough of
         if self._use_memory_efficient_attention_xformers:
@@ -627,6 +690,7 @@ class CrossAttention(nn.Module):
 
         # linear proj
         hidden_states = self.to_out[0](hidden_states)
+
         # dropout
         hidden_states = self.to_out[1](hidden_states)
         return hidden_states
@@ -645,7 +709,15 @@ class CrossAttention(nn.Module):
         )
 
         if attention_mask is not None:
+            if attention_mask.shape != attention_scores.shape:
+                target_length = query.shape[1]
+                attention_mask = F.pad(attention_mask, (0, target_length), value=0.0)
+                attention_mask = attention_mask.repeat_interleave(self.heads, dim=0)
+
             attention_scores = attention_scores + attention_mask
+
+        if self.upcast_softmax:
+            attention_scores = attention_scores.float()
 
         attention_probs = attention_scores.softmax(dim=-1)
 

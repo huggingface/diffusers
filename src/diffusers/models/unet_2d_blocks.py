@@ -15,7 +15,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from .attention import AttentionBlock, DualTransformer2DModel, Transformer2DModel
+from .attention import AttentionBlock, CrossAttention, DualTransformer2DModel, Transformer2DModel
 from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, ResnetBlock2D, Upsample2D
 
 
@@ -576,6 +576,8 @@ class UnCLIPUNetMidBlock2DCrossAttn(nn.Module):
         self.attn_num_head_channels = attn_num_head_channels
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
 
+        self.num_heads = in_channels // self.attn_num_head_channels
+
         # there is always at least one resnet
         resnets = [
             ResnetBlock2D(
@@ -595,11 +597,15 @@ class UnCLIPUNetMidBlock2DCrossAttn(nn.Module):
 
         for _ in range(num_layers):
             attentions.append(
-                AttentionBlock(
-                    channels=in_channels,
-                    num_head_channels=attn_num_head_channels,
+                CrossAttention(
+                    query_dim=in_channels,
+                    cross_attention_dim=in_channels,
+                    heads=self.num_heads,
+                    dim_head=attn_num_head_channels,
+                    added_kv_proj_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                    cross_attention_dim=cross_attention_dim,
+                    bias=True,
+                    upcast_softmax=True,
                 )
             )
             resnets.append(
@@ -640,9 +646,18 @@ class UnCLIPUNetMidBlock2DCrossAttn(nn.Module):
     def forward(self, hidden_states, temb=None, encoder_hidden_states=None, attention_mask=None):
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
+            # attn
+            residual = hidden_states
+            hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
             hidden_states = attn(
-                hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask
+                hidden_states,
+                encoder_hidden_states=encoder_hidden_states.transpose(1, 2),
+                attention_mask=attention_mask,
             )
+            hidden_states = hidden_states.transpose(-1, -2).reshape(residual.shape)
+            hidden_states = hidden_states + residual
+
+            # resnet
             hidden_states = resnet(hidden_states, temb)
 
         return hidden_states
@@ -1356,6 +1371,7 @@ class UnCLIPCrossAttnDownBlock2D(nn.Module):
 
         self.attention_type = attention_type
         self.attn_num_head_channels = attn_num_head_channels
+        self.num_heads = out_channels // self.attn_num_head_channels
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -1374,11 +1390,15 @@ class UnCLIPCrossAttnDownBlock2D(nn.Module):
                 )
             )
             attentions.append(
-                AttentionBlock(
-                    channels=out_channels,
-                    num_head_channels=attn_num_head_channels,
+                CrossAttention(
+                    query_dim=out_channels,
+                    cross_attention_dim=out_channels,
+                    heads=self.num_heads,
+                    dim_head=attn_num_head_channels,
+                    added_kv_proj_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                    cross_attention_dim=cross_attention_dim,
+                    bias=True,
+                    upcast_softmax=True,
                 )
             )
         self.attentions = nn.ModuleList(attentions)
@@ -1411,29 +1431,19 @@ class UnCLIPCrossAttnDownBlock2D(nn.Module):
         output_states = ()
 
         for resnet, attn in zip(self.resnets, self.attentions):
-            if self.training and self.gradient_checkpointing:
+            # resnet
+            hidden_states = resnet(hidden_states, temb)
 
-                def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs):
-                        if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict)
-                        else:
-                            return module(*inputs)
-
-                    return custom_forward
-
-                hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(attn, return_dict=False),
-                    hidden_states,
-                    encoder_hidden_states,
-                    attention_mask,
-                )[0]
-            else:
-                hidden_states = resnet(hidden_states, temb)
-                hidden_states = attn(
-                    hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask
-                )
+            # attn
+            residual = hidden_states
+            hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
+            hidden_states = attn(
+                hidden_states,
+                encoder_hidden_states=encoder_hidden_states.transpose(1, 2),
+                attention_mask=attention_mask,
+            )
+            hidden_states = hidden_states.transpose(-1, -2).reshape(residual.shape)
+            hidden_states = hidden_states + residual
 
             output_states += (hidden_states,)
 
@@ -2172,6 +2182,8 @@ class UnCLIPCrossAttnUpBlock2D(nn.Module):
         self.attention_type = attention_type
         self.attn_num_head_channels = attn_num_head_channels
 
+        self.num_heads = out_channels // self.attn_num_head_channels
+
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
             resnet_in_channels = prev_output_channel if i == 0 else out_channels
@@ -2191,11 +2203,15 @@ class UnCLIPCrossAttnUpBlock2D(nn.Module):
                 )
             )
             attentions.append(
-                AttentionBlock(
-                    channels=out_channels,
-                    num_head_channels=attn_num_head_channels,
+                CrossAttention(
+                    query_dim=out_channels,
+                    cross_attention_dim=out_channels,
+                    heads=self.num_heads,
+                    dim_head=attn_num_head_channels,
+                    added_kv_proj_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                    cross_attention_dim=cross_attention_dim,
+                    bias=True,
+                    upcast_softmax=True,
                 )
             )
         self.attentions = nn.ModuleList(attentions)
@@ -2234,34 +2250,24 @@ class UnCLIPCrossAttnUpBlock2D(nn.Module):
         attention_mask=None,
     ):
         for resnet, attn in zip(self.resnets, self.attentions):
+            # resnet
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
-            if self.training and self.gradient_checkpointing:
+            hidden_states = resnet(hidden_states, temb)
 
-                def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs):
-                        if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict)
-                        else:
-                            return module(*inputs)
-
-                    return custom_forward
-
-                hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(attn, return_dict=False),
-                    hidden_states,
-                    encoder_hidden_states,
-                    attention_mask,
-                )[0]
-            else:
-                hidden_states = resnet(hidden_states, temb)
-                hidden_states = attn(
-                    hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask
-                )
+            # attn
+            residual = hidden_states
+            hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
+            hidden_states = attn(
+                hidden_states,
+                encoder_hidden_states=encoder_hidden_states.transpose(1, 2),
+                attention_mask=attention_mask,
+            )
+            hidden_states = hidden_states.transpose(-1, -2).reshape(residual.shape)
+            hidden_states = hidden_states + residual
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:

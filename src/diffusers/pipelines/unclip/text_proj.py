@@ -42,7 +42,7 @@ class UnCLIPTextProjModel(ModelMixin, ConfigMixin):
         self.learned_classifier_free_guidance_embeddings = nn.Parameter(torch.zeros(clip_embeddings_dim))
 
         # parameters for additional clip time embeddings
-        self.text_embeddings_proj = nn.Linear(clip_embeddings_dim, time_embed_dim)
+        self.embedding_proj = nn.Linear(clip_embeddings_dim, time_embed_dim)
         self.clip_image_embeddings_project_to_time_embeddings = nn.Linear(clip_embeddings_dim, time_embed_dim)
 
         # parameters for encoder hidden states
@@ -50,7 +50,7 @@ class UnCLIPTextProjModel(ModelMixin, ConfigMixin):
         self.clip_extra_context_tokens_proj = nn.Linear(
             clip_embeddings_dim, self.clip_extra_context_tokens * cross_attention_dim
         )
-        self.text_encoder_hidden_states_proj = nn.Linear(clip_embeddings_dim, cross_attention_dim)
+        self.encoder_hidden_states_proj = nn.Linear(clip_embeddings_dim, cross_attention_dim)
         self.text_encoder_hidden_states_norm = nn.LayerNorm(cross_attention_dim)
 
     def forward(self, *, image_embeddings, text_embeddings, text_encoder_hidden_states, do_classifier_free_guidance):
@@ -70,7 +70,7 @@ class UnCLIPTextProjModel(ModelMixin, ConfigMixin):
 
         # "Specifically, we modify the architecture described in Nichol et al. (2021) by projecting and
         # adding CLIP embeddings to the existing timestep embedding, ...
-        time_projected_text_embeddings = self.text_embeddings_proj(text_embeddings)
+        time_projected_text_embeddings = self.embedding_proj(text_embeddings)
         time_projected_image_embeddings = self.clip_image_embeddings_project_to_time_embeddings(image_embeddings)
         additive_clip_time_embeddings = time_projected_image_embeddings + time_projected_text_embeddings
 
@@ -79,7 +79,7 @@ class UnCLIPTextProjModel(ModelMixin, ConfigMixin):
         clip_extra_context_tokens = self.clip_extra_context_tokens_proj(image_embeddings)
         clip_extra_context_tokens = clip_extra_context_tokens.reshape(batch_size, -1, self.clip_extra_context_tokens)
 
-        text_encoder_hidden_states = self.text_encoder_hidden_states_proj(text_encoder_hidden_states)
+        text_encoder_hidden_states = self.encoder_hidden_states_proj(text_encoder_hidden_states)
         text_encoder_hidden_states = self.text_encoder_hidden_states_norm(text_encoder_hidden_states)
         text_encoder_hidden_states = text_encoder_hidden_states.permute(0, 2, 1)
         text_encoder_hidden_states = torch.cat([clip_extra_context_tokens, text_encoder_hidden_states], dim=2)

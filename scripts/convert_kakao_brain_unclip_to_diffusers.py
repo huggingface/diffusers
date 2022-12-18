@@ -67,19 +67,19 @@ def prior_original_checkpoint_to_diffusers_checkpoint(model, checkpoint, clip_st
         }
     )
 
-    # <original>.text_emb_proj -> <diffusers>.text_embeddings_proj
+    # <original>.text_emb_proj -> <diffusers>.embedding_proj
     diffusers_checkpoint.update(
         {
-            "text_embeddings_proj.weight": checkpoint[f"{PRIOR_ORIGINAL_PREFIX}.text_emb_proj.weight"],
-            "text_embeddings_proj.bias": checkpoint[f"{PRIOR_ORIGINAL_PREFIX}.text_emb_proj.bias"],
+            "embedding_proj.weight": checkpoint[f"{PRIOR_ORIGINAL_PREFIX}.text_emb_proj.weight"],
+            "embedding_proj.bias": checkpoint[f"{PRIOR_ORIGINAL_PREFIX}.text_emb_proj.bias"],
         }
     )
 
-    # <original>.text_enc_proj -> <diffusers>.text_encoder_hidden_states_proj
+    # <original>.text_enc_proj -> <diffusers>.encoder_hidden_states_proj
     diffusers_checkpoint.update(
         {
-            "text_encoder_hidden_states_proj.weight": checkpoint[f"{PRIOR_ORIGINAL_PREFIX}.text_enc_proj.weight"],
-            "text_encoder_hidden_states_proj.bias": checkpoint[f"{PRIOR_ORIGINAL_PREFIX}.text_enc_proj.bias"],
+            "encoder_hidden_states_proj.weight": checkpoint[f"{PRIOR_ORIGINAL_PREFIX}.text_enc_proj.weight"],
+            "encoder_hidden_states_proj.bias": checkpoint[f"{PRIOR_ORIGINAL_PREFIX}.text_enc_proj.bias"],
         }
     )
 
@@ -246,6 +246,7 @@ DECODER_CONFIG = {
     "in_channels": 3,
     "out_channels": 6,
     "cross_attention_dim": 1536,
+    "class_embed_type": "identity",
     "attention_head_dim": 64,
     "resnet_time_scale_shift": "scale_shift",
 }
@@ -341,18 +342,18 @@ def text_proj_from_original_config():
 # Note that the input checkpoint is the original decoder checkpoint
 def text_proj_original_checkpoint_to_diffusers_checkpoint(checkpoint):
     diffusers_checkpoint = {
-        # <original>.text_seq_proj.0 -> <diffusers>.text_encoder_hidden_states_proj
-        "text_encoder_hidden_states_proj.weight": checkpoint[f"{DECODER_ORIGINAL_PREFIX}.text_seq_proj.0.weight"],
-        "text_encoder_hidden_states_proj.bias": checkpoint[f"{DECODER_ORIGINAL_PREFIX}.text_seq_proj.0.bias"],
+        # <original>.text_seq_proj.0 -> <diffusers>.encoder_hidden_states_proj
+        "encoder_hidden_states_proj.weight": checkpoint[f"{DECODER_ORIGINAL_PREFIX}.text_seq_proj.0.weight"],
+        "encoder_hidden_states_proj.bias": checkpoint[f"{DECODER_ORIGINAL_PREFIX}.text_seq_proj.0.bias"],
         # <original>.text_seq_proj.1 -> <diffusers>.text_encoder_hidden_states_norm
         "text_encoder_hidden_states_norm.weight": checkpoint[f"{DECODER_ORIGINAL_PREFIX}.text_seq_proj.1.weight"],
         "text_encoder_hidden_states_norm.bias": checkpoint[f"{DECODER_ORIGINAL_PREFIX}.text_seq_proj.1.bias"],
         # <original>.clip_tok_proj -> <diffusers>.clip_extra_context_tokens_proj
         "clip_extra_context_tokens_proj.weight": checkpoint[f"{DECODER_ORIGINAL_PREFIX}.clip_tok_proj.weight"],
         "clip_extra_context_tokens_proj.bias": checkpoint[f"{DECODER_ORIGINAL_PREFIX}.clip_tok_proj.bias"],
-        # <original>.text_feat_proj -> <diffusers>.text_embeddings_proj
-        "text_embeddings_proj.weight": checkpoint[f"{DECODER_ORIGINAL_PREFIX}.text_feat_proj.weight"],
-        "text_embeddings_proj.bias": checkpoint[f"{DECODER_ORIGINAL_PREFIX}.text_feat_proj.bias"],
+        # <original>.text_feat_proj -> <diffusers>.embedding_proj
+        "embedding_proj.weight": checkpoint[f"{DECODER_ORIGINAL_PREFIX}.text_feat_proj.weight"],
+        "embedding_proj.bias": checkpoint[f"{DECODER_ORIGINAL_PREFIX}.text_feat_proj.bias"],
         # <original>.cf_param -> <diffusers>.learned_classifier_free_guidance_embeddings
         "learned_classifier_free_guidance_embeddings": checkpoint[f"{DECODER_ORIGINAL_PREFIX}.cf_param"],
         # <original>.clip_emb -> <diffusers>.clip_image_embeddings_project_to_time_embeddings
@@ -821,12 +822,18 @@ def attention_to_diffusers_checkpoint(checkpoint, *, diffusers_attention_prefix,
 
     diffusers_checkpoint.update(
         {
-            f"{diffusers_attention_prefix}.query.weight": q_weight,
-            f"{diffusers_attention_prefix}.query.bias": q_bias,
-            f"{diffusers_attention_prefix}.key.weight": k_weight,
-            f"{diffusers_attention_prefix}.key.bias": k_bias,
-            f"{diffusers_attention_prefix}.value.weight": v_weight,
-            f"{diffusers_attention_prefix}.value.bias": v_bias,
+            #            f"{diffusers_attention_prefix}.query.weight": q_weight,
+            #            f"{diffusers_attention_prefix}.query.bias": q_bias,
+            #            f"{diffusers_attention_prefix}.key.weight": k_weight,
+            #            f"{diffusers_attention_prefix}.key.bias": k_bias,
+            #            f"{diffusers_attention_prefix}.value.weight": v_weight,
+            #            f"{diffusers_attention_prefix}.value.bias": v_bias,
+            f"{diffusers_attention_prefix}.to_q.weight": q_weight,
+            f"{diffusers_attention_prefix}.to_q.bias": q_bias,
+            f"{diffusers_attention_prefix}.to_k.weight": k_weight,
+            f"{diffusers_attention_prefix}.to_k.bias": k_bias,
+            f"{diffusers_attention_prefix}.to_v.weight": v_weight,
+            f"{diffusers_attention_prefix}.to_v.bias": v_bias,
         }
     )
 
@@ -840,20 +847,20 @@ def attention_to_diffusers_checkpoint(checkpoint, *, diffusers_attention_prefix,
 
     diffusers_checkpoint.update(
         {
-            f"{diffusers_attention_prefix}.context_key.weight": encoder_k_weight,
-            f"{diffusers_attention_prefix}.context_key.bias": encoder_k_bias,
-            f"{diffusers_attention_prefix}.context_value.weight": encoder_v_weight,
-            f"{diffusers_attention_prefix}.context_value.bias": encoder_v_bias,
+            f"{diffusers_attention_prefix}.add_k_proj.weight": encoder_k_weight,
+            f"{diffusers_attention_prefix}.add_k_proj.bias": encoder_k_bias,
+            f"{diffusers_attention_prefix}.add_v_proj.weight": encoder_v_weight,
+            f"{diffusers_attention_prefix}.add_v_proj.bias": encoder_v_bias,
         }
     )
 
     # <original>.proj_out (1d conv) -> <diffusers>.proj_attn (linear)
     diffusers_checkpoint.update(
         {
-            f"{diffusers_attention_prefix}.proj_attn.weight": checkpoint[f"{attention_prefix}.proj_out.weight"][
+            f"{diffusers_attention_prefix}.to_out.0.weight": checkpoint[f"{attention_prefix}.proj_out.weight"][
                 :, :, 0
             ],
-            f"{diffusers_attention_prefix}.proj_attn.bias": checkpoint[f"{attention_prefix}.proj_out.bias"],
+            f"{diffusers_attention_prefix}.to_out.0.bias": checkpoint[f"{attention_prefix}.proj_out.bias"],
         }
     )
 
@@ -924,8 +931,7 @@ def prior(*, args, checkpoint_map_location):
 
     clip_stats_checkpoint = torch.load(args.clip_stat_path, map_location=checkpoint_map_location)
 
-    with init_empty_weights():
-        prior_model = prior_model_from_original_config()
+    prior_model = prior_model_from_original_config()
 
     prior_diffusers_checkpoint = prior_original_checkpoint_to_diffusers_checkpoint(
         prior_model, prior_checkpoint, clip_stats_checkpoint
@@ -934,7 +940,7 @@ def prior(*, args, checkpoint_map_location):
     del prior_checkpoint
     del clip_stats_checkpoint
 
-    load_checkpoint_to_model(prior_diffusers_checkpoint, prior_model)
+    load_checkpoint_to_model(prior_diffusers_checkpoint, prior_model, strict=True)
 
     print("done loading prior")
 
@@ -947,8 +953,7 @@ def decoder(*, args, checkpoint_map_location):
     decoder_checkpoint = torch.load(args.decoder_checkpoint_path, map_location=checkpoint_map_location)
     decoder_checkpoint = decoder_checkpoint["state_dict"]
 
-    with init_empty_weights():
-        decoder_model = decoder_model_from_original_config()
+    decoder_model = decoder_model_from_original_config()
 
     decoder_diffusers_checkpoint = decoder_original_checkpoint_to_diffusers_checkpoint(
         decoder_model, decoder_checkpoint
@@ -960,18 +965,17 @@ def decoder(*, args, checkpoint_map_location):
     # for creating the `encoder_hidden_states` which are what the U-net is conditioned
     # on. The diffusers conditional unet directly takes the encoder_hidden_states. We pull
     # the parameters into the UnCLIPTextProjModel class
-    with init_empty_weights():
-        text_proj_model = text_proj_from_original_config()
+    text_proj_model = text_proj_from_original_config()
 
     text_proj_checkpoint = text_proj_original_checkpoint_to_diffusers_checkpoint(decoder_checkpoint)
 
-    load_checkpoint_to_model(text_proj_checkpoint, text_proj_model)
+    load_checkpoint_to_model(text_proj_checkpoint, text_proj_model, strict=True)
 
     # done text proj interlude
 
     del decoder_checkpoint
 
-    load_checkpoint_to_model(decoder_diffusers_checkpoint, decoder_model)
+    load_checkpoint_to_model(decoder_diffusers_checkpoint, decoder_model, strict=True)
 
     print("done loading decoder")
 
@@ -1001,9 +1005,9 @@ def super_res_unet(*, args, checkpoint_map_location):
 
     del super_res_checkpoint
 
-    load_checkpoint_to_model(super_res_first_steps_checkpoint, super_res_first_model)
+    load_checkpoint_to_model(super_res_first_steps_checkpoint, super_res_first_model, strict=True)
 
-    load_checkpoint_to_model(super_res_last_step_checkpoint, super_res_last_model)
+    load_checkpoint_to_model(super_res_last_step_checkpoint, super_res_last_model, strict=True)
 
     print("done loading super resolution unet")
 

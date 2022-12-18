@@ -70,8 +70,8 @@ class PriorTransformer(ModelMixin, ConfigMixin):
 
         self.proj_in = nn.Linear(embedding_dim, inner_dim)
 
-        self.text_embeddings_proj = nn.Linear(embedding_dim, inner_dim)
-        self.text_encoder_hidden_states_proj = nn.Linear(embedding_dim, inner_dim)
+        self.embedding_proj = nn.Linear(embedding_dim, inner_dim)
+        self.encoder_hidden_states_proj = nn.Linear(embedding_dim, inner_dim)
 
         self.positional_embedding = nn.Parameter(torch.zeros(1, num_embeddings + additional_embeddings, inner_dim))
 
@@ -153,8 +153,8 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         timesteps_projected = timesteps_projected.to(dtype=self.dtype)
         time_embeddings = self.time_embedding(timesteps_projected)
 
-        proj_embeddings = self.text_embeddings_proj(proj_embedding)
-        encoder_hidden_states = self.text_encoder_hidden_states_proj(encoder_hidden_states)
+        proj_embeddings = self.embedding_proj(proj_embedding)
+        encoder_hidden_states = self.encoder_hidden_states_proj(encoder_hidden_states)
         hidden_states = self.proj_in(hidden_states)
         prd_embedding = self.prd_embedding.to(hidden_states.dtype).expand(batch_size, -1, -1)
         positional_embeddings = self.positional_embedding.to(hidden_states.dtype)
@@ -176,6 +176,7 @@ class PriorTransformer(ModelMixin, ConfigMixin):
             attention_mask = (1 - attention_mask.to(hidden_states.dtype)) * -10000.0
             attention_mask = F.pad(attention_mask, (0, self.additional_embeddings), value=0.0)
             attention_mask = (attention_mask[:, None, :] + self.causal_attention_mask).to(hidden_states.dtype)
+            attention_mask = attention_mask.repeat_interleave(self.config.num_attention_heads, dim=0)
 
         for block in self.transformer_blocks:
             hidden_states = block(hidden_states, attention_mask=attention_mask)
