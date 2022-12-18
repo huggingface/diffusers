@@ -44,20 +44,6 @@ write_basic_config()
 
 ### Dog toy example
 
-You need to accept the model license before downloading or using the weights. In this example we'll use model version `v1-4`, so you'll need to visit [its card](https://huggingface.co/CompVis/stable-diffusion-v1-4), read the license and tick the checkbox if you agree. 
-
-You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section of the documentation](https://huggingface.co/docs/hub/security-tokens).
-
-Run the following command to authenticate your token
-
-```bash
-huggingface-cli login
-```
-
-If you have already cloned the repo, then you won't need to go through these steps.
-
-<br>
-
 Now let's get our dataset. Download images from [here](https://drive.google.com/drive/folders/1BO_dyz-p65qhBRRMRA4TbZ8qW4rB99JZ) and save them in a directory. This will be our training data.
 
 And launch the training using
