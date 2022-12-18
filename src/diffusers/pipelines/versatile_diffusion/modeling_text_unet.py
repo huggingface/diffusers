@@ -157,6 +157,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
         resnet_time_scale_shift (`str`, *optional*, defaults to `"default"`): Time scale shift config
             for resnet blocks, see [`~models.resnet.ResnetBlockFlat`]. Choose from `default` or `scale_shift`.
+        class_embed_type (`str`, *optional*, defaults to None): The type of class embedding to use which is ultimately
+            summed with the time embeddings. Choose from `None`, `"timestep"`, or `"identity"`.
     """
 
     _supports_gradient_checkpointing = True
@@ -195,6 +197,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         attention_head_dim: Union[int, Tuple[int]] = 8,
         dual_cross_attention: bool = False,
         use_linear_projection: bool = False,
+        class_embed_type: Optional[str] = None,
         num_class_embeds: Optional[int] = None,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
@@ -214,8 +217,14 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         self.time_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim)
 
         # class embedding
-        if num_class_embeds is not None:
+        if class_embed_type is None and num_class_embeds is not None:
             self.class_embedding = nn.Embedding(num_class_embeds, time_embed_dim)
+        elif class_embed_type == "timestep":
+            self.class_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim)
+        elif class_embed_type == "identity":
+            self.class_embedding = nn.Identity(time_embed_dim, time_embed_dim)
+        else:
+            self.class_embedding = None
 
         self.down_blocks = nn.ModuleList([])
         self.mid_block = None
@@ -410,7 +419,6 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
         class_labels: Optional[torch.Tensor] = None,
-        additive_time_embeddings: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> Union[UNet2DConditionOutput, Tuple]:
@@ -476,8 +484,15 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
             emb = emb + class_emb
 
-        if additive_time_embeddings is not None:
-            emb = emb + additive_time_embeddings
+        if self.class_embedding is not None:
+            if class_labels is None:
+                raise ValueError("class_labels should be provided when num_class_embeds > 0")
+
+            if self.config.class_embed_type == "timestep":
+                class_labels = self.time_proj(class_labels)
+
+            class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
+            emb = emb + class_emb
 
         # 2. pre-process
         sample = self.conv_in(sample)
@@ -822,6 +837,7 @@ class CrossAttnDownBlockFlat(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(self, hidden_states, temb=None, encoder_hidden_states=None, attention_mask=None):
+        # TODO(Patrick, William) - attention mask is not used
         output_states = ()
 
         for resnet, attn in zip(self.resnets, self.attentions):
@@ -841,14 +857,10 @@ class CrossAttnDownBlockFlat(nn.Module):
                     create_custom_forward(attn, return_dict=False),
                     hidden_states,
                     encoder_hidden_states,
-                    None,  # timestep
-                    attention_mask,
                 )[0]
             else:
                 hidden_states = resnet(hidden_states, temb)
-                hidden_states = attn(
-                    hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask
-                ).sample
+                hidden_states = attn(hidden_states, encoder_hidden_states=encoder_hidden_states).sample
 
             output_states += (hidden_states,)
 
@@ -1031,6 +1043,7 @@ class CrossAttnUpBlockFlat(nn.Module):
         upsample_size=None,
         attention_mask=None,
     ):
+        # TODO(Patrick, William) - attention mask is not used
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
@@ -1053,14 +1066,10 @@ class CrossAttnUpBlockFlat(nn.Module):
                     create_custom_forward(attn, return_dict=False),
                     hidden_states,
                     encoder_hidden_states,
-                    None,  # timestep
-                    attention_mask,
                 )[0]
             else:
                 hidden_states = resnet(hidden_states, temb)
-                hidden_states = attn(
-                    hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask
-                ).sample
+                hidden_states = attn(hidden_states, encoder_hidden_states=encoder_hidden_states).sample
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -1158,11 +1167,10 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         self.resnets = nn.ModuleList(resnets)
 
     def forward(self, hidden_states, temb=None, encoder_hidden_states=None, attention_mask=None):
+        # TODO(Patrick, William) - attention_mask is currently not used. Implement once used
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
-            hidden_states = attn(
-                hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask
-            ).sample
+            hidden_states = attn(hidden_states, encoder_hidden_states=encoder_hidden_states).sample
             hidden_states = resnet(hidden_states, temb)
 
         return hidden_states
