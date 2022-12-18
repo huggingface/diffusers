@@ -261,7 +261,7 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
     def test_unclip_karlo(self):
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/karlo_v1_alpha/horse.npy"
+            "/unclip/karlo_v1_alpha_horse.npy"
         )
 
         pipeline = UnCLIPPipeline.from_pretrained("kakaobrain/karlo-v1-alpha")
