@@ -368,10 +368,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             logger.info("Forward upsample size to force interpolation output size.")
             forward_upsample_size = True
 
-        # prepare attention_mask
-        if attention_mask is not None:
-            attention_mask = (1 - attention_mask.to(sample.dtype)) * -10000.0
-
         # 0. center input if necessary
         if self.config.center_input_sample:
             sample = 2 * sample - 1.0

@@ -177,9 +177,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             self.norm_out = nn.LayerNorm(inner_dim)
             self.out = nn.Linear(inner_dim, self.num_vector_embeds - 1)
 
-    def forward(
-        self, hidden_states, encoder_hidden_states=None, timestep=None, attention_mask=None, return_dict: bool = True
-    ):
+    def forward(self, hidden_states, encoder_hidden_states=None, timestep=None, return_dict: bool = True):
         """
         Args:
             hidden_states ( When discrete, `torch.LongTensor` of shape `(batch size, num latent pixels)`.
@@ -190,8 +188,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 self-attention.
             timestep ( `torch.long`, *optional*):
                 Optional timestep to be applied as an embedding in AdaLayerNorm's. Used to indicate denoising step.
-            attention_mask (`torch.FloatTensor`, *optional*):
-                Optional attention mask to be applied in CrossAttention
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
 
@@ -219,9 +215,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # 2. Blocks
         for block in self.transformer_blocks:
-            hidden_states = block(
-                hidden_states, context=encoder_hidden_states, timestep=timestep, attention_mask=attention_mask
-            )
+            hidden_states = block(hidden_states, context=encoder_hidden_states, timestep=timestep)
 
         # 3. Output
         if self.is_input_continuous:
@@ -370,6 +364,7 @@ class AttentionBlock(nn.Module):
             value_proj = torch.concat([context_value_proj, value_proj], dim=1)
 
         if attention_mask is not None:
+            attention_mask = (1 - attention_mask.to(hidden_states.dtype)) * -10000.0
             attention_mask = F.pad(attention_mask, (0, query_proj.shape[1]), value=0.0)
             attention_mask = attention_mask.repeat_interleave(self.num_heads, dim=0)
             attention_mask = attention_mask.unsqueeze(1)
