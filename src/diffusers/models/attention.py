@@ -597,8 +597,8 @@ class CrossAttention(nn.Module):
             hidden_states = self.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
         query = self.to_q(hidden_states)
-        query = self.reshape_heads_to_batch_dim(query)
         dim = query.shape[-1]
+        query = self.reshape_heads_to_batch_dim(query)
 
         if self.added_kv_proj_dim is not None:
             key = self.to_k(hidden_states)
