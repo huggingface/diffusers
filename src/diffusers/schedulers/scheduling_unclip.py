@@ -13,8 +13,8 @@ from .scheduling_utils import SchedulerMixin
 
 
 @dataclass
-# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->UNCLIP
-class UNCLIPSchedulerOutput(BaseOutput):
+# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->UnCLIP
+class UnCLIPSchedulerOutput(BaseOutput):
     """
     Output class for the scheduler's step function output.
 
@@ -60,7 +60,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     return torch.tensor(betas, dtype=torch.float32)
 
 
-class UNCLIPScheduler(SchedulerMixin, ConfigMixin):
+class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
     """
     This is a modified DDPM Scheduler specifically for the karlo unCLIP model.
 
@@ -186,7 +186,7 @@ class UNCLIPScheduler(SchedulerMixin, ConfigMixin):
         generator=None,
         prev_timestep=None,
         return_dict: bool = True,
-    ) -> Union[UNCLIPSchedulerOutput, Tuple]:
+    ) -> Union[UnCLIPSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -238,7 +238,7 @@ class UNCLIPScheduler(SchedulerMixin, ConfigMixin):
         else:
             raise ValueError(
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon` or `sample`"
-                " for the UNCLIPScheduler."
+                " for the UnCLIPScheduler."
             )
 
         # 3. Clip "predicted x_0"
@@ -282,7 +282,7 @@ class UNCLIPScheduler(SchedulerMixin, ConfigMixin):
             else:
                 raise ValueError(
                     f"variance_type given as {self.variance_type} must be one of `fixed_small_log` or `learned_range`"
-                    " for the UNCLIPScheduler."
+                    " for the UnCLIPScheduler."
                 )
 
             variance = variance * variance_noise
@@ -292,4 +292,4 @@ class UNCLIPScheduler(SchedulerMixin, ConfigMixin):
         if not return_dict:
             return (pred_prev_sample,)
 
-        return UNCLIPSchedulerOutput(prev_sample=pred_prev_sample, pred_original_sample=pred_original_sample)
+        return UnCLIPSchedulerOutput(prev_sample=pred_prev_sample, pred_original_sample=pred_original_sample)

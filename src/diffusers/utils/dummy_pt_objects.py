@@ -527,7 +527,7 @@ class ScoreSdeVeScheduler(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class UNCLIPScheduler(metaclass=DummyObject):
+class UnCLIPScheduler(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):

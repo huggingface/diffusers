@@ -8,7 +8,7 @@ from torch.nn import functional as F
 
 from diffusers import PriorTransformer, UNet2DConditionModel, UNet2DModel
 from diffusers.pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from diffusers.schedulers import UNCLIPScheduler
+from diffusers.schedulers import UnCLIPScheduler
 from transformers import CLIPTextModelWithProjection, CLIPTokenizer
 
 from ...utils import logging
@@ -27,9 +27,9 @@ class UnCLIPPipeline(DiffusionPipeline):
     super_res_first: UNet2DModel
     super_res_last: UNet2DModel
 
-    prior_scheduler: UNCLIPScheduler
-    decoder_scheduler: UNCLIPScheduler
-    super_res_scheduler: UNCLIPScheduler
+    prior_scheduler: UnCLIPScheduler
+    decoder_scheduler: UnCLIPScheduler
+    super_res_scheduler: UnCLIPScheduler
 
     def __init__(
         self,
@@ -40,9 +40,9 @@ class UnCLIPPipeline(DiffusionPipeline):
         text_proj: UnCLIPTextProjModel,
         super_res_first: UNet2DModel,
         super_res_last: UNet2DModel,
-        prior_scheduler: UNCLIPScheduler,
-        decoder_scheduler: UNCLIPScheduler,
-        super_res_scheduler: UNCLIPScheduler,
+        prior_scheduler: UnCLIPScheduler,
+        decoder_scheduler: UnCLIPScheduler,
+        super_res_scheduler: UnCLIPScheduler,
     ):
         super().__init__()
 

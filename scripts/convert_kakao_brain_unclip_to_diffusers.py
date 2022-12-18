@@ -7,7 +7,7 @@ from accelerate import init_empty_weights, load_checkpoint_and_dispatch
 from diffusers import UnCLIPPipeline, UNet2DConditionModel, UNet2DModel
 from diffusers.models.prior_transformer import PriorTransformer
 from diffusers.pipelines.unclip.text_proj import UnCLIPTextProjModel
-from diffusers.schedulers.scheduling_unclip import UNCLIPScheduler
+from diffusers.schedulers.scheduling_unclip import UnCLIPScheduler
 from transformers import CLIPTextModelWithProjection, CLIPTokenizer
 
 
@@ -1089,20 +1089,20 @@ if __name__ == "__main__":
             args=args, checkpoint_map_location=checkpoint_map_location
         )
 
-        prior_scheduler = UNCLIPScheduler(
+        prior_scheduler = UnCLIPScheduler(
             variance_type="fixed_small_log",
             prediction_type="sample",
             num_train_timesteps=1000,
             clip_sample_range=5.0,
         )
 
-        decoder_scheduler = UNCLIPScheduler(
+        decoder_scheduler = UnCLIPScheduler(
             variance_type="learned_range",
             prediction_type="epsilon",
             num_train_timesteps=1000,
         )
 
-        super_res_scheduler = UNCLIPScheduler(
+        super_res_scheduler = UnCLIPScheduler(
             variance_type="fixed_small_log",
             prediction_type="epsilon",
             num_train_timesteps=1000,
