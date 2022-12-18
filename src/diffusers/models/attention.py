@@ -287,7 +287,7 @@ class AttentionBlock(nn.Module):
         self.value = nn.Linear(channels, channels)
 
         self.rescale_output_factor = rescale_output_factor
-        self.proj_attn = nn.Linear(channels, channels)
+        self.proj_attn = nn.Linear(channels, channels, 1)
 
         self._use_memory_efficient_attention_xformers = False
 
@@ -329,7 +329,7 @@ class AttentionBlock(nn.Module):
         tensor = tensor.permute(0, 2, 1, 3).reshape(batch_size // head_size, seq_len, dim * head_size)
         return tensor
 
-    def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None):
+    def forward(self, hidden_states):
         residual = hidden_states
         batch, channel, height, width = hidden_states.shape
 
@@ -345,26 +345,13 @@ class AttentionBlock(nn.Module):
 
         scale = 1 / math.sqrt(self.channels / self.num_heads)
 
-        if encoder_hidden_states is not None:
-            encoder_hidden_states = encoder_hidden_states.transpose(1, 2)
-            context_key_proj = self.context_key(encoder_hidden_states)
-            context_value_proj = self.context_value(encoder_hidden_states)
-
         query_proj = self.reshape_heads_to_batch_dim(query_proj)
         key_proj = self.reshape_heads_to_batch_dim(key_proj)
         value_proj = self.reshape_heads_to_batch_dim(value_proj)
 
-        if encoder_hidden_states is not None:
-            context_key_proj = self.reshape_heads_to_batch_dim(context_key_proj)
-            context_value_proj = self.reshape_heads_to_batch_dim(context_value_proj)
-            key_proj = torch.concat([context_key_proj, key_proj], dim=1)
-            value_proj = torch.concat([context_value_proj, value_proj], dim=1)
-
         if self._use_memory_efficient_attention_xformers:
             # Memory efficient attention
-            hidden_states = xformers.ops.memory_efficient_attention(
-                query_proj, key_proj, value_proj, attn_bias=attention_mask
-            )
+            hidden_states = xformers.ops.memory_efficient_attention(query_proj, key_proj, value_proj)
             hidden_states = hidden_states.to(query_proj.dtype)
         else:
             attention_scores = torch.baddbmm(
@@ -380,8 +367,6 @@ class AttentionBlock(nn.Module):
                 beta=0,
                 alpha=scale,
             )
-            if attention_mask is not None:
-                attention_scores = attention_scores + attention_mask
             attention_probs = torch.softmax(attention_scores.float(), dim=-1).type(attention_scores.dtype)
             hidden_states = torch.bmm(attention_probs, value_proj)
 
