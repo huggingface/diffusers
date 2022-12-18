@@ -116,6 +116,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         attention_head_dim: Union[int, Tuple[int]] = 8,
         dual_cross_attention: bool = False,
         use_linear_projection: bool = False,
+        class_embed_type: Optional[str] = None,
         num_class_embeds: Optional[int] = None,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
@@ -135,8 +136,14 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         self.time_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim)
 
         # class embedding
-        if num_class_embeds is not None:
+        if class_embed_type is None and num_class_embeds is not None:
             self.class_embedding = nn.Embedding(num_class_embeds, time_embed_dim)
+        elif class_embed_type == "timestep":
+            self.class_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim)
+        elif class_embed_type == "identity":
+            self.class_embedding = nn.Identity(time_embed_dim, time_embed_dim)
+        else:
+            self.class_embedding = None
 
         self.down_blocks = nn.ModuleList([])
         self.mid_block = None
@@ -331,7 +338,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
         class_labels: Optional[torch.Tensor] = None,
-        additive_time_embeddings: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> Union[UNet2DConditionOutput, Tuple]:
@@ -397,8 +403,15 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
             emb = emb + class_emb
 
-        if additive_time_embeddings is not None:
-            emb = emb + additive_time_embeddings
+        if self.class_embedding is not None:
+            if class_labels is None:
+                raise ValueError("class_labels should be provided when num_class_embeds > 0")
+
+            if self.config.class_embed_type == "timestep":
+                class_labels = self.time_proj(class_labels)
+
+            class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
+            emb = emb + class_emb
 
         # 2. pre-process
         sample = self.conv_in(sample)
