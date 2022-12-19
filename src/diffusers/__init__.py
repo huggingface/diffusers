@@ -25,7 +25,15 @@ except OptionalDependencyNotAvailable:
     from .utils.dummy_pt_objects import *  # noqa F403
 else:
     from .modeling_utils import ModelMixin
-    from .models import AutoencoderKL, Transformer2DModel, UNet1DModel, UNet2DConditionModel, UNet2DModel, VQModel
+    from .models import (
+        AutoencoderKL,
+        PriorTransformer,
+        Transformer2DModel,
+        UNet1DModel,
+        UNet2DConditionModel,
+        UNet2DModel,
+        VQModel,
+    )
     from .optimization import (
         get_constant_schedule,
         get_constant_schedule_with_warmup,
@@ -63,6 +71,7 @@ else:
         RePaintScheduler,
         SchedulerMixin,
         ScoreSdeVeScheduler,
+        UnCLIPScheduler,
         VQDiffusionScheduler,
     )
     from .training_utils import EMAModel
@@ -96,6 +105,7 @@ else:
         StableDiffusionPipeline,
         StableDiffusionPipelineSafe,
         StableDiffusionUpscalePipeline,
+        UnCLIPPipeline,
         VersatileDiffusionDualGuidedPipeline,
         VersatileDiffusionImageVariationPipeline,
         VersatileDiffusionPipeline,
