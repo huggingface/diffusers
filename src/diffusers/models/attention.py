@@ -473,7 +473,8 @@ class BasicTransformerBlock(nn.Module):
             except Exception as e:
                 raise e
             self.attn1._use_memory_efficient_attention_xformers = use_memory_efficient_attention_xformers
-            self.attn2._use_memory_efficient_attention_xformers = use_memory_efficient_attention_xformers
+            if self.attn2 is not None:
+                self.attn2._use_memory_efficient_attention_xformers = use_memory_efficient_attention_xformers
 
     def forward(self, hidden_states, encoder_hidden_states=None, timestep=None, attention_mask=None):
         # 1. Self-Attention
