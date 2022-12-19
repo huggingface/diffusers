@@ -232,8 +232,11 @@ image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
 image.save("dog-bucket.png")
 ```
 
+### Inference from a training checkpoint
 
-## Running with Flax/JAX
+You can also perform inference from one of the checkpoints saved during the training process, if you used the `--checkpointing_steps` argument. Please, refer to [the documentation](https://huggingface.co/docs/diffusers/main/en/training/dreambooth#performing-inference-using-a-saved-checkpoint) to see how to do it.
+
+## Training with Flax/JAX
 
 For faster training on TPUs and GPUs you can leverage the flax training example. Follow the instructions above to get the model and dataset before running the script.
 
@@ -313,6 +316,10 @@ python train_dreambooth_flax.py \
   --num_class_images=200 \
   --max_train_steps=800
 ```
+
+## Training the inpainting model with Dreambooth
+
+`runwayml/stable-diffusion-inpainting` is a Stable Diffusion model specialized in in-painting tasks. It can also be fine-tuned with Dreambooth.
 
 ### Training with prior-preservation loss
 
