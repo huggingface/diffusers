@@ -702,7 +702,7 @@ class CrossAttention(nn.Module):
             )
 
             if attention_mask is not None:
-                attn_slice = attn_slice + attention_mask[start_idx: end_idx]
+                attn_slice = attn_slice + attention_mask[start_idx:end_idx]
 
             if self.upcast_softmax:
                 attn_slice = attn_slice.float()
