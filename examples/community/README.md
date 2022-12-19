@@ -57,7 +57,7 @@ guided_pipeline = DiffusionPipeline.from_pretrained(
     custom_pipeline="clip_guided_stable_diffusion",
     clip_model=clip_model,
     feature_extractor=feature_extractor,
-    revision="fp16",
+    
     torch_dtype=torch.float16,
 )
 guided_pipeline.enable_attention_slicing()
@@ -208,7 +208,7 @@ import torch
 pipe = DiffusionPipeline.from_pretrained(
     'hakurei/waifu-diffusion',
     custom_pipeline="lpw_stable_diffusion",
-    revision="fp16",
+    
     torch_dtype=torch.float16
 )
 pipe=pipe.to("cuda")
@@ -275,7 +275,7 @@ diffuser_pipeline = DiffusionPipeline.from_pretrained(
     custom_pipeline="speech_to_image_diffusion",
     speech_model=model,
     speech_processor=processor,
-    revision="fp16",
+    
     torch_dtype=torch.float16,
 )
 
@@ -333,7 +333,7 @@ import torch
 pipe = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
     custom_pipeline="wildcard_stable_diffusion",
-    revision="fp16",
+    
     torch_dtype=torch.float16,
 )
 prompt = "__animal__ sitting on a __object__ wearing a __clothing__"
@@ -567,7 +567,7 @@ diffuser_pipeline = DiffusionPipeline.from_pretrained(
     detection_pipeline=language_detection_pipeline,
     translation_model=trans_model,
     translation_tokenizer=trans_tokenizer,
-    revision="fp16",
+    
     torch_dtype=torch.float16,
 )
 
@@ -615,7 +615,7 @@ mask_image = PIL.Image.open(mask_path).convert("RGB").resize((512, 512))
 pipe = DiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-inpainting",
     custom_pipeline="img2img_inpainting",
-    revision="fp16",
+    
     torch_dtype=torch.float16
 )
 pipe = pipe.to("cuda")

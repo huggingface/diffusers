@@ -113,7 +113,6 @@ from diffusers import StableDiffusionImg2ImgPipeline
 device = "cuda"
 pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    revision="fp16", 
     torch_dtype=torch.float16,
 ).to(device)
 
@@ -161,7 +160,6 @@ mask_image = download_image(mask_url).resize((512, 512))
 
 pipe = StableDiffusionInpaintPipeline.from_pretrained(
     "runwayml/stable-diffusion-inpainting",
-    revision="fp16",
     torch_dtype=torch.float16,
 )
 pipe = pipe.to("cuda")

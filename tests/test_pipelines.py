@@ -286,7 +286,6 @@ class CustomPipelineTests(unittest.TestCase):
             clip_model=clip_model,
             feature_extractor=feature_extractor,
             torch_dtype=torch.float16,
-            revision="fp16",
         )
         pipeline.enable_attention_slicing()
         pipeline = pipeline.to(torch_device)

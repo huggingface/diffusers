@@ -212,7 +212,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
 
     def test_stable_diffusion_inpaint_fp16(self):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-inpainting", revision="fp16", torch_dtype=torch.float16, safety_checker=None
+            "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, safety_checker=None
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -266,7 +266,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         torch.cuda.reset_peak_memory_stats()
 
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-inpainting", safety_checker=None, revision="fp16", torch_dtype=torch.float16
+            "runwayml/stable-diffusion-inpainting", safety_checker=None, torch_dtype=torch.float16
         )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
