@@ -233,15 +233,15 @@ class UnCLIPPipelineFastTests(unittest.TestCase):
 
         expected_slice = np.array(
             [
-                0.0009,
+                0.0011,
+                0.0002,
+                0.9962,
+                0.9940,
+                0.0002,
                 0.9997,
                 0.0003,
-                0.9991,
-                0.9967,
-                0.0003,
-                0.9997,
-                0.0003,
-                0.0004,
+                0.9987,
+                0.9989,
             ]
         )
 
@@ -261,7 +261,7 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
     def test_unclip_karlo(self):
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/karlo_v1_alpha/horse.npy"
+            "/unclip/karlo_v1_alpha_horse.npy"
         )
 
         pipeline = UnCLIPPipeline.from_pretrained("kakaobrain/karlo-v1-alpha")
