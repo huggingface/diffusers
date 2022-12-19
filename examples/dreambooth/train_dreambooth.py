@@ -248,6 +248,7 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
+    parser.add_argument("--use_xformers", action="store_true", help="Whether or not to use xformers.")
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -516,14 +517,17 @@ def main(args):
         revision=args.revision,
     )
 
-    if is_xformers_available():
-        try:
-            unet.enable_xformers_memory_efficient_attention()
-        except Exception as e:
-            logger.warning(
-                "Could not enable memory efficient attention. Make sure xformers is installed"
-                f" correctly and a GPU is available: {e}"
-            )
+    if args.use_xformers:
+        if is_xformers_available():
+            try:
+                unet.enable_xformers_memory_efficient_attention()
+            except Exception as e:
+                logger.warning(
+                    "Could not enable memory efficient attention. Make sure xformers is installed"
+                    f" correctly and a GPU is available: {e}"
+                )
+        else:
+            logger.warning("Could not enable memory efficient attention. Make sure xformers is installed correctly.")
 
     vae.requires_grad_(False)
     if not args.train_text_encoder:

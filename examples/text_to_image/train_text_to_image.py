@@ -234,6 +234,7 @@ def parse_args():
             ' `--checkpointing_steps`, or `"latest"` to automatically select the last available checkpoint.'
         ),
     )
+    parser.add_argument("--use_xformers", action="store_true", help="Whether or not to use xformers.")
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -383,14 +384,17 @@ def main():
         revision=args.revision,
     )
 
-    if is_xformers_available():
-        try:
-            unet.enable_xformers_memory_efficient_attention()
-        except Exception as e:
-            logger.warning(
-                "Could not enable memory efficient attention. Make sure xformers is installed"
-                f" correctly and a GPU is available: {e}"
-            )
+    if args.use_xformers:
+        if is_xformers_available():
+            try:
+                unet.enable_xformers_memory_efficient_attention()
+            except Exception as e:
+                logger.warning(
+                    "Could not enable memory efficient attention. Make sure xformers is installed"
+                    f" correctly and a GPU is available: {e}"
+                )
+        else:
+            logger.warning("Could not enable memory efficient attention. Make sure xformers is installed correctly.")
 
     # Freeze vae and text_encoder
     vae.requires_grad_(False)
