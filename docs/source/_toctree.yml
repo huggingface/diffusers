@@ -122,6 +122,8 @@
       title: "Stochastic Karras VE"
     - local: api/pipelines/dance_diffusion
       title: "Dance Diffusion"
+    - local: api/pipelines/unclip
+      title: "UnCLIP"
     - local: api/pipelines/versatile_diffusion
       title: "Versatile Diffusion"
     - local: api/pipelines/vq_diffusion
