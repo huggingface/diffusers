@@ -337,7 +337,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
             guidance_scale = jnp.array([guidance_scale] * prompt_ids.shape[0])
             if len(prompt_ids.shape) > 2:
                 # Assume sharded
-                guidance_scale = guidance_scale.reshape(prompt_ids.shape[:2])
+                guidance_scale = guidance_scale[:, None]
 
         if jit:
             images = _p_generate(
