@@ -386,15 +386,9 @@ def main():
 
     if args.use_xformers:
         if is_xformers_available():
-            try:
-                unet.enable_xformers_memory_efficient_attention()
-            except Exception as e:
-                logger.warning(
-                    "Could not enable memory efficient attention. Make sure xformers is installed"
-                    f" correctly and a GPU is available: {e}"
-                )
+            unet.enable_xformers_memory_efficient_attention()
         else:
-            logger.warning("Could not enable memory efficient attention. Make sure xformers is installed correctly.")
+            raise ValueError("xformers is not available. Make sure it is installed correctly")
 
     # Freeze vae and text_encoder
     vae.requires_grad_(False)
