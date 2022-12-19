@@ -18,6 +18,7 @@ deps = {
     "k-diffusion": "k-diffusion",
     "librosa": "librosa",
     "modelcards": "modelcards>=0.1.4",
+    "note-seq": "note-seq",
     "numpy": "numpy",
     "parameterized": "parameterized",
     "pytest": "pytest",
