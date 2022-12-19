@@ -23,17 +23,18 @@ import jax.numpy as jnp
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import deprecate
-from .scheduling_common_flax import SchedulerCommonState, add_noise_common, create_common_state
 from .scheduling_utils_flax import (
     _FLAX_COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS,
+    CommonSchedulerState,
     FlaxSchedulerMixin,
     FlaxSchedulerOutput,
+    add_noise_common,
 )
 
 
 @flax.struct.dataclass
 class DPMSolverMultistepSchedulerState:
-    common: SchedulerCommonState
+    common: CommonSchedulerState
     alpha_t: jnp.ndarray
     sigma_t: jnp.ndarray
     lambda_t: jnp.ndarray
@@ -52,7 +53,7 @@ class DPMSolverMultistepSchedulerState:
     @classmethod
     def create(
         cls,
-        common: SchedulerCommonState,
+        common: CommonSchedulerState,
         alpha_t: jnp.ndarray,
         sigma_t: jnp.ndarray,
         lambda_t: jnp.ndarray,
@@ -177,9 +178,9 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
 
         self.dtype = dtype
 
-    def create_state(self, common: Optional[SchedulerCommonState] = None) -> DPMSolverMultistepSchedulerState:
+    def create_state(self, common: Optional[CommonSchedulerState] = None) -> DPMSolverMultistepSchedulerState:
         if common is None:
-            common = create_common_state(self)
+            common = CommonSchedulerState.create(self)
 
         # Currently we only support VP-type noise schedule
         alpha_t = jnp.sqrt(common.alphas_cumprod)

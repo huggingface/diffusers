@@ -23,17 +23,18 @@ import jax.numpy as jnp
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import deprecate
-from .scheduling_common_flax import SchedulerCommonState, add_noise_common, create_common_state
 from .scheduling_utils_flax import (
     _FLAX_COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS,
+    CommonSchedulerState,
     FlaxSchedulerMixin,
     FlaxSchedulerOutput,
+    add_noise_common,
 )
 
 
 @flax.struct.dataclass
 class DDPMSchedulerState:
-    common: SchedulerCommonState
+    common: CommonSchedulerState
 
     # setable values
     init_noise_sigma: jnp.ndarray
@@ -41,7 +42,7 @@ class DDPMSchedulerState:
     num_inference_steps: Optional[int] = None
 
     @classmethod
-    def create(cls, common: SchedulerCommonState, init_noise_sigma: jnp.ndarray, timesteps: jnp.ndarray):
+    def create(cls, common: CommonSchedulerState, init_noise_sigma: jnp.ndarray, timesteps: jnp.ndarray):
         return cls(common=common, init_noise_sigma=init_noise_sigma, timesteps=timesteps)
 
 
@@ -116,9 +117,9 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
 
         self.dtype = dtype
 
-    def create_state(self, common: Optional[SchedulerCommonState] = None) -> DDPMSchedulerState:
+    def create_state(self, common: Optional[CommonSchedulerState] = None) -> DDPMSchedulerState:
         if common is None:
-            common = create_common_state(self)
+            common = CommonSchedulerState.create(self)
 
         # standard deviation of the initial noise distribution
         init_noise_sigma = jnp.array(1.0, dtype=self.dtype)

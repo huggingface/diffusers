@@ -20,9 +20,9 @@ import jax.numpy as jnp
 from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_common_flax import SchedulerCommonState, create_common_state
 from .scheduling_utils_flax import (
     _FLAX_COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS,
+    CommonSchedulerState,
     FlaxSchedulerMixin,
     FlaxSchedulerOutput,
     broadcast_to_shape_from_left,
@@ -31,7 +31,7 @@ from .scheduling_utils_flax import (
 
 @flax.struct.dataclass
 class LMSDiscreteSchedulerState:
-    common: SchedulerCommonState
+    common: CommonSchedulerState
 
     # setable values
     init_noise_sigma: jnp.ndarray
@@ -44,7 +44,7 @@ class LMSDiscreteSchedulerState:
 
     @classmethod
     def create(
-        cls, common: SchedulerCommonState, init_noise_sigma: jnp.ndarray, timesteps: jnp.ndarray, sigmas: jnp.ndarray
+        cls, common: CommonSchedulerState, init_noise_sigma: jnp.ndarray, timesteps: jnp.ndarray, sigmas: jnp.ndarray
     ):
         return cls(common=common, init_noise_sigma=init_noise_sigma, timesteps=timesteps, sigmas=sigmas)
 
@@ -103,9 +103,9 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
     ):
         self.dtype = dtype
 
-    def create_state(self, common: Optional[SchedulerCommonState] = None) -> LMSDiscreteSchedulerState:
+    def create_state(self, common: Optional[CommonSchedulerState] = None) -> LMSDiscreteSchedulerState:
         if common is None:
-            common = create_common_state(self)
+            common = CommonSchedulerState.create(self)
 
         timesteps = jnp.arange(0, self.config.num_train_timesteps).round()[::-1]
         sigmas = ((1 - common.alphas_cumprod) / common.alphas_cumprod) ** 0.5

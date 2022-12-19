@@ -23,17 +23,18 @@ import jax.numpy as jnp
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import deprecate
-from .scheduling_common_flax import SchedulerCommonState, add_noise_common, create_common_state
 from .scheduling_utils_flax import (
     _FLAX_COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS,
+    CommonSchedulerState,
     FlaxSchedulerMixin,
     FlaxSchedulerOutput,
+    add_noise_common,
 )
 
 
 @flax.struct.dataclass
 class DDIMSchedulerState:
-    common: SchedulerCommonState
+    common: CommonSchedulerState
     final_alpha_cumprod: jnp.ndarray
 
     # setable values
@@ -44,7 +45,7 @@ class DDIMSchedulerState:
     @classmethod
     def create(
         cls,
-        common: SchedulerCommonState,
+        common: CommonSchedulerState,
         final_alpha_cumprod: jnp.ndarray,
         init_noise_sigma: jnp.ndarray,
         timesteps: jnp.ndarray,
@@ -133,9 +134,9 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
 
         self.dtype = dtype
 
-    def create_state(self, common: Optional[SchedulerCommonState] = None) -> DDIMSchedulerState:
+    def create_state(self, common: Optional[CommonSchedulerState] = None) -> DDIMSchedulerState:
         if common is None:
-            common = create_common_state(self)
+            common = CommonSchedulerState.create(self)
 
         # At every step in ddim, we are looking into the previous alphas_cumprod
         # For the final step, there is no previous alphas_cumprod because we are already at 0
