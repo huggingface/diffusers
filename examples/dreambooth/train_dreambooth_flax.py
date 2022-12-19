@@ -142,15 +142,6 @@ def parse_args():
         default=False,
         help="Scale the learning rate by the number of GPUs, gradient accumulation steps, and batch size.",
     )
-    parser.add_argument(
-        "--lr_scheduler",
-        type=str,
-        default="constant",
-        help=(
-            'The scheduler type to use. Choose between ["linear", "cosine", "cosine_with_restarts", "polynomial",'
-            ' "constant", "constant_with_warmup"]'
-        ),
-    )
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
@@ -429,6 +420,13 @@ def main():
         return batch
 
     total_train_batch_size = args.train_batch_size * jax.local_device_count()
+    if len(train_dataset) < total_train_batch_size:
+        raise ValueError(
+            f"Training batch size is {total_train_batch_size}, but your dataset only contains"
+            f" {len(train_dataset)} images. Please, use a larger dataset or reduce the effective batch size. Note that"
+            f" there are {jax.local_device_count()} parallel devices, so your batch size can't be smaller than that."
+        )
+
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=total_train_batch_size, shuffle=True, collate_fn=collate_fn, drop_last=True
     )
