@@ -122,7 +122,7 @@ def get_cosine_schedule_with_warmup(
         num_training_steps (`int`):
             The total number of training steps.
         num_periods (`float`, *optional*, defaults to 0.5):
-            The number of periods of the cosine function in a schedule (the defaults is to just decrease from the max
+            The number of periods of the cosine function in a schedule (the default is to just decrease from the max
             value to 0 following a half-cosine).
         last_epoch (`int`, *optional*, defaults to -1):
             The index of the last epoch when resuming training.
