@@ -461,7 +461,14 @@ def main():
             # Predict the noise residual and compute loss
             unet_outputs = unet.apply({"params": params}, noisy_latents, timesteps, encoder_hidden_states, train=True)
             noise_pred = unet_outputs.sample
-            loss = (noise - noise_pred) ** 2
+            # Get the target for loss depending on the prediction type
+            if noise_scheduler.config.prediction_type == "epsilon":
+                target = noise
+            elif noise_scheduler.config.prediction_type == "v_prediction":
+                target = noise_scheduler.get_velocity(latents, noise, timesteps)
+            else:
+                raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")            
+            loss = (target - noise_pred) ** 2
             loss = loss.mean()
 
             return loss

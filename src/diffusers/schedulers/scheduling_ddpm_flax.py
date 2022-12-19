@@ -314,5 +314,22 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
         return noisy_samples
 
+    def get_velocity(
+        self, 
+        sample: jnp.ndarray, 
+        noise: jnp.ndarray, 
+        timesteps: jnp.ndarray
+    ) -> jnp.ndarray:
+        sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
+        sqrt_alpha_prod = sqrt_alpha_prod.flatten()
+        sqrt_alpha_prod = broadcast_to_shape_from_left(sqrt_alpha_prod, sample.shape)
+
+        sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
+        sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
+        sqrt_one_minus_alpha_prod = broadcast_to_shape_from_left(sqrt_one_minus_alpha_prod, sample.shape)
+
+        velocity = sqrt_alpha_prod * noise - sqrt_one_minus_alpha_prod * sample
+        return velocity
+
     def __len__(self):
         return self.config.num_train_timesteps
