@@ -94,7 +94,7 @@ _deps = [
     "k-diffusion",
     "librosa",
     "modelcards>=0.1.4",
-    "note_seq",
+    "note-seq",
     "numpy",
     "parameterized",
     "pytest",
