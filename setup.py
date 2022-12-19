@@ -186,6 +186,7 @@ extras["test"] = deps_list(
     "datasets",
     "k-diffusion",
     "librosa",
+    "note-seq",
     "parameterized",
     "pytest",
     "pytest-timeout",
