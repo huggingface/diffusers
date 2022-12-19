@@ -429,6 +429,13 @@ def main():
         return batch
 
     total_train_batch_size = args.train_batch_size * jax.local_device_count()
+    if len(train_dataset) < total_train_batch_size:
+        raise ValueError(
+            f"Training batch size is {total_train_batch_size}, but your dataset only contains"
+            f" {len(train_dataset)} images. Please, use a larger dataset or reduce the effective batch size. Note that"
+            f" there are {jax.local_device_count()} parallel devices, so your batch size can't be smaller than that."
+        )
+
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=total_train_batch_size, shuffle=True, collate_fn=collate_fn, drop_last=True
     )
