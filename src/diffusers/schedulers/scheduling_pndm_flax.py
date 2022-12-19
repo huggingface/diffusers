@@ -390,13 +390,6 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
             )
 
         # NOTE: There is no way to check in the jitted runtime if the prk mode was ran before
-        # if not self.config.skip_prk_steps and state.counter < 3:
-        #     raise ValueError(
-        #         f"{self.__class__} can only be run AFTER scheduler has been run "
-        #         "in 'prk' mode for at least 12 iterations "
-        #         "See: https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/pipeline_pndm.py "
-        #         "for more information."
-        #     )
 
         prev_timestep = timestep - self.config.num_train_timesteps // state.num_inference_steps
         prev_timestep = jnp.where(prev_timestep > 0, prev_timestep, 0)
