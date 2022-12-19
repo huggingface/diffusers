@@ -37,7 +37,7 @@ from .utils import (
     is_torch_version,
     logging,
 )
-from .utils.hub_utils import HF_HUB_OFFLINE
+from .hub_utils import HF_HUB_OFFLINE
 
 
 logger = logging.get_logger(__name__)

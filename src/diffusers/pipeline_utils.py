@@ -49,7 +49,7 @@ from .utils import (
     is_transformers_available,
     logging,
 )
-from .utils.hub_utils import HF_HUB_OFFLINE
+from .hub_utils import HF_HUB_OFFLINE
 
 
 if is_transformers_available():
