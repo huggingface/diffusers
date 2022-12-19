@@ -425,7 +425,7 @@ class StableDiffusionInpaintLegacyPipelineSlowTests(unittest.TestCase):
         callback_fn.has_been_called = False
 
         pipe = StableDiffusionInpaintPipelineLegacy.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", safety_checker=None, revision="fp16", torch_dtype=torch.float16
+            "CompVis/stable-diffusion-v1-4", safety_checker=None, torch_dtype=torch.float16
         )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)

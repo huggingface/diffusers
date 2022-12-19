@@ -68,7 +68,7 @@ class WildcardStableDiffusionPipeline(DiffusionPipeline):
     Example Usage:
         pipe = WildcardStableDiffusionPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4",
-            revision="fp16",
+
             torch_dtype=torch.float16,
         )
         prompt = "__animal__ sitting on a __object__ wearing a __clothing__"

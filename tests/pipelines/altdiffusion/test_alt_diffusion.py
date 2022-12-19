@@ -248,9 +248,7 @@ class AltDiffusionPipelineIntegrationTests(unittest.TestCase):
     def test_alt_diffusion_text2img_pipeline_fp16(self):
         torch.cuda.reset_peak_memory_stats()
         model_id = "BAAI/AltDiffusion"
-        pipe = AltDiffusionPipeline.from_pretrained(
-            model_id, revision="fp16", torch_dtype=torch.float16, safety_checker=None
-        )
+        pipe = AltDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16, safety_checker=None)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
