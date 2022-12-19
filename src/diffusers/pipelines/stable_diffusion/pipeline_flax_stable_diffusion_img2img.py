@@ -267,7 +267,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
         prompt_ids: jnp.array,
         image: jnp.array,
         params: Union[Dict, FrozenDict],
-        prng_seed: Union[jax.random.KeyArray, jax.Array],
+        prng_seed: jax.random.KeyArray,
         num_inference_steps: int = 50,
         height: int = 512,
         width: int = 512,
