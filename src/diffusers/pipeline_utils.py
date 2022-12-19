@@ -49,6 +49,7 @@ from .utils import (
     is_transformers_available,
     logging,
 )
+from .utils.hub_utils import HF_HUB_OFFLINE
 
 
 if is_transformers_available():
@@ -441,7 +442,7 @@ class DiffusionPipeline(ConfigMixin):
         resume_download = kwargs.pop("resume_download", False)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
-        local_files_only = kwargs.pop("local_files_only", False)
+        local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)

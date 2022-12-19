@@ -37,6 +37,7 @@ from .utils import (
     is_torch_version,
     logging,
 )
+from .utils.hub_utils import HF_HUB_OFFLINE
 
 
 logger = logging.get_logger(__name__)
@@ -376,7 +377,7 @@ class ModelMixin(torch.nn.Module):
         resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
         output_loading_info = kwargs.pop("output_loading_info", False)
-        local_files_only = kwargs.pop("local_files_only", False)
+        local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
