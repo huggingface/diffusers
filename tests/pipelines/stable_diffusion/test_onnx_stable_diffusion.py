@@ -18,8 +18,16 @@ import unittest
 
 import numpy as np
 
-from diffusers import DDIMScheduler, LMSDiscreteScheduler, OnnxStableDiffusionPipeline
-from diffusers.utils.testing_utils import is_onnx_available, require_onnxruntime, require_torch_gpu, slow
+from diffusers import (
+    DDIMScheduler,
+    DPMSolverMultistepScheduler,
+    EulerAncestralDiscreteScheduler,
+    EulerDiscreteScheduler,
+    LMSDiscreteScheduler,
+    OnnxStableDiffusionPipeline,
+    PNDMScheduler,
+)
+from diffusers.utils.testing_utils import is_onnx_available, nightly, require_onnxruntime, require_torch_gpu
 
 from ...test_pipelines_onnx_common import OnnxPipelineTesterMixin
 
@@ -29,11 +37,98 @@ if is_onnx_available():
 
 
 class OnnxStableDiffusionPipelineFastTests(OnnxPipelineTesterMixin, unittest.TestCase):
-    # FIXME: add fast tests
-    pass
+    hub_checkpoint = "hf-internal-testing/tiny-random-OnnxStableDiffusionPipeline"
+
+    def get_dummy_inputs(self, seed=0):
+        generator = np.random.RandomState(seed)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 7.5,
+            "output_type": "numpy",
+        }
+        return inputs
+
+    def test_pipeline_default_ddim(self):
+        pipe = OnnxStableDiffusionPipeline.from_pretrained(self.hub_checkpoint, provider="CPUExecutionProvider")
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs()
+        image = pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 128, 128, 3)
+        expected_slice = np.array([0.65072, 0.58492, 0.48219, 0.55521, 0.53180, 0.55939, 0.50697, 0.39800, 0.46455])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_pipeline_pndm(self):
+        pipe = OnnxStableDiffusionPipeline.from_pretrained(self.hub_checkpoint, provider="CPUExecutionProvider")
+        pipe.scheduler = PNDMScheduler.from_config(pipe.scheduler.config, skip_prk_steps=True)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs()
+        image = pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 128, 128, 3)
+        expected_slice = np.array([0.65863, 0.59425, 0.49326, 0.56313, 0.53875, 0.56627, 0.51065, 0.39777, 0.46330])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_pipeline_lms(self):
+        pipe = OnnxStableDiffusionPipeline.from_pretrained(self.hub_checkpoint, provider="CPUExecutionProvider")
+        pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs()
+        image = pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 128, 128, 3)
+        expected_slice = np.array([0.53755, 0.60786, 0.47402, 0.49488, 0.51869, 0.49819, 0.47985, 0.38957, 0.44279])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_pipeline_euler(self):
+        pipe = OnnxStableDiffusionPipeline.from_pretrained(self.hub_checkpoint, provider="CPUExecutionProvider")
+        pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs()
+        image = pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 128, 128, 3)
+        expected_slice = np.array([0.53755, 0.60786, 0.47402, 0.49488, 0.51869, 0.49819, 0.47985, 0.38957, 0.44279])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_pipeline_euler_ancestral(self):
+        pipe = OnnxStableDiffusionPipeline.from_pretrained(self.hub_checkpoint, provider="CPUExecutionProvider")
+        pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(pipe.scheduler.config)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs()
+        image = pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 128, 128, 3)
+        expected_slice = np.array([0.53817, 0.60812, 0.47384, 0.49530, 0.51894, 0.49814, 0.47984, 0.38958, 0.44271])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_pipeline_dpm_multistep(self):
+        pipe = OnnxStableDiffusionPipeline.from_pretrained(self.hub_checkpoint, provider="CPUExecutionProvider")
+        pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs()
+        image = pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 128, 128, 3)
+        expected_slice = np.array([0.53895, 0.60808, 0.47933, 0.49608, 0.51886, 0.49950, 0.48053, 0.38957, 0.44200])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
 
-@slow
+@nightly
 @require_onnxruntime
 @require_torch_gpu
 class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):

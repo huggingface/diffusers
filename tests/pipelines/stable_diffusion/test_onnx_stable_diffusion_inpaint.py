@@ -18,7 +18,13 @@ import unittest
 import numpy as np
 
 from diffusers import LMSDiscreteScheduler, OnnxStableDiffusionInpaintPipeline
-from diffusers.utils.testing_utils import is_onnx_available, load_image, require_onnxruntime, require_torch_gpu, slow
+from diffusers.utils.testing_utils import (
+    is_onnx_available,
+    load_image,
+    nightly,
+    require_onnxruntime,
+    require_torch_gpu,
+)
 
 from ...test_pipelines_onnx_common import OnnxPipelineTesterMixin
 
@@ -32,7 +38,7 @@ class OnnxStableDiffusionPipelineFastTests(OnnxPipelineTesterMixin, unittest.Tes
     pass
 
 
-@slow
+@nightly
 @require_onnxruntime
 @require_torch_gpu
 class OnnxStableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):

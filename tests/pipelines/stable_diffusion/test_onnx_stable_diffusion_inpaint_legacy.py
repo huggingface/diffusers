@@ -22,9 +22,9 @@ from diffusers.utils.testing_utils import (
     is_onnx_available,
     load_image,
     load_numpy,
+    nightly,
     require_onnxruntime,
     require_torch_gpu,
-    slow,
 )
 
 
@@ -32,7 +32,7 @@ if is_onnx_available():
     import onnxruntime as ort
 
 
-@slow
+@nightly
 @require_onnxruntime
 @require_torch_gpu
 class StableDiffusionOnnxInpaintLegacyPipelineIntegrationTests(unittest.TestCase):

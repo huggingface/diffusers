@@ -430,8 +430,9 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         guidance_scale: Optional[float] = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
+        add_predicted_noise: Optional[bool] = False,
         eta: Optional[float] = 0.0,
-        generator: Optional[torch.Generator] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
@@ -471,12 +472,15 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
                 if `guidance_scale` is less than `1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
+            add_predicted_noise (`bool`, *optional*, defaults to True):
+                Use predicted noise instead of random noise when constructing noisy versions of the original image in
+                the reverse diffusion process
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
                 [`schedulers.DDIMScheduler`], will be ignored for others.
             generator (`torch.Generator`, *optional*):
-                A [torch generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
-                deterministic.
+                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
+                to make generation deterministic.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -561,7 +565,12 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
                 # masking
-                init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, torch.tensor([t]))
+                if add_predicted_noise:
+                    init_latents_proper = self.scheduler.add_noise(
+                        init_latents_orig, noise_pred_uncond, torch.tensor([t])
+                    )
+                else:
+                    init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, torch.tensor([t]))
 
                 latents = (init_latents_proper * mask) + (latents * (1 - mask))
 

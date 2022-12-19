@@ -26,6 +26,10 @@
       title: "Text-Guided Image-to-Image"
     - local: using-diffusers/inpaint
       title: "Text-Guided Image-Inpainting"
+    - local: using-diffusers/depth2img
+      title: "Text-Guided Depth-to-Image"
+    - local: using-diffusers/reusing_seeds
+      title: "Reusing seeds for deterministic generation"
     - local: using-diffusers/custom_pipeline_examples
       title: "Community Pipelines"
     - local: using-diffusers/contribute_pipeline
@@ -43,6 +47,8 @@
 - sections:
   - local: optimization/fp16
     title: "Memory and Speed"
+  - local: optimization/xformers
+    title: "xFormers"
   - local: optimization/onnx
     title: "ONNX"
   - local: optimization/open_vino
@@ -76,8 +82,6 @@
   - sections:
     - local: api/models
       title: "Models"
-    - local: api/schedulers
-      title: "Schedulers"
     - local: api/diffusion_pipeline
       title: "Diffusion Pipeline"
     - local: api/logging
@@ -118,6 +122,8 @@
       title: "Stochastic Karras VE"
     - local: api/pipelines/dance_diffusion
       title: "Dance Diffusion"
+    - local: api/pipelines/unclip
+      title: "UnCLIP"
     - local: api/pipelines/versatile_diffusion
       title: "Versatile Diffusion"
     - local: api/pipelines/vq_diffusion
@@ -127,6 +133,44 @@
     - local: api/pipelines/audio_diffusion
       title: "Audio Diffusion"
     title: "Pipelines"
+  - sections:
+    - local: api/schedulers/overview
+      title: "Overview"
+    - local: api/schedulers/ddim
+      title: "DDIM"
+    - local: api/schedulers/ddpm
+      title: "DDPM"
+    - local: api/schedulers/singlestep_dpm_solver
+      title: "Singlestep DPM-Solver"
+    - local: api/schedulers/multistep_dpm_solver
+      title: "Multistep DPM-Solver"
+    - local: api/schedulers/heun
+      title: "Heun Scheduler"
+    - local: api/schedulers/dpm_discrete
+      title: "DPM Discrete Scheduler"
+    - local: api/schedulers/dpm_discrete_ancestral
+      title: "DPM Discrete Scheduler with ancestral sampling"
+    - local: api/schedulers/stochastic_karras_ve
+      title: "Stochastic Kerras VE"
+    - local: api/schedulers/lms_discrete
+      title: "Linear Multistep"
+    - local: api/schedulers/pndm
+      title: "PNDM"
+    - local: api/schedulers/score_sde_ve
+      title: "VE-SDE"
+    - local: api/schedulers/ipndm
+      title: "IPNDM"
+    - local: api/schedulers/score_sde_vp
+      title: "VP-SDE"
+    - local: api/schedulers/euler
+      title: "Euler scheduler"
+    - local: api/schedulers/euler_ancestral
+      title: "Euler Ancestral Scheduler"
+    - local: api/schedulers/vq_diffusion
+      title: "VQDiffusionScheduler"
+    - local: api/schedulers/repaint
+      title: "RePaint Scheduler"      
+    title: "Schedulers"
   - sections:
     - local: api/experimental/rl
       title: "RL Planning"
