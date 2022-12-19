@@ -471,6 +471,18 @@ class AltDiffusionPipeline(DiffusionPipeline):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
 
+        Examples:
+        ```py
+        >>> import torch
+        >>> from diffusers import AltDiffusionPipeline
+
+        >>> pipe = AltDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+        >>> pipe = pipe.to("cuda")
+
+        >>> prompt = "a photo of an astronaut riding a horse on mars"
+        >>> image = pipe(prompt).images[0]
+        ```
+
         Returns:
             [`~pipelines.stable_diffusion.AltDiffusionPipelineOutput`] or `tuple`:
             [`~pipelines.stable_diffusion.AltDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.

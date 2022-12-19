@@ -514,6 +514,32 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
+        Examples:
+
+        ```py
+        >>> import requests
+        >>> import torch
+        >>> from PIL import Image
+        >>> from io import BytesIO
+
+        >>> from diffusers import AltDiffusionImg2ImgPipeline
+
+        >>> device = "cuda"
+        >>> model_id_or_path = "runwayml/stable-diffusion-v1-5"
+        >>> pipe = AltDiffusionImg2ImgPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16)
+        >>> pipe = pipe.to(device)
+
+        >>> url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
+
+        >>> response = requests.get(url)
+        >>> init_image = Image.open(BytesIO(response.content)).convert("RGB")
+        >>> init_image = init_image.resize((768, 512))
+
+        >>> prompt = "A fantasy landscape, trending on artstation"
+
+        >>> images = pipe(prompt=prompt, image=init_image, strength=0.75, guidance_scale=7.5).images
+        >>> images[0].save("fantasy_landscape.png")
+        ```
 
         Returns:
             [`~pipelines.stable_diffusion.AltDiffusionPipelineOutput`] or `tuple`:
