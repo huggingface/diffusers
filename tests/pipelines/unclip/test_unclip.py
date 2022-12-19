@@ -261,10 +261,10 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
     def test_unclip_karlo(self):
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/unclip/karlo_v1_alpha_horse.npy"
+            "/unclip/karlo_v1_alpha_horse_fp16.npy"
         )
 
-        pipeline = UnCLIPPipeline.from_pretrained("kakaobrain/karlo-v1-alpha")
+        pipeline = UnCLIPPipeline.from_pretrained("kakaobrain/karlo-v1-alpha", torch_dtype=torch.float16)
         pipeline = pipeline.to(torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
@@ -280,3 +280,29 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (256, 256, 3)
         assert np.abs(expected_image - image).max() < 1e-2
+
+    def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
+        torch.cuda.empty_cache()
+        torch.cuda.reset_max_memory_allocated()
+        torch.cuda.reset_peak_memory_stats()
+
+        pipe = UnCLIPPipeline.from_pretrained("kakaobrain/karlo-v1-alpha")
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+        pipe.enable_sequential_cpu_offload()
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        _ = pipe(
+            "horse",
+            num_images_per_prompt=1,
+            generator=generator,
+            prior_num_inference_steps=2,
+            decoder_num_inference_steps=2,
+            super_res_num_inference_steps=2,
+            output_type="np",
+        )
+
+        mem_bytes = torch.cuda.max_memory_allocated()
+        # make sure that less than 1.5 GB is allocated
+        assert mem_bytes < 1.5 * 10**9
