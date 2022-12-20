@@ -28,6 +28,7 @@ from flax import jax_utils
 from flax.training import train_state
 from flax.training.common_utils import shard
 from huggingface_hub import HfFolder, Repository, whoami
+from jax.experimental.compilation_cache import compilation_cache as cc
 from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -36,6 +37,9 @@ from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel,
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.10.0.dev0")
+
+# Cache compiled models across invocations of this script.
+cc.initialize_cache(os.path.expanduser("~/.cache/jax/compilation_cache"))
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +52,19 @@ def parse_args():
         default=None,
         required=True,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--pretrained_vae_name_or_path",
+        type=str,
+        default=None,
+        help="Path to pretrained vae or vae identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--revision",
+        type=str,
+        default=None,
+        required=False,
+        help="Revision of pretrained model identifier from huggingface.co/models.",
     )
     parser.add_argument(
         "--tokenizer_name",
@@ -103,6 +120,7 @@ def parse_args():
         default="text-inversion-model",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
+    parser.add_argument("--save_steps", type=int, default=150, help="Save checkpoint every X updates steps.")
     parser.add_argument("--seed", type=int, default=0, help="A seed for reproducible training.")
     parser.add_argument(
         "--resolution",
@@ -332,7 +350,7 @@ def main():
 
         if cur_class_images < args.num_class_images:
             pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
-                args.pretrained_model_name_or_path, safety_checker=None
+                args.pretrained_model_name_or_path, safety_checker=None, revision=args.revision
             )
             pipeline.set_progress_bar_config(disable=True)
 
@@ -383,7 +401,11 @@ def main():
     if args.tokenizer_name:
         tokenizer = CLIPTokenizer.from_pretrained(args.tokenizer_name)
     elif args.pretrained_model_name_or_path:
-        tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer")
+        tokenizer = CLIPTokenizer.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
+        )
+    else:
+        raise NotImplementedError("No tokenizer specified!")
 
     train_dataset = DreamBoothDataset(
         instance_data_root=args.instance_data_dir,
@@ -437,15 +459,22 @@ def main():
     elif args.mixed_precision == "bf16":
         weight_dtype = jnp.bfloat16
 
+    if args.pretrained_vae_name_or_path:
+        vae_arg, vae_kwargs = (args.pretrained_vae_name_or_path, {"from_pt": True})
+    else:
+        vae_arg, vae_kwargs = (args.pretrained_model_name_or_path, {"subfolder": "vae", "revision": args.revision})
+
     # Load models and create wrapper for stable diffusion
     text_encoder = FlaxCLIPTextModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", dtype=weight_dtype
+        args.pretrained_model_name_or_path, subfolder="text_encoder", dtype=weight_dtype, revision=args.revision
     )
     vae, vae_params = FlaxAutoencoderKL.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="vae", dtype=weight_dtype
+        vae_arg,
+        dtype=weight_dtype,
+        **vae_kwargs,
     )
     unet, unet_params = FlaxUNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", dtype=weight_dtype
+        args.pretrained_model_name_or_path, subfolder="unet", dtype=weight_dtype, revision=args.revision
     )
 
     # Optimization
@@ -590,37 +619,10 @@ def main():
     logger.info(f"  Total train batch size (w. parallel & distributed) = {total_train_batch_size}")
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
 
-    global_step = 0
-
-    epochs = tqdm(range(args.num_train_epochs), desc="Epoch ... ", position=0)
-    for epoch in epochs:
-        # ======================== Training ================================
-
-        train_metrics = []
-
-        steps_per_epoch = len(train_dataset) // total_train_batch_size
-        train_step_progress_bar = tqdm(total=steps_per_epoch, desc="Training...", position=1, leave=False)
-        # train
-        for batch in train_dataloader:
-            batch = shard(batch)
-            unet_state, text_encoder_state, train_metric, train_rngs = p_train_step(
-                unet_state, text_encoder_state, vae_params, batch, train_rngs
-            )
-            train_metrics.append(train_metric)
-
-            train_step_progress_bar.update(1)
-
-            global_step += 1
-            if global_step >= args.max_train_steps:
-                break
-
-        train_metric = jax_utils.unreplicate(train_metric)
-
-        train_step_progress_bar.close()
-        epochs.write(f"Epoch... ({epoch + 1}/{args.num_train_epochs} | Loss: {train_metric['loss']})")
-
-    # Create the pipeline using using the trained modules and save it.
-    if jax.process_index() == 0:
+    def checkpoint(step):
+        # Create the pipeline using using the trained modules and save it.
+        if jax.process_index() != 0:
+            return
         scheduler = FlaxPNDMScheduler(
             beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", skip_prk_steps=True
         )
@@ -649,6 +651,40 @@ def main():
 
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
+
+    global_step = 0
+
+    epochs = tqdm(range(args.num_train_epochs), desc="Epoch ... ", position=0)
+    for epoch in epochs:
+        # ======================== Training ================================
+
+        train_metrics = []
+
+        steps_per_epoch = len(train_dataset) // total_train_batch_size
+        train_step_progress_bar = tqdm(total=steps_per_epoch, desc="Training...", position=1, leave=False)
+        # train
+        for batch in train_dataloader:
+            batch = shard(batch)
+            unet_state, text_encoder_state, train_metric, train_rngs = p_train_step(
+                unet_state, text_encoder_state, vae_params, batch, train_rngs
+            )
+            train_metrics.append(train_metric)
+
+            train_step_progress_bar.update(jax.local_device_count())
+
+            global_step += 1
+            if global_step % args.save_steps == 0:
+                checkpoint(global_step)
+            if global_step >= args.max_train_steps:
+                break
+
+        train_metric = jax_utils.unreplicate(train_metric)
+
+        train_step_progress_bar.close()
+        epochs.write(f"Epoch... ({epoch + 1}/{args.num_train_epochs} | Loss: {train_metric['loss']})")
+
+    if global_step % args.save_steps:
+        checkpoint(global_step)
 
 
 if __name__ == "__main__":
