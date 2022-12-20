@@ -140,7 +140,7 @@ class CrossAttention(nn.Module):
         # here we simply pass along all tensors to the selected processor class
         # For standard processors that are defined here, `**cross_attention_kwargs` is empty
         return self.processor(
-            self, hidden_states, encoder_hidden_states=None, attention_mask=None, **cross_attention_kwargs
+            self, hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask, **cross_attention_kwargs
         )
 
     def batch_to_head_dim(self, tensor):
