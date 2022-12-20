@@ -247,7 +247,7 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
 
-        latents = latents * np.float(self.scheduler.init_noise_sigma)
+        latents = latents * np.float64(self.scheduler.init_noise_sigma)
 
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
