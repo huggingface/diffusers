@@ -14,9 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 import os
 from functools import partial
-import inspect
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
