@@ -1297,7 +1297,7 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
             # attn
             hidden_states = attn(
                 hidden_states,
-                encoder_hidden_states=encoder_hidden_states.transpose(1, 2),
+                encoder_hidden_states=encoder_hidden_states,
                 attention_mask=attention_mask,
                 **cross_attention_kwargs,
             )
