@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -7,8 +7,8 @@ import torch.nn as nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...modeling_utils import ModelMixin
 from ...models.attention import CrossAttention, DualTransformer2DModel, Transformer2DModel
+from ...models.cross_attention import AttnProcessor, CrossAttnAddedKVProcessor
 from ...models.embeddings import TimestepEmbedding, Timesteps
-from ...models.unet_2d_blocks import UNetMidBlock2DSimpleCrossAttn as UNetMidBlockFlatSimpleCrossAttn
 from ...models.unet_2d_condition import UNet2DConditionOutput
 from ...utils import logging
 
@@ -1213,8 +1213,8 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         return hidden_states
 
 
-# Copied from diffusers.models.unet_2d_blocks.UNetMidBlock2DSimpleCrossAttn with UNetMidBlock2DSimpleCrossAttn->UNetMidBlockFlatCrossAttn, ResnetBlock2D->ResnetBlockFlat
-class UnCLIPUNetMidBlockFlatCrossAttn(nn.Module):
+# Copied from diffusers.models.unet_2d_blocks.UNetMidBlock2DSimpleCrossAttn with UNetMidBlock2DSimpleCrossAttn->UNetMidBlockFlatSimpleCrossAttn, ResnetBlock2D->ResnetBlockFlat
+class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
     def __init__(
         self,
         in_channels: int,
