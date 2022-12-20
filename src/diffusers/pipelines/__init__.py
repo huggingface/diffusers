@@ -3,6 +3,7 @@ from ..utils import (
     is_flax_available,
     is_k_diffusion_available,
     is_librosa_available,
+    is_note_seq_available,
     is_onnx_available,
     is_torch_available,
     is_transformers_available,
@@ -23,7 +24,6 @@ else:
     from .pndm import PNDMPipeline
     from .repaint import RePaintPipeline
     from .score_sde_ve import ScoreSdeVePipeline
-    from .spectrogram_diffusion import SpectrogramDiffusionPipeline
     from .stochastic_karras_ve import KarrasVePipeline
 
 try:
@@ -33,6 +33,14 @@ except OptionalDependencyNotAvailable:
     from ..utils.dummy_torch_and_librosa_objects import *  # noqa F403
 else:
     from .audio_diffusion import AudioDiffusionPipeline, Mel
+
+try:
+    if not (is_torch_available() and is_note_seq_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils.dummy_torch_and_note_seq_objects import *  # noqa F403
+else:
+    from .spectrogram_diffusion import SpectrogramDiffusionPipeline
 
 try:
     if not (is_torch_available() and is_transformers_available()):

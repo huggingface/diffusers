@@ -217,6 +217,13 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _k_diffusion_available = False
 
+_note_seq_available = importlib.util.find_spec("note_seq") is not None
+try:
+    _note_seq_version = importlib_metadata.version("note_seq")
+    logger.debug(f"Successfully imported note-seq version {_note_seq_version}")
+except importlib_metadata.PackageNotFoundError:
+    _note_seq_available = False
+
 
 def is_torch_available():
     return _torch_available
@@ -274,6 +281,10 @@ def is_k_diffusion_available():
     return _k_diffusion_available
 
 
+def is_note_seq_available():
+    return _note_seq_available
+
+
 # docstyle-ignore
 FLAX_IMPORT_ERROR = """
 {0} requires the FLAX library but it was not found in your environment. Checkout the instructions on the
@@ -328,6 +339,12 @@ K_DIFFUSION_IMPORT_ERROR = """
 install k-diffusion`
 """
 
+# docstyle-ignore
+NOTE_SEQ_IMPORT_ERROR = """
+{0} requires the note-seq library but it was not found in your environment. You can install it with pip: `pip
+install note-seq`
+"""
+
 
 BACKENDS_MAPPING = OrderedDict(
     [
@@ -340,6 +357,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("unidecode", (is_unidecode_available, UNIDECODE_IMPORT_ERROR)),
         ("librosa", (is_librosa_available, LIBROSA_IMPORT_ERROR)),
         ("k_diffusion", (is_k_diffusion_available, K_DIFFUSION_IMPORT_ERROR)),
+        ("note_seq", (is_note_seq_available, NOTE_SEQ_IMPORT_ERROR)),
     ]
 )
 
