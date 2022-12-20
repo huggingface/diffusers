@@ -120,7 +120,7 @@ def parse_args():
         default="text-inversion-model",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
-    parser.add_argument("--save_steps", type=int, default=150, help="Save checkpoint every X updates steps.")
+    parser.add_argument("--save_steps", type=int, default=None, help="Save a checkpoint every X steps.")
     parser.add_argument("--seed", type=int, default=0, help="A seed for reproducible training.")
     parser.add_argument(
         "--resolution",
@@ -639,8 +639,9 @@ def main():
             feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
         )
 
+        outdir = os.path.join(args.output_dir, str(step)) if args.save_steps else args.output_dir
         pipeline.save_pretrained(
-            args.output_dir,
+            outdir,
             params={
                 "text_encoder": get_params_to_save(text_encoder_state.params),
                 "vae": get_params_to_save(vae_params),
@@ -673,7 +674,7 @@ def main():
             train_step_progress_bar.update(jax.local_device_count())
 
             global_step += 1
-            if global_step % args.save_steps == 0:
+            if args.save_steps and global_step % args.save_steps == 0:
                 checkpoint(global_step)
             if global_step >= args.max_train_steps:
                 break
@@ -683,7 +684,7 @@ def main():
         train_step_progress_bar.close()
         epochs.write(f"Epoch... ({epoch + 1}/{args.num_train_epochs} | Loss: {train_metric['loss']})")
 
-    if global_step % args.save_steps:
+    if not args.save_steps or global_step % args.save_steps:
         checkpoint(global_step)
 
 
