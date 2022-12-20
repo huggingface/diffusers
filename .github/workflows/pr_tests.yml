@@ -59,7 +59,6 @@ jobs:
       run: |
         apt-get update && apt-get install libsndfile1-dev -y
         python -m pip install -e .[quality,test]
-        python -m pip install git+https://github.com/huggingface/accelerate
         python -m pip install -U git+https://github.com/huggingface/transformers
 
     - name: Environment
@@ -127,7 +126,6 @@ jobs:
         ${CONDA_RUN} python -m pip install --upgrade pip
         ${CONDA_RUN} python -m pip install -e .[quality,test]
         ${CONDA_RUN} python -m pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu
-        ${CONDA_RUN} python -m pip install git+https://github.com/huggingface/accelerate
         ${CONDA_RUN} python -m pip install -U git+https://github.com/huggingface/transformers
 
     - name: Environment
