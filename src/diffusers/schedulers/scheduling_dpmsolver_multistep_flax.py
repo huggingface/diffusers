@@ -14,7 +14,6 @@
 
 # DISCLAIMER: This file is strongly influenced by https://github.com/LuChengTHU/dpm-solver
 
-import math
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
@@ -26,57 +25,49 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import deprecate
 from .scheduling_utils_flax import (
     _FLAX_COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS,
+    CommonSchedulerState,
     FlaxSchedulerMixin,
     FlaxSchedulerOutput,
-    broadcast_to_shape_from_left,
+    add_noise_common,
 )
-
-
-def betas_for_alpha_bar(num_diffusion_timesteps: int, max_beta=0.999) -> jnp.ndarray:
-    """
-    Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
-    (1-beta) over time from t = [0,1].
-
-    Contains a function alpha_bar that takes an argument t and transforms it to the cumulative product of (1-beta) up
-    to that part of the diffusion process.
-
-
-    Args:
-        num_diffusion_timesteps (`int`): the number of betas to produce.
-        max_beta (`float`): the maximum beta to use; use values lower than 1 to
-                     prevent singularities.
-
-    Returns:
-        betas (`jnp.ndarray`): the betas used by the scheduler to step the model outputs
-    """
-
-    def alpha_bar(time_step):
-        return math.cos((time_step + 0.008) / 1.008 * math.pi / 2) ** 2
-
-    betas = []
-    for i in range(num_diffusion_timesteps):
-        t1 = i / num_diffusion_timesteps
-        t2 = (i + 1) / num_diffusion_timesteps
-        betas.append(min(1 - alpha_bar(t2) / alpha_bar(t1), max_beta))
-    return jnp.array(betas, dtype=jnp.float32)
 
 
 @flax.struct.dataclass
 class DPMSolverMultistepSchedulerState:
+    common: CommonSchedulerState
+    alpha_t: jnp.ndarray
+    sigma_t: jnp.ndarray
+    lambda_t: jnp.ndarray
+
     # setable values
+    init_noise_sigma: jnp.ndarray
+    timesteps: jnp.ndarray
     num_inference_steps: Optional[int] = None
-    timesteps: Optional[jnp.ndarray] = None
 
     # running values
     model_outputs: Optional[jnp.ndarray] = None
-    lower_order_nums: Optional[int] = None
-    step_index: Optional[int] = None
-    prev_timestep: Optional[int] = None
+    lower_order_nums: Optional[jnp.int32] = None
+    prev_timestep: Optional[jnp.int32] = None
     cur_sample: Optional[jnp.ndarray] = None
 
     @classmethod
-    def create(cls, num_train_timesteps: int):
-        return cls(timesteps=jnp.arange(0, num_train_timesteps)[::-1])
+    def create(
+        cls,
+        common: CommonSchedulerState,
+        alpha_t: jnp.ndarray,
+        sigma_t: jnp.ndarray,
+        lambda_t: jnp.ndarray,
+        init_noise_sigma: jnp.ndarray,
+        timesteps: jnp.ndarray,
+    ):
+        return cls(
+            common=common,
+            alpha_t=alpha_t,
+            sigma_t=sigma_t,
+            lambda_t=lambda_t,
+            init_noise_sigma=init_noise_sigma,
+            timesteps=timesteps,
+        )
 
 
 @dataclass
@@ -145,11 +136,14 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         lower_order_final (`bool`, default `True`):
             whether to use lower-order solvers in the final steps. Only valid for < 15 inference steps. We empirically
             find this trick can stabilize the sampling of DPM-Solver for steps < 15, especially for steps <= 10.
-
+        dtype (`jnp.dtype`, *optional*, defaults to `jnp.float32`):
+            the `dtype` used for params and computation.
     """
 
     _compatibles = _FLAX_COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
     _deprecated_kwargs = ["predict_epsilon"]
+
+    dtype: jnp.dtype
 
     @property
     def has_state(self):
@@ -171,47 +165,47 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         algorithm_type: str = "dpmsolver++",
         solver_type: str = "midpoint",
         lower_order_final: bool = True,
+        dtype: jnp.dtype = jnp.float32,
         **kwargs,
     ):
         message = (
             "Please make sure to instantiate your scheduler with `prediction_type` instead. E.g. `scheduler ="
-            " FlaxDPMSolverMultistepScheduler.from_pretrained(<model_id>, prediction_type='epsilon')`."
+            f" {self.__class__.__name__}.from_pretrained(<model_id>, prediction_type='epsilon')`."
         )
         predict_epsilon = deprecate("predict_epsilon", "0.13.0", message, take_from=kwargs)
         if predict_epsilon is not None:
             self.register_to_config(prediction_type="epsilon" if predict_epsilon else "sample")
 
-        if trained_betas is not None:
-            self.betas = jnp.asarray(trained_betas)
-        elif beta_schedule == "linear":
-            self.betas = jnp.linspace(beta_start, beta_end, num_train_timesteps, dtype=jnp.float32)
-        elif beta_schedule == "scaled_linear":
-            # this schedule is very specific to the latent diffusion model.
-            self.betas = jnp.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=jnp.float32) ** 2
-        elif beta_schedule == "squaredcos_cap_v2":
-            # Glide cosine schedule
-            self.betas = betas_for_alpha_bar(num_train_timesteps)
-        else:
-            raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+        self.dtype = dtype
 
-        self.alphas = 1.0 - self.betas
-        self.alphas_cumprod = jnp.cumprod(self.alphas, axis=0)
+    def create_state(self, common: Optional[CommonSchedulerState] = None) -> DPMSolverMultistepSchedulerState:
+        if common is None:
+            common = CommonSchedulerState.create(self)
+
         # Currently we only support VP-type noise schedule
-        self.alpha_t = jnp.sqrt(self.alphas_cumprod)
-        self.sigma_t = jnp.sqrt(1 - self.alphas_cumprod)
-        self.lambda_t = jnp.log(self.alpha_t) - jnp.log(self.sigma_t)
-
-        # standard deviation of the initial noise distribution
-        self.init_noise_sigma = 1.0
+        alpha_t = jnp.sqrt(common.alphas_cumprod)
+        sigma_t = jnp.sqrt(1 - common.alphas_cumprod)
+        lambda_t = jnp.log(alpha_t) - jnp.log(sigma_t)
 
         # settings for DPM-Solver
-        if algorithm_type not in ["dpmsolver", "dpmsolver++"]:
-            raise NotImplementedError(f"{algorithm_type} does is not implemented for {self.__class__}")
-        if solver_type not in ["midpoint", "heun"]:
-            raise NotImplementedError(f"{solver_type} does is not implemented for {self.__class__}")
+        if self.config.algorithm_type not in ["dpmsolver", "dpmsolver++"]:
+            raise NotImplementedError(f"{self.config.algorithm_type} does is not implemented for {self.__class__}")
+        if self.config.solver_type not in ["midpoint", "heun"]:
+            raise NotImplementedError(f"{self.config.solver_type} does is not implemented for {self.__class__}")
 
-    def create_state(self):
-        return DPMSolverMultistepSchedulerState.create(num_train_timesteps=self.config.num_train_timesteps)
+        # standard deviation of the initial noise distribution
+        init_noise_sigma = jnp.array(1.0, dtype=self.dtype)
+
+        timesteps = jnp.arange(0, self.config.num_train_timesteps).round()[::-1]
+
+        return DPMSolverMultistepSchedulerState.create(
+            common=common,
+            alpha_t=alpha_t,
+            sigma_t=sigma_t,
+            lambda_t=lambda_t,
+            init_noise_sigma=init_noise_sigma,
+            timesteps=timesteps,
+        )
 
     def set_timesteps(
         self, state: DPMSolverMultistepSchedulerState, num_inference_steps: int, shape: Tuple
@@ -227,24 +221,32 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
             shape (`Tuple`):
                 the shape of the samples to be generated.
         """
+
         timesteps = (
             jnp.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps + 1)
             .round()[::-1][:-1]
             .astype(jnp.int32)
         )
 
+        # initial running values
+
+        model_outputs = jnp.zeros((self.config.solver_order,) + shape, dtype=self.dtype)
+        lower_order_nums = jnp.int32(0)
+        prev_timestep = jnp.int32(-1)
+        cur_sample = jnp.zeros(shape, dtype=self.dtype)
+
         return state.replace(
             num_inference_steps=num_inference_steps,
             timesteps=timesteps,
-            model_outputs=jnp.zeros((self.config.solver_order,) + shape),
-            lower_order_nums=0,
-            step_index=0,
-            prev_timestep=-1,
-            cur_sample=jnp.zeros(shape),
+            model_outputs=model_outputs,
+            lower_order_nums=lower_order_nums,
+            prev_timestep=prev_timestep,
+            cur_sample=cur_sample,
         )
 
     def convert_model_output(
         self,
+        state: DPMSolverMultistepSchedulerState,
         model_output: jnp.ndarray,
         timestep: int,
         sample: jnp.ndarray,
@@ -271,12 +273,12 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         # DPM-Solver++ needs to solve an integral of the data prediction model.
         if self.config.algorithm_type == "dpmsolver++":
             if self.config.prediction_type == "epsilon":
-                alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
+                alpha_t, sigma_t = state.alpha_t[timestep], state.sigma_t[timestep]
                 x0_pred = (sample - sigma_t * model_output) / alpha_t
             elif self.config.prediction_type == "sample":
                 x0_pred = model_output
             elif self.config.prediction_type == "v_prediction":
-                alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
+                alpha_t, sigma_t = state.alpha_t[timestep], state.sigma_t[timestep]
                 x0_pred = alpha_t * sample - sigma_t * model_output
             else:
                 raise ValueError(
@@ -299,11 +301,11 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
             if self.config.prediction_type == "epsilon":
                 return model_output
             elif self.config.prediction_type == "sample":
-                alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
+                alpha_t, sigma_t = state.alpha_t[timestep], state.sigma_t[timestep]
                 epsilon = (sample - alpha_t * model_output) / sigma_t
                 return epsilon
             elif self.config.prediction_type == "v_prediction":
-                alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
+                alpha_t, sigma_t = state.alpha_t[timestep], state.sigma_t[timestep]
                 epsilon = alpha_t * model_output + sigma_t * sample
                 return epsilon
             else:
@@ -313,7 +315,12 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
                 )
 
     def dpm_solver_first_order_update(
-        self, model_output: jnp.ndarray, timestep: int, prev_timestep: int, sample: jnp.ndarray
+        self,
+        state: DPMSolverMultistepSchedulerState,
+        model_output: jnp.ndarray,
+        timestep: int,
+        prev_timestep: int,
+        sample: jnp.ndarray,
     ) -> jnp.ndarray:
         """
         One step for the first-order DPM-Solver (equivalent to DDIM).
@@ -332,9 +339,9 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         """
         t, s0 = prev_timestep, timestep
         m0 = model_output
-        lambda_t, lambda_s = self.lambda_t[t], self.lambda_t[s0]
-        alpha_t, alpha_s = self.alpha_t[t], self.alpha_t[s0]
-        sigma_t, sigma_s = self.sigma_t[t], self.sigma_t[s0]
+        lambda_t, lambda_s = state.lambda_t[t], state.lambda_t[s0]
+        alpha_t, alpha_s = state.alpha_t[t], state.alpha_t[s0]
+        sigma_t, sigma_s = state.sigma_t[t], state.sigma_t[s0]
         h = lambda_t - lambda_s
         if self.config.algorithm_type == "dpmsolver++":
             x_t = (sigma_t / sigma_s) * sample - (alpha_t * (jnp.exp(-h) - 1.0)) * m0
@@ -344,6 +351,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
 
     def multistep_dpm_solver_second_order_update(
         self,
+        state: DPMSolverMultistepSchedulerState,
         model_output_list: jnp.ndarray,
         timestep_list: List[int],
         prev_timestep: int,
@@ -365,9 +373,9 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         """
         t, s0, s1 = prev_timestep, timestep_list[-1], timestep_list[-2]
         m0, m1 = model_output_list[-1], model_output_list[-2]
-        lambda_t, lambda_s0, lambda_s1 = self.lambda_t[t], self.lambda_t[s0], self.lambda_t[s1]
-        alpha_t, alpha_s0 = self.alpha_t[t], self.alpha_t[s0]
-        sigma_t, sigma_s0 = self.sigma_t[t], self.sigma_t[s0]
+        lambda_t, lambda_s0, lambda_s1 = state.lambda_t[t], state.lambda_t[s0], state.lambda_t[s1]
+        alpha_t, alpha_s0 = state.alpha_t[t], state.alpha_t[s0]
+        sigma_t, sigma_s0 = state.sigma_t[t], state.sigma_t[s0]
         h, h_0 = lambda_t - lambda_s0, lambda_s0 - lambda_s1
         r0 = h_0 / h
         D0, D1 = m0, (1.0 / r0) * (m0 - m1)
@@ -403,6 +411,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
 
     def multistep_dpm_solver_third_order_update(
         self,
+        state: DPMSolverMultistepSchedulerState,
         model_output_list: jnp.ndarray,
         timestep_list: List[int],
         prev_timestep: int,
@@ -425,13 +434,13 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         t, s0, s1, s2 = prev_timestep, timestep_list[-1], timestep_list[-2], timestep_list[-3]
         m0, m1, m2 = model_output_list[-1], model_output_list[-2], model_output_list[-3]
         lambda_t, lambda_s0, lambda_s1, lambda_s2 = (
-            self.lambda_t[t],
-            self.lambda_t[s0],
-            self.lambda_t[s1],
-            self.lambda_t[s2],
+            state.lambda_t[t],
+            state.lambda_t[s0],
+            state.lambda_t[s1],
+            state.lambda_t[s2],
         )
-        alpha_t, alpha_s0 = self.alpha_t[t], self.alpha_t[s0]
-        sigma_t, sigma_s0 = self.sigma_t[t], self.sigma_t[s0]
+        alpha_t, alpha_s0 = state.alpha_t[t], state.alpha_t[s0]
+        sigma_t, sigma_s0 = state.sigma_t[t], state.sigma_t[s0]
         h, h_0, h_1 = lambda_t - lambda_s0, lambda_s0 - lambda_s1, lambda_s1 - lambda_s2
         r0, r1 = h_0 / h, h_1 / h
         D0 = m0
@@ -482,14 +491,17 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
             `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
-        prev_timestep = jax.lax.cond(
-            state.step_index == len(state.timesteps) - 1,
-            lambda _: 0,
-            lambda _: state.timesteps[state.step_index + 1],
-            (),
-        )
+        if state.num_inference_steps is None:
+            raise ValueError(
+                "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
+            )
 
-        model_output = self.convert_model_output(model_output, timestep, sample)
+        (step_index,) = jnp.where(state.timesteps == timestep, size=1)
+        step_index = step_index[0]
+
+        prev_timestep = jax.lax.select(step_index == len(state.timesteps) - 1, 0, state.timesteps[step_index + 1])
+
+        model_output = self.convert_model_output(state, model_output, timestep, sample)
 
         model_outputs_new = jnp.roll(state.model_outputs, -1, axis=0)
         model_outputs_new = model_outputs_new.at[-1].set(model_output)
@@ -501,16 +513,18 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
 
         def step_1(state: DPMSolverMultistepSchedulerState) -> jnp.ndarray:
             return self.dpm_solver_first_order_update(
+                state,
                 state.model_outputs[-1],
-                state.timesteps[state.step_index],
+                state.timesteps[step_index],
                 state.prev_timestep,
                 state.cur_sample,
             )
 
         def step_23(state: DPMSolverMultistepSchedulerState) -> jnp.ndarray:
             def step_2(state: DPMSolverMultistepSchedulerState) -> jnp.ndarray:
-                timestep_list = jnp.array([state.timesteps[state.step_index - 1], state.timesteps[state.step_index]])
+                timestep_list = jnp.array([state.timesteps[step_index - 1], state.timesteps[step_index]])
                 return self.multistep_dpm_solver_second_order_update(
+                    state,
                     state.model_outputs,
                     timestep_list,
                     state.prev_timestep,
@@ -520,65 +534,67 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
             def step_3(state: DPMSolverMultistepSchedulerState) -> jnp.ndarray:
                 timestep_list = jnp.array(
                     [
-                        state.timesteps[state.step_index - 2],
-                        state.timesteps[state.step_index - 1],
-                        state.timesteps[state.step_index],
+                        state.timesteps[step_index - 2],
+                        state.timesteps[step_index - 1],
+                        state.timesteps[step_index],
                     ]
                 )
                 return self.multistep_dpm_solver_third_order_update(
+                    state,
                     state.model_outputs,
                     timestep_list,
                     state.prev_timestep,
                     state.cur_sample,
                 )
 
+            step_2_output = step_2(state)
+            step_3_output = step_3(state)
+
             if self.config.solver_order == 2:
-                return step_2(state)
+                return step_2_output
             elif self.config.lower_order_final and len(state.timesteps) < 15:
-                return jax.lax.cond(
+                return jax.lax.select(
                     state.lower_order_nums < 2,
-                    step_2,
-                    lambda state: jax.lax.cond(
-                        state.step_index == len(state.timesteps) - 2,
-                        step_2,
-                        step_3,
-                        state,
+                    step_2_output,
+                    jax.lax.select(
+                        step_index == len(state.timesteps) - 2,
+                        step_2_output,
+                        step_3_output,
                     ),
-                    state,
                 )
             else:
-                return jax.lax.cond(
+                return jax.lax.select(
                     state.lower_order_nums < 2,
-                    step_2,
-                    step_3,
-                    state,
+                    step_2_output,
+                    step_3_output,
                 )
 
+        step_1_output = step_1(state)
+        step_23_output = step_23(state)
+
         if self.config.solver_order == 1:
-            prev_sample = step_1(state)
+            prev_sample = step_1_output
+
         elif self.config.lower_order_final and len(state.timesteps) < 15:
-            prev_sample = jax.lax.cond(
+            prev_sample = jax.lax.select(
                 state.lower_order_nums < 1,
-                step_1,
-                lambda state: jax.lax.cond(
-                    state.step_index == len(state.timesteps) - 1,
-                    step_1,
-                    step_23,
-                    state,
+                step_1_output,
+                jax.lax.select(
+                    step_index == len(state.timesteps) - 1,
+                    step_1_output,
+                    step_23_output,
                 ),
-                state,
             )
+
         else:
-            prev_sample = jax.lax.cond(
+            prev_sample = jax.lax.select(
                 state.lower_order_nums < 1,
-                step_1,
-                step_23,
-                state,
+                step_1_output,
+                step_23_output,
             )
 
         state = state.replace(
             lower_order_nums=jnp.minimum(state.lower_order_nums + 1, self.config.solver_order),
-            step_index=(state.step_index + 1),
         )
 
         if not return_dict:
@@ -606,20 +622,12 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
 
     def add_noise(
         self,
+        state: DPMSolverMultistepSchedulerState,
         original_samples: jnp.ndarray,
         noise: jnp.ndarray,
         timesteps: jnp.ndarray,
     ) -> jnp.ndarray:
-        sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
-        sqrt_alpha_prod = sqrt_alpha_prod.flatten()
-        sqrt_alpha_prod = broadcast_to_shape_from_left(sqrt_alpha_prod, original_samples.shape)
-
-        sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.0
-        sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
-        sqrt_one_minus_alpha_prod = broadcast_to_shape_from_left(sqrt_one_minus_alpha_prod, original_samples.shape)
-
-        noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
-        return noisy_samples
+        return add_noise_common(state.common, original_samples, noise, timesteps)
 
     def __len__(self):
         return self.config.num_train_timesteps

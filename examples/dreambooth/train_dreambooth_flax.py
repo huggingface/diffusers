@@ -475,6 +475,7 @@ def main():
     noise_scheduler = FlaxDDPMScheduler(
         beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000
     )
+    noise_scheduler_state = noise_scheduler.create_state()
 
     # Initialize our training
     train_rngs = jax.random.split(rng, jax.local_device_count())
@@ -511,7 +512,7 @@ def main():
 
             # Add noise to the latents according to the noise magnitude at each timestep
             # (this is the forward diffusion process)
-            noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+            noisy_latents = noise_scheduler.add_noise(noise_scheduler_state, latents, noise, timesteps)
 
             # Get the text embedding for conditioning
             if args.train_text_encoder:
