@@ -16,6 +16,7 @@
 
 import os
 from functools import partial
+import inspect
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
@@ -489,8 +490,11 @@ class ModelMixin(torch.nn.Module):
                 state_dict = load_state_dict(model_file)
                 # move the parms from meta device to cpu
                 for param_name, param in state_dict.items():
-                    set_module_tensor_to_device(model, param_name, param_device, value=param)
-                    # TODO(Patrick) - check whether dtype conversion should be handled here or kwarg is added
+                    accepts_dtype = "dtype" in set(inspect.signature(set_module_tensor_to_device).parameters.keys())
+                    if accepts_dtype:
+                        set_module_tensor_to_device(model, param_name, param_device, value=param, dtype=torch_dtype)
+                    else:
+                        set_module_tensor_to_device(model, param_name, param_device, value=param)
             else:  # else let accelerate handle loading and dispatching.
                 # Load weights and dispatch according to the device_map
                 # by deafult the device_map is None and the weights are loaded on the CPU
