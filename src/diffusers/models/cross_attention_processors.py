@@ -11,10 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from typing import Optional, Union
+
 import torch
-from torch import nn
-from typing import Union, Optional
 import torch.nn.functional as F
+from torch import nn
 
 from ..utils.import_utils import is_xformers_available
 
@@ -311,7 +312,7 @@ class SlicedAttnProcessor:
             query_slice = query[start_idx:end_idx]
             key_slice = key[start_idx:end_idx]
 
-            attn_slice = attn.get_attention_scores(query_slice, key_slice, attention_mask[start_idx: end_idx])
+            attn_slice = attn.get_attention_scores(query_slice, key_slice, attention_mask[start_idx:end_idx])
 
             attn_slice = torch.bmm(attn_slice, value[start_idx:end_idx])
 
@@ -367,7 +368,7 @@ class SlicedAttnAddedKVProcessor:
             query_slice = query[start_idx:end_idx]
             key_slice = key[start_idx:end_idx]
 
-            attn_slice = attn.get_attention_scores(query_slice, key_slice, attention_mask[start_idx: end_idx])
+            attn_slice = attn.get_attention_scores(query_slice, key_slice, attention_mask[start_idx:end_idx])
 
             attn_slice = torch.bmm(attn_slice, value[start_idx:end_idx])
 
@@ -383,4 +384,10 @@ class SlicedAttnAddedKVProcessor:
         return hidden_states
 
 
-AttnProcessor = Union[CrossAttnProcessor, XFormersCrossAttnProcessor, SlicedAttnProcessor, CrossAttnAddedKVProcessor, SlicedAttnAddedKVProcessor]
+AttnProcessor = Union[
+    CrossAttnProcessor,
+    XFormersCrossAttnProcessor,
+    SlicedAttnProcessor,
+    CrossAttnAddedKVProcessor,
+    SlicedAttnAddedKVProcessor,
+]
