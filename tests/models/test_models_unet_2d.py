@@ -392,16 +392,6 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
             check_slicable_dim_attr(module)
 
     def test_special_attn_proc(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        init_dict["attention_head_dim"] = (8, 16)
-
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-        model(**inputs_dict)
-        
-        import ipdb; ipdb.set_trace()
-
         class AttnEasyProc(torch.nn.Module):
             def __init__(self, num):
                 super().__init__()
@@ -451,10 +441,12 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
         processor = AttnEasyProc(5.0)
 
-        # model.set_attn_processor(processor)
-#        model(**inputs_dict, cross_attention_kwargs={"number": 123}).sample
-        model(**inputs_dict)
-        import ipdb; ipdb.set_trace()
+        model.set_attn_processor(processor)
+        model(**inputs_dict, cross_attention_kwargs={"number": 123}).sample
+
+        assert processor.counter == 12
+        assert processor.is_run
+        assert processor.number == 123
 
 
 class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
