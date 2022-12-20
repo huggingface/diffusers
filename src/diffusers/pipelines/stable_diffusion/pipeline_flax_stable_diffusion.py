@@ -261,7 +261,8 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         )
 
         # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * self.scheduler.init_noise_sigma
+        latents = latents * params["scheduler"].init_noise_sigma
+
         if DEBUG:
             # run with python for loop
             for i in range(num_inference_steps):
@@ -337,7 +338,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
             guidance_scale = jnp.array([guidance_scale] * prompt_ids.shape[0])
             if len(prompt_ids.shape) > 2:
                 # Assume sharded
-                guidance_scale = guidance_scale.reshape(prompt_ids.shape[:2])
+                guidance_scale = guidance_scale[:, None]
 
         if jit:
             images = _p_generate(

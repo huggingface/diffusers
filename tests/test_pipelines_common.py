@@ -233,11 +233,11 @@ class PipelineTesterMixin:
 
         output = pipe(**inputs)
 
+        logger.setLevel(level=diffusers.logging.WARNING)
         if torch_device != "mps":
             # TODO(Pedro) - not sure why, but not at all reproducible at the moment it seems
             # make sure that batched and non-batched is identical
             assert np.abs(output_batch[0][0] - output[0][0]).max() < 1e-4
-            logger.setLevel(level=diffusers.logging.WARNING)
 
     def test_dict_tuple_outputs_equivalent(self):
         if torch_device == "mps" and self.pipeline_class in (

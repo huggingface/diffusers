@@ -24,7 +24,7 @@ from ..modeling_utils import ModelMixin
 from ..models.embeddings import ImagePositionalEmbeddings
 from ..utils import BaseOutput
 from ..utils.import_utils import is_xformers_available
-from .cross_attention_processors import CrossAttentionProcMixin, CrossAttentionProc, XFormersCrossAttentionProc, SlicedAttentionProc
+from .cross_attention_processors import CrossAttention
 
 
 @dataclass
@@ -67,8 +67,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         in_channels (`int`, *optional*):
             Pass if the input is continuous. The number of channels in the input and output.
         num_layers (`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
-        dropout (`float`, *optional*, defaults to 0.1): The dropout probability to use.
-        cross_attention_dim (`int`, *optional*): The number of context dimensions to use.
+        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
+        cross_attention_dim (`int`, *optional*): The number of encoder_hidden_states dimensions to use.
         sample_size (`int`, *optional*): Pass if the input is discrete. The width of the latent images.
             Note that this is fixed at training time as it is used for learning a number of position embeddings. See
             `ImagePositionalEmbeddings`.
@@ -182,7 +182,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             hidden_states ( When discrete, `torch.LongTensor` of shape `(batch size, num latent pixels)`.
                 When continous, `torch.FloatTensor` of shape `(batch size, channel, height, width)`): Input
                 hidden_states
-            encoder_hidden_states ( `torch.LongTensor` of shape `(batch size, context dim)`, *optional*):
+            encoder_hidden_states ( `torch.LongTensor` of shape `(batch size, encoder_hidden_states dim)`, *optional*):
                 Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
                 self-attention.
             timestep ( `torch.long`, *optional*):
@@ -214,7 +214,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # 2. Blocks
         for block in self.transformer_blocks:
-            hidden_states = block(hidden_states, context=encoder_hidden_states, timestep=timestep, cross_attention_kwargs=cross_attention_kwargs)
+            hidden_states = block(hidden_states, encoder_hidden_states=encoder_hidden_states, timestep=timestep, cross_attention_kwargs=cross_attention_kwargs)
 
         # 3. Output
         if self.is_input_continuous:
@@ -261,6 +261,8 @@ class AttentionBlock(nn.Module):
         eps (`float`, *optional*, defaults to 1e-5): The epsilon value to use for group norm.
     """
 
+    # IMPORTANT;TODO(Patrick, William) - this class will be deprecated soon. Do not use it anymore
+
     def __init__(
         self,
         channels: int,
@@ -285,30 +287,6 @@ class AttentionBlock(nn.Module):
         self.proj_attn = nn.Linear(channels, channels, 1)
 
         self._use_memory_efficient_attention_xformers = False
-
-    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
-        if not is_xformers_available():
-            raise ModuleNotFoundError(
-                "Refer to https://github.com/facebookresearch/xformers for more information on how to install"
-                " xformers",
-                name="xformers",
-            )
-        elif not torch.cuda.is_available():
-            raise ValueError(
-                "torch.cuda.is_available() should be True but is False. xformers' memory efficient attention is only"
-                " available for GPU "
-            )
-        else:
-            try:
-                # Make sure we can run the memory efficient attention
-                _ = xformers.ops.memory_efficient_attention(
-                    torch.randn((1, 2, 40), device="cuda"),
-                    torch.randn((1, 2, 40), device="cuda"),
-                    torch.randn((1, 2, 40), device="cuda"),
-                )
-            except Exception as e:
-                raise e
-            self._use_memory_efficient_attention_xformers = use_memory_efficient_attention_xformers
 
     def reshape_heads_to_batch_dim(self, tensor):
         batch_size, seq_len, dim = tensor.shape
@@ -370,6 +348,7 @@ class AttentionBlock(nn.Module):
 
         # compute next hidden_states
         hidden_states = self.proj_attn(hidden_states)
+
         hidden_states = hidden_states.transpose(-1, -2).reshape(batch, channel, height, width)
 
         # res connect and rescale
@@ -386,7 +365,7 @@ class BasicTransformerBlock(nn.Module):
         num_attention_heads (`int`): The number of heads to use for multi-head attention.
         attention_head_dim (`int`): The number of channels in each head.
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        cross_attention_dim (`int`, *optional*): The size of the context vector for cross attention.
+        cross_attention_dim (`int`, *optional*): The size of the encoder_hidden_states vector for cross attention.
         activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
         num_embeds_ada_norm (:
             obj: `int`, *optional*): The number of diffusion steps used during training. See `Transformer2DModel`.
@@ -420,7 +399,8 @@ class BasicTransformerBlock(nn.Module):
             bias=attention_bias,
             cross_attention_dim=cross_attention_dim if only_cross_attention else None,
             upcast_attention=upcast_attention,
-        )  # is a self-attention
+        )
+
         self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn)
 
         # 2. Cross-Attn
@@ -433,7 +413,7 @@ class BasicTransformerBlock(nn.Module):
                 dropout=dropout,
                 bias=attention_bias,
                 upcast_attention=upcast_attention,
-            )  # is self-attn if context is none
+            )  # is self-attn if encoder_hidden_states is none
         else:
             self.attn2 = None
 
@@ -446,125 +426,26 @@ class BasicTransformerBlock(nn.Module):
 
         # 3. Feed-forward
         self.norm3 = nn.LayerNorm(dim)
-        
-    def forward(self, hidden_states, context=None, timestep=None, cross_attention_kwargs=None):
+
+    def forward(self, hidden_states, encoder_hidden_states=None, timestep=None, attention_mask=None, cross_attention_kwargs=None):
         # 1. Self-Attention
         norm_hidden_states = (
             self.norm1(hidden_states, timestep) if self.use_ada_layer_norm else self.norm1(hidden_states)
         )
-
-        if self.only_cross_attention:
-            hidden_states = self.attn1(norm_hidden_states, context=context, cross_attention_kwargs=cross_attention_kwargs) + hidden_states
-        else:
-            hidden_states = self.attn1(norm_hidden_states) + hidden_states
+        attn_output = self.attn1(norm_hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask, **cross_attention_kwargs)
+        hidden_states = attn_output + hidden_states
 
         if self.attn2 is not None:
             # 2. Cross-Attention
             norm_hidden_states = (
                 self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
             )
-            hidden_states = self.attn2(norm_hidden_states, context=context, cross_attention_kwargs=cross_attention_kwargs) + hidden_states
+            attn_output = self.attn2(norm_hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask, **cross_attention_kwargs)
+            hidden_states = attn_output + hidden_states
 
         # 3. Feed-forward
         hidden_states = self.ff(self.norm3(hidden_states)) + hidden_states
 
-        return hidden_states
-
-
-class CrossAttention(nn.Module):
-    r"""
-    A cross attention layer.
-
-    Parameters:
-        query_dim (`int`): The number of channels in the query.
-        cross_attention_dim (`int`, *optional*):
-            The number of channels in the context. If not given, defaults to `query_dim`.
-        heads (`int`,  *optional*, defaults to 8): The number of heads to use for multi-head attention.
-        dim_head (`int`,  *optional*, defaults to 64): The number of channels in each head.
-        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        bias (`bool`, *optional*, defaults to False):
-            Set to `True` for the query, key, and value linear layers to contain a bias parameter.
-    """
-
-    def __init__(
-        self,
-        query_dim: int,
-        cross_attention_dim: Optional[int] = None,
-        heads: int = 8,
-        dim_head: int = 64,
-        dropout: float = 0.0,
-        bias=False,
-        upcast_attention: bool = False,
-    ):
-        super().__init__()
-        inner_dim = dim_head * heads
-        cross_attention_dim = cross_attention_dim if cross_attention_dim is not None else query_dim
-        self.upcast_attention = upcast_attention
-
-        self.scale = dim_head**-0.5
-        self.heads = heads
-        # for slice_size > 0 the attention score computation
-        # is split across the batch axis to save memory
-        # You can set slice_size with `set_attention_slice`
-        self.sliceable_head_dim = heads
-        self._slice_size = None
-
-        self.to_q = nn.Linear(query_dim, inner_dim, bias=bias)
-        self.to_k = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
-        self.to_v = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
-
-        self.to_out = nn.ModuleList([])
-        self.to_out.append(nn.Linear(inner_dim, query_dim))
-        self.to_out.append(nn.Dropout(dropout))
-
-        self.attn_proc = CrossAttentionProc(self.heads, self.upcast_attention)
-
-    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
-        if not is_xformers_available():
-            print("Here is how to install it")
-            raise ModuleNotFoundError(
-                "Refer to https://github.com/facebookresearch/xformers for more information on how to install"
-                " xformers",
-                name="xformers",
-            )
-        elif not torch.cuda.is_available():
-            raise ValueError(
-                "torch.cuda.is_available() should be True but is False. xformers' memory efficient attention is only"
-                " available for GPU "
-            )
-        else:
-            try:
-                # Make sure we can run the memory efficient attention
-                _ = xformers.ops.memory_efficient_attention(
-                    torch.randn((1, 2, 40), device="cuda"),
-                    torch.randn((1, 2, 40), device="cuda"),
-                    torch.randn((1, 2, 40), device="cuda"),
-                )
-            except Exception as e:
-                raise e
-            self.attn_fn = XFormersCrossAttentionProc(self.heads, self.upcast_attention)
-
-    def set_attention_slice(self, slice_size):
-        if slice_size is not None and slice_size > self.sliceable_head_dim:
-            raise ValueError(f"slice_size {slice_size} has to be smaller or equal to {self.sliceable_head_dim}.")
-
-        self._slice_size = slice_size
-        self.attn_proc = SlicedAttentionProc(self.heads, self.upcast_attention)
-
-    def set_cross_attn_proc(self, attn_proc: CrossAttentionProcMixin):
-        if not isinstance(attn_proc, CrossAttentionProcMixin):
-            subclass = attn_proc.__bases__ if hasattr(attn_proc, "__bases__") else None
-            raise ValueError(f"`attn_proc` should be a subclass of {CrossAttentionProc}, but is of type {type(attn_proc)} and a subclass of {subclass}.")
-        self.attn_proc = attn_proc
-
-    def forward(self, hidden_states, context=None, cross_attention_kwargs=None):
-        # attn
-        cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
-        hidden_states = self.attn_proc(hidden_states, self.to_q, self.to_k, self.to_v, context=context, **cross_attention_kwargs)
-        # linear proj
-        hidden_states = self.to_out[0](hidden_states)
-        # dropout
-        hidden_states = self.to_out[1](hidden_states)
         return hidden_states
 
 
@@ -705,7 +586,7 @@ class DualTransformer2DModel(nn.Module):
             Pass if the input is continuous. The number of channels in the input and output.
         num_layers (`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
         dropout (`float`, *optional*, defaults to 0.1): The dropout probability to use.
-        cross_attention_dim (`int`, *optional*): The number of context dimensions to use.
+        cross_attention_dim (`int`, *optional*): The number of encoder_hidden_states dimensions to use.
         sample_size (`int`, *optional*): Pass if the input is discrete. The width of the latent images.
             Note that this is fixed at training time as it is used for learning a number of position embeddings. See
             `ImagePositionalEmbeddings`.
@@ -770,17 +651,21 @@ class DualTransformer2DModel(nn.Module):
         # E.g. `(1, 0)` means that we'll use `transformers[1](conditions[0])` and `transformers[0](conditions[1])`
         self.transformer_index_for_condition = [1, 0]
 
-    def forward(self, hidden_states, encoder_hidden_states, timestep=None, return_dict: bool = True):
+    def forward(
+        self, hidden_states, encoder_hidden_states, timestep=None, attention_mask=None, return_dict: bool = True
+    ):
         """
         Args:
             hidden_states ( When discrete, `torch.LongTensor` of shape `(batch size, num latent pixels)`.
                 When continuous, `torch.FloatTensor` of shape `(batch size, channel, height, width)`): Input
                 hidden_states
-            encoder_hidden_states ( `torch.LongTensor` of shape `(batch size, context dim)`, *optional*):
+            encoder_hidden_states ( `torch.LongTensor` of shape `(batch size, encoder_hidden_states dim)`, *optional*):
                 Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
                 self-attention.
             timestep ( `torch.long`, *optional*):
                 Optional timestep to be applied as an embedding in AdaLayerNorm's. Used to indicate denoising step.
+            attention_mask (`torch.FloatTensor`, *optional*):
+                Optional attention mask to be applied in CrossAttention
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
 
@@ -793,13 +678,17 @@ class DualTransformer2DModel(nn.Module):
 
         encoded_states = []
         tokens_start = 0
+        # attention_mask is not used yet
         for i in range(2):
             # for each of the two transformers, pass the corresponding condition tokens
             condition_state = encoder_hidden_states[:, tokens_start : tokens_start + self.condition_lengths[i]]
             transformer_index = self.transformer_index_for_condition[i]
-            encoded_state = self.transformers[transformer_index](input_states, condition_state, timestep, return_dict)[
-                0
-            ]
+            encoded_state = self.transformers[transformer_index](
+                input_states,
+                encoder_hidden_states=condition_state,
+                timestep=timestep,
+                return_dict=False,
+            )[0]
             encoded_states.append(encoded_state - input_states)
             tokens_start += self.condition_lengths[i]
 

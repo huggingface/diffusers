@@ -311,7 +311,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             (nsfw) content, according to the `safety_checker`.
         """
         message = "Please use `image` instead of `init_image`."
-        init_image = deprecate("init_image", "0.12.0", message, take_from=kwargs)
+        init_image = deprecate("init_image", "0.13.0", message, take_from=kwargs)
         image = init_image or image
 
         if isinstance(prompt, str):
@@ -331,6 +331,9 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
             )
+
+        if generator is None:
+            generator = np.random
 
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
