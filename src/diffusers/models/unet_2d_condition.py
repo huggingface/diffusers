@@ -21,7 +21,7 @@ import torch.utils.checkpoint
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ..utils import BaseOutput, logging
-from .cross_attention_processors import CrossAttentionProcMixin
+from .cross_attention_processors import AttnProcessor
 from .embeddings import TimestepEmbedding, Timesteps
 from .unet_2d_blocks import (
     CrossAttnDownBlock2D,
@@ -266,17 +266,17 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         self.conv_act = nn.SiLU()
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, kernel_size=3, padding=1)
 
-    def set_cross_attention_processor(self, cross_attention_cls: CrossAttentionProcMixin):
+    def set_attn_processor(self, processor: AttnProcessor):
         # set recursively
-        def fn_recursive_set_cross_attn_proc(module: torch.nn.Module):
-            if hasattr(module, "set_cross_attn_proc"):
-                module.set_cross_attn_proc(cross_attention_cls)
+        def fn_recursive_attn_processor(module: torch.nn.Module):
+            if hasattr(module, "set_processor"):
+                module.set_processor(processor)
 
             for child in module.children():
-                fn_recursive_set_cross_attn_proc(child)
+                fn_recursive_attn_processor(child)
 
         for module in self.children():
-            fn_recursive_set_cross_attn_proc(module)
+            fn_recursive_attn_processor(module)
 
     def set_attention_slice(self, slice_size):
         r"""

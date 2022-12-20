@@ -191,6 +191,7 @@ class CrossAttention(nn.Module):
 class CrossAttnProcessor:
     def __call__(self, attn: "CrossAttention", hidden_states, encoder_hidden_states=None, attention_mask=None):
         batch_size, sequence_length, _ = hidden_states.shape
+        import ipdb; ipdb.set_trace()
 
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
 
