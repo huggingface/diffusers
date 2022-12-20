@@ -191,8 +191,6 @@ class CrossAttention(nn.Module):
 class CrossAttnProcessor:
     def __call__(self, attn: "CrossAttention", hidden_states, encoder_hidden_states=None, attention_mask=None):
         batch_size, sequence_length, _ = hidden_states.shape
-        import ipdb; ipdb.set_trace()
-
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
 
         query = attn.to_q(hidden_states)
@@ -218,7 +216,9 @@ class CrossAttnProcessor:
 
 
 class CrossAttnAddedKVProcessor:
-    def forward(self, attn: "CrossAttention", hidden_states, encoder_hidden_states=None, attention_mask=None):
+    def __call__(self, attn: "CrossAttention", hidden_states, encoder_hidden_states=None, attention_mask=None):
+        residual = hidden_states
+        hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
         batch_size, sequence_length, _ = hidden_states.shape
 
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
@@ -226,17 +226,17 @@ class CrossAttnAddedKVProcessor:
         hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
         query = attn.to_q(hidden_states)
-        query = attn.reshape_heads_to_batch_dim(query)
+        query = attn.head_to_batch_dim(query)
 
         key = attn.to_k(hidden_states)
         value = attn.to_v(hidden_states)
-        key = attn.reshape_heads_to_batch_dim(key)
-        value = attn.reshape_heads_to_batch_dim(value)
+        key = attn.head_to_batch_dim(key)
+        value = attn.head_to_batch_dim(value)
 
         encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
         encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
-        encoder_hidden_states_key_proj = attn.reshape_heads_to_batch_dim(encoder_hidden_states_key_proj)
-        encoder_hidden_states_value_proj = attn.reshape_heads_to_batch_dim(encoder_hidden_states_value_proj)
+        encoder_hidden_states_key_proj = attn.head_to_batch_dim(encoder_hidden_states_key_proj)
+        encoder_hidden_states_value_proj = attn.head_to_batch_dim(encoder_hidden_states_value_proj)
 
         key = torch.concat([encoder_hidden_states_key_proj, key], dim=1)
         value = torch.concat([encoder_hidden_states_value_proj, value], dim=1)
@@ -249,6 +249,9 @@ class CrossAttnAddedKVProcessor:
         hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
+
+        hidden_states = hidden_states.transpose(-1, -2).reshape(residual.shape)
+        hidden_states = hidden_states + residual
 
         return hidden_states
 
@@ -333,7 +336,10 @@ class SlicedAttnAddedKVProcessor:
     def __init__(self, slice_size):
         self.slice_size = self.slice_size
 
-    def forward(self, attn: "CrossAttention", hidden_states, encoder_hidden_states=None, attention_mask=None):
+    def __call__(self, attn: "CrossAttention", hidden_states, encoder_hidden_states=None, attention_mask=None):
+        residual = hidden_states
+        hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
+
         batch_size, sequence_length, _ = hidden_states.shape
 
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
@@ -342,17 +348,17 @@ class SlicedAttnAddedKVProcessor:
 
         query = attn.to_q(hidden_states)
         dim = query.shape[-1]
-        query = attn.reshape_heads_to_batch_dim(query)
+        query = attn.head_to_batch_dim(query)
 
         key = attn.to_k(hidden_states)
         value = attn.to_v(hidden_states)
         encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
         encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
 
-        key = attn.reshape_heads_to_batch_dim(key)
-        value = attn.reshape_heads_to_batch_dim(value)
-        encoder_hidden_states_key_proj = attn.reshape_heads_to_batch_dim(encoder_hidden_states_key_proj)
-        encoder_hidden_states_value_proj = attn.reshape_heads_to_batch_dim(encoder_hidden_states_value_proj)
+        key = attn.head_to_batch_dim(key)
+        value = attn.head_to_batch_dim(value)
+        encoder_hidden_states_key_proj = attn.head_to_batch_dim(encoder_hidden_states_key_proj)
+        encoder_hidden_states_value_proj = attn.head_to_batch_dim(encoder_hidden_states_value_proj)
 
         key = torch.concat([encoder_hidden_states_key_proj, key], dim=1)
         value = torch.concat([encoder_hidden_states_value_proj, value], dim=1)
@@ -381,6 +387,9 @@ class SlicedAttnAddedKVProcessor:
         hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
+
+        hidden_states = hidden_states.transpose(-1, -2).reshape(residual.shape)
+        hidden_states = hidden_states + residual
 
         return hidden_states
 

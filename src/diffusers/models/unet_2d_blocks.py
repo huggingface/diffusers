@@ -550,7 +550,7 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
                     norm_num_groups=resnet_groups,
                     bias=True,
                     upcast_softmax=True,
-                    processor=CrossAttnAddedKVProcessor()
+                    processor=CrossAttnAddedKVProcessor(),
                 )
             )
             resnets.append(
@@ -571,19 +571,19 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
-    def forward(self, hidden_states, temb=None, encoder_hidden_states=None, attention_mask=None):
+    def forward(
+        self, hidden_states, temb=None, encoder_hidden_states=None, attention_mask=None, cross_attention_kwargs=None
+    ):
+        cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             # attn
-            residual = hidden_states
-            hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
             hidden_states = attn(
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states.transpose(1, 2),
                 attention_mask=attention_mask,
+                **cross_attention_kwargs,
             )
-            hidden_states = hidden_states.transpose(-1, -2).reshape(residual.shape)
-            hidden_states = hidden_states + residual
 
             # resnet
             hidden_states = resnet(hidden_states, temb)
@@ -1324,7 +1324,7 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
                     norm_num_groups=resnet_groups,
                     bias=True,
                     upcast_softmax=True,
-                    processor=CrossAttnAddedKVProcessor()
+                    processor=CrossAttnAddedKVProcessor(),
                 )
             )
         self.attentions = nn.ModuleList(attentions)
@@ -1353,23 +1353,23 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, hidden_states, temb=None, encoder_hidden_states=None, attention_mask=None):
+    def forward(
+        self, hidden_states, temb=None, encoder_hidden_states=None, attention_mask=None, cross_attention_kwargs=None
+    ):
         output_states = ()
+        cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
 
         for resnet, attn in zip(self.resnets, self.attentions):
             # resnet
             hidden_states = resnet(hidden_states, temb)
 
             # attn
-            residual = hidden_states
-            hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
             hidden_states = attn(
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states.transpose(1, 2),
                 attention_mask=attention_mask,
+                **cross_attention_kwargs,
             )
-            hidden_states = hidden_states.transpose(-1, -2).reshape(residual.shape)
-            hidden_states = hidden_states + residual
 
             output_states += (hidden_states,)
 
@@ -2134,7 +2134,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
                     norm_num_groups=resnet_groups,
                     bias=True,
                     upcast_softmax=True,
-                    processor=CrossAttnAddedKVProcessor()
+                    processor=CrossAttnAddedKVProcessor(),
                 )
             )
         self.attentions = nn.ModuleList(attentions)
@@ -2171,7 +2171,9 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
         encoder_hidden_states=None,
         upsample_size=None,
         attention_mask=None,
+        cross_attention_kwargs=None,
     ):
+        cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         for resnet, attn in zip(self.resnets, self.attentions):
             # resnet
             # pop res hidden states
@@ -2182,15 +2184,12 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
             hidden_states = resnet(hidden_states, temb)
 
             # attn
-            residual = hidden_states
-            hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
             hidden_states = attn(
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states.transpose(1, 2),
                 attention_mask=attention_mask,
+                **cross_attention_kwargs,
             )
-            hidden_states = hidden_states.transpose(-1, -2).reshape(residual.shape)
-            hidden_states = hidden_states + residual
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:

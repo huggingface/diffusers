@@ -314,6 +314,31 @@ class AttentionBlock(nn.Module):
         tensor = tensor.permute(0, 2, 1, 3).reshape(batch_size // head_size, seq_len, dim * head_size)
         return tensor
 
+    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
+        if use_memory_efficient_attention_xformers:
+            if not is_xformers_available():
+                raise ModuleNotFoundError(
+                    "Refer to https://github.com/facebookresearch/xformers for more information on how to install"
+                    " xformers",
+                    name="xformers",
+                )
+            elif not torch.cuda.is_available():
+                raise ValueError(
+                    "torch.cuda.is_available() should be True but is False. xformers' memory efficient attention is"
+                    " only available for GPU "
+                )
+            else:
+                try:
+                    # Make sure we can run the memory efficient attention
+                    _ = xformers.ops.memory_efficient_attention(
+                        torch.randn((1, 2, 40), device="cuda"),
+                        torch.randn((1, 2, 40), device="cuda"),
+                        torch.randn((1, 2, 40), device="cuda"),
+                    )
+                except Exception as e:
+                    raise e
+        self._use_memory_efficient_attention_xformers = use_memory_efficient_attention_xformers
+
     def forward(self, hidden_states):
         residual = hidden_states
         batch, channel, height, width = hidden_states.shape
@@ -454,7 +479,7 @@ class BasicTransformerBlock(nn.Module):
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         attn_output = self.attn1(
             norm_hidden_states,
-            encoder_hidden_states=encoder_hidden_states,
+            encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
             attention_mask=attention_mask,
             **cross_attention_kwargs,
         )
