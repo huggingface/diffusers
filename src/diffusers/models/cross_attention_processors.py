@@ -135,8 +135,13 @@ class CrossAttention(nn.Module):
     def set_processor(self, processor: "AttnProcessor"):
         self.processor = processor
 
-    def forward(self, *args, **kwargs):
-        return self.processor(self, *args, **kwargs)
+    def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None, **cross_attention_kwargs):
+        # The `CrossAttention` class can call different attention processors / attention functions
+        # here we simply pass along all tensors to the selected processor class
+        # For standard processors that are defined here, `**cross_attention_kwargs` is empty
+        return self.processor(
+            self, hidden_states, encoder_hidden_states=None, attention_mask=None, **cross_attention_kwargs
+        )
 
     def batch_to_head_dim(self, tensor):
         head_size = self.heads
