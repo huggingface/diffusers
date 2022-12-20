@@ -26,8 +26,9 @@ from ..models.embeddings import ImagePositionalEmbeddings
 from ..utils import BaseOutput
 from ..utils.import_utils import is_xformers_available
 
-(major, _minor) = torch.cuda.get_device_capability(0)
+(major, _minor) = torch.cuda.get_device_capability()
 IS_CUDA_SUPPORT_FUSE_ATTENTION = major >= 7
+
 
 @dataclass
 class Transformer2DModelOutput(BaseOutput):
@@ -345,7 +346,9 @@ class AttentionBlock(nn.Module):
             new_hidden_states_shape = hidden_states.size()[:-2] + (self.channels,)
             hidden_states = hidden_states.view(new_hidden_states_shape)
         else:
-            hidden_states = torch._C.fused_multi_head_attention_inference(query_proj, key_proj, value_proj, self.num_heads)
+            hidden_states = torch._C.fused_multi_head_attention_inference(
+                query_proj, key_proj, value_proj, self.num_heads
+            )
         # compute next hidden_states
         hidden_states = self.proj_attn(hidden_states)
         hidden_states = hidden_states.transpose(-1, -2).reshape(batch, channel, height, width)
@@ -553,7 +556,7 @@ class CrossAttention(nn.Module):
         inner_dim = dim_head * heads
         cross_attention_dim = cross_attention_dim if cross_attention_dim is not None else query_dim
 
-        self.scale = dim_head**-0.5
+        self.scale = dim_head ** -0.5
         self.heads = heads
         # for slice_size > 0 the attention score computation
         # is split across the batch axis to save memory
@@ -650,7 +653,7 @@ class CrossAttention(nn.Module):
         return hidden_states
 
     def _attention(self, query, key, value):
-        '''
+        """
         attention_scores = torch.baddbmm(
             torch.empty(query.shape[0], query.shape[1], key.shape[1], dtype=query.dtype, device=query.device),
             query,
@@ -658,11 +661,8 @@ class CrossAttention(nn.Module):
             beta=0,
             alpha=self.scale,
         )
-        '''
-        attention_scores = torch.matmul(
-            query,
-            key.transpose(-1, -2)
-        ) * self.scale
+        """
+        attention_scores = torch.matmul(query, key.transpose(-1, -2)) * self.scale
         attention_probs = attention_scores.softmax(dim=-1)
         # compute attention output
 
