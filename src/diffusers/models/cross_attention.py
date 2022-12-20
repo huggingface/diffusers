@@ -120,16 +120,24 @@ class CrossAttention(nn.Module):
                     raise e
 
             processor = XFormersCrossAttnProcessor()
-            self.set_processor(processor)
+        else:
+            processor = CrossAttnProcessor()
+
+        self.set_processor(processor)
 
     def set_attention_slice(self, slice_size):
         if slice_size is not None and slice_size > self.sliceable_head_dim:
             raise ValueError(f"slice_size {slice_size} has to be smaller or equal to {self.sliceable_head_dim}.")
 
-        if self.added_kv_proj_dim is not None:
+        if slice_size is not None and self.added_kv_proj_dim is not None:
             processor = SlicedAttnAddedKVProcessor(slice_size)
-        else:
+        elif slice_size is not None:
             processor = SlicedAttnProcessor(slice_size)
+        elif self.added_kv_proj_dim is not None:
+            processor = CrossAttnAddedKVProcessor()
+        else:
+            processor = CrossAttnProcessor()
+
         self.set_processor(processor)
 
     def set_processor(self, processor: "AttnProcessor"):
@@ -203,12 +211,11 @@ class CrossAttnProcessor:
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
 
         query = attn.to_q(hidden_states)
+        query = attn.head_to_batch_dim(query)
 
         encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
-
-        query = attn.head_to_batch_dim(query)
         key = attn.head_to_batch_dim(key)
         value = attn.head_to_batch_dim(value)
 
@@ -229,6 +236,7 @@ class CrossAttnAddedKVProcessor:
         residual = hidden_states
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
         batch_size, sequence_length, _ = hidden_states.shape
+        encoder_hidden_states = encoder_hidden_states.transpose(1, 2)
 
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
 
@@ -281,7 +289,8 @@ class XFormersCrossAttnProcessor:
         key = attn.head_to_batch_dim(key).contiguous()
         value = attn.head_to_batch_dim(value).contiguous()
 
-        hidden_states = xformers.ops.memory_efficient_attention(query, key, value, attn_bias=None)
+        hidden_states = xformers.ops.memory_efficient_attention(query, key, value, attn_bias=attention_mask)
+        hidden_states = hidden_states.to(query.dtype)
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
@@ -302,14 +311,12 @@ class SlicedAttnProcessor:
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
 
         query = attn.to_q(hidden_states)
-
         dim = query.shape[-1]
+        query = attn.head_to_batch_dim(query)
 
         encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
-
-        query = attn.head_to_batch_dim(query)
         key = attn.head_to_batch_dim(key)
         value = attn.head_to_batch_dim(value)
 
@@ -344,11 +351,12 @@ class SlicedAttnProcessor:
 
 class SlicedAttnAddedKVProcessor:
     def __init__(self, slice_size):
-        self.slice_size = self.slice_size
+        self.slice_size = slice_size
 
     def __call__(self, attn: "CrossAttention", hidden_states, encoder_hidden_states=None, attention_mask=None):
         residual = hidden_states
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
+        encoder_hidden_states = encoder_hidden_states.transpose(1, 2)
 
         batch_size, sequence_length, _ = hidden_states.shape
 
