@@ -55,7 +55,6 @@ else:
         PNDMPipeline,
         RePaintPipeline,
         ScoreSdeVePipeline,
-        SpectrogramDiffusionPipeline,
     )
     from .schedulers import (
         DDIMScheduler,
