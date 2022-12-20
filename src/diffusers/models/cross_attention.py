@@ -69,9 +69,7 @@ class CrossAttention(nn.Module):
         # is split across the batch axis to save memory
         # You can set slice_size with `set_attention_slice`
         self.sliceable_head_dim = heads
-        self._slice_size = None
 
-        self._use_memory_efficient_attention_xformers = False
         self.added_kv_proj_dim = added_kv_proj_dim
 
         if norm_num_groups is not None:
