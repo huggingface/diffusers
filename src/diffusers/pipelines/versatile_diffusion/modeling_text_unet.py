@@ -862,7 +862,7 @@ class CrossAttnDownBlockFlat(nn.Module):
     def forward(
         self, hidden_states, temb=None, encoder_hidden_states=None, attention_mask=None, cross_attention_kwargs=None
     ):
-        # Reminder(Patrick, William) - attention mask is not used at the moment
+        # TODO(Patrick, William) - attention mask is not used
         output_states = ()
 
         for resnet, attn in zip(self.resnets, self.attentions):

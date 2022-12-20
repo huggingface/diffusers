@@ -95,7 +95,15 @@ class CrossAttention(nn.Module):
 
     def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
         if use_memory_efficient_attention_xformers:
-            if not is_xformers_available():
+            if self.added_kv_proj_dim is not None:
+                # TODO(Anton, Patrick, Suraj, William) - currently xformers doesn't work for UnCLIP
+                # which uses this type of cross attention ONLY because the attention mask of format
+                # [0, ..., -10.000, ..., 0, ...,] is not supported
+                raise NotImplementedError(
+                    "Memory efficient attention with `xformers` is currently not supported when"
+                    " `self.added_kv_proj_dim` is defined."
+                )
+            elif not is_xformers_available():
                 raise ModuleNotFoundError(
                     "Refer to https://github.com/facebookresearch/xformers for more information on how to install"
                     " xformers",
