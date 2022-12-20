@@ -29,6 +29,7 @@ from .scheduling_utils_flax import (
     FlaxSchedulerMixin,
     FlaxSchedulerOutput,
     add_noise_common,
+    get_velocity_common,
 )
 
 
@@ -292,6 +293,15 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         timesteps: jnp.ndarray,
     ) -> jnp.ndarray:
         return add_noise_common(state.common, original_samples, noise, timesteps)
+
+    def get_velocity(
+        self,
+        state: DDPMSchedulerState,
+        sample: jnp.ndarray,
+        noise: jnp.ndarray,
+        timesteps: jnp.ndarray,
+    ) -> jnp.ndarray:
+        return get_velocity_common(state.common, sample, noise, timesteps)
 
     def __len__(self):
         return self.config.num_train_timesteps
