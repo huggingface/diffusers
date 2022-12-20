@@ -294,7 +294,7 @@ class XFormersCrossAttnProcessor:
 
 class SlicedAttnProcessor:
     def __init__(self, slice_size):
-        self.slice_size = self.slice_size
+        self.slice_size = slice_size
 
     def __call__(self, attn: "CrossAttention", hidden_states, encoder_hidden_states=None, attention_mask=None):
         batch_size, sequence_length, _ = hidden_states.shape
@@ -324,8 +324,9 @@ class SlicedAttnProcessor:
 
             query_slice = query[start_idx:end_idx]
             key_slice = key[start_idx:end_idx]
+            attn_mask_slice = attention_mask[start_idx:end_idx] if attention_mask is not None else None
 
-            attn_slice = attn.get_attention_scores(query_slice, key_slice, attention_mask[start_idx:end_idx])
+            attn_slice = attn.get_attention_scores(query_slice, key_slice, attn_mask_slice)
 
             attn_slice = torch.bmm(attn_slice, value[start_idx:end_idx])
 
@@ -383,8 +384,9 @@ class SlicedAttnAddedKVProcessor:
 
             query_slice = query[start_idx:end_idx]
             key_slice = key[start_idx:end_idx]
+            attn_mask_slice = attention_mask[start_idx:end_idx] if attention_mask is not None else None
 
-            attn_slice = attn.get_attention_scores(query_slice, key_slice, attention_mask[start_idx:end_idx])
+            attn_slice = attn.get_attention_scores(query_slice, key_slice, attn_mask_slice)
 
             attn_slice = torch.bmm(attn_slice, value[start_idx:end_idx])
 
