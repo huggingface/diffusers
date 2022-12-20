@@ -24,7 +24,7 @@ from ..modeling_utils import ModelMixin
 from ..models.embeddings import ImagePositionalEmbeddings
 from ..utils import BaseOutput
 from ..utils.import_utils import is_xformers_available
-from .cross_attention_processors import CrossAttention
+from .cross_attention import CrossAttention
 
 
 @dataclass

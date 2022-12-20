@@ -21,7 +21,7 @@ import torch.utils.checkpoint
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ..utils import BaseOutput, logging
-from .cross_attention_processors import AttnProcessor
+from .cross_attention import AttnProcessor
 from .embeddings import TimestepEmbedding, Timesteps
 from .unet_2d_blocks import (
     CrossAttnDownBlock2D,
