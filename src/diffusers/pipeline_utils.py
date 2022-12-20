@@ -33,7 +33,7 @@ from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
 from .dynamic_modules_utils import get_class_from_dynamic_module
-from .hub_utils import http_user_agent
+from .hub_utils import HF_HUB_OFFLINE, http_user_agent
 from .modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
 from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from .utils import (
@@ -49,7 +49,6 @@ from .utils import (
     is_transformers_available,
     logging,
 )
-from .hub_utils import HF_HUB_OFFLINE
 
 
 if is_transformers_available():

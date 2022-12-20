@@ -26,6 +26,7 @@ from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, R
 from requests import HTTPError
 
 from . import __version__
+from .hub_utils import HF_HUB_OFFLINE
 from .utils import (
     CONFIG_NAME,
     DIFFUSERS_CACHE,
@@ -37,7 +38,6 @@ from .utils import (
     is_torch_version,
     logging,
 )
-from .hub_utils import HF_HUB_OFFLINE
 
 
 logger = logging.get_logger(__name__)
