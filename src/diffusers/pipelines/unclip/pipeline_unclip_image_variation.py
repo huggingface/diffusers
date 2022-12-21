@@ -52,7 +52,7 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `image_encoder`.
         image_encoder ([`CLIPVisionModelWithProjection`]):
-            Frozen CLIP image-encoder. Stable Diffusion Image Variation uses the vision portion of
+            Frozen CLIP image-encoder. unCLIP Image Variation uses the vision portion of
             [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPVisionModelWithProjection),
             specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
         text_proj ([`UnCLIPTextProjModel`]):
