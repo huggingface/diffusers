@@ -223,7 +223,6 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        # TODO: self.prior.post_process_latents is not covered by the offload hooks, so it fails if added to the list
         models = [
             self.decoder,
             self.text_proj,
