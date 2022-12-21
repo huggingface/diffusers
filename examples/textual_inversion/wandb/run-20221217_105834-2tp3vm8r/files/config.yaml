@@ -1,0 +1,195 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    cli_version: 0.13.3
+    framework: huggingface
+    huggingface_version: 4.25.1
+    is_jupyter_run: false
+    is_kaggle_kernel: true
+    python_version: 3.8.5
+    start_time: 1671292714.695295
+    t:
+      1:
+      - 1
+      - 5
+      - 11
+      - 41
+      - 49
+      - 53
+      - 55
+      - 63
+      - 71
+      - 80
+      2:
+      - 1
+      - 5
+      - 11
+      - 41
+      - 49
+      - 53
+      - 55
+      - 63
+      - 71
+      - 80
+      3:
+      - 16
+      - 23
+      4: 3.8.5
+      5: 0.13.3
+      6: 4.25.1
+      8:
+      - 2
+      - 3
+      - 5
+adam_beta1:
+  desc: null
+  value: 0.9
+adam_beta2:
+  desc: null
+  value: 0.999
+adam_epsilon:
+  desc: null
+  value: 1.0e-08
+adam_weight_decay:
+  desc: null
+  value: 0.01
+center_crop:
+  desc: null
+  value: false
+data_aug:
+  desc: null
+  value: false
+gradient_accumulation_steps:
+  desc: null
+  value: 4
+gradient_checkpointing:
+  desc: null
+  value: true
+guess_initializer_token:
+  desc: null
+  value: false
+guidance_scale:
+  desc: null
+  value: 7.5
+hub_model_id:
+  desc: null
+  value: null
+hub_token:
+  desc: null
+  value: null
+img_encoder:
+  desc: null
+  value: true
+initialize_rest_random:
+  desc: null
+  value: false
+initializer_token:
+  desc: null
+  value: dog
+l1_weight:
+  desc: null
+  value: 1
+learnable_property:
+  desc: null
+  value: object
+learning_rate:
+  desc: null
+  value: 0.0005
+local_rank:
+  desc: null
+  value: -1
+log_frequency:
+  desc: null
+  value: 100
+logging_dir:
+  desc: null
+  value: logs
+lr_scheduler:
+  desc: null
+  value: constant
+lr_warmup_steps:
+  desc: null
+  value: 0
+max_train_steps:
+  desc: null
+  value: 5000
+mixed_precision:
+  desc: null
+  value: fp16
+num_train_epochs:
+  desc: null
+  value: 100
+num_vec_per_token:
+  desc: null
+  value: 20
+only_save_embeds:
+  desc: null
+  value: false
+output_dir:
+  desc: null
+  value: dog_model_outputs
+placeholder_token:
+  desc: null
+  value: <frida>
+pretrained_model_name_or_path:
+  desc: null
+  value: runwayml/stable-diffusion-v1-5
+project_name:
+  desc: null
+  value: textual_vit
+push_to_hub:
+  desc: null
+  value: false
+repeats:
+  desc: null
+  value: 100
+resolution:
+  desc: null
+  value: 512
+revision:
+  desc: null
+  value: null
+save_frequency:
+  desc: null
+  value: 500
+scale_lr:
+  desc: null
+  value: true
+seed:
+  desc: null
+  value: null
+separate_token_format:
+  desc: null
+  value: false
+slice_div:
+  desc: null
+  value: 2
+subject_noun:
+  desc: null
+  value: null
+tokenizer_name:
+  desc: null
+  value: null
+train_batch_size:
+  desc: null
+  value: 1
+train_data_dir:
+  desc: null
+  value: ../../data
+use_disc:
+  desc: null
+  value: false
+use_l1:
+  desc: null
+  value: false
+use_l1_pixel:
+  desc: null
+  value: true
+use_neg:
+  desc: null
+  value: false
+xformer:
+  desc: null
+  value: true

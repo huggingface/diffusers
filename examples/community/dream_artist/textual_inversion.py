@@ -23,11 +23,13 @@ from huggingface_hub import HfFolder, Repository, whoami
 
 # TODO: remove and import from diffusers.utils when the new version of diffusers is released
 from packaging import version
-from PIL import Image
+from PIL import Image, ImageOps
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 import wandb
+from autocrop import crop_image
+import autocrop
 
 if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
     PIL_INTERPOLATION = {
@@ -83,10 +85,13 @@ def get_pipeline(text_encoder, vae, unet, tokenizer, accelerator):
     return pipeline
 
 
-def log_progress(pipeline, args, step, wandb_run, placeholder_token, negative_prompt, logs={}):
+def log_progress(pipeline, args, step, wandb_run, placeholder_token, negative_prompt=None, logs={}):
     print("Running pipeline")
 
     prompt = f"a photo of a {placeholder_token}"
+    if args.use_neg:
+        negative_prompt = f"a photo of a {negative_prompt}"
+
 
     with torch.autocast("cuda"):
         image = pipeline(
@@ -94,14 +99,14 @@ def log_progress(pipeline, args, step, wandb_run, placeholder_token, negative_pr
         ).images[0]
 
     image.save("output.png")
-    # wandb_run.log(
-    #     {
-    #         **logs,
-    #         "iter": step,
-    #         "samples": wandb.Image("output.png", caption=prompt),
-    #     }
-    # )
-def add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, text_encoder, num_vec_per_token, original_placeholder_token, is_random=False):
+    wandb_run.log(
+        {
+            **logs,
+            "iter": step,
+            "samples": wandb.Image("output.png", caption=prompt),
+        }
+    )
+def add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, text_encoder, num_vec_per_token, original_placeholder_token, is_random=False, is_negative=False):
     assert num_vec_per_token >= len(token_ids)
     placeholder_tokens = [f"{original_placeholder_token}_{i}" for i in range(num_vec_per_token)]
 
@@ -121,13 +126,55 @@ def add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, text_encode
         # Initialize them to be random
         for i, placeholder_token_id in enumerate(placeholder_token_ids):
             token_embeds[placeholder_token_id] = torch.randn_like(token_embeds[placeholder_token_id])
+    elif is_negative:
+        for i, placeholder_token_id in enumerate(placeholder_token_ids):
+            token_embeds[placeholder_token_id] = torch.randn_like(token_embeds[placeholder_token_id])*1e-3
+    elif args.initialize_rest_random:
+        # The idea is that the placeholder tokens form adjectives as in x x x white dog.
+        for i, placeholder_token_id in enumerate(placeholder_token_ids):
+            if len(placeholder_token_ids) - i < len(token_ids):
+                token_embeds[placeholder_token_id] = token_embeds[token_ids[i % len(token_ids)]]
+            else:
+                token_embeds[placeholder_token_id] = torch.randn_like(token_embeds[placeholder_token_id])
     else:
         for i, placeholder_token_id in enumerate(placeholder_token_ids):
             token_embeds[placeholder_token_id] = token_embeds[token_ids[i % len(token_ids)]]
     return placeholder_token, placeholder_token_ids
-
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
+    parser.add_argument(
+        "--dnn_model_path",
+        type=str,
+        default=None,
+        help="Path of dnn model",
+    )
+    parser.add_argument(
+        "--l1_weight",
+        type=float,
+        default=1,
+        help="Loss weight for l1 loss.",
+    )
+    parser.add_argument(
+        "--l1_weight",
+        type=float,
+        default=1,
+        help="Loss weight for l1 loss.",
+    )
+    parser.add_argument(
+        "--use_l1_pixel",
+        action="store_true",
+        help="Use l1 pixel loss for training.",
+    )
+    parser.add_argument(
+        "--use_l1",
+        action="store_true",
+        help="Use l1 loss for training.",
+    )
+    parser.add_argument(
+        "--use_neg",
+        action="store_true",
+        help="Use negative embedding.",
+    )
     parser.add_argument(
         "--guidance_scale",
         type=float,
@@ -337,8 +384,9 @@ class TextualInversionDataset(Dataset):
         flip_p=0.5,
         set="train",
         placeholder_token="*",
-        neg_placeholder_token="*",
+        neg_placeholder_token=None,
         center_crop=False,
+        dnn_model_path=None,
     ):
         self.data_root = data_root
         self.tokenizer = tokenizer
@@ -366,17 +414,32 @@ class TextualInversionDataset(Dataset):
 
         self.templates = imagenet_style_templates_small if learnable_property == "style" else imagenet_templates_small
         self.flip_transform = transforms.RandomHorizontalFlip(p=self.flip_p)
+        if dnn_model_path:
+            try:
+                dnn_model_path = autocrop.download_and_cache_models(dnn_model_path)
+            except Exception as e:
+                print(e)
+                print("Unable to load face detection model for auto crop selection. Falling back to lower quality haar method.", e)
 
+        self.autocrop_settings = autocrop.Settings(
+            crop_width = size,
+            crop_height = size,
+            face_points_weight = 0.9,
+            entropy_points_weight = 0.3,
+            corner_points_weight = 0.5,
+            dnn_model_path = dnn_model_path,
+            interpolation=self.interpolation
+        )
     def __len__(self):
         return self._length
 
     def __getitem__(self, i):
         example = {}
         image = Image.open(self.image_paths[i % self.num_images])
-
+        image = ImageOps.exif_transpose(image)
         if not image.mode == "RGB":
             image = image.convert("RGB")
-
+        image = crop_image(image, self.autocrop_settings)[0]
         placeholder_string = self.placeholder_token
         neg_placeholder_token = self.neg_placeholder_token
         text = random.choice(self.templates)
@@ -388,13 +451,14 @@ class TextualInversionDataset(Dataset):
             max_length=self.tokenizer.model_max_length,
             return_tensors="pt",
         ).input_ids[0]
-        example["neg_input_ids"] = self.tokenizer(
-            text.format(neg_placeholder_token),
-            padding="max_length",
-            truncation=True,
-            max_length=self.tokenizer.model_max_length,
-            return_tensors="pt",
-        ).input_ids[0]
+        if self.neg_placeholder_token:
+            example["neg_input_ids"] = self.tokenizer(
+                text.format(self.neg_placeholder_token),
+                padding="max_length",
+                truncation=True,
+                max_length=self.tokenizer.model_max_length,
+                return_tensors="pt",
+            ).input_ids[0]
 
         # default to score-sde preprocessing
         img = np.array(image).astype(np.uint8)
@@ -436,6 +500,7 @@ def freeze_params(params):
 def main():
     args = parse_args()
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
+    wandb_run = wandb_setup(args, args.project_name)
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -443,7 +508,7 @@ def main():
         log_with="tensorboard",
         logging_dir=logging_dir,
     )
-    wandb_run = wandb_setup(args, args.project_name)
+    print(f"accelerator device is {accelerator.device}")
 
     # If passed along, set the training seed now.
     if args.seed is not None:
@@ -472,20 +537,21 @@ def main():
     elif args.pretrained_model_name_or_path:
         tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer")
 
-    # Add the placeholder token in tokenizer
-    placeholder_token, placeholder_token_ids = add_tokens_and_get_placeholder_token(
-        args, token_ids, tokenizer, text_encoder, args.num_vec_per_token, args.placeholder_token
-    )
-
-    neg_placeholder_token, neg_placeholder_token_ids = add_tokens_and_get_placeholder_token(
-        args, token_ids, tokenizer, text_encoder, args.num_vec_per_token, args.placeholder_token+'_neg', is_random=True
-    )
+    token_ids = tokenizer.encode(args.initializer_token, add_special_tokens=False)
 
     # Load models and create wrapper for stable diffusion
     text_encoder = CLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder")
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
     unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
-
+    # Add the placeholder token in tokenizer
+    placeholder_token, placeholder_token_ids = add_tokens_and_get_placeholder_token(
+        args, token_ids, tokenizer, text_encoder, args.num_vec_per_token, args.placeholder_token
+    )
+    neg_placeholder_token, neg_placeholder_token_ids = None, None
+    if args.use_neg:
+        neg_placeholder_token, neg_placeholder_token_ids = add_tokens_and_get_placeholder_token(
+            args, token_ids, tokenizer, text_encoder, args.num_vec_per_token, args.placeholder_token+'_neg', is_negative=True, is_random=is_random
+        )
     # Freeze vae and unet
     freeze_params(vae.parameters())
     freeze_params(unet.parameters())
@@ -579,8 +645,11 @@ def main():
     progress_bar = tqdm(range(args.max_train_steps), disable=not accelerator.is_local_main_process)
     progress_bar.set_description("Steps")
     global_step = 0
-    original_token_embeds = text_encoder.get_input_embeddings().weight.data.detach().clone().to(accelerator.device)
-
+    if accelerator.num_processes > 1:
+        original_token_embeds = text_encoder.module.get_input_embeddings().weight.data.detach().clone().to(accelerator.device, dtype=text_encoder.dtype)
+    else:
+        original_token_embeds = text_encoder.get_input_embeddings().weight.data.detach().clone().to(accelerator.device, dtype=text_encoder.dtype)
+    
     for epoch in range(args.num_train_epochs):
         text_encoder.train()
         for step, batch in enumerate(train_dataloader):
@@ -604,18 +673,41 @@ def main():
 
                 # Get the text embedding for conditioning
                 cond_embedding = text_encoder(batch["input_ids"])[0]
-                uncond_embedding = text_encoder(batch["neg_input_ids"])[0]
-
+                uncond_embedding = None
+                if args.use_neg:
+                    uncond_embedding = text_encoder(batch["neg_input_ids"])[0]
                 text_embeddings = torch.cat([uncond_embedding, cond_embedding])
                 # Predict the noise residual
                 # print(noisy_latents.shape, text_embeddings.shape)
-                noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states=text_embeddings).sample
-                # print(noise_pred.shape)
-                noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                noise_pred = noise_pred_uncond + args.guidance_scale * (noise_pred_text - noise_pred_uncond)
-                loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
-                accelerator.backward(loss)
+                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states=cond_embedding).sample
+                noise_pred_uncond = None
+                if args.use_neg:
+                    noise_pred_uncond = unet(noisy_latents, timesteps, encoder_hidden_states=uncond_embedding).sample
+                    model_pred = noise_pred_uncond + args.guidance_scale * (model_pred - noise_pred_uncond)
 
+
+                # Get the target for loss depending on the prediction type
+                if noise_scheduler.config.prediction_type == "epsilon":
+                    target = noise
+                elif noise_scheduler.config.prediction_type == "v_prediction":
+                    target = noise_scheduler.get_velocity(latents, noise, timesteps)
+                else:
+                    raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+
+                loss = F.mse_loss(model_pred, target, reduction="none").mean([1, 2, 3]).mean()
+                rec_latent = None
+                rec = None
+                if args.use_l1 or args.use_l1_pixel:
+                    # noisy_latents is x_t, noise_pred is the predicted noise. getting x_0
+                    rec_latent = noise_scheduler.get_original(model_pred, noisy_latents, timesteps)
+                    if args.use_l1_pixel:
+                        rec_latent /= 0.18215
+                        rec = vae.decode(rec_latent).sample
+                        loss += F.l1_loss(rec, batch["pixel_values"])*args.l1_weight
+                    else:
+                        loss += F.l1_loss(rec_latent, latents)*args.l1_weight
+                accelerator.backward(loss)
+                
                 # Zero out the gradients for all token embeddings except the newly added
                 # embeddings for the concept, as we only want to optimize the concept embeddings
                 if accelerator.num_processes > 1:
@@ -637,10 +729,10 @@ def main():
                 del noise
                 del noisy_latents
                 del timesteps
-                del cond_embedding
+                del model_pred
+                del noise_pred_uncond
                 del uncond_embedding
-                del text_embeddings
-                del noise_pred
+                del cond_embedding
 
 
             # Checks if the accelerator has performed an optimization step behind the scenes
