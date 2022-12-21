@@ -19,10 +19,10 @@ from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNe
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
 from huggingface_hub import HfFolder, Repository, whoami
+from onnxruntime.training.ortmodule import ORTModule
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
-from onnxruntime.training.ortmodule import ORTModule
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
