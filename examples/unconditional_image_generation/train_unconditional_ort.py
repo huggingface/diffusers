@@ -425,7 +425,7 @@ def main(args):
 
             with accelerator.accumulate(model):
                 # Predict the noise residual
-                model_output = model(noisy_images, timesteps, return_dict=True)[0]
+                model_output = model(noisy_images, timesteps, return_dict=False)[0]
 
                 if args.prediction_type == "epsilon":
                     loss = F.mse_loss(model_output, noise)  # this could have different weights!
