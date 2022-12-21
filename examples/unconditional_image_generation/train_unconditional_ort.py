@@ -287,7 +287,6 @@ def main(args):
             "UpBlock2D",
         ),
     )
-    model = ORTModule(model)
     accepts_prediction_type = "prediction_type" in set(inspect.signature(DDPMScheduler.__init__).parameters.keys())
 
     if accepts_prediction_type:
@@ -358,6 +357,8 @@ def main(args):
         power=args.ema_power,
         max_value=args.ema_max_decay,
     )
+
+    model = ORTModule(model)
 
     # Handle the repository creation
     if accelerator.is_main_process:
