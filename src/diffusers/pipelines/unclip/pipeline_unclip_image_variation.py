@@ -110,6 +110,7 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
             super_res_scheduler=super_res_scheduler,
         )
 
+    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
             if device.type == "mps":
@@ -125,6 +126,7 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
         latents = latents * scheduler.init_noise_sigma
         return latents
 
+    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline._encode_prompt
     def _encode_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance):
         batch_size = len(prompt) if isinstance(prompt, list) else 1
 
@@ -235,6 +237,7 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
                 cpu_offload(cpu_offloaded_model, device)
 
     @property
+    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline._execution_device
     def _execution_device(self):
         r"""
         Returns the device on which the pipeline's models will be executed. After calling
