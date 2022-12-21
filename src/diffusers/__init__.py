@@ -138,6 +138,7 @@ from .schedulers import (
     OneFlowSchedulerMixin
 )
 
+from .pipelines import OneFlowAltDiffusionPipeline
 from .pipelines import OneFlowStableDiffusionPipeline
 from .pipelines import OneFlowStableDiffusionImg2ImgPipeline
 from .pipeline_oneflow_utils import OneFlowDiffusionPipeline
