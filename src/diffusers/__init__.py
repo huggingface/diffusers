@@ -1,4 +1,4 @@
-__version__ = "0.11.0.dev0"
+__version__ = "0.12.0.dev0"
 
 from .configuration_utils import ConfigMixin
 from .onnx_utils import OnnxRuntimeModel
@@ -173,10 +173,11 @@ else:
         FlaxScoreSdeVeScheduler,
     )
 
+
 try:
     if not (is_flax_available() and is_transformers_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from .utils.dummy_flax_and_transformers_objects import *  # noqa F403
 else:
-    from .pipelines import FlaxStableDiffusionPipeline
+    from .pipelines import FlaxStableDiffusionImg2ImgPipeline, FlaxStableDiffusionPipeline

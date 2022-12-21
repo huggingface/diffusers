@@ -286,7 +286,7 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
         torch.cuda.reset_max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()
 
-        pipe = UnCLIPPipeline.from_pretrained("kakaobrain/karlo-v1-alpha")
+        pipe = UnCLIPPipeline.from_pretrained("kakaobrain/karlo-v1-alpha", torch_dtype=torch.float16)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -304,5 +304,5 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
         )
 
         mem_bytes = torch.cuda.max_memory_allocated()
-        # make sure that less than 1.5 GB is allocated
-        assert mem_bytes < 1.5 * 10**9
+        # make sure that less than 7 GB is allocated
+        assert mem_bytes < 7 * 10**9

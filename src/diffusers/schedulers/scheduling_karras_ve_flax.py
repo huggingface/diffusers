@@ -233,5 +233,5 @@ class FlaxKarrasVeScheduler(FlaxSchedulerMixin, ConfigMixin):
 
         return FlaxKarrasVeOutput(prev_sample=sample_prev, derivative=derivative, state=state)
 
-    def add_noise(self, original_samples, noise, timesteps):
+    def add_noise(self, state: KarrasVeSchedulerState, original_samples, noise, timesteps):
         raise NotImplementedError()
