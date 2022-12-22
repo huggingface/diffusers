@@ -31,6 +31,11 @@ class DiTPipeline(DiffusionPipeline):
         image = torch.randn(batch_size, 4, latent_size, latent_size, device=self.device)
         y = torch.tensor(class_labels, device=self.device)
 
+        # Setup classifier-free guidance:
+        image = torch.cat([image, image], 0)
+        y_null = torch.tensor([1000] * batch_size, device=self.device)
+        y = torch.cat([y, y_null], 0)
+
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)
 

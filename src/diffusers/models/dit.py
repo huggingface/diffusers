@@ -8,7 +8,7 @@ import torch.nn as nn
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from .cross_attention import CrossAttention
-from .embeddings import LabelEmbedding, TimestepEmbedding
+from .embeddings import LabelEmbedding, TimestepEmbedding, get_timestep_embedding
 
 
 def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False, extra_tokens=0):
@@ -276,10 +276,29 @@ class DiT(ModelMixin, ConfigMixin):
             timestep: (N,) tensor of diffusion timesteps
             class_labels: (N,) tensor of class labels
         """
-        sample = self.sample_embedder(sample) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
-        timestep = self.timestep_embedder(timestep)  # (N, D)
+
+        timesteps = timestep
+        if not torch.is_tensor(timesteps):
+            # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
+            # This would be a good case for the `match` statement (Python 3.10+)
+            is_mps = sample.device.type == "mps"
+            if isinstance(timestep, float):
+                dtype = torch.float32 if is_mps else torch.float64
+            else:
+                dtype = torch.int32 if is_mps else torch.int64
+            timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
+        elif len(timesteps.shape) == 0:
+            timesteps = timesteps[None].to(sample.device)
+
+        # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+        timesteps = timesteps.expand(sample.shape[0])
+        timesteps = get_timestep_embedding(timesteps, embedding_dim=256)
+        timesteps = self.timestep_embedder(timesteps)  # (N, D)
+
         class_labels = self.class_embedder(class_labels, self.training)  # (N, D)
-        conditioning = timestep + class_labels  # (N, D)
+        conditioning = timesteps + class_labels  # (N, D)
+
+        sample = self.sample_embedder(sample) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         for block in self.blocks:
             sample = block(sample, conditioning)  # (N, T, D)
         sample = self.final_layer(sample, conditioning)  # (N, T, patch_size ** 2 * out_channels)
