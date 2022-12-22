@@ -209,7 +209,7 @@ class DiT(ModelMixin, ConfigMixin):
         self.num_heads = num_heads
 
         self.x_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
-        self.t_embedder = TimestepEmbedding(hidden_size, time_embed_dim=256)
+        self.t_embedder = TimestepEmbedding(256, time_embed_dim=hidden_size)
         self.y_embedder = LabelEmbedding(num_classes, hidden_size, class_dropout_prob)
         num_patches = self.x_embedder.num_patches
         # Will use fixed sin-cos embedding:
