@@ -125,9 +125,6 @@ def add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, text_encode
         # Initialize them to be random
         for i, placeholder_token_id in enumerate(placeholder_token_ids):
             token_embeds[placeholder_token_id] = torch.randn_like(token_embeds[placeholder_token_id])
-    elif is_negative:
-        for i, placeholder_token_id in enumerate(placeholder_token_ids):
-            token_embeds[placeholder_token_id] = torch.randn_like(token_embeds[placeholder_token_id])*1e-3
     elif args.initialize_rest_random:
         # The idea is that the placeholder tokens form adjectives as in x x x white dog.
         for i, placeholder_token_id in enumerate(placeholder_token_ids):
@@ -137,7 +134,9 @@ def add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, text_encode
                 token_embeds[placeholder_token_id] = torch.randn_like(token_embeds[placeholder_token_id])
     else:
         for i, placeholder_token_id in enumerate(placeholder_token_ids):
-            token_embeds[placeholder_token_id] = token_embeds[token_ids[i % len(token_ids)]]
+            token_embeds[placeholder_token_id] = token_embeds[token_ids[i * len(token_ids) // num_vec_per_token]]
+        if is_negative:
+            token_embeds[placeholder_token_id] += torch.randn_like(token_embeds[placeholder_token_id])*1e-3
     return placeholder_token, placeholder_token_ids
 # Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14
 class EMAModel:
@@ -742,7 +741,6 @@ def main():
                 uncond_embedding = None
                 if args.use_neg:
                     uncond_embedding = text_encoder(batch["neg_input_ids"])[0]
-                text_embeddings = torch.cat([uncond_embedding, cond_embedding])
                 # Predict the noise residual
                 # print(noisy_latents.shape, text_embeddings.shape)
                 model_pred = unet(noisy_latents, timesteps, encoder_hidden_states=cond_embedding).sample
