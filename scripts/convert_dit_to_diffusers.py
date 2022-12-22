@@ -1,10 +1,11 @@
-import os
 import argparse
+import os
 
 import torch
+
+from diffusers import AutoencoderKL, DDPMScheduler, DiT, DiTPipeline
 from torchvision.datasets.utils import download_url
 
-from diffusers import DiT, AutoencoderKL, DDPMScheduler, DiTPipeline
 
 pretrained_models = {512: "DiT-XL-2-512x512.pt", 256: "DiT-XL-2-256x256.pt"}
 

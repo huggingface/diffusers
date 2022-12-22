@@ -3,10 +3,10 @@ from typing import List, Optional, Tuple, Union
 import torch
 
 from ...configuration_utils import FrozenDict
-from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from ...utils import deprecate
 from ...models import AutoencoderKL, DiT
+from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import DDPMScheduler
+from ...utils import deprecate
 
 
 class DiTPipeline(DiffusionPipeline):
@@ -25,7 +25,6 @@ class DiTPipeline(DiffusionPipeline):
         return_dict: bool = True,
         **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
-
         batch_size = len(class_labels)
         latent_size = self.dit.config.input_size
 

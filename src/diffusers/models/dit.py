@@ -5,18 +5,16 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from .cross_attention import CrossAttention
-from .embeddings import TimestepEmbedding, LabelEmbedding
+from .embeddings import LabelEmbedding, TimestepEmbedding
 
 
 def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False, extra_tokens=0):
     """
-    grid_size: int of the grid height and width
-    return:
-    pos_embed: [grid_size*grid_size, embed_dim] or [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
+    grid_size: int of the grid height and width return: pos_embed: [grid_size*grid_size, embed_dim] or
+    [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
     """
     grid_h = np.arange(grid_size, dtype=np.float32)
     grid_w = np.arange(grid_size, dtype=np.float32)
@@ -43,9 +41,7 @@ def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
 
 def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     """
-    embed_dim: output dimension for each position
-    pos: a list of positions to be encoded: size (M,)
-    out: (M, D)
+    embed_dim: output dimension for each position pos: a list of positions to be encoded: size (M,) out: (M, D)
     """
     assert embed_dim % 2 == 0
     omega = np.arange(embed_dim // 2, dtype=np.float)
@@ -257,8 +253,7 @@ class DiT(ModelMixin, ConfigMixin):
 
     def unpatchify(self, x):
         """
-        x: (N, T, patch_size**2 * C)
-        imgs: (N, H, W, C)
+        x: (N, T, patch_size**2 * C) imgs: (N, H, W, C)
         """
         c = self.out_channels
         p = self.x_embedder.patch_size[0]
@@ -272,10 +267,8 @@ class DiT(ModelMixin, ConfigMixin):
 
     def forward(self, x, t, y):
         """
-        Forward pass of DiT.
-        x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
-        t: (N,) tensor of diffusion timesteps
-        y: (N,) tensor of class labels
+        Forward pass of DiT. x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images) t:
+        (N,) tensor of diffusion timesteps y: (N,) tensor of class labels
         """
         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         t = self.t_embedder(t)  # (N, D)

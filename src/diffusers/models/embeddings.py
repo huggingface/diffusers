@@ -199,6 +199,7 @@ class ImagePositionalEmbeddings(nn.Module):
 
         return emb
 
+
 class LabelEmbedding(nn.Module):
     """
     Embeds class labels into vector representations. Also handles label dropout for classifier-free guidance.
@@ -208,6 +209,7 @@ class LabelEmbedding(nn.Module):
         hidden_size (`int`): The size of the vector embeddings.
         dropout_prob (`float`): The probability of dropping a label.
     """
+
     def __init__(self, num_classes, hidden_size, dropout_prob):
         super().__init__()
         use_cfg_embedding = dropout_prob > 0
