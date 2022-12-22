@@ -201,10 +201,11 @@ class DiT(ModelMixin, ConfigMixin):
         self.patch_size = patch_size
         self.num_heads = num_heads
 
-        self.x_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
-        self.t_embedder = TimestepEmbedding(256, time_embed_dim=hidden_size)
-        self.y_embedder = LabelEmbedding(num_classes, hidden_size, class_dropout_prob)
-        num_patches = self.x_embedder.num_patches
+        self.sample_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
+        self.timestep_embedder = TimestepEmbedding(256, time_embed_dim=hidden_size)
+        self.class_embedder = LabelEmbedding(num_classes, hidden_size, class_dropout_prob)
+
+        num_patches = self.sample_embedder.num_patches
         # Will use fixed sin-cos embedding:
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, hidden_size), requires_grad=False)
 
@@ -223,19 +224,19 @@ class DiT(ModelMixin, ConfigMixin):
         self.apply(_basic_init)
 
         # Initialize (and freeze) pos_embed by sin-cos embedding
-        pos_embed = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], int(self.x_embedder.num_patches**0.5))
+        pos_embed = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], int(self.sample_embedder.num_patches**0.5))
         self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
 
         # Initialize patch_embed like nn.Linear (instead of nn.Conv2d)
-        w = self.x_embedder.proj.weight.data
+        w = self.sample_embedder.proj.weight.data
         nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
 
         # Initialize label embedding table:
-        nn.init.normal_(self.y_embedder.embedding_table.weight, std=0.02)
+        nn.init.normal_(self.class_embedder.embedding_table.weight, std=0.02)
 
         # Initialize timestep embedding MLP:
-        nn.init.normal_(self.t_embedder.linear_1.weight, std=0.02)
-        nn.init.normal_(self.t_embedder.linear_2.weight, std=0.02)
+        nn.init.normal_(self.timestep_embedder.linear_1.weight, std=0.02)
+        nn.init.normal_(self.timestep_embedder.linear_2.weight, std=0.02)
 
         # Zero-out adaLN modulation layers in DiT blocks:
         for block in self.blocks:
@@ -250,10 +251,14 @@ class DiT(ModelMixin, ConfigMixin):
 
     def unpatchify(self, x):
         """
-        x: (N, T, patch_size**2 * C) imgs: (N, H, W, C)
+        Args:
+            x: (N, T, patch_size**2 * C)
+
+        Returns:
+            imgs: (N, H, W, C)
         """
         c = self.out_channels
-        p = self.x_embedder.patch_size[0]
+        p = self.sample_embedder.patch_size[0]
         h = w = int(x.shape[1] ** 0.5)
         assert h * w == x.shape[1]
 
@@ -262,31 +267,21 @@ class DiT(ModelMixin, ConfigMixin):
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
 
-    def forward(self, x, t, y):
+    def forward(self, sample, timestep, class_labels):
         """
-        Forward pass of DiT. x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images) t:
-        (N,) tensor of diffusion timesteps y: (N,) tensor of class labels
-        """
-        x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
-        t = self.t_embedder(t)  # (N, D)
-        y = self.y_embedder(y, self.training)  # (N, D)
-        c = t + y  # (N, D)
-        for block in self.blocks:
-            x = block(x, c)  # (N, T, D)
-        x = self.final_layer(x, c)  # (N, T, patch_size ** 2 * out_channels)
-        x = self.unpatchify(x)  # (N, out_channels, H, W)
-        return x
+        Forward pass of DiT.
 
-    def forward_with_cfg(self, x, t, y, cfg_scale):
+        Args:
+            sample: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
+            timestep: (N,) tensor of diffusion timesteps
+            class_labels: (N,) tensor of class labels
         """
-        Forward pass of DiT, but also batches the unconditional forward pass for classifier-free guidance.
-        """
-        # https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb
-        half = x[: len(x) // 2]
-        combined = torch.cat([half, half], dim=0)
-        model_out = self.forward(combined, t, y)
-        eps, rest = model_out[:, :3], model_out[:, 3:]
-        cond_eps, uncond_eps = torch.split(eps, len(eps) // 2, dim=0)
-        half_eps = uncond_eps + cfg_scale * (cond_eps - uncond_eps)
-        eps = torch.cat([half_eps, half_eps], dim=0)
-        return torch.cat([eps, rest], dim=1)
+        sample = self.sample_embedder(sample) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
+        timestep = self.timestep_embedder(timestep)  # (N, D)
+        class_labels = self.class_embedder(class_labels, self.training)  # (N, D)
+        conditioning = timestep + class_labels  # (N, D)
+        for block in self.blocks:
+            sample = block(sample, conditioning)  # (N, T, D)
+        sample = self.final_layer(sample, conditioning)  # (N, T, patch_size ** 2 * out_channels)
+        sample = self.unpatchify(sample)  # (N, out_channels, H, W)
+        return sample
