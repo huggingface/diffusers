@@ -65,16 +65,10 @@ def modulate(x, shift, scale):
     return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
 
 
-def _ntuple(n):
-    def parse(x):
-        if isinstance(x, collections.abc.Iterable) and not isinstance(x, str):
-            return x
-        return tuple(repeat(x, n))
-
-    return parse
-
-
-to_2tuple = _ntuple(2)
+def to_2tuple(x: int):
+    if isinstance(x, collections.abc.Iterable) and not isinstance(x, str):
+        return x
+    return tuple(repeat(x, 2))
 
 
 class PatchEmbed(nn.Module):
