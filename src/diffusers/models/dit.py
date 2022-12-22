@@ -102,8 +102,8 @@ class PatchEmbed(nn.Module):
 
     def forward(self, x):
         _, _, H, W = x.shape
-        assert (H == self.img_size[0], f"Input image height ({H}) doesn't match model ({self.img_size[0]}).")
-        assert (W == self.img_size[1], f"Input image width ({W}) doesn't match model ({self.img_size[1]}).")
+        assert H == self.img_size[0], f"Input image height ({H}) doesn't match model ({self.img_size[0]})."
+        assert W == self.img_size[1], f"Input image width ({W}) doesn't match model ({self.img_size[1]})."
         x = self.proj(x)
         if self.flatten:
             x = x.flatten(2).transpose(1, 2)  # BCHW -> BNC
@@ -237,8 +237,8 @@ class DiT(nn.Module):
         nn.init.normal_(self.y_embedder.embedding_table.weight, std=0.02)
 
         # Initialize timestep embedding MLP:
-        nn.init.normal_(self.t_embedder.mlp[0].weight, std=0.02)
-        nn.init.normal_(self.t_embedder.mlp[2].weight, std=0.02)
+        nn.init.normal_(self.t_embedder.linear_1.weight, std=0.02)
+        nn.init.normal_(self.t_embedder.linear_2.weight, std=0.02)
 
         # Zero-out adaLN modulation layers in DiT blocks:
         for block in self.blocks:
