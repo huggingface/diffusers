@@ -4,7 +4,7 @@ import argparse
 import torch
 from torchvision.datasets.utils import download_url
 
-from diffusers.models import DiT, AutoencoderKL
+from diffusers import DiT, AutoencoderKL, DDPMScheduler, DiTPipeline
 
 pretrained_models = {512: "DiT-XL-2-512x512.pt", 256: "DiT-XL-2-256x256.pt"}
 
@@ -62,6 +62,17 @@ def main(args):
         num_heads=16,
     )
     dit.load_state_dict(state_dict)
+
+    scheduler = DDPMScheduler(
+        num_train_timesteps=1000,
+        beta_schedule="linear",
+        prediction_type="epsilon",
+    )
+
+    pipeline = DiTPipeline(dit=dit, vae=vae, scheduler=scheduler)
+
+    if args.save:
+        pipeline.save_pretrained(args.checkpoint_path)
 
 
 if __name__ == "__main__":

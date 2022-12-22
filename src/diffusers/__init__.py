@@ -27,6 +27,7 @@ else:
     from .modeling_utils import ModelMixin
     from .models import (
         AutoencoderKL,
+        DiT,
         PriorTransformer,
         Transformer2DModel,
         UNet1DModel,
@@ -48,6 +49,7 @@ else:
         DanceDiffusionPipeline,
         DDIMPipeline,
         DDPMPipeline,
+        DiTPipeline,
         KarrasVePipeline,
         LDMPipeline,
         LDMSuperResolutionPipeline,
