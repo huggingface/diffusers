@@ -500,6 +500,19 @@ class OneFlowAltDiffusionPipeline(DiffusionPipeline):
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
+    
+    def set_unet_graphs_cache_size(self, cache_size: int):
+        r"""
+        Set the cache size of compiled unet graphs.
+        This option is designed to control the GPU memory size.
+        Args:
+            cache_size ([`int`]):
+                New cache size, i.e., the maximum number of unet graphs.
+        """
+        logger.warning(
+            f"`set_unet_graphs_cache_size` is deprecated, please use `set_graph_compile_cache_size` instead."
+        )
+        self.set_graph_compile_cache_size(cache_size)
 
     @torch.no_grad()
     def __call__(
