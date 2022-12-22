@@ -52,6 +52,27 @@ class UNetGraph(torch.nn.Graph):
         text_embeddings = torch._C.amp_white_identity(text_embeddings)
         return self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
 
+class VaePostProcess(torch.nn.Module):
+    def __init__(self, vae) -> None:
+        super().__init__()
+        self.vae = vae
+
+    def forward(self, latents):
+        latents = 1 / 0.18215 * latents
+        image = self.vae.decode(latents).sample
+        image = (image / 2 + 0.5).clamp(0, 1)
+        return image
+
+
+class VaeGraph(torch.nn.Graph):
+    def __init__(self, vae_post_process) -> None:
+        super().__init__()
+        self.vae_post_process = vae_post_process
+
+    def build(self, latents):
+        return self.vae_post_process(latents)
+
+
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline with Stable->Alt, CLIPTextModel->RobertaSeriesModelWithTransformation, CLIPTokenizer->XLMRobertaTokenizer, AltDiffusionSafetyChecker->StableDiffusionSafetyChecker
 class OneFlowAltDiffusionPipeline(DiffusionPipeline):
     r"""
@@ -498,6 +519,7 @@ class OneFlowAltDiffusionPipeline(DiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
         compile_unet: bool = True,
+        compile_vae: bool = True,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -593,6 +615,14 @@ class OneFlowAltDiffusionPipeline(DiffusionPipeline):
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
+        # compile vae graph
+        if compile_vae:
+            cache_key = (height, width, num_images_per_prompt)
+            vae_post_process = VaePostProcess(self.vae)
+            vae_post_process.eval()
+            vae_post_process_graph = self.graph_compile_cache.get_graph(VaeGraph, cache_key, vae_post_process)
+            vae_post_process_graph.compile(latents)
+
         # compile unet graph
         if compile_unet:
             cache_key = (height, width, num_images_per_prompt)
@@ -633,7 +663,11 @@ class OneFlowAltDiffusionPipeline(DiffusionPipeline):
                         callback(i, t, latents)
 
         # 8. Post-processing
-        image = self.decode_latents(latents)
+        if compile_vae:
+            image = vae_post_process_graph(latents)
+            image = image.cpu().permute(0, 2, 3, 1).float().numpy()
+        else:
+            image = self.decode_latents(latents)
 
         # 9. Run safety checker
         image, has_nsfw_concept = self.run_safety_checker(image, device, text_embeddings.dtype)
