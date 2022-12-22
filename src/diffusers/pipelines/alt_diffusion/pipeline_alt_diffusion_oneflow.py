@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import os
 import inspect
 from typing import Callable, List, Optional, Union
 
@@ -40,6 +40,17 @@ from . import OneFlowRobertaSeriesModelWithTransformation as RobertaSeriesModelW
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+
+class UNetGraph(torch.nn.Graph):
+    def __init__(self, unet):
+        super().__init__()
+        self.unet = unet
+        self.config.enable_cudnn_conv_heuristic_search_algo(False)
+        self.config.allow_fuse_add_to_output(True)
+
+    def build(self, latent_model_input, t, text_embeddings):
+        text_embeddings = torch._C.amp_white_identity(text_embeddings)
+        return self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline with Stable->Alt, CLIPTextModel->RobertaSeriesModelWithTransformation, CLIPTokenizer->XLMRobertaTokenizer, AltDiffusionSafetyChecker->StableDiffusionSafetyChecker
 class OneFlowAltDiffusionPipeline(DiffusionPipeline):
@@ -89,6 +100,27 @@ class OneFlowAltDiffusionPipeline(DiffusionPipeline):
         feature_extractor: CLIPFeatureExtractor,
         requires_safety_checker: bool = True,
     ):
+        os.environ["ONEFLOW_MLIR_CSE"] = "1"
+        os.environ["ONEFLOW_MLIR_ENABLE_INFERENCE_OPTIMIZATION"] = "1"
+        os.environ["ONEFLOW_MLIR_ENABLE_ROUND_TRIP"] = "1"
+        os.environ["ONEFLOW_MLIR_FUSE_FORWARD_OPS"] = "1"
+        os.environ["ONEFLOW_MLIR_GROUP_MATMUL"] = "1"
+        os.environ["ONEFLOW_MLIR_PREFER_NHWC"] = "1"
+
+        os.environ["ONEFLOW_KERNEL_ENABLE_FUSED_CONV_BIAS"] = "1"
+        os.environ["ONEFLOW_KERNEL_ENABLE_FUSED_LINEAR"] = "1"
+
+        os.environ["ONEFLOW_KERENL_CONV_ENABLE_CUTLASS_IMPL"] = "1"
+        # NOTE: avoid overflow
+        if "upcast_attention" in unet.config and unet.config.upcast_attention:
+            os.environ["ONEFLOW_KERENL_FMHA_ENABLE_TRT_FLASH_ATTN_IMPL"] = "0"
+        else:
+            os.environ["ONEFLOW_KERENL_FMHA_ENABLE_TRT_FLASH_ATTN_IMPL"] = "1"
+        os.environ["ONEFLOW_KERNEL_GLU_ENABLE_DUAL_GEMM_IMPL"] = "1"
+
+        os.environ["ONEFLOW_CONV_ALLOW_HALF_PRECISION_ACCUMULATION"] = "1"
+        os.environ["ONEFLOW_MATMUL_ALLOW_HALF_PRECISION_ACCUMULATION"] = "1"
+
         super().__init__()
 
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
@@ -166,6 +198,7 @@ class OneFlowAltDiffusionPipeline(DiffusionPipeline):
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
+        self.init_graph_compile_cache(1)
 
     def enable_xformers_memory_efficient_attention(self):
         r"""
@@ -464,6 +497,7 @@ class OneFlowAltDiffusionPipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
+        compile_unet: bool = True,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -559,6 +593,15 @@ class OneFlowAltDiffusionPipeline(DiffusionPipeline):
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
+        # compile unet graph
+        if compile_unet:
+            cache_key = (height, width, num_images_per_prompt)
+            unet_graph = self.graph_compile_cache.get_graph(UNetGraph, cache_key, self.unet)
+            if unet_graph.is_compiled is False:
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                _, t = list(enumerate(self.scheduler.timesteps))[0]
+                unet_graph.compile(latent_model_input, t, text_embeddings)
+
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -568,7 +611,12 @@ class OneFlowAltDiffusionPipeline(DiffusionPipeline):
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
+                if compile_unet:
+                    torch._oneflow_internal.profiler.RangePush(f"denoise-{i}-unet-graph")
+                    noise_pred = unet_graph(latent_model_input, t, text_embeddings)
+                    torch._oneflow_internal.profiler.RangePop()
+                else:
+                    noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
 
                 # perform guidance
                 if do_classifier_free_guidance:
