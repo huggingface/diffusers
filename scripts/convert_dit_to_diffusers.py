@@ -3,7 +3,7 @@ import os
 
 import torch
 
-from diffusers import AutoencoderKL, DDPMScheduler, DiT, DiTPipeline
+from diffusers import AutoencoderKL, DDIMScheduler, DiT, DiTPipeline
 from torchvision.datasets.utils import download_url
 
 
@@ -72,7 +72,7 @@ def main(args):
     )
     dit.load_state_dict(state_dict)
 
-    scheduler = DDPMScheduler(
+    scheduler = DDIMScheduler(
         num_train_timesteps=1000,
         beta_schedule="linear",
         prediction_type="epsilon",
