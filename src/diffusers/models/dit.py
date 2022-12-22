@@ -5,6 +5,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+
+from ..configuration_utils import ConfigMixin, register_to_config
+from ..modeling_utils import ModelMixin
 from .cross_attention import CrossAttention
 from .embeddings import TimestepEmbedding, LabelEmbedding
 
@@ -179,11 +182,12 @@ class FinalLayer(nn.Module):
         return x
 
 
-class DiT(nn.Module):
+class DiT(ModelMixin, ConfigMixin):
     """
     Diffusion model with a Transformer backbone.
     """
 
+    @register_to_config
     def __init__(
         self,
         input_size=32,
