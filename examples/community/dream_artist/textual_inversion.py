@@ -4,8 +4,7 @@ import math
 import os
 import random
 from pathlib import Path
-from typing import Optional
-
+from typing import Optional, Iterable
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -140,8 +139,73 @@ def add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, text_encode
         for i, placeholder_token_id in enumerate(placeholder_token_ids):
             token_embeds[placeholder_token_id] = token_embeds[token_ids[i % len(token_ids)]]
     return placeholder_token, placeholder_token_ids
+# Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14
+class EMAModel:
+    """
+    Exponential Moving Average of models weights
+    """
+
+    def __init__(self, parameters: Iterable[torch.nn.Parameter], decay=0.9999):
+        parameters = list(parameters)
+        self.shadow_params = [p.clone().detach() for p in parameters]
+
+        self.decay = decay
+        self.optimization_step = 0
+
+    def get_decay(self, optimization_step):
+        """
+        Compute the decay factor for the exponential moving average.
+        """
+        value = (1 + optimization_step) / (10 + optimization_step)
+        return 1 - min(self.decay, value)
+
+    @torch.no_grad()
+    def step(self, parameters):
+        parameters = list(parameters)
+
+        self.optimization_step += 1
+        self.decay = self.get_decay(self.optimization_step)
+
+        for s_param, param in zip(self.shadow_params, parameters):
+            if param.requires_grad:
+                tmp = self.decay * (s_param - param)
+                s_param.sub_(tmp)
+            else:
+                s_param.copy_(param)
+
+        torch.cuda.empty_cache()
+
+    def copy_to(self, parameters: Iterable[torch.nn.Parameter]) -> None:
+        """
+        Copy current averaged parameters into given collection of parameters.
+        Args:
+            parameters: Iterable of `torch.nn.Parameter`; the parameters to be
+                updated with the stored moving averages. If `None`, the
+                parameters with which this `ExponentialMovingAverage` was
+                initialized will be used.
+        """
+        parameters = list(parameters)
+        for s_param, param in zip(self.shadow_params, parameters):
+            param.data.copy_(s_param.data)
+
+    def to(self, device=None, dtype=None) -> None:
+        r"""Move internal buffers of the ExponentialMovingAverage to `device`.
+        Args:
+            device: like `device` argument to `torch.Tensor.to`
+        """
+        # .to() on the tensors handles None correctly
+        self.shadow_params = [
+            p.to(device=device, dtype=dtype) if p.is_floating_point() else p.to(device=device)
+            for p in self.shadow_params
+        ]
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
+    parser.add_argument(
+        "--use_ema",
+        action="store_true",
+        help="Use ema.",
+    )
     parser.add_argument(
         "--dnn_model_path",
         type=str,
@@ -576,6 +640,8 @@ def main():
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon,
     )
+    if args.use_ema:
+        ema_embedding = EMAModel(text_encoder.get_input_embeddings().parameters())
 
     noise_scheduler = DDPMScheduler.from_config(args.pretrained_model_name_or_path, subfolder="scheduler")
 
@@ -739,6 +805,19 @@ def main():
             if accelerator.sync_gradients:
                 # Adding back weight decay
                 progress_bar.update(1)
+                if args.use_ema:
+                    ema_embedding.step(text_encoder.get_input_embeddings().parameters())
+                    if accelerator.num_processes > 1:
+                        token_embeds = text_encoder.module.get_input_embeddings().weight
+                    else:
+                        token_embeds = text_encoder.get_input_embeddings().weight
+                    # Get the index for tokens that we want to zero the grads for
+                    grad_mask = torch.arange(len(tokenizer)) != placeholder_token_ids[0]
+                    for i in range(1, len(placeholder_token_ids)):
+                        grad_mask = grad_mask & (torch.arange(len(tokenizer)) != placeholder_token_ids[i])
+                    for i in range(1, len(neg_placeholder_token_ids)):
+                        grad_mask = grad_mask & (torch.arange(len(tokenizer)) != neg_placeholder_token_ids[i])
+                    token_embeds.data[grad_mask, :] = original_token_embeds[grad_mask, :]
                 global_step += 1
                 if global_step % args.log_frequency == 0:
                     pipeline = get_pipeline(text_encoder, vae, unet, tokenizer, accelerator)
@@ -763,6 +842,8 @@ def main():
     # Create the pipeline using using the trained modules and save it.
     # Create the pipeline using using the trained modules and save it.
     if accelerator.is_main_process:
+        if args.use_ema:
+            ema_embedding.copy_to(text_encoder.get_input_embeddings().parameters())
         pipeline = get_pipeline(text_encoder, vae, unet, tokenizer, accelerator)
         log_progress(pipeline, args, global_step, wandb_run, placeholder_token, neg_placeholder_token)
         pipeline.save_pretrained(args.output_dir)
