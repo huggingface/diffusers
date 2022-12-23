@@ -677,7 +677,7 @@ def main():
         else:
             save_full_model = not args.only_save_embeds
         if save_full_model:
-            pipeline = StableDiffusionPipeline(
+            pipeline = StableDiffusionPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 text_encoder=accelerator.unwrap_model(text_encoder),
                 vae=vae,
