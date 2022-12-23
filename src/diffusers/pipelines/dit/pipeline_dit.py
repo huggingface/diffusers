@@ -18,7 +18,7 @@ class DiTPipeline(DiffusionPipeline):
     def __call__(
         self,
         class_labels: List[int],
-        cfg_scale: float = 4.0,
+        guidance_scale: float = 4.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         num_inference_steps: int = 250,
         output_type: Optional[str] = "pil",
@@ -28,11 +28,11 @@ class DiTPipeline(DiffusionPipeline):
         batch_size = len(class_labels)
         latent_size = self.dit.config.input_size
 
-        image = torch.randn(batch_size, 4, latent_size, latent_size, device=self.device)
+        latents = torch.randn(batch_size, 4, latent_size, latent_size, device=self.device)
         y = torch.tensor(class_labels, device=self.device)
 
         # Setup classifier-free guidance:
-        image = torch.cat([image, image], 0)
+        latents = torch.cat([latents, latents], 0)
         y_null = torch.tensor([1000] * batch_size, device=self.device)
         y = torch.cat([y, y_null], 0)
 
@@ -41,13 +41,13 @@ class DiTPipeline(DiffusionPipeline):
 
         for t in self.progress_bar(self.scheduler.timesteps):
             # 1. predict noise model_output
-            model_output = self.forward_with_cfg(image, t, y, cfg_scale)
+            latents_model_output = self.forward_with_cfg(latents, t, y, guidance_scale)
 
             # 2. compute previous image: x_t -> x_t-1
-            image = self.scheduler.step(model_output[:, :4], t, image, generator=generator).prev_sample
+            latents = self.scheduler.step(latents_model_output[:, :4], t, latents, generator=generator).prev_sample
 
-        samples, _ = image.chunk(2, dim=0)
-        samples = self.vae.decode(samples / 0.18215).sample
+        latents, _ = latents.chunk(2, dim=0)
+        samples = self.vae.decode(latents / 0.18215).sample
 
         samples = (samples / 2 + 0.5).clamp(0, 1)
 
@@ -62,7 +62,7 @@ class DiTPipeline(DiffusionPipeline):
 
         return ImagePipelineOutput(images=samples)
 
-    def forward_with_cfg(self, x, t, y, cfg_scale):
+    def forward_with_cfg(self, x, t, y, guidance_scale):
         """
         Forward pass of DiT, but also batches the unconditional forward pass for classifier-free guidance.
         """
@@ -72,6 +72,6 @@ class DiTPipeline(DiffusionPipeline):
         model_out = self.dit(combined, t, y)
         eps, rest = model_out[:, :3], model_out[:, 3:]
         cond_eps, uncond_eps = torch.split(eps, len(eps) // 2, dim=0)
-        half_eps = uncond_eps + cfg_scale * (cond_eps - uncond_eps)
+        half_eps = uncond_eps + guidance_scale * (cond_eps - uncond_eps)
         eps = torch.cat([half_eps, half_eps], dim=0)
         return torch.cat([eps, rest], dim=1)
