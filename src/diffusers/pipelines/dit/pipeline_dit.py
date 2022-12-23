@@ -44,10 +44,15 @@ class DiTPipeline(DiffusionPipeline):
             model_output = self.forward_with_cfg(image, t, y, cfg_scale)
 
             # 2. compute previous image: x_t -> x_t-1
-            image = self.scheduler.step(model_output, t, image, generator=generator).prev_sample
+            image = self.scheduler.step(model_output[:, :4], t, image, generator=generator).prev_sample
 
         samples, _ = image.chunk(2, dim=0)
         samples = self.vae.decode(samples / 0.18215).sample
+
+        samples = (samples / 2 + 0.5).clamp(0, 1)
+
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
+        samples = samples.cpu().permute(0, 2, 3, 1).float().numpy()
 
         if output_type == "pil":
             samples = self.numpy_to_pil(samples)
