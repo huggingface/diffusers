@@ -470,7 +470,7 @@ def main():
     text_encoder.resize_token_embeddings(len(tokenizer))
 
     # Initialise the newly added placeholder token with the embeddings of the initializer token
-    token_embeds = text_encoder.get_input_embeddings().weight.data
+    token_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight.data
     token_embeds[placeholder_token_id] = token_embeds[initializer_token_id]
 
     # Freeze vae and unet
