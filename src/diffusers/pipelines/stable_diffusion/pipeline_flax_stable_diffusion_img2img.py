@@ -121,7 +121,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
         if isinstance(image, Image.Image):
             image = [image]
 
-        processed_images = jnp.array([preprocess(img, jnp.float32) for img in image])
+        processed_images = jnp.concatenate([preprocess(img, jnp.float32) for img in image])
 
         text_input = self.tokenizer(
             prompt,
