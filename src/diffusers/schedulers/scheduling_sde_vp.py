@@ -14,10 +14,8 @@
 
 # DISCLAIMER: This file is strongly influenced by https://github.com/yang-song/score_sde_pytorch
 
-# TODO(Patrick, Anton, Suraj) - make scheduler framework independent and clean-up a bit
-
 import math
-import warnings
+from typing import Union
 
 import torch
 
@@ -31,8 +29,8 @@ class ScoreSdeVpScheduler(SchedulerMixin, ConfigMixin):
 
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
-    [`~ConfigMixin`] also provides general loading and saving functionality via the [`~ConfigMixin.save_config`] and
-    [`~ConfigMixin.from_config`] functions.
+    [`SchedulerMixin`] provides general loading and saving functionality via the [`SchedulerMixin.save_pretrained`] and
+    [`~SchedulerMixin.from_pretrained`] functions.
 
     For more information, see the original paper: https://arxiv.org/abs/2011.13456
 
@@ -40,20 +38,16 @@ class ScoreSdeVpScheduler(SchedulerMixin, ConfigMixin):
 
     """
 
+    order = 1
+
     @register_to_config
-    def __init__(self, num_train_timesteps=2000, beta_min=0.1, beta_max=20, sampling_eps=1e-3, **kwargs):
-        if "tensor_format" in kwargs:
-            warnings.warn(
-                "`tensor_format` is deprecated as an argument and will be removed in version `0.5.0`."
-                "If you're running your code in PyTorch, you can safely remove this argument.",
-                DeprecationWarning,
-            )
+    def __init__(self, num_train_timesteps=2000, beta_min=0.1, beta_max=20, sampling_eps=1e-3):
         self.sigmas = None
         self.discrete_sigmas = None
         self.timesteps = None
 
-    def set_timesteps(self, num_inference_steps):
-        self.timesteps = torch.linspace(1, self.config.sampling_eps, num_inference_steps)
+    def set_timesteps(self, num_inference_steps, device: Union[str, torch.device] = None):
+        self.timesteps = torch.linspace(1, self.config.sampling_eps, num_inference_steps, device=device)
 
     def step_pred(self, score, x, t, generator=None):
         if self.timesteps is None:

@@ -22,12 +22,12 @@ import numpy as np
 import torch
 
 from diffusers.modeling_utils import ModelMixin
-from diffusers.testing_utils import torch_device
 from diffusers.training_utils import EMAModel
+from diffusers.utils import torch_device
 
 
 class ModelTesterMixin:
-    def test_from_pretrained_save_pretrained(self):
+    def test_from_save_pretrained(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict)
@@ -56,6 +56,24 @@ class ModelTesterMixin:
 
         max_diff = (image - new_image).abs().sum().item()
         self.assertLessEqual(max_diff, 5e-5, "Models give different forward passes")
+
+    def test_from_save_pretrained_dtype(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        for dtype in [torch.float32, torch.float16, torch.bfloat16]:
+            if torch_device == "mps" and dtype == torch.bfloat16:
+                continue
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                model.to(dtype)
+                model.save_pretrained(tmpdirname)
+                new_model = self.model_class.from_pretrained(tmpdirname, low_cpu_mem_usage=True)
+                assert new_model.dtype == dtype
+                new_model = self.model_class.from_pretrained(tmpdirname, low_cpu_mem_usage=False)
+                assert new_model.dtype == dtype
 
     def test_determinism(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -130,7 +148,7 @@ class ModelTesterMixin:
         expected_arg_names = ["sample", "timestep"]
         self.assertListEqual(arg_names[:2], expected_arg_names)
 
-    def test_model_from_config(self):
+    def test_model_from_pretrained(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict)
@@ -140,8 +158,8 @@ class ModelTesterMixin:
         # test if the model can be loaded from the config
         # and has all the expected shape
         with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_config(tmpdirname)
-            new_model = self.model_class.from_config(tmpdirname)
+            model.save_pretrained(tmpdirname)
+            new_model = self.model_class.from_pretrained(tmpdirname)
             new_model.to(torch_device)
             new_model.eval()
 
@@ -247,6 +265,7 @@ class ModelTesterMixin:
 
         recursive_check(outputs_tuple, outputs_dict)
 
+    @unittest.skipIf(torch_device == "mps", "Gradient checkpointing skipped on MPS")
     def test_enable_disable_gradient_checkpointing(self):
         if not self.model_class._supports_gradient_checkpointing:
             return  # Skip test if model does not support gradient checkpointing
@@ -264,3 +283,23 @@ class ModelTesterMixin:
         # check disable works
         model.disable_gradient_checkpointing()
         self.assertFalse(model.is_gradient_checkpointing)
+
+    def test_deprecated_kwargs(self):
+        has_kwarg_in_model_class = "kwargs" in inspect.signature(self.model_class.__init__).parameters
+        has_deprecated_kwarg = len(self.model_class._deprecated_kwargs) > 0
+
+        if has_kwarg_in_model_class and not has_deprecated_kwarg:
+            raise ValueError(
+                f"{self.model_class} has `**kwargs` in its __init__ method but has not defined any deprecated kwargs"
+                " under the `_deprecated_kwargs` class attribute. Make sure to either remove `**kwargs` if there are"
+                " no deprecated arguments or add the deprecated argument with `_deprecated_kwargs ="
+                " [<deprecated_argument>]`"
+            )
+
+        if not has_kwarg_in_model_class and has_deprecated_kwarg:
+            raise ValueError(
+                f"{self.model_class} doesn't have `**kwargs` in its __init__ method but has defined deprecated kwargs"
+                " under the `_deprecated_kwargs` class attribute. Make sure to either add the `**kwargs` argument to"
+                f" {self.model_class}.__init__ if there are deprecated arguments or remove the deprecated argument"
+                " from `_deprecated_kwargs = [<deprecated_argument>]`"
+            )
