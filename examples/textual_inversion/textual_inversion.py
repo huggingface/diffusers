@@ -24,7 +24,7 @@ from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTextModel
-from multi_token_clip import MultiTokenCLIPTokenizer, EmbeddingUtil
+from multi_token_clip import MultiTokenCLIPTokenizer
 
 
 logger = get_logger(__name__)
