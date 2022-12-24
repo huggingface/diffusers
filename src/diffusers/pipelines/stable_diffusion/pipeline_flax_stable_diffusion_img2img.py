@@ -120,10 +120,8 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
 
         if isinstance(image, Image.Image):
             image = [image]
-        processed_image = []
-        for img in image:
-            processed_image.append(preprocess(img, self.dtype))
-        processed_image = jnp.array(processed_image).squeeze()
+
+        processed_images = jnp.array([preprocess(img, jnp.float32) for img in image])
 
         text_input = self.tokenizer(
             prompt,
@@ -132,7 +130,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
             truncation=True,
             return_tensors="np",
         )
-        return text_input.input_ids, processed_image
+        return text_input.input_ids, processed_images
 
     def _get_has_nsfw_concepts(self, features, params):
         has_nsfw_concepts = self.safety_checker(features, params)
