@@ -184,7 +184,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         self,
         prompt_ids: jnp.array,
         params: Union[Dict, FrozenDict],
-        prng_seed: jax.random.PRNGKey,
+        prng_seed: jax.random.KeyArray,
         num_inference_steps: int = 50,
         height: Optional[int] = None,
         width: Optional[int] = None,
@@ -281,15 +281,15 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         self,
         prompt_ids: jnp.array,
         params: Union[Dict, FrozenDict],
-        prng_seed: jax.random.PRNGKey,
+        prng_seed: jax.random.KeyArray,
         num_inference_steps: int = 50,
         height: Optional[int] = None,
         width: Optional[int] = None,
         guidance_scale: Union[float, jnp.array] = 7.5,
         latents: jnp.array = None,
+        neg_prompt_ids: jnp.array = None,
         return_dict: bool = True,
         jit: bool = False,
-        neg_prompt_ids: jnp.array = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -400,13 +400,13 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
     static_broadcasted_argnums=(0, 4, 5, 6),
 )
 def _p_generate(
-    pipe,
+    pipe,  # static
     prompt_ids,
     params,
     prng_seed,
-    num_inference_steps,
-    height,
-    width,
+    num_inference_steps,  # static
+    height,  # static
+    width,  # static
     guidance_scale,
     latents,
     neg_prompt_ids,
