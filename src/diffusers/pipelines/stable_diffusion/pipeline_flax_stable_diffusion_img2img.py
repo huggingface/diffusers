@@ -168,12 +168,11 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
 
         return images, has_nsfw_concepts
 
-    def get_timestep_start(self, num_inference_steps, strength, scheduler_state):
+    def get_timestep_start(self, num_inference_steps, strength):
         # get the original timestep using init_timestep
-        offset = self.scheduler.config.get("steps_offset", 0)
-        init_timestep = int(num_inference_steps * strength) + offset
-        init_timestep = min(init_timestep, num_inference_steps)
-        t_start = max(num_inference_steps - init_timestep + offset, 0)
+        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
+
+        t_start = max(num_inference_steps - init_timestep, 0)
 
         return t_start
 
@@ -183,7 +182,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
         image: jnp.array,
         params: Union[Dict, FrozenDict],
         prng_seed: jax.random.KeyArray,
-        strength: float = 0.8,
+        start_timestep: int,
         num_inference_steps: int = 50,
         height: Optional[int] = None,
         width: Optional[int] = None,
@@ -264,8 +263,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
             params["scheduler"], num_inference_steps=num_inference_steps, shape=latents.shape
         )
 
-        t_start = self.get_timestep_start(num_inference_steps, strength, scheduler_state)
-        latent_timestep = scheduler_state.timesteps[t_start : t_start + 1].repeat(batch_size)
+        latent_timestep = scheduler_state.timesteps[start_timestep : start_timestep + 1].repeat(batch_size)
 
         latents = self.scheduler.add_noise(params["scheduler"], init_latents, noise, latent_timestep)
 
@@ -274,12 +272,10 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
 
         if DEBUG:
             # run with python for loop
-            for i in range(t_start, len(scheduler_state.timesteps)):
+            for i in range(start_timestep, num_inference_steps):
                 latents, scheduler_state = loop_body(i, (latents, scheduler_state))
         else:
-            latents, _ = jax.lax.fori_loop(
-                t_start, len(scheduler_state.timesteps), loop_body, (latents, scheduler_state)
-            )
+            latents, _ = jax.lax.fori_loop(start_timestep, num_inference_steps, loop_body, (latents, scheduler_state))
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
@@ -362,6 +358,8 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
                 # Assume sharded
                 guidance_scale = guidance_scale[:, None]
 
+        start_timestep = self.get_timestep_start(num_inference_steps, strength)
+
         if jit:
             images = _p_generate(
                 self,
@@ -369,7 +367,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
                 image,
                 params,
                 prng_seed,
-                strength,
+                start_timestep,
                 num_inference_steps,
                 height,
                 width,
@@ -383,7 +381,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
                 image,
                 params,
                 prng_seed,
-                strength,
+                start_timestep,
                 num_inference_steps,
                 height,
                 width,
@@ -418,12 +416,12 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
         return FlaxStableDiffusionPipelineOutput(images=images, nsfw_content_detected=has_nsfw_concept)
 
 
-# Static argnums are pipe, num_inference_steps, height, width. A change would trigger recompilation.
+# Static argnums are pipe, start_timestep, num_inference_steps, height, width. A change would trigger recompilation.
 # Non-static args are (sharded) input tensors mapped over their first dimension (hence, `0`).
 @partial(
     jax.pmap,
-    in_axes=(None, 0, 0, 0, 0, 0, None, None, None, 0, 0, 0),
-    static_broadcasted_argnums=(0, 6, 7, 8),
+    in_axes=(None, 0, 0, 0, 0, None, None, None, None, 0, 0, 0),
+    static_broadcasted_argnums=(0, 5, 6, 7, 8),
 )
 def _p_generate(
     pipe,  # static
@@ -431,7 +429,7 @@ def _p_generate(
     image,
     params,
     prng_seed,
-    strength,
+    start_timestep,  # static
     num_inference_steps,  # static
     height,  # static
     width,  # static
@@ -444,7 +442,7 @@ def _p_generate(
         image,
         params,
         prng_seed,
-        strength,
+        start_timestep,
         num_inference_steps,
         height,
         width,
