@@ -79,7 +79,6 @@ class StableDiffusionInpaintPipelineFastTests(PipelineTesterMixin, unittest.Test
         )
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
-        feature_extractor = CLIPImageProcessor(crop_size=32, size=32)
 
         components = {
             "unet": unet,
@@ -88,7 +87,7 @@ class StableDiffusionInpaintPipelineFastTests(PipelineTesterMixin, unittest.Test
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
             "safety_checker": None,
-            "feature_extractor": feature_extractor,
+            "feature_extractor": None,
         }
         return components
 
