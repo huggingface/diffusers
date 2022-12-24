@@ -23,49 +23,13 @@ from huggingface_hub import HfFolder, Repository, whoami
 from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPFeatureExtractor, CLIPTextModel
+from multi_token_clip import MultiTokenCLIPTokenizer, EmbeddingUtil
 
 
 logger = get_logger(__name__)
 
 
-def add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, text_encoder):
-    assert args.num_vec_per_token >= len(token_ids)
-    placeholder_tokens = [f"{args.placeholder_token}_{i}" for i in range(args.num_vec_per_token)]
-
-    for placeholder_token in placeholder_tokens:
-        num_added_tokens = tokenizer.add_tokens(placeholder_token)
-        if num_added_tokens == 0:
-            raise ValueError(
-                f"The tokenizer already contains the token {placeholder_token}. Please pass a different"
-                " `placeholder_token` that is not already in the tokenizer."
-            )
-    placeholder_token = " ".join(placeholder_tokens)
-    placeholder_token_ids = tokenizer.encode(placeholder_token, add_special_tokens=False)
-    print(f"The placeholder tokens are {placeholder_token} while the ids are {placeholder_token_ids}")
-    text_encoder.resize_token_embeddings(len(tokenizer))
-    token_embeds = text_encoder.get_input_embeddings().weight.data
-    if args.initialize_rest_random:
-        # The idea is that the placeholder tokens form adjectives as in x x x white dog.
-        for i, placeholder_token_id in enumerate(placeholder_token_ids):
-            if len(placeholder_token_ids) - i < len(token_ids):
-                token_embeds[placeholder_token_id] = token_embeds[token_ids[i % len(token_ids)]]
-            else:
-                token_embeds[placeholder_token_id] = torch.rand_like(token_embeds[placeholder_token_id])
-    else:
-        for i, placeholder_token_id in enumerate(placeholder_token_ids):
-            token_embeds[placeholder_token_id] = token_embeds[token_ids[i % len(token_ids)]]
-    return placeholder_token, placeholder_token_ids
-
-
-def save_progress(text_encoder, placeholder_tokens, placeholder_token_ids, accelerator, args):
-    logger.info("Saving embeddings")
-    learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_ids]
-    learned_embeds_dict = {}
-
-    for i, placeholder_token in enumerate(placeholder_tokens.split(" ")):
-        learned_embeds_dict[placeholder_token] = learned_embeds[i].detach().cpu()
-    torch.save(learned_embeds_dict, os.path.join(args.output_dir, "learned_embeds.bin"))
 
 
 def parse_args():
@@ -413,9 +377,9 @@ def main():
 
     # Load the tokenizer and add the placeholder token as a additional special token
     if args.tokenizer_name:
-        tokenizer = CLIPTokenizer.from_pretrained(args.tokenizer_name)
+        tokenizer = MultiTokenCLIPTokenizer.from_pretrained(args.tokenizer_name)
     elif args.pretrained_model_name_or_path:
-        tokenizer = CLIPTokenizer.from_pretrained(
+        tokenizer = MultiTokenCLIPTokenizer.from_pretrained(
             args.pretrained_model_name_or_path, subfolder="tokenizer", use_auth_token=args.use_auth_token
         )
 
@@ -423,17 +387,14 @@ def main():
     text_encoder = CLIPTextModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", use_auth_token=args.use_auth_token
     )
+    embedding_util = EmbeddingUtil(tokenizer, text_encoder)
     vae = AutoencoderKL.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="vae", use_auth_token=args.use_auth_token
     )
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", use_auth_token=args.use_auth_token
     )
-    token_ids = tokenizer.encode(args.initializer_token, add_special_tokens=False)
-    # regardless of whether the number of token_ids is 1 or more, it'll set one and then keep repeating.
-    placeholder_token, placeholder_token_ids = add_tokens_and_get_placeholder_token(
-        args, token_ids, tokenizer, text_encoder
-    )
+    embedding_util.add_tokens(args.placeholder_token, args.num_vec_per_token, args.initializer_token)
 
     # Freeze vae and unet
     freeze_params(vae.parameters())
@@ -472,7 +433,7 @@ def main():
         data_root=args.train_data_dir,
         tokenizer=tokenizer,
         size=args.resolution,
-        placeholder_token=placeholder_token,
+        placeholder_token=args.placeholder_token,
         repeats=args.repeats,
         learnable_property=args.learnable_property,
         center_crop=args.center_crop,
@@ -569,9 +530,7 @@ def main():
                 else:
                     grads = text_encoder.get_input_embeddings().weight.grad
                 # Get the index for tokens that we want to zero the grads for
-                grad_mask = torch.arange(len(tokenizer)) != placeholder_token_ids[0]
-                for i in range(1, len(placeholder_token_ids)):
-                    grad_mask = grad_mask & (torch.arange(len(tokenizer)) != placeholder_token_ids[i])
+                grad_mask = embedding_util.get_mask()
                 grads.data[grad_mask, :] = grads.data[grad_mask, :].fill_(0)
 
                 optimizer.step()
@@ -583,7 +542,8 @@ def main():
                 progress_bar.update(1)
                 global_step += 1
                 if global_step % args.save_steps == 0:
-                    save_progress(text_encoder, placeholder_token, placeholder_token_ids, accelerator, args)
+                    embedding_util.save_progress(accelerator, args.output_dir)
+
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
@@ -609,7 +569,7 @@ def main():
         )
         pipeline.save_pretrained(args.output_dir)
         # Also save the newly trained embeddings
-        save_progress(text_encoder, placeholder_token, placeholder_token_ids, accelerator, args)
+        embedding_util.save_progress(accelerator, args.output_dir)
 
         if args.push_to_hub:
             repo.push_to_hub(
