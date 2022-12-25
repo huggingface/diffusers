@@ -503,7 +503,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
         ```
 
         Returns:
-            A dictionaly containing all the modules needed to initialize the pipeline.
+            A dictionary containing all the modules needed to initialize the pipeline.
         """
         expected_modules, optional_parameters = self._get_signature_keys(self)
         components = {
