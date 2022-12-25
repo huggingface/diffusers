@@ -161,6 +161,8 @@ class PaintByExamplePipeline(DiffusionPipeline):
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
+    # TODO: feature_extractor is required to encode initial images (if they are in PIL format),
+    # we should give a descriptive message if the pipeline doesn't have one.
     _optional_components = ["safety_checker"]
 
     def __init__(
