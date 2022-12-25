@@ -460,6 +460,7 @@ def main():
         weight_dtype = jnp.bfloat16
 
     if args.pretrained_vae_name_or_path:
+        # TODO(patil-suraj): Upload flax weights for the VAE
         vae_arg, vae_kwargs = (args.pretrained_vae_name_or_path, {"from_pt": True})
     else:
         vae_arg, vae_kwargs = (args.pretrained_model_name_or_path, {"subfolder": "vae", "revision": args.revision})
@@ -619,10 +620,8 @@ def main():
     logger.info(f"  Total train batch size (w. parallel & distributed) = {total_train_batch_size}")
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
 
-    def checkpoint(step):
+    def checkpoint(step=None):
         # Create the pipeline using using the trained modules and save it.
-        if jax.process_index() != 0:
-            return
         scheduler = FlaxPNDMScheduler(
             beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", skip_prk_steps=True
         )
@@ -651,7 +650,8 @@ def main():
         )
 
         if args.push_to_hub:
-            repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
+            message = f"checkpoint-{step}" if step is not None else "End of training"
+            repo.push_to_hub(commit_message=message, blocking=False, auto_lfs_prune=True)
 
     global_step = 0
 
@@ -674,7 +674,7 @@ def main():
             train_step_progress_bar.update(jax.local_device_count())
 
             global_step += 1
-            if args.save_steps and global_step % args.save_steps == 0:
+            if jax.process_index() == 0 and args.save_steps and global_step % args.save_steps == 0:
                 checkpoint(global_step)
             if global_step >= args.max_train_steps:
                 break
@@ -684,8 +684,7 @@ def main():
         train_step_progress_bar.close()
         epochs.write(f"Epoch... ({epoch + 1}/{args.num_train_epochs} | Loss: {train_metric['loss']})")
 
-    if not args.save_steps or global_step % args.save_steps:
-        checkpoint(global_step)
+    checkpoint()
 
 
 if __name__ == "__main__":
