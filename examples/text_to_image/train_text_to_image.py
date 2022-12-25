@@ -623,6 +623,9 @@ def main():
             with accelerator.accumulate(unet):
                 # Convert images to latent space
                 latents = vae.encode(batch["pixel_values"].to(weight_dtype)).latent_dist.sample()
+                
+                # Multiply by 1 / std of the latents to get an approximate global batch norm
+                # https://github.com/huggingface/diffusers/issues/437#issuecomment-1356945792
                 latents = latents * 0.18215
 
                 # Sample noise that we'll add to the latents
