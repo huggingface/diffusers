@@ -400,13 +400,13 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
     static_broadcasted_argnums=(0, 4, 5, 6),
 )
 def _p_generate(
-    pipe,  # static
+    pipe,
     prompt_ids,
     params,
     prng_seed,
-    num_inference_steps,  # static
-    height,  # static
-    width,  # static
+    num_inference_steps,
+    height,
+    width,
     guidance_scale,
     latents,
     neg_prompt_ids,

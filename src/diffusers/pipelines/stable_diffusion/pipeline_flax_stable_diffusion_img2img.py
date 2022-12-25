@@ -422,15 +422,15 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
     static_broadcasted_argnums=(0, 5, 6, 7, 8),
 )
 def _p_generate(
-    pipe,  # static
+    pipe,
     prompt_ids,
     image,
     params,
     prng_seed,
-    start_timestep,  # static
-    num_inference_steps,  # static
-    height,  # static
-    width,  # static
+    start_timestep,
+    num_inference_steps,
+    height,
+    width,
     guidance_scale,
     noise,
     neg_prompt_ids,
