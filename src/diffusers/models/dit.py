@@ -202,7 +202,7 @@ class DiT(ModelMixin, ConfigMixin):
         self.num_heads = num_heads
 
         self.sample_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
-        self.self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=False, downscale_freq_shift=1)
+        self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=False, downscale_freq_shift=1)
         self.timestep_embedder = TimestepEmbedding(in_channel=256, time_embed_dim=hidden_size)
         self.class_embedder = LabelEmbedding(num_classes, hidden_size, class_dropout_prob)
 
