@@ -274,6 +274,6 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         noise = torch.randn_like(original_samples) * sigmas[:, None, None, None]
         noisy_samples = noise + original_samples
         return noisy_samples
-        
+
     def __len__(self):
         return self.config.num_train_timesteps
