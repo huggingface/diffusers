@@ -31,25 +31,23 @@ class MultiTokenCLIPTokenizer(CLIPTokenizer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.token_map = {}
-
-
-    def try_adding_tokens(self, placeholder_token):
-        num_added_tokens = super().add_tokens(placeholder_token)
+    def try_adding_tokens(self, placeholder_token, *args, **kwargs):
+        num_added_tokens = super().add_tokens(placeholder_token, *args, **kwargs)
         if num_added_tokens == 0:
             raise ValueError(
                 f"The tokenizer already contains the token {placeholder_token}. Please pass a different"
                 " `placeholder_token` that is not already in the tokenizer."
             )
-    def add_tokens(self, placeholder_token, num_vec_per_token=1):
+    def add_placeholder_tokens(self, placeholder_token, *args, num_vec_per_token=1, **kwargs):
         output = []
         if num_vec_per_token == 1:
-            super().try_adding_tokens(placeholder_token)
+            self.try_adding_tokens(placeholder_token, *args, **kwargs)
             output.append(placeholder_token)
         else:
             output = []
             for i in range(num_vec_per_token):
                 ith_token = placeholder_token+f'_{i}'
-                super().try_adding_tokens(ith_token)
+                self.try_adding_tokens(ith_token, *args, **kwargs)
                 output.append(ith_token)
         self.token_map[placeholder_token] = output
         return " ".join(output)

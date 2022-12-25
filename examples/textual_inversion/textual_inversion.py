@@ -60,7 +60,7 @@ def add_tokens(tokenizer, text_encoder, placeholder_token, num_vec_per_token=1, 
     """
     Add tokens to the tokenizer and set the initial value of token embeddings
     """
-    placeholder_tokens=tokenizer.add_tokens(placeholder_token, num_vec_per_token)
+    placeholder_tokens=tokenizer.add_placeholder_tokens(placeholder_token, num_vec_per_token)
     text_encoder.resize_token_embeddings(len(tokenizer))
     token_embeds = text_encoder.get_input_embeddings().weight.data
     placeholder_token_ids = tokenizer.encode(placeholder_tokens, add_special_tokens=False)
@@ -79,14 +79,14 @@ def save_progress(tokenizer, text_encoder, accelerator, save_path):
         learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_ids]
         learned_embeds_dict = {placeholder_token: learned_embeds.detach().cpu()}
         torch.save(learned_embeds_dict, save_path)
-def get_mask(tokenizer):
+def get_mask(tokenizer, accelerator):
     # Get the mask of the weights that won't change
-    mask = torch.ones(len(tokenizer))
+    mask = torch.ones(len(tokenizer)).to(accelerator.device, dtype=torch.bool)
     for placeholder_token in tokenizer.token_map:
         placeholder_tokens = " ".join(tokenizer.token_map[placeholder_token])
         placeholder_token_ids = tokenizer.encode(placeholder_tokens)
         for i in range(len(placeholder_token_ids)):
-            mask = mask & (torch.arange(len(tokenizer)) != placeholder_token_ids[i])
+            mask = mask & (torch.arange(len(tokenizer)) != placeholder_token_ids[i]).to(accelerator.device)
     return mask
 
 
@@ -664,7 +664,7 @@ def main():
                 optimizer.zero_grad()
 
                 # Let's make sure we don't update any embedding weights besides the newly added token
-                index_no_updates = get_mask(tokenizer)
+                index_no_updates = get_mask(tokenizer, accelerator)
                 with torch.no_grad():
                     accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[
                         index_no_updates
