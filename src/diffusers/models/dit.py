@@ -8,7 +8,7 @@ import torch.nn as nn
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from .cross_attention import CrossAttention
-from .embeddings import LabelEmbedding, TimestepEmbedding, get_timestep_embedding
+from .embeddings import LabelEmbedding, TimestepEmbedding, Timesteps
 
 
 def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False, extra_tokens=0):
@@ -202,7 +202,8 @@ class DiT(ModelMixin, ConfigMixin):
         self.num_heads = num_heads
 
         self.sample_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
-        self.timestep_embedder = TimestepEmbedding(256, time_embed_dim=hidden_size)
+        self.self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=False, downscale_freq_shift=1)
+        self.timestep_embedder = TimestepEmbedding(in_channel=256, time_embed_dim=hidden_size)
         self.class_embedder = LabelEmbedding(num_classes, hidden_size, class_dropout_prob)
 
         num_patches = self.sample_embedder.num_patches
@@ -292,11 +293,11 @@ class DiT(ModelMixin, ConfigMixin):
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timesteps = timesteps.expand(sample.shape[0])
-        timesteps = get_timestep_embedding(timesteps, embedding_dim=256)
-        timesteps = self.timestep_embedder(timesteps)  # (N, D)
+        timesteps_proj = self.time_proj(timesteps)
+        timesteps_emb = self.timestep_embedder(timesteps_proj)  # (N, D)
 
         class_labels = self.class_embedder(class_labels, self.training)  # (N, D)
-        conditioning = timesteps + class_labels  # (N, D)
+        conditioning = timesteps_emb + class_labels  # (N, D)
 
         sample = self.sample_embedder(sample) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         for block in self.blocks:
