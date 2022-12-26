@@ -843,7 +843,7 @@ pipe = DiffusionPipeline.from_pretrained(
 img = Image.open('phone.jpg')
 mix_img = pipe(
     img, 
-    promt = 'bed', 
+    prompt = 'bed', 
     kmin = 0.3,
     kmax = 0.5,
     v = 0.5,
@@ -851,3 +851,15 @@ mix_img = pipe(
 mix_img.save('phone_bed_mix.jpg')
 ```
 The `mix_img` is a PIL image that can be saved locally or displayed directly in a google colab. Generated image is a mix of the layout semantics of the given image and the content semantics of the prompt.
+
+E.g. the above script generates the following image:
+
+`phone.jpg`
+
+![206903102-34e79b9f-9ed2-4fac-bb38-82871343c655](https://user-images.githubusercontent.com/59410571/209578593-141467c7-d831-4792-8b9a-b17dc5e47816.jpg)
+
+`phone_bed_mix.jpg`
+
+![206903104-913a671d-ef53-4ae4-919d-64c3059c8f67](https://user-images.githubusercontent.com/59410571/209578602-70f323fa-05b7-4dd6-b055-e40683e37914.jpg)
+
+For more example generations check out this [demo notebook](https://github.com/daspartho/MagicMix/blob/main/demo.ipynb).
