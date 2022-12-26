@@ -1,4 +1,5 @@
 import argparse
+import copy
 import logging
 import math
 import os
@@ -172,6 +173,13 @@ def parse_args():
         "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
     )
     parser.add_argument("--use_ema", action="store_true", help="Whether to use EMA model.")
+    parser.add_argument(
+        "--non_ema_revision",
+        type=str,
+        default=None,
+        required=False,
+        help="Revision of pretrained non-ema model identifier from huggingface.co/models.",
+    )
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
@@ -244,6 +252,10 @@ def parse_args():
     if args.dataset_name is None and args.train_data_dir is None:
         raise ValueError("Need either a dataset name or a training folder.")
 
+    # default to using the same revision for the non-ema model if not specified
+    if args.non_ema_revision is None:
+        args.non_ema_revision = args.revision
+
     return args
 
 
@@ -271,6 +283,8 @@ class EMAModel:
     def __init__(self, parameters: Iterable[torch.nn.Parameter], decay=0.9999):
         parameters = list(parameters)
         self.shadow_params = [p.clone().detach() for p in parameters]
+
+        self.collected_params = None
 
         self.decay = decay
         self.optimization_step = 0
@@ -323,6 +337,101 @@ class EMAModel:
             p.to(device=device, dtype=dtype) if p.is_floating_point() else p.to(device=device)
             for p in self.shadow_params
         ]
+
+    def store(self, parameters: Iterable[torch.nn.Parameter]) -> None:
+        """
+        Save the current parameters for restoring later.
+        Args:
+            parameters: Iterable of `torch.nn.Parameter`; the parameters to be
+                temporarily stored. If `None`, the parameters of with which this
+                `ExponentialMovingAverage` was initialized will be used.
+        """
+        parameters = list(parameters)
+        self.collected_params = [param.clone() for param in parameters]
+
+    def restore(self, parameters: Iterable[torch.nn.Parameter]) -> None:
+        """
+        Restore the parameters stored with the `store` method.
+        Useful to validate the model with EMA parameters without affecting the
+        original optimization process. Store the parameters before the
+        `copy_to` method. After validation (or model saving), use this to
+        restore the former parameters.
+        Args:
+            parameters: Iterable of `torch.nn.Parameter`; the parameters to be
+                updated with the stored parameters. If `None`, the
+                parameters with which this `ExponentialMovingAverage` was
+                initialized will be used.
+        """
+        if self.collected_params is None:
+            raise RuntimeError("This ExponentialMovingAverage has no `store()`ed weights to `restore()`")
+        parameters = list(parameters)
+        for c_param, param in zip(self.collected_params, parameters):
+            param.data.copy_(c_param.data)
+
+        self.collected_params = None
+        torch.cuda.empty_cache()
+
+    def state_dict(self) -> dict:
+        r"""Returns the state of the ExponentialMovingAverage as a dict."""
+        # Following PyTorch conventions, references to tensors are returned:
+        # "returns a reference to the state and not its copy!" -
+        # https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict
+        return {
+            "decay": self.decay,
+            "optimization_step": self.optimization_step,
+            "shadow_params": self.shadow_params,
+            "collected_params": self.collected_params,
+        }
+
+    def load_state_dict(self, state_dict: dict) -> None:
+        r"""Loads the ExponentialMovingAverage state.
+        Args:
+            state_dict (dict): EMA state. Should be an object returned
+                from a call to :meth:`state_dict`.
+        """
+        # deepcopy, to be consistent with module API
+        state_dict = copy.deepcopy(state_dict)
+        self.decay = state_dict["decay"]
+        if self.decay < 0.0 or self.decay > 1.0:
+            raise ValueError("Decay must be between 0 and 1")
+        self.optimization_step = state_dict["optimization_step"]
+        assert isinstance(self.optimization_step, int), "Invalid optimization_step"
+
+        self.shadow_params = state_dict["shadow_params"]
+        assert isinstance(self.shadow_params, list), "shadow_params must be a list"
+        assert all(isinstance(p, torch.Tensor) for p in self.shadow_params), "shadow_params must all be Tensors"
+
+        self.collected_params = state_dict["collected_params"]
+        if self.collected_params is not None:
+            assert isinstance(self.collected_params, list), "collected_params must be a list"
+            assert all(
+                isinstance(p, torch.Tensor) for p in self.collected_params
+            ), "collected_params must all be Tensors"
+            assert len(self.collected_params) == len(
+                self.shadow_params
+            ), "collected_params and shadow_params had different lengths"
+
+        # if len(self.shadow_params) == len(self._params_refs):
+        #     # Consistant with torch.optim.Optimizer, cast things to consistant
+        #     # device and dtype with the parameters
+        #     params = [p() for p in self._params_refs]
+        #     # If parameters have been garbage collected, just load the state
+        #     # we were given without change.
+        #     if not any(p is None for p in params):
+        #         # ^ parameter references are still good
+        #         for i, p in enumerate(params):
+        #             self.shadow_params[i] = self.shadow_params[i].to(
+        #                 device=p.device, dtype=p.dtype
+        #             )
+        #             if self.collected_params is not None:
+        #                 self.collected_params[i] = self.collected_params[i].to(
+        #                     device=p.device, dtype=p.dtype
+        #                 )
+        # else:
+        #     raise ValueError(
+        #         "Tried to `load_state_dict()` with the wrong number of "
+        #         "parameters in the saved state."
+        #     )
 
 
 def main():
@@ -378,10 +487,15 @@ def main():
         revision=args.revision,
     )
     unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="unet",
-        revision=args.revision,
+        args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
     )
+
+    # Create EMA for the unet.
+    if args.use_ema:
+        ema_unet = UNet2DConditionModel.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
+        )
+        ema_unet = EMAModel(ema_unet.parameters())
 
     if is_xformers_available():
         try:
@@ -543,10 +657,23 @@ def main():
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
 
-    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        unet, optimizer, train_dataloader, lr_scheduler
-    )
-    accelerator.register_for_checkpointing(lr_scheduler)
+    if args.use_ema:
+        unet, ema_unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            unet,
+            ema_unet,
+            optimizer,
+            train_dataloader,
+            lr_scheduler,
+        )
+        accelerator.register_for_checkpointing(lr_scheduler, ema_unet)
+    else:
+        unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            unet,
+            optimizer,
+            train_dataloader,
+            lr_scheduler,
+        )
+        accelerator.register_for_checkpointing(lr_scheduler)
 
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
@@ -559,10 +686,8 @@ def main():
     # as these models are only used for inference, keeping weights in full precision is not required.
     text_encoder.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
-
-    # Create EMA for the unet.
     if args.use_ema:
-        ema_unet = EMAModel(unet.parameters())
+        ema_unet.to(accelerator.device)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -599,7 +724,6 @@ def main():
             dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
             path = dirs[-1]
         accelerator.print(f"Resuming from checkpoint {path}")
-        accelerator.load_state(os.path.join(args.output_dir, path))
         global_step = int(path.split("-")[1])
 
         resume_global_step = global_step * args.gradient_accumulation_steps
