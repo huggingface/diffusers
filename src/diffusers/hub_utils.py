@@ -44,16 +44,14 @@ logger = logging.get_logger(__name__)
 
 
 MODEL_CARD_TEMPLATE_PATH = Path(__file__).parent / "utils" / "model_card_template.md"
-SESSION_ID = uuid4().hex
 HF_HUB_OFFLINE = os.getenv("HF_HUB_OFFLINE", "").upper() in ENV_VARS_TRUE_VALUES
 
 
-def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
+def http_user_agent(*_args) -> str:
     """
     Formats a user-agent string with basic info about a request.
     """
-    ua = f"diffusers/{__version__}; python/{sys.version.split()[0]}; session_id/{SESSION_ID}"
-    return ua + "; telemetry/off"
+    return "telemetry/off"
 
 
 def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
