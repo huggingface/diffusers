@@ -164,10 +164,11 @@ else:
         FlaxScoreSdeVeScheduler,
     )
 
+
 try:
     if not (is_flax_available() and is_transformers_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from .utils.dummy_flax_and_transformers_objects import *  # noqa F403
 else:
-    from .pipelines import FlaxStableDiffusionPipeline
+    from .pipelines import FlaxStableDiffusionImg2ImgPipeline, FlaxStableDiffusionPipeline
