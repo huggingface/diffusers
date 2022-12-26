@@ -33,13 +33,13 @@ _wandb_available = importlib.util.find_spec("wandb") is not None
 def is_wandb_available():
     return _wandb_available
 wandb = None
+if is_wandb_available():
+    import wandb
 
 def wandb_setup(
     args: dict,
     project_name: str = "glide-text2im-finetune",
 ):
-    assert is_wandb_available()
-    import wandb
     return wandb.init(
         project=project_name,
         config=args,
@@ -53,7 +53,7 @@ def get_pipeline(text_encoder, vae, unet, tokenizer, accelerator):
         unet=unet,
         tokenizer=tokenizer,
         scheduler=PNDMScheduler(
-            beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", skip_prk_steps=True
+            beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", skip_prk_steps=True, steps_offset=1
         ),
         safety_checker=None,
         feature_extractor=None
@@ -116,6 +116,12 @@ def save_progress(text_encoder, placeholder_token_id, accelerator, args, save_pa
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
+    parser.add_argument(
+        "--guidance_scale",
+        type=float,
+        default=7.5,
+        help="Guidance scale for inference.",
+    )
     parser.add_argument(
         "--project_name",
         type=str,
@@ -719,6 +725,7 @@ def main():
                 global_step += 1
                 if global_step % args.log_frequency == 0:
                     pipeline = get_pipeline(text_encoder, vae, unet, tokenizer, accelerator)
+                    os.makedirs(os.path.join(args.output_dir, "imgs"), exist_ok=True)
                     save_path = os.path.join(args.output_dir, f"imgs/{global_step}.jpg")
                     log_progress(pipeline, args, global_step, args.placeholder_token, save_path, wandb_run)
                     del pipeline
