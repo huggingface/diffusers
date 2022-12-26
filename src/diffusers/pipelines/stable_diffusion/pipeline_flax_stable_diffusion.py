@@ -185,17 +185,13 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         prompt_ids: jnp.array,
         params: Union[Dict, FrozenDict],
         prng_seed: jax.random.KeyArray,
-        num_inference_steps: int = 50,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-        guidance_scale: float = 7.5,
+        num_inference_steps: int,
+        height: int,
+        width: int,
+        guidance_scale: float,
         latents: Optional[jnp.array] = None,
-        neg_prompt_ids: jnp.array = None,
+        neg_prompt_ids: Optional[jnp.array] = None,
     ):
-        # 0. Default height and width to unet
-        height = height or self.unet.config.sample_size * self.vae_scale_factor
-        width = width or self.unet.config.sample_size * self.vae_scale_factor
-
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
