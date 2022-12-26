@@ -201,6 +201,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
         """
+        num_inference_steps = min(self.config.num_train_timesteps, num_inference_steps)
         self.num_inference_steps = num_inference_steps
         step_ratio = self.config.num_train_timesteps // self.num_inference_steps
         # creates integer timesteps by multiplying by ratio
