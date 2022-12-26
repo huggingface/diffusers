@@ -30,6 +30,7 @@ Note that the architecture is more or less identical to [Stable Diffusion 1](./a
 - *Text-to-Image (768x768 resolution)*: [stabilityai/stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) with [`StableDiffusionPipeline`]
 - *Image Inpainting (512x512 resolution)*: [stabilityai/stable-diffusion-2-inpainting](https://huggingface.co/stabilityai/stable-diffusion-2-inpainting) with [`StableDiffusionInpaintPipeline`]
 - *Image Upscaling (x4 resolution resolution)*: [stable-diffusion-x4-upscaler](https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler) [`StableDiffusionUpscalePipeline`]
+- *Depth-to-Image (512x512 resolution)*: [stabilityai/stable-diffusion-2-depth](https://huggingface.co/stabilityai/stable-diffusion-2-depth) with [`StableDiffusionDepth2ImagePipeline`]
 
 We recommend using the [`DPMSolverMultistepScheduler`] as it's currently the fastest scheduler there is.
 
@@ -112,7 +113,7 @@ import torch
 
 # load model and scheduler
 model_id = "stabilityai/stable-diffusion-x4-upscaler"
-pipeline = StableDiffusionUpscalePipeline.from_pretrained(model_id, revision="fp16", torch_dtype=torch.float16)
+pipeline = StableDiffusionUpscalePipeline.from_pretrained(model_id, torch_dtype=torch.float16)
 pipeline = pipeline.to("cuda")
 
 # let's download an  image
@@ -123,6 +124,37 @@ low_res_img = low_res_img.resize((128, 128))
 prompt = "a white cat"
 upscaled_image = pipeline(prompt=prompt, image=low_res_img).images[0]
 upscaled_image.save("upsampled_cat.png")
+```
+
+- *Depth-Guided Text-to-Image*: [stabilityai/stable-diffusion-2-depth](https://huggingface.co/stabilityai/stable-diffusion-2-depth) [`StableDiffusionDepth2ImagePipeline`]
+
+**Installation**
+
+```bash
+!pip install -U git+https://github.com/huggingface/transformers.git
+!pip install diffusers[torch]
+```
+
+**Example**
+
+```python
+import torch
+import requests
+from PIL import Image
+
+from diffusers import StableDiffusionDepth2ImgPipeline
+
+pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-2-depth",
+    torch_dtype=torch.float16,
+).to("cuda")
+
+
+url = "http://images.cocodataset.org/val2017/000000039769.jpg"
+init_image = Image.open(requests.get(url, stream=True).raw)
+prompt = "two tigers"
+n_propmt = "bad, deformed, ugly, bad anotomy"
+image = pipe(prompt=prompt, image=init_image, negative_prompt=n_propmt, strength=0.7).images[0]
 ```
 
 ### How to load and use different schedulers.

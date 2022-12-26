@@ -11,6 +11,7 @@ RUN apt update && \
                    git-lfs \
                    curl \
                    ca-certificates \
+                   libsndfile1-dev \
                    python3.8 \
                    python3-pip \
                    python3.8-venv && \
@@ -32,6 +33,7 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip && \
         datasets \
         hf-doc-builder \
         huggingface-hub \
+        librosa \
         modelcards \
         numpy \
         scipy \

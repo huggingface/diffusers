@@ -12,7 +12,9 @@ specific language governing permissions and limitations under the License.
 
 # Memory and speed
 
-We present some techniques and ideas to optimize 🤗 Diffusers _inference_ for memory or speed.
+We present some techniques and ideas to optimize 🤗 Diffusers _inference_ for memory or speed. As a general rule, we recommend the use of [xFormers](https://github.com/facebookresearch/xformers) for memory efficient attention, please see the recommended [installation instructions](xformers).
+
+We'll discuss how the following settings impact performance and memory.
 
 |                  | Latency | Speedup |
 | ---------------- | ------- | ------- |
@@ -77,7 +79,7 @@ To save more GPU memory and get even more speed, you can load and run the model 
 ```Python
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    revision="fp16",
+    
     torch_dtype=torch.float16,
 )
 pipe = pipe.to("cuda")
@@ -105,7 +107,7 @@ from diffusers import StableDiffusionPipeline
 
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    revision="fp16",
+    
     torch_dtype=torch.float16,
 )
 pipe = pipe.to("cuda")
@@ -132,7 +134,7 @@ from diffusers import StableDiffusionPipeline
 
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    revision="fp16",
+    
     torch_dtype=torch.float16,
 )
 pipe = pipe.to("cuda")
@@ -157,7 +159,7 @@ from diffusers import StableDiffusionPipeline
 
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    revision="fp16",
+    
     torch_dtype=torch.float16,
 )
 pipe = pipe.to("cuda")
@@ -177,7 +179,7 @@ from diffusers import StableDiffusionPipeline
 
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    revision="fp16",
+    
     torch_dtype=torch.float16,
 )
 pipe = pipe.to("cuda")
@@ -232,7 +234,6 @@ def generate_inputs():
 
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    revision="fp16",
     torch_dtype=torch.float16,
 ).to("cuda")
 unet = pipe.unet
@@ -296,7 +297,6 @@ class UNet2DConditionOutput:
 
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    revision="fp16",
     torch_dtype=torch.float16,
 ).to("cuda")
 
@@ -322,7 +322,9 @@ with torch.inference_mode():
 
 
 ## Memory Efficient Attention
-Recent work on optimizing the bandwitdh in the attention block have generated huge speed ups and gains in GPU memory usage. The most recent being Flash Attention (from @tridao, [code](https://github.com/HazyResearch/flash-attention), [paper](https://arxiv.org/pdf/2205.14135.pdf)) .
+
+Recent work on optimizing the bandwitdh in the attention block has generated huge speed ups and gains in GPU memory usage. The most recent being Flash Attention from @tridao: [code](https://github.com/HazyResearch/flash-attention), [paper](https://arxiv.org/pdf/2205.14135.pdf).
+
 Here are the speedups we obtain on a few Nvidia GPUs when running the inference at 512x512 with a batch size of 1 (one prompt):
 
 | GPU              	| Base Attention FP16 	| Memory Efficient Attention FP16 	|
@@ -338,14 +340,13 @@ Here are the speedups we obtain on a few Nvidia GPUs when running the inference 
 To leverage it just make sure you have: 
  - PyTorch > 1.12
  - Cuda available
- - Installed the [xformers](https://github.com/facebookresearch/xformers) library
+ - [Installed the xformers library](xformers).
 ```python
 from diffusers import StableDiffusionPipeline
 import torch
 
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    revision="fp16",
     torch_dtype=torch.float16,
 ).to("cuda")
 

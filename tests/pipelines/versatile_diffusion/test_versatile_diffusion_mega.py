@@ -23,13 +23,11 @@ import torch
 from diffusers import VersatileDiffusionPipeline
 from diffusers.utils.testing_utils import load_image, require_torch_gpu, slow, torch_device
 
-from ...test_pipelines_common import PipelineTesterMixin
-
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class VersatileDiffusionMegaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class VersatileDiffusionMegaPipelineFastTests(unittest.TestCase):
     pass
 
 
@@ -42,7 +40,7 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_from_pretrained_save_pretrained(self):
+    def test_from_save_pretrained(self):
         pipe = VersatileDiffusionPipeline.from_pretrained("shi-labs/versatile-diffusion", torch_dtype=torch.float16)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)

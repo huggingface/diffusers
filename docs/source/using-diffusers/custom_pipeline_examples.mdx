@@ -58,7 +58,6 @@ guided_pipeline = DiffusionPipeline.from_pretrained(
     custom_pipeline="clip_guided_stable_diffusion",
     clip_model=clip_model,
     feature_extractor=feature_extractor,
-    revision="fp16",
     torch_dtype=torch.float16,
 )
 guided_pipeline.enable_attention_slicing()
@@ -113,7 +112,6 @@ import torch
 
 pipe = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
-    revision="fp16",
     torch_dtype=torch.float16,
     safety_checker=None,  # Very important for videos...lots of false positives while interpolating
     custom_pipeline="interpolate_stable_diffusion",
@@ -159,7 +157,6 @@ pipe = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
     custom_pipeline="stable_diffusion_mega",
     torch_dtype=torch.float16,
-    revision="fp16",
 )
 pipe.to("cuda")
 pipe.enable_attention_slicing()
@@ -177,7 +174,7 @@ init_image = download_image(
 
 prompt = "A fantasy landscape, trending on artstation"
 
-images = pipe.img2img(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5).images
+images = pipe.img2img(prompt=prompt, image=init_image, strength=0.75, guidance_scale=7.5).images
 
 ### Inpainting
 
@@ -187,7 +184,7 @@ init_image = download_image(img_url).resize((512, 512))
 mask_image = download_image(mask_url).resize((512, 512))
 
 prompt = "a cat sitting on a bench"
-images = pipe.inpaint(prompt=prompt, init_image=init_image, mask_image=mask_image, strength=0.75).images
+images = pipe.inpaint(prompt=prompt, image=init_image, mask_image=mask_image, strength=0.75).images
 ```
 
 As shown above this one pipeline can run all both "text-to-image", "image-to-image", and "inpainting" in one pipeline.
@@ -204,7 +201,7 @@ from diffusers import DiffusionPipeline
 import torch
 
 pipe = DiffusionPipeline.from_pretrained(
-    "hakurei/waifu-diffusion", custom_pipeline="lpw_stable_diffusion", revision="fp16", torch_dtype=torch.float16
+    "hakurei/waifu-diffusion", custom_pipeline="lpw_stable_diffusion", torch_dtype=torch.float16
 )
 pipe = pipe.to("cuda")
 
@@ -268,7 +265,7 @@ diffuser_pipeline = DiffusionPipeline.from_pretrained(
     custom_pipeline="speech_to_image_diffusion",
     speech_model=model,
     speech_processor=processor,
-    revision="fp16",
+    
     torch_dtype=torch.float16,
 )
 
