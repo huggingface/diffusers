@@ -1,6 +1,15 @@
+from typing import Union
+
 import torch
 
-from diffusers import AutoencoderKL, DDIMScheduler, DiffusionPipeline, UNet2DConditionModel
+from diffusers import (
+    AutoencoderKL,
+    DDIMScheduler,
+    DiffusionPipeline,
+    LMSDiscreteScheduler,
+    PNDMScheduler,
+    UNet2DConditionModel,
+)
 from PIL import Image
 from torchvision import transforms as tfms
 from tqdm.auto import tqdm
@@ -14,7 +23,7 @@ class MagicMixPipeline(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: DDIMScheduler,
+        scheduler: Union[PNDMScheduler, LMSDiscreteScheduler, DDIMScheduler],
     ):
         super().__init__()
 
