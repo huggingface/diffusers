@@ -1,19 +1,20 @@
 import torch
 
-from diffusers import DiffusionPipeline
+from diffusers import AutoencoderKL, DDIMScheduler, DiffusionPipeline, UNet2DConditionModel
 from PIL import Image
 from torchvision import transforms as tfms
 from tqdm.auto import tqdm
+from transformers import CLIPTextModel, CLIPTokenizer
 
 
 class MagicMixPipeline(DiffusionPipeline):
     def __init__(
         self,
-        vae,
-        text_encoder,
-        tokenizer,
-        unet,
-        scheduler,
+        vae: AutoencoderKL,
+        text_encoder: CLIPTextModel,
+        tokenizer: CLIPTokenizer,
+        unet: UNet2DConditionModel,
+        scheduler: DDIMScheduler,
     ):
         super().__init__()
 
@@ -62,15 +63,15 @@ class MagicMixPipeline(DiffusionPipeline):
 
     def __call__(
         self,
-        img,
-        prompt,
-        kmin=0.3,
-        kmax=0.6,
-        v=0.5,
-        seed=42,
-        steps=50,
-        guidance_scale=7.5,
-    ):
+        img: Image.Image,
+        prompt: str,
+        kmin: float = 0.3,
+        kmax: float = 0.6,
+        v: float = 0.5,
+        seed: int = 42,
+        steps: int = 50,
+        guidance_scale: float = 7.5,
+    ) -> Image.Image:
         tmin = steps - int(kmin * steps)
         tmax = steps - int(kmax * steps)
 
