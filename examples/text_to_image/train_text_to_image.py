@@ -178,7 +178,7 @@ def parse_args():
         type=str,
         default=None,
         required=False,
-        help="Revision of pretrained non-ema model identifier from huggingface.co/models.",
+        help="Revision of pretrained non-ema model identifier. Must be a branch, tag or git identifier of the local or remote repository specified with --pretrained_model_name_or_path.",
     )
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
@@ -343,8 +343,7 @@ class EMAModel:
         Save the current parameters for restoring later.
         Args:
             parameters: Iterable of `torch.nn.Parameter`; the parameters to be
-                temporarily stored. If `None`, the parameters of with which this
-                `ExponentialMovingAverage` was initialized will be used.
+                temporarily stored.
         """
         parameters = list(parameters)
         self.collected_params = [param.clone() for param in parameters]
@@ -358,9 +357,7 @@ class EMAModel:
         restore the former parameters.
         Args:
             parameters: Iterable of `torch.nn.Parameter`; the parameters to be
-                updated with the stored parameters. If `None`, the
-                parameters with which this `ExponentialMovingAverage` was
-                initialized will be used.
+                updated with the stored parameters.
         """
         if self.collected_params is None:
             raise RuntimeError("This ExponentialMovingAverage has no `store()`ed weights to `restore()`")
@@ -409,7 +406,7 @@ class EMAModel:
             ), "collected_params must all be Tensors"
             assert len(self.collected_params) == len(
                 self.shadow_params
-            ), "collected_params and shadow_params had different lengths"
+            ), "collected_params and shadow_params must have the same length"
 
         # if len(self.shadow_params) == len(self._params_refs):
         #     # Consistant with torch.optim.Optimizer, cast things to consistant
