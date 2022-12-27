@@ -855,7 +855,8 @@ if __name__ == "__main__":
     prediction_type = args.prediction_type
 
     if args.device is None:
-        checkpoint = torch.load(args.checkpoint_path)
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        checkpoint = torch.load(args.checkpoint_path, map_location=device)
     else:
         checkpoint = torch.load(args.checkpoint_path, map_location=args.device)
 
