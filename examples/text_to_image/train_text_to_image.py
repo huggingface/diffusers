@@ -576,9 +576,10 @@ def main():
                 raise ValueError(
                     f"Caption column `{caption_column}` should contain either strings or lists of strings."
                 )
-        inputs = tokenizer(captions, max_length=tokenizer.model_max_length, padding="do_not_pad", truncation=True)
-        input_ids = inputs.input_ids
-        return input_ids
+        inputs = tokenizer(
+            captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
+        )
+        return inputs.input_ids
 
     train_transforms = transforms.Compose(
         [
@@ -606,13 +607,8 @@ def main():
     def collate_fn(examples):
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
-        input_ids = [example["input_ids"] for example in examples]
-        padded_tokens = tokenizer.pad({"input_ids": input_ids}, padding=True, return_tensors="pt")
-        return {
-            "pixel_values": pixel_values,
-            "input_ids": padded_tokens.input_ids,
-            "attention_mask": padded_tokens.attention_mask,
-        }
+        input_ids = torch.cat([example["input_ids"] for example in examples], dim=0)
+        return {"pixel_values": pixel_values, "input_ids": input_ids}
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, shuffle=True, collate_fn=collate_fn, batch_size=args.train_batch_size
