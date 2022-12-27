@@ -447,7 +447,8 @@ def main():
         elif args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
 
-    # Load models and create wrapper for stable diffusion
+    # Load scheduler, tokenizer and models.
+    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     tokenizer = CLIPTokenizer.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
     )
@@ -465,6 +466,10 @@ def main():
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
     )
 
+    # Freeze vae and text_encoder
+    vae.requires_grad_(False)
+    text_encoder.requires_grad_(False)
+
     # Create EMA for the unet.
     if args.use_ema:
         ema_unet = UNet2DConditionModel.from_pretrained(
@@ -480,10 +485,6 @@ def main():
                 "Could not enable memory efficient attention. Make sure xformers is installed"
                 f" correctly and a GPU is available: {e}"
             )
-
-    # Freeze vae and text_encoder
-    vae.requires_grad_(False)
-    text_encoder.requires_grad_(False)
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
@@ -513,7 +514,6 @@ def main():
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon,
     )
-    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
 
     # Get the datasets: you can either provide your own training and evaluation files (see below)
     # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).
