@@ -595,7 +595,6 @@ def main():
         images = [image.convert("RGB") for image in examples[image_column]]
         examples["pixel_values"] = [train_transforms(image) for image in images]
         examples["input_ids"] = tokenize_captions(examples)
-
         return examples
 
     with accelerator.main_process_first():
@@ -607,7 +606,7 @@ def main():
     def collate_fn(examples):
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
-        input_ids = torch.cat([example["input_ids"] for example in examples], dim=0)
+        input_ids = torch.stack([example["input_ids"] for example in examples])
         return {"pixel_values": pixel_values, "input_ids": input_ids}
 
     train_dataloader = torch.utils.data.DataLoader(
