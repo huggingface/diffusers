@@ -178,7 +178,10 @@ def parse_args():
         type=str,
         default=None,
         required=False,
-        help="Revision of pretrained non-ema model identifier. Must be a branch, tag or git identifier of the local or remote repository specified with --pretrained_model_name_or_path.",
+        help=(
+            "Revision of pretrained non-ema model identifier. Must be a branch, tag or git identifier of the local or"
+            " remote repository specified with --pretrained_model_name_or_path."
+        ),
     )
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
@@ -338,38 +341,11 @@ class EMAModel:
             for p in self.shadow_params
         ]
 
-    def store(self, parameters: Iterable[torch.nn.Parameter]) -> None:
-        """
-        Save the current parameters for restoring later.
-        Args:
-            parameters: Iterable of `torch.nn.Parameter`; the parameters to be
-                temporarily stored.
-        """
-        parameters = list(parameters)
-        self.collected_params = [param.clone() for param in parameters]
-
-    def restore(self, parameters: Iterable[torch.nn.Parameter]) -> None:
-        """
-        Restore the parameters stored with the `store` method.
-        Useful to validate the model with EMA parameters without affecting the
-        original optimization process. Store the parameters before the
-        `copy_to` method. After validation (or model saving), use this to
-        restore the former parameters.
-        Args:
-            parameters: Iterable of `torch.nn.Parameter`; the parameters to be
-                updated with the stored parameters.
-        """
-        if self.collected_params is None:
-            raise RuntimeError("This ExponentialMovingAverage has no `store()`ed weights to `restore()`")
-        parameters = list(parameters)
-        for c_param, param in zip(self.collected_params, parameters):
-            param.data.copy_(c_param.data)
-
-        self.collected_params = None
-        torch.cuda.empty_cache()
-
     def state_dict(self) -> dict:
-        r"""Returns the state of the ExponentialMovingAverage as a dict."""
+        r"""
+        Returns the state of the ExponentialMovingAverage as a dict.
+        This method is used by accelerate during checkpointing to save the ema state dict.
+        """
         # Following PyTorch conventions, references to tensors are returned:
         # "returns a reference to the state and not its copy!" -
         # https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict
@@ -381,7 +357,9 @@ class EMAModel:
         }
 
     def load_state_dict(self, state_dict: dict) -> None:
-        r"""Loads the ExponentialMovingAverage state.
+        r"""
+        Loads the ExponentialMovingAverage state.
+        This method is used by accelerate during checkpointing to save the ema state dict.
         Args:
             state_dict (dict): EMA state. Should be an object returned
                 from a call to :meth:`state_dict`.
@@ -721,6 +699,7 @@ def main():
             dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
             path = dirs[-1]
         accelerator.print(f"Resuming from checkpoint {path}")
+        accelerator.load_state(os.path.join(args.output_dir, path))
         global_step = int(path.split("-")[1])
 
         resume_global_step = global_step * args.gradient_accumulation_steps
