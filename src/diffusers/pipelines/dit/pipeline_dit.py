@@ -2,11 +2,9 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 
-from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, DiT
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import DDIMScheduler
-from ...utils import deprecate
 
 
 class DiTPipeline(DiffusionPipeline):
