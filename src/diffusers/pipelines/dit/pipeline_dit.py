@@ -57,7 +57,7 @@ class DiTPipeline(DiffusionPipeline):
                 noise_pred = torch.cat([eps, rest], dim=1)
 
             # learned sigma
-            _, C = noise_pred.shape[:2]
+            _, C = latent_model_input.shape[:2]
             model_output, _ = torch.split(noise_pred, C, dim=1)
 
             # compute previous image: x_t -> x_t-1
