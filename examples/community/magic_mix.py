@@ -76,7 +76,7 @@ class MagicMixPipeline(DiffusionPipeline):
         prompt: str,
         kmin: float = 0.3,
         kmax: float = 0.6,
-        v: float = 0.5,
+        mix_factor: float = 0.5,
         seed: int = 42,
         steps: int = 50,
         guidance_scale: float = 7.5,
@@ -127,8 +127,8 @@ class MagicMixPipeline(DiffusionPipeline):
                         timesteps=t,
                     )
 
-                    input = (v * latents) + (
-                        1 - v
+                    input = (mix_factor * latents) + (
+                        1 - mix_factor
                     ) * orig_latents  # interpolating between layout noise and conditionally generated noise to preserve layout sematics
                     input = torch.cat([input] * 2)
 

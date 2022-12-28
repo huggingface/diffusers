@@ -825,7 +825,7 @@ As a result, you can look at a grid of all 4 generated images being shown togeth
 Implementation of the [MagicMix: Semantic Mixing with Diffusion Models](https://arxiv.org/abs/2210.16056) paper. This is a Diffusion Pipeline for semantic mixing of an image and a text prompt to create a new concept while preserving the spatial layout and geometry of the subject in the image. The pipeline takes an image that provides the layout semantics and a prompt that provides the content semantics for the mixing process.
 
 There are 3 parameters for the method-
-- `v`: It is the interpolation constant used in the layout generation phase. The greater the value of v, the greater the influence of the prompt on the layout generation process.
+- `mix_factor`: It is the interpolation constant used in the layout generation phase. The greater the value of `mix_factor`, the greater the influence of the prompt on the layout generation process.
 - `kmax` and `kmin`: These determine the range for the layout and content generation process. A higher value of kmax results in loss of more information about the layout of the original image and a higher value of kmin results in more steps for content generation process.
 
 Here is an example usage-
@@ -846,7 +846,7 @@ mix_img = pipe(
     prompt = 'bed', 
     kmin = 0.3,
     kmax = 0.5,
-    v = 0.5,
+    mix_factor = 0.5,
     )
 mix_img.save('phone_bed_mix.jpg')
 ```
