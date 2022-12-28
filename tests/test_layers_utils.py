@@ -22,7 +22,7 @@ from torch import nn
 
 from diffusers.models.attention import GEGLU, AdaLayerNorm, ApproximateGELU, AttentionBlock, Transformer2DModel
 from diffusers.models.embeddings import get_timestep_embedding
-from diffusers.models.resnet import Downsample2D, Upsample2D, ResnetBlock2D
+from diffusers.models.resnet import Downsample2D, ResnetBlock2D, Upsample2D
 from diffusers.utils import torch_device
 
 
