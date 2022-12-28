@@ -39,8 +39,9 @@ class DiTPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps)
 
         for t in self.progress_bar(self.scheduler.timesteps):
-            half = latent_model_input[: len(latent_model_input) // 2]
-            latent_model_input = torch.cat([half, half], dim=0)
+            if guidance_scale > 1:
+                half = latent_model_input[: len(latent_model_input) // 2]
+                latent_model_input = torch.cat([half, half], dim=0)
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
             # predict noise model_output
@@ -53,7 +54,7 @@ class DiTPipeline(DiffusionPipeline):
 
                 half_eps = uncond_eps + guidance_scale * (cond_eps - uncond_eps)
                 eps = torch.cat([half_eps, half_eps], dim=0)
-                
+
                 noise_pred = torch.cat([eps, rest], dim=1)
 
             # learned sigma
@@ -61,9 +62,13 @@ class DiTPipeline(DiffusionPipeline):
             model_output, _ = torch.split(noise_pred, C, dim=1)
 
             # compute previous image: x_t -> x_t-1
-            latent_model_input = self.scheduler.step(model_output, t, latent_model_input, generator=generator).prev_sample
+            latent_model_input = self.scheduler.step(
+                model_output, t, latent_model_input, generator=generator
+            ).prev_sample
 
-        latents, _ = latent_model_input.chunk(2, dim=0)
+        if guidance_scale > 1:
+            latents, _ = latent_model_input.chunk(2, dim=0)
+
         latents = 1 / 0.18215 * latents
         samples = self.vae.decode(latents).sample
 
@@ -79,5 +84,3 @@ class DiTPipeline(DiffusionPipeline):
             return (samples,)
 
         return ImagePipelineOutput(images=samples)
-
-  
