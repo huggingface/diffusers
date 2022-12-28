@@ -541,7 +541,7 @@ def main():
     unet.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
 
-    # Keep unet in train model if we are using gradient checkpointing to save memory.
+    # Keep unet in train mode if we are using gradient checkpointing to save memory.
     # The dropout is 0 so it doesn't matter if we are in eval or train mode.
     if args.gradient_checkpointing:
         unet.train()
