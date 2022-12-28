@@ -281,7 +281,7 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (256, 256, 3)
         assert np.abs(expected_image - image).max() < 1e-2
 
-    def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
+    def test_unclip_pipeline_with_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()

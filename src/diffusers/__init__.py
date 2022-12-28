@@ -105,6 +105,7 @@ else:
         StableDiffusionPipeline,
         StableDiffusionPipelineSafe,
         StableDiffusionUpscalePipeline,
+        UnCLIPImageVariationPipeline,
         UnCLIPPipeline,
         VersatileDiffusionDualGuidedPipeline,
         VersatileDiffusionImageVariationPipeline,

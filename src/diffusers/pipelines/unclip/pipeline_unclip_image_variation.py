@@ -18,10 +18,16 @@ from typing import List, Optional, Union
 import torch
 from torch.nn import functional as F
 
-from diffusers import PriorTransformer, UNet2DConditionModel, UNet2DModel
+import PIL
+from diffusers import UNet2DConditionModel, UNet2DModel
 from diffusers.pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from diffusers.schedulers import UnCLIPScheduler
-from transformers import CLIPTextModelWithProjection, CLIPTokenizer
+from transformers import (
+    CLIPFeatureExtractor,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    CLIPVisionModelWithProjection,
+)
 
 from ...utils import is_accelerate_available, logging
 from .text_proj import UnCLIPTextProjModel
@@ -30,9 +36,9 @@ from .text_proj import UnCLIPTextProjModel
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class UnCLIPPipeline(DiffusionPipeline):
+class UnCLIPImageVariationPipeline(DiffusionPipeline):
     """
-    Pipeline for text-to-image generation using unCLIP
+    Pipeline to generate variations from an input image using unCLIP
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -43,8 +49,12 @@ class UnCLIPPipeline(DiffusionPipeline):
         tokenizer (`CLIPTokenizer`):
             Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
-        prior ([`PriorTransformer`]):
-            The canonincal unCLIP prior to approximate the image embedding from the text embedding.
+        feature_extractor ([`CLIPFeatureExtractor`]):
+            Model that extracts features from generated images to be used as inputs for the `image_encoder`.
+        image_encoder ([`CLIPVisionModelWithProjection`]):
+            Frozen CLIP image-encoder. unCLIP Image Variation uses the vision portion of
+            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPVisionModelWithProjection),
+            specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
         text_proj ([`UnCLIPTextProjModel`]):
             Utility class to prepare and combine the embeddings before they are passed to the decoder.
         decoder ([`UNet2DConditionModel`]):
@@ -53,8 +63,6 @@ class UnCLIPPipeline(DiffusionPipeline):
             Super resolution unet. Used in all but the last step of the super resolution diffusion process.
         super_res_last ([`UNet2DModel`]):
             Super resolution unet. Used in the last step of the super resolution diffusion process.
-        prior_scheduler ([`UnCLIPScheduler`]):
-            Scheduler used in the prior denoising process. Just a modified DDPMScheduler.
         decoder_scheduler ([`UnCLIPScheduler`]):
             Scheduler used in the decoder denoising process. Just a modified DDPMScheduler.
         super_res_scheduler ([`UnCLIPScheduler`]):
@@ -62,46 +70,47 @@ class UnCLIPPipeline(DiffusionPipeline):
 
     """
 
-    prior: PriorTransformer
     decoder: UNet2DConditionModel
     text_proj: UnCLIPTextProjModel
     text_encoder: CLIPTextModelWithProjection
     tokenizer: CLIPTokenizer
+    feature_extractor: CLIPFeatureExtractor
+    image_encoder: CLIPVisionModelWithProjection
     super_res_first: UNet2DModel
     super_res_last: UNet2DModel
 
-    prior_scheduler: UnCLIPScheduler
     decoder_scheduler: UnCLIPScheduler
     super_res_scheduler: UnCLIPScheduler
 
     def __init__(
         self,
-        prior: PriorTransformer,
         decoder: UNet2DConditionModel,
         text_encoder: CLIPTextModelWithProjection,
         tokenizer: CLIPTokenizer,
         text_proj: UnCLIPTextProjModel,
+        feature_extractor: CLIPFeatureExtractor,
+        image_encoder: CLIPVisionModelWithProjection,
         super_res_first: UNet2DModel,
         super_res_last: UNet2DModel,
-        prior_scheduler: UnCLIPScheduler,
         decoder_scheduler: UnCLIPScheduler,
         super_res_scheduler: UnCLIPScheduler,
     ):
         super().__init__()
 
         self.register_modules(
-            prior=prior,
             decoder=decoder,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
             text_proj=text_proj,
+            feature_extractor=feature_extractor,
+            image_encoder=image_encoder,
             super_res_first=super_res_first,
             super_res_last=super_res_last,
-            prior_scheduler=prior_scheduler,
             decoder_scheduler=decoder_scheduler,
             super_res_scheduler=super_res_scheduler,
         )
 
+    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
             if device.type == "mps":
@@ -117,6 +126,7 @@ class UnCLIPPipeline(DiffusionPipeline):
         latents = latents * scheduler.init_noise_sigma
         return latents
 
+    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline._encode_prompt
     def _encode_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance):
         batch_size = len(prompt) if isinstance(prompt, list) else 1
 
@@ -189,6 +199,19 @@ class UnCLIPPipeline(DiffusionPipeline):
 
         return text_embeddings, text_encoder_hidden_states, text_mask
 
+    def _encode_image(self, image, device, num_images_per_prompt):
+        dtype = next(self.image_encoder.parameters()).dtype
+
+        if not isinstance(image, torch.Tensor):
+            image = self.feature_extractor(images=image, return_tensors="pt").pixel_values
+
+        image = image.to(device=device, dtype=dtype)
+        image_embeddings = self.image_encoder(image).image_embeds
+
+        image_embeddings = image_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
+
+        return image_embeddings
+
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, the pipeline's
@@ -202,7 +225,6 @@ class UnCLIPPipeline(DiffusionPipeline):
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        # TODO: self.prior.post_process_latents is not covered by the offload hooks, so it fails if added to the list
         models = [
             self.decoder,
             self.text_proj,
@@ -215,6 +237,7 @@ class UnCLIPPipeline(DiffusionPipeline):
                 cpu_offload(cpu_offloaded_model, device)
 
     @property
+    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline._execution_device
     def _execution_device(self):
         r"""
         Returns the device on which the pipeline's models will be executed. After calling
@@ -235,16 +258,13 @@ class UnCLIPPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, List[str]],
+        image: Union[PIL.Image.Image, List[PIL.Image.Image], torch.FloatTensor],
         num_images_per_prompt: int = 1,
-        prior_num_inference_steps: int = 25,
         decoder_num_inference_steps: int = 25,
         super_res_num_inference_steps: int = 7,
         generator: Optional[torch.Generator] = None,
-        prior_latents: Optional[torch.FloatTensor] = None,
         decoder_latents: Optional[torch.FloatTensor] = None,
         super_res_latents: Optional[torch.FloatTensor] = None,
-        prior_guidance_scale: float = 4.0,
         decoder_guidance_scale: float = 8.0,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -253,13 +273,13 @@ class UnCLIPPipeline(DiffusionPipeline):
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`):
-                The prompt or prompts to guide the image generation.
+            image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `torch.FloatTensor`):
+                The image or images to guide the image generation. If you provide a tensor, it needs to comply with the
+                configuration of
+                [this](https://huggingface.co/fusing/karlo-image-variations-diffusers/blob/main/feature_extractor/preprocessor_config.json)
+                `CLIPFeatureExtractor`.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
-            prior_num_inference_steps (`int`, *optional*, defaults to 25):
-                The number of denoising steps for the prior. More denoising steps usually lead to a higher quality
-                image at the expense of slower inference.
             decoder_num_inference_steps (`int`, *optional*, defaults to 25):
                 The number of denoising steps for the decoder. More denoising steps usually lead to a higher quality
                 image at the expense of slower inference.
@@ -269,18 +289,10 @@ class UnCLIPPipeline(DiffusionPipeline):
             generator (`torch.Generator`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
-            prior_latents (`torch.FloatTensor` of shape (batch size, embeddings dimension), *optional*):
-                Pre-generated noisy latents to be used as inputs for the prior.
             decoder_latents (`torch.FloatTensor` of shape (batch size, channels, height, width), *optional*):
                 Pre-generated noisy latents to be used as inputs for the decoder.
             super_res_latents (`torch.FloatTensor` of shape (batch size, channels, super res height, super res width), *optional*):
                 Pre-generated noisy latents to be used as inputs for the decoder.
-            prior_guidance_scale (`float`, *optional*, defaults to 4.0):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
             decoder_guidance_scale (`float`, *optional*, defaults to 4.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -293,73 +305,26 @@ class UnCLIPPipeline(DiffusionPipeline):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
         """
-        if isinstance(prompt, str):
+        if isinstance(image, PIL.Image.Image):
             batch_size = 1
-        elif isinstance(prompt, list):
-            batch_size = len(prompt)
+        elif isinstance(image, list):
+            batch_size = len(image)
         else:
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+            batch_size = image.shape[0]
+
+        prompt = [""] * batch_size
+
         device = self._execution_device
 
         batch_size = batch_size * num_images_per_prompt
 
-        do_classifier_free_guidance = prior_guidance_scale > 1.0 or decoder_guidance_scale > 1.0
+        do_classifier_free_guidance = decoder_guidance_scale > 1.0
 
         text_embeddings, text_encoder_hidden_states, text_mask = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance
         )
 
-        # prior
-
-        self.prior_scheduler.set_timesteps(prior_num_inference_steps, device=device)
-        prior_timesteps_tensor = self.prior_scheduler.timesteps
-
-        embedding_dim = self.prior.config.embedding_dim
-        prior_latents = self.prepare_latents(
-            (batch_size, embedding_dim),
-            text_embeddings.dtype,
-            device,
-            generator,
-            prior_latents,
-            self.prior_scheduler,
-        )
-
-        for i, t in enumerate(self.progress_bar(prior_timesteps_tensor)):
-            # expand the latents if we are doing classifier free guidance
-            latent_model_input = torch.cat([prior_latents] * 2) if do_classifier_free_guidance else prior_latents
-
-            predicted_image_embedding = self.prior(
-                latent_model_input,
-                timestep=t,
-                proj_embedding=text_embeddings,
-                encoder_hidden_states=text_encoder_hidden_states,
-                attention_mask=text_mask,
-            ).predicted_image_embedding
-
-            if do_classifier_free_guidance:
-                predicted_image_embedding_uncond, predicted_image_embedding_text = predicted_image_embedding.chunk(2)
-                predicted_image_embedding = predicted_image_embedding_uncond + prior_guidance_scale * (
-                    predicted_image_embedding_text - predicted_image_embedding_uncond
-                )
-
-            if i + 1 == prior_timesteps_tensor.shape[0]:
-                prev_timestep = None
-            else:
-                prev_timestep = prior_timesteps_tensor[i + 1]
-
-            prior_latents = self.prior_scheduler.step(
-                predicted_image_embedding,
-                timestep=t,
-                sample=prior_latents,
-                generator=generator,
-                prev_timestep=prev_timestep,
-            ).prev_sample
-
-        prior_latents = self.prior.post_process_latents(prior_latents)
-
-        image_embeddings = prior_latents
-
-        # done prior
+        image_embeddings = self._encode_image(image, device, num_images_per_prompt)
 
         # decoder
 
