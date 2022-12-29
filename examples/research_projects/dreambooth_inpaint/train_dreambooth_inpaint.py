@@ -4,6 +4,7 @@ import itertools
 import math
 import os
 import random
+import subprocess
 import sys
 from pathlib import Path
 from typing import Optional
@@ -13,7 +14,6 @@ import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch.utils.data import Dataset
-import subprocess
 
 from accelerate import Accelerator
 from accelerate.logging import get_logger
@@ -173,7 +173,7 @@ def parse_args():
     )
     parser.add_argument("--num_train_epochs", type=int, default=1)
     parser.add_argument("--stop_text_encoder_training", type=int, default=sys.maxsize)
-    
+
     parser.add_argument(
         "--max_train_steps",
         type=int,
@@ -361,16 +361,15 @@ class DreamBoothDataset(Dataset):
 
         if self.image_captions_filename:
             filename = Path(path).stem
-            pt=''.join([i for i in filename if not i.isdigit()])
-            pt=pt.replace("_"," ")
-            pt=pt.replace("(","")
-            pt=pt.replace(")","")
-            pt=pt.replace("-","")
+            pt = "".join([i for i in filename if not i.isdigit()])
+            pt = pt.replace("_", " ")
+            pt = pt.replace("(", "")
+            pt = pt.replace(")", "")
+            pt = pt.replace("-", "")
             instance_prompt = pt
-            sys.stdout.write(" [0;32m" +instance_prompt+" [0m")
+            sys.stdout.write(" [0;32m" + instance_prompt + " [0m")
             sys.stdout.flush()
 
-        
         example["PIL_images"] = instance_image
         example["instance_images"] = self.image_transforms(instance_image)
 
@@ -805,18 +804,18 @@ def main():
             accelerator.log(logs, step=global_step)
 
             if args.train_text_encoder and global_step == args.stop_text_encoder_training and global_step >= 30:
-              if accelerator.is_main_process:
-                print(" [0;32m" +" Freezing the text_encoder ..."+" [0m")
-                frz_dir=args.output_dir + "/text_encoder_frozen"
-                if os.path.exists(frz_dir):
-                  subprocess.call('rm -r '+ frz_dir, shell=True)
-                os.mkdir(frz_dir)
-                pipeline = StableDiffusionPipeline.from_pretrained(
-                    args.pretrained_model_name_or_path,
-                    unet=accelerator.unwrap_model(unet),
-                    text_encoder=accelerator.unwrap_model(text_encoder),
-                )
-                pipeline.text_encoder.save_pretrained(frz_dir)
+                if accelerator.is_main_process:
+                    print(" [0;32m" + " Freezing the text_encoder ..." + " [0m")
+                    frz_dir = args.output_dir + "/text_encoder_frozen"
+                    if os.path.exists(frz_dir):
+                        subprocess.call("rm -r " + frz_dir, shell=True)
+                    os.mkdir(frz_dir)
+                    pipeline = StableDiffusionPipeline.from_pretrained(
+                        args.pretrained_model_name_or_path,
+                        unet=accelerator.unwrap_model(unet),
+                        text_encoder=accelerator.unwrap_model(text_encoder),
+                    )
+                    pipeline.text_encoder.save_pretrained(frz_dir)
 
             if global_step >= args.max_train_steps:
                 break
@@ -832,11 +831,11 @@ def main():
         )
         pipeline.save_pretrained(args.output_dir)
 
-        frz_dir=args.output_dir + "/text_encoder_frozen"
+        frz_dir = args.output_dir + "/text_encoder_frozen"
         if args.train_text_encoder and os.path.exists(frz_dir):
-           subprocess.call('mv -f '+frz_dir +'/*.* '+ args.output_dir+'/text_encoder', shell=True)
-           subprocess.call('rm -r '+ frz_dir, shell=True)
-        
+            subprocess.call("mv -f " + frz_dir + "/*.* " + args.output_dir + "/text_encoder", shell=True)
+            subprocess.call("rm -r " + frz_dir, shell=True)
+
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
 
