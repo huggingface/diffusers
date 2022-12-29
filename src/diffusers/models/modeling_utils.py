@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 import os
 from functools import partial
 from typing import Callable, List, Optional, Tuple, Union
@@ -489,11 +490,15 @@ class ModelMixin(torch.nn.Module):
                 state_dict = load_state_dict(model_file)
                 # move the parms from meta device to cpu
                 for param_name, param in state_dict.items():
-                    set_module_tensor_to_device(model, param_name, param_device, value=param)
+                    accepts_dtype = "dtype" in set(inspect.signature(set_module_tensor_to_device).parameters.keys())
+                    if accepts_dtype:
+                        set_module_tensor_to_device(model, param_name, param_device, value=param, dtype=torch_dtype)
+                    else:
+                        set_module_tensor_to_device(model, param_name, param_device, value=param)
             else:  # else let accelerate handle loading and dispatching.
                 # Load weights and dispatch according to the device_map
                 # by deafult the device_map is None and the weights are loaded on the CPU
-                accelerate.load_checkpoint_and_dispatch(model, model_file, device_map)
+                accelerate.load_checkpoint_and_dispatch(model, model_file, device_map, dtype=torch_dtype)
 
             loading_info = {
                 "missing_keys": [],
@@ -519,20 +524,6 @@ class ModelMixin(torch.nn.Module):
             model = cls.from_config(config, **unused_kwargs)
 
             state_dict = load_state_dict(model_file)
-            dtype = set(v.dtype for v in state_dict.values())
-
-            if len(dtype) > 1 and torch.float32 not in dtype:
-                raise ValueError(
-                    f"The weights of the model file {model_file} have a mixture of incompatible dtypes {dtype}. Please"
-                    f" make sure that {model_file} weights have only one dtype."
-                )
-            elif len(dtype) > 1 and torch.float32 in dtype:
-                dtype = torch.float32
-            else:
-                dtype = dtype.pop()
-
-            # move model to correct dtype
-            model = model.to(dtype)
 
             model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
                 model,

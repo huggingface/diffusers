@@ -806,7 +806,7 @@ class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
             dtype=self.dtype,
         )
 
-    def init_weights(self, rng: jax.random.PRNGKey) -> FrozenDict:
+    def init_weights(self, rng: jax.random.KeyArray) -> FrozenDict:
         # init input tensors
         sample_shape = (1, self.in_channels, self.sample_size, self.sample_size)
         sample = jnp.zeros(sample_shape, dtype=jnp.float32)
