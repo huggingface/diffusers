@@ -64,6 +64,14 @@ else:
     from .vq_diffusion import VQDiffusionPipeline
 
 try:
+    if not is_onnx_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils.dummy_onnx_objects import *  # noqa F403
+else:
+    from .onnx_utils import OnnxRuntimeModel
+
+try:
     if not (is_torch_available() and is_transformers_available() and is_onnx_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:

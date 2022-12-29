@@ -23,7 +23,7 @@ try:
 except OptionalDependencyNotAvailable:
     from .utils.dummy_onnx_objects import *  # noqa F403
 else:
-    from .pipelines.onnx_utils import OnnxRuntimeModel
+    from .pipelines import OnnxRuntimeModel
 
 try:
     if not is_torch_available():
@@ -51,10 +51,12 @@ else:
         get_scheduler,
     )
     from .pipelines import (
+        AudioPipelineOutput,
         DanceDiffusionPipeline,
         DDIMPipeline,
         DDPMPipeline,
         DiffusionPipeline,
+        ImagePipelineOutput,
         KarrasVePipeline,
         LDMPipeline,
         LDMSuperResolutionPipeline,
