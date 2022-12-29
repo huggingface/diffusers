@@ -199,14 +199,15 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
 
         return text_embeddings, text_encoder_hidden_states, text_mask
 
-    def _encode_image(self, image, device, num_images_per_prompt):
+    def _encode_image(self, image, device, num_images_per_prompt, image_embeddings: Optional[torch.Tensor] = None):
         dtype = next(self.image_encoder.parameters()).dtype
 
-        if not isinstance(image, torch.Tensor):
-            image = self.feature_extractor(images=image, return_tensors="pt").pixel_values
+        if image_embeddings is None:
+            if not isinstance(image, torch.Tensor):
+                image = self.feature_extractor(images=image, return_tensors="pt").pixel_values
 
-        image = image.to(device=device, dtype=dtype)
-        image_embeddings = self.image_encoder(image).image_embeds
+            image = image.to(device=device, dtype=dtype)
+            image_embeddings = self.image_encoder(image).image_embeds
 
         image_embeddings = image_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
 
@@ -265,6 +266,7 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
         generator: Optional[torch.Generator] = None,
         decoder_latents: Optional[torch.FloatTensor] = None,
         super_res_latents: Optional[torch.FloatTensor] = None,
+        image_embeddings: Optional[torch.Tensor] = None,
         decoder_guidance_scale: float = 8.0,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -324,7 +326,7 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
             prompt, device, num_images_per_prompt, do_classifier_free_guidance
         )
 
-        image_embeddings = self._encode_image(image, device, num_images_per_prompt)
+        image_embeddings = self._encode_image(image, device, num_images_per_prompt, image_embeddings)
 
         # decoder
         text_encoder_hidden_states, additive_clip_time_embeddings = self.text_proj(

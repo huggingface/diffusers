@@ -118,10 +118,10 @@ class UnCLIPPipeline(DiffusionPipeline):
         latents = latents * scheduler.init_noise_sigma
         return latents
 
-    def _encode_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance, text_model_output: Optional[Union[CLIPTextModelOutput, Tuple]] = None, text_attention_mask: Optional[torch.Tensor] = None):
+    def _encode_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance, text_model_output: Optional[Union[CLIPTextModelOutput, Tuple]] = None):
+        batch_size = len(prompt) if isinstance(prompt, list) else 1
 
         if text_model_output is None:
-            batch_size = len(prompt) if isinstance(prompt, list) else 1
             # get prompt text embeddings
             text_inputs = self.tokenizer(
                 prompt,
@@ -144,15 +144,12 @@ class UnCLIPPipeline(DiffusionPipeline):
 
                 text_embeddings = text_encoder_output.text_embeds
                 text_encoder_hidden_states = text_encoder_output.last_hidden_state
-
             else:
-                batch_size = text_model_output[0].shape[0]
                 text_embeddings, text_encoder_hidden_states = text_encoder_output[0], text_encoder_output[1]
-                text_mask = text_attention_mask
 
-            text_embeddings = text_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
-            text_encoder_hidden_states = text_encoder_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
-            text_mask = text_mask.repeat_interleave(num_images_per_prompt, dim=0)
+        text_embeddings = text_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
+        text_encoder_hidden_states = text_encoder_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
+        text_mask = text_mask.repeat_interleave(num_images_per_prompt, dim=0)
 
         if do_classifier_free_guidance:
             uncond_tokens = [""] * batch_size
@@ -252,7 +249,6 @@ class UnCLIPPipeline(DiffusionPipeline):
         decoder_latents: Optional[torch.FloatTensor] = None,
         super_res_latents: Optional[torch.FloatTensor] = None,
         text_model_output: Optional[Union[CLIPTextModelOutput, Tuple]] = None,
-        text_attention_mask: Optional[torch.Tensor] = None,
         prior_guidance_scale: float = 4.0,
         decoder_guidance_scale: float = 8.0,
         output_type: Optional[str] = "pil",
@@ -302,16 +298,12 @@ class UnCLIPPipeline(DiffusionPipeline):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
         """
-        if prompt is not None:
-            if isinstance(prompt, str):
-                batch_size = 1
-            elif isinstance(prompt, list):
-                batch_size = len(prompt)
-            else:
-                raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        if isinstance(prompt, str):
+            batch_size = 1
+        elif isinstance(prompt, list):
+            batch_size = len(prompt)
         else:
-            batch_size = text_model_output[0].shape[0]
-
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
         device = self._execution_device
 
         batch_size = batch_size * num_images_per_prompt
@@ -319,7 +311,7 @@ class UnCLIPPipeline(DiffusionPipeline):
         do_classifier_free_guidance = prior_guidance_scale > 1.0 or decoder_guidance_scale > 1.0
 
         text_embeddings, text_encoder_hidden_states, text_mask = self._encode_prompt(
-            prompt, device, num_images_per_prompt, do_classifier_free_guidance, text_model_output, text_attention_mask
+            prompt, device, num_images_per_prompt, do_classifier_free_guidance
         )
 
         # prior
