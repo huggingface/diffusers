@@ -88,7 +88,7 @@ class PatchEmbed(nn.Module):
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
         self.img_size = img_size
-        self.patch_size = patch_size
+
         self.grid_size = (img_size[0] // patch_size[0], img_size[1] // patch_size[1])
         self.num_patches = self.grid_size[0] * self.grid_size[1]
         self.flatten = flatten
@@ -195,11 +195,7 @@ class DiT(ModelMixin, ConfigMixin):
         learn_sigma=True,
     ):
         super().__init__()
-        self.learn_sigma = learn_sigma
-        self.in_channels = in_channels
         self.out_channels = in_channels * 2 if learn_sigma else in_channels
-        self.patch_size = patch_size
-        self.num_heads = num_heads
 
         self.sample_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
         self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=1)

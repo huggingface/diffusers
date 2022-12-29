@@ -25,8 +25,9 @@ class DiTPipeline(DiffusionPipeline):
     ) -> Union[ImagePipelineOutput, Tuple]:
         batch_size = len(class_labels)
         latent_size = self.dit.config.input_size
+        latent_channels = self.dit.config.in_channels
 
-        latents = torch.randn(batch_size, 4, latent_size, latent_size, device=self.device)
+        latents = torch.randn(batch_size, latent_channels, latent_size, latent_size, device=self.device)
         latent_model_input = torch.cat([latents] * 2) if guidance_scale > 1 else latents
 
         class_labels = torch.tensor(class_labels, device=self.device)
@@ -56,8 +57,10 @@ class DiTPipeline(DiffusionPipeline):
                 noise_pred = torch.cat([eps, rest], dim=1)
 
             # learned sigma
-            _, C = latent_model_input.shape[:2]
-            model_output, _ = torch.split(noise_pred, C, dim=1)
+            if self.dit.config.learn_sigma:
+                model_output, _ = torch.split(noise_pred, latent_channels, dim=1)
+            else:
+                model_output = noise_pred
 
             # compute previous image: x_t -> x_t-1
             latent_model_input = self.scheduler.step(
