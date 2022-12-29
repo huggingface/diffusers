@@ -329,7 +329,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
     def test_stable_diffusion_attention_slicing_v_pred(self):
         torch.cuda.reset_peak_memory_stats()
         model_id = "stabilityai/stable-diffusion-2"
-        pipe = StableDiffusionPipeline.from_pretrained(model_id, revision="fp16", torch_dtype=torch.float16)
+        pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -389,9 +389,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
             "sd2-text2img/astronaut_riding_a_horse_v_pred_fp16.npy"
         )
 
-        pipe = StableDiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-2", revision="fp16", torch_dtype=torch.float16
-        )
+        pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2", torch_dtype=torch.float16)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -430,9 +428,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
 
         test_callback_fn.has_been_called = False
 
-        pipe = StableDiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-2", revision="fp16", torch_dtype=torch.float16
-        )
+        pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2", torch_dtype=torch.float16)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -456,16 +452,12 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         pipeline_id = "stabilityai/stable-diffusion-2"
 
         start_time = time.time()
-        pipeline_low_cpu_mem_usage = StableDiffusionPipeline.from_pretrained(
-            pipeline_id, revision="fp16", torch_dtype=torch.float16
-        )
+        pipeline_low_cpu_mem_usage = StableDiffusionPipeline.from_pretrained(pipeline_id, torch_dtype=torch.float16)
         pipeline_low_cpu_mem_usage.to(torch_device)
         low_cpu_mem_usage_time = time.time() - start_time
 
         start_time = time.time()
-        _ = StableDiffusionPipeline.from_pretrained(
-            pipeline_id, revision="fp16", torch_dtype=torch.float16, low_cpu_mem_usage=False
-        )
+        _ = StableDiffusionPipeline.from_pretrained(pipeline_id, torch_dtype=torch.float16, low_cpu_mem_usage=False)
         normal_load_time = time.time() - start_time
 
         assert 2 * low_cpu_mem_usage_time < normal_load_time
@@ -478,7 +470,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         pipeline_id = "stabilityai/stable-diffusion-2"
         prompt = "Andromeda galaxy in a bottle"
 
-        pipeline = StableDiffusionPipeline.from_pretrained(pipeline_id, revision="fp16", torch_dtype=torch.float16)
+        pipeline = StableDiffusionPipeline.from_pretrained(pipeline_id, torch_dtype=torch.float16)
         pipeline = pipeline.to(torch_device)
         pipeline.enable_attention_slicing(1)
         pipeline.enable_sequential_cpu_offload()

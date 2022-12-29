@@ -484,7 +484,7 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
         callback_fn.has_been_called = False
 
         pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-2-depth", safety_checker=None, revision="fp16", torch_dtype=torch.float16
+            "stabilityai/stable-diffusion-2-depth", safety_checker=None, torch_dtype=torch.float16
         )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -501,7 +501,7 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
         torch.cuda.reset_peak_memory_stats()
 
         pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-2-depth", safety_checker=None, revision="fp16", torch_dtype=torch.float16
+            "stabilityai/stable-diffusion-2-depth", safety_checker=None, torch_dtype=torch.float16
         )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)

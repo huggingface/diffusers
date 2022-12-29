@@ -304,7 +304,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
     def test_stable_diffusion_attention_slicing(self):
         torch.cuda.reset_peak_memory_stats()
         pipe = StableDiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-2-base", revision="fp16", torch_dtype=torch.float16
+            "stabilityai/stable-diffusion-2-base", torch_dtype=torch.float16
         )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -352,7 +352,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         callback_fn.has_been_called = False
 
         pipe = StableDiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-2-base", revision="fp16", torch_dtype=torch.float16
+            "stabilityai/stable-diffusion-2-base", torch_dtype=torch.float16
         )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -369,7 +369,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         torch.cuda.reset_peak_memory_stats()
 
         pipe = StableDiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-2-base", revision="fp16", torch_dtype=torch.float16
+            "stabilityai/stable-diffusion-2-base", torch_dtype=torch.float16
         )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)

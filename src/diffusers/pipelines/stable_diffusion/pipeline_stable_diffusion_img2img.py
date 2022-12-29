@@ -90,7 +90,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
-    _optional_components = ["safety_checker"]
+    _optional_components = ["safety_checker", "feature_extractor"]
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.__init__
     def __init__(
@@ -528,7 +528,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             (nsfw) content, according to the `safety_checker`.
         """
         message = "Please use `image` instead of `init_image`."
-        init_image = deprecate("init_image", "0.12.0", message, take_from=kwargs)
+        init_image = deprecate("init_image", "0.13.0", message, take_from=kwargs)
         image = init_image or image
 
         # 1. Check inputs

@@ -61,7 +61,6 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install -e .[quality,test]
-        python -m pip install git+https://github.com/huggingface/accelerate
         python -m pip install -U git+https://github.com/huggingface/transformers
 
     - name: Environment
@@ -131,7 +130,6 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install -e .[quality,test,training]
-        python -m pip install git+https://github.com/huggingface/accelerate
         python -m pip install -U git+https://github.com/huggingface/transformers
 
     - name: Environment

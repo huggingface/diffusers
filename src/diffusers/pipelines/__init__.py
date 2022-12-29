@@ -53,6 +53,7 @@ else:
         StableDiffusionUpscalePipeline,
     )
     from .stable_diffusion_safe import StableDiffusionPipelineSafe
+    from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline
     from .versatile_diffusion import (
         VersatileDiffusionDualGuidedPipeline,
         VersatileDiffusionImageVariationPipeline,
@@ -90,4 +91,4 @@ try:
 except OptionalDependencyNotAvailable:
     from ..utils.dummy_flax_and_transformers_objects import *  # noqa F403
 else:
-    from .stable_diffusion import FlaxStableDiffusionPipeline
+    from .stable_diffusion import FlaxStableDiffusionImg2ImgPipeline, FlaxStableDiffusionPipeline

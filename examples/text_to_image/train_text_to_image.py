@@ -234,6 +234,9 @@ def parse_args():
             ' `--checkpointing_steps`, or `"latest"` to automatically select the last available checkpoint.'
         ),
     )
+    parser.add_argument(
+        "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
+    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -383,14 +386,11 @@ def main():
         revision=args.revision,
     )
 
-    if is_xformers_available():
-        try:
+    if args.enable_xformers_memory_efficient_attention:
+        if is_xformers_available():
             unet.enable_xformers_memory_efficient_attention()
-        except Exception as e:
-            logger.warning(
-                "Could not enable memory efficient attention. Make sure xformers is installed"
-                f" correctly and a GPU is available: {e}"
-            )
+        else:
+            raise ValueError("xformers is not available. Make sure it is installed correctly")
 
     # Freeze vae and text_encoder
     vae.requires_grad_(False)
@@ -493,7 +493,7 @@ def main():
 
     train_transforms = transforms.Compose(
         [
-            transforms.Resize((args.resolution, args.resolution), interpolation=transforms.InterpolationMode.BILINEAR),
+            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
             transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
             transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x),
             transforms.ToTensor(),

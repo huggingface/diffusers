@@ -25,6 +25,7 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | K-Diffusion Stable Diffusion | Run Stable Diffusion with any of [K-Diffusion's samplers](https://github.com/crowsonkb/k-diffusion/blob/master/k_diffusion/sampling.py) | [Stable Diffusion with K Diffusion](#stable-diffusion-with-k-diffusion) | -  | [Patrick von Platen](https://github.com/patrickvonplaten/) |
 | Checkpoint Merger Pipeline | Diffusion Pipeline that enables merging of saved model checkpoints | [Checkpoint Merger Pipeline](#checkpoint-merger-pipeline)                   | -                                                                                                                                                                                                                  | [Naga Sai Abhinay Devarinti](https://github.com/Abhinay1997/) | 
 Stable Diffusion v1.1-1.4 Comparison | Run all 4 model checkpoints for Stable Diffusion and compare their results together | [Stable Diffusion Comparison](#stable-diffusion-comparisons) | - | [Suvaditya Mukherjee](https://github.com/suvadityamuk) |
+MagicMix | Diffusion Pipeline for semantic mixing of an image and a text prompt | [MagicMix](#magic-mix) | - | [Partho Das](https://github.com/daspartho) |
 
 
 
@@ -57,7 +58,7 @@ guided_pipeline = DiffusionPipeline.from_pretrained(
     custom_pipeline="clip_guided_stable_diffusion",
     clip_model=clip_model,
     feature_extractor=feature_extractor,
-    revision="fp16",
+    
     torch_dtype=torch.float16,
 )
 guided_pipeline.enable_attention_slicing()
@@ -208,7 +209,7 @@ import torch
 pipe = DiffusionPipeline.from_pretrained(
     'hakurei/waifu-diffusion',
     custom_pipeline="lpw_stable_diffusion",
-    revision="fp16",
+    
     torch_dtype=torch.float16
 )
 pipe=pipe.to("cuda")
@@ -275,7 +276,7 @@ diffuser_pipeline = DiffusionPipeline.from_pretrained(
     custom_pipeline="speech_to_image_diffusion",
     speech_model=model,
     speech_processor=processor,
-    revision="fp16",
+    
     torch_dtype=torch.float16,
 )
 
@@ -333,7 +334,7 @@ import torch
 pipe = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
     custom_pipeline="wildcard_stable_diffusion",
-    revision="fp16",
+    
     torch_dtype=torch.float16,
 )
 prompt = "__animal__ sitting on a __object__ wearing a __clothing__"
@@ -355,43 +356,45 @@ out = pipe(
 import torch as th
 import numpy as np
 import torchvision.utils as tvu
+
 from diffusers import DiffusionPipeline
+
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--prompt", type=str, default="mystical trees | A magical pond | dark",
+                    help="use '|' as the delimiter to compose separate sentences.")
+parser.add_argument("--steps", type=int, default=50)
+parser.add_argument("--scale", type=float, default=7.5)
+parser.add_argument("--weights", type=str, default="7.5 | 7.5 | -7.5")
+parser.add_argument("--seed", type=int, default=2)
+parser.add_argument("--model_path", type=str, default="CompVis/stable-diffusion-v1-4")
+parser.add_argument("--num_images", type=int, default=1)
+args = parser.parse_args()
 
 has_cuda = th.cuda.is_available()
 device = th.device('cpu' if not has_cuda else 'cuda')
 
+prompt = args.prompt
+scale = args.scale
+steps = args.steps
+
 pipe = DiffusionPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4",
-    use_auth_token=True,
+    args.model_path,
     custom_pipeline="composable_stable_diffusion",
 ).to(device)
 
-
-def dummy(images, **kwargs):
-    return images, False
-
-pipe.safety_checker = dummy
+pipe.safety_checker = None
 
 images = []
-generator = torch.Generator("cuda").manual_seed(0)
+generator = th.Generator("cuda").manual_seed(args.seed)
+for i in range(args.num_images):
+    image = pipe(prompt, guidance_scale=scale, num_inference_steps=steps,
+                 weights=args.weights, generator=generator).images[0]
+    images.append(th.from_numpy(np.array(image)).permute(2, 0, 1) / 255.)
+grid = tvu.make_grid(th.stack(images, dim=0), nrow=4, padding=0)
+tvu.save_image(grid, f'{prompt}_{args.weights}' + '.png')
 
-seed = 0
-prompt = "a forest | a camel"
-weights = " 1 | 1"  # Equal weight to each prompt. Can be negative
-
-images = []
-for i in range(4):
-    res = pipe(
-        prompt,
-        guidance_scale=7.5,
-        num_inference_steps=50,
-        weights=weights,
-        generator=generator)
-    image = res.images[0]
-    images.append(image)
-
-for i, img in enumerate(images):
-    img.save(f"./composable_diffusion/image_{i}.png")
 ```
 
 ### Imagic Stable Diffusion
@@ -567,7 +570,7 @@ diffuser_pipeline = DiffusionPipeline.from_pretrained(
     detection_pipeline=language_detection_pipeline,
     translation_model=trans_model,
     translation_tokenizer=trans_tokenizer,
-    revision="fp16",
+    
     torch_dtype=torch.float16,
 )
 
@@ -615,7 +618,7 @@ mask_image = PIL.Image.open(mask_path).convert("RGB").resize((512, 512))
 pipe = DiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-inpainting",
     custom_pipeline="img2img_inpainting",
-    revision="fp16",
+    
     torch_dtype=torch.float16
 )
 pipe = pipe.to("cuda")
@@ -813,6 +816,50 @@ plt.title('Stable Diffusion v1.4')
 plt.axis('off')
 
 plt.show()
-```python
+```
 
 As a result, you can look at a grid of all 4 generated images being shown together, that captures a difference the advancement of the training between the 4 checkpoints.
+
+### Magic Mix
+
+Implementation of the [MagicMix: Semantic Mixing with Diffusion Models](https://arxiv.org/abs/2210.16056) paper. This is a Diffusion Pipeline for semantic mixing of an image and a text prompt to create a new concept while preserving the spatial layout and geometry of the subject in the image. The pipeline takes an image that provides the layout semantics and a prompt that provides the content semantics for the mixing process.
+
+There are 3 parameters for the method-
+- `mix_factor`: It is the interpolation constant used in the layout generation phase. The greater the value of `mix_factor`, the greater the influence of the prompt on the layout generation process.
+- `kmax` and `kmin`: These determine the range for the layout and content generation process. A higher value of kmax results in loss of more information about the layout of the original image and a higher value of kmin results in more steps for content generation process.
+
+Here is an example usage-
+
+```python
+from diffusers import DiffusionPipeline, DDIMScheduler
+from PIL import Image
+
+pipe = DiffusionPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4",
+    custom_pipeline="magic_mix",
+    scheduler = DDIMScheduler.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="scheduler"),
+).to('cuda')
+
+img = Image.open('phone.jpg')
+mix_img = pipe(
+    img, 
+    prompt = 'bed', 
+    kmin = 0.3,
+    kmax = 0.5,
+    mix_factor = 0.5,
+    )
+mix_img.save('phone_bed_mix.jpg')
+```
+The `mix_img` is a PIL image that can be saved locally or displayed directly in a google colab. Generated image is a mix of the layout semantics of the given image and the content semantics of the prompt.
+
+E.g. the above script generates the following image:
+
+`phone.jpg`
+
+![206903102-34e79b9f-9ed2-4fac-bb38-82871343c655](https://user-images.githubusercontent.com/59410571/209578593-141467c7-d831-4792-8b9a-b17dc5e47816.jpg)
+
+`phone_bed_mix.jpg`
+
+![206903104-913a671d-ef53-4ae4-919d-64c3059c8f67](https://user-images.githubusercontent.com/59410571/209578602-70f323fa-05b7-4dd6-b055-e40683e37914.jpg)
+
+For more example generations check out this [demo notebook](https://github.com/daspartho/MagicMix/blob/main/demo.ipynb).

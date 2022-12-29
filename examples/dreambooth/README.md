@@ -44,20 +44,6 @@ write_basic_config()
 
 ### Dog toy example
 
-You need to accept the model license before downloading or using the weights. In this example we'll use model version `v1-4`, so you'll need to visit [its card](https://huggingface.co/CompVis/stable-diffusion-v1-4), read the license and tick the checkbox if you agree. 
-
-You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section of the documentation](https://huggingface.co/docs/hub/security-tokens).
-
-Run the following command to authenticate your token
-
-```bash
-huggingface-cli login
-```
-
-If you have already cloned the repo, then you won't need to go through these steps.
-
-<br>
-
 Now let's get our dataset. Download images from [here](https://drive.google.com/drive/folders/1BO_dyz-p65qhBRRMRA4TbZ8qW4rB99JZ) and save them in a directory. This will be our training data.
 
 And launch the training using
@@ -246,8 +232,11 @@ image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
 image.save("dog-bucket.png")
 ```
 
+### Inference from a training checkpoint
 
-## Running with Flax/JAX
+You can also perform inference from one of the checkpoints saved during the training process, if you used the `--checkpointing_steps` argument. Please, refer to [the documentation](https://huggingface.co/docs/diffusers/main/en/training/dreambooth#performing-inference-using-a-saved-checkpoint) to see how to do it.
+
+## Training with Flax/JAX
 
 For faster training on TPUs and GPUs you can leverage the flax training example. Follow the instructions above to get the model and dataset before running the script.
 
@@ -328,96 +317,7 @@ python train_dreambooth_flax.py \
   --max_train_steps=800
 ```
 
-### Training with prior-preservation loss
+### Training with xformers:
+You can enable memory efficient attention by [installing xFormers](https://github.com/facebookresearch/xformers#installing-xformers) and padding the `--enable_xformers_memory_efficient_attention` argument to the script. This is not available with the Flax/JAX implementation.
 
-Prior-preservation is used to avoid overfitting and language-drift. Refer to the paper to learn more about it. For prior-preservation we first generate images using the model with a class prompt and then use those during training along with our data.
-According to the paper, it's recommended to generate `num_epochs * num_samples` images for prior-preservation. 200-300 works well for most cases.
-
-```bash
-export MODEL_NAME="runwayml/stable-diffusion-inpainting"
-export INSTANCE_DIR="path-to-instance-images"
-export CLASS_DIR="path-to-class-images"
-export OUTPUT_DIR="path-to-save-model"
-
-accelerate launch train_dreambooth_inpaint.py \
-  --pretrained_model_name_or_path=$MODEL_NAME  \
-  --instance_data_dir=$INSTANCE_DIR \
-  --class_data_dir=$CLASS_DIR \
-  --output_dir=$OUTPUT_DIR \
-  --with_prior_preservation --prior_loss_weight=1.0 \
-  --instance_prompt="a photo of sks dog" \
-  --class_prompt="a photo of dog" \
-  --resolution=512 \
-  --train_batch_size=1 \
-  --gradient_accumulation_steps=1 \
-  --learning_rate=5e-6 \
-  --lr_scheduler="constant" \
-  --lr_warmup_steps=0 \
-  --num_class_images=200 \
-  --max_train_steps=800
-```
-
-
-### Training with gradient checkpointing and 8-bit optimizer:
-
-With the help of gradient checkpointing and the 8-bit optimizer from bitsandbytes it's possible to run train dreambooth on a 16GB GPU.
-
-To install `bitandbytes` please refer to this [readme](https://github.com/TimDettmers/bitsandbytes#requirements--installation).
-
-```bash
-export MODEL_NAME="runwayml/stable-diffusion-inpainting"
-export INSTANCE_DIR="path-to-instance-images"
-export CLASS_DIR="path-to-class-images"
-export OUTPUT_DIR="path-to-save-model"
-
-accelerate launch train_dreambooth_inpaint.py \
-  --pretrained_model_name_or_path=$MODEL_NAME  \
-  --instance_data_dir=$INSTANCE_DIR \
-  --class_data_dir=$CLASS_DIR \
-  --output_dir=$OUTPUT_DIR \
-  --with_prior_preservation --prior_loss_weight=1.0 \
-  --instance_prompt="a photo of sks dog" \
-  --class_prompt="a photo of dog" \
-  --resolution=512 \
-  --train_batch_size=1 \
-  --gradient_accumulation_steps=2 --gradient_checkpointing \
-  --use_8bit_adam \
-  --learning_rate=5e-6 \
-  --lr_scheduler="constant" \
-  --lr_warmup_steps=0 \
-  --num_class_images=200 \
-  --max_train_steps=800
-```
-
-### Fine-tune text encoder with the UNet.
-
-The script also allows to fine-tune the `text_encoder` along with the `unet`. It's been observed experimentally that fine-tuning `text_encoder` gives much better results especially on faces. 
-Pass the `--train_text_encoder` argument to the script to enable training `text_encoder`.
-
-___Note: Training text encoder requires more memory, with this option the training won't fit on 16GB GPU. It needs at least 24GB VRAM.___
-
-```bash
-export MODEL_NAME="runwayml/stable-diffusion-inpainting"
-export INSTANCE_DIR="path-to-instance-images"
-export CLASS_DIR="path-to-class-images"
-export OUTPUT_DIR="path-to-save-model"
-
-accelerate launch train_dreambooth_inpaint.py \
-  --pretrained_model_name_or_path=$MODEL_NAME  \
-  --train_text_encoder \
-  --instance_data_dir=$INSTANCE_DIR \
-  --class_data_dir=$CLASS_DIR \
-  --output_dir=$OUTPUT_DIR \
-  --with_prior_preservation --prior_loss_weight=1.0 \
-  --instance_prompt="a photo of sks dog" \
-  --class_prompt="a photo of dog" \
-  --resolution=512 \
-  --train_batch_size=1 \
-  --use_8bit_adam \
-  --gradient_checkpointing \
-  --learning_rate=2e-6 \
-  --lr_scheduler="constant" \
-  --lr_warmup_steps=0 \
-  --num_class_images=200 \
-  --max_train_steps=800
-```
+You can also use Dreambooth to train the specialized in-painting model. See [the script in the research folder for details](https://github.com/huggingface/diffusers/tree/main/examples/research_projects/dreambooth_inpaint).

@@ -79,7 +79,7 @@ To save more GPU memory and get even more speed, you can load and run the model 
 ```Python
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    revision="fp16",
+    
     torch_dtype=torch.float16,
 )
 pipe = pipe.to("cuda")
@@ -107,7 +107,7 @@ from diffusers import StableDiffusionPipeline
 
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    revision="fp16",
+    
     torch_dtype=torch.float16,
 )
 pipe = pipe.to("cuda")
@@ -134,7 +134,7 @@ from diffusers import StableDiffusionPipeline
 
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    revision="fp16",
+    
     torch_dtype=torch.float16,
 )
 pipe = pipe.to("cuda")
@@ -159,7 +159,7 @@ from diffusers import StableDiffusionPipeline
 
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    revision="fp16",
+    
     torch_dtype=torch.float16,
 )
 pipe = pipe.to("cuda")
@@ -179,7 +179,7 @@ from diffusers import StableDiffusionPipeline
 
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    revision="fp16",
+    
     torch_dtype=torch.float16,
 )
 pipe = pipe.to("cuda")
@@ -234,7 +234,6 @@ def generate_inputs():
 
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    revision="fp16",
     torch_dtype=torch.float16,
 ).to("cuda")
 unet = pipe.unet
@@ -298,7 +297,6 @@ class UNet2DConditionOutput:
 
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    revision="fp16",
     torch_dtype=torch.float16,
 ).to("cuda")
 
@@ -349,7 +347,6 @@ import torch
 
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    revision="fp16",
     torch_dtype=torch.float16,
 ).to("cuda")
 
