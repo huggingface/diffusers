@@ -1,3 +1,14 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# All rights reserved.
+
+# This source code is licensed under 
+# Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)
+# --------------------------------------------------------
+# References:
+# GLIDE: https://github.com/openai/glide-text2im
+# timm: https://github.com/rwightman/pytorch-image-models/tree/master/timm
+# --------------------------------------------------------
+
 import collections.abc
 from itertools import repeat
 
