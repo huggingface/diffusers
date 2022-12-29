@@ -35,7 +35,7 @@ The original codebase of this paper can be found here: [facebookresearch/dit](ht
 from diffusers import DiTPipeline
 
 # use "kashif/DiT-XL-2-512" for 512x512 model
-pipe = RePaintPipeline.from_pretrained("kashif/DiT-XL-2-256")
+pipe = DiTPipeline.from_pretrained("kashif/DiT-XL-2-256")
 pipe = pipe.to("cuda")
 
 output = pipe(class_labels=[207, 360, 387, 974, 88, 979, 417, 279])
