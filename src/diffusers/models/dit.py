@@ -58,7 +58,7 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     if embed_dim % 2 != 0:
         raise ValueError("embed_dim must be divisible by 2")
 
-    omega = np.arange(embed_dim // 2, dtype=np.float32)
+    omega = np.arange(embed_dim // 2, dtype=np.float64)
     omega /= embed_dim / 2.0
     omega = 1.0 / 10000**omega  # (D/2,)
 
@@ -159,7 +159,7 @@ class Mlp(nn.Module):
 
 class DiTBlock(nn.Module):
     """
-    A DiT block with gated adaptive layer norm (adaLN) conditioning.
+    A DiT block with adaptive layer norm zero (adaLN-Zero) conditioning.
     """
 
     def __init__(self, hidden_size, num_heads, mlp_ratio=4.0, **block_kwargs):
