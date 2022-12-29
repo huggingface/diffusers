@@ -226,8 +226,7 @@ class ResnetBlock2DTests(unittest.TestCase):
         torch.manual_seed(0)
         sample = torch.randn(1, 32, 64, 64).to(torch_device)
         temb = torch.randn(1, 128).to(torch_device)
-        resnet_block = ResnetBlock2D(in_channels=32,
-                                     temb_channels=128).to(torch_device)
+        resnet_block = ResnetBlock2D(in_channels=32, temb_channels=128).to(torch_device)
         with torch.no_grad():
             output_tensor = resnet_block(sample, temb)
 
@@ -242,9 +241,7 @@ class ResnetBlock2DTests(unittest.TestCase):
         torch.manual_seed(0)
         sample = torch.randn(1, 32, 64, 64).to(torch_device)
         temb = torch.randn(1, 128).to(torch_device)
-        resnet_block = ResnetBlock2D(in_channels=32,
-                                     temb_channels=128,
-                                     use_in_shortcut=True).to(torch_device)
+        resnet_block = ResnetBlock2D(in_channels=32, temb_channels=128, use_in_shortcut=True).to(torch_device)
         with torch.no_grad():
             output_tensor = resnet_block(sample, temb)
 
@@ -259,9 +256,7 @@ class ResnetBlock2DTests(unittest.TestCase):
         torch.manual_seed(0)
         sample = torch.randn(1, 32, 64, 64).to(torch_device)
         temb = torch.randn(1, 128).to(torch_device)
-        resnet_block = ResnetBlock2D(in_channels=32,
-                                     temb_channels=128,
-                                     up=True).to(torch_device)
+        resnet_block = ResnetBlock2D(in_channels=32, temb_channels=128, up=True).to(torch_device)
         with torch.no_grad():
             output_tensor = resnet_block(sample, temb)
 
@@ -276,9 +271,7 @@ class ResnetBlock2DTests(unittest.TestCase):
         torch.manual_seed(0)
         sample = torch.randn(1, 32, 64, 64).to(torch_device)
         temb = torch.randn(1, 128).to(torch_device)
-        resnet_block = ResnetBlock2D(in_channels=32,
-                                     temb_channels=128,
-                                     down=True).to(torch_device)
+        resnet_block = ResnetBlock2D(in_channels=32, temb_channels=128, down=True).to(torch_device)
         with torch.no_grad():
             output_tensor = resnet_block(sample, temb)
 
@@ -293,10 +286,7 @@ class ResnetBlock2DTests(unittest.TestCase):
         torch.manual_seed(0)
         sample = torch.randn(1, 32, 64, 64).to(torch_device)
         temb = torch.randn(1, 128).to(torch_device)
-        resnet_block = ResnetBlock2D(in_channels=32,
-                                     temb_channels=128,
-                                     kernel="fir",
-                                     down=True).to(torch_device)
+        resnet_block = ResnetBlock2D(in_channels=32, temb_channels=128, kernel="fir", down=True).to(torch_device)
         with torch.no_grad():
             output_tensor = resnet_block(sample, temb)
 
@@ -311,10 +301,7 @@ class ResnetBlock2DTests(unittest.TestCase):
         torch.manual_seed(0)
         sample = torch.randn(1, 32, 64, 64).to(torch_device)
         temb = torch.randn(1, 128).to(torch_device)
-        resnet_block = ResnetBlock2D(in_channels=32,
-                                     temb_channels=128,
-                                     kernel="sde_vp",
-                                     down=True).to(torch_device)
+        resnet_block = ResnetBlock2D(in_channels=32, temb_channels=128, kernel="sde_vp", down=True).to(torch_device)
         with torch.no_grad():
             output_tensor = resnet_block(sample, temb)
 
