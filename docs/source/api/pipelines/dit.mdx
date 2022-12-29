@@ -40,7 +40,7 @@ pipe = pipe.to("cuda")
 
 output = pipe(class_labels=[207, 360, 387, 974, 88, 979, 417, 279])
 
-image = output.images[4] # label 88: 'macaw'
+image = output.images[4]  # label 88: 'macaw'
 ```
 
 ## DiTPipeline

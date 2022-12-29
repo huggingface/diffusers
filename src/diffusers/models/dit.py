@@ -1,7 +1,7 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
 
-# This source code is licensed under 
+# This source code is licensed under
 # Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)
 # --------------------------------------------------------
 # References:
@@ -91,7 +91,7 @@ class PatchEmbed(nn.Module):
         patch_size=16,
         in_chans=3,
         embed_dim=768,
-        norm_layer=None,
+        layer_norm=False,
         flatten=True,
         bias=True,
     ):
@@ -106,42 +106,55 @@ class PatchEmbed(nn.Module):
         self.flatten = flatten
 
         self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size, bias=bias)
-        self.norm = norm_layer(embed_dim) if norm_layer else nn.Identity()
+        self.norm = nn.LayerNorm(embed_dim, elementwise_affine=False, eps=1e-6) if layer_norm else nn.Identity()
 
-    def forward(self, x):
-        _, _, H, W = x.shape
-        assert H == self.img_size[0], f"Input image height ({H}) doesn't match model ({self.img_size[0]})."
-        assert W == self.img_size[1], f"Input image width ({W}) doesn't match model ({self.img_size[1]})."
-        x = self.proj(x)
+    def forward(self, latent):
+        _, _, height, width = latent.shape
+        if height != self.img_size[0] or width != self.img_size[1]:
+            ValueError(
+                f"Input image size ({height}x{width}) doesn't match model ({self.img_size[0]}x{self.img_size[1]})."
+            )
+
+        latent = self.proj(latent)
         if self.flatten:
-            x = x.flatten(2).transpose(1, 2)  # BCHW -> BNC
-        x = self.norm(x)
-        return x
+            latent = latent.flatten(2).transpose(1, 2)  # BCHW -> BNC
+        latent = self.norm(latent)
+        return latent
 
 
 class Mlp(nn.Module):
     """MLP as used in Vision Transformer, MLP-Mixer and related networks"""
 
-    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, bias=True, drop=0.0):
+    def __init__(
+        self,
+        in_features,
+        hidden_features=None,
+        out_features=None,
+        activation_layer="gelu",
+        bias=True,
+        dropout_prob=0.0,
+    ):
         super().__init__()
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
-        bias = to_2tuple(bias)
-        drop_probs = to_2tuple(drop)
 
-        self.fc1 = nn.Linear(in_features, hidden_features, bias=bias[0])
-        self.act = act_layer()
-        self.drop1 = nn.Dropout(drop_probs[0])
-        self.fc2 = nn.Linear(hidden_features, out_features, bias=bias[1])
-        self.drop2 = nn.Dropout(drop_probs[1])
+        self.fc1 = nn.Linear(in_features, hidden_features, bias=bias)
+        if activation_layer == "gelu":
+            self.act = nn.GELU()
+        elif activation_layer == "gelu-approximate":
+            self.act = nn.GELU(approximate="tanh")
 
-    def forward(self, x):
-        x = self.fc1(x)
-        x = self.act(x)
-        x = self.drop1(x)
-        x = self.fc2(x)
-        x = self.drop2(x)
-        return x
+        self.drop1 = nn.Dropout(dropout_prob)
+        self.fc2 = nn.Linear(hidden_features, out_features, bias=bias)
+        self.drop2 = nn.Dropout(dropout_prob)
+
+    def forward(self, latent):
+        latent = self.fc1(latent)
+        latent = self.act(latent)
+        latent = self.drop1(latent)
+        latent = self.fc2(latent)
+        latent = self.drop2(latent)
+        return latent
 
 
 class DiTBlock(nn.Module):
@@ -158,15 +171,19 @@ class DiTBlock(nn.Module):
         # self.attn = Attention(hidden_size, num_heads=num_heads, qkv_bias=True, **block_kwargs)
         self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         mlp_hidden_dim = int(hidden_size * mlp_ratio)
-        approx_gelu = lambda: nn.GELU(approximate="tanh")
-        self.mlp = Mlp(in_features=hidden_size, hidden_features=mlp_hidden_dim, act_layer=approx_gelu, drop=0)
+        self.mlp = Mlp(
+            in_features=hidden_size,
+            hidden_features=mlp_hidden_dim,
+            activation_layer="gelu-approximate",
+            dropout_prob=0,
+        )
         self.adaLN_modulation = nn.Sequential(nn.SiLU(), nn.Linear(hidden_size, 6 * hidden_size, bias=True))
 
-    def forward(self, x, c):
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(6, dim=1)
-        x = x + gate_msa.unsqueeze(1) * self.attn(modulate(self.norm1(x), shift_msa, scale_msa))
-        x = x + gate_mlp.unsqueeze(1) * self.mlp(modulate(self.norm2(x), shift_mlp, scale_mlp))
-        return x
+    def forward(self, latent, cls):
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(cls).chunk(6, dim=1)
+        latent = latent + gate_msa.unsqueeze(1) * self.attn(modulate(self.norm1(latent), shift_msa, scale_msa))
+        latent = latent + gate_mlp.unsqueeze(1) * self.mlp(modulate(self.norm2(latent), shift_mlp, scale_mlp))
+        return latent
 
 
 class FinalLayer(nn.Module):
@@ -180,11 +197,11 @@ class FinalLayer(nn.Module):
         self.linear = nn.Linear(hidden_size, patch_size * patch_size * out_channels, bias=True)
         self.adaLN_modulation = nn.Sequential(nn.SiLU(), nn.Linear(hidden_size, 2 * hidden_size, bias=True))
 
-    def forward(self, x, c):
-        shift, scale = self.adaLN_modulation(c).chunk(2, dim=1)
-        x = modulate(self.norm_final(x), shift, scale)
-        x = self.linear(x)
-        return x
+    def forward(self, latent, cls):
+        shift, scale = self.adaLN_modulation(cls).chunk(2, dim=1)
+        latent = modulate(self.norm_final(latent), shift, scale)
+        latent = self.linear(latent)
+        return latent
 
 
 class DiT(ModelMixin, ConfigMixin):
@@ -258,22 +275,23 @@ class DiT(ModelMixin, ConfigMixin):
         nn.init.constant_(self.final_layer.linear.weight, 0)
         nn.init.constant_(self.final_layer.linear.bias, 0)
 
-    def unpatchify(self, x):
+    def unpatchify(self, latent):
         """
         Args:
-            x: (N, T, patch_size**2 * C)
+            latent: (N, T, patch_size**2 * C)
 
         Returns:
-            imgs: (N, H, W, C)
+            imgs: (N, C, H, W)
         """
-        c = self.out_channels
-        p = self.sample_embedder.patch_size[0]
-        h = w = int(x.shape[1] ** 0.5)
-        assert h * w == x.shape[1]
+        chan = self.out_channels
+        patch = self.sample_embedder.patch_size[0]
+        height = width = int(latent.shape[1] ** 0.5)
+        if height * width != latent.shape[1]:
+            ValueError("Latent size does not match the number of patches")
 
-        x = x.reshape(shape=(x.shape[0], h, w, p, p, c))
-        x = torch.einsum("nhwpqc->nchpwq", x)
-        imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
+        latent = latent.reshape(shape=(latent.shape[0], height, width, patch, patch, chan))
+        latent = torch.einsum("nhwpqc->nchpwq", latent)
+        imgs = latent.reshape(shape=(latent.shape[0], chan, height * patch, width * patch))
         return imgs
 
     def forward(self, sample, timestep, class_labels):

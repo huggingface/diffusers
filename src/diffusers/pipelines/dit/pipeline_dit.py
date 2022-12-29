@@ -38,7 +38,6 @@ class DiTPipeline(DiffusionPipeline):
         num_inference_steps: int = 250,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
         batch_size = len(class_labels)
         latent_size = self.dit.config.input_size
