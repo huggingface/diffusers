@@ -4,6 +4,7 @@ import itertools
 import math
 import os
 import random
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -12,6 +13,7 @@ import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch.utils.data import Dataset
+import subprocess
 
 from accelerate import Accelerator
 from accelerate.logging import get_logger
@@ -82,6 +84,12 @@ def random_mask(im_shape, ratio=1, mask_full_image=False):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
+    parser.add_argument(
+        "--image_captions_filename",
+        action="store_true",
+        help="Get captions from filename",
+    )
+
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
@@ -164,6 +172,8 @@ def parse_args():
         "--sample_batch_size", type=int, default=4, help="Batch size (per device) for sampling images."
     )
     parser.add_argument("--num_train_epochs", type=int, default=1)
+    parser.add_argument("--stop_text_encoder_training", type=int, default=sys.maxsize)
+    
     parser.add_argument(
         "--max_train_steps",
         type=int,
@@ -287,6 +297,7 @@ class DreamBoothDataset(Dataset):
 
     def __init__(
         self,
+        args,
         instance_data_root,
         instance_prompt,
         tokenizer,
@@ -298,6 +309,7 @@ class DreamBoothDataset(Dataset):
         self.size = size
         self.center_crop = center_crop
         self.tokenizer = tokenizer
+        self.image_captions_filename = None
 
         self.instance_data_root = Path(instance_data_root)
         if not self.instance_data_root.exists():
@@ -307,6 +319,9 @@ class DreamBoothDataset(Dataset):
         self.num_instance_images = len(self.instance_images_path)
         self.instance_prompt = instance_prompt
         self._length = self.num_instance_images
+
+        if args.image_captions_filename:
+            self.image_captions_filename = True
 
         if class_data_root is not None:
             self.class_data_root = Path(class_data_root)
@@ -337,16 +352,30 @@ class DreamBoothDataset(Dataset):
 
     def __getitem__(self, index):
         example = {}
-        instance_image = Image.open(self.instance_images_path[index % self.num_instance_images])
+        path = self.instance_images_path[index % self.num_instance_images]
+        instance_image = Image.open(path)
         if not instance_image.mode == "RGB":
             instance_image = instance_image.convert("RGB")
-        instance_image = self.image_transforms_resize_and_crop(instance_image)
 
+        instance_prompt = self.instance_prompt
+
+        if self.image_captions_filename:
+            filename = Path(path).stem
+            pt=''.join([i for i in filename if not i.isdigit()])
+            pt=pt.replace("_"," ")
+            pt=pt.replace("(","")
+            pt=pt.replace(")","")
+            pt=pt.replace("-","")
+            instance_prompt = pt
+            sys.stdout.write(" [0;32m" +instance_prompt+" [0m")
+            sys.stdout.flush()
+
+        
         example["PIL_images"] = instance_image
         example["instance_images"] = self.image_transforms(instance_image)
 
         example["instance_prompt_ids"] = self.tokenizer(
-            self.instance_prompt,
+            instance_prompt,
             padding="do_not_pad",
             truncation=True,
             max_length=self.tokenizer.model_max_length,
@@ -533,6 +562,7 @@ def main():
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
 
     train_dataset = DreamBoothDataset(
+        args,
         instance_data_root=args.instance_data_dir,
         instance_prompt=args.instance_prompt,
         class_data_root=args.class_data_dir if args.with_prior_preservation else None,
@@ -672,7 +702,7 @@ def main():
     progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
     progress_bar.set_description("Steps")
 
-    for epoch in range(first_epoch, args.num_epochs):
+    for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
         for step, batch in enumerate(train_dataloader):
             # Skip steps until we reach the resumed step
@@ -774,12 +804,26 @@ def main():
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
 
+            if args.train_text_encoder and global_step == args.stop_text_encoder_training and global_step >= 30:
+              if accelerator.is_main_process:
+                print(" [0;32m" +" Freezing the text_encoder ..."+" [0m")
+                frz_dir=args.output_dir + "/text_encoder_frozen"
+                if os.path.exists(frz_dir):
+                  subprocess.call('rm -r '+ frz_dir, shell=True)
+                os.mkdir(frz_dir)
+                pipeline = StableDiffusionPipeline.from_pretrained(
+                    args.pretrained_model_name_or_path,
+                    unet=accelerator.unwrap_model(unet),
+                    text_encoder=accelerator.unwrap_model(text_encoder),
+                )
+                pipeline.text_encoder.save_pretrained(frz_dir)
+
             if global_step >= args.max_train_steps:
                 break
 
         accelerator.wait_for_everyone()
 
-    # Create the pipeline using using the trained modules and save it.
+    # Create the pipeline using the trained modules and save it.
     if accelerator.is_main_process:
         pipeline = StableDiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
@@ -788,6 +832,11 @@ def main():
         )
         pipeline.save_pretrained(args.output_dir)
 
+        frz_dir=args.output_dir + "/text_encoder_frozen"
+        if args.train_text_encoder and os.path.exists(frz_dir):
+           subprocess.call('mv -f '+frz_dir +'/*.* '+ args.output_dir+'/text_encoder', shell=True)
+           subprocess.call('rm -r '+ frz_dir, shell=True)
+        
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
 
