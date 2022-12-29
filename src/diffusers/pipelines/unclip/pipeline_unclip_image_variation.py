@@ -259,7 +259,7 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        image: Union[PIL.Image.Image, List[PIL.Image.Image], torch.FloatTensor],
+        image: Optional[Union[PIL.Image.Image, List[PIL.Image.Image], torch.FloatTensor]] = None,
         num_images_per_prompt: int = 1,
         decoder_num_inference_steps: int = 25,
         super_res_num_inference_steps: int = 7,
@@ -279,7 +279,7 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
                 The image or images to guide the image generation. If you provide a tensor, it needs to comply with the
                 configuration of
                 [this](https://huggingface.co/fusing/karlo-image-variations-diffusers/blob/main/feature_extractor/preprocessor_config.json)
-                `CLIPFeatureExtractor`.
+                `CLIPFeatureExtractor`. Can be left to `None` only when `image_embeddings` are passed.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             decoder_num_inference_steps (`int`, *optional*, defaults to 25):
@@ -301,18 +301,24 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
+            image_embeddings (`torch.Tensor`, *optional*):
+                Pre-defined image embeddings that can be derived from the image encoder. Pre-defined image embeddings
+                can be passed for tasks like image interpolations. `image` can the be left to `None`.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
         """
-        if isinstance(image, PIL.Image.Image):
-            batch_size = 1
-        elif isinstance(image, list):
-            batch_size = len(image)
+        if image is not None:
+            if isinstance(image, PIL.Image.Image):
+                batch_size = 1
+            elif isinstance(image, list):
+                batch_size = len(image)
+            else:
+                batch_size = image.shape[0]
         else:
-            batch_size = image.shape[0]
+            batch_size = image_embeddings.shape[0]
 
         prompt = [""] * batch_size
 

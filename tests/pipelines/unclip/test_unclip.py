@@ -248,7 +248,7 @@ class UnCLIPPipelineFastTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
-    def test_unclip_custom_text(self):
+    def test_unclip_passed_text_embed(self):
         device = torch.device("cpu")
 
         class DummyScheduler:
@@ -300,12 +300,23 @@ class UnCLIPPipelineFastTests(unittest.TestCase):
         batch_size = 1
 
         shape = (batch_size, prior.config.embedding_dim)
-        prior_latents = pipe.prepare_latents(shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler())
+        prior_latents = pipe.prepare_latents(
+            shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler()
+        )
         shape = (batch_size, decoder.in_channels, decoder.sample_size, decoder.sample_size)
-        decoder_latents = pipe.prepare_latents(shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler())
+        decoder_latents = pipe.prepare_latents(
+            shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler()
+        )
 
-        shape = (batch_size, super_res_first.in_channels // 2, super_res_first.sample_size, super_res_first.sample_size)
-        super_res_latents = pipe.prepare_latents(shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler())
+        shape = (
+            batch_size,
+            super_res_first.in_channels // 2,
+            super_res_first.sample_size,
+            super_res_first.sample_size,
+        )
+        super_res_latents = pipe.prepare_latents(
+            shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler()
+        )
 
         pipe.set_progress_bar_config(disable=None)
 
@@ -336,7 +347,6 @@ class UnCLIPPipelineFastTests(unittest.TestCase):
 
         generator = torch.Generator(device=device).manual_seed(0)
         image_from_text = pipe(
-            [prompt],
             generator=generator,
             prior_num_inference_steps=2,
             decoder_num_inference_steps=2,

@@ -402,6 +402,55 @@ class UnCLIPImageVariationPipelineFastTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
+    def test_unclip_passed_image_embed(self):
+        device = torch.device("cpu")
+        seed = 0
+
+        class DummyScheduler:
+            init_noise_sigma = 1
+
+        pipe = self.get_pipeline(device)
+
+        generator = torch.Generator(device=device).manual_seed(0)
+        dtype = pipe.decoder.dtype
+        batch_size = 1
+
+        shape = (batch_size, pipe.decoder.in_channels, pipe.decoder.sample_size, pipe.decoder.sample_size)
+        decoder_latents = pipe.prepare_latents(
+            shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler()
+        )
+
+        shape = (
+            batch_size,
+            pipe.super_res_first.in_channels // 2,
+            pipe.super_res_first.sample_size,
+            pipe.super_res_first.sample_size,
+        )
+        super_res_latents = pipe.prepare_latents(
+            shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler()
+        )
+
+        pipeline_inputs = self.get_pipeline_inputs(device, seed)
+
+        img_out_1 = pipe(
+            **pipeline_inputs, decoder_latents=decoder_latents, super_res_latents=super_res_latents
+        ).images
+
+        pipeline_inputs = self.get_pipeline_inputs(device, seed)
+        # Don't pass image, instead pass embedding
+        image = pipeline_inputs.pop("image")
+        image_embeddings = pipe.image_encoder(image).image_embeds
+
+        img_out_2 = pipe(
+            **pipeline_inputs,
+            decoder_latents=decoder_latents,
+            super_res_latents=super_res_latents,
+            image_embeddings=image_embeddings,
+        ).images
+
+        # make sure passing text embeddings manually is identical
+        assert np.abs(img_out_1 - img_out_2).max() < 1e-4
+
 
 @slow
 @require_torch_gpu

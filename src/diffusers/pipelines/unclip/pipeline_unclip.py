@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import List, Optional, Union, Tuple
+from typing import List, Optional, Tuple, Union
 
 import torch
 from torch.nn import functional as F
@@ -118,7 +118,15 @@ class UnCLIPPipeline(DiffusionPipeline):
         latents = latents * scheduler.init_noise_sigma
         return latents
 
-    def _encode_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance, text_model_output: Optional[Union[CLIPTextModelOutput, Tuple]] = None, text_attention_mask: Optional[torch.Tensor] = None):
+    def _encode_prompt(
+        self,
+        prompt,
+        device,
+        num_images_per_prompt,
+        do_classifier_free_guidance,
+        text_model_output: Optional[Union[CLIPTextModelOutput, Tuple]] = None,
+        text_attention_mask: Optional[torch.Tensor] = None,
+    ):
 
         if text_model_output is None:
             batch_size = len(prompt) if isinstance(prompt, list) else 1
@@ -241,7 +249,7 @@ class UnCLIPPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, List[str]],
+        prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: int = 1,
         prior_num_inference_steps: int = 25,
         decoder_num_inference_steps: int = 25,
@@ -262,7 +270,8 @@ class UnCLIPPipeline(DiffusionPipeline):
 
         Args:
             prompt (`str` or `List[str]`):
-                The prompt or prompts to guide the image generation.
+                The prompt or prompts to guide the image generation. This can only be left undefined if
+                `text_model_output` and `text_attention_mask` is passed.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             prior_num_inference_steps (`int`, *optional*, defaults to 25):
@@ -295,6 +304,13 @@ class UnCLIPPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
+            text_model_output (`CLIPTextModelOutput`, *optional*):
+                Pre-defined CLIPTextModel outputs that can be derived from the text encoder. Pre-defined text outputs
+                can be passed for tasks like text embedding interpolations. Make sure to also pass
+                `text_attention_mask` in this case. `prompt` can the be left to `None`.
+            text_attention_mask (`torch.Tensor`, *optional*):
+                Pre-defined CLIP text attention mask that can be derived from the tokenizer. Pre-defined text attention
+                masks are necessary when passing `text_model_output`.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
