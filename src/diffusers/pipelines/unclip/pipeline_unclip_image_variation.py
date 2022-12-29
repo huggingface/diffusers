@@ -19,9 +19,6 @@ import torch
 from torch.nn import functional as F
 
 import PIL
-from diffusers import UNet2DConditionModel, UNet2DModel
-from diffusers.pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from diffusers.schedulers import UnCLIPScheduler
 from transformers import (
     CLIPFeatureExtractor,
     CLIPTextModelWithProjection,
@@ -29,6 +26,9 @@ from transformers import (
     CLIPVisionModelWithProjection,
 )
 
+from ...models import UNet2DConditionModel, UNet2DModel
+from ...pipelines import DiffusionPipeline, ImagePipelineOutput
+from ...schedulers import UnCLIPScheduler
 from ...utils import is_accelerate_available, logging
 from .text_proj import UnCLIPTextProjModel
 
@@ -303,7 +303,7 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
                 The output format of the generated image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
+                Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
         """
         if isinstance(image, PIL.Image.Image):
             batch_size = 1

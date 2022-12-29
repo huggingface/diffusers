@@ -155,9 +155,9 @@ adds a link to its documentation with this syntax: \[\`XXXClass\`\] or \[\`funct
 function to be in the main package.
 
 If you want to create a link to some internal class or function, you need to
-provide its path. For instance: \[\`pipeline_utils.ImagePipelineOutput\`\]. This will be converted into a link with
-`pipeline_utils.ImagePipelineOutput` in the description. To get rid of the path and only keep the name of the object you are
-linking to in the description, add a ~: \[\`~pipeline_utils.ImagePipelineOutput\`\] will generate a link with `ImagePipelineOutput` in the description.
+provide its path. For instance: \[\`pipelines.ImagePipelineOutput\`\]. This will be converted into a link with
+`pipelines.ImagePipelineOutput` in the description. To get rid of the path and only keep the name of the object you are
+linking to in the description, add a ~: \[\`~pipelines.ImagePipelineOutput\`\] will generate a link with `ImagePipelineOutput` in the description.
 
 The same works for methods so you can either use \[\`XXXClass.method\`\] or \[~\`XXXClass.method\`\].
 

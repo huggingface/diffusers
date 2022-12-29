@@ -172,7 +172,7 @@ def find_pipeline_class(loaded_module):
     Retrieve pipeline class that inherits from `DiffusionPipeline`. Note that there has to be exactly one class
     inheriting from `DiffusionPipeline`.
     """
-    from .pipeline_utils import DiffusionPipeline
+    from ..pipelines import DiffusionPipeline
 
     cls_members = dict(inspect.getmembers(loaded_module, inspect.isclass))
 

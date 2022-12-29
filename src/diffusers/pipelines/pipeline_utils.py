@@ -31,10 +31,10 @@ from packaging import version
 from PIL import Image
 from tqdm.auto import tqdm
 
-from .configuration_utils import ConfigMixin
-from .modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
-from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
-from .utils import (
+from ..configuration_utils import ConfigMixin
+from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
+from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
+from ..utils import (
     CONFIG_NAME,
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,

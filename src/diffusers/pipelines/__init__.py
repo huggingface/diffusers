@@ -20,6 +20,7 @@ else:
     from .ddpm import DDPMPipeline
     from .latent_diffusion import LDMSuperResolutionPipeline
     from .latent_diffusion_uncond import LDMPipeline
+    from .pipeline_utils import AudioPipelineOutput, DiffusionPipeline, ImagePipelineOutput
     from .pndm import PNDMPipeline
     from .repaint import RePaintPipeline
     from .score_sde_ve import ScoreSdeVePipeline
@@ -83,6 +84,14 @@ except OptionalDependencyNotAvailable:
     from ..utils.dummy_torch_and_transformers_and_k_diffusion_objects import *  # noqa F403
 else:
     from .stable_diffusion import StableDiffusionKDiffusionPipeline
+
+try:
+    if not is_flax_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils.dummy_flax_objects import *  # noqa F403
+else:
+    from .pipeline_flax_utils import FlaxDiffusionPipeline
 
 
 try:

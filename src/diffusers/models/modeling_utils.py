@@ -25,8 +25,8 @@ from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
 
-from . import __version__
-from .utils import (
+from .. import __version__
+from ..utils import (
     CONFIG_NAME,
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
@@ -148,7 +148,7 @@ class ModelMixin(torch.nn.Module):
     and saving models.
 
         - **config_name** ([`str`]) -- A filename under which the model should be stored when calling
-          [`~models.modeling_utils.ModelMixin.save_pretrained`].
+          [`~models.ModelMixin.save_pretrained`].
     """
     config_name = CONFIG_NAME
     _automatically_saved_args = ["_diffusers_version", "_class_name", "_name_or_path"]
@@ -230,7 +230,7 @@ class ModelMixin(torch.nn.Module):
     ):
         """
         Save a model and its configuration file to a directory, so that it can be re-loaded using the
-        `[`~models.modeling_utils.ModelMixin.from_pretrained`]` class method.
+        `[`~models.ModelMixin.from_pretrained`]` class method.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):

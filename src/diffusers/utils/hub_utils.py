@@ -24,8 +24,8 @@ from huggingface_hub import HfFolder, whoami
 
 from .. import __version__
 from .constants import HUGGINGFACE_CO_RESOLVE_ENDPOINT
-from .logging import get_logger
 from .import_utils import (
+    ENV_VARS_TRUE_VALUES,
     _flax_version,
     _jax_version,
     _onnxruntime_version,
@@ -34,8 +34,8 @@ from .import_utils import (
     is_modelcards_available,
     is_onnx_available,
     is_torch_available,
-    ENV_VARS_TRUE_VALUES,
 )
+from .logging import get_logger
 
 
 if is_modelcards_available():

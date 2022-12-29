@@ -31,7 +31,6 @@ try:
 except OptionalDependencyNotAvailable:
     from .utils.dummy_pt_objects import *  # noqa F403
 else:
-    from .modeling_utils import ModelMixin
     from .models import (
         AutoencoderKL,
         PriorTransformer,
@@ -41,6 +40,7 @@ else:
         UNet2DModel,
         VQModel,
     )
+    from .models.modeling_utils import ModelMixin
     from .optimization import (
         get_constant_schedule,
         get_constant_schedule_with_warmup,
@@ -50,11 +50,11 @@ else:
         get_polynomial_decay_schedule_with_warmup,
         get_scheduler,
     )
-    from .pipeline_utils import DiffusionPipeline
     from .pipelines import (
         DanceDiffusionPipeline,
         DDIMPipeline,
         DDPMPipeline,
+        DiffusionPipeline,
         KarrasVePipeline,
         LDMPipeline,
         LDMSuperResolutionPipeline,
@@ -157,10 +157,10 @@ try:
 except OptionalDependencyNotAvailable:
     from .utils.dummy_flax_objects import *  # noqa F403
 else:
-    from .modeling_flax_utils import FlaxModelMixin
+    from .models.modeling_flax_utils import FlaxModelMixin
     from .models.unet_2d_condition_flax import FlaxUNet2DConditionModel
     from .models.vae_flax import FlaxAutoencoderKL
-    from .pipeline_flax_utils import FlaxDiffusionPipeline
+    from .pipelines import FlaxDiffusionPipeline
     from .schedulers import (
         FlaxDDIMScheduler,
         FlaxDDPMScheduler,
