@@ -153,6 +153,29 @@ class StableDiffusionPipeline(DiffusionPipeline):
             new_config["sample_size"] = 64
             unet._internal_dict = FrozenDict(new_config)
 
+        # check if vae version is less than 0.9.0
+        is_vae_version_less_0_9_0 = hasattr(vae.config, "_diffusers_version") and version.parse(
+            version.parse(vae.config._diffusers_version).base_version
+        ) < version.parse("0.9.0.dev0")
+        # check if vae has a config attribute `scaling_factor` and if it is set to 0.08333, else set it to 0.08333 and deprecate
+        is_vae_scaling_factor_set_to_0_08333 = (
+            hasattr(vae.config, "scaling_factor") and vae.config.scaling_factor == 0.08333
+        )
+        if is_vae_version_less_0_9_0 and not is_vae_scaling_factor_set_to_0_08333:
+            deprecation_message = (
+                "The configuration file of the vae has  set the configuration `scaling_factor` to"
+                f" {vae.config.scaling_factor}. which seems highly unlikely. If your checkpoint is a fine-tuned"
+                " version of any of the following: \n- stabilityai/stable-diffusion-x4-upscaler \n you should change"
+                " 'scaling_factor' to 0.08333 in the configuration file. Please make sure to update the config"
+                " accordingly as not setting `scaling_factor` in the config might lead to incorrect results in future"
+                " versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be very nice"
+                " if you could open a Pull request for the `vae/config.json` file"
+            )
+            deprecate("wrong scaling_factor", "1.0.0", deprecation_message, standard_warn=False)
+            new_config = dict(vae.config)
+            new_config["scaling_factor"] = 0.08333
+            vae._internal_dict = FrozenDict(new_config)
+
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -337,7 +360,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         return image, has_nsfw_concept
 
     def decode_latents(self, latents):
-        latents = 1 / 0.18215 * latents
+        latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16

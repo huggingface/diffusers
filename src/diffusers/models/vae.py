@@ -424,6 +424,7 @@ class VQModel(ModelMixin, ConfigMixin):
         num_vq_embeddings: int = 256,
         norm_num_groups: int = 32,
         vq_embed_dim: Optional[int] = None,
+        scaling_factor: int = 0.18215,
     ):
         super().__init__()
 
@@ -532,6 +533,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         latent_channels: int = 4,
         norm_num_groups: int = 32,
         sample_size: int = 32,
+        scaling_factor: int = 0.18215,
     ):
         super().__init__()
 

@@ -353,7 +353,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         image = image.astype(latents_dtype)
         # encode the init image into latents and scale the latents
         init_latents = self.vae_encoder(sample=image)[0]
-        init_latents = 0.18215 * init_latents
+        init_latents = self.vae.config.scaling_factor * init_latents
 
         if isinstance(prompt, str):
             prompt = [prompt]
@@ -436,7 +436,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 callback(i, t, latents)
 
-        latents = 1 / 0.18215 * latents
+        latents = 1 / self.vae.config.scaling_factor * latents
         # image = self.vae_decoder(latent_sample=latents)[0]
         # it seems likes there is a strange result for using half-precision vae decoder if batchsize>1
         image = np.concatenate(
