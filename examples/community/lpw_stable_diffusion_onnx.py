@@ -7,8 +7,7 @@ import torch
 
 import diffusers
 import PIL
-from diffusers import OnnxStableDiffusionPipeline, SchedulerMixin
-from diffusers import OnnxRuntimeModel
+from diffusers import OnnxRuntimeModel, OnnxStableDiffusionPipeline, SchedulerMixin
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.utils import deprecate, logging
 from packaging import version
