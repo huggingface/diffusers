@@ -20,8 +20,7 @@ import torch.utils.checkpoint
 
 from transformers import CLIPFeatureExtractor, CLIPTextModelWithProjection, CLIPTokenizer
 
-from ...models import AutoencoderKL, UNet2DConditionModel
-from ...models.attention import Transformer2DModel
+from ...models import AutoencoderKL, Transformer2DModel, UNet2DConditionModel
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import is_accelerate_available, logging
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
