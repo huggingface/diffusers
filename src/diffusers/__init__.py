@@ -1,7 +1,6 @@
 __version__ = "0.12.0.dev0"
 
 from .configuration_utils import ConfigMixin
-from .onnx_utils import OnnxRuntimeModel
 from .utils import (
     OptionalDependencyNotAvailable,
     is_flax_available,
@@ -17,6 +16,14 @@ from .utils import (
     logging,
 )
 
+
+try:
+    if not is_onnx_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils.dummy_onnx_objects import *  # noqa F403
+else:
+    from .models.onnx_utils import OnnxRuntimeModel
 
 try:
     if not is_torch_available():

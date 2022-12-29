@@ -29,10 +29,9 @@ from PIL import Image
 from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
-from .hub_utils import http_user_agent
 from .modeling_flax_utils import FLAX_WEIGHTS_NAME, FlaxModelMixin
 from .schedulers.scheduling_utils_flax import SCHEDULER_CONFIG_NAME, FlaxSchedulerMixin
-from .utils import CONFIG_NAME, DIFFUSERS_CACHE, BaseOutput, is_transformers_available, logging
+from .utils import CONFIG_NAME, DIFFUSERS_CACHE, BaseOutput, http_user_agent, is_transformers_available, logging
 
 
 if is_transformers_available():

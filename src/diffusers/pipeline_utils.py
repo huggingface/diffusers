@@ -32,17 +32,18 @@ from PIL import Image
 from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
-from .dynamic_modules_utils import get_class_from_dynamic_module
-from .hub_utils import HF_HUB_OFFLINE, http_user_agent
 from .modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
 from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from .utils import (
     CONFIG_NAME,
     DIFFUSERS_CACHE,
+    HF_HUB_OFFLINE,
     ONNX_WEIGHTS_NAME,
     WEIGHTS_NAME,
     BaseOutput,
     deprecate,
+    get_class_from_dynamic_module,
+    http_user_agent,
     is_accelerate_available,
     is_safetensors_available,
     is_torch_version,

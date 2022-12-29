@@ -20,10 +20,8 @@ import torch.nn as nn
 import torch.utils.checkpoint
 
 from transformers.activations import ACT2FN
-from transformers.configuration_utils import PretrainedConfig
+from transformers import PretrainedConfig, PreTrainedModel, PreTrainedTokenizer
 from transformers.modeling_outputs import BaseModelOutput
-from transformers.modeling_utils import PreTrainedModel
-from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.utils import logging
 
 from ...models import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQModel

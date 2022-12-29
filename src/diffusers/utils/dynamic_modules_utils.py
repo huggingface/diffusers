@@ -28,8 +28,8 @@ from urllib import request
 
 from huggingface_hub import HfFolder, cached_download, hf_hub_download, model_info
 
-from . import __version__
-from .utils import DIFFUSERS_DYNAMIC_MODULE_NAME, HF_MODULES_CACHE, logging
+from .. import __version__
+from . import DIFFUSERS_DYNAMIC_MODULE_NAME, HF_MODULES_CACHE, logging
 
 
 COMMUNITY_PIPELINES_URL = (

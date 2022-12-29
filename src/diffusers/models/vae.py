@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..modeling_utils import ModelMixin
+from .modeling_utils import ModelMixin
 from ..utils import BaseOutput
 from .unet_2d_blocks import UNetMidBlock2D, get_down_block, get_up_block
 

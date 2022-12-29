@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..modeling_utils import ModelMixin
+from .modeling_utils import ModelMixin
 from ..utils import BaseOutput
 from .attention import BasicTransformerBlock
 from .embeddings import TimestepEmbedding, Timesteps

@@ -21,7 +21,7 @@ from diffusers.schedulers.scheduling_vq_diffusion import VQDiffusionScheduler
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...modeling_utils import ModelMixin
+from ...models import ModelMixin
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...utils import logging
 
