@@ -498,7 +498,9 @@ class FlaxDiffusionPipeline(ConfigMixin):
         ...     FlaxStableDiffusionImg2ImgPipeline,
         ... )
 
-        >>> text2img = FlaxStableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", revision="bf16", dtype=jnp.bfloat16)
+        >>> text2img = FlaxStableDiffusionPipeline.from_pretrained(
+        ...     "runwayml/stable-diffusion-v1-5", revision="bf16", dtype=jnp.bfloat16
+        ... )
         >>> img2img = FlaxStableDiffusionImg2ImgPipeline(**text2img.components)
         ```
 
