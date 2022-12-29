@@ -140,28 +140,27 @@ class UnCLIPPipeline(DiffusionPipeline):
                 )
                 text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
 
-                text_encoder_output = self.text_encoder(text_input_ids.to(device))
+            text_encoder_output = self.text_encoder(text_input_ids.to(device))
 
-                text_embeddings = text_encoder_output.text_embeds
-                text_encoder_hidden_states = text_encoder_output.last_hidden_state
+            text_embeddings = text_encoder_output.text_embeds
+            text_encoder_hidden_states = text_encoder_output.last_hidden_state
 
-            else:
-                batch_size = text_model_output[0].shape[0]
-                text_embeddings, text_encoder_hidden_states = text_encoder_output[0], text_encoder_output[1]
-                text_mask = text_attention_mask
+        else:
+            batch_size = text_model_output[0].shape[0]
+            text_embeddings, text_encoder_hidden_states = text_model_output[0], text_model_output[1]
+            text_mask = text_attention_mask
 
-            text_embeddings = text_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
-            text_encoder_hidden_states = text_encoder_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
-            text_mask = text_mask.repeat_interleave(num_images_per_prompt, dim=0)
+        text_embeddings = text_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
+        text_encoder_hidden_states = text_encoder_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
+        text_mask = text_mask.repeat_interleave(num_images_per_prompt, dim=0)
 
         if do_classifier_free_guidance:
             uncond_tokens = [""] * batch_size
 
-            max_length = text_input_ids.shape[-1]
             uncond_input = self.tokenizer(
                 uncond_tokens,
                 padding="max_length",
-                max_length=max_length,
+                max_length=self.tokenizer.model_max_length,
                 truncation=True,
                 return_tensors="pt",
             )
@@ -329,15 +328,14 @@ class UnCLIPPipeline(DiffusionPipeline):
 
         embedding_dim = self.prior.config.embedding_dim
 
-        if prior_latents is None:
-            prior_latents = self.prepare_latents(
-                (batch_size, embedding_dim),
-                text_embeddings.dtype,
-                device,
-                generator,
-                prior_latents,
-                self.prior_scheduler,
-            )
+        prior_latents = self.prepare_latents(
+            (batch_size, embedding_dim),
+            text_embeddings.dtype,
+            device,
+            generator,
+            prior_latents,
+            self.prior_scheduler,
+        )
 
         for i, t in enumerate(self.progress_bar(prior_timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
@@ -394,15 +392,14 @@ class UnCLIPPipeline(DiffusionPipeline):
         height = self.decoder.sample_size
         width = self.decoder.sample_size
 
-        if decoder_latents is None:
-            decoder_latents = self.prepare_latents(
-                (batch_size, num_channels_latents, height, width),
-                text_encoder_hidden_states.dtype,
-                device,
-                generator,
-                decoder_latents,
-                self.decoder_scheduler,
-            )
+        decoder_latents = self.prepare_latents(
+            (batch_size, num_channels_latents, height, width),
+            text_encoder_hidden_states.dtype,
+            device,
+            generator,
+            decoder_latents,
+            self.decoder_scheduler,
+        )
 
         for i, t in enumerate(self.progress_bar(decoder_timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
@@ -448,15 +445,14 @@ class UnCLIPPipeline(DiffusionPipeline):
         height = self.super_res_first.sample_size
         width = self.super_res_first.sample_size
 
-        if super_res_latents is None:
-            super_res_latents = self.prepare_latents(
-                (batch_size, channels, height, width),
-                image_small.dtype,
-                device,
-                generator,
-                super_res_latents,
-                self.super_res_scheduler,
-            )
+        super_res_latents = self.prepare_latents(
+            (batch_size, channels, height, width),
+            image_small.dtype,
+            device,
+            generator,
+            super_res_latents,
+            self.super_res_scheduler,
+        )
 
         interpolate_antialias = {}
         if "antialias" in inspect.signature(F.interpolate).parameters:

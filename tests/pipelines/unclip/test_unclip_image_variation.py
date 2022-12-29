@@ -421,11 +421,10 @@ class UnCLIPImageVariationPipelineIntegrationTests(unittest.TestCase):
             "/unclip/karlo_v1_alpha_cat_variation_fp16.npy"
         )
 
-        pipeline = UnCLIPImageVariationPipeline.from_pretrained(
-            "fusing/karlo-image-variations-diffusers", torch_dtype=torch.float16
-        )
+        pipeline = UnCLIPImageVariationPipeline.from_pretrained("fusing/karlo-image-variations-diffusers")
         pipeline = pipeline.to(torch_device)
         pipeline.set_progress_bar_config(disable=None)
+        pipeline.enable_sequential_cpu_offload()
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
         output = pipeline(
