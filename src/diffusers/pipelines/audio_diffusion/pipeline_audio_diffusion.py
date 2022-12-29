@@ -19,7 +19,6 @@ from typing import List, Tuple, Union
 import numpy as np
 import torch
 
-from packaging import version
 from PIL import Image
 
 from ...models import AutoencoderKL, UNet2DConditionModel
