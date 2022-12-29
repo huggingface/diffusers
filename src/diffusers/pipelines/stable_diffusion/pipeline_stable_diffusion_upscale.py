@@ -92,15 +92,11 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
     ):
         super().__init__()
 
-        # check if vae version is less than 0.9.0
-        is_vae_version_less_0_9_0 = hasattr(vae.config, "_diffusers_version") and version.parse(
-            version.parse(vae.config._diffusers_version).base_version
-        ) < version.parse("0.9.0.dev0")
         # check if vae has a config attribute `scaling_factor` and if it is set to 0.08333, else set it to 0.08333 and deprecate
         is_vae_scaling_factor_set_to_0_08333 = (
             hasattr(vae.config, "scaling_factor") and vae.config.scaling_factor == 0.08333
         )
-        if is_vae_version_less_0_9_0 and not is_vae_scaling_factor_set_to_0_08333:
+        if not is_vae_scaling_factor_set_to_0_08333:
             deprecation_message = (
                 "The configuration file of the vae has  set the configuration `scaling_factor` to"
                 f" {vae.config.scaling_factor}. which seems highly unlikely. If your checkpoint is a fine-tuned"
