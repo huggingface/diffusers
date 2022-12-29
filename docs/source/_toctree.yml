@@ -132,6 +132,8 @@
       title: "RePaint"
     - local: api/pipelines/audio_diffusion
       title: "Audio Diffusion"
+    - local: api/pipelines/dit
+      title: "DiT"
     title: "Pipelines"
   - sections:
     - local: api/schedulers/overview
