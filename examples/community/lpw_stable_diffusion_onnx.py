@@ -8,7 +8,7 @@ import torch
 import diffusers
 import PIL
 from diffusers import OnnxStableDiffusionPipeline, SchedulerMixin
-from diffusers.onnx_utils import OnnxRuntimeModel
+from diffusers import OnnxRuntimeModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.utils import deprecate, logging
 from packaging import version
@@ -16,7 +16,7 @@ from transformers import CLIPFeatureExtractor, CLIPTokenizer
 
 
 try:
-    from diffusers.onnx_utils import ORT_TO_NP_TYPE
+    from diffusers.pipelines.onnx_utils import ORT_TO_NP_TYPE
 except ImportError:
     ORT_TO_NP_TYPE = {
         "tensor(bool)": np.bool_,

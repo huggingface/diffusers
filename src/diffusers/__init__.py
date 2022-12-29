@@ -23,7 +23,7 @@ try:
 except OptionalDependencyNotAvailable:
     from .utils.dummy_onnx_objects import *  # noqa F403
 else:
-    from .models.onnx_utils import OnnxRuntimeModel
+    from .pipelines.onnx_utils import OnnxRuntimeModel
 
 try:
     if not is_torch_available():
