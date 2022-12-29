@@ -16,12 +16,11 @@ from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 
-from diffusers import Transformer2DModel, VQModel
-from diffusers.schedulers.scheduling_vq_diffusion import VQDiffusionScheduler
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...models import ModelMixin
+from ...models import ModelMixin, Transformer2DModel, VQModel
+from ...schedulers import VQDiffusionScheduler
 from ...utils import logging
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
