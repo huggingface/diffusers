@@ -25,6 +25,19 @@ from ...schedulers import DDIMScheduler
 
 
 class DiTPipeline(DiffusionPipeline):
+    r"""
+    This pipeline inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+
+    Parameters:
+        dit ([`DiT`]):
+            Class conditioned Transformer in Diffusion model to denoise the encoded image latents.
+        vae ([`AutoencoderKL`]):
+            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
+        scheduler ([`DDIMScheduler`]):
+            A scheduler to be used in combination with `dit` to denoise the encoded image latents.
+    """
+
     def __init__(self, dit: DiT, vae: AutoencoderKL, scheduler: DDIMScheduler):
         super().__init__()
         self.register_modules(dit=dit, vae=vae, scheduler=scheduler)
@@ -39,6 +52,28 @@ class DiTPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
     ) -> Union[ImagePipelineOutput, Tuple]:
+
+        r"""
+        Function invoked when calling the pipeline for generation.
+
+        Args:
+            class_labels (List[int]):
+                List of imagenet class labels for the images to be generated.
+            guidance_scale (`float`, *optional*, defaults to 4.0):
+                Scale of the guidance signal.
+            generator (`torch.Generator`, *optional*):
+                A [torch generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
+                deterministic.
+            num_inference_steps (`int`, *optional*, defaults to 250):
+                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                expense of slower inference.
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generate image. Choose between
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`ImagePipelineOutput`] instead of a plain tuple.
+        """
+
         batch_size = len(class_labels)
         latent_size = self.dit.config.input_size
         latent_channels = self.dit.config.in_channels
