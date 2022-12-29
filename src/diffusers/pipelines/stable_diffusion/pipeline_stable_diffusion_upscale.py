@@ -20,12 +20,14 @@ import torch
 
 import PIL
 from diffusers.utils import is_accelerate_available
+from packaging import version
 from transformers import CLIPTextModel, CLIPTokenizer
 
+from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import DDIMScheduler, DDPMScheduler, LMSDiscreteScheduler, PNDMScheduler
-from ...utils import logging
+from ...utils import deprecate, logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -89,6 +91,29 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
         max_noise_level: int = 350,
     ):
         super().__init__()
+
+        # check if vae version is less than 0.9.0
+        is_vae_version_less_0_9_0 = hasattr(vae.config, "_diffusers_version") and version.parse(
+            version.parse(vae.config._diffusers_version).base_version
+        ) < version.parse("0.9.0.dev0")
+        # check if vae has a config attribute `scaling_factor` and if it is set to 0.08333, else set it to 0.08333 and deprecate
+        is_vae_scaling_factor_set_to_0_08333 = (
+            hasattr(vae.config, "scaling_factor") and vae.config.scaling_factor == 0.08333
+        )
+        if is_vae_version_less_0_9_0 and not is_vae_scaling_factor_set_to_0_08333:
+            deprecation_message = (
+                "The configuration file of the vae has  set the configuration `scaling_factor` to"
+                f" {vae.config.scaling_factor}. which seems highly unlikely. If your checkpoint is a fine-tuned"
+                " version of any of the following: \n- stabilityai/stable-diffusion-x4-upscaler \n you should change"
+                " 'scaling_factor' to 0.08333 in the configuration file. Please make sure to update the config"
+                " accordingly as not setting `scaling_factor` in the config might lead to incorrect results in future"
+                " versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be very nice"
+                " if you could open a Pull request for the `vae/config.json` file"
+            )
+            deprecate("wrong scaling_factor", "1.0.0", deprecation_message, standard_warn=False)
+            new_config = dict(vae.config)
+            new_config["scaling_factor"] = 0.08333
+            vae._internal_dict = FrozenDict(new_config)
 
         self.register_modules(
             vae=vae,

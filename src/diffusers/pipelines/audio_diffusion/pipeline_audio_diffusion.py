@@ -22,11 +22,9 @@ import torch
 from packaging import version
 from PIL import Image
 
-from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import AudioPipelineOutput, BaseOutput, DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import DDIMScheduler, DDPMScheduler
-from ...utils import deprecate
 from .mel import Mel
 
 
