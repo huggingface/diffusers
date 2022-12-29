@@ -437,7 +437,5 @@ class UnCLIPImageVariationPipelineIntegrationTests(unittest.TestCase):
 
         image = output.images[0]
 
-        np.save("./karlo_v1_alpha_cat_variation_fp16.npy", image)
-
         assert image.shape == (256, 256, 3)
-        assert np.abs(expected_image - image).max() < 1e-2
+        assert np.abs(expected_image - image).max() < 5e-2

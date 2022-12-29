@@ -315,14 +315,16 @@ class UnCLIPPipeline(DiffusionPipeline):
         prior_timesteps_tensor = self.prior_scheduler.timesteps
 
         embedding_dim = self.prior.config.embedding_dim
-        prior_latents = self.prepare_latents(
-            (batch_size, embedding_dim),
-            text_embeddings.dtype,
-            device,
-            generator,
-            prior_latents,
-            self.prior_scheduler,
-        )
+
+        if prior_latents is None:
+            prior_latents = self.prepare_latents(
+                (batch_size, embedding_dim),
+                text_embeddings.dtype,
+                device,
+                generator,
+                prior_latents,
+                self.prior_scheduler,
+            )
 
         for i, t in enumerate(self.progress_bar(prior_timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
@@ -378,14 +380,16 @@ class UnCLIPPipeline(DiffusionPipeline):
         num_channels_latents = self.decoder.in_channels
         height = self.decoder.sample_size
         width = self.decoder.sample_size
-        decoder_latents = self.prepare_latents(
-            (batch_size, num_channels_latents, height, width),
-            text_encoder_hidden_states.dtype,
-            device,
-            generator,
-            decoder_latents,
-            self.decoder_scheduler,
-        )
+
+        if decoder_latents is None:
+            decoder_latents = self.prepare_latents(
+                (batch_size, num_channels_latents, height, width),
+                text_encoder_hidden_states.dtype,
+                device,
+                generator,
+                decoder_latents,
+                self.decoder_scheduler,
+            )
 
         for i, t in enumerate(self.progress_bar(decoder_timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
@@ -430,14 +434,16 @@ class UnCLIPPipeline(DiffusionPipeline):
         channels = self.super_res_first.in_channels // 2
         height = self.super_res_first.sample_size
         width = self.super_res_first.sample_size
-        super_res_latents = self.prepare_latents(
-            (batch_size, channels, height, width),
-            image_small.dtype,
-            device,
-            generator,
-            super_res_latents,
-            self.super_res_scheduler,
-        )
+
+        if super_res_latents is None:
+            super_res_latents = self.prepare_latents(
+                (batch_size, channels, height, width),
+                image_small.dtype,
+                device,
+                generator,
+                super_res_latents,
+                self.super_res_scheduler,
+            )
 
         interpolate_antialias = {}
         if "antialias" in inspect.signature(F.interpolate).parameters:
