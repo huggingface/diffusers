@@ -27,7 +27,6 @@ from PIL import Image
 from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel
 
 from ...models import FlaxAutoencoderKL, FlaxUNet2DConditionModel
-from ...pipeline_flax_utils import FlaxDiffusionPipeline
 from ...schedulers import (
     FlaxDDIMScheduler,
     FlaxDPMSolverMultistepScheduler,
@@ -35,6 +34,7 @@ from ...schedulers import (
     FlaxPNDMScheduler,
 )
 from ...utils import PIL_INTERPOLATION, logging
+from ..pipeline_flax_utils import FlaxDiffusionPipeline
 from . import FlaxStableDiffusionPipelineOutput
 from .safety_checker_flax import FlaxStableDiffusionSafetyChecker
 

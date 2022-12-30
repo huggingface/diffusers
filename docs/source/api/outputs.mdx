@@ -25,7 +25,7 @@ pipeline = DDIMPipeline.from_pretrained("google/ddpm-cifar10-32")
 outputs = pipeline()
 ```
 
-The `outputs` object is a [`~pipeline_utils.ImagePipelineOutput`], as we can see in the
+The `outputs` object is a [`~pipelines.ImagePipelineOutput`], as we can see in the
 documentation of that class below, it means it has an image attribute.
 
 You can access each attribute as you would usually do, and if that attribute has not been returned by the model, you will get `None`:
