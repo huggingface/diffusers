@@ -400,6 +400,7 @@ class TextualInversionDataset(Dataset):
             truncation=True,
             max_length=self.tokenizer.model_max_length,
             return_tensors="pt",
+            vector_shuffle=self.vector_shuffle
         )[0]
 
         # default to score-sde preprocessing
