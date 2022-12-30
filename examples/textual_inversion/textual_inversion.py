@@ -83,10 +83,10 @@ def save_progress(tokenizer, text_encoder, accelerator, save_path):
         learned_embeds_dict = {placeholder_token: learned_embeds.detach().cpu()}
         torch.save(learned_embeds_dict, save_path)
 def load_multitoken_tokenizer(tokenizer, text_encoder, learned_embeds_dict):
-    token_embeds = text_encoder.get_input_embeddings().weight.data
     for placeholder_token in learned_embeds_dict:
         num_vec_per_token = learned_embeds_dict[placeholder_token].shape[0]
         placeholder_token_ids = add_tokens(tokenizer, text_encoder, placeholder_token, num_vec_per_token=num_vec_per_token)
+        token_embeds = text_encoder.get_input_embeddings().weight.data
         for i, placeholder_token_id in enumerate(placeholder_token_ids):
             token_embeds[placeholder_token_id] =token_embeds[i]        
 
