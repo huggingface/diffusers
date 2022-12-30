@@ -52,7 +52,6 @@ class DiTPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
     ) -> Union[ImagePipelineOutput, Tuple]:
-
         r"""
         Function invoked when calling the pipeline for generation.
 
