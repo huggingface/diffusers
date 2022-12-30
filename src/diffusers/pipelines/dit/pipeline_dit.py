@@ -20,7 +20,7 @@ from typing import List, Optional, Tuple, Union
 import torch
 
 from ...models import AutoencoderKL, DiT
-from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import DDIMScheduler
 
 

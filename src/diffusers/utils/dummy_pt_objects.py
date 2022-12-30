@@ -19,7 +19,7 @@ class AutoencoderKL(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class ModelMixin(metaclass=DummyObject):
+class DiT(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -34,7 +34,7 @@ class ModelMixin(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class DiT(metaclass=DummyObject):
+class ModelMixin(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -227,7 +227,7 @@ class DDPMPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class DiTPipeline(metaclass=DummyObject):
+class DiffusionPipeline(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -242,7 +242,7 @@ class DiTPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class DiffusionPipeline(metaclass=DummyObject):
+class DiTPipeline(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
