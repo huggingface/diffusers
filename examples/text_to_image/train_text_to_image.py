@@ -600,23 +600,14 @@ def main():
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
 
+    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        unet,
+        optimizer,
+        train_dataloader,
+        lr_scheduler,
+    )
     if args.use_ema:
-        unet, ema_unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-            unet,
-            ema_unet,
-            optimizer,
-            train_dataloader,
-            lr_scheduler,
-        )
-        accelerator.register_for_checkpointing(lr_scheduler, ema_unet)
-    else:
-        unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-            unet,
-            optimizer,
-            train_dataloader,
-            lr_scheduler,
-        )
-        accelerator.register_for_checkpointing(lr_scheduler)
+        accelerator.register_for_checkpointing(ema_unet)
 
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
