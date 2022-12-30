@@ -24,7 +24,6 @@ from transformers import CLIPFeatureExtractor, CLIPVisionModelWithProjection
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import (
     DDIMScheduler,
     DPMSolverMultistepScheduler,
@@ -34,6 +33,7 @@ from ...schedulers import (
     PNDMScheduler,
 )
 from ...utils import deprecate, logging
+from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
@@ -65,6 +65,8 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
+    # TODO: feature_extractor is required to encode images (if they are in PIL format),
+    # we should give a descriptive message if the pipeline doesn't have one.
     _optional_components = ["safety_checker"]
 
     def __init__(

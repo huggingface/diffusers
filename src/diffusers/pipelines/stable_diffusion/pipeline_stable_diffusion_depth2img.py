@@ -26,7 +26,6 @@ from transformers import CLIPTextModel, CLIPTokenizer, DPTFeatureExtractor, DPTF
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import (
     DDIMScheduler,
     DPMSolverMultistepScheduler,
@@ -36,6 +35,7 @@ from ...schedulers import (
     PNDMScheduler,
 )
 from ...utils import PIL_INTERPOLATION, deprecate, logging
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

@@ -27,11 +27,10 @@ from transformers import (
     CLIPVisionModelWithProjection,
 )
 
-from ...models import AutoencoderKL, UNet2DConditionModel
-from ...models.attention import DualTransformer2DModel, Transformer2DModel
-from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ...models import AutoencoderKL, DualTransformer2DModel, Transformer2DModel, UNet2DConditionModel
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import is_accelerate_available, logging
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .modeling_text_unet import UNetFlatConditionModel
 
 

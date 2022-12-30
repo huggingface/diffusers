@@ -33,6 +33,7 @@ from diffusers import (
     DDIMScheduler,
     DDPMPipeline,
     DDPMScheduler,
+    DiffusionPipeline,
     DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
@@ -45,7 +46,6 @@ from diffusers import (
     UNet2DModel,
     logging,
 )
-from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, nightly, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir, require_torch_gpu
@@ -704,7 +704,7 @@ class PipelineSlowTests(unittest.TestCase):
 
     def test_warning_unused_kwargs(self):
         model_id = "hf-internal-testing/unet-pipeline-dummy"
-        logger = logging.get_logger("diffusers.pipeline_utils")
+        logger = logging.get_logger("diffusers.pipelines")
         with tempfile.TemporaryDirectory() as tmpdirname:
             with CaptureLogger(logger) as cap_logger:
                 DiffusionPipeline.from_pretrained(

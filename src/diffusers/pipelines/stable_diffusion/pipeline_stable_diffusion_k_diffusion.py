@@ -19,7 +19,7 @@ import torch
 
 from k_diffusion.external import CompVisDenoiser, CompVisVDenoiser
 
-from ... import DiffusionPipeline
+from ...pipelines import DiffusionPipeline
 from ...schedulers import LMSDiscreteScheduler
 from ...utils import is_accelerate_available, logging
 from . import StableDiffusionPipelineOutput
