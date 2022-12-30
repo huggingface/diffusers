@@ -16,6 +16,7 @@ from diffusers import (
     CycleDiffusionPipeline,
     DanceDiffusionPipeline,
     DiffusionPipeline,
+    DiTPipeline,
     RePaintPipeline,
     StableDiffusionDepth2ImgPipeline,
     StableDiffusionImg2ImgPipeline,
@@ -28,7 +29,7 @@ from diffusers.utils.testing_utils import require_torch, torch_device
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-ALLOWED_REQUIRED_ARGS = ["source_prompt", "prompt", "image", "mask_image", "example_image"]
+ALLOWED_REQUIRED_ARGS = ["source_prompt", "prompt", "image", "mask_image", "example_image", "class_labels"]
 
 
 @require_torch
@@ -80,6 +81,7 @@ class PipelineTesterMixin:
             CycleDiffusionPipeline,
             RePaintPipeline,
             StableDiffusionImg2ImgPipeline,
+            DiTPipeline,
         ):
             # FIXME: inconsistent outputs on MPS
             return
@@ -184,8 +186,8 @@ class PipelineTesterMixin:
     def test_inference_batch_single_identical(self):
         if self.pipeline_class.__name__ in ["CycleDiffusionPipeline", "RePaintPipeline"]:
             # RePaint can hardly be made deterministic since the scheduler is currently always
-            # indeterministic
-            # CycleDiffusion is also slighly undeterministic
+            # nondeterministic
+            # CycleDiffusion is also slightly nondeterministic
             return
 
         components = self.get_dummy_components()
@@ -245,6 +247,7 @@ class PipelineTesterMixin:
             CycleDiffusionPipeline,
             RePaintPipeline,
             StableDiffusionImg2ImgPipeline,
+            DiTPipeline,
         ):
             # FIXME: inconsistent outputs on MPS
             return
@@ -360,6 +363,7 @@ class PipelineTesterMixin:
             CycleDiffusionPipeline,
             RePaintPipeline,
             StableDiffusionImg2ImgPipeline,
+            DiTPipeline,
         ):
             # FIXME: inconsistent outputs on MPS
             return
@@ -428,6 +432,7 @@ class PipelineTesterMixin:
             RePaintPipeline,
             StableDiffusionImg2ImgPipeline,
             StableDiffusionDepth2ImgPipeline,
+            DiTPipeline,
         ):
             # FIXME: inconsistent outputs on MPS
             return
