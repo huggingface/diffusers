@@ -61,6 +61,7 @@ class DDIMSchedulerState:
 @dataclass
 class FlaxDDIMSchedulerOutput(FlaxSchedulerOutput):
     state: DDIMSchedulerState
+    pred_original_sample: Optional[jnp.ndarray] = None
 
 
 class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
