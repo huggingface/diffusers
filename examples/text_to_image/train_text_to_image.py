@@ -364,25 +364,29 @@ class EMAModel:
         """
         # deepcopy, to be consistent with module API
         state_dict = copy.deepcopy(state_dict)
+
         self.decay = state_dict["decay"]
         if self.decay < 0.0 or self.decay > 1.0:
             raise ValueError("Decay must be between 0 and 1")
+
         self.optimization_step = state_dict["optimization_step"]
-        assert isinstance(self.optimization_step, int), "Invalid optimization_step"
+        if not isinstance(self.optimization_step, int):
+            raise ValueError("Invalid optimization_step")
 
         self.shadow_params = state_dict["shadow_params"]
-        assert isinstance(self.shadow_params, list), "shadow_params must be a list"
-        assert all(isinstance(p, torch.Tensor) for p in self.shadow_params), "shadow_params must all be Tensors"
+        if not isinstance(self.shadow_params, list):
+            raise ValueError("shadow_params must be a list")
+        if not all(isinstance(p, torch.Tensor) for p in self.shadow_params):
+            raise ValueError("shadow_params must all be Tensors")
 
         self.collected_params = state_dict["collected_params"]
         if self.collected_params is not None:
-            assert isinstance(self.collected_params, list), "collected_params must be a list"
-            assert all(
-                isinstance(p, torch.Tensor) for p in self.collected_params
-            ), "collected_params must all be Tensors"
-            assert len(self.collected_params) == len(
-                self.shadow_params
-            ), "collected_params and shadow_params must have the same length"
+            if not isinstance(self.collected_params, list):
+                raise ValueError("collected_params must be a list")
+            if not all(isinstance(p, torch.Tensor) for p in self.collected_params):
+                raise ValueError("collected_params must all be Tensors")
+            if len(self.collected_params) != len(self.shadow_params):
+                raise ValueError("collected_params and shadow_params must have the same length")
 
 
 def main():
