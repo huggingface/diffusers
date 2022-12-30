@@ -5,7 +5,9 @@ from typing import Callable, List, Optional, Union
 import numpy as np
 import pickle
 import os
+import logging
 
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 def preprocess_images(images: List[Image], feature_extractor: CLIPFeatureExtractor) -> torch.FloatTensor:
     """
     Preprocesses a list of images into a batch of tensors.
@@ -55,12 +57,17 @@ def map_txt_to_clip_feature(clip, tokenizer, prompt, device="cuda"):
 def get_dataset_with_emb(dataset, clip_model, feature_extractor, device="cuda", img_col="image"):
     return dataset.map(lambda example: {'embeddings': map_img_to_clip_feature(clip_model, feature_extractor, [example[img_col]], device).cpu().detach().numpy()[0][0]})
 class Retriever:
-    def __init__(self, clip_model, feature_extractor, dataset, device="cuda", img_col="image"):
+    def __init__(self, clip_model, tokenizer, feature_extractor, dataset, dataset_save_path, device="cuda", img_col="image"):
         self.dataset = dataset
         self.clip_model = clip_model.to(device)
+        self.tokenizer = tokenizer
         self.feature_extractor = feature_extractor
         if 'embeddings' not in self.dataset.features:
             self.dataset = get_dataset_with_emb(self.dataset, clip_model, feature_extractor, device, img_col)
+            self.dataset.save_to_disk(dataset_save_path)
         self.dataset.add_faiss_index(column='embeddings')
-    def get_knn(self, vec, k=10):
+    def get_knn(self, vec, k=20):
         return self.dataset.get_nearest_examples('embeddings', vec, k=k)
+    def get_knn_from_text(self, prompt, k=29):
+        vec = map_txt_to_clip_feature(self.clip_model, self.tokenizer, prompt, self.device)
+        return self.get_knn(vec, k)
