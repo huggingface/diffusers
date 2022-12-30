@@ -17,9 +17,9 @@ import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..modeling_utils import ModelMixin
 from .cross_attention import CrossAttention
 from .embeddings import LabelEmbedding, TimestepEmbedding, Timesteps
+from .modeling_utils import ModelMixin
 
 
 def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False, extra_tokens=0):
