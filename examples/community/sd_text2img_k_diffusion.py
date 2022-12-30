@@ -18,8 +18,7 @@ from typing import Callable, List, Optional, Union
 
 import torch
 
-from diffusers import LMSDiscreteScheduler
-from diffusers.pipeline_utils import DiffusionPipeline
+from diffusers import DiffusionPipeline, LMSDiscreteScheduler
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.utils import is_accelerate_available, logging
 from k_diffusion.external import CompVisDenoiser, CompVisVDenoiser

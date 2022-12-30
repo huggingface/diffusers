@@ -20,11 +20,11 @@ import torch.nn.functional as F
 from torch import nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..modeling_utils import ModelMixin
 from ..models.embeddings import ImagePositionalEmbeddings
 from ..utils import BaseOutput
 from ..utils.import_utils import is_xformers_available
 from .cross_attention import CrossAttention
+from .modeling_utils import ModelMixin
 
 
 @dataclass
@@ -703,7 +703,13 @@ class DualTransformer2DModel(nn.Module):
         self.transformer_index_for_condition = [1, 0]
 
     def forward(
-        self, hidden_states, encoder_hidden_states, timestep=None, attention_mask=None, return_dict: bool = True
+        self,
+        hidden_states,
+        encoder_hidden_states,
+        timestep=None,
+        attention_mask=None,
+        cross_attention_kwargs=None,
+        return_dict: bool = True,
     ):
         """
         Args:
@@ -738,6 +744,7 @@ class DualTransformer2DModel(nn.Module):
                 input_states,
                 encoder_hidden_states=condition_state,
                 timestep=timestep,
+                cross_attention_kwargs=cross_attention_kwargs,
                 return_dict=False,
             )[0]
             encoded_states.append(encoded_state - input_states)
