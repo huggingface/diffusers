@@ -20,8 +20,8 @@ from typing import List, Optional, Tuple, Union
 import torch
 
 from ...models import AutoencoderKL, DiT
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import DDIMScheduler
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 class DiTPipeline(DiffusionPipeline):
