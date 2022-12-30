@@ -33,6 +33,7 @@ except OptionalDependencyNotAvailable:
 else:
     from .models import (
         AutoencoderKL,
+        ModelMixin,
         PriorTransformer,
         Transformer2DModel,
         UNet1DModel,
@@ -40,7 +41,6 @@ else:
         UNet2DModel,
         VQModel,
     )
-    from .models import ModelMixin
     from .optimization import (
         get_constant_schedule,
         get_constant_schedule_with_warmup,
