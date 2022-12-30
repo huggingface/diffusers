@@ -42,7 +42,7 @@ class FlaxSchedulerOutput(BaseOutput):
     """
 
     prev_sample: jnp.ndarray
-    pred_original_sample: Optional[jnp.ndarray] = None
+    pred_original_sample: jnp.ndarray
 
 
 class FlaxSchedulerMixin:
