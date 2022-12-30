@@ -50,7 +50,6 @@ class MultiTokenCLIPTokenizer(CLIPTokenizer):
                 self.try_adding_tokens(ith_token, *args, **kwargs)
                 output.append(ith_token)
         self.token_map[placeholder_token] = output
-        return " ".join(output)
     def encode(self, text, *args, vector_shuffle=False, **kwargs):
         """
         Here, we replace the placeholder tokens in text recorded in token_map so that the text_encoder
