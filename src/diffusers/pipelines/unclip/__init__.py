@@ -13,4 +13,5 @@ except OptionalDependencyNotAvailable:
     from ...utils.dummy_torch_and_transformers_objects import UnCLIPPipeline
 else:
     from .pipeline_unclip import UnCLIPPipeline
+    from .pipeline_unclip_image_variation import UnCLIPImageVariationPipeline
     from .text_proj import UnCLIPTextProjModel

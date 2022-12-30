@@ -160,3 +160,6 @@ python train_text_to_image_flax.py \
   --max_grad_norm=1 \
   --output_dir="sd-pokemon-model"
 ```
+
+### Training with xformers:
+You can enable memory efficient attention by [installing xFormers](https://github.com/facebookresearch/xformers#installing-xformers) and padding the `--enable_xformers_memory_efficient_attention` argument to the script. This is not available with the Flax/JAX implementation.

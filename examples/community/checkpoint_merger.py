@@ -5,13 +5,7 @@ from typing import Dict, List, Union
 import torch
 
 from diffusers import DiffusionPipeline, __version__
-from diffusers.pipeline_utils import (
-    CONFIG_NAME,
-    DIFFUSERS_CACHE,
-    ONNX_WEIGHTS_NAME,
-    SCHEDULER_CONFIG_NAME,
-    WEIGHTS_NAME,
-)
+from diffusers.utils import CONFIG_NAME, DIFFUSERS_CACHE, ONNX_WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, WEIGHTS_NAME
 from huggingface_hub import snapshot_download
 
 

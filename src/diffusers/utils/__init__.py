@@ -18,7 +18,22 @@ import os
 from packaging import version
 
 from .. import __version__
+from .constants import (
+    _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS,
+    CONFIG_NAME,
+    DIFFUSERS_CACHE,
+    DIFFUSERS_DYNAMIC_MODULE_NAME,
+    FLAX_WEIGHTS_NAME,
+    HF_MODULES_CACHE,
+    HUGGINGFACE_CO_RESOLVE_ENDPOINT,
+    ONNX_EXTERNAL_WEIGHTS_NAME,
+    ONNX_WEIGHTS_NAME,
+    SAFETENSORS_WEIGHTS_NAME,
+    WEIGHTS_NAME,
+)
 from .deprecation_utils import deprecate
+from .dynamic_modules_utils import get_class_from_dynamic_module
+from .hub_utils import HF_HUB_OFFLINE, http_user_agent
 from .import_utils import (
     ENV_VARS_TRUE_AND_AUTO_VALUES,
     ENV_VARS_TRUE_VALUES,
@@ -65,36 +80,6 @@ if is_torch_available():
 
 
 logger = get_logger(__name__)
-
-
-hf_cache_home = os.path.expanduser(
-    os.getenv("HF_HOME", os.path.join(os.getenv("XDG_CACHE_HOME", "~/.cache"), "huggingface"))
-)
-default_cache_path = os.path.join(hf_cache_home, "diffusers")
-
-
-CONFIG_NAME = "config.json"
-WEIGHTS_NAME = "diffusion_pytorch_model.bin"
-FLAX_WEIGHTS_NAME = "diffusion_flax_model.msgpack"
-ONNX_WEIGHTS_NAME = "model.onnx"
-SAFETENSORS_WEIGHTS_NAME = "diffusion_pytorch_model.safetensors"
-ONNX_EXTERNAL_WEIGHTS_NAME = "weights.pb"
-HUGGINGFACE_CO_RESOLVE_ENDPOINT = "https://huggingface.co"
-DIFFUSERS_CACHE = default_cache_path
-DIFFUSERS_DYNAMIC_MODULE_NAME = "diffusers_modules"
-HF_MODULES_CACHE = os.getenv("HF_MODULES_CACHE", os.path.join(hf_cache_home, "modules"))
-
-_COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS = [
-    "DDIMScheduler",
-    "DDPMScheduler",
-    "PNDMScheduler",
-    "LMSDiscreteScheduler",
-    "EulerDiscreteScheduler",
-    "HeunDiscreteScheduler",
-    "EulerAncestralDiscreteScheduler",
-    "DPMSolverMultistepScheduler",
-    "DPMSolverSinglestepScheduler",
-]
 
 
 def check_min_version(min_version):
