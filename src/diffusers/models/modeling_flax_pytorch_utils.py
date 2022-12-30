@@ -19,7 +19,7 @@ import jax.numpy as jnp
 from flax.traverse_util import flatten_dict, unflatten_dict
 from jax.random import PRNGKey
 
-from .utils import logging
+from ..utils import logging
 
 
 logger = logging.get_logger(__name__)

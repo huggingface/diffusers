@@ -2,8 +2,7 @@ from typing import Optional, Tuple, Union
 
 import torch
 
-from diffusers import DDIMScheduler, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
-from diffusers.pipeline_utils import ImagePipelineOutput
+from diffusers import DDIMScheduler, DDPMScheduler, DiffusionPipeline, ImagePipelineOutput, UNet2DConditionModel
 from diffusers.schedulers.scheduling_ddim import DDIMSchedulerOutput
 from diffusers.schedulers.scheduling_ddpm import DDPMSchedulerOutput
 from einops import rearrange, reduce

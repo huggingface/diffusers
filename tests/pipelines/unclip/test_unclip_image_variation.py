@@ -20,8 +20,13 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import UnCLIPImageVariationPipeline, UnCLIPScheduler, UNet2DConditionModel, UNet2DModel
-from diffusers.pipeline_utils import DiffusionPipeline
+from diffusers import (
+    DiffusionPipeline,
+    UnCLIPImageVariationPipeline,
+    UnCLIPScheduler,
+    UNet2DConditionModel,
+    UNet2DModel,
+)
 from diffusers.pipelines.unclip.text_proj import UnCLIPTextProjModel
 from diffusers.utils import floats_tensor, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import load_image, require_torch_gpu
