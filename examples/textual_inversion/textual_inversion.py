@@ -63,7 +63,7 @@ def add_tokens(tokenizer, text_encoder, placeholder_token, num_vec_per_token=1, 
     placeholder_tokens=tokenizer.add_placeholder_tokens(placeholder_token, num_vec_per_token=num_vec_per_token)
     text_encoder.resize_token_embeddings(len(tokenizer))
     token_embeds = text_encoder.get_input_embeddings().weight.data
-    placeholder_token_ids = tokenizer.encode(placeholder_tokens, add_special_tokens=False)
+    placeholder_token_ids = tokenizer.encode(placeholder_token, add_special_tokens=False)
     if initializer_token:
         token_ids = tokenizer.encode(initializer_token, add_special_tokens=False)
         for i, placeholder_token_id in enumerate(placeholder_token_ids):
