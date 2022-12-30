@@ -40,7 +40,7 @@ else:
         UNet2DModel,
         VQModel,
     )
-    from .models.modeling_utils import ModelMixin
+    from .models import ModelMixin
     from .optimization import (
         get_constant_schedule,
         get_constant_schedule_with_warmup,
