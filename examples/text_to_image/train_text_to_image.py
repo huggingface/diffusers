@@ -384,28 +384,6 @@ class EMAModel:
                 self.shadow_params
             ), "collected_params and shadow_params must have the same length"
 
-        # if len(self.shadow_params) == len(self._params_refs):
-        #     # Consistant with torch.optim.Optimizer, cast things to consistant
-        #     # device and dtype with the parameters
-        #     params = [p() for p in self._params_refs]
-        #     # If parameters have been garbage collected, just load the state
-        #     # we were given without change.
-        #     if not any(p is None for p in params):
-        #         # ^ parameter references are still good
-        #         for i, p in enumerate(params):
-        #             self.shadow_params[i] = self.shadow_params[i].to(
-        #                 device=p.device, dtype=p.dtype
-        #             )
-        #             if self.collected_params is not None:
-        #                 self.collected_params[i] = self.collected_params[i].to(
-        #                     device=p.device, dtype=p.dtype
-        #                 )
-        # else:
-        #     raise ValueError(
-        #         "Tried to `load_state_dict()` with the wrong number of "
-        #         "parameters in the saved state."
-        #     )
-
 
 def main():
     args = parse_args()
