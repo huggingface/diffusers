@@ -132,6 +132,8 @@
       title: "RePaint"
     - local: api/pipelines/audio_diffusion
       title: "Audio Diffusion"
+    - local: api/pipelines/spectrogram_diffusion
+      title: "Spectrogram Diffusion"
     title: "Pipelines"
   - sections:
     - local: api/schedulers/overview
