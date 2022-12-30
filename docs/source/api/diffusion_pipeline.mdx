@@ -30,13 +30,17 @@ Any pipeline object can be saved locally with [`~DiffusionPipeline.save_pretrain
 
 ## DiffusionPipeline
 [[autodoc]] DiffusionPipeline
-	- from_pretrained
-	- save_pretrained
-	- to
+	- all
+	- __call__
 	- device
-	- components
+	- to
 
 ## ImagePipelineOutput
 By default diffusion pipelines return an object of class
 
 [[autodoc]] pipelines.ImagePipelineOutput
+
+## AudioPipelineOutput
+By default diffusion pipelines return an object of class
+
+[[autodoc]] pipelines.AudioPipelineOutput
