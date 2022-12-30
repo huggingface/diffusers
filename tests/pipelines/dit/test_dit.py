@@ -19,7 +19,6 @@ import numpy as np
 import torch
 
 from diffusers import AutoencoderKL, DDIMScheduler, DiT, DiTPipeline
-from diffusers.utils.testing_utils import require_torch_gpu, slow, torch_device
 
 from ...test_pipelines_common import PipelineTesterMixin
 
