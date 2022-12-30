@@ -126,7 +126,6 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
         latents = latents * scheduler.init_noise_sigma
         return latents
 
-    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline._encode_prompt
     def _encode_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance):
         batch_size = len(prompt) if isinstance(prompt, list) else 1
 
@@ -139,15 +138,6 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
         )
         text_input_ids = text_inputs.input_ids
         text_mask = text_inputs.attention_mask.bool().to(device)
-
-        if text_input_ids.shape[-1] > self.tokenizer.model_max_length:
-            removed_text = self.tokenizer.batch_decode(text_input_ids[:, self.tokenizer.model_max_length :])
-            logger.warning(
-                "The following part of your input was truncated because CLIP can only handle sequences up to"
-                f" {self.tokenizer.model_max_length} tokens: {removed_text}"
-            )
-            text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
-
         text_encoder_output = self.text_encoder(text_input_ids.to(device))
 
         text_embeddings = text_encoder_output.text_embeds
