@@ -429,15 +429,9 @@ def main():
         args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
     )
     text_encoder = CLIPTextModel.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="text_encoder",
-        revision=args.revision,
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
     )
-    vae = AutoencoderKL.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="vae",
-        revision=args.revision,
-    )
+    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision)
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
     )
@@ -601,10 +595,7 @@ def main():
     )
 
     unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        unet,
-        optimizer,
-        train_dataloader,
-        lr_scheduler,
+        unet, optimizer, train_dataloader, lr_scheduler
     )
     if args.use_ema:
         accelerator.register_for_checkpointing(ema_unet)
