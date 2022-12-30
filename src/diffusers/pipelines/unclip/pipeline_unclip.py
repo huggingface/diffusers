@@ -127,7 +127,6 @@ class UnCLIPPipeline(DiffusionPipeline):
         text_model_output: Optional[Union[CLIPTextModelOutput, Tuple]] = None,
         text_attention_mask: Optional[torch.Tensor] = None,
     ):
-
         if text_model_output is None:
             batch_size = len(prompt) if isinstance(prompt, list) else 1
             # get prompt text embeddings
