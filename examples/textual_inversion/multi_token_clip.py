@@ -27,6 +27,7 @@ TODO:
 import random
 from transformers import CLIPTokenizer
 import copy
+import torch
 class MultiTokenCLIPTokenizer(CLIPTokenizer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

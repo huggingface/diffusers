@@ -71,14 +71,26 @@ def add_tokens(tokenizer, text_encoder, placeholder_token, num_vec_per_token=1, 
     else:
         for i, placeholder_token_id in enumerate(placeholder_token_ids):
                 token_embeds[placeholder_token_id] = torch.randn_like(token_embeds[placeholder_token_id])
+    return placeholder_token_ids
 
 def save_progress(tokenizer, text_encoder, accelerator, save_path):
     for placeholder_token in tokenizer.token_map:
         placeholder_tokens = " ".join(tokenizer.token_map[placeholder_token])
         placeholder_token_ids = tokenizer.encode(placeholder_tokens)
         learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_ids]
+        if len(placeholder_token_ids) == 1:
+                learned_embeds = learned_embeds[None]
         learned_embeds_dict = {placeholder_token: learned_embeds.detach().cpu()}
         torch.save(learned_embeds_dict, save_path)
+def load_multitoken_tokenizer(tokenizer, text_encoder, load_path):
+    learned_embeds_dict = torch.load(load_path)
+    token_embeds = text_encoder.get_input_embeddings().weight.data
+    for placeholder_token in learned_embeds_dict:
+        num_vec_per_token = learned_embeds_dict[placeholder_token].shape[0]
+        placeholder_token_ids = add_tokens(tokenizer, text_encoder, placeholder_token, num_vec_per_token=num_vec_per_token)
+        for i, placeholder_token_id in enumerate(placeholder_token_ids):
+            token_embeds[placeholder_token_id] =token_embeds[i]        
+
 def get_mask(tokenizer, accelerator):
     # Get the mask of the weights that won't change
     mask = torch.ones(len(tokenizer)).to(accelerator.device, dtype=torch.bool)
