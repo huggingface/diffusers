@@ -12,6 +12,9 @@ import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 
+import datasets
+import diffusers
+import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
@@ -29,7 +32,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.10.0.dev0")
 
-logger = get_logger(__name__)
+logger = get_logger(__name__, log_level="INFO")
 
 
 def parse_args():
@@ -413,6 +416,15 @@ def main():
         datefmt="%m/%d/%Y %H:%M:%S",
         level=logging.INFO,
     )
+    logger.info(accelerator.state, main_process_only=False)
+    if accelerator.is_local_main_process:
+        datasets.utils.logging.set_verbosity_warning()
+        transformers.utils.logging.set_verbosity_info()
+        diffusers.utils.logging.set_verbosity_info()
+    else:
+        datasets.utils.logging.set_verbosity_error()
+        transformers.utils.logging.set_verbosity_error()
+        diffusers.utils.logging.set_verbosity_error()
 
     # If passed along, set the training seed now.
     if args.seed is not None:
