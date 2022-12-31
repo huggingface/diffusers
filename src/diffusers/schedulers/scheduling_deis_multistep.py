@@ -58,6 +58,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
 class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
     """
     DEIS (https://arxiv.org/abs/2204.13902) is a fast high order solver for diffusion ODEs. 
+    DEIS (https://arxiv.org/abs/2204.13902) is a fast high order solver for diffusion ODEs. 
     We slightly modify the polynomial fitting formula in log-rho space instead of the original linear t space in DEIS paper.
     The modification enjoys closed-form coefficients for exponential multistep update instead of replying on the numerical solver.
     More variants of DEIS can be found in https://github.com/qsh-zh/deis.
@@ -106,6 +107,7 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
 
     _compatibles = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
     _deprecated_kwargs = ["predict_epsilon"]
+    order = 1
 
     @register_to_config
     def __init__(
@@ -129,7 +131,7 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
             "Please make sure to instantiate your scheduler with `prediction_type` instead. E.g. `scheduler ="
             " DEISMultistepScheduler.from_pretrained(<model_id>, prediction_type='epsilon')`."
         )
-        predict_epsilon = deprecate("predict_epsilon", "0.10.0", message, take_from=kwargs)
+        predict_epsilon = deprecate("predict_epsilon", "0.13.0", message, take_from=kwargs)
         if predict_epsilon is not None:
             self.register_to_config(prediction_type="epsilon" if predict_epsilon else "sample")
 
@@ -226,6 +228,9 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         if self.config.thresholding:
             # Dynamic thresholding in https://arxiv.org/abs/2205.11487
+            orig_dtype = x0_pred.dtype
+            if orig_dtype not in [torch.float, torch.double]:
+                x0_pred = x0_pred.float()
             dynamic_max_val = torch.quantile(
                 torch.abs(x0_pred).reshape((x0_pred.shape[0], -1)), self.config.dynamic_thresholding_ratio, dim=1
             )
@@ -234,6 +239,7 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
                 self.config.sample_max_value * torch.ones_like(dynamic_max_val).to(dynamic_max_val.device),
             )[(...,) + (None,) * (x0_pred.ndim - 1)]
             x0_pred = torch.clamp(x0_pred, -dynamic_max_val, dynamic_max_val) / dynamic_max_val
+            x0_pred = x0_pred.type(orig_dtype)
 
         if self.config.algorithm_type == "deis":
             alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
@@ -302,6 +308,7 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         if self.config.algorithm_type == "deis":
             def ind_fn(t, b, c):
+                # Integrate[(log(t) - log(c)) / (log(b) - log(c)), {t}]
                 return t * (-np.log(c) + np.log(t) -1) / (np.log(b) - np.log(c))
             coef1 = ind_fn(rho_t, rho_s0, rho_s1) - ind_fn(rho_s0, rho_s0, rho_s1)
             coef2 = ind_fn(rho_t, rho_s1, rho_s0) - ind_fn(rho_s0, rho_s1, rho_s0)
@@ -340,11 +347,12 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         if self.config.algorithm_type == "deis":
             def ind_fn(t, b, c, d):
-                de = t * (
+                # Integrate[(log(t) - log(c))(log(t) - log(d)) / (log(b) - log(c))(log(b) - log(d)), {t}]
+                numerator = t * (
                     np.log(c) * (np.log(d) - np.log(t) + 1) - np.log(d) * np.log(t) + np.log(d) + np.log(t)**2 - 2 * np.log(t) + 2
                 )
-                nu = (np.log(b) - np.log(c)) * (np.log(b) - np.log(d))
-                return de / nu
+                denominator = (np.log(b) - np.log(c)) * (np.log(b) - np.log(d))
+                return numerator / denominator
 
             coef1 = ind_fn(rho_t, rho_s0, rho_s1, rho_s2) - ind_fn(rho_s0, rho_s0, rho_s1, rho_s2)
             coef2 = ind_fn(rho_t, rho_s1, rho_s2, rho_s0) - ind_fn(rho_s0, rho_s1, rho_s2, rho_s0)
