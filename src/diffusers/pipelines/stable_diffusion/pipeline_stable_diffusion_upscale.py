@@ -401,8 +401,8 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
         >>> # load model and scheduler
         >>> model_id = "stabilityai/stable-diffusion-x4-upscaler"
         >>> pipeline = StableDiffusionUpscalePipeline.from_pretrained(
-        ...    model_id, revision="fp16", torch_dtype=torch.float16
-        ...    )
+        ...     model_id, revision="fp16", torch_dtype=torch.float16
+        ... )
         >>> pipeline = pipeline.to("cuda")
 
         >>> # let's download an  image
@@ -411,8 +411,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
         >>> low_res_img = Image.open(BytesIO(response.content)).convert("RGB")
         >>> low_res_img = low_res_img.resize((128, 128))
         >>> prompt = "a white cat"
-        >>> upscaled_image = pipeline(
-        ...    prompt=prompt, image=low_res_img).images[0]
+        >>> upscaled_image = pipeline(prompt=prompt, image=low_res_img).images[0]
         >>> upscaled_image.save("upsampled_cat.png")
         ```
 

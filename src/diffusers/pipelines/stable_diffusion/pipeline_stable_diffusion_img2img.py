@@ -531,9 +531,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
         >>> device = "cuda"
         >>> model_id_or_path = "runwayml/stable-diffusion-v1-5"
-        >>> pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
-        ...    model_id_or_path, torch_dtype=torch.float16
-        ...    )
+        >>> pipe = StableDiffusionImg2ImgPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16)
         >>> pipe = pipe.to(device)
 
         >>> url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
