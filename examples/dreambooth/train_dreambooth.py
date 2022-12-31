@@ -13,6 +13,7 @@ import torch.utils.checkpoint
 from torch.utils.data import Dataset
 
 from accelerate import Accelerator
+import logging
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
 from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
@@ -30,6 +31,11 @@ from transformers import AutoTokenizer, PretrainedConfig
 check_min_version("0.10.0.dev0")
 
 logger = get_logger(__name__)
+logging.basicConfig(
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+        datefmt="%m/%d/%Y %H:%M:%S",
+        level=logging.INFO,
+    )
 
 
 def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision: str):
@@ -261,6 +267,10 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
+    parser.add_argument("--save_samples", type=int, default=0, help="Whether or not to save samples for every checkpoint specified by --checkpointing_steps.")
+    parser.add_argument("--sample_steps", type=int, default=40, help="Number of steps for generating samples.")
+    parser.add_argument("--sample_prompt", type=str, default=None, help="Prompt to use for sample generation.")
+    parser.add_argument("--sample_seed", type=int, default=0, help="Seed for the sample generation.")
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -630,6 +640,8 @@ def main(args):
         weight_dtype = torch.float16
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
+    
+    print(f" TYPE: {weight_dtype}")
 
     # Move text_encode and vae to gpu.
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
@@ -716,7 +728,8 @@ def main(args):
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0]
 
                 # Predict the noise residual
-                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                with torch.cuda.amp.autocast(enabled=True):
+                    model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
@@ -765,13 +778,42 @@ def main(args):
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
+                        if args.save_samples > 0:
+                            if torch.cuda.is_available():
+                                torch.cuda.empty_cache()
+                                
+                            logger.info(f"Generating {args.save_samples} samples at step {global_step} with prompt: {args.sample_prompt}")
+                            pipeline = DiffusionPipeline.from_pretrained(
+                                args.pretrained_model_name_or_path,
+                                unet=accelerator.unwrap_model(unet),
+                                text_encoder=accelerator.unwrap_model(text_encoder),
+                                revision=args.revision,
+                                torch_dtype=weight_dtype,
+                            ).to(accelerator.device)
+
+                            # Generate samples
+                            # with torch.cuda.amp.autocast():
+                            with torch.cuda.amp.autocast(enabled=True):
+                                images = pipeline(prompt=args.sample_prompt, num_images_per_prompt=args.save_samples, num_inference_steps=args.sample_steps, width=args.resolution, height=args.resolution).images
+
+                            for i, image in enumerate(images):
+                                hash_image = hashlib.sha1(image.tobytes()).hexdigest()
+                                os.makedirs(os.path.join(args.output_dir, "samples"), exist_ok=True)
+                                image_filename = os.path.join(args.output_dir, "samples", f"step-{global_step}_loss-{loss.detach().item()}_prompt-{args.sample_prompt}_hash-{hash_image}.png")
+                                image.save(image_filename)
+                            
+                            del pipeline
+                            # if torch.cuda.is_available():
+                            #     torch.cuda.empty_cache()
+
+
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
 
             if global_step >= args.max_train_steps:
                 break
-
+        
         accelerator.wait_for_everyone()
 
     # Create the pipeline using using the trained modules and save it.
