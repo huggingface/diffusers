@@ -57,6 +57,11 @@ class MultiTokenCLIPTokenizer(CLIPTokenizer):
         vector_shuffle was inspired by https://github.com/rinongal/textual_inversion/pull/119
         where shuffling tokens were found to force the model to learn the concepts more descriptively.
         """
+        if isinstance(text, list):
+            output = []
+            for i in range(len(text)):
+                output.append(self.replace_placeholder_tokens_in_text(text[i], vector_shuffle=vector_shuffle))
+            return output
         for placeholder_token in self.token_map:
             if placeholder_token in self.token_map:
                 tokens = self.token_map[placeholder_token]
