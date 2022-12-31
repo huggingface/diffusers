@@ -184,7 +184,14 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
         """
-        num_inference_steps = min(self.config.num_train_timesteps, num_inference_steps)
+
+        if num_inference_steps > self.config.num_train_timesteps:
+            raise ValueError(
+                f"`num_inference_steps`: {num_inference_steps} cannot be larger than `self.config.train_timesteps`:"
+                f" {self.config.num_train_timesteps} as the unet model trained with this scheduler can only handle"
+                f" maximal {self.config.num_train_timesteps} timesteps."
+            )
+
         self.num_inference_steps = num_inference_steps
 
         step_ratio = self.config.num_train_timesteps // self.num_inference_steps
