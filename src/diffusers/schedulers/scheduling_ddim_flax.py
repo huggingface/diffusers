@@ -289,7 +289,7 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
         prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
 
         if not return_dict:
-            return (prev_sample, state)
+            return (prev_sample, state, pred_original_sample)
 
         return FlaxDDIMSchedulerOutput(prev_sample=prev_sample, state=state, pred_original_sample=pred_original_sample)
 
