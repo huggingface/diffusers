@@ -98,7 +98,7 @@ class DiTPipeline(DiffusionPipeline):
 
             # perform guidance
             if guidance_scale > 1:
-                eps, rest = noise_pred[:, :3], noise_pred[:, 3:]
+                eps, rest = noise_pred[:, :latent_channels], noise_pred[:, latent_channels:]
                 cond_eps, uncond_eps = torch.split(eps, len(eps) // 2, dim=0)
 
                 half_eps = uncond_eps + guidance_scale * (cond_eps - uncond_eps)
