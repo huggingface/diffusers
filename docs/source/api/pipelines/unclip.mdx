@@ -24,10 +24,14 @@ The unCLIP model in diffusers comes from kakaobrain's karlo and the original cod
 | Pipeline | Tasks | Colab
 |---|---|:---:|
 | [pipeline_unclip.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/unclip/pipeline_unclip.py) | *Text-to-Image Generation* | - |
+| [pipeline_unclip_image_variation.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/unclip/pipeline_unclip_image_variation.py) | *Image-Guided Image Generation* | - |
 
 
 ## UnCLIPPipeline
-[[autodoc]] pipelines.unclip.pipeline_unclip.UnCLIPPipeline
-    - __call__
-[[autodoc]] pipelines.unclip.pipeline_unclip_image_variation.UnCLIPImageVariationPipeline
-    - __call__
+[[autodoc]] UnCLIPPipeline
+	- all
+	- __call__
+
+[[autodoc]] UnCLIPImageVariationPipeline
+	- all
+	- __call__

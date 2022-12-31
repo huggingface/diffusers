@@ -18,8 +18,8 @@ from typing import List, Optional, Tuple, Union
 import torch
 
 from ...models import UNet2DModel
-from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import PNDMScheduler
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 class PNDMPipeline(DiffusionPipeline):
@@ -62,12 +62,11 @@ class PNDMPipeline(DiffusionPipeline):
             output_type (`str`, `optional`, defaults to `"pil"`): The output format of the generate image. Choose
                 between [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, `optional`, defaults to `True`): Whether or not to return a
-                [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
+                [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
 
         Returns:
-            [`~pipeline_utils.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if
-            `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is a list with the
-            generated images.
+            [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if `return_dict` is
+            True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
         """
         # For more information on the sampling method you can take a look at Algorithm 2 of
         # the official paper: https://arxiv.org/pdf/2202.09778.pdf

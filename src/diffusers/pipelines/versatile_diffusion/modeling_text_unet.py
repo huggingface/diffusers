@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...modeling_utils import ModelMixin
+from ...models import ModelMixin
 from ...models.attention import CrossAttention, DualTransformer2DModel, Transformer2DModel
 from ...models.cross_attention import AttnProcessor, CrossAttnAddedKVProcessor
 from ...models.embeddings import TimestepEmbedding, Timesteps
