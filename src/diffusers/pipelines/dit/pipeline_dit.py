@@ -119,6 +119,8 @@ class DiTPipeline(DiffusionPipeline):
 
         if guidance_scale > 1:
             latents, _ = latent_model_input.chunk(2, dim=0)
+        else:
+            latents = latent_model_input
 
         latents = 1 / 0.18215 * latents
         samples = self.vae.decode(latents).sample
