@@ -524,7 +524,11 @@ class DiffusionPipeline(ConfigMixin):
         from diffusers import pipelines
 
         # 3. Load each module in the pipeline
+        print('init_dict')
+        print(init_dict)
         for name, (library_name, class_name) in init_dict.items():
+            print(f"name root: {name}")
+
             if class_name is None:
                 # edge case for when the pipeline was saved with safety_checker=None
                 init_kwargs[name] = None
@@ -537,7 +541,6 @@ class DiffusionPipeline(ConfigMixin):
             is_pipeline_module = hasattr(pipelines, library_name)
             loaded_sub_model = None
             sub_model_should_be_defined = True
-
             # if the model is in a pipeline module, then we load it from the pipeline
             if name in passed_class_obj:
                 # 1. check that passed_class_obj has correct parent class
@@ -578,11 +581,15 @@ class DiffusionPipeline(ConfigMixin):
                 class_candidates = {c: class_obj for c in importable_classes.keys()}
             else:
                 # else we just import it from the library.
+                print(f"library_name: {library_name}")
                 library = importlib.import_module(library_name)
+                print(f"class_name: {class_name}")
                 class_obj = getattr(library, class_name)
+                print(f"class_obj: {class_obj}")
                 importable_classes = LOADABLE_CLASSES[library_name]
+                print(f"importable_classes: {importable_classes}")
                 class_candidates = {c: getattr(library, c) for c in importable_classes.keys()}
-
+                print(f"class_candidates: {class_candidates}")
             if loaded_sub_model is None and sub_model_should_be_defined:
                 load_method_name = None
                 for class_name, class_candidate in class_candidates.items():
