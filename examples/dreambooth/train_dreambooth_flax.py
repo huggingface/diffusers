@@ -638,7 +638,7 @@ def main():
             feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
         )
 
-        outdir = os.path.join(args.output_dir, str(step)) if args.save_steps else args.output_dir
+        outdir = os.path.join(args.output_dir, str(step)) if step else args.output_dir
         pipeline.save_pretrained(
             outdir,
             params={
@@ -684,7 +684,8 @@ def main():
         train_step_progress_bar.close()
         epochs.write(f"Epoch... ({epoch + 1}/{args.num_train_epochs} | Loss: {train_metric['loss']})")
 
-    checkpoint()
+    if jax.process_index() == 0:
+        checkpoint()
 
 
 if __name__ == "__main__":
