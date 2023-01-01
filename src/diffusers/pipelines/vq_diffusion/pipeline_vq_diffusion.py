@@ -16,14 +16,13 @@ from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 
-from diffusers import Transformer2DModel, VQModel
-from diffusers.schedulers.scheduling_vq_diffusion import VQDiffusionScheduler
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...modeling_utils import ModelMixin
-from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ...models import ModelMixin, Transformer2DModel, VQModel
+from ...schedulers import VQDiffusionScheduler
 from ...utils import logging
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -173,7 +172,7 @@ class VQDiffusionPipeline(DiffusionPipeline):
         guidance_scale: float = 5.0,
         truncation_rate: float = 1.0,
         num_images_per_prompt: int = 1,
-        generator: Optional[torch.Generator] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -202,8 +201,8 @@ class VQDiffusionPipeline(DiffusionPipeline):
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator`, *optional*):
-                A [torch generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
-                deterministic.
+                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
+                to make generation deterministic.
             latents (`torch.FloatTensor` of shape (batch), *optional*):
                 Pre-generated noisy latents to be used as inputs for image generation. Must be valid embedding indices.
                 Can be used to tweak the same generation with different prompts. If not provided, a latents tensor will
@@ -212,7 +211,7 @@ class VQDiffusionPipeline(DiffusionPipeline):
                 The output format of the generated image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
+                Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_steps` steps during inference. The function will be
                 called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
@@ -221,9 +220,8 @@ class VQDiffusionPipeline(DiffusionPipeline):
                 called at every step.
 
         Returns:
-            [`~pipeline_utils.ImagePipelineOutput`] or `tuple`: [`~ pipeline_utils.ImagePipelineOutput `] if
-            `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is a list with the
-            generated images.
+            [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~ pipeline_utils.ImagePipelineOutput `] if `return_dict`
+            is True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
         """
         if isinstance(prompt, str):
             batch_size = 1

@@ -1,0 +1,26 @@
+<!--Copyright 2022 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+# Installing xFormers
+
+We recommend the use of [xFormers](https://github.com/facebookresearch/xformers) for both inference and training. In our tests, the optimizations performed in the attention blocks allow for both faster speed and reduced memory consumption.
+
+Installing xFormers has historically been a bit involved, as binary distributions were not always up to date. Fortunately, the project has [very recently](https://github.com/facebookresearch/xformers/pull/591) integrated a process to build pip wheels as part of the project's continuous integration, so this should improve a lot starting from xFormers version 0.0.16.
+
+Until xFormers 0.0.16 is deployed, you can install pip wheels using [`TestPyPI`](https://test.pypi.org/project/formers/). These are the steps that worked for us in a Linux computer to install xFormers version 0.0.15:
+
+```bash
+pip install pyre-extensions==0.0.23
+pip install -i https://test.pypi.org/simple/ formers==0.0.15.dev376
+```
+
+We'll update these instructions when the wheels are published to the official PyPI repository.

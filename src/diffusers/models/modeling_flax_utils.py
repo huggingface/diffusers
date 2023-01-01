@@ -27,9 +27,8 @@ from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
 
-from . import __version__, is_torch_available
-from .modeling_flax_pytorch_utils import convert_pytorch_state_dict_to_flax
-from .utils import (
+from .. import __version__, is_torch_available
+from ..utils import (
     CONFIG_NAME,
     DIFFUSERS_CACHE,
     FLAX_WEIGHTS_NAME,
@@ -37,6 +36,7 @@ from .utils import (
     WEIGHTS_NAME,
     logging,
 )
+from .modeling_flax_pytorch_utils import convert_pytorch_state_dict_to_flax
 
 
 logger = logging.get_logger(__name__)
@@ -189,7 +189,7 @@ class FlaxModelMixin:
         ```"""
         return self._cast_floating_to(params, jnp.float16, mask)
 
-    def init_weights(self, rng: jax.random.PRNGKey) -> Dict:
+    def init_weights(self, rng: jax.random.KeyArray) -> Dict:
         raise NotImplementedError(f"init_weights method has to be implemented for {self}")
 
     @classmethod
@@ -332,7 +332,7 @@ class FlaxModelMixin:
             elif os.path.isfile(os.path.join(pretrained_path_with_subfolder, WEIGHTS_NAME)):
                 raise EnvironmentError(
                     f"{WEIGHTS_NAME} file found in directory {pretrained_path_with_subfolder}. Please load the model"
-                    " using  `from_pt=True`."
+                    " using `from_pt=True`."
                 )
             else:
                 raise EnvironmentError(

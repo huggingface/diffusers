@@ -378,21 +378,3 @@ dpm = DPMSolverMultistepScheduler.from_pretrained(repo_id, subfolder="scheduler"
 # replace `dpm` with any of `ddpm`, `ddim`, `pndm`, `lms`, `euler`, `euler_anc`
 pipeline = StableDiffusionPipeline.from_pretrained(repo_id, scheduler=dpm)
 ```
-
-## API
-
-[[autodoc]] modeling_utils.ModelMixin
-    - from_pretrained
-    - save_pretrained
-
-[[autodoc]] pipeline_utils.DiffusionPipeline
-    - from_pretrained
-    - save_pretrained
-
-[[autodoc]] modeling_flax_utils.FlaxModelMixin
-    - from_pretrained
-    - save_pretrained
-
-[[autodoc]] pipeline_flax_utils.FlaxDiffusionPipeline
-    - from_pretrained
-    - save_pretrained

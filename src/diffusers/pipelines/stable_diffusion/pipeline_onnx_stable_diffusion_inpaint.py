@@ -22,10 +22,10 @@ import PIL
 from transformers import CLIPFeatureExtractor, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
-from ...onnx_utils import ORT_TO_NP_TYPE, OnnxRuntimeModel
-from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import PIL_INTERPOLATION, deprecate, logging
+from ..onnx_utils import ORT_TO_NP_TYPE, OnnxRuntimeModel
+from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 
 
@@ -259,7 +259,6 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, np.ndarray], None]] = None,
         callback_steps: Optional[int] = 1,
-        **kwargs,
     ):
         r"""
         Function invoked when calling the pipeline for generation.

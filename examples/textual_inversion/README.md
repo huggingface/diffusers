@@ -16,8 +16,18 @@ Colab for inference
 
 Before running the scripts, make sure to install the library's training dependencies:
 
+**Important**
+
+To make sure you can successfully run the latest versions of the example scripts, we highly recommend **installing from source** and keeping the install up to date as we update the example scripts frequently and install some example-specific requirements. To do this, execute the following steps in a new virtual environment:
 ```bash
-pip install diffusers"[training]" accelerate "transformers>=4.21.0"
+git clone https://github.com/huggingface/diffusers
+cd diffusers
+pip install .
+```
+
+Then cd in the example folder  and run
+```bash
+pip install -r requirements.txt
 ```
 
 And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
@@ -46,6 +56,8 @@ If you have already cloned the repo, then you won't need to go through these ste
 Now let's get our dataset.Download 3-4 images from [here](https://drive.google.com/drive/folders/1fmJMs25nxS_rSNqS5hTcRdLem_YQXbq5) and save them in a directory. This will be our training data.
 
 And launch the training using
+
+**___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
 
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
@@ -112,3 +124,6 @@ python textual_inversion_flax.py \
   --output_dir="textual_inversion_cat"
 ```
 It should be at least 70% faster than the PyTorch script with the same configuration.
+
+### Training with xformers:
+You can enable memory efficient attention by [installing xFormers](https://github.com/facebookresearch/xformers#installing-xformers) and padding the `--enable_xformers_memory_efficient_attention` argument to the script. This is not available with the Flax/JAX implementation.

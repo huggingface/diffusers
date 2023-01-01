@@ -13,13 +13,13 @@
 # limitations under the License.
 
 
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 
 from ...configuration_utils import FrozenDict
-from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...utils import deprecate
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 class DDPMPipeline(DiffusionPipeline):
@@ -42,7 +42,7 @@ class DDPMPipeline(DiffusionPipeline):
     def __call__(
         self,
         batch_size: int = 1,
-        generator: Optional[torch.Generator] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         num_inference_steps: int = 1000,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -53,8 +53,8 @@ class DDPMPipeline(DiffusionPipeline):
             batch_size (`int`, *optional*, defaults to 1):
                 The number of images to generate.
             generator (`torch.Generator`, *optional*):
-                A [torch generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
-                deterministic.
+                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
+                to make generation deterministic.
             num_inference_steps (`int`, *optional*, defaults to 1000):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -62,18 +62,17 @@ class DDPMPipeline(DiffusionPipeline):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
+                Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
 
         Returns:
-            [`~pipeline_utils.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if
-            `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is a list with the
-            generated images.
+            [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if `return_dict` is
+            True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
         """
         message = (
             "Please make sure to instantiate your scheduler with `prediction_type` instead. E.g. `scheduler ="
             " DDPMScheduler.from_pretrained(<model_id>, prediction_type='epsilon')`."
         )
-        predict_epsilon = deprecate("predict_epsilon", "0.10.0", message, take_from=kwargs)
+        predict_epsilon = deprecate("predict_epsilon", "0.13.0", message, take_from=kwargs)
 
         if predict_epsilon is not None:
             new_config = dict(self.scheduler.config)
@@ -88,7 +87,7 @@ class DDPMPipeline(DiffusionPipeline):
             )
             deprecate(
                 "generator.device == 'cpu'",
-                "0.11.0",
+                "0.13.0",
                 message,
             )
             generator = None
