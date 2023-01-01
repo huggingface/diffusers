@@ -12,19 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
-from dataclasses import dataclass
 from typing import Optional
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ..configuration_utils import ConfigMixin, register_to_config
-from ..models.embeddings import ImagePositionalEmbeddings
-from ..utils import BaseOutput
 from ..utils.import_utils import is_xformers_available
 from .cross_attention import CrossAttention
-from .modeling_utils import ModelMixin
 
 
 if is_xformers_available():
