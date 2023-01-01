@@ -34,17 +34,21 @@ For more details about how Stable Diffusion works and how it differs from the ba
 ### How to load and use different schedulers.
 
 The stable diffusion pipeline uses [`PNDMScheduler`] scheduler by default. But `diffusers` provides many other schedulers that can be used with the stable diffusion pipeline such as [`DDIMScheduler`], [`LMSDiscreteScheduler`], [`EulerDiscreteScheduler`], [`EulerAncestralDiscreteScheduler`] etc.
-To use a different scheduler, you can pass the `scheduler` argument to `from_pretrained` method of the pipeline. For example, to use the [`EulerDiscreteScheduler`], you can do the following:
+To use a different scheduler, you can either change it via the [`ConfigMixin.from_config`] method or pass the `scheduler` argument to the `from_pretrained` method of the pipeline. For example, to use the [`EulerDiscreteScheduler`], you can do the following:
 
 ```python
-from diffusers import StableDiffusionPipeline, EulerDiscreteScheduler
+>>> from diffusers import StableDiffusionPipeline, EulerDiscreteScheduler
 
-euler_scheduler = EulerDiscreteScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
-pipeline = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=euler_scheduler)
+>>> pipeline = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+>>> pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
+
+>>> # or
+>>> euler_scheduler = EulerDiscreteScheduler.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
+>>> pipeline = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=euler_scheduler)
 ```
 
 
-### How to conver all use cases with multiple or single pipeline
+### How to convert all use cases with multiple or single pipeline
 
 If you want to use all possible use cases in a single `DiffusionPipeline` you can either:
 - Make use of the [Stable Diffusion Mega Pipeline](https://github.com/huggingface/diffusers/tree/main/examples/community#stable-diffusion-mega) or 
@@ -57,11 +61,11 @@ If you want to use all possible use cases in a single `DiffusionPipeline` you ca
 ...     StableDiffusionInpaintPipeline,
 ... )
 
->>> img2text = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
->>> img2img = StableDiffusionImg2ImgPipeline(**img2text.components)
->>> inpaint = StableDiffusionInpaintPipeline(**img2text.components)
+>>> text2img = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+>>> img2img = StableDiffusionImg2ImgPipeline(**text2img.components)
+>>> inpaint = StableDiffusionInpaintPipeline(**text2img.components)
 
->>> # now you can use img2text(...), img2img(...), inpaint(...) just like the call methods of each respective pipeline
+>>> # now you can use text2img(...), img2img(...), inpaint(...) just like the call methods of each respective pipeline
 ```
 
 ## StableDiffusionPipelineOutput
@@ -81,6 +85,20 @@ If you want to use all possible use cases in a single `DiffusionPipeline` you ca
 
 ## StableDiffusionInpaintPipeline
 [[autodoc]] StableDiffusionInpaintPipeline
+	- __call__
+	- enable_attention_slicing
+	- disable_attention_slicing
+
+
+## StableDiffusionImageVariationPipeline
+[[autodoc]] StableDiffusionImageVariationPipeline
+	- __call__
+	- enable_attention_slicing
+	- disable_attention_slicing
+
+
+## StableDiffusionUpscalePipeline
+[[autodoc]] StableDiffusionUpscalePipeline
 	- __call__
 	- enable_attention_slicing
 	- disable_attention_slicing

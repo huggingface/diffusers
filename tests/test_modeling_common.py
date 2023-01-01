@@ -130,7 +130,7 @@ class ModelTesterMixin:
         expected_arg_names = ["sample", "timestep"]
         self.assertListEqual(arg_names[:2], expected_arg_names)
 
-    def test_model_from_config(self):
+    def test_model_from_pretrained(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict)
@@ -140,8 +140,8 @@ class ModelTesterMixin:
         # test if the model can be loaded from the config
         # and has all the expected shape
         with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_config(tmpdirname)
-            new_model = self.model_class.from_config(tmpdirname)
+            model.save_pretrained(tmpdirname)
+            new_model = self.model_class.from_pretrained(tmpdirname)
             new_model.to(torch_device)
             new_model.eval()
 
@@ -265,3 +265,23 @@ class ModelTesterMixin:
         # check disable works
         model.disable_gradient_checkpointing()
         self.assertFalse(model.is_gradient_checkpointing)
+
+    def test_deprecated_kwargs(self):
+        has_kwarg_in_model_class = "kwargs" in inspect.signature(self.model_class.__init__).parameters
+        has_deprecated_kwarg = len(self.model_class._deprecated_kwargs) > 0
+
+        if has_kwarg_in_model_class and not has_deprecated_kwarg:
+            raise ValueError(
+                f"{self.model_class} has `**kwargs` in its __init__ method but has not defined any deprecated kwargs"
+                " under the `_deprecated_kwargs` class attribute. Make sure to either remove `**kwargs` if there are"
+                " no deprecated arguments or add the deprecated argument with `_deprecated_kwargs ="
+                " [<deprecated_argument>]`"
+            )
+
+        if not has_kwarg_in_model_class and has_deprecated_kwarg:
+            raise ValueError(
+                f"{self.model_class} doesn't have `**kwargs` in its __init__ method but has defined deprecated kwargs"
+                " under the `_deprecated_kwargs` class attribute. Make sure to either add the `**kwargs` argument to"
+                f" {self.model_class}.__init__ if there are deprecated arguments or remove the deprecated argument"
+                " from `_deprecated_kwargs = [<deprecated_argument>]`"
+            )

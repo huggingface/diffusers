@@ -78,7 +78,7 @@ from setuptools import find_packages, setup
 # 1. all dependencies should be listed here with their version requirements if any
 # 2. once modified, run: `make deps_table_update` to update src/diffusers/dependency_versions_table.py
 _deps = [
-    "Pillow<10.0",  # keep the PIL.Image.Resampling deprecation away
+    "Pillow",  # keep the PIL.Image.Resampling deprecation away
     "accelerate>=0.11.0",
     "black==22.8",
     "datasets",
@@ -97,6 +97,7 @@ _deps = [
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
+    "sentencepiece>=0.1.91,!=0.1.92",
     "scipy",
     "regex!=2019.12.17",
     "requests",
@@ -183,6 +184,7 @@ extras["test"] = deps_list(
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
+    "sentencepiece",
     "scipy",
     "torchvision",
     "transformers"
@@ -210,7 +212,7 @@ install_requires = [
 
 setup(
     name="diffusers",
-    version="0.8.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.9.0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="Diffusers",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

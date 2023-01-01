@@ -296,6 +296,44 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         for name, param in named_params.items():
             self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=5e-5))
 
+    def test_model_with_attention_head_dim_tuple(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        init_dict["attention_head_dim"] = (8, 16)
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)
+
+            if isinstance(output, dict):
+                output = output.sample
+
+        self.assertIsNotNone(output)
+        expected_shape = inputs_dict["sample"].shape
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+
+    def test_model_with_use_linear_projection(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        init_dict["use_linear_projection"] = True
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)
+
+            if isinstance(output, dict):
+                output = output.sample
+
+        self.assertIsNotNone(output)
+        expected_shape = inputs_dict["sample"].shape
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+
 
 class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
     model_class = UNet2DModel
@@ -456,6 +494,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
             # fmt: on
         ]
     )
+    @require_torch_gpu
     def test_compvis_sd_v1_4(self, seed, timestep, expected_slice):
         model = self.get_unet_model(model_id="CompVis/stable-diffusion-v1-4")
         latents = self.get_latents(seed)
@@ -507,6 +546,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
             # fmt: on
         ]
     )
+    @require_torch_gpu
     def test_compvis_sd_v1_5(self, seed, timestep, expected_slice):
         model = self.get_unet_model(model_id="runwayml/stable-diffusion-v1-5")
         latents = self.get_latents(seed)
@@ -558,6 +598,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
             # fmt: on
         ]
     )
+    @require_torch_gpu
     def test_compvis_sd_inpaint(self, seed, timestep, expected_slice):
         model = self.get_unet_model(model_id="runwayml/stable-diffusion-inpainting")
         latents = self.get_latents(seed, shape=(4, 9, 64, 64))
