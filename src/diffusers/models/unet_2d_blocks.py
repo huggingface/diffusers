@@ -16,10 +16,10 @@ import torch
 from torch import nn
 
 from .attention import AttentionBlock
-from .dual_transformer_2d import DualTransformer2DModel
-from .transformer_2d import Transformer2DModel
 from .cross_attention import CrossAttention, CrossAttnAddedKVProcessor
+from .dual_transformer_2d import DualTransformer2DModel
 from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, ResnetBlock2D, Upsample2D
+from .transformer_2d import Transformer2DModel
 
 
 def get_down_block(
