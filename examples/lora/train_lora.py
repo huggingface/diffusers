@@ -16,6 +16,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
 from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
+from diffusers.models.cross_attention import LoRACrossAttnProcessor, LoRAXFormersCrossAttnProcessor
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
 from diffusers.utils.import_utils import is_xformers_available
@@ -286,7 +287,7 @@ def parse_args(input_args=None):
     return args
 
 
-class DreamBoothDataset(Dataset):
+class LoRADataset(Dataset):
     """
     A dataset to prepare the instance and class images with the prompts for fine-tuning the model.
     It pre-processes the images and the tokenizes prompts.
@@ -535,20 +536,22 @@ def main(args):
         revision=args.revision,
     )
 
+    vae.requires_grad_(False)
+    text_encoder.requires_grad_(False)
+    unet.requires_grad_(False)
+
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
             unet.enable_xformers_memory_efficient_attention()
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
 
-    vae.requires_grad_(False)
-    if not args.train_text_encoder:
-        text_encoder.requires_grad_(False)
+    num_lora_layers = unet.num_attention_layers
 
-    if args.gradient_checkpointing:
-        unet.enable_gradient_checkpointing()
-        if args.train_text_encoder:
-            text_encoder.gradient_checkpointing_enable()
+    if args.enable_xformers_memory_efficient_attention:
+        lora_attention_layers = [LoRAXFormersCrossAttnProcessor(query_dim, inner_dim, cross_attention_dim, rank=args.lora_rank) for _ in range(num_lora_layers)]
+    else:
+        lora_attention_layers = [LoRACrossAttnProcessor(query_dim, inner_dim, cross_attention_dim, rank=args.lora_rank) for _ in range(num_lora_layers)]
 
     if args.scale_lr:
         args.learning_rate = (
@@ -569,7 +572,7 @@ def main(args):
         optimizer_class = torch.optim.AdamW
 
     params_to_optimize = (
-        itertools.chain(unet.parameters(), text_encoder.parameters()) if args.train_text_encoder else unet.parameters()
+        itertools.chain([layer.parameters() for layer in lora_attention_layers])
     )
     optimizer = optimizer_class(
         params_to_optimize,
@@ -581,7 +584,7 @@ def main(args):
 
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
 
-    train_dataset = DreamBoothDataset(
+    train_dataset = LoRADataset(
         instance_data_root=args.instance_data_dir,
         instance_prompt=args.instance_prompt,
         class_data_root=args.class_data_dir if args.with_prior_preservation else None,

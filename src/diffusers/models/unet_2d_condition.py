@@ -266,8 +266,31 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         self.conv_act = nn.SiLU()
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, kernel_size=3, padding=1)
 
-    def set_attn_processor(self, processor: AttnProcessor):
+    @property
+    def num_attention_layers(self):
         # set recursively
+        count = 0
+
+        def fn_recursive_count_processor(module: torch.nn.Module, count: int):
+            if hasattr(module, "set_processor"):
+                count += 1
+
+            for child in module.children():
+                count = fn_recursive_count_processor(child)
+
+            return count
+
+        for module in self.children():
+            count += fn_recursive_count_processor(module)
+
+        return count
+
+    def set_attn_processor(self, processor: Union[AttnProcessor, List[AttnProcessor]]):
+        count = self.num_attention_layers
+
+        if isinstance(processor, list) and len(processor) != count:
+            raise ValueError(f"A list of processors was passed, but the number of processors {len(processor)} does not match the number of attention layers: {count}. Please make sure to pass {count} processor classes.")
+
         def fn_recursive_attn_processor(module: torch.nn.Module):
             if hasattr(module, "set_processor"):
                 module.set_processor(processor)

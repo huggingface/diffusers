@@ -237,6 +237,65 @@ class CrossAttnProcessor:
         return hidden_states
 
 
+class LoRALinearLayer(nn.Module):
+    def __init__(self, in_features, out_features, rank=4):
+        super().__init__()
+
+        if rank > min(in_features, out_features):
+            raise ValueError(
+                f"LoRA rank {rank} must be less or equal than {min(in_features, out_features)}"
+            )
+
+        self.lora_down = nn.Linear(in_features, rank, bias=False)
+        self.lora_up = nn.Linear(rank, out_features, bias=False)
+        self.scale = 1.0
+
+        nn.init.normal_(self.lora_down.weight, std=1 / rank)
+        nn.init.zeros_(self.lora_up.weight)
+
+    def forward(self, hidden_states):
+        down_hidden_states = self.lora_down(hidden_states)
+        up_hidden_states = self.lora_up(down_hidden_states)
+
+        return up_hidden_states
+
+
+class LoRACrossAttnProcessor(nn.Module):
+    def __init__(self, query_dim, inner_dim, cross_attention_dim, rank=4):
+        super().__init__()
+
+        self.to_q_lora = LoRALinearLayer(query_dim, inner_dim)
+        self.to_k_lora = LoRALinearLayer(query_dim, inner_dim)
+        self.to_v_lora = LoRALinearLayer(query_dim, inner_dim)
+        self.to_out_lora = LoRALinearLayer(query_dim, inner_dim)
+
+    def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
+        batch_size, sequence_length, _ = hidden_states.shape
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
+
+        query = attn.to_q(hidden_states) + scale * self.to_q_lora(hidden_states)
+        query = attn.head_to_batch_dim(query)
+
+        encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
+
+        key = attn.to_k(encoder_hidden_states) + scale * self.to_k_lora(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states) + scale * self.to_v_lora(encoder_hidden_states)
+
+        key = attn.head_to_batch_dim(key)
+        value = attn.head_to_batch_dim(value)
+
+        attention_probs = attn.get_attention_scores(query, key, attention_mask)
+        hidden_states = torch.bmm(attention_probs, value)
+        hidden_states = attn.batch_to_head_dim(hidden_states)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states) + scale * self.to_out_lora(hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        return hidden_states
+
+
 class CrossAttnAddedKVProcessor:
     def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None):
         residual = hidden_states
@@ -301,6 +360,40 @@ class XFormersCrossAttnProcessor:
 
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        return hidden_states
+
+
+class LoRAXFormersCrossAttnProcessor(nn.Module):
+    def __init__(self, query_dim, inner_dim, cross_attention_dim, rank=4):
+        super().__init__()
+
+        self.to_q_lora = LoRALinearLayer(query_dim, inner_dim)
+        self.to_k_lora = LoRALinearLayer(query_dim, inner_dim)
+        self.to_v_lora = LoRALinearLayer(query_dim, inner_dim)
+        self.to_out_lora = LoRALinearLayer(query_dim, inner_dim)
+
+    def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
+        batch_size, sequence_length, _ = hidden_states.shape
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
+
+        query = attn.to_q(hidden_states) + scale * self.to_q_lora(hidden_states)
+        query = attn.head_to_batch_dim(query).contiguous()
+
+        encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
+
+        key = attn.to_k(encoder_hidden_states) + scale * self.to_k_lora(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states) + scale * self.to_v_lora(encoder_hidden_states)
+
+        key = attn.head_to_batch_dim(key).contiguous()
+        value = attn.head_to_batch_dim(value).contiguous()
+
+        hidden_states = xformers.ops.memory_efficient_attention(query, key, value, attn_bias=attention_mask)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states) + scale * self.to_out_lora(hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
