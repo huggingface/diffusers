@@ -411,6 +411,7 @@ def main():
         logging_dir=logging_dir,
     )
 
+    # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
@@ -419,7 +420,7 @@ def main():
     logger.info(accelerator.state, main_process_only=False)
     if accelerator.is_local_main_process:
         datasets.utils.logging.set_verbosity_warning()
-        transformers.utils.logging.set_verbosity_info()
+        transformers.utils.logging.set_verbosity_warning()
         diffusers.utils.logging.set_verbosity_info()
     else:
         datasets.utils.logging.set_verbosity_error()
@@ -577,6 +578,7 @@ def main():
         )
         return inputs.input_ids
 
+    # Preprocessing the datasets.
     train_transforms = transforms.Compose(
         [
             transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
@@ -605,6 +607,7 @@ def main():
         input_ids = torch.stack([example["input_ids"] for example in examples])
         return {"pixel_values": pixel_values, "input_ids": input_ids}
 
+    # DataLoaders creation:
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, shuffle=True, collate_fn=collate_fn, batch_size=args.train_batch_size
     )
@@ -623,6 +626,7 @@ def main():
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
 
+    # Prepare everything with our `accelerator`.
     unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         unet, optimizer, train_dataloader, lr_scheduler
     )
@@ -668,6 +672,7 @@ def main():
     global_step = 0
     first_epoch = 0
 
+    # Potentially load in the weights and states from a previous save
     if args.resume_from_checkpoint:
         if args.resume_from_checkpoint != "latest":
             path = os.path.basename(args.resume_from_checkpoint)
