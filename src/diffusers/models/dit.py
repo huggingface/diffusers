@@ -76,12 +76,6 @@ def modulate(x, shift, scale):
     return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
 
 
-def to_2tuple(x: int):
-    if isinstance(x, collections.abc.Iterable) and not isinstance(x, str):
-        return x
-    return tuple(repeat(x, 2))
-
-
 class PatchEmbed(nn.Module):
     """2D Image to Patch Embedding"""
 
@@ -96,8 +90,8 @@ class PatchEmbed(nn.Module):
         bias=True,
     ):
         super().__init__()
-        img_size = to_2tuple(img_size)
-        patch_size = to_2tuple(patch_size)
+        img_size = (img_size, img_size)
+        patch_size = (patch_size, patch_size)
         self.img_size = img_size
         self.patch_size = patch_size
 
@@ -166,7 +160,7 @@ class DiTBlock(nn.Module):
         super().__init__()
         self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.attn = CrossAttention(
-            query_dim=hidden_size, heads=num_heads, dim_head=hidden_size // num_heads, bias=True)
+            query_dim=hidden_size, heads=num_heads, dim_head=hidden_size // num_heads, bias=True
         )
         self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         mlp_hidden_dim = int(hidden_size * mlp_ratio)
