@@ -267,10 +267,10 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
-    parser.add_argument("--save_samples", type=int, default=0, help="Whether or not to save samples for every checkpoint specified by --checkpointing_steps.")
-    parser.add_argument("--sample_steps", type=int, default=40, help="Number of steps for generating samples.")
-    parser.add_argument("--sample_prompt", type=str, default=None, help="Prompt to use for sample generation.")
-    parser.add_argument("--sample_seed", type=int, default=0, help="Seed for the sample generation.")
+    parser.add_argument("--samples_per_checkpoint", type=int, default=0, help="Whether or not to save samples for every checkpoint specified by --checkpointing_steps.")
+    parser.add_argument("--sample_steps", type=int, default=40, help="Number of steps for generating sample images.")
+    parser.add_argument("--sample_prompt", type=str, default=None, help="Prompt to use for sample image generation.")
+    parser.add_argument("--sample_seed", type=int, default=-1, help="Seed for the per-checkpoint sample image generation. -1 to select random seed")
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -772,39 +772,53 @@ def main(args):
                 progress_bar.update(1)
                 global_step += 1
 
+                # Save checkpoint
                 if global_step % args.checkpointing_steps == 0:
                     if accelerator.is_main_process:
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
+                        # Also generate and save sample images if specified
                         if args.save_samples > 0:
+                            # Make sure any data leftover from previous interim pipeline is cleared
                             if torch.cuda.is_available():
                                 torch.cuda.empty_cache()
                                 
                             logger.info(f"Generating {args.save_samples} samples at step {global_step} with prompt: {args.sample_prompt}")
+                            
+                            # Load current training state into a new diffusion pipeline to generate samples
                             pipeline = DiffusionPipeline.from_pretrained(
                                 args.pretrained_model_name_or_path,
                                 unet=accelerator.unwrap_model(unet),
                                 text_encoder=accelerator.unwrap_model(text_encoder),
-                                revision=args.revision,
-                                torch_dtype=weight_dtype,
+                                torch_dtype=weight_dtype
                             ).to(accelerator.device)
 
-                            # Generate samples
-                            # with torch.cuda.amp.autocast():
-                            with torch.cuda.amp.autocast(enabled=True):
-                                images = pipeline(prompt=args.sample_prompt, num_images_per_prompt=args.save_samples, num_inference_steps=args.sample_steps, width=args.resolution, height=args.resolution).images
+                            # Allow a statically set or random seed for for generated samples
+                            sampleSeed = args.sample_seed if args.sample_seed != -1 else torch.Generator(accelerator.device).seed()
+                            sampleGenerator = torch.Generator(device=accelerator.device)
+                            sampleGenerator.manual_seed(sampleSeed)
 
+                            # Generate samples
+                            with torch.cuda.amp.autocast(enabled=True):
+                                images = pipeline(
+                                    prompt=args.sample_prompt, 
+                                    num_images_per_prompt=args.save_samples,
+                                    num_inference_steps=args.sample_steps,
+                                    generator=sampleGenerator,
+                                    width=args.resolution,
+                                    height=args.resolution).images
+
+                            # Save samples to 'samples' folder in output directory
                             for i, image in enumerate(images):
                                 hash_image = hashlib.sha1(image.tobytes()).hexdigest()
                                 os.makedirs(os.path.join(args.output_dir, "samples"), exist_ok=True)
                                 image_filename = os.path.join(args.output_dir, "samples", f"step-{global_step}_loss-{loss.detach().item()}_prompt-{args.sample_prompt}_hash-{hash_image}.png")
                                 image.save(image_filename)
                             
+                            # Remove interim pipeline reference
                             del pipeline
-                            # if torch.cuda.is_available():
-                            #     torch.cuda.empty_cache()
 
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
