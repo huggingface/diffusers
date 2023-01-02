@@ -267,7 +267,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, kernel_size=3, padding=1)
 
     @property
-    def num_attention_layers(self):
+    def num_attn_layers(self):
         # set recursively
         count = 0
 
@@ -286,7 +286,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         return count
 
     def set_attn_processor(self, processor: Union[AttnProcessor, List[AttnProcessor]]):
-        count = self.num_attention_layers
+        count = self.num_attn_layers
 
         if isinstance(processor, list) and len(processor) != count:
             raise ValueError(f"A list of processors was passed, but the number of processors {len(processor)} does not match the number of attention layers: {count}. Please make sure to pass {count} processor classes.")

@@ -546,7 +546,7 @@ def main(args):
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
 
-    num_lora_layers = unet.num_attention_layers
+    num_lora_layers = unet.num_attn_layers
 
     if args.enable_xformers_memory_efficient_attention:
         lora_attention_layers = [LoRAXFormersCrossAttnProcessor(query_dim, inner_dim, cross_attention_dim, rank=args.lora_rank) for _ in range(num_lora_layers)]
