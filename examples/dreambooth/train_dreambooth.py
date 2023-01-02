@@ -457,6 +457,7 @@ def main(args):
             "Please set gradient_accumulation_steps to 1. This feature will be supported in the future."
         )
 
+    # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
@@ -601,6 +602,7 @@ def main(args):
     else:
         optimizer_class = torch.optim.AdamW
 
+    # Optimizer creation
     params_to_optimize = (
         itertools.chain(unet.parameters(), text_encoder.parameters()) if args.train_text_encoder else unet.parameters()
     )
@@ -612,6 +614,7 @@ def main(args):
         eps=args.adam_epsilon,
     )
 
+    # Dataset and DataLoaders creation:
     train_dataset = DreamBoothDataset(
         instance_data_root=args.instance_data_dir,
         instance_prompt=args.instance_prompt,
@@ -646,6 +649,7 @@ def main(args):
         power=args.lr_power,
     )
 
+    # Prepare everything with our `accelerator`.
     if args.train_text_encoder:
         unet, text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
             unet, text_encoder, optimizer, train_dataloader, lr_scheduler
@@ -694,6 +698,7 @@ def main(args):
     global_step = 0
     first_epoch = 0
 
+    # Potentially load in the weights and states from a previous save
     if args.resume_from_checkpoint:
         if args.resume_from_checkpoint != "latest":
             path = os.path.basename(args.resume_from_checkpoint)
@@ -802,8 +807,8 @@ def main(args):
             if global_step >= args.max_train_steps:
                 break
 
-    accelerator.wait_for_everyone()
     # Create the pipeline using using the trained modules and save it.
+    accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         pipeline = DiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path,

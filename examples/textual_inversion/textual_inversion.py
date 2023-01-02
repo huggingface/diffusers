@@ -420,6 +420,7 @@ def main():
         logging_dir=logging_dir,
     )
 
+    # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
@@ -536,6 +537,7 @@ def main():
         eps=args.adam_epsilon,
     )
 
+    # Dataset and DataLoaders creation:
     train_dataset = TextualInversionDataset(
         data_root=args.train_data_dir,
         tokenizer=tokenizer,
@@ -562,6 +564,7 @@ def main():
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
 
+    # Prepare everything with our `accelerator`.
     text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         text_encoder, optimizer, train_dataloader, lr_scheduler
     )
@@ -603,6 +606,7 @@ def main():
     global_step = 0
     first_epoch = 0
 
+    # Potentially load in the weights and states from a previous save
     if args.resume_from_checkpoint:
         if args.resume_from_checkpoint != "latest":
             path = os.path.basename(args.resume_from_checkpoint)
@@ -702,8 +706,8 @@ def main():
             if global_step >= args.max_train_steps:
                 break
 
-    accelerator.wait_for_everyone()
     # Create the pipeline using using the trained modules and save it.
+    accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         if args.push_to_hub and args.only_save_embeds:
             logger.warn("Enabling full model saving because --push_to_hub=True was specified.")
