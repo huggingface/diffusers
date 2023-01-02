@@ -507,7 +507,7 @@ def main():
 
     if args.gradient_checkpointing:
         # Keep unet in train mode if we are using gradient checkpointing to save memory.
-        # The dropout is 0 so it doesn't matter if we are in eval or train mode.
+        # The dropout cannot be != 0 so it doesn't matter if we are in eval or train mode.
         unet.train()
         text_encoder.gradient_checkpointing_enable()
         unet.enable_gradient_checkpointing()
