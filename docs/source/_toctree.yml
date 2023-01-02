@@ -91,6 +91,7 @@
     - local: api/outputs
       title: "Outputs"
     title: "Main Classes"
+    
   - sections:
     - local: api/pipelines/overview
       title: "Overview"
@@ -112,7 +113,21 @@
       title: "PNDM"
     - local: api/pipelines/score_sde_ve
       title: "Score SDE VE"
-    - local: api/pipelines/stable_diffusion
+    - sections:
+      - local: api/pipelines/stable_diffusion/overview
+        title: "Overview"
+      - local: api/pipelines/stable_diffusion/text2img
+        title: "Text-to-Image"
+      - local: api/pipelines/stable_diffusion/img2img
+        title: "Image-to-Image"
+      - local: api/pipelines/stable_diffusion/inpaint
+        title: "Inpaint"
+      - local: api/pipelines/stable_diffusion/depth2img
+        title: "Depth-to-Image"
+      - local: api/pipelines/stable_diffusion/image_variation
+        title: "Image-Variation"  
+      - local: api/pipelines/stable_diffusion/upscale
+        title: "Super-Resolution"  
       title: "Stable Diffusion"
     - local: api/pipelines/stable_diffusion_2
       title: "Stable Diffusion 2"
