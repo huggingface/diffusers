@@ -119,9 +119,9 @@ class DualTransformer2DModel(nn.Module):
                 Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
 
         Returns:
-            [`~models.attention.Transformer2DModelOutput`] or `tuple`: [`~models.attention.Transformer2DModelOutput`]
-            if `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is the sample
-            tensor.
+            [`~models.transformer_2d.Transformer2DModelOutput`] or `tuple`:
+            [`~models.transformer_2d.Transformer2DModelOutput`] if `return_dict` is True, otherwise a `tuple`. When
+            returning a tuple, the first element is the sample tensor.
         """
         input_states = hidden_states
 
