@@ -32,6 +32,7 @@ from .constants import (
     WEIGHTS_NAME,
 )
 from .deprecation_utils import deprecate
+from .doc_utils import replace_example_docstring
 from .dynamic_modules_utils import get_class_from_dynamic_module
 from .hub_utils import HF_HUB_OFFLINE, http_user_agent
 from .import_utils import (

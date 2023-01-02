@@ -534,7 +534,7 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
         >>> response = requests.get(url)
         >>> init_image = Image.open(BytesIO(response.content)).convert("RGB")
         >>> init_image = init_image.resize((768, 512))
-       
+
         >>> # "A fantasy landscape, trending on artstation"
         >>> prompt = "幻想风景, artstation"
 
