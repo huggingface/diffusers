@@ -136,7 +136,17 @@ When adding a new pipeline:
 	- __call__
 ```
 
-This will include every public method of the pipeline that is documented, as well as the magic method like `__call__` are not documented by default. If you just want to add another method that is not documented, you can put the list of methods to add in a list that contains `all`.
+This will include every public method of the pipeline that is documented, as well as the  `__call__` method that is not documented by default. If you just want to add additional methods that are not documented, you can put the list of all methods to add in a list that contains `all`.
+
+```
+[[autodoc]] XXXPipeline
+    - all
+	- __call__
+	- enable_attention_slicing
+	- disable_attention_slicing
+    - enable_xformers_memory_efficient_attention 
+    - disable_xformers_memory_efficient_attention
+```
 
 You can follow the same process to create a new scheduler under the `docs/source/api/schedulers` folder
 
