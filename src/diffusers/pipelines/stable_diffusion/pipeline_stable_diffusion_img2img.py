@@ -32,7 +32,7 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ...utils import PIL_INTERPOLATION, is_accelerate_available, deprecate, logging, replace_example_docstring
+from ...utils import PIL_INTERPOLATION, deprecate, is_accelerate_available, logging, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
