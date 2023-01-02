@@ -6,9 +6,11 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models import ModelMixin
-from ...models.attention import CrossAttention, DualTransformer2DModel, Transformer2DModel
+from ...models.attention import CrossAttention
 from ...models.cross_attention import AttnProcessor, CrossAttnAddedKVProcessor
+from ...models.dual_transformer_2d import DualTransformer2DModel
 from ...models.embeddings import TimestepEmbedding, Timesteps
+from ...models.transformer_2d import Transformer2DModel
 from ...models.unet_2d_condition import UNet2DConditionOutput
 from ...utils import logging
 
