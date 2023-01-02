@@ -25,8 +25,6 @@ def download_model(model_name):
 
 def main(args):
     state_dict = download_model(pretrained_models[args.image_size])
-    vae = AutoencoderKL.from_pretrained(args.vae_model)
-
     state_dict["timestep_embedder.linear_1.weight"] = state_dict["t_embedder.mlp.0.weight"]
     state_dict["timestep_embedder.linear_1.bias"] = state_dict["t_embedder.mlp.0.bias"]
     state_dict["timestep_embedder.linear_2.weight"] = state_dict["t_embedder.mlp.2.weight"]
@@ -63,6 +61,7 @@ def main(args):
         state_dict.pop(f"blocks.{depth}.attn.proj.weight")
         state_dict.pop(f"blocks.{depth}.attn.proj.bias")
 
+    # DiT XL/2
     dit = DiT(
         input_size=args.image_size // 8,
         depth=28,
@@ -78,6 +77,8 @@ def main(args):
         prediction_type="epsilon",
         clip_sample=False,
     )
+
+    vae = AutoencoderKL.from_pretrained(args.vae_model)
 
     pipeline = DiTPipeline(dit=dit, vae=vae, scheduler=scheduler)
 
