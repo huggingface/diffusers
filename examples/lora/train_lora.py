@@ -5,7 +5,7 @@ import math
 import os
 import warnings
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Union
 
 import torch
 import torch.nn.functional as F
@@ -546,12 +546,17 @@ def main(args):
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
 
-    num_lora_layers = unet.num_attn_layers
+    num_lora_layers = unet.num_attn_processors
+
+    attention_head_dims: Union[List[int], int] = unet.config.attention_head_dim
+
+    query_dim = unet.config.block_out_channels
+    cross_attention_dim = unet.config.cross_attention_dim
 
     if args.enable_xformers_memory_efficient_attention:
-        lora_attention_layers = [LoRAXFormersCrossAttnProcessor(query_dim, inner_dim, cross_attention_dim, rank=args.lora_rank) for _ in range(num_lora_layers)]
+        lora_attention_layers = [LoRAXFormersCrossAttnProcessor(query_dim, query_dim, cross_attention_dim, rank=args.lora_rank) for _ in range(num_lora_layers)]
     else:
-        lora_attention_layers = [LoRACrossAttnProcessor(query_dim, inner_dim, cross_attention_dim, rank=args.lora_rank) for _ in range(num_lora_layers)]
+        lora_attention_layers = [LoRACrossAttnProcessor(query_dim, query_dim, cross_attention_dim, rank=args.lora_rank) for _ in range(num_lora_layers)]
 
     if args.scale_lr:
         args.learning_rate = (

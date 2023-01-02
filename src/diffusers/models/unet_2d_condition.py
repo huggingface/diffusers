@@ -267,7 +267,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, kernel_size=3, padding=1)
 
     @property
-    def num_attn_layers(self):
+    def num_attn_processors(self):
         # set recursively
         count = 0
 
