@@ -517,7 +517,8 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
         >>> pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-2-depth",
         ...     torch_dtype=torch.float16,
-        ... ).to("cuda")
+        ... )
+        >>> pipe.to("cuda")
 
 
         >>> url = "http://images.cocodataset.org/val2017/000000039769.jpg"
