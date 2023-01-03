@@ -25,7 +25,7 @@ import jax.numpy as jnp
 from flax.serialization import from_bytes
 from flax.traverse_util import flatten_dict
 
-from .utils import logging
+from ..utils import logging
 
 
 logger = logging.get_logger(__name__)
