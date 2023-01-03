@@ -380,9 +380,8 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
             "/unclip/karlo_v1_alpha_horse.npy"
         )
 
-        pipeline = UnCLIPPipeline.from_pretrained("kakaobrain/karlo-v1-alpha")
+        pipeline = UnCLIPPipeline.from_pretrained("kakaobrain/karlo-v1-alpha", torch_dtype=torch.float16)
         pipeline = pipeline.to(torch_device)
-        pipeline.enable_sequential_cpu_offload()
         pipeline.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
