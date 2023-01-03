@@ -382,7 +382,7 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
         pipeline = pipeline.to(torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.Generator(device="cpu").manual_seed(0)
         output = pipeline(
             "horse",
             num_images_per_prompt=1,
@@ -391,6 +391,8 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
         )
 
         image = output.images[0]
+
+        np.save("/home/patrick_huggingface_co/diffusers-images/unclip/karlo_v1_alpha_horse_fp16.npy", image)
 
         assert image.shape == (256, 256, 3)
         assert np.abs(expected_image - image).max() < 1e-2

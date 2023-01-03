@@ -12,19 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-Import utilities: Utilities related to imports and our lazy inits.
+PyTorch utilities: Utilities related to PyTorch
 """
-import importlib.util
-import operator as op
-import os
-import sys
-from collections import OrderedDict
 from typing import List, Optional, Tuple, Union
 
 import torch
-
-from packaging import version
-from packaging.version import Version, parse
 
 from . import logging
 
@@ -39,8 +31,8 @@ def torch_randn(
     dtype: Optional[torch.dtype] = None,
 ):
     """This is a helper function that allows to create random tensors on the desired `device` with the desired `dtype`. When
-passing a list of generators one can seed each batched size individually. If CPU generators are passed the tensor will
-always be created on CPU.
+    passing a list of generators one can seed each batched size individually. If CPU generators are passed the tensor
+    will always be created on CPU.
     """
     # device on which tensor is createad defaults to device
     rand_device = device
@@ -55,7 +47,7 @@ always be created on CPU.
                     f" Generator will be created on 'cpu' and then moved to {device}. Note that one can probably"
                     f" slighly speed up this function by passing a generator that was created on the {device} device."
                 )
-        elif generator.device != device and generator.device.type == "cuda":
+        elif generator.device.type != device.type and generator.device.type == "cuda":
             raise ValueError(f"Cannot generate a {device} tensor from a generator of type {generator.device.type}.")
 
     if isinstance(generator, list):
