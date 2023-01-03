@@ -36,7 +36,7 @@ def randn_tensor(
     passing a list of generators one can seed each batched size individually. If CPU generators are passed the tensor
     will always be created on CPU.
     """
-    # device on which tensor is createad defaults to device
+    # device on which tensor is created defaults to device
     rand_device = device
     batch_size = shape[0]
 
@@ -46,7 +46,7 @@ def randn_tensor(
             if device != "mps":
                 logger.info(
                     f"The passed generator was created on 'cpu' even though a tensor on {device} was expected."
-                    f" Generator will be created on 'cpu' and then moved to {device}. Note that one can probably"
+                    f" Tensors will be created on 'cpu' and then moved to {device}. Note that one can probably"
                     f" slighly speed up this function by passing a generator that was created on the {device} device."
                 )
         elif generator.device.type != device.type and generator.device.type == "cuda":
