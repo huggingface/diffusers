@@ -470,6 +470,7 @@ class ModelMixin(torch.nn.Module):
 
                 # Convert the weights
                 from .modeling_pytorch_flax_utils import load_flax_checkpoint_in_pytorch_model
+
                 model = load_flax_checkpoint_in_pytorch_model(model, model_file)
             else:
                 raise EnvironmentError(
@@ -534,9 +535,13 @@ class ModelMixin(torch.nn.Module):
                     state_dict = load_state_dict(model_file)
                     # move the parms from meta device to cpu
                     for param_name, param in state_dict.items():
-                        accepts_dtype = "dtype" in set(inspect.signature(set_module_tensor_to_device).parameters.keys())
+                        accepts_dtype = "dtype" in set(
+                            inspect.signature(set_module_tensor_to_device).parameters.keys()
+                        )
                         if accepts_dtype:
-                            set_module_tensor_to_device(model, param_name, param_device, value=param, dtype=torch_dtype)
+                            set_module_tensor_to_device(
+                                model, param_name, param_device, value=param, dtype=torch_dtype
+                            )
                         else:
                             set_module_tensor_to_device(model, param_name, param_device, value=param)
                 else:  # else let accelerate handle loading and dispatching.
@@ -551,38 +556,38 @@ class ModelMixin(torch.nn.Module):
                     "error_msgs": [],
                 }
             else:
-            config, unused_kwargs = cls.load_config(
-                config_path,
-                cache_dir=cache_dir,
-                return_unused_kwargs=True,
-                force_download=force_download,
-                resume_download=resume_download,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
-                revision=revision,
-                subfolder=subfolder,
-                device_map=device_map,
-                **kwargs,
-            )
-            model = cls.from_config(config, **unused_kwargs)
+                config, unused_kwargs = cls.load_config(
+                    config_path,
+                    cache_dir=cache_dir,
+                    return_unused_kwargs=True,
+                    force_download=force_download,
+                    resume_download=resume_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    use_auth_token=use_auth_token,
+                    revision=revision,
+                    subfolder=subfolder,
+                    device_map=device_map,
+                    **kwargs,
+                )
+                model = cls.from_config(config, **unused_kwargs)
 
-            state_dict = load_state_dict(model_file)
+                state_dict = load_state_dict(model_file)
 
-            model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
-                model,
-                state_dict,
-                model_file,
-                pretrained_model_name_or_path,
-                ignore_mismatched_sizes=ignore_mismatched_sizes,
-            )
+                model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
+                    model,
+                    state_dict,
+                    model_file,
+                    pretrained_model_name_or_path,
+                    ignore_mismatched_sizes=ignore_mismatched_sizes,
+                )
 
-            loading_info = {
-                "missing_keys": missing_keys,
-                "unexpected_keys": unexpected_keys,
-                "mismatched_keys": mismatched_keys,
-                "error_msgs": error_msgs,
-            }
+                loading_info = {
+                    "missing_keys": missing_keys,
+                    "unexpected_keys": unexpected_keys,
+                    "mismatched_keys": mismatched_keys,
+                    "error_msgs": error_msgs,
+                }
 
         if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
             raise ValueError(
