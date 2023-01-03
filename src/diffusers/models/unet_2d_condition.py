@@ -267,39 +267,42 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, kernel_size=3, padding=1)
 
     @property
-    def num_attn_processors(self):
+    def attn_processors(self) -> Dict[str, AttnProcessor]:
         # set recursively
-        count = 0
+        processors = {}
 
-        def fn_recursive_count_processor(module: torch.nn.Module, count: int):
+        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttnProcessor]):
             if hasattr(module, "set_processor"):
-                count += 1
+                processors[name] = module.processor
 
-            for child in module.children():
-                count = fn_recursive_count_processor(child)
+            for sub_name, child in module.named_children():
+                fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
 
-            return count
+            return processors
 
-        for module in self.children():
-            count += fn_recursive_count_processor(module)
+        for name, module in self.named_children():
+            fn_recursive_add_processors(name, module, processors)
 
-        return count
+        return processors
 
-    def set_attn_processor(self, processor: Union[AttnProcessor, List[AttnProcessor]]):
-        count = self.num_attn_layers
+    def set_attn_processor(self, processor: Union[AttnProcessor, Dict[str, AttnProcessor]]):
+        count = len(self.attn_processors.keys())
 
-        if isinstance(processor, list) and len(processor) != count:
-            raise ValueError(f"A list of processors was passed, but the number of processors {len(processor)} does not match the number of attention layers: {count}. Please make sure to pass {count} processor classes.")
+        if isinstance(processor, dict) and len(processor) != count:
+            raise ValueError(f"A dict of processors was passed, but the number of processors {len(processor)} does not match the number of attention layers: {count}. Please make sure to pass {count} processor classes.")
 
-        def fn_recursive_attn_processor(module: torch.nn.Module):
+        def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
             if hasattr(module, "set_processor"):
-                module.set_processor(processor)
+                if not isinstance(processor, dict):
+                    module.set_processor(processor)
+                else:
+                    module.set_processor(processor.pop(name))
 
-            for child in module.children():
-                fn_recursive_attn_processor(child)
+            for sub_name, child in module.named_children():
+                fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
 
-        for module in self.children():
-            fn_recursive_attn_processor(module)
+        for name, module in self.named_children():
+            fn_recursive_attn_processor(name, module, processor)
 
     def set_attention_slice(self, slice_size):
         r"""

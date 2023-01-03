@@ -261,13 +261,13 @@ class LoRALinearLayer(nn.Module):
 
 
 class LoRACrossAttnProcessor(nn.Module):
-    def __init__(self, query_dim, inner_dim, cross_attention_dim, rank=4):
+    def __init__(self, hidden_size, cross_attention_dim=None, rank=4):
         super().__init__()
 
-        self.to_q_lora = LoRALinearLayer(query_dim, inner_dim)
-        self.to_k_lora = LoRALinearLayer(query_dim, inner_dim)
-        self.to_v_lora = LoRALinearLayer(query_dim, inner_dim)
-        self.to_out_lora = LoRALinearLayer(query_dim, inner_dim)
+        self.to_q_lora = LoRALinearLayer(hidden_size, hidden_size)
+        self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size)
+        self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size)
+        self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size)
 
     def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
         batch_size, sequence_length, _ = hidden_states.shape
@@ -367,13 +367,13 @@ class XFormersCrossAttnProcessor:
 
 
 class LoRAXFormersCrossAttnProcessor(nn.Module):
-    def __init__(self, query_dim, inner_dim, cross_attention_dim, rank=4):
+    def __init__(self, hidden_size, cross_attention_dim, rank=4):
         super().__init__()
 
-        self.to_q_lora = LoRALinearLayer(query_dim, inner_dim)
-        self.to_k_lora = LoRALinearLayer(query_dim, inner_dim)
-        self.to_v_lora = LoRALinearLayer(query_dim, inner_dim)
-        self.to_out_lora = LoRALinearLayer(query_dim, inner_dim)
+        self.to_q_lora = LoRALinearLayer(hidden_size, hidden_size)
+        self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size)
+        self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size)
+        self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size)
 
     def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
         batch_size, sequence_length, _ = hidden_states.shape
