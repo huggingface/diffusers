@@ -39,8 +39,8 @@ def torch_randn(
     dtype: Optional[torch.dtype] = None,
 ):
     """This is a helper function that allows to create random tensors on the desired `device` with the desired `dtype`. When
-passing a list of generators one can seed each batched size individually. If CPU generators are passed the tensor will
-always be created on CPU.
+    passing a list of generators one can seed each batched size individually. If CPU generators are passed the tensor
+    will always be created on CPU.
     """
     # device on which tensor is createad defaults to device
     rand_device = device
