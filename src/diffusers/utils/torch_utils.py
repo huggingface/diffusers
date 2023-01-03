@@ -26,7 +26,7 @@ if is_torch_available():
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def torch_randn(
+def rand_tensorn(
     shape: Union[Tuple, List],
     generator: Optional[Union[List["torch.Generator"], "torch.Generator"]] = None,
     device: Optional["torch.device"] = None,
