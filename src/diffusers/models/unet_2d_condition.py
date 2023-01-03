@@ -123,6 +123,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         num_class_embeds: Optional[int] = None,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
+        attn_processor_cls=None,
     ):
         super().__init__()
 
@@ -265,6 +266,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=norm_eps)
         self.conv_act = nn.SiLU()
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, kernel_size=3, padding=1)
+
+        if attn_processor_cls is not None:
+            attn_processors_keys = self.attn_processors.keys()
+            self.set_attn_processor({k: attn_processor_cls() for k in attn_processors_keys})
 
     @property
     def attn_processors(self) -> Dict[str, AttnProcessor]:

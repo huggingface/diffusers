@@ -107,6 +107,12 @@ def parse_args(input_args=None):
         help="The prompt to specify images in the same class as provided instance images.",
     )
     parser.add_argument(
+        "--save_sample_prompt",
+        type=str,
+        default=None,
+        help="A prompt that is sampled during training."
+    )
+    parser.add_argument(
         "--with_prior_preservation",
         default=False,
         action="store_true",
@@ -839,6 +845,30 @@ def main(args):
 
             if global_step >= args.max_train_steps:
                 break
+
+        if args.save_sample_prompt is not None:
+            pipeline = DiffusionPipeline.from_pretrained(
+                args.pretrained_model_name_or_path,
+                unet=accelerator.unwrap_model(unet),
+                text_encoder=accelerator.unwrap_model(text_encoder),
+                revision=args.revision,
+            )
+            pipeline.save_pretrained(args.output_dir)
+            pipeline = pipeline.to(accelerator.device)
+            generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+            pipeline.set_progress_bar_config(disable=True)
+            sample_dir = "/home/patrick_huggingface_co/lora-tryout/samples"
+            os.makedirs(sample_dir, exist_ok=True)
+            with torch.autocast("cuda"), torch.inference_mode():
+                for i in tqdm(range(args.n_save_sample), desc="Generating samples"):
+                    images = pipeline(
+                        args.save_sample_prompt,
+                        num_inference_steps=30,
+                        generator=generator
+                    ).images
+                    images[0].save(os.path.join(sample_dir, f"{i}.png"))
+            del pipeline
+            torch.cuda.empty_cache()
 
     # Create the pipeline using using the trained modules and save it.
     accelerator.wait_for_everyone()
