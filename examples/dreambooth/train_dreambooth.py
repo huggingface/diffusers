@@ -327,24 +327,37 @@ class DreamBoothDataset(Dataset):
         self.center_crop = center_crop
         self.tokenizer = tokenizer
 
-        self.instance_data_root = Path(instance_data_root)
-        if not self.instance_data_root.exists():
-            raise ValueError("Instance images root doesn't exists.")
+        self.instance_data_root = []
+        self.instance_images_path = []
+        self.num_instance_images = []
+        self.instance_prompt = []
+        self.class_data_root = []
+        self.class_images_path = []
+        self.num_class_images = []
+        self.class_prompt = []
+        self._length = 0
 
-        self.instance_images_path = list(Path(instance_data_root).iterdir())
-        self.num_instance_images = len(self.instance_images_path)
-        self.instance_prompt = instance_prompt
-        self._length = self.num_instance_images
+        for i in range(len(instance_data_root)):
+            self.instance_data_root.append(Path(instance_data_root[i]))
+            if not self.instance_data_root[i].exists():
+                raise ValueError("Instance images root doesn't exists.")
 
-        if class_data_root is not None:
-            self.class_data_root = Path(class_data_root)
-            self.class_data_root.mkdir(parents=True, exist_ok=True)
-            self.class_images_path = list(self.class_data_root.iterdir())
-            self.num_class_images = len(self.class_images_path)
-            self._length = max(self.num_class_images, self.num_instance_images)
-            self.class_prompt = class_prompt
-        else:
-            self.class_data_root = None
+            self.instance_images_path.append(list(Path(instance_data_root[i]).iterdir()))
+            self.num_instance_images.append(len(self.instance_images_path[i]))
+            self.instance_prompt.append(instance_prompt[i])
+            self._length += self.num_instance_images[i]
+
+            if class_data_root is not None:
+                self.class_data_root.append(Path(class_data_root[i]))
+                self.class_data_root[i].mkdir(parents=True, exist_ok=True)
+                self.class_images_path.append(list(self.class_data_root[i].iterdir()))
+                self.num_class_images.append(len(self.class_images_path))
+                if self.num_class_images[i] > self.num_instance_images[i]:
+                    self._length -= self.num_instance_images[i]
+                    self._length += self.num_class_images[i]
+                self.class_prompt.append(class_prompt[i])
+            else:
+                self.class_data_root = None
 
         self.image_transforms = transforms.Compose(
             [
@@ -360,43 +373,50 @@ class DreamBoothDataset(Dataset):
 
     def __getitem__(self, index):
         example = {}
-        instance_image = Image.open(self.instance_images_path[index % self.num_instance_images])
-        if not instance_image.mode == "RGB":
-            instance_image = instance_image.convert("RGB")
-        example["instance_images"] = self.image_transforms(instance_image)
-        example["instance_prompt_ids"] = self.tokenizer(
-            self.instance_prompt,
-            truncation=True,
-            padding="max_length",
-            max_length=self.tokenizer.model_max_length,
-            return_tensors="pt",
-        ).input_ids
-
-        if self.class_data_root:
-            class_image = Image.open(self.class_images_path[index % self.num_class_images])
-            if not class_image.mode == "RGB":
-                class_image = class_image.convert("RGB")
-            example["class_images"] = self.image_transforms(class_image)
-            example["class_prompt_ids"] = self.tokenizer(
-                self.class_prompt,
+        for i in range(len(self.instance_images_path)):
+            instance_image = Image.open(self.instance_images_path[i][index % self.num_instance_images[i]])
+            if not instance_image.mode == "RGB":
+                instance_image = instance_image.convert("RGB")
+            example[f"instance_images_{i}"] = self.image_transforms(instance_image)
+            example[f"instance_prompt_ids_{i}"] = self.tokenizer(
+                self.instance_prompt[i],
                 truncation=True,
                 padding="max_length",
                 max_length=self.tokenizer.model_max_length,
                 return_tensors="pt",
             ).input_ids
 
+        if self.class_data_root:
+            for i in range(len(self.class_data_root)):
+                class_image = Image.open(self.class_images_path[i][index % self.num_class_images[i]])
+                if not class_image.mode == "RGB":
+                    class_image = class_image.convert("RGB")
+                example[f"class_images_{i}"] = self.image_transforms(class_image)
+                example[f"class_prompt_ids_{i}"] = self.tokenizer(
+                    self.class_prompt[i],
+                    truncation=True,
+                    padding="max_length",
+                    max_length=self.tokenizer.model_max_length,
+                    return_tensors="pt",
+                ).input_ids
+
         return example
 
 
-def collate_fn(examples, with_prior_preservation=False):
-    input_ids = [example["instance_prompt_ids"] for example in examples]
-    pixel_values = [example["instance_images"] for example in examples]
+def collate_fn(num_instances, examples, with_prior_preservation=False):
+    input_ids = []
+    pixel_values = []
+
+    for i in range(num_instances):
+        input_ids += [example[f"instance_prompt_ids_{i}"] for example in examples]
+        pixel_values += [example[f"instance_images_{i}"] for example in examples]
 
     # Concat class and instance examples for prior preservation.
     # We do this to avoid doing two forward passes.
     if with_prior_preservation:
-        input_ids += [example["class_prompt_ids"] for example in examples]
-        pixel_values += [example["class_images"] for example in examples]
+        for i in range(num_instances):
+            input_ids += [example[f"class_prompt_ids_{i}"] for example in examples]
+            pixel_values += [example[f"class_images_{i}"] for example in examples]
 
     pixel_values = torch.stack(pixel_values)
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
@@ -456,6 +476,24 @@ def main(args):
             "Please set gradient_accumulation_steps to 1. This feature will be supported in the future."
         )
 
+    # Parse instance and class inputs, and double check that lengths match
+    instance_data_dir = args.instance_data_dir.split(",")
+    instance_prompt = args.instance_prompt.split(",")
+    assert all(
+        x == len(instance_data_dir) for x in [len(instance_data_dir), len(instance_prompt)]
+    ), "Instance data dir and prompt inputs are not of the same length."
+
+    if args.with_prior_preservation:
+        class_data_dir = args.class_data_dir.split(",")
+        class_prompt = args.class_prompt.split(",")
+        assert all(
+            x == len(instance_data_dir)
+            for x in [len(instance_data_dir), len(instance_prompt), len(class_data_dir), len(class_prompt)]
+        ), "Instance & class data dir or prompt inputs are not of the same length."
+    else:
+        class_data_dir = args.class_data_dir
+        class_prompt = args.class_prompt
+
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -478,49 +516,52 @@ def main(args):
 
     # Generate class images if prior preservation is enabled.
     if args.with_prior_preservation:
-        class_images_dir = Path(args.class_data_dir)
-        if not class_images_dir.exists():
-            class_images_dir.mkdir(parents=True)
-        cur_class_images = len(list(class_images_dir.iterdir()))
+        for i in range(len(class_data_dir)):
+            class_images_dir = Path(class_data_dir[i])
+            if not class_images_dir.exists():
+                class_images_dir.mkdir(parents=True)
+            cur_class_images = len(list(class_images_dir.iterdir()))
 
-        if cur_class_images < args.num_class_images:
-            torch_dtype = torch.float16 if accelerator.device.type == "cuda" else torch.float32
-            if args.prior_generation_precision == "fp32":
-                torch_dtype = torch.float32
-            elif args.prior_generation_precision == "fp16":
-                torch_dtype = torch.float16
-            elif args.prior_generation_precision == "bf16":
-                torch_dtype = torch.bfloat16
-            pipeline = DiffusionPipeline.from_pretrained(
-                args.pretrained_model_name_or_path,
-                torch_dtype=torch_dtype,
-                safety_checker=None,
-                revision=args.revision,
-            )
-            pipeline.set_progress_bar_config(disable=True)
+            if cur_class_images < args.num_class_images:
+                torch_dtype = torch.float16 if accelerator.device.type == "cuda" else torch.float32
+                if args.prior_generation_precision == "fp32":
+                    torch_dtype = torch.float32
+                elif args.prior_generation_precision == "fp16":
+                    torch_dtype = torch.float16
+                elif args.prior_generation_precision == "bf16":
+                    torch_dtype = torch.bfloat16
+                pipeline = DiffusionPipeline.from_pretrained(
+                    args.pretrained_model_name_or_path,
+                    torch_dtype=torch_dtype,
+                    safety_checker=None,
+                    revision=args.revision,
+                )
+                pipeline.set_progress_bar_config(disable=True)
 
-            num_new_images = args.num_class_images - cur_class_images
-            logger.info(f"Number of class images to sample: {num_new_images}.")
+                num_new_images = args.num_class_images - cur_class_images
+                logger.info(f"Number of class images to sample: {num_new_images}.")
 
-            sample_dataset = PromptDataset(args.class_prompt, num_new_images)
-            sample_dataloader = torch.utils.data.DataLoader(sample_dataset, batch_size=args.sample_batch_size)
+                sample_dataset = PromptDataset(class_prompt[i], num_new_images)
+                sample_dataloader = torch.utils.data.DataLoader(sample_dataset, batch_size=args.sample_batch_size)
 
-            sample_dataloader = accelerator.prepare(sample_dataloader)
-            pipeline.to(accelerator.device)
+                sample_dataloader = accelerator.prepare(sample_dataloader)
+                pipeline.to(accelerator.device)
 
-            for example in tqdm(
-                sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
-            ):
-                images = pipeline(example["prompt"]).images
+                for example in tqdm(
+                    sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
+                ):
+                    images = pipeline(example["prompt"]).images
 
-                for i, image in enumerate(images):
-                    hash_image = hashlib.sha1(image.tobytes()).hexdigest()
-                    image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
-                    image.save(image_filename)
+                    for i, image in enumerate(images):
+                        hash_image = hashlib.sha1(image.tobytes()).hexdigest()
+                        image_filename = (
+                            class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
+                        )
+                        image.save(image_filename)
 
-            del pipeline
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+                del pipeline
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -615,10 +656,10 @@ def main(args):
 
     # Dataset and DataLoaders creation:
     train_dataset = DreamBoothDataset(
-        instance_data_root=args.instance_data_dir,
-        instance_prompt=args.instance_prompt,
-        class_data_root=args.class_data_dir if args.with_prior_preservation else None,
-        class_prompt=args.class_prompt,
+        instance_data_root=instance_data_dir,
+        instance_prompt=instance_prompt,
+        class_data_root=class_data_dir if args.with_prior_preservation else None,
+        class_prompt=class_prompt,
         tokenizer=tokenizer,
         size=args.resolution,
         center_crop=args.center_crop,
@@ -628,7 +669,7 @@ def main(args):
         train_dataset,
         batch_size=args.train_batch_size,
         shuffle=True,
-        collate_fn=lambda examples: collate_fn(examples, args.with_prior_preservation),
+        collate_fn=lambda examples: collate_fn(len(instance_data_dir), examples, args.with_prior_preservation),
         num_workers=1,
     )
 

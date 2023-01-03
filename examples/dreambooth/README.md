@@ -317,6 +317,39 @@ python train_dreambooth_flax.py \
   --max_train_steps=800
 ```
 
+### Learning multiple concepts
+In order to have your model learn multiple instances at once, we simply add in additional data directories and prompts to our `instance_data_dir` and `instance_prompt` (as well as `class_data_dir` and `class_prompt` if `with_prior_preservation` is specified.)
+
+```bash
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export INSTANCE_DIR_1="path-to-instance-images-concept-1"
+export INSTANCE_DIR_2="path-to-instance-images-concept-2"
+export CLASS_DIR_1="path-to-class-images-class-1"
+export CLASS_DIR_2="path-to-class-images-class-2"
+export OUTPUT_DIR="path-to-save-model"
+
+accelerate launch train_dreambooth.py \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --train_text_encoder \
+  --instance_data_dir="$INSTANCE_DIR_1,$INSTANCE_DIR_2" \
+  --class_data_dir="$CLASS_DIR_1,$CLASS_DIR_2" \
+  --output_dir=$OUTPUT_DIR \
+  --with_prior_preservation --prior_loss_weight=1.0 \
+  --instance_prompt="a photo of a sks1 dog,a photo of a sks2 person" \
+  --class_prompt="a photo of a dog,a photo of a person" \
+  --resolution=512 \
+  --train_batch_size=1 \
+  --use_8bit_adam \
+  --gradient_checkpointing \
+  --learning_rate=2e-6 \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --num_class_images=200 \
+  --max_train_steps=800
+```
+
+This example shows training for 2 concepts, but the model can be trained on any number of new concepts.
+
 ### Training with xformers:
 You can enable memory efficient attention by [installing xFormers](https://github.com/facebookresearch/xformers#installing-xformers) and padding the `--enable_xformers_memory_efficient_attention` argument to the script. This is not available with the Flax/JAX implementation.
 
