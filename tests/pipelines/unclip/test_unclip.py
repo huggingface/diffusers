@@ -27,6 +27,8 @@ from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokeni
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 
 class UnCLIPPipelineFastTests(unittest.TestCase):
@@ -378,7 +380,7 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
             "/unclip/karlo_v1_alpha_horse_fp16.npy"
         )
 
-        pipeline = UnCLIPPipeline.from_pretrained("kakaobrain/karlo-v1-alpha", torch_dtype=torch.float16)
+        pipeline = UnCLIPPipeline.from_pretrained("kakaobrain/karlo-v1-alpha")
         pipeline = pipeline.to(torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
