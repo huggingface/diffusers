@@ -551,7 +551,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
 
-        # 4. Preprocess image
+        # 4. Prepare depth mask
         depth_mask = self.prepare_depth_map(
             image,
             depth_map,
@@ -561,10 +561,10 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
             device,
         )
 
-        # 5. Prepare depth mask
+        # 5. Preprocess image
         image = preprocess(image)
 
-        # 6. set timesteps
+        # 6. Set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
