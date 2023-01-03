@@ -56,10 +56,19 @@ def main(args):
         state_dict[f"blocks.{depth}.attn.to_out.0.weight"] = state_dict[f"blocks.{depth}.attn.proj.weight"]
         state_dict[f"blocks.{depth}.attn.to_out.0.bias"] = state_dict[f"blocks.{depth}.attn.proj.bias"]
 
+        state_dict[f"blocks.{depth}.mlp.net.0.proj.weight"] = state_dict[f"blocks.{depth}.mlp.fc1.weight"]
+        state_dict[f"blocks.{depth}.mlp.net.0.proj.bias"] = state_dict[f"blocks.{depth}.mlp.fc1.bias"]
+        state_dict[f"blocks.{depth}.mlp.net.2.weight"] = state_dict[f"blocks.{depth}.mlp.fc2.weight"]
+        state_dict[f"blocks.{depth}.mlp.net.2.bias"] = state_dict[f"blocks.{depth}.mlp.fc2.bias"]
+        
         state_dict.pop(f"blocks.{depth}.attn.qkv.weight")
         state_dict.pop(f"blocks.{depth}.attn.qkv.bias")
         state_dict.pop(f"blocks.{depth}.attn.proj.weight")
         state_dict.pop(f"blocks.{depth}.attn.proj.bias")
+        state_dict.pop(f"blocks.{depth}.mlp.fc1.weight")
+        state_dict.pop(f"blocks.{depth}.mlp.fc1.bias")
+        state_dict.pop(f"blocks.{depth}.mlp.fc2.weight")
+        state_dict.pop(f"blocks.{depth}.mlp.fc2.bias")
 
     # DiT XL/2
     dit = DiT(

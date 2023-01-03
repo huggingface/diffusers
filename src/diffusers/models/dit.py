@@ -17,59 +17,10 @@ import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from .attention import FeedForward
 from .cross_attention import CrossAttention
-from .embeddings import LabelEmbedding, TimestepEmbedding, Timesteps
+from .embeddings import LabelEmbedding, TimestepEmbedding, Timesteps, get_2d_sincos_pos_embed
 from .modeling_utils import ModelMixin
-
-
-def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False, extra_tokens=0):
-    """
-    grid_size: int of the grid height and width return: pos_embed: [grid_size*grid_size, embed_dim] or
-    [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
-    """
-    grid_h = np.arange(grid_size, dtype=np.float32)
-    grid_w = np.arange(grid_size, dtype=np.float32)
-    grid = np.meshgrid(grid_w, grid_h)  # here w goes first
-    grid = np.stack(grid, axis=0)
-
-    grid = grid.reshape([2, 1, grid_size, grid_size])
-    pos_embed = get_2d_sincos_pos_embed_from_grid(embed_dim, grid)
-    if cls_token and extra_tokens > 0:
-        pos_embed = np.concatenate([np.zeros([extra_tokens, embed_dim]), pos_embed], axis=0)
-    return pos_embed
-
-
-def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
-    if embed_dim % 2 != 0:
-        raise ValueError("embed_dim must be divisible by 2")
-
-    # use half of dimensions to encode grid_h
-    emb_h = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[0])  # (H*W, D/2)
-    emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[1])  # (H*W, D/2)
-
-    emb = np.concatenate([emb_h, emb_w], axis=1)  # (H*W, D)
-    return emb
-
-
-def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
-    """
-    embed_dim: output dimension for each position pos: a list of positions to be encoded: size (M,) out: (M, D)
-    """
-    if embed_dim % 2 != 0:
-        raise ValueError("embed_dim must be divisible by 2")
-
-    omega = np.arange(embed_dim // 2, dtype=np.float64)
-    omega /= embed_dim / 2.0
-    omega = 1.0 / 10000**omega  # (D/2,)
-
-    pos = pos.reshape(-1)  # (M,)
-    out = np.einsum("m,d->md", pos, omega)  # (M, D/2), outer product
-
-    emb_sin = np.sin(out)  # (M, D/2)
-    emb_cos = np.cos(out)  # (M, D/2)
-
-    emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
-    return emb
 
 
 def modulate(x, shift, scale):
@@ -116,59 +67,23 @@ class PatchEmbed(nn.Module):
         return latent
 
 
-class Mlp(nn.Module):
-    """MLP as used in Vision Transformer, MLP-Mixer and related networks"""
-
-    def __init__(
-        self,
-        in_features,
-        hidden_features=None,
-        out_features=None,
-        activation_layer="gelu",
-        bias=True,
-        dropout_prob=0.0,
-    ):
-        super().__init__()
-        out_features = out_features or in_features
-        hidden_features = hidden_features or in_features
-
-        self.fc1 = nn.Linear(in_features, hidden_features, bias=bias)
-        if activation_layer == "gelu":
-            self.act = nn.GELU()
-        elif activation_layer == "gelu-approximate":
-            self.act = nn.GELU(approximate="tanh")
-
-        self.drop1 = nn.Dropout(dropout_prob)
-        self.fc2 = nn.Linear(hidden_features, out_features, bias=bias)
-        self.drop2 = nn.Dropout(dropout_prob)
-
-    def forward(self, latent):
-        latent = self.fc1(latent)
-        latent = self.act(latent)
-        latent = self.drop1(latent)
-        latent = self.fc2(latent)
-        latent = self.drop2(latent)
-        return latent
-
-
 class DiTBlock(nn.Module):
     """
     A DiT block with adaptive layer norm zero (adaLN-Zero) conditioning.
     """
 
-    def __init__(self, hidden_size, num_heads, mlp_ratio=4.0):
+    def __init__(self, hidden_size, num_heads, mlp_ratio=4):
         super().__init__()
         self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.attn = CrossAttention(
             query_dim=hidden_size, heads=num_heads, dim_head=hidden_size // num_heads, bias=True
         )
         self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        mlp_hidden_dim = int(hidden_size * mlp_ratio)
-        self.mlp = Mlp(
-            in_features=hidden_size,
-            hidden_features=mlp_hidden_dim,
-            activation_layer="gelu-approximate",
-            dropout_prob=0,
+        self.mlp = FeedForward(
+            dim=hidden_size,
+            mult=mlp_ratio,
+            activation_fn="gelu-approximate",
+            final_dropout=True,
         )
         self.adaLN_modulation = nn.Sequential(nn.SiLU(), nn.Linear(hidden_size, 6 * hidden_size, bias=True))
 
@@ -211,7 +126,7 @@ class DiT(ModelMixin, ConfigMixin):
         hidden_size=1152,
         depth=28,
         num_heads=16,
-        mlp_ratio=4.0,
+        mlp_ratio=4,
         class_dropout_prob=0.1,
         num_classes=1000,
         learn_sigma=True,

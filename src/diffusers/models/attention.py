@@ -286,6 +286,7 @@ class FeedForward(nn.Module):
         mult (`int`, *optional*, defaults to 4): The multiplier to use for the hidden dimension.
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
         activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
+        final_dropout (`bool` *optional*, defaults to False): Apply a final dropout.
     """
 
     def __init__(
@@ -295,6 +296,7 @@ class FeedForward(nn.Module):
         mult: int = 4,
         dropout: float = 0.0,
         activation_fn: str = "geglu",
+        final_dropout: bool = False,
     ):
         super().__init__()
         inner_dim = int(dim * mult)
@@ -302,6 +304,8 @@ class FeedForward(nn.Module):
 
         if activation_fn == "gelu":
             act_fn = GELU(dim, inner_dim)
+        if activation_fn == "gelu-approximate":
+            act_fn = GELU(dim, inner_dim, approximate="tanh")
         elif activation_fn == "geglu":
             act_fn = GEGLU(dim, inner_dim)
         elif activation_fn == "geglu-approximate":
@@ -314,6 +318,9 @@ class FeedForward(nn.Module):
         self.net.append(nn.Dropout(dropout))
         # project out
         self.net.append(nn.Linear(inner_dim, dim_out))
+        # FF as used in Vision Transformer, MLP-Mixer, etc. have a final dropout
+        if final_dropout:
+            self.net.append(nn.Dropout(dropout))
 
     def forward(self, hidden_states):
         for module in self.net:
@@ -323,18 +330,19 @@ class FeedForward(nn.Module):
 
 class GELU(nn.Module):
     r"""
-    GELU activation function
+    GELU activation function with tanh approximation support with `approximate="tanh"`.
     """
 
-    def __init__(self, dim_in: int, dim_out: int):
+    def __init__(self, dim_in: int, dim_out: int, approximate: str = "none"):
         super().__init__()
         self.proj = nn.Linear(dim_in, dim_out)
+        self.approximate = approximate
 
     def gelu(self, gate):
         if gate.device.type != "mps":
-            return F.gelu(gate)
+            return F.gelu(gate, approximate=self.approximate)
         # mps: gelu is not implemented for float16
-        return F.gelu(gate.to(dtype=torch.float32)).to(dtype=gate.dtype)
+        return F.gelu(gate.to(dtype=torch.float32), approximate=self.approximate).to(dtype=gate.dtype)
 
     def forward(self, hidden_states):
         hidden_states = self.proj(hidden_states)
@@ -342,7 +350,6 @@ class GELU(nn.Module):
         return hidden_states
 
 
-# feedforward
 class GEGLU(nn.Module):
     r"""
     A variant of the gated linear unit activation function from https://arxiv.org/abs/2002.05202.
