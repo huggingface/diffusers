@@ -22,6 +22,7 @@ from diffusers import (
     FlaxStableDiffusionPipeline,
     FlaxUNet2DConditionModel,
 )
+from diffusers.experimental.lora.linear_with_lora_flax import FlaxLora
 from diffusers.pipelines.stable_diffusion import FlaxStableDiffusionSafetyChecker
 from diffusers.utils import check_min_version
 from flax import jax_utils
@@ -114,6 +115,7 @@ def parse_args():
             " class_data_dir, additional images will be sampled with class_prompt."
         ),
     )
+    parser.add_argument("--lora", action="store_true", help="Use LoRA (https://arxiv.org/abs/2106.09685)")
     parser.add_argument(
         "--output_dir",
         type=str,
@@ -474,9 +476,6 @@ def main():
         dtype=weight_dtype,
         **vae_kwargs,
     )
-    unet, unet_params = FlaxUNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", dtype=weight_dtype, revision=args.revision
-    )
 
     # Optimization
     if args.scale_lr:
@@ -496,6 +495,22 @@ def main():
         optax.clip_by_global_norm(args.max_grad_norm),
         adamw,
     )
+
+    if args.lora:
+        unet, unet_params = FlaxLora(FlaxUNet2DConditionModel).from_pretrained(
+            args.pretrained_model_name_or_path,
+            subfolder="unet",
+            dtype=weight_dtype,
+            revision=args.revision,
+        )
+        optimizer = optax.masked(optimizer, mask=unet.get_mask)
+    else:
+        unet, unet_params = FlaxUNet2DConditionModel.from_pretrained(
+            args.pretrained_model_name_or_path,
+            subfolder="unet",
+            dtype=weight_dtype,
+            revision=args.revision,
+        )
 
     unet_state = train_state.TrainState.create(apply_fn=unet.__call__, params=unet_params, tx=optimizer)
     text_encoder_state = train_state.TrainState.create(
