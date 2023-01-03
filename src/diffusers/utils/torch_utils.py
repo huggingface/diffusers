@@ -28,9 +28,9 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 def torch_randn(
     shape: Union[Tuple, List],
-    generator: Optional[Union[List[torch.Generator], torch.Generator]] = None,
-    device: Optional[torch.device] = None,
-    dtype: Optional[torch.dtype] = None,
+    generator: Optional[Union[List["torch.Generator"], "torch.Generator"]] = None,
+    device: Optional["torch.device"] = None,
+    dtype: Optional["torch.dtype"] = None,
 ):
     """This is a helper function that allows to create random tensors on the desired `device` with the desired `dtype`. When
     passing a list of generators one can seed each batched size individually. If CPU generators are passed the tensor
