@@ -31,13 +31,28 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ...utils import deprecate, logging
+from ...utils import deprecate, logging, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from . import AltDiffusionPipelineOutput, RobertaSeriesModelWithTransformation
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> import torch
+        >>> from diffusers import AltDiffusionPipeline
+
+        >>> pipe = AltDiffusionPipeline.from_pretrained("BAAI/AltDiffusion-m9", torch_dtype=torch.float16)
+        >>> pipe = pipe.to("cuda")
+
+        >>> # "dark elf princess, highly detailed, d & d, fantasy, highly detailed, digital painting, trending on artstation, concept art, sharp focus, illustration, art by artgerm and greg rutkowski and fuji choko and viktoria gavrilenko and hoang lap"
+        >>> prompt = "黑暗精灵公主，非常详细，幻想，非常详细，数字绘画，概念艺术，敏锐的焦点，插图"
+        >>> image = pipe(prompt).images[0]
+        ```
+"""
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline with Stable->Alt, CLIPTextModel->RobertaSeriesModelWithTransformation, CLIPTokenizer->XLMRobertaTokenizer, AltDiffusionSafetyChecker->StableDiffusionSafetyChecker
@@ -407,6 +422,7 @@ class AltDiffusionPipeline(DiffusionPipeline):
         return latents
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]],
@@ -470,6 +486,8 @@ class AltDiffusionPipeline(DiffusionPipeline):
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
+
+        Examples:
 
         Returns:
             [`~pipelines.stable_diffusion.AltDiffusionPipelineOutput`] or `tuple`:

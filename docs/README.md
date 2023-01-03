@@ -126,21 +126,26 @@ When adding a new pipeline:
     - Paper abstract
     - Tips and tricks and how to use it best
     - Possible an end-to-end example of how to use it
-- Add all the pipeline classes that should be linked in the diffusion model. These classes should be added using our Markdown syntax. Usually as follows:
+- Add all the pipeline classes that should be linked in the diffusion model. These classes should be added using our Markdown syntax. By default as follows:
 
 ```
 ## XXXPipeline
 
 [[autodoc]] XXXPipeline
-```
-
-This will include every public method of the pipeline that is documented. You can specify which methods should be in the docs:
-
-```
-## XXXPipeline
-
-[[autodoc]] XXXPipeline
+    - all
 	- __call__
+```
+
+This will include every public method of the pipeline that is documented, as well as the  `__call__` method that is not documented by default. If you just want to add additional methods that are not documented, you can put the list of all methods to add in a list that contains `all`.
+
+```
+[[autodoc]] XXXPipeline
+    - all
+	- __call__
+	- enable_attention_slicing
+	- disable_attention_slicing
+    - enable_xformers_memory_efficient_attention 
+    - disable_xformers_memory_efficient_attention
 ```
 
 You can follow the same process to create a new scheduler under the `docs/source/api/schedulers` folder

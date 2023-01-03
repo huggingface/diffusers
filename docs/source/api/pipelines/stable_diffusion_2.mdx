@@ -24,17 +24,20 @@ For more details about how Stable Diffusion 2 works and how it differs from Stab
 
 ### Available checkpoints:
 
-Note that the architecture is more or less identical to [Stable Diffusion 1](./api/pipelines/stable_diffusion) so please refer to [this page](./api/pipelines/stable_diffusion) for API documentation.
+Note that the architecture is more or less identical to [Stable Diffusion 1](./stable_diffusion/overview) so please refer to [this page](./stable_diffusion/overview) for API documentation.
 
 - *Text-to-Image (512x512 resolution)*: [stabilityai/stable-diffusion-2-base](https://huggingface.co/stabilityai/stable-diffusion-2-base) with [`StableDiffusionPipeline`]
 - *Text-to-Image (768x768 resolution)*: [stabilityai/stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) with [`StableDiffusionPipeline`]
 - *Image Inpainting (512x512 resolution)*: [stabilityai/stable-diffusion-2-inpainting](https://huggingface.co/stabilityai/stable-diffusion-2-inpainting) with [`StableDiffusionInpaintPipeline`]
-- *Image Upscaling (x4 resolution resolution)*: [stable-diffusion-x4-upscaler](https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler) [`StableDiffusionUpscalePipeline`]
+- *Super-Resolution (x4 resolution resolution)*: [stable-diffusion-x4-upscaler](https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler) [`StableDiffusionUpscalePipeline`]
 - *Depth-to-Image (512x512 resolution)*: [stabilityai/stable-diffusion-2-depth](https://huggingface.co/stabilityai/stable-diffusion-2-depth) with [`StableDiffusionDepth2ImagePipeline`]
 
 We recommend using the [`DPMSolverMultistepScheduler`] as it's currently the fastest scheduler there is.
 
-- *Text-to-Image (512x512 resolution)*:
+
+### Text-to-Image
+
+- *Text-to-Image (512x512 resolution)*: [stabilityai/stable-diffusion-2-base](https://huggingface.co/stabilityai/stable-diffusion-2-base) with [`StableDiffusionPipeline`]
 
 ```python
 from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
@@ -51,7 +54,7 @@ image = pipe(prompt, num_inference_steps=25).images[0]
 image.save("astronaut.png")
 ```
 
-- *Text-to-Image (768x768 resolution)*:
+- *Text-to-Image (768x768 resolution)*: [stabilityai/stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) with [`StableDiffusionPipeline`]
 
 ```python
 from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
@@ -68,7 +71,9 @@ image = pipe(prompt, guidance_scale=9, num_inference_steps=25).images[0]
 image.save("astronaut.png")
 ```
 
-- *Image Inpainting (512x512 resolution)*:
+### Image Inpainting
+
+- *Image Inpainting (512x512 resolution)*: [stabilityai/stable-diffusion-2-inpainting](https://huggingface.co/stabilityai/stable-diffusion-2-inpainting) with [`StableDiffusionInpaintPipeline`]
 
 ```python
 import PIL
@@ -102,7 +107,10 @@ image = pipe(prompt=prompt, image=init_image, mask_image=mask_image, num_inferen
 image.save("yellow_cat.png")
 ```
 
-- *Image Upscaling (x4 resolution resolution)*: [stable-diffusion-x4-upscaler](https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler) [`StableDiffusionUpscalePipeline`]
+### Super-Resolution
+
+- *Image Upscaling (x4 resolution resolution)*: [stable-diffusion-x4-upscaler](https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler) with [`StableDiffusionUpscalePipeline`]
+
 
 ```python
 import requests
@@ -126,16 +134,10 @@ upscaled_image = pipeline(prompt=prompt, image=low_res_img).images[0]
 upscaled_image.save("upsampled_cat.png")
 ```
 
+### Depth-to-Image
+
 - *Depth-Guided Text-to-Image*: [stabilityai/stable-diffusion-2-depth](https://huggingface.co/stabilityai/stable-diffusion-2-depth) [`StableDiffusionDepth2ImagePipeline`]
 
-**Installation**
-
-```bash
-!pip install -U git+https://github.com/huggingface/transformers.git
-!pip install diffusers[torch]
-```
-
-**Example**
 
 ```python
 import torch
