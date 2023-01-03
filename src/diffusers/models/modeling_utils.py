@@ -26,7 +26,7 @@ from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
 
-from .. import __version__
+from .. import __version__, is_flax_available
 from ..utils import (
     CONFIG_NAME,
     DIFFUSERS_CACHE,
@@ -34,6 +34,7 @@ from ..utils import (
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
+    FLAX_WEIGHTS_NAME,
     is_accelerate_available,
     is_safetensors_available,
     is_torch_version,
@@ -335,6 +336,8 @@ class ModelMixin(torch.nn.Module):
                 The specific model version to use. It can be a branch name, a tag name, or a commit id, since we use a
                 git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
                 identifier allowed by git.
+            from_flax (`bool`, *optional*, defaults to `False`):
+                Load the model weights from a Flax checkpoint save file.
             subfolder (`str`, *optional*, defaults to `""`):
                 In case the relevant files are located inside a subfolder of the model repo (either remote in
                 huggingface.co or downloaded locally), you can specify the folder name here.
@@ -375,6 +378,7 @@ class ModelMixin(torch.nn.Module):
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         ignore_mismatched_sizes = kwargs.pop("ignore_mismatched_sizes", False)
         force_download = kwargs.pop("force_download", False)
+        from_flax = kwargs.pop("from_flax", False)
         resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
         output_loading_info = kwargs.pop("output_loading_info", False)
@@ -433,11 +437,11 @@ class ModelMixin(torch.nn.Module):
         # Load model
 
         model_file = None
-        if is_safetensors_available():
-            try:
+        if from_flax:
+            if is_flax_available():
                 model_file = cls._get_model_file(
                     pretrained_model_name_or_path,
-                    weights_name=SAFETENSORS_WEIGHTS_NAME,
+                    weights_name=FLAX_WEIGHTS_NAME,
                     cache_dir=cache_dir,
                     force_download=force_download,
                     resume_download=resume_download,
@@ -448,26 +452,6 @@ class ModelMixin(torch.nn.Module):
                     subfolder=subfolder,
                     user_agent=user_agent,
                 )
-            except:
-                pass
-        if model_file is None:
-            model_file = cls._get_model_file(
-                pretrained_model_name_or_path,
-                weights_name=WEIGHTS_NAME,
-                cache_dir=cache_dir,
-                force_download=force_download,
-                resume_download=resume_download,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
-                revision=revision,
-                subfolder=subfolder,
-                user_agent=user_agent,
-            )
-
-        if low_cpu_mem_usage:
-            # Instantiate model with empty weights
-            with accelerate.init_empty_weights():
                 config, unused_kwargs = cls.load_config(
                     config_path,
                     cache_dir=cache_dir,
@@ -484,29 +468,89 @@ class ModelMixin(torch.nn.Module):
                 )
                 model = cls.from_config(config, **unused_kwargs)
 
-            # if device_map is Non,e load the state dict on move the params from meta device to the cpu
-            if device_map is None:
-                param_device = "cpu"
-                state_dict = load_state_dict(model_file)
-                # move the parms from meta device to cpu
-                for param_name, param in state_dict.items():
-                    accepts_dtype = "dtype" in set(inspect.signature(set_module_tensor_to_device).parameters.keys())
-                    if accepts_dtype:
-                        set_module_tensor_to_device(model, param_name, param_device, value=param, dtype=torch_dtype)
-                    else:
-                        set_module_tensor_to_device(model, param_name, param_device, value=param)
-            else:  # else let accelerate handle loading and dispatching.
-                # Load weights and dispatch according to the device_map
-                # by deafult the device_map is None and the weights are loaded on the CPU
-                accelerate.load_checkpoint_and_dispatch(model, model_file, device_map, dtype=torch_dtype)
-
-            loading_info = {
-                "missing_keys": [],
-                "unexpected_keys": [],
-                "mismatched_keys": [],
-                "error_msgs": [],
-            }
+                # Convert the weights
+                from .modeling_pytorch_flax_utils import load_flax_checkpoint_in_pytorch_model
+                model = load_flax_checkpoint_in_pytorch_model(model, model_file)
+            else:
+                raise EnvironmentError(
+                    "Can't load the model in Flax format because Flax or PyTorch is not installed. "
+                    "Please, install Flax and PyTorch or use native PyTorch weights."
+                )
         else:
+            if is_safetensors_available():
+                try:
+                    model_file = cls._get_model_file(
+                        pretrained_model_name_or_path,
+                        weights_name=SAFETENSORS_WEIGHTS_NAME,
+                        cache_dir=cache_dir,
+                        force_download=force_download,
+                        resume_download=resume_download,
+                        proxies=proxies,
+                        local_files_only=local_files_only,
+                        use_auth_token=use_auth_token,
+                        revision=revision,
+                        subfolder=subfolder,
+                        user_agent=user_agent,
+                    )
+                except:
+                    pass
+            if model_file is None:
+                model_file = cls._get_model_file(
+                    pretrained_model_name_or_path,
+                    weights_name=WEIGHTS_NAME,
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    resume_download=resume_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    use_auth_token=use_auth_token,
+                    revision=revision,
+                    subfolder=subfolder,
+                    user_agent=user_agent,
+                )
+
+            if low_cpu_mem_usage:
+                # Instantiate model with empty weights
+                with accelerate.init_empty_weights():
+                    config, unused_kwargs = cls.load_config(
+                        config_path,
+                        cache_dir=cache_dir,
+                        return_unused_kwargs=True,
+                        force_download=force_download,
+                        resume_download=resume_download,
+                        proxies=proxies,
+                        local_files_only=local_files_only,
+                        use_auth_token=use_auth_token,
+                        revision=revision,
+                        subfolder=subfolder,
+                        device_map=device_map,
+                        **kwargs,
+                    )
+                    model = cls.from_config(config, **unused_kwargs)
+
+                # if device_map is Non,e load the state dict on move the params from meta device to the cpu
+                if device_map is None:
+                    param_device = "cpu"
+                    state_dict = load_state_dict(model_file)
+                    # move the parms from meta device to cpu
+                    for param_name, param in state_dict.items():
+                        accepts_dtype = "dtype" in set(inspect.signature(set_module_tensor_to_device).parameters.keys())
+                        if accepts_dtype:
+                            set_module_tensor_to_device(model, param_name, param_device, value=param, dtype=torch_dtype)
+                        else:
+                            set_module_tensor_to_device(model, param_name, param_device, value=param)
+                else:  # else let accelerate handle loading and dispatching.
+                    # Load weights and dispatch according to the device_map
+                    # by deafult the device_map is None and the weights are loaded on the CPU
+                    accelerate.load_checkpoint_and_dispatch(model, model_file, device_map, dtype=torch_dtype)
+
+                loading_info = {
+                    "missing_keys": [],
+                    "unexpected_keys": [],
+                    "mismatched_keys": [],
+                    "error_msgs": [],
+                }
+            else:
             config, unused_kwargs = cls.load_config(
                 config_path,
                 cache_dir=cache_dir,
