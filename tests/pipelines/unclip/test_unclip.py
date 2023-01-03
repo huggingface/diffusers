@@ -377,11 +377,12 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
     def test_unclip_karlo(self):
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/unclip/karlo_v1_alpha_horse_fp16.npy"
+            "/unclip/karlo_v1_alpha_horse.npy"
         )
 
         pipeline = UnCLIPPipeline.from_pretrained("kakaobrain/karlo-v1-alpha")
         pipeline = pipeline.to(torch_device)
+        pipeline.enable_sequential_cpu_offload()
         pipeline.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
@@ -393,6 +394,8 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
         )
 
         image = output.images[0]
+
+        np.save("/home/patrick_huggingface_co/diffusers-images/unclip/karlo_v1_alpha_horse.npy", image)
 
         assert image.shape == (256, 256, 3)
         assert np.abs(expected_image - image).max() < 1e-2
