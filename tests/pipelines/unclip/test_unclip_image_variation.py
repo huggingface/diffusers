@@ -480,7 +480,7 @@ class UnCLIPImageVariationPipelineIntegrationTests(unittest.TestCase):
         pipeline.set_progress_bar_config(disable=None)
         pipeline.enable_sequential_cpu_offload()
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.Generator(device="cpu").manual_seed(0)
         output = pipeline(
             input_image,
             num_images_per_prompt=1,
