@@ -16,10 +16,12 @@ PyTorch utilities: Utilities related to PyTorch
 """
 from typing import List, Optional, Tuple, Union
 
-import torch
-
 from . import logging
+from .import_uitls import is_torch_available
 
+
+if is_torch_available():
+    import torch
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
