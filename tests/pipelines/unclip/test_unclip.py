@@ -382,7 +382,7 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
         pipeline = pipeline.to(torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.Generator(device="cpu").manual_seed(0)
         output = pipeline(
             "horse",
             num_images_per_prompt=1,
