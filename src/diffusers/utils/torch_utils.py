@@ -17,7 +17,7 @@ PyTorch utilities: Utilities related to PyTorch
 from typing import List, Optional, Tuple, Union
 
 from . import logging
-from .import_uitls import is_torch_available
+from .import_utils import is_torch_available
 
 
 if is_torch_available():
