@@ -1,0 +1,29 @@
+<!--Copyright 2022 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+# Image-to-Image Generation
+
+## StableDiffusionImg2ImgPipeline
+
+The Stable Diffusion model was created by the researchers and engineers from [CompVis](https://github.com/CompVis), [Stability AI](https://stability.ai/), [runway](https://github.com/runwayml), and [LAION](https://laion.ai/). The [`StableDiffusionImg2ImgPipeline`] lets you pass a text prompt and an initial image to condition the generation of new images using Stable Diffusion.
+
+The original codebase can be found here: [CampVis/stable-diffusion](https://github.com/CompVis/stable-diffusion/blob/main/scripts/img2img.py) 
+
+[`StableDiffusionImg2ImgPipeline`] is compatible with all Stable Diffusion checkpoints for [Text-to-Image](./text2img) 
+
+[[autodoc]] StableDiffusionImg2ImgPipeline
+	- all
+	- __call__
+	- enable_attention_slicing
+	- disable_attention_slicing
+	- enable_xformers_memory_efficient_attention
+	- disable_xformers_memory_efficient_attention

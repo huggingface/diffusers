@@ -1,0 +1,2 @@
+include LICENSE
+include src/diffusers/utils/model_card_template.md

@@ -1,0 +1,13 @@
+# Files for typos
+# Instruction:  https://github.com/marketplace/actions/typos-action#getting-started
+
+[default.extend-identifiers]
+
+[default.extend-words]
+NIN="NIN" # NIN is used in scripts/convert_ncsnpp_original_checkpoint_to_diffusers.py
+nd="np" # nd may be np (numpy)
+parms="parms" # parms is used in scripts/convert_original_stable_diffusion_to_diffusers.py
+
+
+[files]
+extend-exclude = ["_typos.toml"]

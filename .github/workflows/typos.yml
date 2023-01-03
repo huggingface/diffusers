@@ -1,0 +1,14 @@
+name: Check typos
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: typos-action
+        uses: crate-ci/typos@v1.12.4

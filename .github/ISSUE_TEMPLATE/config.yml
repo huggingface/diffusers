@@ -1,0 +1,4 @@
+contact_links:
+  - name: Blank issue
+    url: https://github.com/huggingface/diffusers/issues/new
+    about: General usage questions and community discussions
