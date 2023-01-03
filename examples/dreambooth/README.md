@@ -318,14 +318,14 @@ python train_dreambooth_flax.py \
 ```
 
 ### Learning multiple concepts
-In order to have your model learn multiple instances at once, we simply add in additional data directories and prompts to our `instance_data_dir` and `instance_prompt` (as well as `class_data_dir` and `class_prompt` if `with_prior_preservation` is specified.)
+In order to have your model learn multiple instances at once, we simply add in additional data directories and prompts to our `instance_data_dir` and `instance_prompt` (as well as `class_data_dir` and `class_prompt` if `with_prior_preservation` is specified).
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export INSTANCE_DIR_1="path-to-instance-images-concept-1"
 export INSTANCE_DIR_2="path-to-instance-images-concept-2"
-export CLASS_DIR_1="path-to-class-images-class-1"
-export CLASS_DIR_2="path-to-class-images-class-2"
+export CLASS_DIR_1="path-to-class-images-dog"
+export CLASS_DIR_2="path-to-class-images-person"
 export OUTPUT_DIR="path-to-save-model"
 
 accelerate launch train_dreambooth.py \
