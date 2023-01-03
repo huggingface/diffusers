@@ -18,7 +18,7 @@ from argparse import ArgumentParser
 import huggingface_hub
 
 from .. import __version__ as version
-from ..utils import is_torch_available, is_transformers_available
+from ..utils import is_accelerate_available, is_torch_available, is_transformers_available, is_xformers_available
 from . import BaseDiffusersCLICommand
 
 
@@ -44,10 +44,22 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
             pt_cuda_available = torch.cuda.is_available()
 
         transformers_version = "not installed"
-        if is_transformers_available:
+        if is_transformers_available():
             import transformers
 
             transformers_version = transformers.__version__
+
+        accelerate_version = "not installed"
+        if is_accelerate_available():
+            import accelerate
+
+            transformers_version = accelerate.__version__
+
+        xformers_version = "not installed"
+        if is_xformers_available():
+            import xformers
+
+            xformers_version = xformers.__version__
 
         info = {
             "`diffusers` version": version,
@@ -56,6 +68,8 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
             "PyTorch version (GPU?)": f"{pt_version} ({pt_cuda_available})",
             "Huggingface_hub version": hub_version,
             "Transformers version": transformers_version,
+            "Accelerate version": accelerate_version,
+            "xFormers version": xformers_version,
             "Using GPU in script?": "<fill in>",
             "Using distributed or parallel set-up in script?": "<fill in>",
         }
