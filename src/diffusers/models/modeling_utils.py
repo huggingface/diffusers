@@ -30,11 +30,11 @@ from .. import __version__, is_flax_available
 from ..utils import (
     CONFIG_NAME,
     DIFFUSERS_CACHE,
+    FLAX_WEIGHTS_NAME,
     HF_HUB_OFFLINE,
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
-    FLAX_WEIGHTS_NAME,
     is_accelerate_available,
     is_safetensors_available,
     is_torch_version,

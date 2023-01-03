@@ -57,7 +57,7 @@ def load_flax_checkpoint_in_pytorch_model(pt_model, model_file):
     # make sure all arrays are stored as jnp.ndarray
     # NOTE: This is to prevent a bug this will be fixed in Flax >= v0.3.4:
     # https://github.com/google/flax/issues/1261
-    
+
     # flax_state = jax.tree_util.tree_map(lambda x: jax.device_put(x, jax.devices("cpu")[0]), flax_state)
     # flax_state = flatten_dict(flax_state)
 
@@ -107,22 +107,26 @@ def load_flax_weights_in_pytorch_model(pt_model, flax_state):
     missing_keys = set(pt_model_dict.keys())
 
     for flax_key_tuple, flax_tensor in flax_state_dict.items():
-
-        flax_key_tuple_array = flax_key_tuple.split('.')
+        flax_key_tuple_array = flax_key_tuple.split(".")
 
         if flax_key_tuple_array[-1] == "kernel" and flax_tensor.ndim == 4:
             flax_key_tuple_array = flax_key_tuple_array[:-1] + ["weight"]
             flax_tensor = jnp.transpose(flax_tensor, (3, 2, 0, 1))
         elif flax_key_tuple_array[-1] == "kernel":
-            flax_key_tuple_array = flax_key_tuple_array[:-1] +  ["weight"]
+            flax_key_tuple_array = flax_key_tuple_array[:-1] + ["weight"]
             flax_tensor = flax_tensor.T
         elif flax_key_tuple_array[-1] == "scale":
             flax_key_tuple_array = flax_key_tuple_array[:-1] + ["weight"]
 
         if not "time_embedding" in flax_key_tuple_array:
             for i, flax_key_tuple_string in enumerate(flax_key_tuple_array):
-                flax_key_tuple_array[i] = flax_key_tuple_string.replace('_0', '.0').replace('_1', '.1').replace('_2', '.2').replace('_3', '.3')
-        
+                flax_key_tuple_array[i] = (
+                    flax_key_tuple_string.replace("_0", ".0")
+                    .replace("_1", ".1")
+                    .replace("_2", ".2")
+                    .replace("_3", ".3")
+                )
+
         flax_key = ".".join(flax_key_tuple_array)
 
         if flax_key in pt_model_dict:
@@ -140,7 +144,7 @@ def load_flax_weights_in_pytorch_model(pt_model, flax_state):
         else:
             # weight is not expected by PyTorch model
             unexpected_keys.append(flax_key)
-  
+
     pt_model.load_state_dict(pt_model_dict)
 
     # re-transform missing_keys to list
