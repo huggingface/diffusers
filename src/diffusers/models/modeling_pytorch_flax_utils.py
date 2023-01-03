@@ -14,12 +14,10 @@
 # limitations under the License.
 """ PyTorch - Flax general utilities."""
 
-import os
 from pickle import UnpicklingError
 
 import numpy as np
 
-import diffusers
 import jax
 import jax.numpy as jnp
 from flax.serialization import from_bytes
@@ -41,7 +39,7 @@ def load_flax_checkpoint_in_pytorch_model(pt_model, model_file):
     try:
         with open(model_file, "rb") as flax_state_f:
             flax_state = from_bytes(None, flax_state_f.read())
-    except (UnpicklingError, msgpack.exceptions.ExtraData) as e:
+    except UnpicklingError as e:
         try:
             with open(model_file) as f:
                 if f.read().startswith("version"):
@@ -95,13 +93,6 @@ def load_flax_weights_in_pytorch_model(pt_model, flax_state):
     flax_state_dict = flatten_dict(flax_state, sep=".")
     pt_model_dict = pt_model.state_dict()
 
-    load_model_with_head_into_base_model = (pt_model.base_model_prefix in flax_state) and (
-        pt_model.base_model_prefix not in set([k.split(".")[0] for k in pt_model_dict.keys()])
-    )
-    load_base_model_into_model_with_head = (pt_model.base_model_prefix not in flax_state) and (
-        pt_model.base_model_prefix in set([k.split(".")[0] for k in pt_model_dict.keys()])
-    )
-
     # keep track of unexpected & missing keys
     unexpected_keys = []
     missing_keys = set(pt_model_dict.keys())
@@ -118,7 +109,7 @@ def load_flax_weights_in_pytorch_model(pt_model, flax_state):
         elif flax_key_tuple_array[-1] == "scale":
             flax_key_tuple_array = flax_key_tuple_array[:-1] + ["weight"]
 
-        if not "time_embedding" in flax_key_tuple_array:
+        if "time_embedding" not in flax_key_tuple_array:
             for i, flax_key_tuple_string in enumerate(flax_key_tuple_array):
                 flax_key_tuple_array[i] = (
                     flax_key_tuple_string.replace("_0", ".0")
