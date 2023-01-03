@@ -16,14 +16,13 @@ from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 
-from diffusers import Transformer2DModel, VQModel
-from diffusers.schedulers.scheduling_vq_diffusion import VQDiffusionScheduler
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...modeling_utils import ModelMixin
-from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ...models import ModelMixin, Transformer2DModel, VQModel
+from ...schedulers import VQDiffusionScheduler
 from ...utils import logging
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -212,7 +211,7 @@ class VQDiffusionPipeline(DiffusionPipeline):
                 The output format of the generated image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
+                Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_steps` steps during inference. The function will be
                 called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
@@ -221,9 +220,8 @@ class VQDiffusionPipeline(DiffusionPipeline):
                 called at every step.
 
         Returns:
-            [`~pipeline_utils.ImagePipelineOutput`] or `tuple`: [`~ pipeline_utils.ImagePipelineOutput `] if
-            `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is a list with the
-            generated images.
+            [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~ pipeline_utils.ImagePipelineOutput `] if `return_dict`
+            is True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
         """
         if isinstance(prompt, str):
             batch_size = 1

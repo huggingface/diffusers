@@ -20,6 +20,7 @@ else:
     from .ddpm import DDPMPipeline
     from .latent_diffusion import LDMSuperResolutionPipeline
     from .latent_diffusion_uncond import LDMPipeline
+    from .pipeline_utils import AudioPipelineOutput, DiffusionPipeline, ImagePipelineOutput
     from .pndm import PNDMPipeline
     from .repaint import RePaintPipeline
     from .score_sde_ve import ScoreSdeVePipeline
@@ -63,6 +64,14 @@ else:
     from .vq_diffusion import VQDiffusionPipeline
 
 try:
+    if not is_onnx_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils.dummy_onnx_objects import *  # noqa F403
+else:
+    from .onnx_utils import OnnxRuntimeModel
+
+try:
     if not (is_torch_available() and is_transformers_available() and is_onnx_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
@@ -83,6 +92,14 @@ except OptionalDependencyNotAvailable:
     from ..utils.dummy_torch_and_transformers_and_k_diffusion_objects import *  # noqa F403
 else:
     from .stable_diffusion import StableDiffusionKDiffusionPipeline
+
+try:
+    if not is_flax_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils.dummy_flax_objects import *  # noqa F403
+else:
+    from .pipeline_flax_utils import FlaxDiffusionPipeline
 
 
 try:

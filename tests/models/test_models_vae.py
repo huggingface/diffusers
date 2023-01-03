@@ -19,7 +19,7 @@ import unittest
 import torch
 
 from diffusers import AutoencoderKL
-from diffusers.modeling_utils import ModelMixin
+from diffusers.models import ModelMixin
 from diffusers.utils import floats_tensor, load_hf_numpy, require_torch_gpu, slow, torch_all_close, torch_device
 from parameterized import parameterized
 

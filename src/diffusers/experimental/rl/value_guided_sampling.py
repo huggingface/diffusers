@@ -18,7 +18,7 @@ import torch
 import tqdm
 
 from ...models.unet_1d import UNet1DModel
-from ...pipeline_utils import DiffusionPipeline
+from ...pipelines import DiffusionPipeline
 from ...utils.dummy_pt_objects import DDPMScheduler
 
 
