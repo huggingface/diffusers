@@ -55,7 +55,7 @@ def torch_randn(
     if isinstance(generator, list):
         shape = (1,) + shape[1:]
         latents = [
-            torch.rand(shape, generator=generator[i], device=rand_device, dtype=dtype) for i in range(batch_size)
+            torch.randn(shape, generator=generator[i], device=rand_device, dtype=dtype) for i in range(batch_size)
         ]
         latents = torch.cat(latents, dim=0).to(device)
     else:
