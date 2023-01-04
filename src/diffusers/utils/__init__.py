@@ -58,11 +58,13 @@ from .import_utils import (
     is_transformers_available,
     is_transformers_version,
     is_unidecode_available,
+    is_xformers_available,
     requires_backends,
 )
 from .logging import get_logger
 from .outputs import BaseOutput
 from .pil_utils import PIL_INTERPOLATION
+from .torch_utils import torch_randn
 
 
 if is_torch_available():
