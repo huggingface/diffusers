@@ -621,9 +621,9 @@ def main():
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
 
     def checkpoint(step=None):
-        # Create the pipeline using using the trained modules and save it.
-        scheduler = FlaxPNDMScheduler(
-            beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", skip_prk_steps=True
+        # Create the pipeline using the trained modules and save it.
+        scheduler, _ = FlaxPNDMScheduler.from_pretrained(
+                "CompVis/stable-diffusion-v1-4", subfolder="scheduler"
         )
         safety_checker = FlaxStableDiffusionSafetyChecker.from_pretrained(
             "CompVis/stable-diffusion-safety-checker", from_pt=True
