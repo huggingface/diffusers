@@ -472,7 +472,7 @@ class UnCLIPCPUImageVariationPipelineIntegrationTests(unittest.TestCase):
         )
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/unclip/karlo_v1_alpha_cat_variation_fp16.npy"
+            "/unclip/karlo_v1_alpha_cat_variation_fp32_cpu.npy"
         )
 
         pipeline = UnCLIPImageVariationPipeline.from_pretrained("fusing/karlo-image-variations-diffusers")
