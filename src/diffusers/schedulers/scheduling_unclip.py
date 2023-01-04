@@ -294,6 +294,7 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
                 )
 
             # variance = variance * variance_noise
+            variance = variance * 0.01
 
         pred_prev_sample = pred_prev_sample + variance
 

@@ -395,6 +395,8 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         np.save("/home/patrick_huggingface_co/diffusers-images/unclip/karlo_v1_alpha_horse_deter_fp16.npy", image)
+        images = pipeline.numpy_to_pil(image)
+        images[0].save("/home/patrick_huggingface_co/diffusers-images/unclip/karlo_v1_alpha_horse_image.png")
 
         assert image.shape == (256, 256, 3)
         assert np.abs(expected_image - image).max() < 1e-2
