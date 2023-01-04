@@ -387,7 +387,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         # prepare attention_mask
         if attention_mask is not None:
             attention_mask = (1 - attention_mask.to(sample.dtype)) * -10000.0
-            attention_mask = attention_mask.to(sample.dtype)
             attention_mask = attention_mask.unsqueeze(1)
 
         # 0. center input if necessary
