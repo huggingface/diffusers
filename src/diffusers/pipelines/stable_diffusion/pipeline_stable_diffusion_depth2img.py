@@ -26,7 +26,6 @@ from transformers import CLIPTextModel, CLIPTokenizer, DPTFeatureExtractor, DPTF
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import (
     DDIMScheduler,
     DPMSolverMultistepScheduler,
@@ -36,6 +35,7 @@ from ...schedulers import (
     PNDMScheduler,
 )
 from ...utils import PIL_INTERPOLATION, deprecate, logging
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -505,6 +505,29 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
 
+        Examples:
+
+        ```py
+        >>> import torch
+        >>> import requests
+        >>> from PIL import Image
+
+        >>> from diffusers import StableDiffusionDepth2ImgPipeline
+
+        >>> pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(
+        ...     "stabilityai/stable-diffusion-2-depth",
+        ...     torch_dtype=torch.float16,
+        ... )
+        >>> pipe.to("cuda")
+
+
+        >>> url = "http://images.cocodataset.org/val2017/000000039769.jpg"
+        >>> init_image = Image.open(requests.get(url, stream=True).raw)
+        >>> prompt = "two tigers"
+        >>> n_propmt = "bad, deformed, ugly, bad anotomy"
+        >>> image = pipe(prompt=prompt, image=init_image, negative_prompt=n_propmt, strength=0.7).images[0]
+        ```
+
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
@@ -528,7 +551,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
 
-        # 4. Preprocess image
+        # 4. Prepare depth mask
         depth_mask = self.prepare_depth_map(
             image,
             depth_map,
@@ -538,10 +561,10 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
             device,
         )
 
-        # 5. Prepare depth mask
+        # 5. Preprocess image
         image = preprocess(image)
 
-        # 6. set timesteps
+        # 6. Set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)

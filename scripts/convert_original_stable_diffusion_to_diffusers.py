@@ -848,12 +848,17 @@ if __name__ == "__main__":
         ),
     )
     parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output model.")
+    parser.add_argument("--device", type=str, help="Device to use (e.g. cpu, cuda:0, cuda:1, etc.)")
     args = parser.parse_args()
 
     image_size = args.image_size
     prediction_type = args.prediction_type
 
-    checkpoint = torch.load(args.checkpoint_path)
+    if args.device is None:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        checkpoint = torch.load(args.checkpoint_path, map_location=device)
+    else:
+        checkpoint = torch.load(args.checkpoint_path, map_location=args.device)
 
     # Sometimes models don't have the global_step item
     if "global_step" in checkpoint:
@@ -861,7 +866,9 @@ if __name__ == "__main__":
     else:
         print("global_step key not found in model")
         global_step = None
-    checkpoint = checkpoint["state_dict"]
+
+    if "state_dict" in checkpoint:
+        checkpoint = checkpoint["state_dict"]
 
     upcast_attention = False
     if args.original_config_file is None:

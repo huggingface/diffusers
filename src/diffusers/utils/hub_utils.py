@@ -22,9 +22,10 @@ from uuid import uuid4
 
 from huggingface_hub import HfFolder, whoami
 
-from . import __version__
-from .utils import ENV_VARS_TRUE_VALUES, HUGGINGFACE_CO_RESOLVE_ENDPOINT, logging
-from .utils.import_utils import (
+from .. import __version__
+from .constants import HUGGINGFACE_CO_RESOLVE_ENDPOINT
+from .import_utils import (
+    ENV_VARS_TRUE_VALUES,
     _flax_version,
     _jax_version,
     _onnxruntime_version,
@@ -34,13 +35,14 @@ from .utils.import_utils import (
     is_onnx_available,
     is_torch_available,
 )
+from .logging import get_logger
 
 
 if is_modelcards_available():
     from modelcards import CardData, ModelCard
 
 
-logger = logging.get_logger(__name__)
+logger = get_logger(__name__)
 
 
 MODEL_CARD_TEMPLATE_PATH = Path(__file__).parent / "utils" / "model_card_template.md"
