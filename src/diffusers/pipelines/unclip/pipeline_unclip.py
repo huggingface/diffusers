@@ -332,9 +332,6 @@ class UnCLIPPipeline(DiffusionPipeline):
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, text_model_output, text_attention_mask
         )
 
-        print("text_emb", text_embeddings.float().abs().sum())
-        print("text_enc_hid_states", text_encoder_hidden_states.float().abs().sum())
-
         # prior
 
         self.prior_scheduler.set_timesteps(prior_num_inference_steps, device=device)
@@ -350,8 +347,6 @@ class UnCLIPPipeline(DiffusionPipeline):
             prior_latents,
             self.prior_scheduler,
         )
-
-        print("prior_latents", prior_latents.float().abs().sum())
 
         for i, t in enumerate(self.progress_bar(prior_timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
@@ -386,8 +381,6 @@ class UnCLIPPipeline(DiffusionPipeline):
 
         prior_latents = self.prior.post_process_latents(prior_latents)
 
-        print("prior_latents", prior_latents.float().abs().sum())
-
         image_embeddings = prior_latents
 
         # done prior
@@ -400,9 +393,6 @@ class UnCLIPPipeline(DiffusionPipeline):
             text_encoder_hidden_states=text_encoder_hidden_states,
             do_classifier_free_guidance=do_classifier_free_guidance,
         )
-
-        print("text_encoder_hidden_states", text_encoder_hidden_states.float().abs().sum())
-        print("additive_clip_time_embeddings", additive_clip_time_embeddings.float().abs().sum())
 
         decoder_text_mask = F.pad(text_mask, (self.text_proj.clip_extra_context_tokens, 0), value=1)
 
@@ -421,8 +411,6 @@ class UnCLIPPipeline(DiffusionPipeline):
             decoder_latents,
             self.decoder_scheduler,
         )
-
-        print("decoder_latents", decoder_latents.float().abs().sum())
 
         for i, t in enumerate(self.progress_bar(decoder_timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
@@ -453,7 +441,6 @@ class UnCLIPPipeline(DiffusionPipeline):
                 noise_pred, t, decoder_latents, prev_timestep=prev_timestep, generator=generator
             ).prev_sample
 
-        print("decoder_latents", decoder_latents.float().abs().sum())
         decoder_latents = decoder_latents.clamp(-1, 1)
 
         image_small = decoder_latents
@@ -477,7 +464,6 @@ class UnCLIPPipeline(DiffusionPipeline):
             super_res_latents,
             self.super_res_scheduler,
         )
-        print("super_res_latents", super_res_latents.float().abs().sum())
 
         interpolate_antialias = {}
         if "antialias" in inspect.signature(F.interpolate).parameters:
@@ -513,8 +499,6 @@ class UnCLIPPipeline(DiffusionPipeline):
             ).prev_sample
 
         image = super_res_latents
-        print("super_res_latents", super_res_latents.float().abs().sum())
-
         # done super res
 
         # post processing
