@@ -172,7 +172,8 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         hidden_states = hidden_states + positional_embeddings
 
         if attention_mask is not None:
-            attention_mask = (1 - attention_mask.to(hidden_states.dtype)) * -10000.0
+            attention_mask = torch.where(~attention_mask, -float("inf"), 0)
+            attention_mask = attention_mask.to(hidden_states.dtype)
             attention_mask = F.pad(attention_mask, (0, self.additional_embeddings), value=0.0)
             attention_mask = (attention_mask[:, None, :] + self.causal_attention_mask).to(hidden_states.dtype)
             attention_mask = attention_mask.repeat_interleave(self.config.num_attention_heads, dim=0)
