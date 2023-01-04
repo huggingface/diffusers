@@ -629,9 +629,7 @@ def main():
 
     def checkpoint(step=None):
         # Create the pipeline using the trained modules and save it.
-        scheduler, _ = FlaxPNDMScheduler.from_pretrained(
-                "CompVis/stable-diffusion-v1-4", subfolder="scheduler"
-        )
+        scheduler, _ = FlaxPNDMScheduler.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
         safety_checker = FlaxStableDiffusionSafetyChecker.from_pretrained(
             "CompVis/stable-diffusion-safety-checker", from_pt=True
         )
