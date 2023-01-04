@@ -70,7 +70,10 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         required=False,
-        help="Revision of pretrained model identifier from huggingface.co/models.",
+        help=(
+            "Revision of pretrained model identifier from huggingface.co/models. Trainable model components should be"
+            " float32 precision."
+        ),
     )
     parser.add_argument(
         "--tokenizer_name",
@@ -140,7 +143,11 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution"
     )
-    parser.add_argument("--train_text_encoder", action="store_true", help="Whether to train the text encoder")
+    parser.add_argument(
+        "--train_text_encoder",
+        action="store_true",
+        help="Whether to train the text encoder. If set, the text encoder should be float32 precision.",
+    )
     parser.add_argument(
         "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
     )
