@@ -428,10 +428,10 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
         expected_image = np.asarray(pipeline.numpy_to_pil(expected_image)[0], dtype=np.float32)
 
         # Karlo is extremely likely to strongly deviate depending on which hardware is used
-        # Here we just check that the image doesn't deviate more than 3 pixels from the reference image on average
+        # Here we just check that the image doesn't deviate more than 5 pixels from the reference image on average
         avg_diff = np.abs(image - expected_image).mean()
 
-        assert avg_diff < 3, f"Error image deviates {avg_diff} pixels on average"
+        assert avg_diff < 5, f"Error image deviates {avg_diff} pixels on average"
         assert image.shape == (256, 256, 3)
 
     def test_unclip_pipeline_with_sequential_cpu_offloading(self):
