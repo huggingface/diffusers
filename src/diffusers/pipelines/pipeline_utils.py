@@ -37,6 +37,7 @@ from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
     CONFIG_NAME,
     DIFFUSERS_CACHE,
+    FLAX_WEIGHTS_NAME,
     HF_HUB_OFFLINE,
     ONNX_WEIGHTS_NAME,
     WEIGHTS_NAME,
@@ -471,10 +472,17 @@ class DiffusionPipeline(ConfigMixin):
             # make sure we only download sub-folders and `diffusers` filenames
             folder_names = [k for k in config_dict.keys() if not k.startswith("_")]
             allow_patterns = [os.path.join(k, "*") for k in folder_names]
-            allow_patterns += [WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, ONNX_WEIGHTS_NAME, cls.config_name]
+            allow_patterns += [
+                WEIGHTS_NAME,
+                FLAX_WEIGHTS_NAME,
+                SCHEDULER_CONFIG_NAME,
+                CONFIG_NAME,
+                ONNX_WEIGHTS_NAME,
+                cls.config_name,
+            ]
 
             # make sure we don't download flax weights
-            ignore_patterns = ["*.msgpack"]
+            ignore_patterns = [""]
 
             if custom_pipeline is not None:
                 allow_patterns += [CUSTOM_PIPELINE_FILE_NAME]
