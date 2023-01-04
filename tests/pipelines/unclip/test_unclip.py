@@ -419,9 +419,11 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
         pipeline = pipeline.to(torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
+        prompt = "portrait photo of a old man crying, Tattles, sitting on bed, guages in ears, looking away, serious eyes, 50mm portrait photography, hard rim lighting photography–beta –ar 2:3 –beta –upbeta"
+
         generator = torch.Generator(device="cpu").manual_seed(0)
         output = pipeline(
-            "horse",
+            prompt,
             num_images_per_prompt=1,
             generator=generator,
             prior_num_inference_steps=5,
