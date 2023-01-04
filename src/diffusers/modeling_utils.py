@@ -714,16 +714,17 @@ class ModelMixin(torch.nn.Module):
             raise RuntimeError(f"Error(s) in loading state_dict for {model.__class__.__name__}:\n\t{error_msg}")
 
         if len(unexpected_keys) > 0:
-            logger.warning(
-                f"Some weights of the model checkpoint at {pretrained_model_name_or_path} were not used when"
-                f" initializing {model.__class__.__name__}: {unexpected_keys}\n- This IS expected if you are"
-                f" initializing {model.__class__.__name__} from the checkpoint of a model trained on another task"
-                " or with another architecture (e.g. initializing a BertForSequenceClassification model from a"
-                " BertForPreTraining model).\n- This IS NOT expected if you are initializing"
-                f" {model.__class__.__name__} from the checkpoint of a model that you expect to be exactly"
-                " identical (initializing a BertForSequenceClassification model from a"
-                " BertForSequenceClassification model)."
-            )
+            # logger.warning(
+            #     f"Some weights of the model checkpoint at {pretrained_model_name_or_path} were not used when"
+            #     f" initializing {model.__class__.__name__}: {unexpected_keys}\n- This IS expected if you are"
+            #     f" initializing {model.__class__.__name__} from the checkpoint of a model trained on another task"
+            #     " or with another architecture (e.g. initializing a BertForSequenceClassification model from a"
+            #     " BertForPreTraining model).\n- This IS NOT expected if you are initializing"
+            #     f" {model.__class__.__name__} from the checkpoint of a model that you expect to be exactly"
+            #     " identical (initializing a BertForSequenceClassification model from a"
+            #     " BertForSequenceClassification model)."
+            # )
+            pass
         else:
             logger.info(f"All model checkpoint weights were used when initializing {model.__class__.__name__}.\n")
         if len(missing_keys) > 0:
