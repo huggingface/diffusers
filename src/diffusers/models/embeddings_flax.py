@@ -27,6 +27,7 @@ def get_sinusoidal_embeddings(
     scale: float = 1.0,
 ) -> jnp.ndarray:
     """Returns the positional encoding (same as Tensor2Tensor).
+
     Args:
         timesteps: a 1-D Tensor of N indices, one per batch element.
         These may be fractional.
