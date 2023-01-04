@@ -11,12 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import torch
 from torch import nn
 
 from transformers import CLIPPreTrainedModel, CLIPVisionModel
 
 from ...models.attention import BasicTransformerBlock
-from ...utils import logging, randn_tensor
+from ...utils import logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -33,7 +34,7 @@ class PaintByExampleImageEncoder(CLIPPreTrainedModel):
         self.proj_out = nn.Linear(config.hidden_size, self.proj_size)
 
         # uncondition for scaling
-        self.uncond_vector = nn.Parameter(randn_tensor((1, 1, self.proj_size)))
+        self.uncond_vector = nn.Parameter(torch.randn((1, 1, self.proj_size)))
 
     def forward(self, pixel_values):
         clip_output = self.model(pixel_values=pixel_values)
