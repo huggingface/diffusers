@@ -676,7 +676,7 @@ def main(args):
         " copy of the weights should still be float32."
     )
 
-    if unet.dtype != torch.float32 or (args.train_text_encoder and text_encoder.dtype != torch.float32):
+    if unet.dtype != torch.float32:
         raise ValueError(f"Unet loaded as datatype {unet.dtype}. {low_precision_error_string}")
 
     if args.train_text_encoder and text_encoder.dtype != torch.float32:
