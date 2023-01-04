@@ -26,11 +26,12 @@ if is_torch_available():
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def torch_randn(
+def randn_tensor(
     shape: Union[Tuple, List],
     generator: Optional[Union[List["torch.Generator"], "torch.Generator"]] = None,
     device: Optional["torch.device"] = None,
     dtype: Optional["torch.dtype"] = None,
+    layout: Optional["torch.layout"] = None,
 ):
     """This is a helper function that allows to create random tensors on the desired `device` with the desired `dtype`. When
     passing a list of generators one can seed each batched size individually. If CPU generators are passed the tensor
@@ -40,8 +41,12 @@ def torch_randn(
     rand_device = device
     batch_size = shape[0]
 
+    layout = layout or torch.strided
+    device = device or torch.device("cpu")
+
     if generator is not None:
-        if generator.device != device and generator.device.type == "cpu":
+        gen_device_type = generator.device.type if not isinstance(generator, list) else generator[0].device.type
+        if gen_device_type != device.type and gen_device_type == "cpu":
             rand_device = "cpu"
             if device != "mps":
                 logger.info(
@@ -49,16 +54,17 @@ def torch_randn(
                     f" Tensors will be created on 'cpu' and then moved to {device}. Note that one can probably"
                     f" slighly speed up this function by passing a generator that was created on the {device} device."
                 )
-        elif generator.device.type != device.type and generator.device.type == "cuda":
-            raise ValueError(f"Cannot generate a {device} tensor from a generator of type {generator.device.type}.")
+        elif gen_device_type != device.type and gen_device_type == "cuda":
+            raise ValueError(f"Cannot generate a {device} tensor from a generator of type {gen_device_type}.")
 
     if isinstance(generator, list):
         shape = (1,) + shape[1:]
         latents = [
-            torch.randn(shape, generator=generator[i], device=rand_device, dtype=dtype) for i in range(batch_size)
+            torch.randn(shape, generator=generator[i], device=rand_device, dtype=dtype, layout=layout)
+            for i in range(batch_size)
         ]
         latents = torch.cat(latents, dim=0).to(device)
     else:
-        latents = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype).to(device)
+        latents = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype, layout=layout).to(device)
 
     return latents

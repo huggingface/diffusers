@@ -19,12 +19,11 @@ import numpy as np
 import torch
 
 import PIL
-from diffusers.utils import is_accelerate_available
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDIMScheduler, DDPMScheduler, LMSDiscreteScheduler, PNDMScheduler
-from ...utils import logging
+from ...utils import is_accelerate_available, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
@@ -313,11 +312,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height, width)
         if latents is None:
-            if device.type == "mps":
-                # randn does not work reproducibly on mps
-                latents = torch.randn(shape, generator=generator, device="cpu", dtype=dtype).to(device)
-            else:
-                latents = torch.randn(shape, generator=generator, device=device, dtype=dtype)
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
             if latents.shape != shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
@@ -450,11 +445,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
 
         # 5. Add noise to image
         noise_level = torch.tensor([noise_level], dtype=torch.long, device=device)
-        if device.type == "mps":
-            # randn does not work reproducibly on mps
-            noise = torch.randn(image.shape, generator=generator, device="cpu", dtype=text_embeddings.dtype).to(device)
-        else:
-            noise = torch.randn(image.shape, generator=generator, device=device, dtype=text_embeddings.dtype)
+        noise = randn_tensor(image.shape, generator=generator, device=device, dtype=text_embeddings.dtype)
         image = self.low_res_scheduler.add_noise(image, noise, noise_level)
 
         batch_multiplier = 2 if do_classifier_free_guidance else 1
