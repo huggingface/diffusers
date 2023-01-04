@@ -409,7 +409,7 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_unclip_karlo_fast(self):
+    def test_unclip_karlo(self):
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/unclip/karlo_v1_alpha_horse_fp16.npy"
@@ -424,11 +424,10 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator(device="cpu").manual_seed(0)
         output = pipeline(
             prompt,
-            num_images_per_prompt=1,
             generator=generator,
-            prior_num_inference_steps=5,
-            decoder_num_inference_steps=2,
-            super_res_num_inference_steps=2,
+#            prior_num_inference_steps=5,
+#            decoder_num_inference_steps=2,
+#            super_res_num_inference_steps=2,
             output_type="np",
         )
 
