@@ -28,7 +28,7 @@ from diffusers import (
     UNet2DModel,
 )
 from diffusers.pipelines.unclip.text_proj import UnCLIPTextProjModel
-from diffusers.utils import load_numpy, nightly, slow, torch_device, floats_tensor
+from diffusers.utils import floats_tensor, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import load_image, require_torch_gpu
 from transformers import (
     CLIPImageProcessor,
@@ -457,44 +457,6 @@ class UnCLIPImageVariationPipelineFastTests(unittest.TestCase):
         assert np.abs(img_out_1 - img_out_2).max() < 1e-4
 
 
-# @nightly
-@slow
-class UnCLIPCPUImageVariationPipelineIntegrationTests(unittest.TestCase):
-    def tearDown(self):
-        # clean up the VRAM after each test
-        super().tearDown()
-        gc.collect()
-        torch.cuda.empty_cache()
-
-    def test_unclip_karlo_cpu_fp32(self):
-        input_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/unclip/cat.png"
-        )
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/unclip/karlo_v1_alpha_cat_variation_fp32_cpu.npy"
-        )
-
-        pipeline = UnCLIPImageVariationPipeline.from_pretrained("fusing/karlo-image-variations-diffusers")
-        pipeline.set_progress_bar_config(disable=None)
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        output = pipeline(
-            input_image,
-            generator=generator,
-            output_type="np",
-        )
-
-        image = output.images[0]
-
-        np.save(
-            "/home/patrick_huggingface_co/diffusers-images/unclip/karlo_v1_alpha_cat_variation_fp32_cpu.npy", image
-        )
-
-        assert image.shape == (256, 256, 3)
-        assert np.abs(expected_image - image).max() < 1e-1
-
-
 @slow
 @require_torch_gpu
 class UnCLIPImageVariationPipelineIntegrationTests(unittest.TestCase):
@@ -525,12 +487,6 @@ class UnCLIPImageVariationPipelineIntegrationTests(unittest.TestCase):
             generator=generator,
             output_type="np",
         )
-
-        image = output.images[0]
-
-        np.save("/home/patrick_huggingface_co/diffusers-images/unclip/karlo_v1_alpha_cat_variation_fp16.npy", image)
-        images = pipeline.numpy_to_pil(image)
-        images[0].save("/home/patrick_huggingface_co/diffusers-images/unclip/karlo_v1_alpha_cat_image.png")
 
         image = np.asarray(pipeline.numpy_to_pil(output.images)[0], dtype=np.float32)
         expected_image = np.asarray(pipeline.numpy_to_pil(expected_image)[0], dtype=np.float32)

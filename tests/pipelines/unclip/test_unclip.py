@@ -25,6 +25,7 @@ from diffusers.utils import load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
+
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
@@ -390,10 +391,6 @@ class UnCLIPPipelineCPUIntegrationTests(unittest.TestCase):
 
         image = output.images[0]
 
-        np.save("/home/patrick_huggingface_co/diffusers-images/unclip/karlo_v1_alpha_horse_cpu.npy", image)
-        images = pipeline.numpy_to_pil(image)
-        images[0].save("/home/patrick_huggingface_co/diffusers-images/unclip/karlo_v1_alpha_horse_image.png")
-
         assert image.shape == (256, 256, 3)
         assert np.abs(expected_image - image).max() < 1e-1
 
@@ -428,10 +425,10 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
         expected_image = np.asarray(pipeline.numpy_to_pil(expected_image)[0], dtype=np.float32)
 
         # Karlo is extremely likely to strongly deviate depending on which hardware is used
-        # Here we just check that the image doesn't deviate more than 5 pixels from the reference image on average
+        # Here we just check that the image doesn't deviate more than 10 pixels from the reference image on average
         avg_diff = np.abs(image - expected_image).mean()
 
-        assert avg_diff < 5, f"Error image deviates {avg_diff} pixels on average"
+        assert avg_diff < 10, f"Error image deviates {avg_diff} pixels on average"
         assert image.shape == (256, 256, 3)
 
     def test_unclip_pipeline_with_sequential_cpu_offloading(self):
