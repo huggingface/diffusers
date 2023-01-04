@@ -332,6 +332,9 @@ class UnCLIPPipeline(DiffusionPipeline):
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, text_model_output, text_attention_mask
         )
 
+        print("text_emb", text_embeddings.float().abs().sum())
+        print("text_enc_hid_states", text_encoder_hidden_states.float().abs().sum())
+
         # prior
 
         self.prior_scheduler.set_timesteps(prior_num_inference_steps, device=device)
@@ -347,6 +350,8 @@ class UnCLIPPipeline(DiffusionPipeline):
             prior_latents,
             self.prior_scheduler,
         )
+
+        print("prior_latents", prior_latents.float().abs().sum())
 
         for i, t in enumerate(self.progress_bar(prior_timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
