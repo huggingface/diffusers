@@ -24,7 +24,7 @@ from transformers.models.clip.modeling_clip import CLIPTextModelOutput
 from ...models import PriorTransformer, UNet2DConditionModel, UNet2DModel
 from ...pipelines import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import UnCLIPScheduler
-from ...utils import is_accelerate_available, logging, rand_tensorn
+from ...utils import is_accelerate_available, logging, randn_tensor
 from .text_proj import UnCLIPTextProjModel
 
 
@@ -105,7 +105,7 @@ class UnCLIPPipeline(DiffusionPipeline):
 
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
-            latents = rand_tensorn(shape, generator=generator, device=device, dtype=dtype)
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
             if latents.shape != shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
