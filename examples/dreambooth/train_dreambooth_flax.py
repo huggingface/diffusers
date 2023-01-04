@@ -525,28 +525,35 @@ def main():
                 )[0]
 
             # Predict the noise residual
-            unet_outputs = unet.apply(
+            model_pred = unet.apply(
                 {"params": params["unet"]}, noisy_latents, timesteps, encoder_hidden_states, train=True
-            )
-            noise_pred = unet_outputs.sample
+            ).sample
+
+            # Get the target for loss depending on the prediction type
+            if noise_scheduler.config.prediction_type == "epsilon":
+                target = noise
+            elif noise_scheduler.config.prediction_type == "v_prediction":
+                target = noise_scheduler.get_velocity(noise_scheduler_state, latents, noise, timesteps)
+            else:
+                raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
             if args.with_prior_preservation:
                 # Chunk the noise and noise_pred into two parts and compute the loss on each part separately.
-                noise_pred, noise_pred_prior = jnp.split(noise_pred, 2, axis=0)
-                noise, noise_prior = jnp.split(noise, 2, axis=0)
+                model_pred, model_pred_prior = jnp.split(model_pred, 2, axis=0)
+                target, target_prior = jnp.split(target, 2, axis=0)
 
                 # Compute instance loss
-                loss = (noise - noise_pred) ** 2
+                loss = (target - model_pred) ** 2
                 loss = loss.mean()
 
                 # Compute prior loss
-                prior_loss = (noise_prior - noise_pred_prior) ** 2
+                prior_loss = (target_prior - model_pred_prior) ** 2
                 prior_loss = prior_loss.mean()
 
                 # Add the prior loss to the instance loss.
                 loss = loss + args.prior_loss_weight * prior_loss
             else:
-                loss = (noise - noise_pred) ** 2
+                loss = (target - model_pred) ** 2
                 loss = loss.mean()
 
             return loss
