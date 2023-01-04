@@ -671,6 +671,17 @@ def main(args):
     if not args.train_text_encoder:
         text_encoder.to(accelerator.device, dtype=weight_dtype)
 
+    low_precision_error_string = (
+        "Training on low precision datatypes is not supported. Even When doing mixed precision training, the master"
+        " copy of the weights should still be float32."
+    )
+
+    if unet.dtype != torch.float32 or (args.train_text_encoder and text_encoder.dtype != torch.float32):
+        raise ValueError(f"Unet loaded as datatype {unet.dtype}. {low_precision_error_string}")
+
+    if args.train_text_encoder and text_encoder.dtype != torch.float32:
+        raise ValueError(f"Text encoder loaded as datatype {text_encoder.dtype}. {low_precision_error_string}")
+
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
