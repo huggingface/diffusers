@@ -363,6 +363,7 @@ class UnCLIPPipelineFastTests(unittest.TestCase):
 
 
 # @nightly
+@slow
 class UnCLIPPipelineCPUIntegrationTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
