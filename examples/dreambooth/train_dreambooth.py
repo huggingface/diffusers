@@ -679,7 +679,7 @@ def main(args):
         text_encoder.to(accelerator.device, dtype=weight_dtype)
 
     low_precision_error_string = (
-        "Training on low precision datatypes is not supported. Even When doing mixed precision training, the master"
+        "Please make sure to always have all model weights in full float32 precision when starting training - even if doing mixed precision training."
         " copy of the weights should still be float32."
     )
 
