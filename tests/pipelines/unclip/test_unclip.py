@@ -363,8 +363,7 @@ class UnCLIPPipelineFastTests(unittest.TestCase):
         assert np.abs(image - image_from_text).max() < 1e-4
 
 
-# @nightly
-@slow
+@nightly
 class UnCLIPPipelineCPUIntegrationTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
