@@ -55,10 +55,10 @@ def randn_tensor(
     if isinstance(generator, list):
         shape = (1,) + shape[1:]
         latents = [
-            torch.randn(shape, generator=generator[i], device=rand_device, dtype=dtype) for i in range(batch_size)
+            randn_tensor(shape, generator=generator[i], device=rand_device, dtype=dtype) for i in range(batch_size)
         ]
         latents = torch.cat(latents, dim=0).to(device)
     else:
-        latents = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype).to(device)
+        latents = randn_tensor(shape, generator=generator, device=rand_device, dtype=dtype).to(device)
 
     return latents

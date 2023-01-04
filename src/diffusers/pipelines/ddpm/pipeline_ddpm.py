@@ -18,7 +18,7 @@ from typing import List, Optional, Tuple, Union
 import torch
 
 from ...configuration_utils import FrozenDict
-from ...utils import deprecate
+from ...utils import deprecate, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
@@ -100,10 +100,10 @@ class DDPMPipeline(DiffusionPipeline):
 
         if self.device.type == "mps":
             # randn does not work reproducibly on mps
-            image = torch.randn(image_shape, generator=generator)
+            image = randn_tensor(image_shape, generator=generator)
             image = image.to(self.device)
         else:
-            image = torch.randn(image_shape, generator=generator, device=self.device)
+            image = randn_tensor(image_shape, generator=generator, device=self.device)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)
