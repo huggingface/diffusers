@@ -22,13 +22,11 @@ from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
 from diffusers.utils import deprecate
 from diffusers.utils.testing_utils import require_torch_gpu, slow, torch_device
 
-from ...test_pipelines_common import PipelineTesterMixin
-
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class DDPMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class DDPMPipelineFastTests(unittest.TestCase):
     @property
     def dummy_uncond_unet(self):
         torch.manual_seed(0)
@@ -69,7 +67,7 @@ class DDPMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_inference_deprecated_predict_epsilon(self):
-        deprecate("remove this test", "0.11.0", "remove")
+        deprecate("remove this test", "0.13.0", "remove")
         unet = self.dummy_uncond_unet
         scheduler = DDPMScheduler(predict_epsilon=False)
 

@@ -12,9 +12,18 @@ ___This script is experimental. The script fine-tunes the whole model and often 
 
 Before running the scripts, make sure to install the library's training dependencies:
 
+**Important**
+
+To make sure you can successfully run the latest versions of the example scripts, we highly recommend **installing from source** and keeping the install up to date as we update the example scripts frequently and install some example-specific requirements. To do this, execute the following steps in a new virtual environment:
 ```bash
-pip install git+https://github.com/huggingface/diffusers.git
-pip install -U -r requirements.txt
+git clone https://github.com/huggingface/diffusers
+cd diffusers
+pip install .
+```
+
+Then cd in the example folder  and run
+```bash
+pip install -r requirements.txt
 ```
 
 And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
@@ -151,3 +160,6 @@ python train_text_to_image_flax.py \
   --max_grad_norm=1 \
   --output_dir="sd-pokemon-model"
 ```
+
+### Training with xformers:
+You can enable memory efficient attention by [installing xFormers](https://github.com/facebookresearch/xformers#installing-xformers) and padding the `--enable_xformers_memory_efficient_attention` argument to the script. This is not available with the Flax/JAX implementation.

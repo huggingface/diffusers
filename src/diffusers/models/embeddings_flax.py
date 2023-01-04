@@ -27,6 +27,7 @@ def get_sinusoidal_embeddings(
     scale: float = 1.0,
 ) -> jnp.ndarray:
     """Returns the positional encoding (same as Tensor2Tensor).
+
     Args:
         timesteps: a 1-D Tensor of N indices, one per batch element.
         These may be fractional.
@@ -84,10 +85,11 @@ class FlaxTimesteps(nn.Module):
                 Time step embedding dimension
     """
     dim: int = 32
+    flip_sin_to_cos: bool = False
     freq_shift: float = 1
 
     @nn.compact
     def __call__(self, timesteps):
         return get_sinusoidal_embeddings(
-            timesteps, embedding_dim=self.dim, freq_shift=self.freq_shift, flip_sin_to_cos=True
+            timesteps, embedding_dim=self.dim, flip_sin_to_cos=self.flip_sin_to_cos, freq_shift=self.freq_shift
         )
