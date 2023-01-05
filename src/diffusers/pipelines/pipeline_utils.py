@@ -713,7 +713,8 @@ class DiffusionPipeline(ConfigMixin):
                 if is_diffusers_model or is_transformers_model:
                     loading_kwargs["device_map"] = device_map
                     loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
-
+                        if from_flax:
+                            loading_kwargs["from_flax"] = True
                 # check if the module is in a subdirectory
                 if os.path.isdir(os.path.join(cached_folder, name)):
                     if from_flax:
