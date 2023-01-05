@@ -19,6 +19,7 @@ import torch
 
 from ...models import UNet2DModel, VQModel
 from ...schedulers import DDIMScheduler
+from ...utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
@@ -71,7 +72,7 @@ class LDMPipeline(DiffusionPipeline):
             True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
         """
 
-        latents = torch.randn(
+        latents = randn_tensor(
             (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
             generator=generator,
         )

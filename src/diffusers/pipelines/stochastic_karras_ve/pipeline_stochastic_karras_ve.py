@@ -18,6 +18,7 @@ import torch
 
 from ...models import UNet2DModel
 from ...schedulers import KarrasVeScheduler
+from ...utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
@@ -81,8 +82,7 @@ class KarrasVePipeline(DiffusionPipeline):
         model = self.unet
 
         # sample x_0 ~ N(0, sigma_0^2 * I)
-        sample = torch.randn(*shape) * self.scheduler.init_noise_sigma
-        sample = sample.to(self.device)
+        sample = randn_tensor(shape, device=self.device) * self.scheduler.init_noise_sigma
 
         self.scheduler.set_timesteps(num_inference_steps)
 

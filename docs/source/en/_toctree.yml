@@ -155,6 +155,8 @@
       title: "DDIM"
     - local: api/schedulers/ddpm
       title: "DDPM"
+    - local: api/schedulers/deis
+      title: "DEIS"
     - local: api/schedulers/singlestep_dpm_solver
       title: "Singlestep DPM-Solver"
     - local: api/schedulers/multistep_dpm_solver
