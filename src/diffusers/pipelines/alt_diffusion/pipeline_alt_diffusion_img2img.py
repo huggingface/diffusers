@@ -424,6 +424,11 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
         return timesteps, num_inference_steps - t_start
 
     def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
+        if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
+            raise ValueError(
+                f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
+            )
+
         image = image.to(device=device, dtype=dtype)
 
         batch_size = batch_size * num_images_per_prompt
