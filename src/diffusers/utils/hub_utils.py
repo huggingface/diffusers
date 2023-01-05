@@ -16,11 +16,13 @@
 
 import os
 import sys
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, Optional, Union
 from uuid import uuid4
 
-from huggingface_hub import HfFolder, whoami
+from huggingface_hub import CommitOperationAdd, HfFolder, create_commit, create_repo, whoami
 
 from .. import __version__
 from .constants import HUGGINGFACE_CO_RESOLVE_ENDPOINT
@@ -132,3 +134,128 @@ def create_model_card(args, model_name):
 
     card_path = os.path.join(args.output_dir, "README.md")
     model_card.save(card_path)
+
+
+@contextmanager
+def working_or_temp_dir(working_dir, use_temp_dir: bool = False):
+    if use_temp_dir:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            yield tmp_dir
+    else:
+        yield working_dir
+
+
+class PushToHubMixin:
+    """
+    A Mixin containing the functionality to push a model or pipeline to the hub.
+    """
+
+    def _create_repo(
+        self,
+        repo_id: str,
+        private: Optional[bool] = None,
+        use_auth_token: Optional[Union[bool, str]] = None,
+    ):
+        """
+        Create the repo if needed, cleans up repo_id, retrieves the token.
+        """
+        token = HfFolder.get_token() if use_auth_token is True else use_auth_token
+        url = create_repo(repo_id=repo_id, token=token, private=private, exist_ok=True)
+
+        # If the namespace is not there, add it or `upload_file` will complain
+        if "/" not in repo_id and url != f"{HUGGINGFACE_CO_RESOLVE_ENDPOINT}/{repo_id}":
+            repo_id = get_full_repo_name(repo_id, token=token)
+        return repo_id, token
+
+    def _get_files_timestamps(self, working_dir: Union[str, os.PathLike]):
+        """
+        Returns the list of files with their last modification timestamp.
+        """
+        return {f: os.path.getmtime(os.path.join(working_dir, f)) for f in os.listdir(working_dir)}
+
+    def _upload_modified_files(
+        self,
+        working_dir: Union[str, os.PathLike],
+        repo_id: str,
+        files_timestamps: Dict[str, float],
+        commit_message: Optional[str] = None,
+        token: Optional[str] = None,
+        create_pr: bool = False,
+    ):
+        """
+        Uploads all modified files in `working_dir` to `repo_id`, based on `files_timestamps`.
+        """
+        if commit_message is None:
+            commit_message = f"Upload {self.__class__.__name__}"
+        modified_files = [
+            f
+            for f in os.listdir(working_dir)
+            if f not in files_timestamps or os.path.getmtime(os.path.join(working_dir, f)) > files_timestamps[f]
+        ]
+        operations = []
+        for file in modified_files:
+            operations.append(CommitOperationAdd(path_or_fileobj=os.path.join(working_dir, file), path_in_repo=file))
+        logger.info(f"Uploading the following files to {repo_id}: {','.join(modified_files)}")
+        return create_commit(
+            repo_id=repo_id, operations=operations, commit_message=commit_message, token=token, create_pr=create_pr
+        )
+
+    def push_to_hub(
+        self,
+        repo_id: str,
+        use_temp_dir: Optional[bool] = None,
+        commit_message: Optional[str] = None,
+        private: Optional[bool] = None,
+        use_auth_token: Optional[Union[bool, str]] = None,
+        create_pr: bool = False,
+    ) -> str:
+        """
+        Parameters:
+        Upload the {object_files} to the 🤗 Hub while synchronizing a local clone of the repo in `repo_path_or_name`.
+            repo_id (`str`):
+                The name of the repository you want to push your {object} to. It should contain your organization name
+                when pushing to a given organization.
+            use_temp_dir (`bool`, *optional*):
+                Whether or not to use a temporary directory to store the files saved before they are pushed to the Hub.
+                Will default to `True` if there is no directory named like `repo_id`, `False` otherwise.
+            commit_message (`str`, *optional*):
+                Message to commit while pushing. Will default to `"Upload {object}"`.
+            private (`bool`, *optional*):
+                Whether or not the repository created should be private.
+            use_auth_token (`bool` or `str`, *optional*):
+                The token to use as HTTP bearer authorization for remote files. If `True`, will use the token generated
+                when running `huggingface-cli login` (stored in `~/.huggingface`). Will default to `True` if `repo_url`
+                is not specified.
+            create_pr (`bool`, *optional*, defaults to `False`):
+                Whether or not to create a PR with the uploaded files or directly commit.
+        Examples:
+        ```python
+        from diffusers import {object_class}
+        {object} = {object_class}.from_pretrained("stabilityai/stable-diffusion-2")
+        # Push the {object} to your namespace with the name "my-finetuned-diffusion".
+        {object}.push_to_hub("my-finetuned-diffusion")
+        # Push the {object} to an organization with the name "my-finetuned-diffusion".
+        {object}.push_to_hub("huggingface/my-finetuned-diffusion")
+        ```
+        """
+
+        if os.path.isdir(repo_id):
+            working_dir = repo_id
+            repo_id = repo_id.split(os.path.sep)[-1]
+        else:
+            working_dir = repo_id.split("/")[-1]
+
+        repo_id, token = self._create_repo(repo_id, private=private, use_auth_token=use_auth_token)
+
+        if use_temp_dir is None:
+            use_temp_dir = not os.path.isdir(working_dir)
+
+        with working_or_temp_dir(working_dir=working_dir, use_temp_dir=use_temp_dir) as work_dir:
+            files_timestamps = self._get_files_timestamps(work_dir)
+
+            # Save all files.
+            self.save_pretrained(work_dir)
+
+            return self._upload_modified_files(
+                work_dir, repo_id, files_timestamps, commit_message=commit_message, token=token, create_pr=create_pr
+            )
