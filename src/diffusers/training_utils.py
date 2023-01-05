@@ -69,9 +69,9 @@ class EMAModel:
             min_value (float): The minimum EMA decay rate. Default: 0.
         """
         deprecation_message = (
-            f"`diffusers.training_utils.EMAModel` is deprecated in favor of \n"
-            f"`EMAModel` in `examples/unconditional_image_generation/train_unconditional.py` \n"
-            f"and will be removed in version v1.0.0"
+            "`diffusers.training_utils.EMAModel` is deprecated in favor of \n"
+            "`EMAModel` in `examples/unconditional_image_generation/train_unconditional.py` \n"
+            "and will be removed in version v1.0.0"
         )
         deprecate("EMAModel", "1.0.0", deprecation_message, standard_warn=False)
         self.averaged_model = copy.deepcopy(model).eval()
