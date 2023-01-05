@@ -438,7 +438,6 @@ class ModelMixin(torch.nn.Module):
 
         model_file = None
         if from_flax:
-            if is_flax_available():
                 model_file = cls._get_model_file(
                     pretrained_model_name_or_path,
                     weights_name=FLAX_WEIGHTS_NAME,
