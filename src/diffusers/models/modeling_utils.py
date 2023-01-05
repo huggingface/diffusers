@@ -26,7 +26,7 @@ from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
 
-from .. import __version__, is_flax_available
+from .. import __version__
 from ..utils import (
     CONFIG_NAME,
     DIFFUSERS_CACHE,
