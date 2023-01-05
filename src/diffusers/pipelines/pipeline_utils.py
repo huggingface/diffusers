@@ -481,7 +481,7 @@ class DiffusionPipeline(ConfigMixin):
             ]
 
             # make sure we don't download flax weights
-            ignore_patterns = [""]
+            ignore_patterns = ["*.msgpack"]
 
             if custom_pipeline is not None:
                 allow_patterns += [CUSTOM_PIPELINE_FILE_NAME]
