@@ -233,7 +233,7 @@ class StableDiffusion2VPredictionPipelineFastTests(unittest.TestCase):
         sd_pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.Generator().manual_seed(0)
         image = sd_pipe([prompt], generator=generator, num_inference_steps=2, output_type="np").images
 
         assert image.shape == (1, 64, 64, 3)
@@ -255,7 +255,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         sd_pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.Generator().manual_seed(0)
         output = sd_pipe([prompt], generator=generator, guidance_scale=7.5, num_inference_steps=20, output_type="np")
 
         image = output.images
@@ -274,7 +274,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         sd_pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.Generator().manual_seed(0)
         output = sd_pipe([prompt], generator=generator, guidance_scale=7.5, num_inference_steps=20, output_type="np")
 
         image = output.images
@@ -292,7 +292,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         sd_pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.Generator().manual_seed(0)
 
         output = sd_pipe([prompt], generator=generator, num_inference_steps=5, output_type="numpy")
         image = output.images
@@ -316,7 +316,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         sd_pipe.set_progress_bar_config(disable=None)
 
         prompt = "a photograph of an astronaut riding a horse"
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.Generator().manual_seed(0)
         image = sd_pipe(
             [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=5, output_type="numpy"
         ).images
@@ -337,7 +337,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
 
         # make attention efficient
         pipe.enable_attention_slicing()
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.Generator().manual_seed(0)
         with torch.autocast(torch_device):
             output_chunked = pipe(
                 [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
@@ -351,7 +351,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
 
         # disable slicing
         pipe.disable_attention_slicing()
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.Generator().manual_seed(0)
         with torch.autocast(torch_device):
             output = pipe(
                 [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
@@ -376,7 +376,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
 
         prompt = "astronaut riding a horse"
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.Generator().manual_seed(0)
         output = pipe(prompt=prompt, guidance_scale=7.5, generator=generator, output_type="np")
         image = output.images[0]
 
@@ -395,7 +395,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
 
         prompt = "astronaut riding a horse"
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.Generator().manual_seed(0)
         output = pipe(prompt=prompt, guidance_scale=7.5, generator=generator, output_type="np")
         image = output.images[0]
 
@@ -435,7 +435,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
 
         prompt = "Andromeda galaxy in a bottle"
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.Generator().manual_seed(0)
         with torch.autocast(torch_device):
             pipe(
                 prompt=prompt,
@@ -475,7 +475,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         pipeline.enable_attention_slicing(1)
         pipeline.enable_sequential_cpu_offload()
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.Generator().manual_seed(0)
         _ = pipeline(prompt, generator=generator, num_inference_steps=5)
 
         mem_bytes = torch.cuda.max_memory_allocated()

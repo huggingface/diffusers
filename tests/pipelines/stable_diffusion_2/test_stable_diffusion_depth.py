@@ -395,7 +395,7 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def get_inputs(self, device, dtype=torch.float32, seed=0):
+    def get_inputs(self, device="cpu", dtype=torch.float32, seed=0):
         generator = torch.Generator(device=device).manual_seed(seed)
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/depth2img/two_cats.png"
@@ -419,7 +419,7 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        inputs = self.get_inputs(torch_device)
+        inputs = self.get_inputs()
         image = pipe(**inputs).images
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
@@ -436,7 +436,7 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        inputs = self.get_inputs(torch_device)
+        inputs = self.get_inputs()
         image = pipe(**inputs).images
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
@@ -453,7 +453,7 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        inputs = self.get_inputs(torch_device)
+        inputs = self.get_inputs()
         image = pipe(**inputs).images
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
@@ -490,7 +490,7 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        inputs = self.get_inputs(torch_device, dtype=torch.float16)
+        inputs = self.get_inputs(dtype=torch.float16)
         pipe(**inputs, callback=callback_fn, callback_steps=1)
         assert callback_fn.has_been_called
         assert number_of_steps == 2
@@ -508,7 +508,7 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
         pipe.enable_attention_slicing(1)
         pipe.enable_sequential_cpu_offload()
 
-        inputs = self.get_inputs(torch_device, dtype=torch.float16)
+        inputs = self.get_inputs(dtype=torch.float16)
         _ = pipe(**inputs)
 
         mem_bytes = torch.cuda.max_memory_allocated()
@@ -524,7 +524,7 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def get_inputs(self, device, dtype=torch.float32, seed=0):
+    def get_inputs(self, device="cpu", dtype=torch.float32, seed=0):
         generator = torch.Generator(device=device).manual_seed(seed)
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/depth2img/two_cats.png"
@@ -545,7 +545,7 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_inputs(torch_device)
+        inputs = self.get_inputs()
         image = pipe(**inputs).images[0]
 
         expected_image = load_numpy(
@@ -561,7 +561,7 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_inputs(torch_device)
+        inputs = self.get_inputs()
         image = pipe(**inputs).images[0]
 
         expected_image = load_numpy(
@@ -577,7 +577,7 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_inputs(torch_device)
+        inputs = self.get_inputs()
         image = pipe(**inputs).images[0]
 
         expected_image = load_numpy(
@@ -593,7 +593,7 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_inputs(torch_device)
+        inputs = self.get_inputs()
         inputs["num_inference_steps"] = 30
         image = pipe(**inputs).images[0]
 
