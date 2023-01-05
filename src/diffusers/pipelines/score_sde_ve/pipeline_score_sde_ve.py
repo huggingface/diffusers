@@ -18,6 +18,7 @@ import torch
 
 from ...models import UNet2DModel
 from ...schedulers import ScoreSdeVeScheduler
+from ...utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
@@ -69,7 +70,7 @@ class ScoreSdeVePipeline(DiffusionPipeline):
 
         model = self.unet
 
-        sample = torch.randn(*shape, generator=generator) * self.scheduler.init_noise_sigma
+        sample = randn_tensor(shape, generator=generator) * self.scheduler.init_noise_sigma
         sample = sample.to(self.device)
 
         self.scheduler.set_timesteps(num_inference_steps)

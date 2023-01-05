@@ -22,7 +22,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, FrozenDict, register_to_config
-from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, BaseOutput, deprecate
+from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, BaseOutput, deprecate, randn_tensor
 from .scheduling_utils import SchedulerMixin
 
 
@@ -313,14 +313,9 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         variance = 0
         if t > 0:
             device = model_output.device
-            if device.type == "mps":
-                # randn does not work reproducibly on mps
-                variance_noise = torch.randn(model_output.shape, dtype=model_output.dtype, generator=generator)
-                variance_noise = variance_noise.to(device)
-            else:
-                variance_noise = torch.randn(
-                    model_output.shape, generator=generator, device=device, dtype=model_output.dtype
-                )
+            variance_noise = randn_tensor(
+                model_output.shape, generator=generator, device=device, dtype=model_output.dtype
+            )
             if self.variance_type == "fixed_small_log":
                 variance = self._get_variance(t, predicted_variance=predicted_variance) * variance_noise
             else:

@@ -132,7 +132,7 @@ class PaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4397, 0.5553, 0.3802, 0.5222, 0.5811, 0.4342, 0.494, 0.4577, 0.4428])
+        expected_slice = np.array([0.4701, 0.5555, 0.3994, 0.5107, 0.5691, 0.4517, 0.5125, 0.4769, 0.4539])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
