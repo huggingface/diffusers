@@ -51,7 +51,7 @@ class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
             "https://raw.githubusercontent.com/SHI-Labs/Versatile-Diffusion/master/assets/benz.jpg"
         )
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.Generator().manual_seed(0)
         image = pipe(
             prompt="first prompt",
             image=second_prompt,
@@ -92,7 +92,7 @@ class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
         second_prompt = load_image(
             "https://raw.githubusercontent.com/SHI-Labs/Versatile-Diffusion/master/assets/benz.jpg"
         )
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.Generator().manual_seed(0)
         image = pipe(
             prompt=first_prompt,
             image=second_prompt,

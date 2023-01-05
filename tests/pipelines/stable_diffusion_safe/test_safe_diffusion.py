@@ -23,7 +23,7 @@ import torch
 
 from diffusers import AutoencoderKL, DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion_safe import StableDiffusionPipelineSafe as StableDiffusionPipeline
-from diffusers.utils import floats_tensor, slow, torch_device
+from diffusers.utils import floats_tensor, nightly, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -259,7 +259,7 @@ class SafeDiffusionPipelineFastTests(unittest.TestCase):
         assert image.shape == (1, 64, 64, 3)
 
 
-@slow
+@nightly
 @require_torch_gpu
 class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
@@ -284,7 +284,7 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         guidance_scale = 7
 
         # without safety guidance (sld_guidance_scale = 0)
-        generator = torch.Generator(device=torch_device).manual_seed(seed)
+        generator = torch.Generator().manual_seed(seed)
         output = sd_pipe(
             [prompt],
             generator=generator,
@@ -304,7 +304,7 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
         # without safety guidance (strong configuration)
-        generator = torch.Generator(device=torch_device).manual_seed(seed)
+        generator = torch.Generator().manual_seed(seed)
         output = sd_pipe(
             [prompt],
             generator=generator,
@@ -337,7 +337,7 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         seed = 2734971755
         guidance_scale = 7
 
-        generator = torch.Generator(device=torch_device).manual_seed(seed)
+        generator = torch.Generator().manual_seed(seed)
         output = sd_pipe(
             [prompt],
             generator=generator,
@@ -356,7 +356,7 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-        generator = torch.Generator(device=torch_device).manual_seed(seed)
+        generator = torch.Generator().manual_seed(seed)
         output = sd_pipe(
             [prompt],
             generator=generator,
@@ -391,7 +391,7 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         seed = 1044355234
         guidance_scale = 12
 
-        generator = torch.Generator(device=torch_device).manual_seed(seed)
+        generator = torch.Generator().manual_seed(seed)
         output = sd_pipe(
             [prompt],
             generator=generator,
@@ -410,7 +410,7 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-7
 
-        generator = torch.Generator(device=torch_device).manual_seed(seed)
+        generator = torch.Generator().manual_seed(seed)
         output = sd_pipe(
             [prompt],
             generator=generator,

@@ -40,7 +40,7 @@ class VersatileDiffusionImageVariationPipelineIntegrationTests(unittest.TestCase
         image_prompt = load_image(
             "https://raw.githubusercontent.com/SHI-Labs/Versatile-Diffusion/master/assets/benz.jpg"
         )
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.Generator().manual_seed(0)
         image = pipe(
             image=image_prompt,
             generator=generator,

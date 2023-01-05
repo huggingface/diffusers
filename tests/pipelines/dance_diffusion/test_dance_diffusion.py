@@ -104,7 +104,7 @@ class PipelineIntegrationTests(unittest.TestCase):
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator(device=device).manual_seed(0)
+        generator = torch.Generator().manual_seed(0)
         output = pipe(generator=generator, num_inference_steps=100, audio_length_in_s=4.096)
         audio = output.audios
 
@@ -121,7 +121,7 @@ class PipelineIntegrationTests(unittest.TestCase):
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator(device=device).manual_seed(0)
+        generator = torch.Generator().manual_seed(0)
         output = pipe(generator=generator, num_inference_steps=100, audio_length_in_s=4.096)
         audio = output.audios
 
