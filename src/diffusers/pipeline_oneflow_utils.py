@@ -561,7 +561,7 @@ class OneFlowDiffusionPipeline(ConfigMixin):
         if pipeline_class.__name__ == "StableDiffusionInpaintPipeline" and version.parse(
             version.parse(config_dict["_diffusers_version"]).base_version
         ) <= version.parse("0.5.1"):
-            from diffusers import StableDiffusionInpaintPipeline, StableDiffusionInpaintPipelineLegacy
+            from diffusers import OneFlowStableDiffusionInpaintPipeline as StableDiffusionInpaintPipeline, OneFlowStableDiffusionInpaintPipelineLegacy as StableDiffusionInpaintPipelineLegacy
 
             pipeline_class = StableDiffusionInpaintPipelineLegacy
 
