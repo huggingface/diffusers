@@ -39,6 +39,7 @@ accelerate launch train_unconditional.py \
   --train_batch_size=16 \
   --num_epochs=100 \
   --gradient_accumulation_steps=1 \
+  --use_ema \
   --learning_rate=1e-4 \
   --lr_warmup_steps=500 \
   --mixed_precision=no \
@@ -63,6 +64,7 @@ accelerate launch train_unconditional.py \
   --train_batch_size=16 \
   --num_epochs=100 \
   --gradient_accumulation_steps=1 \
+  --use_ema \
   --learning_rate=1e-4 \
   --lr_warmup_steps=500 \
   --mixed_precision=no \

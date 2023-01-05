@@ -1,9 +1,10 @@
 import argparse
+import copy
 import inspect
 import math
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Iterable, Optional
 
 import torch
 import torch.nn.functional as F
@@ -13,7 +14,6 @@ from accelerate.logging import get_logger
 from datasets import load_dataset
 from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version
 from huggingface_hub import HfFolder, Repository, whoami
 from torchvision.transforms import (
@@ -29,7 +29,7 @@ from tqdm.auto import tqdm
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.10.0.dev0")
+check_min_version("0.12.0.dev0")
 
 
 logger = get_logger(__name__)
@@ -156,7 +156,6 @@ def parse_args():
     parser.add_argument(
         "--use_ema",
         action="store_true",
-        default=True,
         help="Whether to use Exponential Moving Average for the final model weights.",
     )
     parser.add_argument("--ema_inv_gamma", type=float, default=1.0, help="The inverse gamma value for the EMA decay.")
@@ -253,6 +252,153 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
         return f"{organization}/{model_id}"
 
 
+# Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14
+class EMAModel:
+    """
+    Exponential Moving Average of models weights
+    """
+
+    def __init__(
+        self,
+        parameters: Iterable[torch.nn.Parameter],
+        update_after_step=0,
+        inv_gamma=1.0,
+        power=2 / 3,
+        min_value=0.0,
+        max_value=0.9999,
+    ):
+        """
+        @crowsonkb's notes on EMA Warmup:
+            If gamma=1 and power=1, implements a simple average. gamma=1, power=2/3 are good values for models you plan
+            to train for a million or more steps (reaches decay factor 0.999 at 31.6K steps, 0.9999 at 1M steps),
+            gamma=1, power=3/4 for models you plan to train for less (reaches decay factor 0.999 at 10K steps, 0.9999
+            at 215.4k steps).
+
+        Args:
+            inv_gamma (float): Inverse multiplicative factor of EMA warmup. Default: 1.
+            power (float): Exponential factor of EMA warmup. Default: 2/3.
+            min_value (float): The minimum EMA decay rate. Default: 0.
+        """
+        parameters = list(parameters)
+        self.shadow_params = [p.clone().detach() for p in parameters]
+
+        self.collected_params = None
+
+        self.update_after_step = update_after_step
+        self.inv_gamma = inv_gamma
+        self.power = power
+        self.min_value = min_value
+        self.max_value = max_value
+
+        self.decay = 0.0
+        self.optimization_step = 0
+
+    def get_decay(self, optimization_step):
+        """
+        Compute the decay factor for the exponential moving average.
+        """
+        step = max(0, optimization_step - self.update_after_step - 1)
+        value = 1 - (1 + step / self.inv_gamma) ** -self.power
+
+        if step <= 0:
+            return 0.0
+
+        return max(self.min_value, min(value, self.max_value))
+
+    @torch.no_grad()
+    def step(self, parameters):
+        parameters = list(parameters)
+
+        self.optimization_step += 1
+
+        # Compute the decay factor for the exponential moving average.
+        self.decay = self.get_decay(self.optimization_step)
+
+        for s_param, param in zip(self.shadow_params, parameters):
+            if param.requires_grad:
+                s_param.mul_(self.decay)
+                s_param.add_(param.data, alpha=1 - self.decay)
+            else:
+                s_param.copy_(param)
+
+        torch.cuda.empty_cache()
+
+    def copy_to(self, parameters: Iterable[torch.nn.Parameter]) -> None:
+        """
+        Copy current averaged parameters into given collection of parameters.
+
+        Args:
+            parameters: Iterable of `torch.nn.Parameter`; the parameters to be
+                updated with the stored moving averages. If `None`, the
+                parameters with which this `ExponentialMovingAverage` was
+                initialized will be used.
+        """
+        parameters = list(parameters)
+        for s_param, param in zip(self.shadow_params, parameters):
+            param.data.copy_(s_param.data)
+
+    def to(self, device=None, dtype=None) -> None:
+        r"""Move internal buffers of the ExponentialMovingAverage to `device`.
+
+        Args:
+            device: like `device` argument to `torch.Tensor.to`
+        """
+        # .to() on the tensors handles None correctly
+        self.shadow_params = [
+            p.to(device=device, dtype=dtype) if p.is_floating_point() else p.to(device=device)
+            for p in self.shadow_params
+        ]
+
+    def state_dict(self) -> dict:
+        r"""
+        Returns the state of the ExponentialMovingAverage as a dict.
+        This method is used by accelerate during checkpointing to save the ema state dict.
+        """
+        # Following PyTorch conventions, references to tensors are returned:
+        # "returns a reference to the state and not its copy!" -
+        # https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict
+        return {
+            "decay": self.decay,
+            "optimization_step": self.optimization_step,
+            "shadow_params": self.shadow_params,
+            "collected_params": self.collected_params,
+        }
+
+    def load_state_dict(self, state_dict: dict) -> None:
+        r"""
+        Loads the ExponentialMovingAverage state.
+        This method is used by accelerate during checkpointing to save the ema state dict.
+        Args:
+            state_dict (dict): EMA state. Should be an object returned
+                from a call to :meth:`state_dict`.
+        """
+        # deepcopy, to be consistent with module API
+        state_dict = copy.deepcopy(state_dict)
+
+        self.decay = state_dict["decay"]
+        if self.decay < 0.0 or self.decay > 1.0:
+            raise ValueError("Decay must be between 0 and 1")
+
+        self.optimization_step = state_dict["optimization_step"]
+        if not isinstance(self.optimization_step, int):
+            raise ValueError("Invalid optimization_step")
+
+        self.shadow_params = state_dict["shadow_params"]
+        if not isinstance(self.shadow_params, list):
+            raise ValueError("shadow_params must be a list")
+        if not all(isinstance(p, torch.Tensor) for p in self.shadow_params):
+            raise ValueError("shadow_params must all be Tensors")
+
+        self.collected_params = state_dict["collected_params"]
+        if self.collected_params is not None:
+            if not isinstance(self.collected_params, list):
+                raise ValueError("collected_params must be a list")
+            if not all(isinstance(p, torch.Tensor) for p in self.collected_params):
+                raise ValueError("collected_params must all be Tensors")
+            if len(self.collected_params) != len(self.shadow_params):
+                raise ValueError("collected_params and shadow_params must have the same length")
+
+
 def main(args):
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
     accelerator = Accelerator(
@@ -342,19 +488,34 @@ def main(args):
         num_training_steps=(len(train_dataloader) * args.num_epochs) // args.gradient_accumulation_steps,
     )
 
+    if args.use_ema:
+        ema_model = EMAModel(
+            model.parameters(),
+            inv_gamma=args.ema_inv_gamma,
+            power=args.ema_power,
+            max_value=args.ema_max_decay,
+        )
+
     model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, lr_scheduler
     )
-    accelerator.register_for_checkpointing(lr_scheduler)
+    if args.use_ema:
+        accelerator.register_for_checkpointing(ema_model, lr_scheduler)
+
+    # For mixed precision training we cast the text_encoder and vae weights to half-precision
+    # as these models are only used for inference, keeping weights in full precision is not required.
+    weight_dtype = torch.float32
+    if accelerator.mixed_precision == "fp16":
+        weight_dtype = torch.float16
+    elif accelerator.mixed_precision == "bf16":
+        weight_dtype = torch.bfloat16
+
+    # Move text_encode and vae to gpu and cast to weight_dtype
+    model.to(accelerator.device, dtype=weight_dtype)
+    if args.use_ema:
+        ema_model.to(accelerator.device)
 
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
-
-    ema_model = EMAModel(
-        accelerator.unwrap_model(model),
-        inv_gamma=args.ema_inv_gamma,
-        power=args.ema_power,
-        max_value=args.ema_max_decay,
-    )
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -445,12 +606,12 @@ def main(args):
                     accelerator.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
                 lr_scheduler.step()
-                if args.use_ema:
-                    ema_model.step(model)
                 optimizer.zero_grad()
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
+                if args.use_ema:
+                    ema_model.step(model.parameters())
                 progress_bar.update(1)
                 global_step += 1
 
@@ -472,8 +633,11 @@ def main(args):
         # Generate sample images for visual inspection
         if accelerator.is_main_process:
             if epoch % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
+                unet = copy.deepcopy(accelerator.unwrap_model(model))
+                if args.use_ema:
+                    ema_model.copy_to(unet.parameters())
                 pipeline = DDPMPipeline(
-                    unet=accelerator.unwrap_model(ema_model.averaged_model if args.use_ema else model),
+                    unet=unet,
                     scheduler=noise_scheduler,
                 )
 
