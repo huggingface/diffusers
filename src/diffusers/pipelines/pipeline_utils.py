@@ -474,7 +474,6 @@ class DiffusionPipeline(ConfigMixin):
             allow_patterns = [os.path.join(k, "*") for k in folder_names]
             allow_patterns += [
                 WEIGHTS_NAME,
-                FLAX_WEIGHTS_NAME,
                 SCHEDULER_CONFIG_NAME,
                 CONFIG_NAME,
                 ONNX_WEIGHTS_NAME,
