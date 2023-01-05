@@ -19,7 +19,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, BaseOutput, logging
+from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, BaseOutput, logging, randn_tensor
 from .scheduling_utils import SchedulerMixin
 
 
@@ -217,16 +217,9 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         gamma = min(s_churn / (len(self.sigmas) - 1), 2**0.5 - 1) if s_tmin <= sigma <= s_tmax else 0.0
 
-        device = model_output.device
-        if device.type == "mps":
-            # randn does not work reproducibly on mps
-            noise = torch.randn(model_output.shape, dtype=model_output.dtype, device="cpu", generator=generator).to(
-                device
-            )
-        else:
-            noise = torch.randn(model_output.shape, dtype=model_output.dtype, device=device, generator=generator).to(
-                device
-            )
+        noise = randn_tensor(
+            model_output.shape, dtype=model_output.dtype, device=model_output.device, generator=generator
+        )
 
         eps = noise * s_noise
         sigma_hat = sigma * (gamma + 1)

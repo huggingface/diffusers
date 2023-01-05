@@ -475,20 +475,25 @@ class UnCLIPImageVariationPipelineIntegrationTests(unittest.TestCase):
             "/unclip/karlo_v1_alpha_cat_variation_fp16.npy"
         )
 
-        pipeline = UnCLIPImageVariationPipeline.from_pretrained("fusing/karlo-image-variations-diffusers")
+        pipeline = UnCLIPImageVariationPipeline.from_pretrained(
+            "fusing/karlo-image-variations-diffusers", torch_dtype=torch.float16
+        )
         pipeline = pipeline.to(torch_device)
         pipeline.set_progress_bar_config(disable=None)
-        pipeline.enable_sequential_cpu_offload()
 
         generator = torch.Generator(device="cpu").manual_seed(0)
         output = pipeline(
             input_image,
-            num_images_per_prompt=1,
             generator=generator,
             output_type="np",
         )
 
-        image = output.images[0]
+        image = np.asarray(pipeline.numpy_to_pil(output.images)[0], dtype=np.float32)
+        expected_image = np.asarray(pipeline.numpy_to_pil(expected_image)[0], dtype=np.float32)
 
+        # Karlo is extremely likely to strongly deviate depending on which hardware is used
+        # Here we just check that the image doesn't deviate more than 10 pixels from the reference image on average
+        avg_diff = np.abs(image - expected_image).mean()
+
+        assert avg_diff < 10, f"Error image deviates {avg_diff} pixels on average"
         assert image.shape == (256, 256, 3)
-        assert np.abs(expected_image - image).max() < 5e-2
