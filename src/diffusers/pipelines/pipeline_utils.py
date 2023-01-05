@@ -483,6 +483,15 @@ class DiffusionPipeline(ConfigMixin):
             # make sure we don't download flax weights
             ignore_patterns = ["*.msgpack"]
 
+            if from_flax:
+                ignore_patterns = ["*.bin", "*.safetensors"]
+                allow_patterns = [
+                    SCHEDULER_CONFIG_NAME,
+                    CONFIG_NAME,
+                    FLAX_WEIGHTS_NAME,
+                    cls.config_name,
+                ]
+
             if custom_pipeline is not None:
                 allow_patterns += [CUSTOM_PIPELINE_FILE_NAME]
 
@@ -713,8 +722,8 @@ class DiffusionPipeline(ConfigMixin):
                 if is_diffusers_model or is_transformers_model:
                     loading_kwargs["device_map"] = device_map
                     loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
-                        if from_flax:
-                            loading_kwargs["from_flax"] = True
+                    if from_flax:
+                        loading_kwargs["from_flax"] = True
                 # check if the module is in a subdirectory
                 if os.path.isdir(os.path.join(cached_folder, name)):
                     loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
