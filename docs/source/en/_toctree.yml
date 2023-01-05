@@ -3,6 +3,8 @@
     title: "🧨 Diffusers"
   - local: quicktour
     title: "Quicktour"
+  - local: stable_diffusion
+    title: "Stable Diffusion"
   - local: installation
     title: "Installation"
   title: "Get started"
@@ -71,8 +73,6 @@
     title: "Text-to-image fine-tuning"
   title: "Training"
 - sections:
-  - local: conceptual/stable_diffusion
-    title: "Stable Diffusion"
   - local: conceptual/philosophy
     title: "Philosophy"
   - local: conceptual/contribution
