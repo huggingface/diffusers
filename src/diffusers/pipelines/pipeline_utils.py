@@ -718,7 +718,6 @@ class DiffusionPipeline(ConfigMixin):
                 # check if the module is in a subdirectory
                 if os.path.isdir(os.path.join(cached_folder, name)):
                     if from_flax:
-                        loading_kwargs["from_flax"] = True
                     loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
                 else:
                     # else load from the root directory
