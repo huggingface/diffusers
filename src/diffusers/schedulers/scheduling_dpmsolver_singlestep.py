@@ -370,7 +370,9 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         sigma_t, sigma_s1 = self.sigma_t[t], self.sigma_t[s1]
         h, h_0 = lambda_t - lambda_s1, lambda_s0 - lambda_s1
         r0 = h_0 / h
-        import ipdb; ipdb.set_trace()
+        import ipdb
+
+        ipdb.set_trace()
         D0, D1 = m1, (1.0 / r0) * (m0 - m1)
         if self.config.algorithm_type == "dpmsolver++":
             # See https://arxiv.org/abs/2211.01095 for detailed derivations
