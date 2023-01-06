@@ -92,6 +92,8 @@
       title: Outputs
     title: Main Classes
   - sections:
+    - local: api/pipelines/overview
+      title: Overview
     - local: api/pipelines/alt_diffusion
       title: AltDiffusion
     - local: api/pipelines/audio_diffusion
@@ -106,8 +108,6 @@
       title: DDPM
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
-    - local: api/pipelines/overview
-      title: Overview
     - local: api/pipelines/paint_by_example
       title: PaintByExample
     - local: api/pipelines/pndm
@@ -148,6 +148,8 @@
       title: VQ Diffusion
     title: Pipelines
   - sections:
+    - local: api/schedulers/overview
+      title: Overview
     - local: api/schedulers/ddim
       title: DDIM
     - local: api/schedulers/ddpm
@@ -170,8 +172,6 @@
       title: Linear Multistep
     - local: api/schedulers/multistep_dpm_solver
       title: Multistep DPM-Solver
-    - local: api/schedulers/overview
-      title: Overview
     - local: api/schedulers/pndm
       title: PNDM
     - local: api/schedulers/repaint
