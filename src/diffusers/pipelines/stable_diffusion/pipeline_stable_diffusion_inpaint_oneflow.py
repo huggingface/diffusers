@@ -41,7 +41,7 @@ class UNetGraph(torch.nn.Graph):
         super().__init__()
         self.unet = unet
         self.config.enable_cudnn_conv_heuristic_search_algo(False)
-        self.config.allow_fuse_add_to_output(True)
+        self.config.allow_fuse_add_to_output(False)
 
     def build(self, latent_model_input, t, text_embeddings):
         text_embeddings = torch._C.amp_white_identity(text_embeddings)
@@ -787,8 +787,7 @@ class OneFlowStableDiffusionInpaintPipeline(DiffusionPipeline):
             if unet_graph.is_compiled is False:
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 _, t = list(enumerate(self.scheduler.timesteps))[0]
-                # print("compile unet graph shape >>>>>> ", latent_model_input.shape, t.shape, text_embeddings.shape)
-                # oneflow.Size([2, 4, 64, 64]) oneflow.Size([]) oneflow.Size([2, 77, 768])
+                latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
                 unet_graph.compile(latent_model_input, t, text_embeddings)
 
         # 10. Denoising loop
@@ -808,8 +807,6 @@ class OneFlowStableDiffusionInpaintPipeline(DiffusionPipeline):
                     noise_pred = unet_graph(latent_model_input, t, text_embeddings)
                     torch._oneflow_internal.profiler.RangePop()
                 else:
-                    # print("eager self.unet() shape >>>>>> ", latent_model_input.shape, t.shape, text_embeddings.shape)
-                    # oneflow.Size([2, 9, 64, 64]) oneflow.Size([]) oneflow.Size([2, 77, 768])
                     noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
 
                 # perform guidance
