@@ -96,20 +96,28 @@
       title: Overview
     - local: api/pipelines/alt_diffusion
       title: AltDiffusion
+    - local: api/pipelines/audio_diffusion
+      title: Audio Diffusion
     - local: api/pipelines/cycle_diffusion
       title: Cycle Diffusion
+    - local: api/pipelines/dance_diffusion
+      title: Dance Diffusion
     - local: api/pipelines/ddim
       title: DDIM
     - local: api/pipelines/ddpm
       title: DDPM
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
-    - local: api/pipelines/latent_diffusion_uncond
-      title: Unconditional Latent Diffusion
+    - local: api/pipelines/overview
+      title: Overview
     - local: api/pipelines/paint_by_example
       title: PaintByExample
     - local: api/pipelines/pndm
       title: PNDM
+    - local: api/pipelines/repaint
+      title: RePaint
+    - local: api/pipelines/stable_diffusion_safe
+      title: Safe Stable Diffusion
     - local: api/pipelines/score_sde_ve
       title: Score SDE VE
     - sections:
@@ -130,24 +138,20 @@
       title: Stable Diffusion
     - local: api/pipelines/stable_diffusion_2
       title: Stable Diffusion 2
-    - local: api/pipelines/stable_diffusion_safe
-      title: Safe Stable Diffusion
     - local: api/pipelines/stochastic_karras_ve
       title: Stochastic Karras VE
-    - local: api/pipelines/dance_diffusion
-      title: Dance Diffusion
     - local: api/pipelines/unclip
       title: UnCLIP
+    - local: api/pipelines/latent_diffusion_uncond
+      title: Unconditional Latent Diffusion
     - local: api/pipelines/versatile_diffusion
       title: Versatile Diffusion
     - local: api/pipelines/vq_diffusion
       title: VQ Diffusion
-    - local: api/pipelines/repaint
-      title: RePaint
-    - local: api/pipelines/audio_diffusion
-      title: Audio Diffusion
     title: Pipelines
   - sections:
+    - local: api/schedulers/overview
+      title: Overview
     - local: api/schedulers/ddim
       title: DDIM
     - local: api/schedulers/ddpm
