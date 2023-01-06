@@ -27,9 +27,13 @@ def clean_doc_toc(doc_list):
     Cleans the table of content of the model documentation by removing duplicates and sorting models alphabetically.
     """
     counts = defaultdict(int)
+    overview_doc = []
     for doc in doc_list:
         if "local" in doc:
             counts[doc["local"]] += 1
+
+        if doc["title"].lower() == "overview":
+            overview_doc.append({"local": doc["local"], "title": doc["title"]})
 
     duplicates = [key for key, value in counts.items() if value > 1]
 
@@ -57,12 +61,11 @@ def clean_doc_toc(doc_list):
     new_doc = sorted(new_doc, key=lambda s: s["title"].lower())
 
     # "overview" gets special treatment and is always first
-    overview_doc = [doc for doc in doc_list if doc["title"].lower() == "overview"]
-
     if len(overview_doc) > 1:
         raise ValueError("{doc_list} has two 'overview' docs which is not allowed.")
 
     overview_doc.extend(new_doc)
+    import ipdb; ipdb.set_trace()
 
     # Sort
     return overview_doc
