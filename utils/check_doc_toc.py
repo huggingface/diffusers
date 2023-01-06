@@ -45,9 +45,6 @@ def clean_doc_toc(doc_list):
         # Only add this once
         new_doc.append({"local": duplicate_key, "title": titles[0]})
 
-    # "overview" gets special treatment and is always first
-    overview_doc = [doc for doc in doc_list if doc["title"].lower() == "overview"]
-
     # Add none duplicate-keys
     new_doc.extend(
         [
@@ -59,13 +56,16 @@ def clean_doc_toc(doc_list):
 
     new_doc = sorted(new_doc, key=lambda s: s["title"].lower())
 
-    if len(overview_doc) == 1:
-        new_doc = overview_doc + new_doc
-    elif len(overview_doc) > 1:
+    # "overview" gets special treatment and is always first
+    overview_doc = [doc for doc in doc_list if doc["title"].lower() == "overview"]
+
+    if len(overview_doc) > 1:
         raise ValueError("{doc_list} has two 'overview' docs which is not allowed.")
 
+    overview_doc.extend(new_doc)
+
     # Sort
-    return new_doc
+    return overview_doc
 
 
 def check_scheduler_doc(overwrite=False):
