@@ -28,7 +28,9 @@ def clean_doc_toc(doc_list):
     """
     counts = defaultdict(int)
     for doc in doc_list:
-        counts[doc["local"]] += 1
+        if "local" in doc:
+            counts[doc["local"]] += 1
+
     duplicates = [key for key, value in counts.items() if value > 1]
 
     new_doc = []
@@ -43,11 +45,27 @@ def clean_doc_toc(doc_list):
         # Only add this once
         new_doc.append({"local": duplicate_key, "title": titles[0]})
 
+    # "overview" gets special treatment and is always first
+    overview_doc = [doc for doc in doc_list if doc["title"].lower() == "overview"]
+
     # Add none duplicate-keys
-    new_doc.extend([doc for doc in doc_list if counts[doc["local"]] == 1])
+    new_doc.extend(
+        [
+            doc
+            for doc in doc_list
+            if "local" not in counts or (counts[doc["local"]] == 1 and doc["local"].lower() != "overview")
+        ]
+    )
+
+    new_doc = sorted(new_doc, key=lambda s: s["title"].lower())
+
+    if len(overview_doc) == 1:
+        new_doc = overview_doc + new_doc
+    elif len(overview_doc) > 1:
+        raise ValueError("{doc_list} has two 'overview' docs which is not allowed.")
 
     # Sort
-    return sorted(new_doc, key=lambda s: s["title"].lower())
+    return new_doc
 
 
 def check_scheduler_doc(overwrite=False):
@@ -85,9 +103,57 @@ def check_scheduler_doc(overwrite=False):
             )
 
 
+def check_pipeline_doc(overwrite=False):
+    with open(PATH_TO_TOC, encoding="utf-8") as f:
+        content = yaml.safe_load(f.read())
+
+    # Get to the API doc
+    api_idx = 0
+    while content[api_idx]["title"] != "API":
+        api_idx += 1
+    api_doc = content[api_idx]["sections"]
+
+    # Then to the model doc
+    pipeline_idx = 0
+    while api_doc[pipeline_idx]["title"] != "Pipelines":
+        pipeline_idx += 1
+
+    diff = False
+    pipeline_docs = api_doc[pipeline_idx]["sections"]
+    new_pipeline_docs = []
+
+    # sort sub pipeline docs
+    for pipeline_doc in pipeline_docs:
+        if "section" in pipeline_doc:
+            sub_pipeline_doc = pipeline_doc["section"]
+            new_sub_pipeline_doc = clean_doc_toc(sub_pipeline_doc)
+            if overwrite:
+                pipeline_doc["section"] = new_sub_pipeline_doc
+        new_pipeline_docs.append(pipeline_doc)
+
+    # sort overall pipeline doc
+    new_pipeline_docs = clean_doc_toc(new_pipeline_docs)
+
+    if new_pipeline_docs != pipeline_docs:
+        diff = True
+        if overwrite:
+            api_doc[pipeline_idx]["sections"] = new_pipeline_docs
+
+    if diff:
+        if overwrite:
+            content[api_idx]["sections"] = api_doc
+            with open(PATH_TO_TOC, "w", encoding="utf-8") as f:
+                f.write(yaml.dump(content, allow_unicode=True))
+        else:
+            raise ValueError(
+                "The model doc part of the table of content is not properly sorted, run `make style` to fix this."
+            )
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--fix_and_overwrite", action="store_true", help="Whether to fix inconsistencies.")
     args = parser.parse_args()
 
     check_scheduler_doc(args.fix_and_overwrite)
+    check_pipeline_doc(args.fix_and_overwrite)
