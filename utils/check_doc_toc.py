@@ -53,7 +53,7 @@ def clean_doc_toc(doc_list):
         [
             doc
             for doc in doc_list
-            if "local" not in counts or (counts[doc["local"]] == 1 and doc["local"].lower() != "overview")
+            if "local" not in counts or (counts[doc["local"]] == 1 and doc["title"].lower() != "overview")
         ]
     )
 
