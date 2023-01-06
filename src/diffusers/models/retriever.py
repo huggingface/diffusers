@@ -3,9 +3,8 @@ from datasets import load_dataset, Image, load_dataset_builder, load_from_disk
 import torch
 from typing import Callable, List, Optional, Union
 import numpy as np
-import pickle
-import os
-import logging
+from ..utils import deprecate, logging
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 def preprocess_images(images: List[Image], feature_extractor: CLIPFeatureExtractor) -> torch.FloatTensor:

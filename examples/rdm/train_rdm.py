@@ -22,7 +22,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
 from datasets import load_dataset
-from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
+from diffusers import AutoencoderKL, DDPMScheduler, RDMPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
 from diffusers.utils.import_utils import is_xformers_available
@@ -36,15 +36,18 @@ if sys.version_info < (3, 8):
     import importlib_metadata
 else:
     import importlib.metadata as importlib_metadata
+from typing import Callable, List, Optional, Union
+import requests
+import faiss
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.10.0.dev0")
-
 logger = get_logger(__name__, log_level="INFO")
 ClipClient, Modality = None, None
+_clip_retrieval_available = True
 try:
     _clip_retrieval_version = importlib_metadata.version("clip-retrieval")
-    logger.debug(f"Successfully imported scipy version {_scipy_version}")
+    logger.debug(f"Successfully imported clip retrieval version {_clip_retrieval_version}")
 except importlib_metadata.PackageNotFoundError:
     _clip_retrieval_available = False
 def is_clip_retrieval_available():
@@ -72,6 +75,12 @@ def preprocess_images(images: List[Image], feature_extractor: CLIPFeatureExtract
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
+        "--num_query",
+        type=int,
+        default=20,
+        help="Number of query images.",
+    )
+    parser.add_argument(
         '--use_clip_retrieval',
         action="store_true",
         help="Whether to use clip retrieval",
@@ -79,7 +88,7 @@ def parse_args():
     parser.add_argument(
         "--clip_model",
         type=str,
-        default="laion/CLIP-ViT-L-14-laion2B-s32B-b82K",
+        default="openai/clip-vit-large-patch14",
         help="Name of the clip model.",
     )
     parser.add_argument(
@@ -348,12 +357,13 @@ class RDMDataset(Dataset):
         image_column,
         caption_column,
         tokenizer,
-        retriever,
+        retriever=None,
         size=512,
         interpolation="bicubic",
         do_random_flip=True,
         center_crop=False,
-        use_clip_retrieval=True
+        use_clip_retrieval=True,
+        num_queries=20,
     ):
         self.dataset = dataset
         self.image_column = image_column
@@ -364,6 +374,7 @@ class RDMDataset(Dataset):
         self.center_crop = center_crop
         self._length = self.num_images
         self.client = None
+        self.num_queries = num_queries
         if use_clip_retrieval:
             self.client = ClipClient(url="https://knn5.laion.ai/knn-service", indice_name="laion5B")
 
@@ -376,8 +387,8 @@ class RDMDataset(Dataset):
         }[interpolation]
         self.train_transforms = transforms.Compose(
             [
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
                 transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
+                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
                 transforms.RandomHorizontalFlip() if do_random_flip else transforms.Lambda(lambda x: x),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
@@ -411,17 +422,21 @@ class RDMDataset(Dataset):
         text = self.dataset[self.caption_column][i]
         example["input_ids"] = self.tokenize_captions(text)[0]
         # TODO: remove current image from nearest neighbors?
-        example["nearest_neighbors"] = self.retriever.get_knn_from_text(text).examples[self.image_column]
+        if self.client:
+            retrieved_queries = self.client.query(text=text)[:self.num_queries]
+            retrieved_images = []
+            for retrieved_query in retrieved_queries:
+                retrieved_images.append(Image.open(requests.get(retrieved_query['url'], stream=True).raw))
+        else:
+            retrieved_images = self.retriever.get_knn_from_text(text).examples[self.image_column][:self.num_queries]
+        for i in range(len(retrieved_images)):
+            retrieved_images[i] = self.train_transforms(retrieved_images[i])
+            retrieved_images[i] = np.array(retrieved_images[i]).astype(np.float32)
+            retrieved_images[i] = (retrieved_images[i] / 127.5 - 1.0).astype(np.float32)
+            retrieved_images[i] = torch.from_numpy(retrieved_images[i]).permute(2, 0, 1).to(memory_format=torch.contiguous_format)
+        example["nearest_neighbors"] = torch.Tensor(retrieved_images)
         # default to score-sde preprocessing
         img = np.array(image).astype(np.uint8)
-
-        if self.center_crop:
-            crop = min(img.shape[0], img.shape[1])
-            h, w, = (
-                img.shape[0],
-                img.shape[1],
-            )
-            img = img[(h - crop) // 2 : (h + crop) // 2, (w - crop) // 2 : (w + crop) // 2]
 
         image = Image.fromarray(img)
 
@@ -596,9 +611,6 @@ def main():
     tokenizer = CLIPTokenizer.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
     )
-    text_encoder = CLIPTextModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
-    )
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision)
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
@@ -608,7 +620,7 @@ def main():
 
     # Freeze vae and text_encoder
     vae.requires_grad_(False)
-    text_encoder.requires_grad_(False)
+    clip_model.requires_grad_(False)
 
     # Create EMA for the unet.
     if args.use_ema:
@@ -711,8 +723,10 @@ def main():
     with accelerator.main_process_first():
         if args.max_train_samples is not None:
             dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
-    retriever = Retriever(clip_model, tokenizer, feature_extractor, dataset["train"], args.dataset_save_path, accelerator.device, args.image_column)
-    train_dataset = RDMDataset(dataset["train"],args.image_column,args.caption_column,tokenizer,retriever,size=512, use_clip_retrieval=args.use_clip_retrieval)
+    retriever = None
+    if args.use_clip_retrieval:
+        retriever = Retriever(clip_model, tokenizer, feature_extractor, dataset["train"], args.dataset_save_path, accelerator.device, args.image_column)
+    train_dataset = RDMDataset(dataset["train"],args.image_column,args.caption_column,tokenizer,retriever,size=512, use_clip_retrieval=args.use_clip_retrieval, num_queries=args.num_query)
     train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.train_batch_size, shuffle=True)
 
     # Scheduler and math around the number of training steps.
@@ -744,7 +758,7 @@ def main():
         weight_dtype = torch.bfloat16
 
     # Move text_encode and vae to gpu and cast to weight_dtype
-    text_encoder.to(accelerator.device, dtype=weight_dtype)
+    clip_model.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
     if args.use_ema:
         ema_unet.to(accelerator.device)
@@ -822,7 +836,7 @@ def main():
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 # Get the text embedding for conditioning
-                text_embeddings = text_encoder(batch["input_ids"])[0]
+                text_embeddings = clip_model.get_text_features(batch["input_ids"])
                 text_embeddings = text_embeddings / torch.linalg.norm(text_embeddings, dim=-1, keepdim=True)
                 text_embeddings = text_embeddings[:, None, :]
                 retrieved_images = batch["nearest_neighbors"]
@@ -886,9 +900,9 @@ def main():
         if args.use_ema:
             ema_unet.copy_to(unet.parameters())
 
-        pipeline = StableDiffusionPipeline.from_pretrained(
+        pipeline = RDMPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
-            text_encoder=text_encoder,
+            clip=clip_model,
             vae=vae,
             unet=unet,
             revision=args.revision,
@@ -899,7 +913,6 @@ def main():
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
 
     accelerator.end_training()
-
 
 if __name__ == "__main__":
     main()
