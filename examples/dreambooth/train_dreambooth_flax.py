@@ -22,6 +22,7 @@ from diffusers import (
     FlaxStableDiffusionPipeline,
     FlaxUNet2DConditionModel,
 )
+from diffusers.models.vae_flax import FlaxDiagonalGaussianDistribution
 from diffusers.pipelines.stable_diffusion import FlaxStableDiffusionSafetyChecker
 from diffusers.utils import check_min_version
 from flax import jax_utils
@@ -106,6 +107,12 @@ def parse_args():
     )
     parser.add_argument("--prior_loss_weight", type=float, default=1.0, help="The weight of prior preservation loss.")
     parser.add_argument(
+        "--cache_latents",
+        action="store_true",
+        help="Precompute and cache latents from VAE.",
+        default=False,
+    )
+    parser.add_argument(
         "--num_class_images",
         type=int,
         default=100,
@@ -128,7 +135,7 @@ def parse_args():
         default=512,
         help=(
             "The resolution for input images, all the images in the train/validation dataset will be resized to this"
-            " resolution"
+            " resolution (768 for stabilityai/stable-diffusion-2)"
         ),
     )
     parser.add_argument(
@@ -263,32 +270,55 @@ class DreamBoothDataset(Dataset):
     def __len__(self):
         return self._length
 
-    def __getitem__(self, index):
-        example = {}
-        instance_image = Image.open(self.instance_images_path[index % self.num_instance_images])
+    def _instance_image(self, index):
+        path = self.instance_images_path[index % self.num_instance_images]
+        instance_image = Image.open(path)
+
         if not instance_image.mode == "RGB":
             instance_image = instance_image.convert("RGB")
-        example["instance_images"] = self.image_transforms(instance_image)
-        example["instance_prompt_ids"] = self.tokenizer(
-            self.instance_prompt,
-            padding="do_not_pad",
-            truncation=True,
-            max_length=self.tokenizer.model_max_length,
-        ).input_ids
 
-        if self.class_data_root:
-            class_image = Image.open(self.class_images_path[index % self.num_class_images])
-            if not class_image.mode == "RGB":
-                class_image = class_image.convert("RGB")
-            example["class_images"] = self.image_transforms(class_image)
-            example["class_prompt_ids"] = self.tokenizer(
+        return {
+            "instance_images": self.image_transforms(instance_image),
+            "instance_prompt_ids": self.tokenizer(
+                self.instance_prompt,
+                padding="do_not_pad",
+                truncation=True,
+                max_length=self.tokenizer.model_max_length,
+            ).input_ids,
+        }
+
+    def _class_image(self, index):
+        if not self.class_data_root:
+            return {}
+
+        class_image = Image.open(self.class_images_path[index % self.num_class_images])
+
+        if not class_image.mode == "RGB":
+            class_image = class_image.convert("RGB")
+
+        return {
+            "class_images": self.image_transforms(class_image),
+            "class_prompt_ids": self.tokenizer(
                 self.class_prompt,
                 padding="do_not_pad",
                 truncation=True,
                 max_length=self.tokenizer.model_max_length,
-            ).input_ids
+            ).input_ids,
+        }
 
-        return example
+    def __getitem__(self, index):
+        return {**self._instance_image(index), **self._class_image(index)}
+
+
+class LatentsDataset(Dataset):
+    def __init__(self, samples: list):
+        self.samples = samples
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, index):
+        return self.samples[index]
 
 
 class PromptDataset(Dataset):
@@ -520,10 +550,14 @@ def main():
 
         def compute_loss(params):
             # Convert images to latent space
-            vae_outputs = vae.apply(
-                {"params": vae_params}, batch["pixel_values"], deterministic=True, method=vae.encode
-            )
-            latents = vae_outputs.latent_dist.sample(sample_rng)
+            if args.cache_latents:
+                latent_dist = FlaxDiagonalGaussianDistribution(batch["pixel_values"], deterministic=True)
+            else:
+                latent_dist = vae.apply(
+                    {"params": vae_params}, batch["pixel_values"], deterministic=True, method=vae.encode
+                ).latent_dist
+            latents = latent_dist.sample(sample_rng)
+
             # (NHWC) -> (NCHW)
             latents = jnp.transpose(latents, (0, 3, 1, 2))
             latents = latents * 0.18215
@@ -549,6 +583,8 @@ def main():
                 encoder_hidden_states = text_encoder_state.apply_fn(
                     batch["input_ids"], params=params["text_encoder"], dropout_rng=dropout_rng, train=True
                 )[0]
+            elif args.cache_latents:
+                encoder_hidden_states = batch["input_ids"]
             else:
                 encoder_hidden_states = text_encoder(
                     batch["input_ids"], params=text_encoder_state.params, train=False
@@ -603,13 +639,53 @@ def main():
 
         return new_unet_state, new_text_encoder_state, metrics, new_train_rng
 
+    def cache_image_latents(pixel_values, vae_params):
+        _, results = vae.apply(
+            {"params": jax.lax.stop_gradient(vae_params)},
+            pixel_values,
+            method=vae.encode,
+            deterministic=True,
+            capture_intermediates=True,
+        )
+        return results["intermediates"]["quant_conv"]["__call__"][0]
+
+    def cache_text_latents(input_ids, text_encoder_state):
+        return text_encoder(
+            input_ids,
+            params=jax.lax.stop_gradient(text_encoder_state.params),
+            train=False,
+        )[0]
+
+    def cache_latents(batch, vae_params, text_encoder_state, train_text_encoder):
+        return {
+            "pixel_values": cache_image_latents(batch["pixel_values"], vae_params),
+            "input_ids": batch["input_ids"]
+            if train_text_encoder
+            else cache_text_latents(batch["input_ids"], text_encoder_state),
+        }
+
     # Create parallel version of the train step
     p_train_step = jax.pmap(train_step, "batch", donate_argnums=(0, 1))
+    p_cache_latents = jax.pmap(cache_latents, "batch", donate_argnums=(0,), static_broadcasted_argnums=(3,))
 
     # Replicate the train state on each device
     unet_state = jax_utils.replicate(unet_state)
     text_encoder_state = jax_utils.replicate(text_encoder_state)
     vae_params = jax_utils.replicate(vae_params)
+
+    # Cache latents
+    if args.cache_latents:
+        latents = []
+        for batch in tqdm(train_dataloader, desc="Caching latents"):
+            batch_latents = p_cache_latents(shard(batch), vae_params, text_encoder_state, args.train_text_encoder)
+            latents.append(batch_latents)
+
+        train_dataloader = torch.utils.data.DataLoader(
+            LatentsDataset(latents),
+            batch_size=1,
+            shuffle=True,
+            collate_fn=lambda l: l[0],
+        )
 
     # Train!
     num_update_steps_per_epoch = math.ceil(len(train_dataloader))
@@ -670,7 +746,7 @@ def main():
         train_step_progress_bar = tqdm(total=steps_per_epoch, desc="Training...", position=1, leave=False)
         # train
         for batch in train_dataloader:
-            batch = shard(batch)
+            batch = batch if args.cache_latents else shard(batch)
             unet_state, text_encoder_state, train_metric, train_rngs = p_train_step(
                 unet_state, text_encoder_state, vae_params, batch, train_rngs
             )
