@@ -92,8 +92,6 @@
       title: Outputs
     title: Main Classes
   - sections:
-    - local: api/pipelines/overview
-      title: Overview
     - local: api/pipelines/alt_diffusion
       title: AltDiffusion
     - local: api/pipelines/audio_diffusion
@@ -150,8 +148,6 @@
       title: VQ Diffusion
     title: Pipelines
   - sections:
-    - local: api/schedulers/overview
-      title: Overview
     - local: api/schedulers/ddim
       title: DDIM
     - local: api/schedulers/ddpm
