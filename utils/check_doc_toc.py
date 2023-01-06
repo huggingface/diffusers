@@ -28,13 +28,17 @@ def clean_doc_toc(doc_list):
     """
     counts = defaultdict(int)
     overview_doc = []
+    new_doc_list = []
     for doc in doc_list:
         if "local" in doc:
             counts[doc["local"]] += 1
 
         if doc["title"].lower() == "overview":
             overview_doc.append({"local": doc["local"], "title": doc["title"]})
+        else:
+            new_doc_list.append(doc)
 
+    doc_list = new_doc_list
     duplicates = [key for key, value in counts.items() if value > 1]
 
     new_doc = []
@@ -50,14 +54,7 @@ def clean_doc_toc(doc_list):
         new_doc.append({"local": duplicate_key, "title": titles[0]})
 
     # Add none duplicate-keys
-    new_doc.extend(
-        [
-            doc
-            for doc in doc_list
-            if "local" not in counts or (counts[doc["local"]] == 1 and doc["title"].lower() != "overview")
-        ]
-    )
-
+    new_doc.extend([doc for doc in doc_list if "local" not in counts or counts[doc["local"]] == 1])
     new_doc = sorted(new_doc, key=lambda s: s["title"].lower())
 
     # "overview" gets special treatment and is always first
@@ -65,7 +62,6 @@ def clean_doc_toc(doc_list):
         raise ValueError("{doc_list} has two 'overview' docs which is not allowed.")
 
     overview_doc.extend(new_doc)
-    import ipdb; ipdb.set_trace()
 
     # Sort
     return overview_doc
