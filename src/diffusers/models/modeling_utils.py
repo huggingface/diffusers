@@ -523,7 +523,7 @@ class ModelMixin(torch.nn.Module):
                     )
                     model = cls.from_config(config, **unused_kwargs)
 
-                # if device_map is Non,e load the state dict on move the params from meta device to the cpu
+                # if device_map is None, load the state dict and move the params from meta device to the cpu
                 if device_map is None:
                     param_device = "cpu"
                     state_dict = load_state_dict(model_file)
