@@ -527,7 +527,7 @@ class ModelMixin(torch.nn.Module):
                 if device_map is None:
                     param_device = "cpu"
                     state_dict = load_state_dict(model_file)
-                    # move the parms from meta device to cpu
+                    # move the params from meta device to cpu
                     for param_name, param in state_dict.items():
                         accepts_dtype = "dtype" in set(
                             inspect.signature(set_module_tensor_to_device).parameters.keys()
