@@ -1,11 +1,9 @@
-# Multi Subject DreamBooth training example
-
-This script was added by @kopsahlong. Please note that this script is not actively maintained. However if come across anything that could use fixing, you can open an issue and tag @kopsahlong.
-
+# Multi Subject DreamBooth training
 
 [DreamBooth](https://arxiv.org/abs/2208.12242) is a method to personalize text2image models like stable diffusion given just a few(3~5) images of a subject.
-The `train_multi_subject_dreambooth.py` script shows how to implement the training procedure for one or more subjects and adapt it for stable diffusion. Note that this code is based off of the `train_dreambooth.py` script as of 01/06/2022.
+This `train_multi_subject_dreambooth.py` script shows how to implement the training procedure for one or more subjects and adapt it for stable diffusion. Note that this code is based off of the `examples/dreambooth/train_dreambooth.py` script as of 01/06/2022.
 
+This script was added by @kopsahlong, and is not actively maintained. However, if you come across anything that could use fixing, feel free to open an issue and tag @kopsahlong.
 
 ## Running locally with PyTorch
 ### Installing the dependencies
@@ -44,7 +42,7 @@ write_basic_config()
 ```
 
 ### Multi Subject Training Example
-In order to have your model learn multiple concepts at once, we simply add in the additional data directories and prompts to our `instance_data_dir` and `instance_prompt` (as well as `class_data_dir` and `class_prompt` if `with_prior_preservation` is specified) as one comma separated string.
+In order to have your model learn multiple concepts at once, we simply add in the additional data directories and prompts to our `instance_data_dir` and `instance_prompt` (as well as `class_data_dir` and `class_prompt` if `--with_prior_preservation` is specified) as one comma separated string.
 
 See an example with 2 subjects below, which learns a model for one dog subject and one human subject:
 
@@ -86,7 +84,7 @@ accelerate launch train_multi_subject_dreambooth.py \
 
 This example shows training for 2 subjects, but please note that the model can be trained on any number of new concepts. This can be done by continuing to add in the corresponding directories and prompts to the corresponding comma separated string.
 
-Note also that in this script, `sks` and `t@y` where used as tokens to learn the concept ([this thread](https://github.com/XavierXiao/Dreambooth-Stable-Diffusion/issues/71) inspired the use of `t@y` as our second identifier). However, there may be better rare tokens to experiment with, and results still seem to be good when more intuitive words are used.
+Note also that in this script, `sks` and `t@y` were used as tokens to learn the new subjects ([this thread](https://github.com/XavierXiao/Dreambooth-Stable-Diffusion/issues/71) inspired the use of `t@y` as our second identifier). However, there may be better rare tokens to experiment with, and results also seemed to be good when more intuitive words are used.
 
 ### Inference
 
@@ -112,7 +110,7 @@ You can also perform inference from one of the checkpoints saved during the trai
 ## Additional Dreambooth documentation
 Because the `train_multi_subject_dreambooth.py` script here was forked from an original version of `train_dreambooth.py` in the `examples/dreambooth` folder, I've included the original applicable training documentation for single subject examples below.
 
-This should explain how to play with prior preservation, fine tuning the text encoder, etc. which is still applicable to our multi subject training code. Note also that the examples below, which are single subject examples, also work with `train_multi_subject_dreambooth.py`, which supports 1 or more subjects.
+This should explain how to play with training variables such as prior preservation, fine tuning the text encoder, etc. which is still applicable to our multi subject training code. Note also that the examples below, which are single subject examples, also work with `train_multi_subject_dreambooth.py`, as this script supports 1 (or more) subjects.
 
 ### Single subject dog toy example
 
