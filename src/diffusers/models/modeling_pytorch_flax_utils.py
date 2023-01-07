@@ -73,7 +73,8 @@ def load_flax_weights_in_pytorch_model(pt_model, flax_state):
     # check if we have bf16 weights
     is_type_bf16 = flatten_dict(jax.tree_util.tree_map(lambda x: x.dtype == jnp.bfloat16, flax_state)).values()
     if any(is_type_bf16):
-        # convert all weights to fp32 if the are bf16 since torch.from_numpy can-not handle bf16
+        # convert all weights to fp32 if they are bf16 since torch.from_numpy can-not handle bf16
+
         # and bf16 is not fully supported in PT yet.
         logger.warning(
             "Found ``bfloat16`` weights in Flax model. Casting all ``bfloat16`` weights to ``float32`` "
