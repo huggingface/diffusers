@@ -63,7 +63,8 @@ def load_flax_weights_in_pytorch_model(pt_model, flax_state):
         import torch  # noqa: F401
     except ImportError:
         logger.error(
-            "Loading a Flax weights in PyTorch, requires both PyTorch and Flax to be installed. Please see"
+            "Loading Flax weights in PyTorch requires both PyTorch and Flax to be installed. Please see"
+
             " https://pytorch.org/ and https://flax.readthedocs.io/en/latest/installation.html for installation"
             " instructions."
         )
