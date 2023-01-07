@@ -64,7 +64,6 @@ def load_flax_weights_in_pytorch_model(pt_model, flax_state):
     except ImportError:
         logger.error(
             "Loading Flax weights in PyTorch requires both PyTorch and Flax to be installed. Please see"
-
             " https://pytorch.org/ and https://flax.readthedocs.io/en/latest/installation.html for installation"
             " instructions."
         )
@@ -147,19 +146,11 @@ def load_flax_weights_in_pytorch_model(pt_model, flax_state):
             " to be exactly identical (e.g. initializing a BertForSequenceClassification model from a"
             " FlaxBertForSequenceClassification model)."
         )
-    else:
-        logger.warning(f"All Flax model weights were used when initializing {pt_model.__class__.__name__}.\n")
     if len(missing_keys) > 0:
         logger.warning(
             f"Some weights of {pt_model.__class__.__name__} were not initialized from the Flax model and are newly"
             f" initialized: {missing_keys}\nYou should probably TRAIN this model on a down-stream task to be able to"
             " use it for predictions and inference."
-        )
-    else:
-        logger.warning(
-            f"All the weights of {pt_model.__class__.__name__} were initialized from the Flax model.\n"
-            "If your task is similar to the task the model of the checkpoint was trained on, "
-            f"you can already use {pt_model.__class__.__name__} for predictions without further training."
         )
 
     return pt_model
