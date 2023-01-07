@@ -52,12 +52,6 @@ def load_flax_checkpoint_in_pytorch_model(pt_model, model_file):
                     raise ValueError from e
         except (UnicodeDecodeError, ValueError):
             raise EnvironmentError(f"Unable to convert {model_file} to Flax deserializable object. ")
-    # make sure all arrays are stored as jnp.ndarray
-    # NOTE: This is to prevent a bug this will be fixed in Flax >= v0.3.4:
-    # https://github.com/google/flax/issues/1261
-
-    # flax_state = jax.tree_util.tree_map(lambda x: jax.device_put(x, jax.devices("cpu")[0]), flax_state)
-    # flax_state = flatten_dict(flax_state)
 
     return load_flax_weights_in_pytorch_model(pt_model, flax_state)
 
