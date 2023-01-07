@@ -89,7 +89,7 @@ def parse_args():
     parser.add_argument(
         "--clip_model",
         type=str,
-        default="openai/clip-vit-large-patch14",
+        default="openai/clip-vit-base-patch32",
         help="Name of the clip model.",
     )
     parser.add_argument(
@@ -638,8 +638,8 @@ def main():
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
     )
-    clip_model = CLIPModel.from_pretrained(args.clip_model, revision=args.non_ema_revision)
-    feature_extractor = CLIPFeatureExtractor.from_pretrained(args.clip_model, revision=args.non_ema_revision)
+    feature_extractor = CLIPFeatureExtractor.from_pretrained(args.clip_model)
+    clip_model = CLIPModel.from_pretrained(args.clip_model)
 
     # Freeze vae and text_encoder
     vae.requires_grad_(False)
