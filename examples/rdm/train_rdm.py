@@ -89,7 +89,7 @@ def parse_args():
     parser.add_argument(
         "--clip_model",
         type=str,
-        default="openai/clip-vit-base-patch32",
+        default="openai/clip-vit-large-patch14-336",
         help="Name of the clip model.",
     )
     parser.add_argument(
@@ -358,6 +358,7 @@ class RDMDataset(Dataset):
         image_column,
         caption_column,
         tokenizer,
+        feature_extractor,
         retriever=None,
         size=512,
         interpolation="bicubic",
@@ -370,6 +371,7 @@ class RDMDataset(Dataset):
         self.image_column = image_column
         self.caption_column = caption_column
         self.tokenizer = tokenizer
+        self.feature_extractor = feature_extractor
         self.retriever = retriever
         self.size = size
         self.center_crop = center_crop
@@ -454,7 +456,7 @@ class RDMDataset(Dataset):
             retrieved_images[i] = self.train_transforms(retrieved_images[i])
             retrieved_images[i] = np.array(retrieved_images[i]).astype(np.float32)
             retrieved_images[i] = (retrieved_images[i] / 127.5 - 1.0).astype(np.float32)
-            retrieved_images[i] = torch.from_numpy(retrieved_images[i]).to(memory_format=torch.contiguous_format)[None]
+            retrieved_images[i] =  preprocess_images([retrieved_images[i]], self.feature_extractor)[0][None].to(memory_format=torch.contiguous_format)
         example["nearest_neighbors"] = torch.cat(retrieved_images)
         print(f"Nearest neighbor shape: {example['nearest_neighbors'].shape}")
         # default to score-sde preprocessing
@@ -749,7 +751,7 @@ def main():
     retriever = None
     if not args.use_clip_retrieval:
         retriever = Retriever(clip_model, tokenizer, feature_extractor, dataset["train"], args.dataset_save_path, accelerator.device, args.image_column)
-    train_dataset = RDMDataset(dataset["train"],args.image_column,args.caption_column, tokenizer,retriever, center_crop=args.center_crop, size=512, use_clip_retrieval=args.use_clip_retrieval, num_queries=args.num_query)
+    train_dataset = RDMDataset(dataset["train"],args.image_column,args.caption_column, tokenizer,feature_extractor,retriever, center_crop=args.center_crop, size=512, use_clip_retrieval=args.use_clip_retrieval, num_queries=args.num_query)
     train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.train_batch_size, shuffle=True)
 
     # Scheduler and math around the number of training steps.
@@ -868,7 +870,7 @@ def main():
                 if retrieved_images is not None:
                     for i in range(retrieved_images.shape[0]):
                         # preprocess retrieved images
-                        precessed_images = preprocess_images(retrieved_images[i], feature_extractor).to(accelerator.device)
+                        precessed_images = retrieved_images[i].to(accelerator.device, dtype=weight_dtype)
                         image_embeddings = clip_model.get_image_features(precessed_images)
                         image_embeddings = image_embeddings / torch.linalg.norm(image_embeddings, dim=-1, keepdim=True)
                         image_embeddings = image_embeddings[None, ...]
