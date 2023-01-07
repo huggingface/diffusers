@@ -9,6 +9,7 @@ import random
 from pathlib import Path
 from typing import Iterable, Optional
 import PIL
+from PIL import Image
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -43,10 +44,10 @@ import faiss
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.10.0.dev0")
 logger = get_logger(__name__, log_level="INFO")
-ClipClient, Modality = None, None
 _clip_retrieval_available = True
 try:
     _clip_retrieval_version = importlib_metadata.version("clip-retrieval")
+    from clip_retrieval.clip_client import ClipClient, Modality
     logger.debug(f"Successfully imported clip retrieval version {_clip_retrieval_version}")
 except importlib_metadata.PackageNotFoundError:
     _clip_retrieval_available = False
@@ -55,7 +56,7 @@ def is_clip_retrieval_available():
 
 
 
-def preprocess_images(images: List[Image], feature_extractor: CLIPFeatureExtractor) -> torch.FloatTensor:
+def preprocess_images(images, feature_extractor: CLIPFeatureExtractor) -> torch.FloatTensor:
     """
     Preprocesses a list of images into a batch of tensors.
 
@@ -372,7 +373,8 @@ class RDMDataset(Dataset):
         self.retriever = retriever
         self.size = size
         self.center_crop = center_crop
-        self._length = self.num_images
+        print(f"Loading {len(dataset)} number of images.")
+        self._length = len(dataset)
         self.client = None
         self.num_queries = num_queries
         if use_clip_retrieval:
@@ -387,8 +389,8 @@ class RDMDataset(Dataset):
         }[interpolation]
         self.train_transforms = transforms.Compose(
             [
-                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
                 transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
+                transforms.RandomCrop(size),
                 transforms.RandomHorizontalFlip() if do_random_flip else transforms.Lambda(lambda x: x),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
@@ -411,8 +413,14 @@ class RDMDataset(Dataset):
             process_caption, max_length=self.tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
         )
         return inputs.input_ids
-
-    
+    def center_crop_img(self, img):
+        crop = min(img.shape[0], img.shape[1])
+        h, w, = (
+            img.shape[0],
+            img.shape[1],
+        )
+        img = img[(h - crop) // 2 : (h + crop) // 2, (w - crop) // 2 : (w + crop) // 2]
+        return img
     def __getitem__(self, i):
         example = {}
         image = self.dataset[self.image_column][i]
@@ -420,30 +428,47 @@ class RDMDataset(Dataset):
         if not image.mode == "RGB":
             image = image.convert("RGB")
         text = self.dataset[self.caption_column][i]
-        example["input_ids"] = self.tokenize_captions(text)[0]
+        example["input_ids"] = self.tokenize_caption(text)[0]
         # TODO: remove current image from nearest neighbors?
+
         if self.client:
-            retrieved_queries = self.client.query(text=text)[:self.num_queries]
+            retrieved_queries = self.client.query(text=text)
             retrieved_images = []
             for retrieved_query in retrieved_queries:
-                retrieved_images.append(Image.open(requests.get(retrieved_query['url'], stream=True).raw))
+                if len(retrieved_images) == self.num_queries:
+                    break
+                try:
+                    retrieved_image = PIL.Image.open(requests.get(retrieved_query['url'], stream=True).raw)
+                    retrieved_image = np.array(retrieved_image)
+                    if self.center_crop:
+                        retrieved_image = self.center_crop_img(retrieved_image)
+                    retrieved_images.append(PIL.Image.fromarray(retrieved_image))
+                except Exception as e:
+                    print(e)
+            print(f"Retrieved {len(retrieved_images)} images")
         else:
             retrieved_images = self.retriever.get_knn_from_text(text).examples[self.image_column][:self.num_queries]
         for i in range(len(retrieved_images)):
+            if not retrieved_images[i].mode == "RGB":
+                retrieved_images[i] = retrieved_images[i].convert("RGB")
             retrieved_images[i] = self.train_transforms(retrieved_images[i])
             retrieved_images[i] = np.array(retrieved_images[i]).astype(np.float32)
             retrieved_images[i] = (retrieved_images[i] / 127.5 - 1.0).astype(np.float32)
-            retrieved_images[i] = torch.from_numpy(retrieved_images[i]).permute(2, 0, 1).to(memory_format=torch.contiguous_format)
-        example["nearest_neighbors"] = torch.Tensor(retrieved_images)
+            retrieved_images[i] = torch.from_numpy(retrieved_images[i]).to(memory_format=torch.contiguous_format)[None]
+        example["nearest_neighbors"] = torch.cat(retrieved_images)
+        print(f"Nearest neighbor shape: {example['nearest_neighbors'].shape}")
         # default to score-sde preprocessing
         img = np.array(image).astype(np.uint8)
 
-        image = Image.fromarray(img)
-
+        image = PIL.Image.fromarray(img)
+        if self.center_crop:
+            image = self.center_crop_img(np.array(image))
+            image = PIL.Image.fromarray(image)
         image = self.train_transforms(image)
         image = np.array(image).astype(np.float32)
         image = (image / 127.5 - 1.0).astype(np.float32)
-        example["pixel_values"] = torch.from_numpy(image).permute(2, 0, 1).to(memory_format=torch.contiguous_format)
+        example["pixel_values"] = torch.from_numpy(image).to(memory_format=torch.contiguous_format)
+        print(f"pixel shape: {example['pixel_values'].shape}")
         return example
 
 # Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14
@@ -560,8 +585,6 @@ def main():
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
     if args.use_clip_retrieval:
         assert is_clip_retrieval_available()
-    if args.use_clip_retrieval:
-        from clip_retrieval.clip_client import ClipClient, Modality
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -724,9 +747,9 @@ def main():
         if args.max_train_samples is not None:
             dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
     retriever = None
-    if args.use_clip_retrieval:
+    if not args.use_clip_retrieval:
         retriever = Retriever(clip_model, tokenizer, feature_extractor, dataset["train"], args.dataset_save_path, accelerator.device, args.image_column)
-    train_dataset = RDMDataset(dataset["train"],args.image_column,args.caption_column,tokenizer,retriever,size=512, use_clip_retrieval=args.use_clip_retrieval, num_queries=args.num_query)
+    train_dataset = RDMDataset(dataset["train"],args.image_column,args.caption_column, tokenizer,retriever, center_crop=args.center_crop, size=512, use_clip_retrieval=args.use_clip_retrieval, num_queries=args.num_query)
     train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.train_batch_size, shuffle=True)
 
     # Scheduler and math around the number of training steps.
@@ -839,14 +862,17 @@ def main():
                 text_embeddings = clip_model.get_text_features(batch["input_ids"])
                 text_embeddings = text_embeddings / torch.linalg.norm(text_embeddings, dim=-1, keepdim=True)
                 text_embeddings = text_embeddings[:, None, :]
+
                 retrieved_images = batch["nearest_neighbors"]
+
                 if retrieved_images is not None:
-                    # preprocess retrieved images
-                    retrieved_images = preprocess_images(retrieved_images, feature_extractor).to(accelerator.device)
-                    image_embeddings = clip_model.get_image_features(retrieved_images)
-                    image_embeddings = image_embeddings / torch.linalg.norm(image_embeddings, dim=-1, keepdim=True)
-                    image_embeddings = image_embeddings[None, ...]
-                    text_embeddings = torch.cat([text_embeddings, image_embeddings], dim=1)
+                    for i in range(retrieved_images.shape[0]):
+                        # preprocess retrieved images
+                        precessed_images = preprocess_images(retrieved_images[i], feature_extractor).to(accelerator.device)
+                        image_embeddings = clip_model.get_image_features(precessed_images)
+                        image_embeddings = image_embeddings / torch.linalg.norm(image_embeddings, dim=-1, keepdim=True)
+                        image_embeddings = image_embeddings[None, ...]
+                        text_embeddings = torch.cat([text_embeddings, image_embeddings], dim=1)
                 encoder_hidden_states = text_embeddings
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
