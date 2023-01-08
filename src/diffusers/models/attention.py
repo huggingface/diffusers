@@ -197,6 +197,7 @@ class BasicTransformerBlock(nn.Module):
         upcast_attention: bool = False,
         norm_elementwise_affine: bool = True,
         use_ada_layer_norm_zero: bool = False,
+        final_dropout: bool = False,
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
@@ -220,7 +221,7 @@ class BasicTransformerBlock(nn.Module):
             upcast_attention=upcast_attention,
         )
 
-        self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn)
+        self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn, final_dropout=final_dropout)
 
         # 2. Cross-Attn
         if cross_attention_dim is not None:
@@ -448,8 +449,7 @@ class AdaLayerNorm(nn.Module):
         emb = self.linear(self.silu(self.emb(timestep)))
         scale, shift = torch.chunk(emb, 2)
         return scale, shift
-        # x = self.norm(x) * (1 + scale) + shift
-        # return x
+
 
 class AdaLayerNormZero(nn.Module):
     """

@@ -140,10 +140,14 @@ class DiT(ModelMixin, ConfigMixin):
         self.blocks = nn.ModuleList([
             BasicTransformerBlock(
                 hidden_size, 
-                num_heads, 
+                num_heads,
+                attention_head_dim=hidden_size // num_heads,
                 activation_fn="gelu-approximate",
-                num_embeds_ada_norm = num_classes,
+                num_embeds_ada_norm=num_classes,
+                attention_bias=True,
                 use_ada_layer_norm_zero=True,
+                norm_elementwise_affine=False,
+                final_dropout=True,
             ) for _ in range(depth)
         ])
         self.final_layer = FinalLayer(hidden_size, patch_size, self.out_channels)
@@ -167,17 +171,17 @@ class DiT(ModelMixin, ConfigMixin):
         w = self.sample_embedder.proj.weight.data
         nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
 
-        # Initialize label embedding table:
-        nn.init.normal_(self.class_embedder.embedding_table.weight, std=0.02)
+        # # Initialize label embedding table:
+        # nn.init.normal_(self.class_embedder.embedding_table.weight, std=0.02)
 
-        # Initialize timestep embedding MLP:
-        nn.init.normal_(self.timestep_embedder.linear_1.weight, std=0.02)
-        nn.init.normal_(self.timestep_embedder.linear_2.weight, std=0.02)
+        # # Initialize timestep embedding MLP:
+        # nn.init.normal_(self.timestep_embedder.linear_1.weight, std=0.02)
+        # nn.init.normal_(self.timestep_embedder.linear_2.weight, std=0.02)
 
-        # Zero-out adaLN modulation layers in DiT blocks:
-        for block in self.blocks:
-            nn.init.constant_(block.adaLN_modulation[-1].weight, 0)
-            nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
+        # # Zero-out adaLN modulation layers in DiT blocks:
+        # for block in self.blocks:
+        #     nn.init.constant_(block.adaLN_modulation[-1].weight, 0)
+        #     nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
 
         # Zero-out output layers:
         nn.init.constant_(self.final_layer.adaLN_modulation[-1].weight, 0)

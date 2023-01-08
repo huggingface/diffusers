@@ -25,41 +25,40 @@ def download_model(model_name):
 
 def main(args):
     state_dict = download_model(pretrained_models[args.image_size])
-    state_dict["timestep_embedder.linear_1.weight"] = state_dict["t_embedder.mlp.0.weight"]
-    state_dict["timestep_embedder.linear_1.bias"] = state_dict["t_embedder.mlp.0.bias"]
-    state_dict["timestep_embedder.linear_2.weight"] = state_dict["t_embedder.mlp.2.weight"]
-    state_dict["timestep_embedder.linear_2.bias"] = state_dict["t_embedder.mlp.2.bias"]
-    state_dict.pop("t_embedder.mlp.0.weight")
-    state_dict.pop("t_embedder.mlp.0.bias")
-    state_dict.pop("t_embedder.mlp.2.weight")
-    state_dict.pop("t_embedder.mlp.2.bias")
-
+   
     state_dict["sample_embedder.proj.weight"] = state_dict["x_embedder.proj.weight"]
     state_dict["sample_embedder.proj.bias"] = state_dict["x_embedder.proj.bias"]
     state_dict.pop("x_embedder.proj.weight")
     state_dict.pop("x_embedder.proj.bias")
 
-    state_dict["class_embedder.embedding_table.weight"] = state_dict["y_embedder.embedding_table.weight"]
-    state_dict.pop("y_embedder.embedding_table.weight")
 
     for depth in range(28):
+        state_dict[f"blocks.{depth}.norm1.emb.timestep_embedder.linear_1.weight"] = state_dict["t_embedder.mlp.0.weight"]
+        state_dict[f"blocks.{depth}.norm1.emb.timestep_embedder.linear_1.bias"] = state_dict["t_embedder.mlp.0.bias"]
+        state_dict[f"blocks.{depth}.norm1.emb.timestep_embedder.linear_2.weight"] = state_dict["t_embedder.mlp.2.weight"]
+        state_dict[f"blocks.{depth}.norm1.emb.timestep_embedder.linear_2.bias"] = state_dict["t_embedder.mlp.2.bias"]
+        state_dict[f"blocks.{depth}.norm1.emb.class_embedder.embedding_table.weight"] = state_dict["y_embedder.embedding_table.weight"]
+        
+        state_dict[f"blocks.{depth}.norm1.linear.weight"] = state_dict[f"blocks.{depth}.adaLN_modulation.1.weight"]
+        state_dict[f"blocks.{depth}.norm1.linear.bias"] = state_dict[f"blocks.{depth}.adaLN_modulation.1.bias"]
+
         q, k, v = torch.chunk(state_dict[f"blocks.{depth}.attn.qkv.weight"], 3, dim=0)
         q_bias, k_bias, v_bias = torch.chunk(state_dict[f"blocks.{depth}.attn.qkv.bias"], 3, dim=0)
 
-        state_dict[f"blocks.{depth}.attn.to_q.weight"] = q
-        state_dict[f"blocks.{depth}.attn.to_q.bias"] = q_bias
-        state_dict[f"blocks.{depth}.attn.to_k.weight"] = k
-        state_dict[f"blocks.{depth}.attn.to_k.bias"] = k_bias
-        state_dict[f"blocks.{depth}.attn.to_v.weight"] = v
-        state_dict[f"blocks.{depth}.attn.to_v.bias"] = v_bias
+        state_dict[f"blocks.{depth}.attn1.to_q.weight"] = q
+        state_dict[f"blocks.{depth}.attn1.to_q.bias"] = q_bias
+        state_dict[f"blocks.{depth}.attn1.to_k.weight"] = k
+        state_dict[f"blocks.{depth}.attn1.to_k.bias"] = k_bias
+        state_dict[f"blocks.{depth}.attn1.to_v.weight"] = v
+        state_dict[f"blocks.{depth}.attn1.to_v.bias"] = v_bias
 
-        state_dict[f"blocks.{depth}.attn.to_out.0.weight"] = state_dict[f"blocks.{depth}.attn.proj.weight"]
-        state_dict[f"blocks.{depth}.attn.to_out.0.bias"] = state_dict[f"blocks.{depth}.attn.proj.bias"]
+        state_dict[f"blocks.{depth}.attn1.to_out.0.weight"] = state_dict[f"blocks.{depth}.attn.proj.weight"]
+        state_dict[f"blocks.{depth}.attn1.to_out.0.bias"] = state_dict[f"blocks.{depth}.attn.proj.bias"]
 
-        state_dict[f"blocks.{depth}.mlp.net.0.proj.weight"] = state_dict[f"blocks.{depth}.mlp.fc1.weight"]
-        state_dict[f"blocks.{depth}.mlp.net.0.proj.bias"] = state_dict[f"blocks.{depth}.mlp.fc1.bias"]
-        state_dict[f"blocks.{depth}.mlp.net.2.weight"] = state_dict[f"blocks.{depth}.mlp.fc2.weight"]
-        state_dict[f"blocks.{depth}.mlp.net.2.bias"] = state_dict[f"blocks.{depth}.mlp.fc2.bias"]
+        state_dict[f"blocks.{depth}.ff.net.0.proj.weight"] = state_dict[f"blocks.{depth}.mlp.fc1.weight"]
+        state_dict[f"blocks.{depth}.ff.net.0.proj.bias"] = state_dict[f"blocks.{depth}.mlp.fc1.bias"]
+        state_dict[f"blocks.{depth}.ff.net.2.weight"] = state_dict[f"blocks.{depth}.mlp.fc2.weight"]
+        state_dict[f"blocks.{depth}.ff.net.2.bias"] = state_dict[f"blocks.{depth}.mlp.fc2.bias"]
 
         state_dict.pop(f"blocks.{depth}.attn.qkv.weight")
         state_dict.pop(f"blocks.{depth}.attn.qkv.bias")
@@ -69,6 +68,14 @@ def main(args):
         state_dict.pop(f"blocks.{depth}.mlp.fc1.bias")
         state_dict.pop(f"blocks.{depth}.mlp.fc2.weight")
         state_dict.pop(f"blocks.{depth}.mlp.fc2.bias")
+        state_dict.pop(f"blocks.{depth}.adaLN_modulation.1.weight")
+        state_dict.pop(f"blocks.{depth}.adaLN_modulation.1.bias")
+
+    state_dict.pop("t_embedder.mlp.0.weight")
+    state_dict.pop("t_embedder.mlp.0.bias")
+    state_dict.pop("t_embedder.mlp.2.weight")
+    state_dict.pop("t_embedder.mlp.2.bias")
+    state_dict.pop("y_embedder.embedding_table.weight")
 
     # DiT XL/2
     dit = DiT(
