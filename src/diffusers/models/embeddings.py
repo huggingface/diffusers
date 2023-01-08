@@ -278,9 +278,27 @@ class LabelEmbedding(nn.Module):
         labels = torch.where(drop_ids, self.num_classes, labels)
         return labels
 
-    def forward(self, labels, train, force_drop_ids=None):
+    def forward(self, labels, force_drop_ids=None):
         use_dropout = self.dropout_prob > 0
-        if (train and use_dropout) or (force_drop_ids is not None):
+        if (self.training and use_dropout) or (force_drop_ids is not None):
             labels = self.token_drop(labels, force_drop_ids)
         embeddings = self.embedding_table(labels)
         return embeddings
+
+class CombinedTimestepLabelEmbeddings(nn.Module):
+    def __init__(self, num_classes, embedding_dim, class_dropout_prob=0.1):
+        super().__init__()
+
+        self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=1)
+        self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
+        self.class_embedder = LabelEmbedding(num_classes, embedding_dim, class_dropout_prob)
+
+    def forward(self, timestep, class_labels):
+        timesteps_proj = self.time_proj(timestep)
+        timesteps_emb = self.timestep_embedder(timesteps_proj)  # (N, D)
+
+        class_labels = self.class_embedder(class_labels, self.training)  # (N, D)
+
+        conditioning = timesteps_emb + class_labels  # (N, D)
+
+        return conditioning

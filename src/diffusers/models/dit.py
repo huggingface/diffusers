@@ -17,8 +17,7 @@ import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .attention import FeedForward
-from .cross_attention import CrossAttention
+from .attention import BasicTransformerBlock
 from .embeddings import LabelEmbedding, TimestepEmbedding, Timesteps, get_2d_sincos_pos_embed
 from .modeling_utils import ModelMixin
 
@@ -67,31 +66,31 @@ class PatchEmbed(nn.Module):
         return latent
 
 
-class DiTBlock(nn.Module):
-    """
-    A DiT block with adaptive layer norm zero (adaLN-Zero) conditioning.
-    """
+# class DiTBlock(nn.Module):
+#     """
+#     A DiT block with adaptive layer norm zero (adaLN-Zero) conditioning.
+#     """
 
-    def __init__(self, hidden_size, num_heads, mlp_ratio=4):
-        super().__init__()
-        self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.attn = CrossAttention(
-            query_dim=hidden_size, heads=num_heads, dim_head=hidden_size // num_heads, bias=True
-        )
-        self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.mlp = FeedForward(
-            dim=hidden_size,
-            mult=mlp_ratio,
-            activation_fn="gelu-approximate",
-            final_dropout=True,
-        )
-        self.adaLN_modulation = nn.Sequential(nn.SiLU(), nn.Linear(hidden_size, 6 * hidden_size, bias=True))
+#     def __init__(self, hidden_size, num_heads, mlp_ratio=4):
+#         super().__init__()
+#         self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+#         self.attn = CrossAttention(
+#             query_dim=hidden_size, heads=num_heads, dim_head=hidden_size // num_heads, bias=True
+#         )
+#         self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+#         self.mlp = FeedForward(
+#             dim=hidden_size,
+#             mult=mlp_ratio,
+#             activation_fn="gelu-approximate",
+#             final_dropout=True,
+#         )
+#         self.adaLN_modulation = nn.Sequential(nn.SiLU(), nn.Linear(hidden_size, 6 * hidden_size, bias=True))
 
-    def forward(self, latent, cls):
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(cls).chunk(6, dim=1)
-        latent = latent + gate_msa.unsqueeze(1) * self.attn(modulate(self.norm1(latent), shift_msa, scale_msa))
-        latent = latent + gate_mlp.unsqueeze(1) * self.mlp(modulate(self.norm2(latent), shift_mlp, scale_mlp))
-        return latent
+#     def forward(self, latent, cls):
+#         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(cls).chunk(6, dim=1)
+#         latent = latent + gate_msa.unsqueeze(1) * self.attn(modulate(self.norm1(latent), shift_msa, scale_msa))
+#         latent = latent + gate_mlp.unsqueeze(1) * self.mlp(modulate(self.norm2(latent), shift_mlp, scale_mlp))
+#         return latent
 
 
 class FinalLayer(nn.Module):
@@ -126,8 +125,6 @@ class DiT(ModelMixin, ConfigMixin):
         hidden_size=1152,
         depth=28,
         num_heads=16,
-        mlp_ratio=4,
-        class_dropout_prob=0.1,
         num_classes=1000,
         learn_sigma=True,
     ):
@@ -135,15 +132,20 @@ class DiT(ModelMixin, ConfigMixin):
         self.out_channels = in_channels * 2 if learn_sigma else in_channels
 
         self.sample_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
-        self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=1)
-        self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=hidden_size)
-        self.class_embedder = LabelEmbedding(num_classes, hidden_size, class_dropout_prob)
 
         num_patches = self.sample_embedder.num_patches
         # Will use fixed sin-cos embedding:
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, hidden_size), requires_grad=False)
 
-        self.blocks = nn.ModuleList([DiTBlock(hidden_size, num_heads, mlp_ratio=mlp_ratio) for _ in range(depth)])
+        self.blocks = nn.ModuleList([
+            BasicTransformerBlock(
+                hidden_size, 
+                num_heads, 
+                activation_fn="gelu-approximate",
+                num_embeds_ada_norm = num_classes,
+                use_ada_layer_norm_zero=True,
+            ) for _ in range(depth)
+        ])
         self.final_layer = FinalLayer(hidden_size, patch_size, self.out_channels)
         self.initialize_weights()
 

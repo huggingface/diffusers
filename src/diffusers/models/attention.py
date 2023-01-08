@@ -20,6 +20,7 @@ from torch import nn
 
 from ..utils.import_utils import is_xformers_available
 from .cross_attention import CrossAttention
+from .embeddings import CombinedTimestepLabelEmbeddings
 
 
 if is_xformers_available():
@@ -194,10 +195,19 @@ class BasicTransformerBlock(nn.Module):
         attention_bias: bool = False,
         only_cross_attention: bool = False,
         upcast_attention: bool = False,
+        norm_elementwise_affine: bool = True,
+        use_ada_layer_norm_zero: bool = False,
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
-        self.use_ada_layer_norm = num_embeds_ada_norm is not None
+
+        if num_embeds_ada_norm is not None:
+            if use_ada_layer_norm_zero:
+                self.use_ada_layer_norm_zero = True
+                self.use_ada_layer_norm = False
+            else:
+                self.use_ada_layer_norm_zero = False
+                self.use_ada_layer_norm = True
 
         # 1. Self-Attn
         self.attn1 = CrossAttention(
@@ -226,15 +236,23 @@ class BasicTransformerBlock(nn.Module):
         else:
             self.attn2 = None
 
-        self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
+        if self.use_ada_layer_norm:
+            self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm)
+        elif self.use_ada_layer_norm_zero:
+            self.norm1 = AdaLayerNormZero(dim, num_embeds_ada_norm)
+        else:
+            nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
 
         if cross_attention_dim is not None:
-            self.norm2 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
+            # We currently only use AdaLayerNormZero for self attention where there will only be one attention block.
+            # I.e. the number of returned modulation chunks from AdaLayerZero would not make sense if returned during
+            # the second cross attention block.
+            self.norm2 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
         else:
             self.norm2 = None
 
         # 3. Feed-forward
-        self.norm3 = nn.LayerNorm(dim)
+        self.norm3 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
 
     def forward(
         self,
@@ -243,11 +261,23 @@ class BasicTransformerBlock(nn.Module):
         timestep=None,
         attention_mask=None,
         cross_attention_kwargs=None,
+        class_labels = None,
     ):
+        if self.use_ada_layer_norm:
+            scale, shift = self.norm1(timestep)
+
+        if self.use_ada_layer_norm_zero:
+            shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(timestep, class_labels)
+
         # 1. Self-Attention
-        norm_hidden_states = (
-            self.norm1(hidden_states, timestep) if self.use_ada_layer_norm else self.norm1(hidden_states)
-        )
+        norm_hidden_states = self.norm1.norm(hidden_states)
+
+        if self.use_ada_layer_norm:
+            norm_hidden_states = norm_hidden_states * (1 + scale) + shift
+
+        if self.use_ada_layer_norm_zero:
+            norm_hidden_states = modulate(norm_hidden_states, shift_msa, scale_msa)
+
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         attn_output = self.attn1(
             norm_hidden_states,
@@ -255,6 +285,8 @@ class BasicTransformerBlock(nn.Module):
             attention_mask=attention_mask,
             **cross_attention_kwargs,
         )
+        if self.use_ada_layer_norm_zero:
+            attn_output = gate_msa.unsqueeze(1) + attn_output
         hidden_states = attn_output + hidden_states
 
         if self.attn2 is not None:
@@ -271,7 +303,17 @@ class BasicTransformerBlock(nn.Module):
             hidden_states = attn_output + hidden_states
 
         # 3. Feed-forward
-        hidden_states = self.ff(self.norm3(hidden_states)) + hidden_states
+        norm_hidden_states = self.norm3(hidden_states)
+
+        if self.use_ada_layer_norm_zero:
+            norm_hidden_states = modulate(norm_hidden_states, shift_mlp, scale_mlp)
+
+        ff_output = self.ff(norm_hidden_states)
+
+        if self.use_ada_layer_norm_zero:
+            ff_output = gate_mlp.unsqueeze(1) * ff_output
+            
+        hidden_states = ff_output + hidden_states
 
         return hidden_states
 
@@ -402,8 +444,32 @@ class AdaLayerNorm(nn.Module):
         self.linear = nn.Linear(embedding_dim, embedding_dim * 2)
         self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False)
 
-    def forward(self, x, timestep):
+    def forward(self, timestep):
         emb = self.linear(self.silu(self.emb(timestep)))
         scale, shift = torch.chunk(emb, 2)
-        x = self.norm(x) * (1 + scale) + shift
-        return x
+        return scale, shift
+        # x = self.norm(x) * (1 + scale) + shift
+        # return x
+
+class AdaLayerNormZero(nn.Module):
+    """
+    Norm layer adaptive layer norm zero (adaLN-Zero).
+    """
+
+    def __init__(self, embedding_dim, num_embeddings):
+        super().__init__()
+
+        self.emb = CombinedTimestepLabelEmbeddings(num_embeddings, embedding_dim)
+
+        self.silu = nn.SiLU()
+        self.linear = nn.Linear(embedding_dim, 6 * embedding_dim, bias=True)
+        self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
+
+    def forward(self, x, timestep, class_labels):
+        emb = self.linear(self.silu(self.emb(timestep, class_labels)))
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.chunk(6, dim=1)
+        return shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp
+
+
+def modulate(x, shift, scale):
+    return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
