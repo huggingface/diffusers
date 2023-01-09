@@ -248,7 +248,11 @@ class BasicTransformerBlock(nn.Module):
             # We currently only use AdaLayerNormZero for self attention where there will only be one attention block.
             # I.e. the number of returned modulation chunks from AdaLayerZero would not make sense if returned during
             # the second cross attention block.
-            self.norm2 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
+            self.norm2 = (
+                AdaLayerNorm(dim, num_embeds_ada_norm)
+                if self.use_ada_layer_norm
+                else nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
+            )
         else:
             self.norm2 = None
 
@@ -262,7 +266,7 @@ class BasicTransformerBlock(nn.Module):
         timestep=None,
         attention_mask=None,
         cross_attention_kwargs=None,
-        class_labels = None,
+        class_labels=None,
     ):
         if self.use_ada_layer_norm:
             scale, shift = self.norm1(timestep)
@@ -313,7 +317,7 @@ class BasicTransformerBlock(nn.Module):
 
         if self.use_ada_layer_norm_zero:
             ff_output = gate_mlp.unsqueeze(1) * ff_output
-            
+
         hidden_states = ff_output + hidden_states
 
         return hidden_states

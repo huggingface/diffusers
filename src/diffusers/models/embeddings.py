@@ -285,6 +285,7 @@ class LabelEmbedding(nn.Module):
         embeddings = self.embedding_table(labels)
         return embeddings
 
+
 class CombinedTimestepLabelEmbeddings(nn.Module):
     def __init__(self, num_classes, embedding_dim, class_dropout_prob=0.1):
         super().__init__()

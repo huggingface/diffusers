@@ -68,8 +68,7 @@ class PatchEmbed(nn.Module):
 
 # class DiTBlock(nn.Module):
 #     """
-#     A DiT block with adaptive layer norm zero (adaLN-Zero) conditioning.
-#     """
+# A DiT block with adaptive layer norm zero (adaLN-Zero) conditioning. #"""
 
 #     def __init__(self, hidden_size, num_heads, mlp_ratio=4):
 #         super().__init__()
@@ -137,19 +136,22 @@ class DiT(ModelMixin, ConfigMixin):
         # Will use fixed sin-cos embedding:
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, hidden_size), requires_grad=False)
 
-        self.blocks = nn.ModuleList([
-            BasicTransformerBlock(
-                hidden_size, 
-                num_heads,
-                attention_head_dim=hidden_size // num_heads,
-                activation_fn="gelu-approximate",
-                num_embeds_ada_norm=num_classes,
-                attention_bias=True,
-                use_ada_layer_norm_zero=True,
-                norm_elementwise_affine=False,
-                final_dropout=True,
-            ) for _ in range(depth)
-        ])
+        self.blocks = nn.ModuleList(
+            [
+                BasicTransformerBlock(
+                    hidden_size,
+                    num_heads,
+                    attention_head_dim=hidden_size // num_heads,
+                    activation_fn="gelu-approximate",
+                    num_embeds_ada_norm=num_classes,
+                    attention_bias=True,
+                    use_ada_layer_norm_zero=True,
+                    norm_elementwise_affine=False,
+                    final_dropout=True,
+                )
+                for _ in range(depth)
+            ]
+        )
         self.final_layer = FinalLayer(hidden_size, patch_size, self.out_channels)
         self.initialize_weights()
 

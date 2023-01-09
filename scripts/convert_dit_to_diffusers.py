@@ -25,20 +25,25 @@ def download_model(model_name):
 
 def main(args):
     state_dict = download_model(pretrained_models[args.image_size])
-   
+
     state_dict["sample_embedder.proj.weight"] = state_dict["x_embedder.proj.weight"]
     state_dict["sample_embedder.proj.bias"] = state_dict["x_embedder.proj.bias"]
     state_dict.pop("x_embedder.proj.weight")
     state_dict.pop("x_embedder.proj.bias")
 
-
     for depth in range(28):
-        state_dict[f"blocks.{depth}.norm1.emb.timestep_embedder.linear_1.weight"] = state_dict["t_embedder.mlp.0.weight"]
+        state_dict[f"blocks.{depth}.norm1.emb.timestep_embedder.linear_1.weight"] = state_dict[
+            "t_embedder.mlp.0.weight"
+        ]
         state_dict[f"blocks.{depth}.norm1.emb.timestep_embedder.linear_1.bias"] = state_dict["t_embedder.mlp.0.bias"]
-        state_dict[f"blocks.{depth}.norm1.emb.timestep_embedder.linear_2.weight"] = state_dict["t_embedder.mlp.2.weight"]
+        state_dict[f"blocks.{depth}.norm1.emb.timestep_embedder.linear_2.weight"] = state_dict[
+            "t_embedder.mlp.2.weight"
+        ]
         state_dict[f"blocks.{depth}.norm1.emb.timestep_embedder.linear_2.bias"] = state_dict["t_embedder.mlp.2.bias"]
-        state_dict[f"blocks.{depth}.norm1.emb.class_embedder.embedding_table.weight"] = state_dict["y_embedder.embedding_table.weight"]
-        
+        state_dict[f"blocks.{depth}.norm1.emb.class_embedder.embedding_table.weight"] = state_dict[
+            "y_embedder.embedding_table.weight"
+        ]
+
         state_dict[f"blocks.{depth}.norm1.linear.weight"] = state_dict[f"blocks.{depth}.adaLN_modulation.1.weight"]
         state_dict[f"blocks.{depth}.norm1.linear.bias"] = state_dict[f"blocks.{depth}.adaLN_modulation.1.bias"]
 
