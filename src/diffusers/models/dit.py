@@ -233,15 +233,16 @@ class DiT(ModelMixin, ConfigMixin):
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timesteps = timesteps.expand(sample.shape[0])
-        timesteps_proj = self.time_proj(timesteps)
-        timesteps_emb = self.timestep_embedder(timesteps_proj)  # (N, D)
+        # timesteps_proj = self.time_proj(timesteps)
+        # timesteps_emb = self.timestep_embedder(timesteps_proj)  # (N, D)
 
-        class_labels = self.class_embedder(class_labels, self.training)  # (N, D)
-        conditioning = timesteps_emb + class_labels  # (N, D)
+        # class_labels = self.class_embedder(class_labels, self.training)  # (N, D)
+        # conditioning = timesteps_emb + class_labels  # (N, D)
 
         sample = self.sample_embedder(sample) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         for block in self.blocks:
-            sample = block(sample, conditioning)  # (N, T, D)
+            sample = block(sample, timesteps=timesteps, class_labels=class_labels)  # (N, T, D)
+        conditioning = block.norm1.emb(timestep, class_labels)
         sample = self.final_layer(sample, conditioning)  # (N, T, patch_size ** 2 * out_channels)
         sample = self.unpatchify(sample)  # (N, out_channels, H, W)
         return sample
