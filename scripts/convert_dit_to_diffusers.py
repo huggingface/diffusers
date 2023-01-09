@@ -90,7 +90,7 @@ def main(args):
         patch_size=2,
         num_heads=16,
     )
-    dit.load_state_dict(state_dict)
+    dit.load_state_dict(state_dict, strict=True)
 
     scheduler = DDIMScheduler(
         num_train_timesteps=1000,

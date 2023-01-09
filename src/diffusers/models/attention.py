@@ -291,7 +291,7 @@ class BasicTransformerBlock(nn.Module):
             **cross_attention_kwargs,
         )
         if self.use_ada_layer_norm_zero:
-            attn_output = gate_msa.unsqueeze(1) + attn_output
+            attn_output = gate_msa.unsqueeze(1) * attn_output
         hidden_states = attn_output + hidden_states
 
         if self.attn2 is not None:
