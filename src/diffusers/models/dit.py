@@ -66,32 +66,6 @@ class PatchEmbed(nn.Module):
         return latent
 
 
-# class DiTBlock(nn.Module):
-#     """
-# A DiT block with adaptive layer norm zero (adaLN-Zero) conditioning. #"""
-
-#     def __init__(self, hidden_size, num_heads, mlp_ratio=4):
-#         super().__init__()
-#         self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-#         self.attn = CrossAttention(
-#             query_dim=hidden_size, heads=num_heads, dim_head=hidden_size // num_heads, bias=True
-#         )
-#         self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-#         self.mlp = FeedForward(
-#             dim=hidden_size,
-#             mult=mlp_ratio,
-#             activation_fn="gelu-approximate",
-#             final_dropout=True,
-#         )
-#         self.adaLN_modulation = nn.Sequential(nn.SiLU(), nn.Linear(hidden_size, 6 * hidden_size, bias=True))
-
-#     def forward(self, latent, cls):
-#         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(cls).chunk(6, dim=1)
-#         latent = latent + gate_msa.unsqueeze(1) * self.attn(modulate(self.norm1(latent), shift_msa, scale_msa))
-#         latent = latent + gate_mlp.unsqueeze(1) * self.mlp(modulate(self.norm2(latent), shift_mlp, scale_mlp))
-#         return latent
-
-
 class FinalLayer(nn.Module):
     """
     The final layer of DiT.
@@ -173,18 +147,6 @@ class DiT(ModelMixin, ConfigMixin):
         w = self.sample_embedder.proj.weight.data
         nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
 
-        # # Initialize label embedding table:
-        # nn.init.normal_(self.class_embedder.embedding_table.weight, std=0.02)
-
-        # # Initialize timestep embedding MLP:
-        # nn.init.normal_(self.timestep_embedder.linear_1.weight, std=0.02)
-        # nn.init.normal_(self.timestep_embedder.linear_2.weight, std=0.02)
-
-        # # Zero-out adaLN modulation layers in DiT blocks:
-        # for block in self.blocks:
-        #     nn.init.constant_(block.adaLN_modulation[-1].weight, 0)
-        #     nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
-
         # Zero-out output layers:
         nn.init.constant_(self.final_layer.adaLN_modulation[-1].weight, 0)
         nn.init.constant_(self.final_layer.adaLN_modulation[-1].bias, 0)
@@ -235,11 +197,6 @@ class DiT(ModelMixin, ConfigMixin):
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timesteps = timesteps.expand(sample.shape[0])
-        # timesteps_proj = self.time_proj(timesteps)
-        # timesteps_emb = self.timestep_embedder(timesteps_proj)  # (N, D)
-
-        # class_labels = self.class_embedder(class_labels, self.training)  # (N, D)
-        # conditioning = timesteps_emb + class_labels  # (N, D)
 
         sample = self.sample_embedder(sample) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         for block in self.blocks:
