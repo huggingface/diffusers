@@ -40,8 +40,8 @@ class UNetGraph(torch.nn.Graph):
     def __init__(self, unet):
         super().__init__()
         self.unet = unet
-        self.config.enable_cudnn_conv_heuristic_search_algo(False)
-        self.config.allow_fuse_add_to_output(False)
+        self.config.enable_cudnn_conv_heuristic_search_algo(True)
+        self.config.allow_fuse_add_to_output(True)
 
     def build(self, latent_model_input, t, text_embeddings):
         text_embeddings = torch._C.amp_white_identity(text_embeddings)
