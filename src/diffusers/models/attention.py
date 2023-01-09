@@ -465,7 +465,7 @@ class AdaLayerNormZero(nn.Module):
         self.linear = nn.Linear(embedding_dim, 6 * embedding_dim, bias=True)
         self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
 
-    def forward(self, x, timestep, class_labels):
+    def forward(self, timestep, class_labels):
         emb = self.linear(self.silu(self.emb(timestep, class_labels)))
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.chunk(6, dim=1)
         return shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp
