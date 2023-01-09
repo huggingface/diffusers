@@ -241,7 +241,7 @@ class DiT(ModelMixin, ConfigMixin):
 
         sample = self.sample_embedder(sample) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         for block in self.blocks:
-            sample = block(sample, timesteps=timesteps, class_labels=class_labels)  # (N, T, D)
+            sample = block(sample, timestep=timesteps, class_labels=class_labels)  # (N, T, D)
         conditioning = block.norm1.emb(timestep, class_labels)
         sample = self.final_layer(sample, conditioning)  # (N, T, patch_size ** 2 * out_channels)
         sample = self.unpatchify(sample)  # (N, out_channels, H, W)
