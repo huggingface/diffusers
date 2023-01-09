@@ -274,7 +274,7 @@ class LabelEmbedding(nn.Module):
         if force_drop_ids is None:
             drop_ids = torch.rand(labels.shape[0], device=labels.device) < self.dropout_prob
         else:
-            drop_ids = force_drop_ids == 1
+            drop_ids = torch.tensor(force_drop_ids == 1)
         labels = torch.where(drop_ids, self.num_classes, labels)
         return labels
 
@@ -297,7 +297,7 @@ class CombinedTimestepLabelEmbeddings(nn.Module):
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj)  # (N, D)
 
-        class_labels = self.class_embedder(class_labels, self.training)  # (N, D)
+        class_labels = self.class_embedder(class_labels)  # (N, D)
 
         conditioning = timesteps_emb + class_labels  # (N, D)
 
