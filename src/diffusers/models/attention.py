@@ -202,14 +202,9 @@ class BasicTransformerBlock(nn.Module):
         super().__init__()
         self.only_cross_attention = only_cross_attention
 
-        if num_embeds_ada_norm is not None:
-            if use_ada_layer_norm_zero:
-                self.use_ada_layer_norm_zero = True
-                self.use_ada_layer_norm = False
-            else:
-                self.use_ada_layer_norm_zero = False
-                self.use_ada_layer_norm = True
-
+        self.use_ada_layer_norm_zero = (num_embeds_ada_norm is not None) and use_ada_layer_norm_zero
+        self.use_ada_layer_norm = (num_embeds_ada_norm is not None) and not use_ada_layer_norm_zero
+            
         # 1. Self-Attn
         self.attn1 = CrossAttention(
             query_dim=dim,
