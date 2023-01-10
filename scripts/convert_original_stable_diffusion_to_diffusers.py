@@ -443,8 +443,9 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
                 paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config
             )
 
-            if ["conv.weight", "conv.bias"] in output_block_list.values():
-                index = list(output_block_list.values()).index(["conv.weight", "conv.bias"])
+            output_block_list = {k: sorted(v) for k, v in output_block_list.items()}
+            if ["conv.bias", "conv.weight"] in output_block_list.values():
+                index = list(output_block_list.values()).index(["conv.bias", "conv.weight"])
                 new_checkpoint[f"up_blocks.{block_id}.upsamplers.0.conv.weight"] = unet_state_dict[
                     f"output_blocks.{i}.{index}.conv.weight"
                 ]
