@@ -74,7 +74,7 @@ class DiTPipeline(DiffusionPipeline):
         """
 
         batch_size = len(class_labels)
-        latent_size = self.dit.config.input_size
+        latent_size = self.dit.config.sample_size
         latent_channels = self.dit.config.in_channels
 
         latents = torch.randn(batch_size, latent_channels, latent_size, latent_size, device=self.device)
@@ -94,7 +94,8 @@ class DiTPipeline(DiffusionPipeline):
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
             # predict noise model_output
-            noise_pred = self.dit(latent_model_input, t, class_labels_input)
+            timestep = t.expand(latent_model_input.shape[0])
+            noise_pred = self.dit(latent_model_input, timestep=timestep, class_labels=class_labels_input).sample
 
             # perform guidance
             if guidance_scale > 1:
@@ -107,7 +108,7 @@ class DiTPipeline(DiffusionPipeline):
                 noise_pred = torch.cat([eps, rest], dim=1)
 
             # learned sigma
-            if self.dit.config.learn_sigma:
+            if self.dit.config.out_channels // 2 == latent_channels:
                 model_output, _ = torch.split(noise_pred, latent_channels, dim=1)
             else:
                 model_output = noise_pred

@@ -286,12 +286,13 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             hidden_states = self.proj_out_2(hidden_states)
 
             # unpatchify
+            height = width = int(hidden_states.shape[1] ** 0.5)
             hidden_states = hidden_states.reshape(
-                shape=(-1, self.height, self.width, self.patch_size, self.patch_size, self.out_channels)
+                shape=(-1, height, width, self.patch_size, self.patch_size, self.out_channels)
             )
             hidden_states = torch.einsum("nhwpqc->nchpwq", hidden_states)
             output = hidden_states.reshape(
-                shape=(-1, self.out_channels, self.height * self.patch_size, self.width * self.patch_size)
+                shape=(-1, self.out_channels, height * self.patch_size, width * self.patch_size)
             )
 
         if not return_dict:

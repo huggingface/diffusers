@@ -309,7 +309,7 @@ class BasicTransformerBlock(nn.Module):
         norm_hidden_states = self.norm3(hidden_states)
 
         if self.use_ada_layer_norm_zero:
-            norm_hidden_states = norm_hidden_states(1 + scale_mlp[:, None]) + shift_mlp[:, None]
+            norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
 
         ff_output = self.ff(norm_hidden_states)
 
