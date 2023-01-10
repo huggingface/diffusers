@@ -148,7 +148,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             self.latent_image_embedding = ImagePositionalEmbeddings(
                 num_embed=num_vector_embeds, embed_dim=inner_dim, height=self.height, width=self.width
             )
-        elif self.is_input_patched:
+        elif self.is_input_patches:
             assert sample_size is not None, "Transformer2DModel over patched input must provide sample_size"
 
             self.height = sample_size
@@ -195,7 +195,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         elif self.is_input_vectorized:
             self.norm_out = nn.LayerNorm(inner_dim)
             self.out = nn.Linear(inner_dim, self.num_vector_embeds - 1)
-        elif self.is_input_patched:
+        elif self.is_input_patches:
             self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
             self.proj_out_1 = nn.Linear(inner_dim, 2 * inner_dim)
             self.proj_out_2 = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
@@ -246,7 +246,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 hidden_states = self.proj_in(hidden_states)
         elif self.is_input_vectorized:
             hidden_states = self.latent_image_embedding(hidden_states)
-        elif self.is_input_patched:
+        elif self.is_input_patches:
             hidden_states = self.pos_embed(hidden_states)
 
         # 2. Blocks
@@ -278,7 +278,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             # log(p(x_0))
             output = F.log_softmax(logits.double(), dim=1).float()
 
-        elif self.is_input_patched:
+        elif self.is_input_patches:
             # TODO: cleanup!
             conditioning = self.transformer_blocks[0].norm1.emb(timestep, class_labels)
             shift, scale = self.proj_out_1(F.silu(conditioning)).chunk(2, dim=1)
