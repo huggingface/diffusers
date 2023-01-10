@@ -204,7 +204,10 @@ class BasicTransformerBlock(nn.Module):
 
         self.use_ada_layer_norm_zero = (num_embeds_ada_norm is not None) and use_ada_layer_norm_zero
         self.use_ada_layer_norm = (num_embeds_ada_norm is not None) and not use_ada_layer_norm_zero
-            
+
+        if self.use_ada_layer_norm_zero and num_embeds_ada_norm is None:
+            raise ValueError("`num_embeds_ada_norm` must be set if `use_ada_layer_norm_zero` is True")
+
         # 1. Self-Attn
         self.attn1 = CrossAttention(
             query_dim=dim,
