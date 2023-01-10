@@ -33,7 +33,6 @@ except OptionalDependencyNotAvailable:
 else:
     from .models import (
         AutoencoderKL,
-        DiT,
         ModelMixin,
         PriorTransformer,
         Transformer2DModel,

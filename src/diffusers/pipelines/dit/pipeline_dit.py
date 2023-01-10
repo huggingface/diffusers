@@ -19,7 +19,7 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 
-from ...models import AutoencoderKL, DiT
+from ...models import AutoencoderKL, Transformer2DModel
 from ...schedulers import DDIMScheduler
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
@@ -30,7 +30,7 @@ class DiTPipeline(DiffusionPipeline):
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Parameters:
-        dit ([`DiT`]):
+        dit ([`Transformer2DModel`]):
             Class conditioned Transformer in Diffusion model to denoise the encoded image latents.
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
@@ -38,7 +38,7 @@ class DiTPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `dit` to denoise the encoded image latents.
     """
 
-    def __init__(self, dit: DiT, vae: AutoencoderKL, scheduler: DDIMScheduler):
+    def __init__(self, dit: Transformer2DModel, vae: AutoencoderKL, scheduler: DDIMScheduler):
         super().__init__()
         self.register_modules(dit=dit, vae=vae, scheduler=scheduler)
 

@@ -111,6 +111,46 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     return emb
 
 
+class PatchEmbed(nn.Module):
+    """2D Image to Patch Embedding"""
+
+    def __init__(
+        self,
+        height=224,
+        width=224,
+        patch_size=16,
+        in_channels=3,
+        embed_dim=768,
+        layer_norm=False,
+        flatten=True,
+        bias=True,
+    ):
+        super().__init__()
+
+        num_patches = (height // patch_size) * (width // patch_size)
+        self.flatten = flatten
+        self.layer_norm = layer_norm
+
+        self.proj = nn.Conv2d(
+            in_channels, embed_dim, kernel_size=(patch_size, patch_size), stride=patch_size, bias=bias
+        )
+        if layer_norm:
+            self.norm = nn.LayerNorm(embed_dim, elementwise_affine=False, eps=1e-6)
+        else:
+            self.norm = None
+
+        pos_embed = get_2d_sincos_pos_embed(embed_dim, int(num_patches**0.5))
+        self.register_buffer("pos_embed", torch.from_numpy(pos_embed).float().unsqueeze(0), persistent=False)
+
+    def forward(self, latent):
+        latent = self.proj(latent)
+        if self.flatten:
+            latent = latent.flatten(2).transpose(1, 2)  # BCHW -> BNC
+        if self.layer_norm:
+            latent = self.norm(latent)
+        return latent + self.pos_embed
+
+
 class TimestepEmbedding(nn.Module):
     def __init__(self, in_channels: int, time_embed_dim: int, act_fn: str = "silu", out_dim: int = None):
         super().__init__()

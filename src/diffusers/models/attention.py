@@ -281,7 +281,7 @@ class BasicTransformerBlock(nn.Module):
             norm_hidden_states = norm_hidden_states * (1 + scale) + shift
 
         if self.use_ada_layer_norm_zero:
-            norm_hidden_states = modulate(norm_hidden_states, shift_msa, scale_msa)
+            norm_hidden_states = norm_hidden_states * (1 + scale_msa[:, None]) + shift_msa[:, None]
 
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         attn_output = self.attn1(
@@ -311,7 +311,7 @@ class BasicTransformerBlock(nn.Module):
         norm_hidden_states = self.norm3(hidden_states)
 
         if self.use_ada_layer_norm_zero:
-            norm_hidden_states = modulate(norm_hidden_states, shift_mlp, scale_mlp)
+            norm_hidden_states = norm_hidden_states(1 + scale_mlp[:, None]) + shift_mlp[:, None]
 
         ff_output = self.ff(norm_hidden_states)
 
@@ -473,7 +473,3 @@ class AdaLayerNormZero(nn.Module):
         emb = self.linear(self.silu(self.emb(timestep, class_labels)))
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.chunk(6, dim=1)
         return shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp
-
-
-def modulate(x, shift, scale):
-    return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
