@@ -308,7 +308,6 @@ init_image = download_image(img_url).resize((512, 512))
 mask_image = download_image(mask_url).resize((512, 512))
 
 pipeline, params = FlaxStableDiffusionInpaintPipeline.from_pretrained(
-    # "runwayml/stable-diffusion-inpainting", from_pt=True, dtype=jax.numpy.bfloat16
     "stabilityai/stable-diffusion-2-inpainting", from_pt=True, dtype=jax.numpy.bfloat16
 )
 
