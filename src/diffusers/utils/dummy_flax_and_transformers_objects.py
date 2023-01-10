@@ -19,6 +19,21 @@ class FlaxStableDiffusionImg2ImgPipeline(metaclass=DummyObject):
         requires_backends(cls, ["flax", "transformers"])
 
 
+class FlaxStableDiffusionInpaintPipeline(metaclass=DummyObject):
+    _backends = ["flax", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["flax", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["flax", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["flax", "transformers"])
+
+
 class FlaxStableDiffusionPipeline(metaclass=DummyObject):
     _backends = ["flax", "transformers"]
 
