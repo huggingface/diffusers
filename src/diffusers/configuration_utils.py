@@ -508,7 +508,7 @@ class ConfigMixin:
         def to_json_saveable(value):
             if isinstance(value, np.ndarray):
                 value = value.tolist()
-            if isinstance(value, PosixPath):
+            elif isinstance(value, PosixPath):
                 value = str(value)
             return value
 
