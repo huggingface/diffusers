@@ -315,26 +315,26 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
 
     unet_key = "model.diffusion_model."
     # at least a 100 parameters have to start with `model_ema` in order for the checkpoint to be EMA
-    if sum(k.startswith("model_ema") for k in keys) > 100:
+    if sum(k.startswith("model_ema") for k in keys) > 100 and extract_ema:
         print(f"Checkpoint {path} has both EMA and non-EMA weights.")
-        if extract_ema:
-            print(
-                "In this conversion only the EMA weights are extracted. If you want to instead extract the non-EMA"
-                " weights (useful to continue fine-tuning), please make sure to remove the `--extract_ema` flag."
-            )
-            for key in keys:
-                if key.startswith("model.diffusion_model"):
-                    flat_ema_key = "model_ema." + "".join(key.split(".")[1:])
-                    unet_state_dict[key.replace(unet_key, "")] = checkpoint.pop(flat_ema_key)
-        else:
+        print(
+            "In this conversion only the EMA weights are extracted. If you want to instead extract the non-EMA"
+            " weights (useful to continue fine-tuning), please make sure to remove the `--extract_ema` flag."
+        )
+        for key in keys:
+            if key.startswith("model.diffusion_model"):
+                flat_ema_key = "model_ema." + "".join(key.split(".")[1:])
+                unet_state_dict[key.replace(unet_key, "")] = checkpoint.pop(flat_ema_key)
+    else:
+        if sum(k.startswith("model_ema") for k in keys) > 100:
             print(
                 "In this conversion only the non-EMA weights are extracted. If you want to instead extract the EMA"
                 " weights (usually better for inference), please make sure to add the `--extract_ema` flag."
             )
 
-    for key in keys:
-        if key.startswith(unet_key):
-            unet_state_dict[key.replace(unet_key, "")] = checkpoint.pop(key)
+        for key in keys:
+            if key.startswith(unet_key):
+                unet_state_dict[key.replace(unet_key, "")] = checkpoint.pop(key)
 
     new_checkpoint = {}
 
@@ -443,8 +443,9 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
                 paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config
             )
 
-            if ["conv.weight", "conv.bias"] in output_block_list.values():
-                index = list(output_block_list.values()).index(["conv.weight", "conv.bias"])
+            output_block_list = {k: sorted(v) for k, v in output_block_list.items()}
+            if ["conv.bias", "conv.weight"] in output_block_list.values():
+                index = list(output_block_list.values()).index(["conv.bias", "conv.weight"])
                 new_checkpoint[f"up_blocks.{block_id}.upsamplers.0.conv.weight"] = unet_state_dict[
                     f"output_blocks.{i}.{index}.conv.weight"
                 ]
@@ -848,12 +849,17 @@ if __name__ == "__main__":
         ),
     )
     parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output model.")
+    parser.add_argument("--device", type=str, help="Device to use (e.g. cpu, cuda:0, cuda:1, etc.)")
     args = parser.parse_args()
 
     image_size = args.image_size
     prediction_type = args.prediction_type
 
-    checkpoint = torch.load(args.checkpoint_path)
+    if args.device is None:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        checkpoint = torch.load(args.checkpoint_path, map_location=device)
+    else:
+        checkpoint = torch.load(args.checkpoint_path, map_location=args.device)
 
     # Sometimes models don't have the global_step item
     if "global_step" in checkpoint:
@@ -861,7 +867,9 @@ if __name__ == "__main__":
     else:
         print("global_step key not found in model")
         global_step = None
-    checkpoint = checkpoint["state_dict"]
+
+    if "state_dict" in checkpoint:
+        checkpoint = checkpoint["state_dict"]
 
     upcast_attention = False
     if args.original_config_file is None:

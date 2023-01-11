@@ -18,7 +18,8 @@ import torch
 import tqdm
 
 from ...models.unet_1d import UNet1DModel
-from ...pipeline_utils import DiffusionPipeline
+from ...pipelines import DiffusionPipeline
+from ...utils import randn_tensor
 from ...utils.dummy_pt_objects import DDPMScheduler
 
 
@@ -127,7 +128,7 @@ class ValueGuidedRLPipeline(DiffusionPipeline):
         shape = (batch_size, planning_horizon, self.state_dim + self.action_dim)
 
         # generate initial noise and apply our conditions (to make the trajectories start at current state)
-        x1 = torch.randn(shape, device=self.unet.device)
+        x1 = randn_tensor(shape, device=self.unet.device)
         x = self.reset_x0(x1, conditions, self.action_dim)
         x = self.to_torch(x)
 

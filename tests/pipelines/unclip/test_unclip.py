@@ -21,7 +21,7 @@ import torch
 
 from diffusers import PriorTransformer, UnCLIPPipeline, UnCLIPScheduler, UNet2DConditionModel, UNet2DModel
 from diffusers.pipelines.unclip.text_proj import UnCLIPTextProjModel
-from diffusers.utils import load_numpy, slow, torch_device
+from diffusers.utils import load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
@@ -248,6 +248,151 @@ class UnCLIPPipelineFastTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
+    def test_unclip_passed_text_embed(self):
+        device = torch.device("cpu")
+
+        class DummyScheduler:
+            init_noise_sigma = 1
+
+        prior = self.dummy_prior
+        decoder = self.dummy_decoder
+        text_proj = self.dummy_text_proj
+        text_encoder = self.dummy_text_encoder
+        tokenizer = self.dummy_tokenizer
+        super_res_first = self.dummy_super_res_first
+        super_res_last = self.dummy_super_res_last
+
+        prior_scheduler = UnCLIPScheduler(
+            variance_type="fixed_small_log",
+            prediction_type="sample",
+            num_train_timesteps=1000,
+            clip_sample_range=5.0,
+        )
+
+        decoder_scheduler = UnCLIPScheduler(
+            variance_type="learned_range",
+            prediction_type="epsilon",
+            num_train_timesteps=1000,
+        )
+
+        super_res_scheduler = UnCLIPScheduler(
+            variance_type="fixed_small_log",
+            prediction_type="epsilon",
+            num_train_timesteps=1000,
+        )
+
+        pipe = UnCLIPPipeline(
+            prior=prior,
+            decoder=decoder,
+            text_proj=text_proj,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            super_res_first=super_res_first,
+            super_res_last=super_res_last,
+            prior_scheduler=prior_scheduler,
+            decoder_scheduler=decoder_scheduler,
+            super_res_scheduler=super_res_scheduler,
+        )
+        pipe = pipe.to(device)
+
+        generator = torch.Generator(device=device).manual_seed(0)
+        dtype = prior.dtype
+        batch_size = 1
+
+        shape = (batch_size, prior.config.embedding_dim)
+        prior_latents = pipe.prepare_latents(
+            shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler()
+        )
+        shape = (batch_size, decoder.in_channels, decoder.sample_size, decoder.sample_size)
+        decoder_latents = pipe.prepare_latents(
+            shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler()
+        )
+
+        shape = (
+            batch_size,
+            super_res_first.in_channels // 2,
+            super_res_first.sample_size,
+            super_res_first.sample_size,
+        )
+        super_res_latents = pipe.prepare_latents(
+            shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler()
+        )
+
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt = "this is a prompt example"
+
+        generator = torch.Generator(device=device).manual_seed(0)
+        output = pipe(
+            [prompt],
+            generator=generator,
+            prior_num_inference_steps=2,
+            decoder_num_inference_steps=2,
+            super_res_num_inference_steps=2,
+            prior_latents=prior_latents,
+            decoder_latents=decoder_latents,
+            super_res_latents=super_res_latents,
+            output_type="np",
+        )
+        image = output.images
+
+        text_inputs = tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=tokenizer.model_max_length,
+            return_tensors="pt",
+        )
+        text_model_output = text_encoder(text_inputs.input_ids)
+        text_attention_mask = text_inputs.attention_mask
+
+        generator = torch.Generator(device=device).manual_seed(0)
+        image_from_text = pipe(
+            generator=generator,
+            prior_num_inference_steps=2,
+            decoder_num_inference_steps=2,
+            super_res_num_inference_steps=2,
+            prior_latents=prior_latents,
+            decoder_latents=decoder_latents,
+            super_res_latents=super_res_latents,
+            text_model_output=text_model_output,
+            text_attention_mask=text_attention_mask,
+            output_type="np",
+        )[0]
+
+        # make sure passing text embeddings manually is identical
+        assert np.abs(image - image_from_text).max() < 1e-4
+
+
+@nightly
+class UnCLIPPipelineCPUIntegrationTests(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_unclip_karlo_cpu_fp32(self):
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/unclip/karlo_v1_alpha_horse_cpu.npy"
+        )
+
+        pipeline = UnCLIPPipeline.from_pretrained("kakaobrain/karlo-v1-alpha")
+        pipeline.set_progress_bar_config(disable=None)
+
+        generator = torch.manual_seed(0)
+        output = pipeline(
+            "horse",
+            num_images_per_prompt=1,
+            generator=generator,
+            output_type="np",
+        )
+
+        image = output.images[0]
+
+        assert image.shape == (256, 256, 3)
+        assert np.abs(expected_image - image).max() < 1e-1
+
 
 @slow
 @require_torch_gpu
@@ -268,20 +413,24 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
         pipeline = pipeline.to(torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.Generator(device="cpu").manual_seed(0)
         output = pipeline(
             "horse",
-            num_images_per_prompt=1,
             generator=generator,
             output_type="np",
         )
 
-        image = output.images[0]
+        image = np.asarray(pipeline.numpy_to_pil(output.images)[0], dtype=np.float32)
+        expected_image = np.asarray(pipeline.numpy_to_pil(expected_image)[0], dtype=np.float32)
 
+        # Karlo is extremely likely to strongly deviate depending on which hardware is used
+        # Here we just check that the image doesn't deviate more than 10 pixels from the reference image on average
+        avg_diff = np.abs(image - expected_image).mean()
+
+        assert avg_diff < 10, f"Error image deviates {avg_diff} pixels on average"
         assert image.shape == (256, 256, 3)
-        assert np.abs(expected_image - image).max() < 1e-2
 
-    def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
+    def test_unclip_pipeline_with_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()

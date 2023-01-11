@@ -25,9 +25,9 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler
-from ...utils import PIL_INTERPOLATION, deprecate, logging
+from ...utils import PIL_INTERPOLATION, deprecate, logging, randn_tensor
+from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
@@ -76,7 +76,7 @@ def posterior_sample(scheduler, latents, timestep, clean_latents, generator, eta
     # direction pointing to x_t
     e_t = (latents - alpha_prod_t ** (0.5) * clean_latents) / (1 - alpha_prod_t) ** (0.5)
     dir_xt = (1.0 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * e_t
-    noise = std_dev_t * torch.randn(
+    noise = std_dev_t * randn_tensor(
         clean_latents.shape, dtype=clean_latents.dtype, device=clean_latents.device, generator=generator
     )
     prev_latents = alpha_prod_t_prev ** (0.5) * clean_latents + dir_xt + noise
@@ -472,16 +472,8 @@ class CycleDiffusionPipeline(DiffusionPipeline):
             init_latents = torch.cat([init_latents] * num_images_per_prompt, dim=0)
 
         # add noise to latents using the timestep
-        rand_device = "cpu" if device.type == "mps" else device
         shape = init_latents.shape
-        if isinstance(generator, list):
-            shape = (1,) + shape[1:]
-            noise = [
-                torch.randn(shape, generator=generator[i], device=rand_device, dtype=dtype) for i in range(batch_size)
-            ]
-            noise = torch.cat(noise, dim=0).to(device)
-        else:
-            noise = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype).to(device)
+        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
         # get latents
         clean_latents = init_latents

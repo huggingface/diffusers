@@ -306,7 +306,7 @@ class TextualInversionDataset(Dataset):
 
         if self.center_crop:
             crop = min(img.shape[0], img.shape[1])
-            h, w, = (
+            (h, w,) = (
                 img.shape[0],
                 img.shape[1],
             )
@@ -536,11 +536,20 @@ def main():
             encoder_hidden_states = state.apply_fn(
                 batch["input_ids"], params=params, dropout_rng=dropout_rng, train=True
             )[0]
-            unet_outputs = unet.apply(
+            # Predict the noise residual and compute loss
+            model_pred = unet.apply(
                 {"params": unet_params}, noisy_latents, timesteps, encoder_hidden_states, train=False
-            )
-            noise_pred = unet_outputs.sample
-            loss = (noise - noise_pred) ** 2
+            ).sample
+
+            # Get the target for loss depending on the prediction type
+            if noise_scheduler.config.prediction_type == "epsilon":
+                target = noise
+            elif noise_scheduler.config.prediction_type == "v_prediction":
+                target = noise_scheduler.get_velocity(noise_scheduler_state, latents, noise, timesteps)
+            else:
+                raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+
+            loss = (target - model_pred) ** 2
             loss = loss.mean()
 
             return loss

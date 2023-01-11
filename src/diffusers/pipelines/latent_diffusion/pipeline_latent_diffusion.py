@@ -19,16 +19,15 @@ import torch
 import torch.nn as nn
 import torch.utils.checkpoint
 
+from transformers import PretrainedConfig, PreTrainedModel, PreTrainedTokenizer
 from transformers.activations import ACT2FN
-from transformers.configuration_utils import PretrainedConfig
 from transformers.modeling_outputs import BaseModelOutput
-from transformers.modeling_utils import PreTrainedModel
-from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.utils import logging
 
 from ...models import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQModel
-from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from ...utils import randn_tensor
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 class LDMTextToImagePipeline(DiffusionPipeline):
@@ -105,12 +104,11 @@ class LDMTextToImagePipeline(DiffusionPipeline):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*):
-                Whether or not to return a [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
+                Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
 
         Returns:
-            [`~pipeline_utils.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if
-            `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is a list with the
-            generated images.
+            [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if `return_dict` is
+            True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
         """
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
@@ -146,20 +144,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             )
 
         if latents is None:
-            rand_device = "cpu" if self.device.type == "mps" else self.device
-
-            if isinstance(generator, list):
-                latents_shape = (1,) + latents_shape[1:]
-                latents = [
-                    torch.randn(latents_shape, generator=generator[i], device=rand_device, dtype=text_embeddings.dtype)
-                    for i in range(batch_size)
-                ]
-                latents = torch.cat(latents, dim=0)
-            else:
-                latents = torch.randn(
-                    latents_shape, generator=generator, device=rand_device, dtype=text_embeddings.dtype
-                )
-            latents = latents.to(self.device)
+            latents = randn_tensor(latents_shape, generator=generator, device=self.device, dtype=text_embeddings.dtype)
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")

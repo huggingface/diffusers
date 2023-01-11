@@ -21,9 +21,9 @@ import torch
 import PIL
 
 from ...models import UNet2DModel
-from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import RePaintScheduler
-from ...utils import PIL_INTERPOLATION, deprecate, logging
+from ...utils import PIL_INTERPOLATION, deprecate, logging, randn_tensor
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -118,12 +118,11 @@ class RePaintPipeline(DiffusionPipeline):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
+                Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
 
         Returns:
-            [`~pipeline_utils.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if
-            `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is a list with the
-            generated images.
+            [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if `return_dict` is
+            True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
         """
 
         message = "Please use `image` instead of `original_image`."
@@ -144,18 +143,8 @@ class RePaintPipeline(DiffusionPipeline):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        rand_device = "cpu" if self.device.type == "mps" else self.device
         image_shape = original_image.shape
-        if isinstance(generator, list):
-            shape = (1,) + image_shape[1:]
-            image = [
-                torch.randn(shape, generator=generator[i], device=rand_device, dtype=self.unet.dtype)
-                for i in range(batch_size)
-            ]
-            image = torch.cat(image, dim=0).to(self.device)
-        else:
-            image = torch.randn(image_shape, generator=generator, device=rand_device, dtype=self.unet.dtype)
-            image = image.to(self.device)
+        image = randn_tensor(image_shape, generator=generator, device=self.device, dtype=self.unet.dtype)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps, jump_length, jump_n_sample, self.device)

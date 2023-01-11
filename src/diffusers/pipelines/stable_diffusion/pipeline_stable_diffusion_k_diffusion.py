@@ -19,9 +19,9 @@ import torch
 
 from k_diffusion.external import CompVisDenoiser, CompVisVDenoiser
 
-from ... import DiffusionPipeline
+from ...pipelines import DiffusionPipeline
 from ...schedulers import LMSDiscreteScheduler
-from ...utils import is_accelerate_available, logging
+from ...utils import is_accelerate_available, logging, randn_tensor
 from . import StableDiffusionPipelineOutput
 
 
@@ -308,11 +308,7 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline):
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if latents is None:
-            if device.type == "mps":
-                # randn does not work reproducibly on mps
-                latents = torch.randn(shape, generator=generator, device="cpu", dtype=dtype).to(device)
-            else:
-                latents = torch.randn(shape, generator=generator, device=device, dtype=dtype)
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
             if latents.shape != shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")

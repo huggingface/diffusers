@@ -174,9 +174,15 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         # settings for DPM-Solver
         if algorithm_type not in ["dpmsolver", "dpmsolver++"]:
-            raise NotImplementedError(f"{algorithm_type} does is not implemented for {self.__class__}")
+            if algorithm_type == "deis":
+                algorithm_type = "dpmsolver++"
+            else:
+                raise NotImplementedError(f"{algorithm_type} does is not implemented for {self.__class__}")
         if solver_type not in ["midpoint", "heun"]:
-            raise NotImplementedError(f"{solver_type} does is not implemented for {self.__class__}")
+            if solver_type == "logrho":
+                solver_type = "midpoint"
+            else:
+                raise NotImplementedError(f"{solver_type} does is not implemented for {self.__class__}")
 
         # setable values
         self.num_inference_steps = None

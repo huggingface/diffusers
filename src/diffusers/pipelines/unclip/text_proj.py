@@ -15,9 +15,8 @@
 import torch
 from torch import nn
 
-from diffusers.modeling_utils import ModelMixin
-
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...models import ModelMixin
 
 
 class UnCLIPTextProjModel(ModelMixin, ConfigMixin):

@@ -21,7 +21,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import torch
 
-from diffusers.modeling_utils import ModelMixin
+from diffusers.models import ModelMixin
 from diffusers.training_utils import EMAModel
 from diffusers.utils import torch_device
 
@@ -70,9 +70,9 @@ class ModelTesterMixin:
             with tempfile.TemporaryDirectory() as tmpdirname:
                 model.to(dtype)
                 model.save_pretrained(tmpdirname)
-                new_model = self.model_class.from_pretrained(tmpdirname, low_cpu_mem_usage=True)
+                new_model = self.model_class.from_pretrained(tmpdirname, low_cpu_mem_usage=True, torch_dtype=dtype)
                 assert new_model.dtype == dtype
-                new_model = self.model_class.from_pretrained(tmpdirname, low_cpu_mem_usage=False)
+                new_model = self.model_class.from_pretrained(tmpdirname, low_cpu_mem_usage=False, torch_dtype=dtype)
                 assert new_model.dtype == dtype
 
     def test_determinism(self):

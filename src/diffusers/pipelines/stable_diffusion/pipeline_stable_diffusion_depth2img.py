@@ -20,13 +20,11 @@ import numpy as np
 import torch
 
 import PIL
-from diffusers.utils import is_accelerate_available
 from packaging import version
 from transformers import CLIPTextModel, CLIPTokenizer, DPTFeatureExtractor, DPTForDepthEstimation
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import (
     DDIMScheduler,
     DPMSolverMultistepScheduler,
@@ -35,7 +33,8 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ...utils import PIL_INTERPOLATION, deprecate, logging
+from ...utils import PIL_INTERPOLATION, deprecate, is_accelerate_available, logging, randn_tensor
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -344,6 +343,11 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.prepare_latents
     def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
+        if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
+            raise ValueError(
+                f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
+            )
+
         image = image.to(device=device, dtype=dtype)
 
         batch_size = batch_size * num_images_per_prompt
@@ -381,16 +385,8 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
         else:
             init_latents = torch.cat([init_latents], dim=0)
 
-        rand_device = "cpu" if device.type == "mps" else device
         shape = init_latents.shape
-        if isinstance(generator, list):
-            shape = (1,) + shape[1:]
-            noise = [
-                torch.randn(shape, generator=generator[i], device=rand_device, dtype=dtype) for i in range(batch_size)
-            ]
-            noise = torch.cat(noise, dim=0).to(device)
-        else:
-            noise = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype).to(device)
+        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
         # get latents
         init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
@@ -505,6 +501,29 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
 
+        Examples:
+
+        ```py
+        >>> import torch
+        >>> import requests
+        >>> from PIL import Image
+
+        >>> from diffusers import StableDiffusionDepth2ImgPipeline
+
+        >>> pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(
+        ...     "stabilityai/stable-diffusion-2-depth",
+        ...     torch_dtype=torch.float16,
+        ... )
+        >>> pipe.to("cuda")
+
+
+        >>> url = "http://images.cocodataset.org/val2017/000000039769.jpg"
+        >>> init_image = Image.open(requests.get(url, stream=True).raw)
+        >>> prompt = "two tigers"
+        >>> n_propmt = "bad, deformed, ugly, bad anotomy"
+        >>> image = pipe(prompt=prompt, image=init_image, negative_prompt=n_propmt, strength=0.7).images[0]
+        ```
+
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
@@ -528,7 +547,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
 
-        # 4. Preprocess image
+        # 4. Prepare depth mask
         depth_mask = self.prepare_depth_map(
             image,
             depth_map,
@@ -538,10 +557,10 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
             device,
         )
 
-        # 5. Prepare depth mask
+        # 5. Preprocess image
         image = preprocess(image)
 
-        # 6. set timesteps
+        # 6. Set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
