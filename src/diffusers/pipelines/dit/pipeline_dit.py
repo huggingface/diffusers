@@ -93,9 +93,22 @@ class DiTPipeline(DiffusionPipeline):
                 latent_model_input = torch.cat([half, half], dim=0)
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
+            timesteps = t
+            if not torch.is_tensor(timesteps):
+                # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
+                # This would be a good case for the `match` statement (Python 3.10+)
+                is_mps = latent_model_input.device.type == "mps"
+                if isinstance(timesteps, float):
+                    dtype = torch.float32 if is_mps else torch.float64
+                else:
+                    dtype = torch.int32 if is_mps else torch.int64
+                timesteps = torch.tensor([timesteps], dtype=dtype, device=latent_model_input.device)
+            elif len(timesteps.shape) == 0:
+                timesteps = timesteps[None].to(latent_model_input.device)
+            # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+            timesteps = timesteps.expand(latent_model_input.shape[0])
             # predict noise model_output
-            timestep = t.expand(latent_model_input.shape[0])
-            noise_pred = self.dit(latent_model_input, timestep=timestep, class_labels=class_labels_input).sample
+            noise_pred = self.dit(latent_model_input, timestep=timesteps, class_labels=class_labels_input).sample
 
             # perform guidance
             if guidance_scale > 1:
