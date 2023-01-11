@@ -340,6 +340,6 @@ class CombinedTimestepLabelEmbeddings(nn.Module):
 
         class_labels = self.class_embedder(class_labels)  # (N, D)
 
-        conditioning = timesteps_emb.to(dtype=hidden_dtype) + class_labels  # (N, D)
+        conditioning = timesteps_emb + class_labels  # (N, D)
 
         return conditioning
