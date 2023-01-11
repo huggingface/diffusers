@@ -18,7 +18,7 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import AutoencoderKL, DDIMScheduler, DiT, DiTPipeline
+from diffusers import AutoencoderKL, DDIMScheduler, DiTPipeline, Transformer2DModel
 
 from ...test_pipelines_common import PipelineTesterMixin
 
@@ -32,12 +32,19 @@ class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_components(self):
         torch.manual_seed(0)
-        dit = DiT(
-            input_size=4,
-            depth=2,
-            hidden_size=4,
+        dit = Transformer2DModel(
+            sample_size=4,
+            num_layers=2,
             patch_size=2,
-            num_heads=2,
+            attention_head_dim=2,
+            num_attention_heads=2,
+            in_channels=4,
+            out_channels=8,
+            attention_bias=True,
+            activation_fn="gelu-approximate",
+            num_embeds_ada_norm=1000,
+            use_ada_layer_norm_zero=True,
+            norm_elementwise_affine=False,
         )
         vae = AutoencoderKL()
         scheduler = DDIMScheduler()
