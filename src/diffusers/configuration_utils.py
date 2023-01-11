@@ -22,6 +22,7 @@ import json
 import os
 import re
 from collections import OrderedDict
+from pathlib import Path
 from typing import Any, Dict, Tuple, Union
 
 import numpy as np
@@ -507,6 +508,8 @@ class ConfigMixin:
         def to_json_saveable(value):
             if isinstance(value, np.ndarray):
                 value = value.tolist()
+            if isinstance(value, Path):
+                value = str(value)
             return value
 
         config_dict = {k: to_json_saveable(v) for k, v in config_dict.items()}
