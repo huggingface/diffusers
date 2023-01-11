@@ -22,7 +22,7 @@ import json
 import os
 import re
 from collections import OrderedDict
-from pathlib import Path
+from pathlib import PosixPath
 from typing import Any, Dict, Tuple, Union
 
 import numpy as np
@@ -508,7 +508,7 @@ class ConfigMixin:
         def to_json_saveable(value):
             if isinstance(value, np.ndarray):
                 value = value.tolist()
-            if isinstance(value, Path):
+            if isinstance(value, PosixPath):
                 value = str(value)
             return value
 
