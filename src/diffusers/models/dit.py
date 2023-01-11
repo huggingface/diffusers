@@ -22,50 +22,6 @@ from .embeddings import LabelEmbedding, TimestepEmbedding, Timesteps, get_2d_sin
 from .modeling_utils import ModelMixin
 
 
-def modulate(x, shift, scale):
-    return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
-
-
-class PatchEmbed(nn.Module):
-    """2D Image to Patch Embedding"""
-
-    def __init__(
-        self,
-        img_size=224,
-        patch_size=16,
-        in_chans=3,
-        embed_dim=768,
-        layer_norm=False,
-        flatten=True,
-        bias=True,
-    ):
-        super().__init__()
-        img_size = (img_size, img_size)
-        patch_size = (patch_size, patch_size)
-        self.img_size = img_size
-        self.patch_size = patch_size
-
-        self.grid_size = (img_size[0] // patch_size[0], img_size[1] // patch_size[1])
-        self.num_patches = self.grid_size[0] * self.grid_size[1]
-        self.flatten = flatten
-
-        self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size, bias=bias)
-        self.norm = nn.LayerNorm(embed_dim, elementwise_affine=False, eps=1e-6) if layer_norm else nn.Identity()
-
-    def forward(self, latent):
-        _, _, height, width = latent.shape
-        if height != self.img_size[0] or width != self.img_size[1]:
-            ValueError(
-                f"Input image size ({height}x{width}) doesn't match model ({self.img_size[0]}x{self.img_size[1]})."
-            )
-
-        latent = self.proj(latent)
-        if self.flatten:
-            latent = latent.flatten(2).transpose(1, 2)  # BCHW -> BNC
-        latent = self.norm(latent)
-        return latent
-
-
 class FinalLayer(nn.Module):
     """
     The final layer of DiT.
@@ -73,13 +29,13 @@ class FinalLayer(nn.Module):
 
     def __init__(self, hidden_size, patch_size, out_channels):
         super().__init__()
+        self.adaLN_modulation = nn.Sequential(nn.SiLU(), nn.Linear(hidden_size, 2 * hidden_size, bias=True))
         self.norm_final = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.linear = nn.Linear(hidden_size, patch_size * patch_size * out_channels, bias=True)
-        self.adaLN_modulation = nn.Sequential(nn.SiLU(), nn.Linear(hidden_size, 2 * hidden_size, bias=True))
 
     def forward(self, latent, cls):
         shift, scale = self.adaLN_modulation(cls).chunk(2, dim=1)
-        latent = modulate(self.norm_final(latent), shift, scale)
+        latent = self.norm_final(latent) * (1 + scale[:, None]) + shift[:, None]
         latent = self.linear(latent)
         return latent
 
@@ -104,11 +60,7 @@ class DiT(ModelMixin, ConfigMixin):
         super().__init__()
         self.out_channels = in_channels * 2 if learn_sigma else in_channels
 
-        self.sample_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
-
-        num_patches = self.sample_embedder.num_patches
-        # Will use fixed sin-cos embedding:
-        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, hidden_size), requires_grad=False)
+        # self.sample_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
 
         self.blocks = nn.ModuleList(
             [
@@ -121,7 +73,6 @@ class DiT(ModelMixin, ConfigMixin):
                     attention_bias=True,
                     use_ada_layer_norm_zero=True,
                     norm_elementwise_affine=False,
-                    final_dropout=True,
                 )
                 for _ in range(depth)
             ]
@@ -153,24 +104,21 @@ class DiT(ModelMixin, ConfigMixin):
         nn.init.constant_(self.final_layer.linear.weight, 0)
         nn.init.constant_(self.final_layer.linear.bias, 0)
 
-    def unpatchify(self, latent):
-        """
-        Args:
-            latent: (N, T, patch_size**2 * C)
+    # def unpatchify(self, latent):
+    #     """
+    # Args: # latent: (N, T, patch_size**2 * C)
 
-        Returns:
-            imgs: (N, C, H, W)
-        """
-        chan = self.out_channels
-        patch = self.sample_embedder.patch_size[0]
-        height = width = int(latent.shape[1] ** 0.5)
-        if height * width != latent.shape[1]:
-            ValueError("Latent size does not match the number of patches")
+    # Returns: # imgs: (N, C, H, W) #"""
+    #     chan = self.out_channels
+    #     patch = self.sample_embedder.patch_size[0]
+    #     height = width = int(latent.shape[1] ** 0.5)
+    #     if height * width != latent.shape[1]:
+    #         ValueError("Latent size does not match the number of patches")
 
-        latent = latent.reshape(shape=(latent.shape[0], height, width, patch, patch, chan))
-        latent = torch.einsum("nhwpqc->nchpwq", latent)
-        imgs = latent.reshape(shape=(latent.shape[0], chan, height * patch, width * patch))
-        return imgs
+    #     latent = latent.reshape(shape=(latent.shape[0], height, width, patch, patch, chan))
+    #     latent = torch.einsum("nhwpqc->nchpwq", latent)
+    #     imgs = latent.reshape(shape=(latent.shape[0], chan, height * patch, width * patch))
+    #     return imgs
 
     def forward(self, sample, timestep, class_labels):
         """
@@ -203,5 +151,6 @@ class DiT(ModelMixin, ConfigMixin):
             sample = block(sample, timestep=timesteps, class_labels=class_labels)  # (N, T, D)
         conditioning = block.norm1.emb(timesteps, class_labels)
         sample = self.final_layer(sample, conditioning)  # (N, T, patch_size ** 2 * out_channels)
+        # Can be done in transformer 2d gated by patched flag
         sample = self.unpatchify(sample)  # (N, out_channels, H, W)
         return sample
