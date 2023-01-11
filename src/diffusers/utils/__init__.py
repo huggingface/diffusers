@@ -64,7 +64,7 @@ from .import_utils import (
 from .logging import get_logger
 from .outputs import BaseOutput
 from .pil_utils import PIL_INTERPOLATION
-from .torch_utils import torch_randn
+from .torch_utils import randn_tensor
 
 
 if is_torch_available():

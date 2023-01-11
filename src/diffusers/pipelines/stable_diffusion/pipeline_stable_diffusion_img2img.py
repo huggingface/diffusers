@@ -32,7 +32,14 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ...utils import PIL_INTERPOLATION, deprecate, is_accelerate_available, logging, replace_example_docstring
+from ...utils import (
+    PIL_INTERPOLATION,
+    deprecate,
+    is_accelerate_available,
+    logging,
+    randn_tensor,
+    replace_example_docstring,
+)
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
@@ -427,6 +434,11 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         return timesteps, num_inference_steps - t_start
 
     def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
+        if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
+            raise ValueError(
+                f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
+            )
+
         image = image.to(device=device, dtype=dtype)
 
         batch_size = batch_size * num_images_per_prompt
@@ -464,16 +476,8 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         else:
             init_latents = torch.cat([init_latents], dim=0)
 
-        rand_device = "cpu" if device.type == "mps" else device
         shape = init_latents.shape
-        if isinstance(generator, list):
-            shape = (1,) + shape[1:]
-            noise = [
-                torch.randn(shape, generator=generator[i], device=rand_device, dtype=dtype) for i in range(batch_size)
-            ]
-            noise = torch.cat(noise, dim=0).to(device)
-        else:
-            noise = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype).to(device)
+        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
         # get latents
         init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
