@@ -160,3 +160,29 @@ python train_text_to_image_flax.py \
   --max_grad_norm=1 \
   --output_dir="sd-pokemon-model"
 ```
+
+## Use ONNXRuntime to accelerate training
+In order to leverage onnxruntime to accelerate training, please use train_text_to_image_ort.py
+
+The command to train a DDPM UNetCondition model on the Pokemon dataset with onnxruntime:
+
+```bash
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export dataset_name="lambdalabs/pokemon-blip-captions"
+
+accelerate launch --mixed_precision="fp16"  train_text_to_image_ort.py \
+  --pretrained_model_name_or_path=$MODEL_NAME \
+  --dataset_name=$dataset_name \
+  --use_ema \
+  --resolution=512 --center_crop --random_flip \
+  --train_batch_size=1 \
+  --gradient_accumulation_steps=4 \
+  --gradient_checkpointing \
+  --max_train_steps=15000 \
+  --learning_rate=1e-05 \
+  --max_grad_norm=1 \
+  --lr_scheduler="constant" --lr_warmup_steps=0 \
+  --output_dir="sd-pokemon-model" 
+```
+
+Please contact Prathik Rao (prathikr), Sunghoon Choi (hanbitmyths), Ashwini Khade (askhade), or Peng Wang (pengwa) on github with any questions.
