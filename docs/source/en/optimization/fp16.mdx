@@ -189,7 +189,7 @@ pipe.enable_attention_slicing(1)
 image = pipe(prompt).images[0]
 ```
 
-**Note**: When using `enable_sequential_cpu_offload()`, it is important to **not** move the device to CUDA beforehand or else the gain in memory consumption will only be minimal. See [this issue](https://github.com/huggingface/diffusers/issues/1934) for more information.
+**Note**: When using `enable_sequential_cpu_offload()`, it is important to **not** move the pipeline to CUDA beforehand or else the gain in memory consumption will only be minimal. See [this issue](https://github.com/huggingface/diffusers/issues/1934) for more information.
 
 ## Using Channels Last memory format
 
