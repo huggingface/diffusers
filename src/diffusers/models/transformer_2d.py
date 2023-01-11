@@ -232,7 +232,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         """
         # 1. Input
         if self.is_input_continuous:
-            batch, channel, height, width = hidden_states.shape
+            batch, _, height, width = hidden_states.shape
             residual = hidden_states
 
             hidden_states = self.norm(hidden_states)
@@ -280,7 +280,9 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         elif self.is_input_patches:
             # TODO: cleanup!
-            conditioning = self.transformer_blocks[0].norm1.emb(timestep, class_labels)
+            conditioning = self.transformer_blocks[0].norm1.emb(
+                timestep, class_labels, hidden_dtype=hidden_states.dtype
+            )
             shift, scale = self.proj_out_1(F.silu(conditioning)).chunk(2, dim=1)
             hidden_states = self.norm_out(hidden_states) * (1 + scale[:, None]) + shift[:, None]
             hidden_states = self.proj_out_2(hidden_states)

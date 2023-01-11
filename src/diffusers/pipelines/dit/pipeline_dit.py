@@ -21,6 +21,7 @@ import torch
 
 from ...models import AutoencoderKL, Transformer2DModel
 from ...schedulers import DDIMScheduler
+from ...utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
@@ -77,7 +78,12 @@ class DiTPipeline(DiffusionPipeline):
         latent_size = self.dit.config.sample_size
         latent_channels = self.dit.config.in_channels
 
-        latents = torch.randn(batch_size, latent_channels, latent_size, latent_size, device=self.device)
+        latents = randn_tensor(
+            shape=(batch_size, latent_channels, latent_size, latent_size),
+            generator=generator,
+            device=self.device,
+            dtype=self.dit.dtype,
+        )
         latent_model_input = torch.cat([latents] * 2) if guidance_scale > 1 else latents
 
         class_labels = torch.tensor(class_labels, device=self.device)

@@ -270,7 +270,9 @@ class BasicTransformerBlock(nn.Module):
             scale, shift = self.norm1(timestep)
 
         if self.use_ada_layer_norm_zero:
-            shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(timestep, class_labels)
+            shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(
+                timestep, class_labels, hidden_dtype=hidden_states.dtype
+            )
 
         # 1. Self-Attention
         norm_hidden_states = self.norm1.norm(hidden_states)
@@ -467,7 +469,7 @@ class AdaLayerNormZero(nn.Module):
         self.linear = nn.Linear(embedding_dim, 6 * embedding_dim, bias=True)
         self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
 
-    def forward(self, timestep, class_labels):
-        emb = self.linear(self.silu(self.emb(timestep, class_labels)))
+    def forward(self, timestep, class_labels, hidden_dtype=None):
+        emb = self.linear(self.silu(self.emb(timestep, class_labels, hidden_dtype=hidden_dtype)))
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.chunk(6, dim=1)
         return shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp
