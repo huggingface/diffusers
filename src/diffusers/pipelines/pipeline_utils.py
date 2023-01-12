@@ -721,9 +721,15 @@ class DiffusionPipeline(ConfigMixin):
                 # This makes sure that the weights won't be initialized which significantly speeds up loading.
                 if is_diffusers_model or is_transformers_model:
                     loading_kwargs["device_map"] = device_map
-                    loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
                     if from_flax:
                         loading_kwargs["from_flax"] = True
+
+                    # if `from_flax` and model is transformer model, can currently not load with `low_cpu_mem_usage`
+                    if not (from_flax and is_transformers_model):
+                        loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
+                    else:
+                        loading_kwargs["low_cpu_mem_usage"] = False
+
                 # check if the module is in a subdirectory
                 if os.path.isdir(os.path.join(cached_folder, name)):
                     loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
