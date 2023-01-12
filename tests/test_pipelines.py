@@ -837,9 +837,6 @@ class PipelineSlowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdirname:
             pipe_flax.save_pretrained(tmpdirname, params=params)
             pipe_pt_2 = StableDiffusionPipeline.from_pretrained(tmpdirname, safety_checker=None, from_flax=True)
-            import ipdb
-
-            ipdb.set_trace()
             pipe_pt_2.to(torch_device)
 
         prompt = "Hello"
