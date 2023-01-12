@@ -80,6 +80,5 @@ class KarrasVePipelineIntegrationTests(unittest.TestCase):
 
         image_slice = image[0, -3:, -3:, -1]
         assert image.shape == (1, 256, 256, 3)
-        print(torch.from_numpy(image_slice).flatten())
         expected_slice = np.array([0.578, 0.5811, 0.5924, 0.5809, 0.587, 0.5886, 0.5861, 0.5802, 0.586])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
