@@ -214,7 +214,7 @@ class AltDiffusionPipeline(DiffusionPipeline):
             cpu_offload(cpu_offloaded_model, device)
 
         if self.safety_checker is not None:
-            cpu_offload(self.safety_checker, device, offload_buffers=True)
+            cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
 
     @property
     def _execution_device(self):
