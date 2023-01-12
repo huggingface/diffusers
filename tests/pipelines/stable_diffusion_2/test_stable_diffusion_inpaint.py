@@ -187,7 +187,6 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         model_id = "stabilityai/stable-diffusion-2-inpainting"
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
             model_id,
-            revision="fp16",
             torch_dtype=torch.float16,
             safety_checker=None,
         )
@@ -229,8 +228,6 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             model_id,
             safety_checker=None,
             scheduler=pndm,
-            device_map="auto",
-            revision="fp16",
             torch_dtype=torch.float16,
         )
         pipe.to(torch_device)
@@ -246,7 +243,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             image=init_image,
             mask_image=mask_image,
             generator=generator,
-            num_inference_steps=5,
+            num_inference_steps=2,
             output_type="np",
         )
 

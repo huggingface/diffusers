@@ -306,7 +306,6 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
         model_id = "stabilityai/stable-diffusion-x4-upscaler"
         pipe = StableDiffusionUpscalePipeline.from_pretrained(
             model_id,
-            revision="fp16",
             torch_dtype=torch.float16,
         )
         pipe.to(torch_device)
@@ -340,7 +339,6 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
         model_id = "stabilityai/stable-diffusion-x4-upscaler"
         pipe = StableDiffusionUpscalePipeline.from_pretrained(
             model_id,
-            revision="fp16",
             torch_dtype=torch.float16,
         )
         pipe.to(torch_device)

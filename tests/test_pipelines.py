@@ -18,6 +18,7 @@ import json
 import os
 import random
 import shutil
+import sys
 import tempfile
 import unittest
 
@@ -26,13 +27,13 @@ import torch
 
 import PIL
 import safetensors.torch
-import transformers
 from diffusers import (
     AutoencoderKL,
     DDIMPipeline,
     DDIMScheduler,
     DDPMPipeline,
     DDPMScheduler,
+    DiffusionPipeline,
     DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
@@ -45,9 +46,8 @@ from diffusers import (
     UNet2DModel,
     logging,
 )
-from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
-from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, slow, torch_device
+from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, is_flax_available, nightly, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir, require_torch_gpu
 from parameterized import parameterized
 from PIL import Image
@@ -208,6 +208,31 @@ class CustomPipelineTests(unittest.TestCase):
         # under https://huggingface.co/hf-internal-testing/diffusers-dummy-pipeline/blob/main/pipeline.py#L24
         assert pipeline.__class__.__name__ == "CustomPipeline"
 
+    def test_load_custom_github(self):
+        pipeline = DiffusionPipeline.from_pretrained(
+            "google/ddpm-cifar10-32", custom_pipeline="one_step_unet", custom_revision="main"
+        )
+
+        # make sure that on "main" pipeline gives only ones because of: https://github.com/huggingface/diffusers/pull/1690
+        with torch.no_grad():
+            output = pipeline()
+
+        assert output.numel() == output.sum()
+
+        # hack since Python doesn't like overwriting modules: https://stackoverflow.com/questions/3105801/unload-a-module-in-python
+        # Could in the future work with hashes instead.
+        del sys.modules["diffusers_modules.git.one_step_unet"]
+
+        pipeline = DiffusionPipeline.from_pretrained(
+            "google/ddpm-cifar10-32", custom_pipeline="one_step_unet", custom_revision="0.10.2"
+        )
+        with torch.no_grad():
+            output = pipeline()
+
+        assert output.numel() != output.sum()
+
+        assert pipeline.__class__.__name__ == "UnetSchedulerOneForwardPipeline"
+
     def test_run_custom_pipeline(self):
         pipeline = DiffusionPipeline.from_pretrained(
             "google/ddpm-cifar10-32", custom_pipeline="hf-internal-testing/diffusers-dummy-pipeline"
@@ -261,7 +286,6 @@ class CustomPipelineTests(unittest.TestCase):
             clip_model=clip_model,
             feature_extractor=feature_extractor,
             torch_dtype=torch.float16,
-            revision="fp16",
         )
         pipeline.enable_attention_slicing()
         pipeline = pipeline.to(torch_device)
@@ -533,9 +557,8 @@ class PipelineFastTests(unittest.TestCase):
 
             # Validate that the text encoder safetensor exists and are of the correct format
             text_encoder_path = os.path.join(tmpdirname, "text_encoder", "model.safetensors")
-            if transformers.__version__ >= "4.25.1":
-                assert os.path.exists(text_encoder_path), f"Could not find {text_encoder_path}"
-                _ = safetensors.torch.load_file(text_encoder_path)
+            assert os.path.exists(text_encoder_path), f"Could not find {text_encoder_path}"
+            _ = safetensors.torch.load_file(text_encoder_path)
 
             pipeline = StableDiffusionPipeline.from_pretrained(tmpdirname)
             assert pipeline.unet is not None
@@ -650,6 +673,7 @@ class PipelineFastTests(unittest.TestCase):
 
 
 @slow
+@require_torch_gpu
 class PipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
@@ -680,7 +704,7 @@ class PipelineSlowTests(unittest.TestCase):
 
     def test_warning_unused_kwargs(self):
         model_id = "hf-internal-testing/unet-pipeline-dummy"
-        logger = logging.get_logger("diffusers.pipeline_utils")
+        logger = logging.get_logger("diffusers.pipelines")
         with tempfile.TemporaryDirectory() as tmpdirname:
             with CaptureLogger(logger) as cap_logger:
                 DiffusionPipeline.from_pretrained(
@@ -718,10 +742,10 @@ class PipelineSlowTests(unittest.TestCase):
             new_ddpm.to(torch_device)
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = ddpm(generator=generator, output_type="numpy").images
+        image = ddpm(generator=generator, num_inference_steps=5, output_type="numpy").images
 
         generator = generator.manual_seed(0)
-        new_image = new_ddpm(generator=generator, output_type="numpy").images
+        new_image = new_ddpm(generator=generator, num_inference_steps=5, output_type="numpy").images
 
         assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
 
@@ -739,10 +763,10 @@ class PipelineSlowTests(unittest.TestCase):
         ddpm_from_hub.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = ddpm(generator=generator, output_type="numpy").images
+        image = ddpm(generator=generator, num_inference_steps=5, output_type="numpy").images
 
         generator = generator.manual_seed(0)
-        new_image = ddpm_from_hub(generator=generator, output_type="numpy").images
+        new_image = ddpm_from_hub(generator=generator, num_inference_steps=5, output_type="numpy").images
 
         assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
 
@@ -762,10 +786,10 @@ class PipelineSlowTests(unittest.TestCase):
         ddpm_from_hub_custom_model.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = ddpm_from_hub_custom_model(generator=generator, output_type="numpy").images
+        image = ddpm_from_hub_custom_model(generator=generator, num_inference_steps=5, output_type="numpy").images
 
         generator = generator.manual_seed(0)
-        new_image = ddpm_from_hub(generator=generator, output_type="numpy").images
+        new_image = ddpm_from_hub(generator=generator, num_inference_steps=5, output_type="numpy").images
 
         assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
 
@@ -791,6 +815,59 @@ class PipelineSlowTests(unittest.TestCase):
         images = pipe(generator=generator, num_inference_steps=4).images
         assert isinstance(images, list)
         assert isinstance(images[0], PIL.Image.Image)
+
+    def test_from_flax_from_pt(self):
+        pipe_pt = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+        pipe_pt.to(torch_device)
+
+        if not is_flax_available():
+            raise ImportError("Make sure flax is installed.")
+
+        from diffusers import FlaxStableDiffusionPipeline
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe_pt.save_pretrained(tmpdirname)
+
+            pipe_flax, params = FlaxStableDiffusionPipeline.from_pretrained(
+                tmpdirname, safety_checker=None, from_pt=True
+            )
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe_flax.save_pretrained(tmpdirname, params=params)
+            pipe_pt_2 = StableDiffusionPipeline.from_pretrained(tmpdirname, safety_checker=None, from_flax=True)
+            pipe_pt_2.to(torch_device)
+
+        prompt = "Hello"
+
+        generator = torch.manual_seed(0)
+        image_0 = pipe_pt(
+            [prompt],
+            generator=generator,
+            num_inference_steps=2,
+            output_type="np",
+        ).images[0]
+
+        generator = torch.manual_seed(0)
+        image_1 = pipe_pt_2(
+            [prompt],
+            generator=generator,
+            num_inference_steps=2,
+            output_type="np",
+        ).images[0]
+
+        assert np.abs(image_0 - image_1).sum() < 1e-5, "Models don't give the same forward pass"
+
+
+@nightly
+@require_torch_gpu
+class PipelineNightlyTests(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
 
     def test_ddpm_ddim_equality_batched(self):
         seed = 0

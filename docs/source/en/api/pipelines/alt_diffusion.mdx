@@ -1,0 +1,83 @@
+<!--Copyright 2022 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+# AltDiffusion
+
+AltDiffusion was proposed in [AltCLIP: Altering the Language Encoder in CLIP for Extended Language Capabilities](https://arxiv.org/abs/2211.06679) by Zhongzhi Chen, Guang Liu, Bo-Wen Zhang, Fulong Ye, Qinghong Yang, Ledell Wu
+
+The abstract of the paper is the following:
+
+*In this work, we present a conceptually simple and effective method to train a strong bilingual multimodal representation model. Starting from the pretrained multimodal representation model CLIP released by OpenAI, we switched its text encoder with a pretrained multilingual text encoder XLM-R, and aligned both languages and image representations by a two-stage training schema consisting of teacher learning and contrastive learning. We validate our method through evaluations of a wide range of tasks. We set new state-of-the-art performances on a bunch of tasks including ImageNet-CN, Flicker30k- CN, and COCO-CN. Further, we obtain very close performances with CLIP on almost all tasks, suggesting that one can simply alter the text encoder in CLIP for extended capabilities such as multilingual understanding.*
+
+
+*Overview*:
+
+| Pipeline | Tasks | Colab | Demo
+|---|---|:---:|:---:|
+| [pipeline_alt_diffusion.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/alt_diffusion/pipeline_alt_diffusion.py) | *Text-to-Image Generation* | - | -
+| [pipeline_alt_diffusion_img2img.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/alt_diffusion/pipeline_alt_diffusion_img2img.py) | *Image-to-Image Text-Guided Generation* | - |-
+
+## Tips
+
+- AltDiffusion is conceptually exaclty the same as [Stable Diffusion](./api/pipelines/stable_diffusion/overview).
+
+- *Run AltDiffusion*
+
+AltDiffusion can be tested very easily with the [`AltDiffusionPipeline`], [`AltDiffusionImg2ImgPipeline`] and the `"BAAI/AltDiffusion-m9"` checkpoint exactly in the same way it is shown in the [Conditional Image Generation Guide](./using-diffusers/conditional_image_generation) and the [Image-to-Image Generation Guide](./using-diffusers/img2img).
+
+- *How to load and use different schedulers.*
+
+The alt diffusion pipeline uses [`DDIMScheduler`] scheduler by default. But `diffusers` provides many other schedulers that can be used with the alt diffusion pipeline such as [`PNDMScheduler`], [`LMSDiscreteScheduler`], [`EulerDiscreteScheduler`], [`EulerAncestralDiscreteScheduler`] etc.
+To use a different scheduler, you can either change it via the [`ConfigMixin.from_config`] method or pass the `scheduler` argument to the `from_pretrained` method of the pipeline. For example, to use the [`EulerDiscreteScheduler`], you can do the following:
+
+```python
+>>> from diffusers import AltDiffusionPipeline, EulerDiscreteScheduler
+
+>>> pipeline = AltDiffusionPipeline.from_pretrained("BAAI/AltDiffusion-m9")
+>>> pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
+
+>>> # or
+>>> euler_scheduler = EulerDiscreteScheduler.from_pretrained("BAAI/AltDiffusion-m9", subfolder="scheduler")
+>>> pipeline = AltDiffusionPipeline.from_pretrained("BAAI/AltDiffusion-m9", scheduler=euler_scheduler)
+```
+
+
+- *How to convert all use cases with multiple or single pipeline*
+
+If you want to use all possible use cases in a single `DiffusionPipeline` we recommend using the `components` functionality to instantiate all components in the most memory-efficient way:
+
+```python
+>>> from diffusers import (
+...     AltDiffusionPipeline,
+...     AltDiffusionImg2ImgPipeline,
+... )
+
+>>> text2img = AltDiffusionPipeline.from_pretrained("BAAI/AltDiffusion-m9")
+>>> img2img = AltDiffusionImg2ImgPipeline(**text2img.components)
+
+>>> # now you can use text2img(...) and img2img(...) just like the call methods of each respective pipeline
+```
+
+## AltDiffusionPipelineOutput
+[[autodoc]] pipelines.alt_diffusion.AltDiffusionPipelineOutput
+	- all
+	- __call__
+
+## AltDiffusionPipeline
+[[autodoc]] AltDiffusionPipeline
+	- all
+	- __call__
+
+## AltDiffusionImg2ImgPipeline
+[[autodoc]] AltDiffusionImg2ImgPipeline
+	- all
+	- __call__

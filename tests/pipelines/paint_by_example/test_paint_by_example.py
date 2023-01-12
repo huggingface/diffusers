@@ -25,7 +25,7 @@ from diffusers.pipelines.paint_by_example import PaintByExampleImageEncoder
 from diffusers.utils import floats_tensor, load_image, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 from PIL import Image
-from transformers import CLIPVisionConfig
+from transformers import CLIPImageProcessor, CLIPVisionConfig
 
 from ...test_pipelines_common import PipelineTesterMixin
 
@@ -76,6 +76,7 @@ class PaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             patch_size=4,
         )
         image_encoder = PaintByExampleImageEncoder(config, proj_size=32)
+        feature_extractor = CLIPImageProcessor(crop_size=32, size=32)
 
         components = {
             "unet": unet,
@@ -83,7 +84,7 @@ class PaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "vae": vae,
             "image_encoder": image_encoder,
             "safety_checker": None,
-            "feature_extractor": None,
+            "feature_extractor": feature_extractor,
         }
         return components
 
@@ -100,7 +101,6 @@ class PaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((64, 64))
         mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((64, 64))
         example_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((32, 32))
-        example_image = self.convert_to_pt(example_image)
 
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
@@ -132,7 +132,7 @@ class PaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4397, 0.5553, 0.3802, 0.5222, 0.5811, 0.4342, 0.494, 0.4577, 0.4428])
+        expected_slice = np.array([0.4701, 0.5555, 0.3994, 0.5107, 0.5691, 0.4517, 0.5125, 0.4769, 0.4539])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 

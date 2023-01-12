@@ -13,12 +13,12 @@
 # limitations under the License.
 
 import importlib
+import warnings
 from typing import Callable, List, Optional, Union
 
 import torch
 
-from diffusers import LMSDiscreteScheduler
-from diffusers.pipeline_utils import DiffusionPipeline
+from diffusers import DiffusionPipeline, LMSDiscreteScheduler
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.utils import is_accelerate_available, logging
 from k_diffusion.external import CompVisDenoiser, CompVisVDenoiser
@@ -111,6 +111,10 @@ class StableDiffusionPipeline(DiffusionPipeline):
             self.k_diffusion_model = CompVisDenoiser(model)
 
     def set_sampler(self, scheduler_type: str):
+        warnings.warn("The `set_sampler` method is deprecated, please use `set_scheduler` instead.")
+        return self.set_scheduler(scheduler_type)
+
+    def set_scheduler(self, scheduler_type: str):
         library = importlib.import_module("k_diffusion")
         sampling = getattr(library, "sampling")
         self.sampler = getattr(sampling, scheduler_type)

@@ -29,6 +29,7 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = DDIMPipeline
+    test_cpu_offload = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -51,6 +52,7 @@ class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
+            "batch_size": 1,
             "generator": generator,
             "num_inference_steps": 2,
             "output_type": "numpy",
