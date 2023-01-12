@@ -83,8 +83,8 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             step there is no previous alpha. When this option is `True` the previous alpha product is fixed to `1`,
             otherwise it uses the value of alpha at step 0.
         prediction_type (`str`, default `epsilon`, optional):
-            prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
-            process) or `v_prediction` (see section 2.4 https://imagen.research.google/video/paper.pdf)
+            prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion process)
+            or `v_prediction` (see section 2.4 https://imagen.research.google/video/paper.pdf)
         steps_offset (`int`, default `0`):
             an offset added to the inference steps. You can use a combination of `offset=1` and
             `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
