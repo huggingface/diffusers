@@ -211,13 +211,10 @@ class AltDiffusionPipeline(DiffusionPipeline):
         device = torch.device(f"cuda:{gpu_id}")
 
         for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
-            if cpu_offloaded_model is not None:
-                cpu_offload(cpu_offloaded_model, device)
+            cpu_offload(cpu_offloaded_model, device)
 
         if self.safety_checker is not None:
-            # TODO(Patrick) - there is currently a bug with cpu offload of nn.Parameter in accelerate
-            # fix by only offloading self.safety_checker for now
-            cpu_offload(self.safety_checker.vision_model, device)
+            cpu_offload(self.safety_checker, device, offload_buffers=True)
 
     @property
     def _execution_device(self):
