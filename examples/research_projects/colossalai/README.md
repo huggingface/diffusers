@@ -10,20 +10,24 @@ By accommodating model data in CPU and GPU and moving the data to the computing 
 Before running the scripts, make sure to install the library's training dependencies:
 
 ```bash
-pip install -r requirements_colossalai.txt
+pip install -r requirements.txt
 ```
 
-### Install [colossalai](https://github.com/hpcaitech/ColossalAI.git)
+## Install [ColossalAI](https://github.com/hpcaitech/ColossalAI.git)
 
+**From PyPI**
 ```bash
-pip install colossalai==0.2.0+torch1.12cu11.3 -f https://release.colossalai.org
+pip install colossalai
 ```
 
 **From source**
 
 ```bash
 git clone https://github.com/hpcaitech/ColossalAI.git
-python setup.py install
+cd ColossalAI
+
+# install colossalai
+pip install .
 ```
 
 ## Dataset for Teyvat BLIP captions
