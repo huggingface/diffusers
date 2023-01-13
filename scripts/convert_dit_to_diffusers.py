@@ -103,7 +103,7 @@ def main(args):
     state_dict.pop("final_layer.adaLN_modulation.1.bias")
 
     # DiT XL/2
-    dit = Transformer2DModel(
+    transformer = Transformer2DModel(
         sample_size=args.image_size // 8,
         num_layers=28,
         attention_head_dim=72,
@@ -117,7 +117,7 @@ def main(args):
         norm_type="ada_norm_zero",
         norm_elementwise_affine=False,
     )
-    dit.load_state_dict(state_dict, strict=True)
+    transformer.load_state_dict(state_dict, strict=True)
 
     scheduler = DDIMScheduler(
         num_train_timesteps=1000,
@@ -128,7 +128,7 @@ def main(args):
 
     vae = AutoencoderKL.from_pretrained(args.vae_model)
 
-    pipeline = DiTPipeline(dit=dit, vae=vae, scheduler=scheduler)
+    pipeline = DiTPipeline(transformer=transformer, vae=vae, scheduler=scheduler)
 
     if args.save:
         pipeline.save_pretrained(args.checkpoint_path)

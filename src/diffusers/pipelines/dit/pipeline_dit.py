@@ -34,7 +34,7 @@ class DiTPipeline(DiffusionPipeline):
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Parameters:
-        dit ([`Transformer2DModel`]):
+        transformer ([`Transformer2DModel`]):
             Class conditioned Transformer in Diffusion model to denoise the encoded image latents.
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
@@ -42,9 +42,9 @@ class DiTPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `dit` to denoise the encoded image latents.
     """
 
-    def __init__(self, dit: Transformer2DModel, vae: AutoencoderKL, scheduler: DDIMScheduler):
+    def __init__(self, transformer: Transformer2DModel, vae: AutoencoderKL, scheduler: DDIMScheduler):
         super().__init__()
-        self.register_modules(dit=dit, vae=vae, scheduler=scheduler)
+        self.register_modules(transformer=transformer, vae=vae, scheduler=scheduler)
 
     @torch.no_grad()
     def __call__(
@@ -117,7 +117,9 @@ class DiTPipeline(DiffusionPipeline):
             # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
             timesteps = timesteps.expand(latent_model_input.shape[0])
             # predict noise model_output
-            noise_pred = self.dit(latent_model_input, timestep=timesteps, class_labels=class_labels_input).sample
+            noise_pred = self.transformer(
+                latent_model_input, timestep=timesteps, class_labels=class_labels_input
+            ).sample
 
             # perform guidance
             if guidance_scale > 1:
