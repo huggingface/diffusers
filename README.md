@@ -307,9 +307,7 @@ mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data
 init_image = download_image(img_url).resize((512, 512))
 mask_image = download_image(mask_url).resize((512, 512))
 
-pipeline, params = FlaxStableDiffusionInpaintPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-2-inpainting", from_pt=True, dtype=jax.numpy.bfloat16
-)
+pipeline, params = FlaxStableDiffusionInpaintPipeline.from_pretrained("xvjiarui/stable-diffusion-2-inpainting")
 
 prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
 prng_seed = jax.random.PRNGKey(0)
