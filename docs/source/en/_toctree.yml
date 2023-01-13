@@ -106,6 +106,8 @@
       title: DDIM
     - local: api/pipelines/ddpm
       title: DDPM
+    - local: api/pipelines/dit
+      title: DiT
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
     - local: api/pipelines/paint_by_example
@@ -146,8 +148,6 @@
       title: Versatile Diffusion
     - local: api/pipelines/vq_diffusion
       title: VQ Diffusion
-    - local: api/pipelines/dit
-      title: "DiT"
     title: Pipelines
   - sections:
     - local: api/schedulers/overview

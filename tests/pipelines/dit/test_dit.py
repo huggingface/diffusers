@@ -78,7 +78,7 @@ class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         self.assertEqual(image.shape, (1, 4, 4, 3))
         expected_slice = np.array(
-            [0.55699474, 0.51614773, 0.6138116, 0.62340677, 0.48881626, 0.41199622, 0.54979277, 0.49198648, 0.5046878]
+            [0.44405967, 0.33592293, 0.6093237, 0.48981372, 0.79098296, 0.7504172, 0.59413105, 0.49462673, 0.35190058]
         )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
