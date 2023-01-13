@@ -43,7 +43,7 @@ class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             attention_bias=True,
             activation_fn="gelu-approximate",
             num_embeds_ada_norm=1000,
-            use_ada_layer_norm_zero=True,
+            norm_type="ada_norm_zero",
             norm_elementwise_affine=False,
         )
         vae = AutoencoderKL()

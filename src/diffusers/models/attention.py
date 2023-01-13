@@ -196,17 +196,17 @@ class BasicTransformerBlock(nn.Module):
         only_cross_attention: bool = False,
         upcast_attention: bool = False,
         norm_elementwise_affine: bool = True,
-        use_ada_layer_norm_zero: bool = False,
+        norm_type: str = "layer",
         final_dropout: bool = False,
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
 
-        self.use_ada_layer_norm_zero = (num_embeds_ada_norm is not None) and use_ada_layer_norm_zero
-        self.use_ada_layer_norm = (num_embeds_ada_norm is not None) and not use_ada_layer_norm_zero
+        self.use_ada_layer_norm_zero = (num_embeds_ada_norm is not None) and norm_type == "ada_norm_zero"
+        self.use_ada_layer_norm = (num_embeds_ada_norm is not None) and norm_type == "ada_norm"
 
-        if self.use_ada_layer_norm_zero and num_embeds_ada_norm is None:
-            raise ValueError("`num_embeds_ada_norm` must be set if `use_ada_layer_norm_zero` is True")
+        if norm_type in ("ada_norm", "ada_norm_zero") and num_embeds_ada_norm is None:
+            raise ValueError("`num_embeds_ada_norm` must be set if `norm_type` is ada_norm_zero or ada_norm")
 
         # 1. Self-Attn
         self.attn1 = CrossAttention(

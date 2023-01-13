@@ -96,7 +96,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         use_linear_projection: bool = False,
         only_cross_attention: bool = False,
         upcast_attention: bool = False,
-        use_ada_layer_norm_zero: bool = False,
+        norm_type: str = "ada_norm",
         norm_elementwise_affine: bool = True,
     ):
         super().__init__()
@@ -177,7 +177,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     attention_bias=attention_bias,
                     only_cross_attention=only_cross_attention,
                     upcast_attention=upcast_attention,
-                    use_ada_layer_norm_zero=use_ada_layer_norm_zero,
+                    norm_type=norm_type,
                     norm_elementwise_affine=norm_elementwise_affine,
                 )
                 for d in range(num_layers)
@@ -277,7 +277,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
             # log(p(x_0))
             output = F.log_softmax(logits.double(), dim=1).float()
-
         elif self.is_input_patches:
             # TODO: cleanup!
             conditioning = self.transformer_blocks[0].norm1.emb(

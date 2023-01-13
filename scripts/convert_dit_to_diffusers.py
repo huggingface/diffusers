@@ -114,7 +114,7 @@ def main(args):
         num_attention_heads=16,
         activation_fn="gelu-approximate",
         num_embeds_ada_norm=1000,
-        use_ada_layer_norm_zero=True,
+        norm_type="ada_norm_zero",
         norm_elementwise_affine=False,
     )
     dit.load_state_dict(state_dict, strict=True)
