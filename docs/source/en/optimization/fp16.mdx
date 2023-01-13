@@ -149,7 +149,7 @@ You may see a small performance boost in VAE decode on multi-image batches. Ther
 
 ## Offloading to CPU with accelerate for memory savings
 
-For additional memory savings, you can offload the weights to CPU and load them to GPU when performing the forward pass.
+For additional memory savings, you can offload the weights to CPU and only load them to GPU when performing the forward pass.
 
 To perform CPU offloading, all you have to do is invoke [`~StableDiffusionPipeline.enable_sequential_cpu_offload`]:
 
@@ -162,16 +162,15 @@ pipe = StableDiffusionPipeline.from_pretrained(
     
     torch_dtype=torch.float16,
 )
-pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
 pipe.enable_sequential_cpu_offload()
 image = pipe(prompt).images[0]
 ```
 
-And you can get the memory consumption to < 2GB.
+And you can get the memory consumption to < 3GB.
 
-If is also possible to chain it with attention slicing for minimal memory consumption, running it in as little as < 800mb of GPU vRAM:
+If is also possible to chain it with attention slicing for minimal memory consumption (< 2GB).
 
 ```Python
 import torch
@@ -182,7 +181,6 @@ pipe = StableDiffusionPipeline.from_pretrained(
     
     torch_dtype=torch.float16,
 )
-pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
 pipe.enable_sequential_cpu_offload()
@@ -190,6 +188,8 @@ pipe.enable_attention_slicing(1)
 
 image = pipe(prompt).images[0]
 ```
+
+**Note**: When using `enable_sequential_cpu_offload()`, it is important to **not** move the pipeline to CUDA beforehand or else the gain in memory consumption will only be minimal. See [this issue](https://github.com/huggingface/diffusers/issues/1934) for more information.
 
 ## Using Channels Last memory format
 
