@@ -32,7 +32,7 @@ class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_components(self):
         torch.manual_seed(0)
-        dit = Transformer2DModel(
+        transformer = Transformer2DModel(
             sample_size=4,
             num_layers=2,
             patch_size=2,
@@ -48,7 +48,7 @@ class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
         vae = AutoencoderKL()
         scheduler = DDIMScheduler()
-        components = {"dit": dit, "vae": vae, "scheduler": scheduler}
+        components = {"transformer": transformer, "vae": vae, "scheduler": scheduler}
         return components
 
     def get_dummy_inputs(self, device, seed=0):
