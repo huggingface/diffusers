@@ -78,14 +78,14 @@ class DiTPipeline(DiffusionPipeline):
         """
 
         batch_size = len(class_labels)
-        latent_size = self.dit.config.sample_size
-        latent_channels = self.dit.config.in_channels
+        latent_size = self.transformer.config.sample_size
+        latent_channels = self.transformer.config.in_channels
 
         latents = randn_tensor(
             shape=(batch_size, latent_channels, latent_size, latent_size),
             generator=generator,
             device=self.device,
-            dtype=self.dit.dtype,
+            dtype=self.transformer.dtype,
         )
         latent_model_input = torch.cat([latents] * 2) if guidance_scale > 1 else latents
 
@@ -132,7 +132,7 @@ class DiTPipeline(DiffusionPipeline):
                 noise_pred = torch.cat([eps, rest], dim=1)
 
             # learned sigma
-            if self.dit.config.out_channels // 2 == latent_channels:
+            if self.transformer.config.out_channels // 2 == latent_channels:
                 model_output, _ = torch.split(noise_pred, latent_channels, dim=1)
             else:
                 model_output = noise_pred
