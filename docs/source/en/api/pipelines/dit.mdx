@@ -38,6 +38,7 @@ from diffusers import DiTPipeline
 pipe = DiTPipeline.from_pretrained("kashif/DiT-XL-2-256")
 pipe = pipe.to("cuda")
 
+# Imagenet class labels: https://gist.github.com/yrevar/942d3a0ac09ec9e5eb3a
 output = pipe(class_labels=[207, 360, 387, 974, 88, 979, 417, 279])
 
 image = output.images[4]  # label 88: 'macaw'

@@ -1,6 +1,9 @@
+# Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)
+# William Peebles and Saining Xie
+#
 # Copyright (c) 2021 OpenAI
 # MIT License
-
+#
 # Copyright 2022 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
