@@ -240,7 +240,7 @@ class BasicTransformerBlock(nn.Module):
         elif self.use_ada_layer_norm_zero:
             self.norm1 = AdaLayerNormZero(dim, num_embeds_ada_norm)
         else:
-            nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
+            self.norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
 
         if cross_attention_dim is not None:
             # We currently only use AdaLayerNormZero for self attention where there will only be one attention block.
@@ -268,21 +268,18 @@ class BasicTransformerBlock(nn.Module):
     ):
         if self.use_ada_layer_norm:
             scale, shift = self.norm1(timestep)
-
-        if self.use_ada_layer_norm_zero:
+            norm_hidden_states = self.norm1.norm(hidden_states)
+            norm_hidden_states = norm_hidden_states * (1 + scale) + shift
+        elif self.use_ada_layer_norm_zero:
             shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(
                 timestep, class_labels, hidden_dtype=hidden_states.dtype
             )
+            norm_hidden_states = self.norm1.norm(hidden_states)
+            norm_hidden_states = norm_hidden_states * (1 + scale_msa[:, None]) + shift_msa[:, None]
+        else:
+            norm_hidden_states = self.norm1(hidden_states)
 
         # 1. Self-Attention
-        norm_hidden_states = self.norm1.norm(hidden_states)
-
-        if self.use_ada_layer_norm:
-            norm_hidden_states = norm_hidden_states * (1 + scale) + shift
-
-        if self.use_ada_layer_norm_zero:
-            norm_hidden_states = norm_hidden_states * (1 + scale_msa[:, None]) + shift_msa[:, None]
-
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         attn_output = self.attn1(
             norm_hidden_states,
