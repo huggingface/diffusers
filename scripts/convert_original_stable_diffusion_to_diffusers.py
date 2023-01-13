@@ -840,7 +840,7 @@ if __name__ == "__main__":
         ),
     )
     parser.add_argument(
-        "--upcast_attn",
+        "--upcast_attention",
         default=False,
         type=bool,
         help=(
@@ -871,7 +871,7 @@ if __name__ == "__main__":
     if "state_dict" in checkpoint:
         checkpoint = checkpoint["state_dict"]
 
-    upcast_attention = False
+    upcast_attention = args.upcast_attention
     if args.original_config_file is None:
         key_name = "model.diffusion_model.input_blocks.2.1.transformer_blocks.0.attn2.to_k.weight"
 
