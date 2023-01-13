@@ -76,6 +76,12 @@ def preprocess_images(images, feature_extractor: CLIPFeatureExtractor) -> torch.
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
+        "--unet_config",
+        type=str,
+        default=None,
+        help="The configuration file for the unet. Defaults to getting the pretrained model",
+    )
+    parser.add_argument(
         "--num_query",
         type=int,
         default=20,
@@ -458,7 +464,7 @@ class RDMDataset(Dataset):
             retrieved_images[i] = (retrieved_images[i] / 127.5 - 1.0).astype(np.float32)
             retrieved_images[i] =  preprocess_images([retrieved_images[i]], self.feature_extractor)[0][None].to(memory_format=torch.contiguous_format)
         example["nearest_neighbors"] = torch.cat(retrieved_images)
-        print(f"Nearest neighbor shape: {example['nearest_neighbors'].shape}")
+        # print(f"Nearest neighbor shape: {example['nearest_neighbors'].shape}")
         # default to score-sde preprocessing
         img = np.array(image).astype(np.uint8)
 
@@ -470,7 +476,7 @@ class RDMDataset(Dataset):
         image = np.array(image).astype(np.float32)
         image = (image / 127.5 - 1.0).astype(np.float32)
         example["pixel_values"] = torch.from_numpy(image).to(memory_format=torch.contiguous_format)
-        print(f"pixel shape: {example['pixel_values'].shape}")
+        # print(f"pixel shape: {example['pixel_values'].shape}")
         return example
 
 # Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14
@@ -637,9 +643,12 @@ def main():
         args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
     )
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision)
-    unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
-    )
+    if args.unet_config:
+        unet = UNet2DConditionModel.from_json_file(args.unet_config)
+    else:
+        unet = UNet2DConditionModel.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
+        )
     feature_extractor = CLIPFeatureExtractor.from_pretrained(args.clip_model)
     clip_model = CLIPModel.from_pretrained(args.clip_model)
 
@@ -699,7 +708,10 @@ def main():
 
     # In distributed training, the load_dataset function guarantees that only one local process can concurrently
     # download the dataset.
-    if args.dataset_name is not None:
+    if os.path.exists(args.dataset_save_path):
+        dataset = {}
+        dataset["train"] = load_from_disk(args.dataset_save_path)
+    elif args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
         dataset = load_dataset(
             args.dataset_name,
@@ -870,10 +882,11 @@ def main():
                 if retrieved_images is not None:
                     for i in range(retrieved_images.shape[0]):
                         # preprocess retrieved images
-                        precessed_images = retrieved_images[i].to(accelerator.device, dtype=weight_dtype)
-                        image_embeddings = clip_model.get_image_features(precessed_images)
+                        processed_images = retrieved_images[i].to(accelerator.device, dtype=weight_dtype)
+                        image_embeddings = clip_model.get_image_features(processed_images)
                         image_embeddings = image_embeddings / torch.linalg.norm(image_embeddings, dim=-1, keepdim=True)
                         image_embeddings = image_embeddings[None, ...]
+
                         text_embeddings = torch.cat([text_embeddings, image_embeddings], dim=1)
                 encoder_hidden_states = text_embeddings
                 # Get the target for loss depending on the prediction type
