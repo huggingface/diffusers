@@ -206,7 +206,7 @@ class BasicTransformerBlock(nn.Module):
         self.use_ada_layer_norm = (num_embeds_ada_norm is not None) and norm_type == "ada_norm"
 
         if norm_type in ("ada_norm", "ada_norm_zero") and num_embeds_ada_norm is None:
-            raise ValueError("`num_embeds_ada_norm` must be set if `norm_type` is ada_norm_zero or ada_norm")
+            norm_type = "layer"
 
         # 1. Self-Attn
         self.attn1 = CrossAttention(
