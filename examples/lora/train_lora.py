@@ -29,12 +29,19 @@ from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
+import wandb
+
+wandb.login()
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.10.0.dev0")
 
 logger = get_logger(__name__)
+
+run = wandb.init(project="stable_diffusion_lora")
+
+generated_table = wandb.Table(columns=["gen_num", "prompt", "generated_images"])
 
 
 def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision: str):
@@ -107,10 +114,7 @@ def parse_args(input_args=None):
         help="The prompt to specify images in the same class as provided instance images.",
     )
     parser.add_argument(
-        "--save_sample_prompt",
-        type=str,
-        default=None,
-        help="A prompt that is sampled during training."
+        "--save_sample_prompt", type=str, default=None, help="A prompt that is sampled during training."
     )
     parser.add_argument(
         "--with_prior_preservation",
@@ -606,7 +610,9 @@ def main(args):
             block_id = int(name[len("down_blocks.")])
             hidden_size = unet.config.block_out_channels[block_id]
 
-        lora_attn_procs[name] = LoRACrossAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
+        lora_attn_procs[name] = LoRACrossAttnProcessor(
+            hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
+        )
 
     unet.set_attn_processor(lora_attn_procs)
 
@@ -846,7 +852,8 @@ def main(args):
             if global_step >= args.max_train_steps:
                 break
 
-        if args.save_sample_prompt is not None:
+        if args.save_sample_prompt is not None and epoch % 10 == 0:
+            print("Running inference...")
             pipeline = DiffusionPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 unet=accelerator.unwrap_model(unet),
@@ -859,16 +866,22 @@ def main(args):
             pipeline.set_progress_bar_config(disable=True)
             sample_dir = "/home/patrick_huggingface_co/lora-tryout/samples"
             os.makedirs(sample_dir, exist_ok=True)
-            with torch.autocast("cuda"), torch.inference_mode():
-                for i in tqdm(range(args.n_save_sample), desc="Generating samples"):
-                    images = pipeline(
-                        args.save_sample_prompt,
-                        num_inference_steps=30,
-                        generator=generator
-                    ).images
-                    images[0].save(os.path.join(sample_dir, f"{i}.png"))
+
+            for i in tqdm(range(5), desc="Generating samples"):
+                prompt = args.save_sample_prompt
+                images = pipeline(prompt, num_inference_steps=30, generator=generator).images
+                image = images[0]
+
+                image.save(os.path.join(sample_dir, f"{i}.png"))
+
+                global_step = epoch * len(train_dataloader) + i
+                generated_table.add_data(global_step, prompt, wandb.Image(image))
+                run.log({"generated_image": wandb.Image(image)})
+
             del pipeline
             torch.cuda.empty_cache()
+
+    run.log({"generated_table": generated_table})
 
     # Create the pipeline using using the trained modules and save it.
     accelerator.wait_for_everyone()

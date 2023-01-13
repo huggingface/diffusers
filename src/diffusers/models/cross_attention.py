@@ -242,9 +242,7 @@ class LoRALinearLayer(nn.Module):
         super().__init__()
 
         if rank > min(in_features, out_features):
-            raise ValueError(
-                f"LoRA rank {rank} must be less or equal than {min(in_features, out_features)}"
-            )
+            raise ValueError(f"LoRA rank {rank} must be less or equal than {min(in_features, out_features)}")
 
         self.lora_down = nn.Linear(in_features, rank, bias=False)
         self.lora_up = nn.Linear(rank, out_features, bias=False)
@@ -269,7 +267,9 @@ class LoRACrossAttnProcessor(nn.Module):
         self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size)
         self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size)
 
-    def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
+    def __call__(
+        self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0
+    ):
         batch_size, sequence_length, _ = hidden_states.shape
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
 
@@ -375,7 +375,9 @@ class LoRAXFormersCrossAttnProcessor(nn.Module):
         self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size)
         self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size)
 
-    def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
+    def __call__(
+        self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0
+    ):
         batch_size, sequence_length, _ = hidden_states.shape
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
 
