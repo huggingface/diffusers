@@ -16,10 +16,8 @@
 import gc
 import unittest
 
-import numpy as np
-
 from diffusers import FlaxStableDiffusionInpaintPipeline
-from diffusers.utils import is_flax_available, load_image, load_numpy, slow
+from diffusers.utils import is_flax_available, load_image, slow
 from diffusers.utils.testing_utils import require_flax
 
 
@@ -45,10 +43,6 @@ class FlaxStableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         )
         mask_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd2-inpaint/mask.png"
-        )
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd2-inpaint"
-            "/yellow_cat_sitting_on_a_park_bench.npy"
         )
 
         model_id = "xvjiarui/stable-diffusion-2-inpainting"
