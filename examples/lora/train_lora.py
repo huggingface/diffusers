@@ -1,12 +1,11 @@
 import argparse
 import hashlib
-import itertools
 import logging
 import math
 import os
 import warnings
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict
 
 import torch
 import torch.nn.functional as F
@@ -32,6 +31,36 @@ from transformers import AutoTokenizer, PretrainedConfig
 import wandb
 
 wandb.login()
+
+
+class LoraLayers(torch.nn.Module):
+    def __init__(self, state_dict: Dict[str, torch.Tensor]):
+        super().__init__()
+        self.layers = torch.nn.ModuleList(state_dict.values())
+        self.mapping = {k: v for k, v in enumerate(state_dict.keys())}
+        self.rev_mapping = {v: k for k, v in enumerate(state_dict.keys())}
+
+        # we add a hook to state_dict() and load_state_dict() so that the
+        # naming fits with `unet.attn_processors`
+        def map_to(module, state_dict, *args, **kwargs):
+            new_state_dict = {}
+            for key, value in state_dict.items():
+                num = int(key.split(".")[1])  # 0 is always "layers"
+                new_key = key.replace(f"layers.{num}", module.mapping[num])
+                new_state_dict[new_key] = value
+
+            return new_state_dict
+
+        def map_from(module, state_dict, *args, **kwargs):
+            all_keys = list(state_dict.keys())
+            for key in all_keys:
+                replace_key = ".".join(key.split(".")[:-3])
+                new_key = key.replace(replace_key, f"layers.{module.rev_mapping[replace_key]}")
+                state_dict[new_key] = state_dict[key]
+                del state_dict[key]
+
+        self._register_state_dict_hook(map_to)
+        self._register_load_state_dict_pre_hook(map_from, with_module=True)
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -151,7 +180,6 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution"
     )
-    parser.add_argument("--train_text_encoder", action="store_true", help="Whether to train the text encoder")
     parser.add_argument(
         "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
     )
@@ -461,12 +489,6 @@ def main(args):
     # Currently, it's not possible to do gradient accumulation when training two models with accelerate.accumulate
     # This will be enabled soon in accelerate. For now, we don't allow gradient accumulation when training two models.
     # TODO (patil-suraj): Remove this check when gradient accumulation with two models is enabled in accelerate.
-    if args.train_text_encoder and args.gradient_accumulation_steps > 1 and accelerator.num_processes > 1:
-        raise ValueError(
-            "Gradient accumulation is not supported when training the text encoder in distributed training. "
-            "Please set gradient_accumulation_steps to 1. This feature will be supported in the future."
-        )
-
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -615,16 +637,17 @@ def main(args):
         )
 
     unet.set_attn_processor(lora_attn_procs)
+    lora_layers = LoraLayers(unet.attn_processors)
+
+    state_dict = lora_layers.state_dict()
+    lora_layers.load_state_dict(state_dict)
+
+    accelerator.register_for_checkpointing(lora_layers)
 
     if args.scale_lr:
         args.learning_rate = (
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
-
-    if args.gradient_checkpointing:
-        unet.enable_gradient_checkpointing()
-        if args.train_text_encoder:
-            text_encoder.gradient_checkpointing_enable()
 
     # Enable TF32 for faster training on Ampere GPUs,
     # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
@@ -650,9 +673,8 @@ def main(args):
         optimizer_class = torch.optim.AdamW
 
     # Optimizer creation
-    params_to_optimize = itertools.chain(*[v.parameters() for v in unet.attn_processors.values()])
     optimizer = optimizer_class(
-        params_to_optimize,
+        lora_layers.parameters(),
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -695,14 +717,9 @@ def main(args):
     )
 
     # Prepare everything with our `accelerator`.
-    if args.train_text_encoder:
-        unet, text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-            unet, text_encoder, optimizer, train_dataloader, lr_scheduler
-        )
-    else:
-        unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-            unet, optimizer, train_dataloader, lr_scheduler
-        )
+    lora_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        lora_layers, optimizer, train_dataloader, lr_scheduler
+    )
 
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
@@ -712,10 +729,10 @@ def main(args):
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
-    # Move vae and text_encoder to device and cast to weight_dtype
+    # Move unet, vae and text_encoder to device and cast to weight_dtype
+    unet.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
-    if not args.train_text_encoder:
-        text_encoder.to(accelerator.device, dtype=weight_dtype)
+    text_encoder.to(accelerator.device, dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -767,8 +784,6 @@ def main(args):
 
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
-        if args.train_text_encoder:
-            text_encoder.train()
         for step, batch in enumerate(train_dataloader):
             # Skip steps until we reach the resumed step
             if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
@@ -824,11 +839,7 @@ def main(args):
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    params_to_clip = (
-                        itertools.chain(unet.parameters(), text_encoder.parameters())
-                        if args.train_text_encoder
-                        else unet.parameters()
-                    )
+                    params_to_clip = lora_layers.parameters()
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
@@ -883,16 +894,10 @@ def main(args):
 
     run.log({"generated_table": generated_table})
 
-    # Create the pipeline using using the trained modules and save it.
+    # Save the lora layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        pipeline = DiffusionPipeline.from_pretrained(
-            args.pretrained_model_name_or_path,
-            unet=accelerator.unwrap_model(unet),
-            text_encoder=accelerator.unwrap_model(text_encoder),
-            revision=args.revision,
-        )
-        pipeline.save_pretrained(args.output_dir)
+        torch.save(lora_layers.state_dict(), os.path.join(args.output_dir, "lora_layers.bin"))
 
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
