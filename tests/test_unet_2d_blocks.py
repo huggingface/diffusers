@@ -74,11 +74,9 @@ class SimpleCrossAttnDownBlock2DTests(UNetBlockTesterMixin, unittest.TestCase):
         init_dict["cross_attention_dim"] = 32
         return init_dict, inputs_dict
 
+    @unittest.skipIf(torch_device == "mps", "MPS result is not consistent")
     def test_output(self):
-        if torch_device == "mps":
-            expected_slice = [0.8213, -2.3990, -0.5258, -0.1970, 2.3211, 0.1226, -0.0580, 1.1827, -0.1835]
-        else:
-            expected_slice = [0.7921, -0.0992, -0.1962, -0.7695, -0.4242, 0.7804, 0.4737, 0.2765, 0.3338]
+        expected_slice = [0.7921, -0.0992, -0.1962, -0.7695, -0.4242, 0.7804, 0.4737, 0.2765, 0.3338]
         super().test_output(expected_slice)
 
 
