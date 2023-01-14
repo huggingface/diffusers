@@ -17,7 +17,7 @@ from typing import Tuple
 
 import torch
 
-from diffusers.utils import floats_tensor, torch_all_close, torch_device
+from diffusers.utils import floats_tensor, randn_tensor, torch_all_close, torch_device
 from diffusers.utils.testing_utils import require_torch
 
 
@@ -49,25 +49,25 @@ class UNetBlockTesterMixin:
         num_channels = 32
         sizes = (32, 32)
 
-        torch.manual_seed(0)
-        hidden_states = torch.randn((batch_size, num_channels) + sizes).to(torch_device)
+        generator = torch.manual_seed(0)
+        device = torch.device(torch_device)
+        shape = (batch_size, num_channels) + sizes
+        hidden_states = randn_tensor(shape, generator=generator, device=device)
         dummy_input = {"hidden_states": hidden_states}
 
         if include_temb:
             temb_channels = 128
-            dummy_input["temb"] = torch.randn(batch_size, temb_channels).to(torch_device)
+            dummy_input["temb"] = randn_tensor((batch_size, temb_channels), generator=generator, device=device)
 
         if include_res_hidden_states_tuple:
-            torch.manual_seed(1)
-            dummy_input["res_hidden_states_tuple"] = (
-                torch.randn((batch_size, num_channels) + sizes).to(torch_device),
-            )
+            generator_1 = torch.manual_seed(1)
+            dummy_input["res_hidden_states_tuple"] = (randn_tensor(shape, generator=generator_1, device=device),)
 
         if include_encoder_hidden_states:
             dummy_input["encoder_hidden_states"] = floats_tensor((batch_size, 32, 32)).to(torch_device)
 
         if include_skip_sample:
-            dummy_input["skip_sample"] = torch.randn((batch_size, 3) + sizes).to(torch_device)
+            dummy_input["skip_sample"] = randn_tensor(((batch_size, 3) + sizes), generator=generator, device=device)
 
         return dummy_input
 
@@ -115,6 +115,7 @@ class UNetBlockTesterMixin:
         if isinstance(output, Tuple):
             output = output[0]
 
-        noise = torch.randn(output.shape).to(torch_device)
+        device = torch.device(torch_device)
+        noise = randn_tensor(output.shape, device=device)
         loss = torch.nn.functional.mse_loss(output, noise)
         loss.backward()
