@@ -202,7 +202,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
             self.tokenizer.add_tokens([token])
 
-            token_id = self.tokenizer.convert_tokens_to_ids("token")
+            token_id = self.tokenizer.convert_tokens_to_ids(token)
             self.text_encoder.resize_token_embeddings(len(self.tokenizer) + 1)
             self.text_encoder.get_input_embeddings().weight.data[token_id] = embedding
 
