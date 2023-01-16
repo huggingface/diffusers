@@ -1,0 +1,176 @@
+<!--Copyright 2022 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+# Stable diffusion 2
+
+Stable Diffusion 2 is a text-to-image _latent diffusion_ model built upon the work of [Stable Diffusion 1](https://stability.ai/blog/stable-diffusion-public-release). 
+The project to train Stable Diffusion 2 was led by Robin Rombach and Katherine Crowson from [Stability AI](https://stability.ai/) and [LAION](https://laion.ai/).
+
+*The Stable Diffusion 2.0 release includes robust text-to-image models trained using a brand new text encoder (OpenCLIP), developed by LAION with support from Stability AI, which greatly improves the quality of the generated images compared to earlier V1 releases. The text-to-image models in this release can generate images with default resolutions of both 512x512 pixels and 768x768 pixels. 
+These models are trained on an aesthetic subset of the [LAION-5B dataset](https://laion.ai/blog/laion-5b/) created by the DeepFloyd team at Stability AI, which is then further filtered to remove adult content using [LAION’s NSFW filter](https://openreview.net/forum?id=M3Y74vmsMcY).*
+
+For more details about how Stable Diffusion 2 works and how it differs from Stable Diffusion 1, please refer to the official [launch announcement post](https://stability.ai/blog/stable-diffusion-v2-release).
+
+## Tips
+
+### Available checkpoints:
+
+Note that the architecture is more or less identical to [Stable Diffusion 1](./stable_diffusion/overview) so please refer to [this page](./stable_diffusion/overview) for API documentation.
+
+- *Text-to-Image (512x512 resolution)*: [stabilityai/stable-diffusion-2-base](https://huggingface.co/stabilityai/stable-diffusion-2-base) with [`StableDiffusionPipeline`]
+- *Text-to-Image (768x768 resolution)*: [stabilityai/stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) with [`StableDiffusionPipeline`]
+- *Image Inpainting (512x512 resolution)*: [stabilityai/stable-diffusion-2-inpainting](https://huggingface.co/stabilityai/stable-diffusion-2-inpainting) with [`StableDiffusionInpaintPipeline`]
+- *Super-Resolution (x4 resolution resolution)*: [stable-diffusion-x4-upscaler](https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler) [`StableDiffusionUpscalePipeline`]
+- *Depth-to-Image (512x512 resolution)*: [stabilityai/stable-diffusion-2-depth](https://huggingface.co/stabilityai/stable-diffusion-2-depth) with [`StableDiffusionDepth2ImagePipeline`]
+
+We recommend using the [`DPMSolverMultistepScheduler`] as it's currently the fastest scheduler there is.
+
+
+### Text-to-Image
+
+- *Text-to-Image (512x512 resolution)*: [stabilityai/stable-diffusion-2-base](https://huggingface.co/stabilityai/stable-diffusion-2-base) with [`StableDiffusionPipeline`]
+
+```python
+from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
+import torch
+
+repo_id = "stabilityai/stable-diffusion-2-base"
+pipe = DiffusionPipeline.from_pretrained(repo_id, torch_dtype=torch.float16, revision="fp16")
+
+pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+pipe = pipe.to("cuda")
+
+prompt = "High quality photo of an astronaut riding a horse in space"
+image = pipe(prompt, num_inference_steps=25).images[0]
+image.save("astronaut.png")
+```
+
+- *Text-to-Image (768x768 resolution)*: [stabilityai/stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) with [`StableDiffusionPipeline`]
+
+```python
+from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
+import torch
+
+repo_id = "stabilityai/stable-diffusion-2"
+pipe = DiffusionPipeline.from_pretrained(repo_id, torch_dtype=torch.float16, revision="fp16")
+
+pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+pipe = pipe.to("cuda")
+
+prompt = "High quality photo of an astronaut riding a horse in space"
+image = pipe(prompt, guidance_scale=9, num_inference_steps=25).images[0]
+image.save("astronaut.png")
+```
+
+### Image Inpainting
+
+- *Image Inpainting (512x512 resolution)*: [stabilityai/stable-diffusion-2-inpainting](https://huggingface.co/stabilityai/stable-diffusion-2-inpainting) with [`StableDiffusionInpaintPipeline`]
+
+```python
+import PIL
+import requests
+import torch
+from io import BytesIO
+
+from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
+
+
+def download_image(url):
+    response = requests.get(url)
+    return PIL.Image.open(BytesIO(response.content)).convert("RGB")
+
+
+img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
+mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+
+init_image = download_image(img_url).resize((512, 512))
+mask_image = download_image(mask_url).resize((512, 512))
+
+repo_id = "stabilityai/stable-diffusion-2-inpainting"
+pipe = DiffusionPipeline.from_pretrained(repo_id, torch_dtype=torch.float16, revision="fp16")
+
+pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+pipe = pipe.to("cuda")
+
+prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
+image = pipe(prompt=prompt, image=init_image, mask_image=mask_image, num_inference_steps=25).images[0]
+
+image.save("yellow_cat.png")
+```
+
+### Super-Resolution
+
+- *Image Upscaling (x4 resolution resolution)*: [stable-diffusion-x4-upscaler](https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler) with [`StableDiffusionUpscalePipeline`]
+
+
+```python
+import requests
+from PIL import Image
+from io import BytesIO
+from diffusers import StableDiffusionUpscalePipeline
+import torch
+
+# load model and scheduler
+model_id = "stabilityai/stable-diffusion-x4-upscaler"
+pipeline = StableDiffusionUpscalePipeline.from_pretrained(model_id, torch_dtype=torch.float16)
+pipeline = pipeline.to("cuda")
+
+# let's download an  image
+url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd2-upscale/low_res_cat.png"
+response = requests.get(url)
+low_res_img = Image.open(BytesIO(response.content)).convert("RGB")
+low_res_img = low_res_img.resize((128, 128))
+prompt = "a white cat"
+upscaled_image = pipeline(prompt=prompt, image=low_res_img).images[0]
+upscaled_image.save("upsampled_cat.png")
+```
+
+### Depth-to-Image
+
+- *Depth-Guided Text-to-Image*: [stabilityai/stable-diffusion-2-depth](https://huggingface.co/stabilityai/stable-diffusion-2-depth) [`StableDiffusionDepth2ImagePipeline`]
+
+
+```python
+import torch
+import requests
+from PIL import Image
+
+from diffusers import StableDiffusionDepth2ImgPipeline
+
+pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-2-depth",
+    torch_dtype=torch.float16,
+).to("cuda")
+
+
+url = "http://images.cocodataset.org/val2017/000000039769.jpg"
+init_image = Image.open(requests.get(url, stream=True).raw)
+prompt = "two tigers"
+n_propmt = "bad, deformed, ugly, bad anotomy"
+image = pipe(prompt=prompt, image=init_image, negative_prompt=n_propmt, strength=0.7).images[0]
+```
+
+### How to load and use different schedulers.
+
+The stable diffusion pipeline uses [`DDIMScheduler`] scheduler by default. But `diffusers` provides many other schedulers that can be used with the stable diffusion pipeline such as [`PNDMScheduler`], [`LMSDiscreteScheduler`], [`EulerDiscreteScheduler`], [`EulerAncestralDiscreteScheduler`] etc.
+To use a different scheduler, you can either change it via the [`ConfigMixin.from_config`] method or pass the `scheduler` argument to the `from_pretrained` method of the pipeline. For example, to use the [`EulerDiscreteScheduler`], you can do the following:
+
+```python
+>>> from diffusers import StableDiffusionPipeline, EulerDiscreteScheduler
+
+>>> pipeline = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2")
+>>> pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
+
+>>> # or
+>>> euler_scheduler = EulerDiscreteScheduler.from_pretrained("stabilityai/stable-diffusion-2", subfolder="scheduler")
+>>> pipeline = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2", scheduler=euler_scheduler)
+```

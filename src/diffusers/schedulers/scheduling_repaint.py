@@ -20,7 +20,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
+from ..utils import BaseOutput, randn_tensor
 from .scheduling_utils import SchedulerMixin
 
 
@@ -271,12 +271,7 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
 
         # 5. Add noise
         device = model_output.device
-        if device.type == "mps":
-            # randn does not work reproducibly on mps
-            noise = torch.randn(model_output.shape, dtype=model_output.dtype, generator=generator)
-            noise = noise.to(device)
-        else:
-            noise = torch.randn(model_output.shape, generator=generator, device=device, dtype=model_output.dtype)
+        noise = randn_tensor(model_output.shape, generator=generator, device=device, dtype=model_output.dtype)
         std_dev_t = self.eta * self._get_variance(timestep) ** 0.5
 
         variance = 0
@@ -311,10 +306,10 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
             beta = self.betas[timestep + i]
             if sample.device.type == "mps":
                 # randn does not work reproducibly on mps
-                noise = torch.randn(sample.shape, dtype=sample.dtype, generator=generator)
+                noise = randn_tensor(sample.shape, dtype=sample.dtype, generator=generator)
                 noise = noise.to(sample.device)
             else:
-                noise = torch.randn(sample.shape, generator=generator, device=sample.device, dtype=sample.dtype)
+                noise = randn_tensor(sample.shape, generator=generator, device=sample.device, dtype=sample.dtype)
 
             # 10. Algorithm 1 Line 10 https://arxiv.org/pdf/2201.09865.pdf
             sample = (1 - beta) ** 0.5 * sample + beta**0.5 * noise

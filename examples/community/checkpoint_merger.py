@@ -5,13 +5,8 @@ from typing import Dict, List, Union
 import torch
 
 from diffusers import DiffusionPipeline, __version__
-from diffusers.pipeline_utils import (
-    CONFIG_NAME,
-    DIFFUSERS_CACHE,
-    ONNX_WEIGHTS_NAME,
-    SCHEDULER_CONFIG_NAME,
-    WEIGHTS_NAME,
-)
+from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
+from diffusers.utils import CONFIG_NAME, DIFFUSERS_CACHE, ONNX_WEIGHTS_NAME, WEIGHTS_NAME
 from huggingface_hub import snapshot_download
 
 
@@ -37,6 +32,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
     """
 
     def __init__(self):
+        self.register_to_config()
         super().__init__()
 
     def _compare_model_configs(self, dict0, dict1):
@@ -172,6 +168,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         final_pipe = DiffusionPipeline.from_pretrained(
             cached_folders[0], torch_dtype=torch_dtype, device_map=device_map
         )
+        final_pipe.to(self.device)
 
         checkpoint_path_2 = None
         if len(cached_folders) > 2:
@@ -207,9 +204,9 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                     theta_0 = theta_0()
 
                     update_theta_0 = getattr(module, "load_state_dict")
-                    theta_1 = torch.load(checkpoint_path_1)
+                    theta_1 = torch.load(checkpoint_path_1, map_location="cpu")
 
-                    theta_2 = torch.load(checkpoint_path_2) if checkpoint_path_2 else None
+                    theta_2 = torch.load(checkpoint_path_2, map_location="cpu") if checkpoint_path_2 else None
 
                     if not theta_0.keys() == theta_1.keys():
                         print("SKIPPING ATTR ", attr, " DUE TO MISMATCH")

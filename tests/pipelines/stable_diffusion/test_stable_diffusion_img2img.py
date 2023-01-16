@@ -31,7 +31,7 @@ from diffusers import (
 )
 from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
-from transformers import CLIPImageProcessor, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from ...test_pipelines_common import PipelineTesterMixin
 
@@ -78,7 +78,6 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         )
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
-        feature_extractor = CLIPImageProcessor(crop_size=32, size=32)
 
         components = {
             "unet": unet,
@@ -87,7 +86,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
             "safety_checker": None,
-            "feature_extractor": feature_extractor,
+            "feature_extractor": None,
         }
         return components
 
@@ -333,6 +332,42 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
         mem_bytes = torch.cuda.max_memory_allocated()
         # make sure that less than 2.2 GB is allocated
         assert mem_bytes < 2.2 * 10**9
+
+    def test_stable_diffusion_img2img_pipeline_multiple_of_8(self):
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/img2img/sketch-mountains-input.jpg"
+        )
+        # resize to resolution that is divisible by 8 but not 16 or 32
+        init_image = init_image.resize((760, 504))
+
+        model_id = "CompVis/stable-diffusion-v1-4"
+        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
+            model_id,
+            safety_checker=None,
+        )
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        prompt = "A fantasy landscape, trending on artstation"
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        output = pipe(
+            prompt=prompt,
+            image=init_image,
+            strength=0.75,
+            guidance_scale=7.5,
+            generator=generator,
+            output_type="np",
+        )
+        image = output.images[0]
+
+        image_slice = image[255:258, 383:386, -1]
+
+        assert image.shape == (504, 760, 3)
+        expected_slice = np.array([0.7124, 0.7105, 0.6993, 0.7140, 0.7106, 0.6945, 0.7198, 0.7172, 0.7031])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
 
 @nightly

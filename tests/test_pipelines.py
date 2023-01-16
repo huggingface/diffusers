@@ -33,6 +33,7 @@ from diffusers import (
     DDIMScheduler,
     DDPMPipeline,
     DDPMScheduler,
+    DiffusionPipeline,
     DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
@@ -45,9 +46,8 @@ from diffusers import (
     UNet2DModel,
     logging,
 )
-from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
-from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, nightly, slow, torch_device
+from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, is_flax_available, nightly, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir, require_torch_gpu
 from parameterized import parameterized
 from PIL import Image
@@ -704,7 +704,7 @@ class PipelineSlowTests(unittest.TestCase):
 
     def test_warning_unused_kwargs(self):
         model_id = "hf-internal-testing/unet-pipeline-dummy"
-        logger = logging.get_logger("diffusers.pipeline_utils")
+        logger = logging.get_logger("diffusers.pipelines")
         with tempfile.TemporaryDirectory() as tmpdirname:
             with CaptureLogger(logger) as cap_logger:
                 DiffusionPipeline.from_pretrained(
@@ -742,10 +742,10 @@ class PipelineSlowTests(unittest.TestCase):
             new_ddpm.to(torch_device)
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = ddpm(generator=generator, output_type="numpy").images
+        image = ddpm(generator=generator, num_inference_steps=5, output_type="numpy").images
 
         generator = generator.manual_seed(0)
-        new_image = new_ddpm(generator=generator, output_type="numpy").images
+        new_image = new_ddpm(generator=generator, num_inference_steps=5, output_type="numpy").images
 
         assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
 
@@ -763,10 +763,10 @@ class PipelineSlowTests(unittest.TestCase):
         ddpm_from_hub.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = ddpm(generator=generator, output_type="numpy").images
+        image = ddpm(generator=generator, num_inference_steps=5, output_type="numpy").images
 
         generator = generator.manual_seed(0)
-        new_image = ddpm_from_hub(generator=generator, output_type="numpy").images
+        new_image = ddpm_from_hub(generator=generator, num_inference_steps=5, output_type="numpy").images
 
         assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
 
@@ -786,10 +786,10 @@ class PipelineSlowTests(unittest.TestCase):
         ddpm_from_hub_custom_model.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = ddpm_from_hub_custom_model(generator=generator, output_type="numpy").images
+        image = ddpm_from_hub_custom_model(generator=generator, num_inference_steps=5, output_type="numpy").images
 
         generator = generator.manual_seed(0)
-        new_image = ddpm_from_hub(generator=generator, output_type="numpy").images
+        new_image = ddpm_from_hub(generator=generator, num_inference_steps=5, output_type="numpy").images
 
         assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
 
@@ -815,6 +815,49 @@ class PipelineSlowTests(unittest.TestCase):
         images = pipe(generator=generator, num_inference_steps=4).images
         assert isinstance(images, list)
         assert isinstance(images[0], PIL.Image.Image)
+
+    def test_from_flax_from_pt(self):
+        pipe_pt = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+        pipe_pt.to(torch_device)
+
+        if not is_flax_available():
+            raise ImportError("Make sure flax is installed.")
+
+        from diffusers import FlaxStableDiffusionPipeline
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe_pt.save_pretrained(tmpdirname)
+
+            pipe_flax, params = FlaxStableDiffusionPipeline.from_pretrained(
+                tmpdirname, safety_checker=None, from_pt=True
+            )
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe_flax.save_pretrained(tmpdirname, params=params)
+            pipe_pt_2 = StableDiffusionPipeline.from_pretrained(tmpdirname, safety_checker=None, from_flax=True)
+            pipe_pt_2.to(torch_device)
+
+        prompt = "Hello"
+
+        generator = torch.manual_seed(0)
+        image_0 = pipe_pt(
+            [prompt],
+            generator=generator,
+            num_inference_steps=2,
+            output_type="np",
+        ).images[0]
+
+        generator = torch.manual_seed(0)
+        image_1 = pipe_pt_2(
+            [prompt],
+            generator=generator,
+            num_inference_steps=2,
+            output_type="np",
+        ).images[0]
+
+        assert np.abs(image_0 - image_1).sum() < 1e-5, "Models don't give the same forward pass"
 
 
 @nightly

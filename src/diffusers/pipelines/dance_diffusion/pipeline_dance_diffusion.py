@@ -17,8 +17,8 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 
-from ...pipeline_utils import AudioPipelineOutput, DiffusionPipeline
-from ...utils import logging
+from ...utils import logging, randn_tensor
+from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -63,12 +63,11 @@ class DanceDiffusionPipeline(DiffusionPipeline):
                 The length of the generated audio sample in seconds. Note that the output of the pipeline, *i.e.*
                 `sample_size`, will be `audio_length_in_s` * `self.unet.sample_rate`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipeline_utils.AudioPipelineOutput`] instead of a plain tuple.
+                Whether or not to return a [`~pipelines.AudioPipelineOutput`] instead of a plain tuple.
 
         Returns:
-            [`~pipeline_utils.AudioPipelineOutput`] or `tuple`: [`~pipelines.utils.AudioPipelineOutput`] if
-            `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is a list with the
-            generated images.
+            [`~pipelines.AudioPipelineOutput`] or `tuple`: [`~pipelines.utils.AudioPipelineOutput`] if `return_dict` is
+            True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
         """
 
         if audio_length_in_s is None:
@@ -101,16 +100,7 @@ class DanceDiffusionPipeline(DiffusionPipeline):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        rand_device = "cpu" if self.device.type == "mps" else self.device
-        if isinstance(generator, list):
-            shape = (1,) + shape[1:]
-            audio = [
-                torch.randn(shape, generator=generator[i], device=rand_device, dtype=self.unet.dtype)
-                for i in range(batch_size)
-            ]
-            audio = torch.cat(audio, dim=0).to(self.device)
-        else:
-            audio = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype).to(self.device)
+        audio = randn_tensor(shape, generator=generator, device=self.device, dtype=dtype)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps, device=audio.device)

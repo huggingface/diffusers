@@ -25,7 +25,6 @@ from transformers import CLIPFeatureExtractor, XLMRobertaTokenizer
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import (
     DDIMScheduler,
     DPMSolverMultistepScheduler,
@@ -34,12 +33,42 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ...utils import PIL_INTERPOLATION, deprecate, logging
+from ...utils import PIL_INTERPOLATION, deprecate, logging, randn_tensor, replace_example_docstring
+from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from . import AltDiffusionPipelineOutput, RobertaSeriesModelWithTransformation
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> import requests
+        >>> import torch
+        >>> from PIL import Image
+        >>> from io import BytesIO
+
+        >>> from diffusers import AltDiffusionImg2ImgPipeline
+
+        >>> device = "cuda"
+        >>> model_id_or_path = "BAAI/AltDiffusion-m9"
+        >>> pipe = AltDiffusionImg2ImgPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16)
+        >>> pipe = pipe.to(device)
+
+        >>> url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
+
+        >>> response = requests.get(url)
+        >>> init_image = Image.open(BytesIO(response.content)).convert("RGB")
+        >>> init_image = init_image.resize((768, 512))
+
+        >>> # "A fantasy landscape, trending on artstation"
+        >>> prompt = "幻想风景, artstation"
+
+        >>> images = pipe(prompt=prompt, image=init_image, strength=0.75, guidance_scale=7.5).images
+        >>> images[0].save("幻想风景.png")
+        ```
+"""
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.preprocess
@@ -51,7 +80,7 @@ def preprocess(image):
 
     if isinstance(image[0], PIL.Image.Image):
         w, h = image[0].size
-        w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
+        w, h = map(lambda x: x - x % 8, (w, h))  # resize to integer multiple of 8
 
         image = [np.array(i.resize((w, h), resample=PIL_INTERPOLATION["lanczos"]))[None, :] for i in image]
         image = np.concatenate(image, axis=0)
@@ -92,7 +121,7 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
-    _optional_components = ["safety_checker"]
+    _optional_components = ["safety_checker", "feature_extractor"]
 
     def __init__(
         self,
@@ -204,13 +233,10 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
         device = torch.device(f"cuda:{gpu_id}")
 
         for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
-            if cpu_offloaded_model is not None:
-                cpu_offload(cpu_offloaded_model, device)
+            cpu_offload(cpu_offloaded_model, device)
 
         if self.safety_checker is not None:
-            # TODO(Patrick) - there is currently a bug with cpu offload of nn.Parameter in accelerate
-            # fix by only offloading self.safety_checker for now
-            cpu_offload(self.safety_checker.vision_model, device)
+            cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
 
     @property
     def _execution_device(self):
@@ -395,6 +421,11 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
         return timesteps, num_inference_steps - t_start
 
     def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
+        if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
+            raise ValueError(
+                f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
+            )
+
         image = image.to(device=device, dtype=dtype)
 
         batch_size = batch_size * num_images_per_prompt
@@ -432,16 +463,8 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
         else:
             init_latents = torch.cat([init_latents], dim=0)
 
-        rand_device = "cpu" if device.type == "mps" else device
         shape = init_latents.shape
-        if isinstance(generator, list):
-            shape = (1,) + shape[1:]
-            noise = [
-                torch.randn(shape, generator=generator[i], device=rand_device, dtype=dtype) for i in range(batch_size)
-            ]
-            noise = torch.cat(noise, dim=0).to(device)
-        else:
-            noise = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype).to(device)
+        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
         # get latents
         init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
@@ -450,6 +473,7 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
         return latents
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]],
@@ -514,6 +538,7 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
+        Examples:
 
         Returns:
             [`~pipelines.stable_diffusion.AltDiffusionPipelineOutput`] or `tuple`:

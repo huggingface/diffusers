@@ -19,9 +19,9 @@ import torch
 
 from k_diffusion.external import CompVisDenoiser, CompVisVDenoiser
 
-from ... import DiffusionPipeline
+from ...pipelines import DiffusionPipeline
 from ...schedulers import LMSDiscreteScheduler
-from ...utils import is_accelerate_available, logging
+from ...utils import is_accelerate_available, logging, randn_tensor
 from . import StableDiffusionPipelineOutput
 
 
@@ -137,13 +137,10 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline):
         device = torch.device(f"cuda:{gpu_id}")
 
         for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
-            if cpu_offloaded_model is not None:
-                cpu_offload(cpu_offloaded_model, device)
+            cpu_offload(cpu_offloaded_model, device)
 
         if self.safety_checker is not None:
-            # TODO(Patrick) - there is currently a bug with cpu offload of nn.Parameter in accelerate
-            # fix by only offloading self.safety_checker for now
-            cpu_offload(self.safety_checker.vision_model, device)
+            cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
 
     @property
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
@@ -308,11 +305,7 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline):
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if latents is None:
-            if device.type == "mps":
-                # randn does not work reproducibly on mps
-                latents = torch.randn(shape, generator=generator, device="cpu", dtype=dtype).to(device)
-            else:
-                latents = torch.randn(shape, generator=generator, device=device, dtype=dtype)
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
             if latents.shape != shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")

@@ -19,13 +19,12 @@ import numpy as np
 import torch
 
 import PIL
-from diffusers.utils import is_accelerate_available
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import DDIMScheduler, DDPMScheduler, LMSDiscreteScheduler, PNDMScheduler
-from ...utils import logging
+from ...utils import is_accelerate_available, logging, randn_tensor
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -39,7 +38,7 @@ def preprocess(image):
 
     if isinstance(image[0], PIL.Image.Image):
         w, h = image[0].size
-        w, h = map(lambda x: x - x % 64, (w, h))  # resize to integer multiple of 32
+        w, h = map(lambda x: x - x % 64, (w, h))  # resize to integer multiple of 64
 
         image = [np.array(i.resize((w, h)))[None, :] for i in image]
         image = np.concatenate(image, axis=0)
@@ -313,11 +312,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height, width)
         if latents is None:
-            if device.type == "mps":
-                # randn does not work reproducibly on mps
-                latents = torch.randn(shape, generator=generator, device="cpu", dtype=dtype).to(device)
-            else:
-                latents = torch.randn(shape, generator=generator, device=device, dtype=dtype)
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
             if latents.shape != shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
@@ -390,6 +385,32 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
 
+        Examples:
+        ```py
+        >>> import requests
+        >>> from PIL import Image
+        >>> from io import BytesIO
+        >>> from diffusers import StableDiffusionUpscalePipeline
+        >>> import torch
+
+        >>> # load model and scheduler
+        >>> model_id = "stabilityai/stable-diffusion-x4-upscaler"
+        >>> pipeline = StableDiffusionUpscalePipeline.from_pretrained(
+        ...     model_id, revision="fp16", torch_dtype=torch.float16
+        ... )
+        >>> pipeline = pipeline.to("cuda")
+
+        >>> # let's download an  image
+        >>> url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd2-upscale/low_res_cat.png"
+        >>> response = requests.get(url)
+        >>> low_res_img = Image.open(BytesIO(response.content)).convert("RGB")
+        >>> low_res_img = low_res_img.resize((128, 128))
+        >>> prompt = "a white cat"
+
+        >>> upscaled_image = pipeline(prompt=prompt, image=low_res_img).images[0]
+        >>> upscaled_image.save("upsampled_cat.png")
+        ```
+
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
@@ -424,11 +445,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
 
         # 5. Add noise to image
         noise_level = torch.tensor([noise_level], dtype=torch.long, device=device)
-        if device.type == "mps":
-            # randn does not work reproducibly on mps
-            noise = torch.randn(image.shape, generator=generator, device="cpu", dtype=text_embeddings.dtype).to(device)
-        else:
-            noise = torch.randn(image.shape, generator=generator, device=device, dtype=text_embeddings.dtype)
+        noise = randn_tensor(image.shape, generator=generator, device=device, dtype=text_embeddings.dtype)
         image = self.low_res_scheduler.add_noise(image, noise, noise_level)
 
         batch_multiplier = 2 if do_classifier_free_guidance else 1
