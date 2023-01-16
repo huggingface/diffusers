@@ -573,6 +573,22 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    def prepare_image_based_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator):
+        image = image.to(device=self.device, dtype=dtype)
+        init_latent_dist = self.vae.encode(image).latent_dist
+        init_latents = init_latent_dist.sample(generator=generator)
+        init_latents = 0.18215 * init_latents
+
+        # Expand init_latents for batch_size and num_images_per_prompt
+        init_latents = torch.cat([init_latents] * batch_size * num_images_per_prompt, dim=0)
+        init_latents_orig = init_latents
+
+        # add noise to latents using the timesteps
+        noise = randn_tensor(init_latents.shape, generator=generator, device=self.device, dtype=dtype)
+        init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
+        latents = init_latents
+        return latents, init_latents_orig, noise
+
     def prepare_mask_latents(
         self, mask, masked_image, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance
     ):
@@ -624,6 +640,15 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
         return mask, masked_image_latents
 
+    def get_timesteps(self, num_inference_steps, image_guidance, device):
+        # get the original timestep using init_timestep
+        init_timestep = min(int(num_inference_steps * image_guidance), num_inference_steps)
+
+        t_start = max(num_inference_steps - init_timestep, 0)
+        timesteps = self.scheduler.timesteps[t_start:]
+
+        return timesteps, num_inference_steps - t_start
+
     @torch.no_grad()
     def __call__(
         self,
@@ -644,7 +669,8 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: int = 1,
+        callback_steps: Optional[int] = 1,
+        image_guidance: Optional[float] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -799,20 +825,27 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
 
         # 5. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps = self.scheduler.timesteps
 
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
-        latents = self.prepare_latents(
-            batch_size * num_images_per_prompt,
-            num_channels_latents,
-            height,
-            width,
-            prompt_embeds.dtype,
-            device,
-            generator,
-            latents,
-        )
+        if image_guidance is not None and image_guidance > 0.0:
+            timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, image_guidance, device)
+            latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
+            latents, init_latents_orig, noise = self.prepare_image_based_latents(
+                image, latent_timestep, batch_size, num_images_per_prompt, prompt_embeds.dtype, device, generator
+            )
+        else:
+            timesteps = self.scheduler.timesteps
+            latents = self.prepare_latents(
+                batch_size * num_images_per_prompt,
+                num_channels_latents,
+                height,
+                width,
+                prompt_embeds.dtype,
+                device,
+                generator,
+                latents,
+            )
 
         # 7. Prepare mask latent variables
         mask, masked_image_latents = self.prepare_mask_latents(
