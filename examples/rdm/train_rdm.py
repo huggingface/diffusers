@@ -147,7 +147,7 @@ def parse_args():
     parser.add_argument(
         "--project_name",
         type=str,
-        default="huggingface_textual_inv",
+        default="huggingface_rdm_training",
         help="Name of wandb run",
     )
     parser.add_argument(
@@ -523,7 +523,7 @@ class RDMDataset(Dataset):
             img.shape[1],
         )
         img = img[(h - crop) // 2 : (h + crop) // 2, (w - crop) // 2 : (w + crop) // 2]
-        return img
+        return PIL.Image.fromarray(img)
     def __getitem__(self, i):
         example = {}
         image = self.dataset[self.image_column][i]
@@ -1009,11 +1009,12 @@ def main():
                     ema_unet.step(unet.parameters())
                 progress_bar.update(1)
                 global_step += 1
+                wandb_run.log({"train_loss": train_loss, "iter": global_step})
                 accelerator.log({"train_loss": train_loss}, step=global_step)
                 train_loss = 0.0
                 if global_step % args.log_frequency == 0:
                     prompt = dataset['train'][args.caption_column][0]
-                    pipeline = get_pipeline(vae, clip_model, tokenizer, unet, feature_extractor, accelerator)
+                    pipeline = get_pipeline(vae, clip_model, unet, tokenizer, feature_extractor, accelerator)
                     os.makedirs(os.path.join(args.output_dir, "imgs"), exist_ok=True)
                     save_path = os.path.join(args.output_dir, f"imgs/{global_step}.jpg")
                     if client:

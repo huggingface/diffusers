@@ -153,7 +153,10 @@ class RDMPipeline(DiffusionPipeline):
         if slice_size == "auto":
             # half the attention head size is usually a good trade-off between
             # speed and memory
-            slice_size = self.unet.config.attention_head_dim // 2
+            if isinstance(self.unet.config.attention_head_dim, int):
+                slice_size = self.unet.config.attention_head_dim // 2
+            else:
+                slice_size = self.unet.config.attention_head_dim[0] // 2
         self.unet.set_attention_slice(slice_size)
 
     def disable_attention_slicing(self):
