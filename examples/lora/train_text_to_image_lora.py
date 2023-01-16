@@ -5,7 +5,7 @@ import math
 import os
 import random
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Dict, Iterable, Optional
 
 import numpy as np
 import torch
@@ -15,6 +15,7 @@ import torch.utils.checkpoint
 import datasets
 import diffusers
 import transformers
+import wandb
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
@@ -28,9 +29,8 @@ from huggingface_hub import HfFolder, Repository, whoami
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
-from typing import Dict
 
-import wandb 
+
 wandb.login()
 
 run = wandb.init(project="stable_diffusion_ft_lora")
@@ -71,7 +71,6 @@ class LoraLayers(torch.nn.Module):
 
         self._register_state_dict_hook(map_to)
         self._register_load_state_dict_pre_hook(map_from, with_module=True)
-
 
 
 def parse_args():
@@ -863,7 +862,7 @@ def main():
             for i in tqdm(range(5), desc="Generating samples"):
                 prompt = args.save_sample_prompt
                 images = pipeline(prompt, num_inference_steps=30, generator=generator).images
-                image = images[np.random.choice(len(images))] 
+                image = images[np.random.choice(len(images))]
 
                 image.save(os.path.join(sample_dir, f"{i}.png"))
 
