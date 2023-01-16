@@ -702,8 +702,8 @@ def main():
     )
 
     # Prepare everything with our `accelerator`.
-    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        unet, optimizer, train_dataloader, lr_scheduler
+    lora_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        lora_layers, optimizer, train_dataloader, lr_scheduler
     )
     if args.use_ema:
         accelerator.register_for_checkpointing(ema_unet)
@@ -717,7 +717,9 @@ def main():
         weight_dtype = torch.bfloat16
 
     # Move text_encoder and vae to gpu and cast to weight_dtype
-    unet.to(accelerator.device, dtype=weight_dtype)
+    # The unet's weight_dtype is kept in full precision because of autocasts
+    # during the backward pass.
+    unet.to(accelerator.device)
     text_encoder.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
     if args.use_ema:
@@ -863,7 +865,7 @@ def main():
             for i in tqdm(range(5), desc="Generating samples"):
                 prompt = args.save_sample_prompt
                 images = pipeline(prompt, num_inference_steps=30, generator=generator).images
-                image = images[np.random.choice(len(images))]
+                image = images[0]
 
                 image.save(os.path.join(sample_dir, f"{i}.png"))
 
