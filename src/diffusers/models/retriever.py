@@ -61,12 +61,14 @@ class Retriever:
         self.clip_model = clip_model.to(device)
         self.tokenizer = tokenizer
         self.feature_extractor = feature_extractor
+        self.device = device
         if 'embeddings' not in self.dataset.features:
             self.dataset = get_dataset_with_emb(self.dataset, clip_model, feature_extractor, device, img_col)
             self.dataset.save_to_disk(dataset_save_path)
         self.dataset.add_faiss_index(column='embeddings')
     def get_knn(self, vec, k=20):
+        vec = np.array(vec).astype(np.float32)
         return self.dataset.get_nearest_examples('embeddings', vec, k=k)
-    def get_knn_from_text(self, prompt, k=29):
+    def get_knn_from_text(self, prompt, k=20):
         vec = map_txt_to_clip_feature(self.clip_model, self.tokenizer, prompt, self.device)
         return self.get_knn(vec, k)

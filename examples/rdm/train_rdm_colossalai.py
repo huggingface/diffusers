@@ -19,9 +19,14 @@ from torch.utils.data import Dataset
 import datasets
 import diffusers
 import transformers
-from accelerate import Accelerator
-from accelerate.logging import get_logger
-from accelerate.utils import set_seed
+import colossalai
+from colossalai.context.parallel_mode import ParallelMode
+from colossalai.core import global_context as gpc
+from colossalai.logging import disable_existing_loggers, get_dist_logger
+from colossalai.nn.optimizer.gemini_optimizer import GeminiAdamOptimizer
+from colossalai.nn.parallel.utils import get_static_torch_model
+from colossalai.utils import get_current_device
+from colossalai.utils.model.colo_init_context import ColoInitContext
 from datasets import load_dataset
 from diffusers import AutoencoderKL, DDPMScheduler, RDMPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
@@ -587,18 +592,22 @@ class EMAModel:
             if len(self.collected_params) != len(self.shadow_params):
                 raise ValueError("collected_params and shadow_params must have the same length")
 
+def gemini_zero_dpp(model: torch.nn.Module, placememt_policy: str = "auto"):
+    from colossalai.nn.parallel import GeminiDDP
+
+    model = GeminiDDP(
+        model, device=get_current_device(), placement_policy=placememt_policy, pin_memory=True, search_range_mb=64
+    )
+    return model
 
 def main():
     args = parse_args()
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
     if args.use_clip_retrieval:
         assert is_clip_retrieval_available()
-    accelerator = Accelerator(
-        gradient_accumulation_steps=args.gradient_accumulation_steps,
-        mixed_precision=args.mixed_precision,
-        log_with=args.report_to,
-        logging_dir=logging_dir,
-    )
+    colossalai.launch_from_torch(config={})
+    if args.seed is not None:
+        gpc.set_seed(args.seed)
     revision_dtype = torch.float32
     if args.revision == "fp16":
         revision_dtype = torch.float16
