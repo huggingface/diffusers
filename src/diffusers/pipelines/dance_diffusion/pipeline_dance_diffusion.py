@@ -17,7 +17,7 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 
-from ...utils import logging
+from ...utils import logging, randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 
 
@@ -100,16 +100,7 @@ class DanceDiffusionPipeline(DiffusionPipeline):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        rand_device = "cpu" if self.device.type == "mps" else self.device
-        if isinstance(generator, list):
-            shape = (1,) + shape[1:]
-            audio = [
-                torch.randn(shape, generator=generator[i], device=rand_device, dtype=self.unet.dtype)
-                for i in range(batch_size)
-            ]
-            audio = torch.cat(audio, dim=0).to(self.device)
-        else:
-            audio = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype).to(self.device)
+        audio = randn_tensor(shape, generator=generator, device=self.device, dtype=dtype)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps, device=audio.device)
