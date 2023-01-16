@@ -122,9 +122,12 @@ class StableDiffusionInpaintGenerator:
 
 
 if __name__ == "__main__":
+    import torch
     import requests
+    import torchvision
     import numpy as np
     from io import BytesIO
+    from tqdm import tqdm
 
     def download_image(url: str) -> Image.Image:
         raw_data = requests.get(url).content
@@ -134,10 +137,18 @@ if __name__ == "__main__":
     image_url = "https://ailabcdn.nolibox.com/tmp/3cf1b7cc46fc496bb758ed56c20f8195.png"
     mask_url = "https://ailabcdn.nolibox.com/tmp/31c8575a2fd24a9d9a840266073a0523.png"
 
-    image = download_image(image_url)
+    image = download_image(image_url).convert("RGB")
     mask = Image.fromarray(np.array(download_image(mask_url))[..., -1])
-    image.save("original.png")
     mask.save("mask.png")
-    results = generator.generate(InferenceParameters("a house", seed=142857, image_guidance=0.0), image, mask)
-    for i, rs in enumerate(results):
-        rs.image.save(f"out_{i}.png")
+    images = []
+    for guidance in tqdm(list(range(8))):
+        results = generator.generate(
+            InferenceParameters("a house", seed=142857, image_guidance=guidance * 0.125),
+            image,
+            mask,
+        )
+        images.append(np.array(results[0].image))
+    images.append(np.array(image))
+    mat = np.stack(images, axis=0).transpose([0, 3, 1, 2])
+    tensor = torch.from_numpy(mat.astype(np.float32) / 255.0)
+    torchvision.utils.save_image(tensor, "out.png", normalize=True, nrow=3)
