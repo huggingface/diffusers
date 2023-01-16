@@ -17,7 +17,7 @@ import os
 hf_cache_home = os.path.expanduser(
     os.getenv("HF_HOME", os.path.join(os.getenv("XDG_CACHE_HOME", "~/.cache"), "huggingface"))
 )
-default_cache_path = os.path.join(hf_cache_home, "diffusers")
+default_cache_path = os.path.join(hf_cache_home, "hub")
 
 
 CONFIG_NAME = "config.json"
