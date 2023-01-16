@@ -24,13 +24,24 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import deprecate, is_accelerate_available, is_accelerate_version, logging, randn_tensor
+from ...utils import PIL_INTERPOLATION, deprecate, is_accelerate_available, is_accelerate_version, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+def preprocess_image(image):
+    image = image.convert("RGB")
+    w, h = image.size
+    w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
+    image = image.resize((w, h), resample=PIL_INTERPOLATION["lanczos"])
+    image = np.array(image).astype(np.float32) / 255.0
+    image = image[None].transpose(0, 3, 1, 2)
+    image = torch.from_numpy(image)
+    return 2.0 * image - 1.0
 
 
 def prepare_mask_and_masked_image(image, mask):
@@ -574,6 +585,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         return latents
 
     def prepare_image_based_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator):
+        image = preprocess_image(image)
         image = image.to(device=self.device, dtype=dtype)
         init_latent_dist = self.vae.encode(image).latent_dist
         init_latents = init_latent_dist.sample(generator=generator)
@@ -642,7 +654,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
 
     def get_timesteps(self, num_inference_steps, image_guidance, device):
         # get the original timestep using init_timestep
-        init_timestep = min(int(num_inference_steps * image_guidance), num_inference_steps)
+        init_timestep = min(int(num_inference_steps * (1.0 - image_guidance)), num_inference_steps)
 
         t_start = max(num_inference_steps - init_timestep, 0)
         timesteps = self.scheduler.timesteps[t_start:]
