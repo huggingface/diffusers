@@ -20,6 +20,7 @@ from typing import Union
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..utils import randn_tensor
 from .scheduling_utils import SchedulerMixin
 
 
@@ -80,7 +81,7 @@ class ScoreSdeVpScheduler(SchedulerMixin, ConfigMixin):
         x_mean = x + drift * dt
 
         # add noise
-        noise = torch.randn(x.shape, layout=x.layout, generator=generator).to(x.device)
+        noise = randn_tensor(x.shape, layout=x.layout, generator=generator, device=x.device, dtype=x.dtype)
         x = x_mean + diffusion * math.sqrt(-dt) * noise
 
         return x, x_mean

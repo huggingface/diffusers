@@ -19,6 +19,7 @@ import torch
 
 from ...models import UNet2DModel
 from ...schedulers import PNDMScheduler
+from ...utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
@@ -38,6 +39,9 @@ class PNDMPipeline(DiffusionPipeline):
 
     def __init__(self, unet: UNet2DModel, scheduler: PNDMScheduler):
         super().__init__()
+
+        scheduler = PNDMScheduler.from_config(scheduler.config)
+
         self.register_modules(unet=unet, scheduler=scheduler)
 
     @torch.no_grad()
@@ -72,11 +76,11 @@ class PNDMPipeline(DiffusionPipeline):
         # the official paper: https://arxiv.org/pdf/2202.09778.pdf
 
         # Sample gaussian noise to begin loop
-        image = torch.randn(
+        image = randn_tensor(
             (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
             generator=generator,
+            device=self.device,
         )
-        image = image.to(self.device)
 
         self.scheduler.set_timesteps(num_inference_steps)
         for t in self.progress_bar(self.scheduler.timesteps):

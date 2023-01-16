@@ -16,7 +16,7 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ...utils import PIL_INTERPOLATION, deprecate
+from ...utils import PIL_INTERPOLATION, deprecate, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
@@ -121,12 +121,7 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
         latents_shape = (batch_size, self.unet.in_channels // 2, height, width)
         latents_dtype = next(self.unet.parameters()).dtype
 
-        if self.device.type == "mps":
-            # randn does not work reproducibly on mps
-            latents = torch.randn(latents_shape, generator=generator, device="cpu", dtype=latents_dtype)
-            latents = latents.to(self.device)
-        else:
-            latents = torch.randn(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
+        latents = randn_tensor(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
 
         image = image.to(device=self.device, dtype=latents_dtype)
 

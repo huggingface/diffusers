@@ -41,4 +41,7 @@ _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS = [
     "EulerAncestralDiscreteScheduler",
     "DPMSolverMultistepScheduler",
     "DPMSolverSinglestepScheduler",
+    "KDPM2DiscreteScheduler",
+    "KDPM2AncestralDiscreteScheduler",
+    "DEISMultistepScheduler",
 ]

@@ -34,7 +34,7 @@ class PaintByExampleImageEncoder(CLIPPreTrainedModel):
         self.proj_out = nn.Linear(config.hidden_size, self.proj_size)
 
         # uncondition for scaling
-        self.uncond_vector = nn.Parameter(torch.rand((1, 1, self.proj_size)))
+        self.uncond_vector = nn.Parameter(torch.randn((1, 1, self.proj_size)))
 
     def forward(self, pixel_values):
         clip_output = self.model(pixel_values=pixel_values)

@@ -23,7 +23,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, BaseOutput, deprecate
+from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, BaseOutput, deprecate, randn_tensor
 from .scheduling_utils import SchedulerMixin
 
 
@@ -201,6 +201,14 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
         """
+
+        if num_inference_steps > self.config.num_train_timesteps:
+            raise ValueError(
+                f"`num_inference_steps`: {num_inference_steps} cannot be larger than `self.config.train_timesteps`:"
+                f" {self.config.num_train_timesteps} as the unet model trained with this scheduler can only handle"
+                f" maximal {self.config.num_train_timesteps} timesteps."
+            )
+
         self.num_inference_steps = num_inference_steps
         step_ratio = self.config.num_train_timesteps // self.num_inference_steps
         # creates integer timesteps by multiplying by ratio
@@ -316,14 +324,9 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
                 )
 
             if variance_noise is None:
-                if device.type == "mps":
-                    # randn does not work reproducibly on mps
-                    variance_noise = torch.randn(model_output.shape, dtype=model_output.dtype, generator=generator)
-                    variance_noise = variance_noise.to(device)
-                else:
-                    variance_noise = torch.randn(
-                        model_output.shape, generator=generator, device=device, dtype=model_output.dtype
-                    )
+                variance_noise = randn_tensor(
+                    model_output.shape, generator=generator, device=device, dtype=model_output.dtype
+                )
             variance = self._get_variance(timestep, prev_timestep) ** (0.5) * eta * variance_noise
 
             prev_sample = prev_sample + variance
