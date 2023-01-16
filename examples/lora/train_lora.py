@@ -5,7 +5,7 @@ import math
 import os
 import warnings
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -20,6 +20,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
 from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
+from diffusers.loaders import AttnProcsLayers
 from diffusers.models.cross_attention import LoRACrossAttnProcessor
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
@@ -34,38 +35,8 @@ from transformers import AutoTokenizer, PretrainedConfig
 wandb.login()
 
 
-class LoraLayers(torch.nn.Module):
-    def __init__(self, state_dict: Dict[str, torch.Tensor]):
-        super().__init__()
-        self.layers = torch.nn.ModuleList(state_dict.values())
-        self.mapping = {k: v for k, v in enumerate(state_dict.keys())}
-        self.rev_mapping = {v: k for k, v in enumerate(state_dict.keys())}
-
-        # we add a hook to state_dict() and load_state_dict() so that the
-        # naming fits with `unet.attn_processors`
-        def map_to(module, state_dict, *args, **kwargs):
-            new_state_dict = {}
-            for key, value in state_dict.items():
-                num = int(key.split(".")[1])  # 0 is always "layers"
-                new_key = key.replace(f"layers.{num}", module.mapping[num])
-                new_state_dict[new_key] = value
-
-            return new_state_dict
-
-        def map_from(module, state_dict, *args, **kwargs):
-            all_keys = list(state_dict.keys())
-            for key in all_keys:
-                replace_key = ".".join(key.split(".")[:-3])
-                new_key = key.replace(replace_key, f"layers.{module.rev_mapping[replace_key]}")
-                state_dict[new_key] = state_dict[key]
-                del state_dict[key]
-
-        self._register_state_dict_hook(map_to)
-        self._register_load_state_dict_pre_hook(map_from, with_module=True)
-
-
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.10.0.dev0")
+check_min_version("0.12.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -638,7 +609,7 @@ def main(args):
         )
 
     unet.set_attn_processor(lora_attn_procs)
-    lora_layers = LoraLayers(unet.attn_processors)
+    lora_layers = AttnProcsLayers(unet.attn_processors)
 
     state_dict = lora_layers.state_dict()
     lora_layers.load_state_dict(state_dict)
@@ -898,7 +869,7 @@ def main(args):
     # Save the lora layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        torch.save(lora_layers.state_dict(), os.path.join(args.output_dir, "lora_layers.bin"))
+        unet.save_attn_procs(args.output_dir)
 
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
