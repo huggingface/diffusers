@@ -852,7 +852,7 @@ def main():
             pipeline = StableDiffusionPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 unet=accelerator.unwrap_model(unet),
-                text_encoder=accelerator.unwrap_model(text_encoder),
+                text_encoder=text_encoder,
                 revision=args.revision,
             )
             pipeline.save_pretrained(args.output_dir)
