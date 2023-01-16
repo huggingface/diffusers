@@ -365,7 +365,6 @@ def gemini_zero_dpp(model: torch.nn.Module, placememt_policy: str = "auto"):
 
 
 def main(args):
-    
     if args.seed is None:
         colossalai.launch_from_torch(config={})
     else:
