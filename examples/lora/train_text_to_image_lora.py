@@ -719,7 +719,7 @@ def main():
     # Move text_encoder and vae to gpu and cast to weight_dtype
     # The unet's weight_dtype is kept in full precision because of autocasts
     # during the backward pass.
-    unet.to(accelerator.device)
+    unet.to(accelerator.device, dtype=weight_dtype)
     text_encoder.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
     if args.use_ema:
