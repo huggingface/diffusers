@@ -23,7 +23,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
 from datasets import load_dataset
-from diffusers import AutoencoderKL, DDPMScheduler, RDMPipeline, UNet2DConditionModel
+from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, RDMPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
 from diffusers.utils.import_utils import is_xformers_available
@@ -31,7 +31,7 @@ from huggingface_hub import HfFolder, Repository, whoami
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPModel, CLIPFeatureExtractor, CLIPTokenizer
-
+from packaging import version
 import sys
 if sys.version_info < (3, 8):
     import importlib_metadata
@@ -40,6 +40,69 @@ else:
 from typing import Callable, List, Optional, Union
 import requests
 import faiss
+if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
+    PIL_INTERPOLATION = {
+        "linear": PIL.Image.Resampling.BILINEAR,
+        "bilinear": PIL.Image.Resampling.BILINEAR,
+        "bicubic": PIL.Image.Resampling.BICUBIC,
+        "lanczos": PIL.Image.Resampling.LANCZOS,
+        "nearest": PIL.Image.Resampling.NEAREST,
+    }
+else:
+    PIL_INTERPOLATION = {
+        "linear": PIL.Image.LINEAR,
+        "bilinear": PIL.Image.BILINEAR,
+        "bicubic": PIL.Image.BICUBIC,
+        "lanczos": PIL.Image.LANCZOS,
+        "nearest": PIL.Image.NEAREST,
+    }
+import importlib
+_wandb_available = importlib.util.find_spec("wandb") is not None
+def is_wandb_available():
+    return _wandb_available
+wandb = None
+if is_wandb_available():
+    import wandb
+
+def wandb_setup(
+    args: dict,
+    project_name: str = "glide-text2im-finetune",
+):
+    return wandb.init(
+        project=project_name,
+        config=args,
+    )
+
+def get_pipeline(vae, clip_model, unet, tokenizer, feature_extractor, accelerator):
+    # I disabled safety checker as it causes an oom
+    pipeline = RDMPipeline(
+        vae=vae,
+        clip=clip_model,
+        unet=accelerator.unwrap_model(unet),
+        tokenizer=tokenizer,
+        scheduler=PNDMScheduler(
+            beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", skip_prk_steps=True, steps_offset=1
+        ),
+        feature_extractor=feature_extractor
+    )
+    return pipeline
+
+def log_progress(pipeline, args, step, prompt, save_path, wandb_run=None, logs={}, retrieved_images=None):
+    logger.info("Running pipeline")
+    with torch.autocast("cuda"):
+        image = pipeline(
+            prompt, retrieved_images=retrieved_images, height=args.resolution, width=args.resolution, num_inference_steps=50, guidance_scale=args.guidance_scale
+        ).images[0]
+
+    image.save(save_path)
+    if is_wandb_available():
+        wandb_run.log(
+            {
+                **logs,
+                "iter": step,
+                "samples": wandb.Image(save_path, caption=prompt),
+            }
+        )
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.10.0.dev0")
@@ -76,13 +139,31 @@ def preprocess_images(images, feature_extractor: CLIPFeatureExtractor) -> torch.
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
+        "--guidance_scale",
+        type=float,
+        default=7.5,
+        help="Guidance scale for inference.",
+    )
+    parser.add_argument(
+        "--project_name",
+        type=str,
+        default="huggingface_textual_inv",
+        help="Name of wandb run",
+    )
+    parser.add_argument(
+        "--log_frequency",
+        type=int,
+        default=100,
+        help="Frequency to log/save the model.",
+    )
+    parser.add_argument(
         "--unet_config",
         type=str,
         default=None,
         help="The configuration file for the unet. Defaults to getting the pretrained model",
     )
     parser.add_argument(
-        "--num_query",
+        "--num_queries",
         type=int,
         default=20,
         help="Number of query images.",
@@ -356,6 +437,19 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 dataset_name_mapping = {
     "lambdalabs/pokemon-blip-captions": ("image", "text"),
 }
+def retrieve_images_from_clip_retrieval(client, text, num_queries=10):
+    retrieved_queries = client.query(text=text)
+    retrieved_images = []
+    for retrieved_query in retrieved_queries:
+        if len(retrieved_images) == num_queries:
+            break
+        try:
+            retrieved_image = PIL.Image.open(requests.get(retrieved_query['url'], stream=True).raw)
+            retrieved_image = np.array(retrieved_image)
+            retrieved_images.append(PIL.Image.fromarray(retrieved_image))
+        except:
+            None
+    return retrieved_images
 
 class RDMDataset(Dataset):
     def __init__(
@@ -372,6 +466,7 @@ class RDMDataset(Dataset):
         center_crop=False,
         use_clip_retrieval=True,
         num_queries=20,
+        client=None
     ):
         self.dataset = dataset
         self.image_column = image_column
@@ -386,7 +481,7 @@ class RDMDataset(Dataset):
         self.client = None
         self.num_queries = num_queries
         if use_clip_retrieval:
-            self.client = ClipClient(url="https://knn5.laion.ai/knn-service", indice_name="laion5B")
+            self.client = client
 
 
         self.interpolation = {
@@ -440,25 +535,14 @@ class RDMDataset(Dataset):
         # TODO: remove current image from nearest neighbors?
 
         if self.client:
-            retrieved_queries = self.client.query(text=text)
-            retrieved_images = []
-            for retrieved_query in retrieved_queries:
-                if len(retrieved_images) == self.num_queries:
-                    break
-                try:
-                    retrieved_image = PIL.Image.open(requests.get(retrieved_query['url'], stream=True).raw)
-                    retrieved_image = np.array(retrieved_image)
-                    if self.center_crop:
-                        retrieved_image = self.center_crop_img(retrieved_image)
-                    retrieved_images.append(PIL.Image.fromarray(retrieved_image))
-                except Exception as e:
-                    print(e)
-            print(f"Retrieved {len(retrieved_images)} images")
+            retrieved_images = retrieve_images_from_clip_retrieval(self.client, text, num_queries=self.num_queries)
         else:
             retrieved_images = self.retriever.get_knn_from_text(text).examples[self.image_column][:self.num_queries]
         for i in range(len(retrieved_images)):
             if not retrieved_images[i].mode == "RGB":
                 retrieved_images[i] = retrieved_images[i].convert("RGB")
+            if self.center_crop:
+                retrieved_images[i] = self.center_crop_img(np.array(retrieved_images[i]))
             retrieved_images[i] = self.train_transforms(retrieved_images[i])
             retrieved_images[i] = np.array(retrieved_images[i]).astype(np.float32)
             retrieved_images[i] = (retrieved_images[i] / 127.5 - 1.0).astype(np.float32)
@@ -469,9 +553,6 @@ class RDMDataset(Dataset):
         img = np.array(image).astype(np.uint8)
 
         image = PIL.Image.fromarray(img)
-        if self.center_crop:
-            image = self.center_crop_img(np.array(image))
-            image = PIL.Image.fromarray(image)
         image = self.train_transforms(image)
         image = np.array(image).astype(np.float32)
         image = (image / 127.5 - 1.0).astype(np.float32)
@@ -591,6 +672,9 @@ class EMAModel:
 def main():
     args = parse_args()
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
+    wandb_run = None
+    if is_wandb_available():
+        wandb_run = wandb_setup(args, args.project_name)
     if args.use_clip_retrieval:
         assert is_clip_retrieval_available()
     accelerator = Accelerator(
@@ -774,7 +858,8 @@ def main():
     retriever = None
     if not args.use_clip_retrieval:
         retriever = Retriever(clip_model, tokenizer, feature_extractor, dataset["train"], args.dataset_save_path, accelerator.device, args.image_column)
-    train_dataset = RDMDataset(dataset["train"],args.image_column,args.caption_column, tokenizer,feature_extractor,retriever, center_crop=args.center_crop, size=512, use_clip_retrieval=args.use_clip_retrieval, num_queries=args.num_query)
+    client = ClipClient(url="https://knn5.laion.ai/knn-service", indice_name="laion5B")
+    train_dataset = RDMDataset(dataset["train"],args.image_column,args.caption_column, tokenizer,feature_extractor,retriever, center_crop=args.center_crop, size=512, use_clip_retrieval=args.use_clip_retrieval, num_queries=args.num_queries, client=client)
     train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.train_batch_size, shuffle=True)
 
     # Scheduler and math around the number of training steps.
@@ -926,7 +1011,21 @@ def main():
                 global_step += 1
                 accelerator.log({"train_loss": train_loss}, step=global_step)
                 train_loss = 0.0
-
+                if global_step % args.log_frequency == 0:
+                    prompt = dataset['train'][args.caption_column][0]
+                    pipeline = get_pipeline(vae, clip_model, tokenizer, unet, feature_extractor, accelerator)
+                    os.makedirs(os.path.join(args.output_dir, "imgs"), exist_ok=True)
+                    save_path = os.path.join(args.output_dir, f"imgs/{global_step}.jpg")
+                    if client:
+                        retrieved_images = retrieve_images_from_clip_retrieval(client, prompt, num_queries=args.num_queries)
+                    else:
+                        retrieved_images = retriever.get_knn_from_text(prompt).examples[args.image_column][:args.num_queries]
+                    for i in range(len(retrieved_images)):
+                        if not retrieved_images[i].mode == "RGB":
+                            retrieved_images[i] = retrieved_images[i].convert("RGB")
+                        retrieved_images[i] = retrieved_images[i].resize((args.resolution, args.resolution), resample=PIL_INTERPOLATION['bicubic'])
+                    log_progress(pipeline, args, global_step, prompt, save_path, wandb_run, retrieved_images=retrieved_images)
+                    del pipeline
                 if global_step % args.checkpointing_steps == 0:
                     if accelerator.is_main_process:
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
