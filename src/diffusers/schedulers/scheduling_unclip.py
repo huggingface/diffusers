@@ -219,7 +219,6 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
             returning a tuple, the first element is the sample tensor.
 
         """
-
         t = timestep
 
         if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type == "learned_range":
