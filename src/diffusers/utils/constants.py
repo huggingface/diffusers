@@ -13,7 +13,8 @@
 # limitations under the License.
 import os
 
-from huggingface_hub.constants import hf_cache_home, HUGGINGFACE_HUB_CACHE
+from huggingface_hub.constants import HUGGINGFACE_HUB_CACHE, hf_cache_home
+
 
 default_cache_path = HUGGINGFACE_HUB_CACHE
 
