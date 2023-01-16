@@ -89,7 +89,7 @@ class DiTPipeline(DiffusionPipeline):
         )
         latent_model_input = torch.cat([latents] * 2) if guidance_scale > 1 else latents
 
-        class_labels = torch.tensor(class_labels, device=self.device)
+        class_labels = torch.tensor(class_labels, device=self.device).reshape(-1)
         class_null = torch.tensor([1000] * batch_size, device=self.device)
         class_labels_input = torch.cat([class_labels, class_null], 0) if guidance_scale > 1 else class_labels
 

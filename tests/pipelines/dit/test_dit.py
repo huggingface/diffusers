@@ -82,9 +82,3 @@ class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
-
-    def test_inference_batch_consistent(self):
-        pass
-
-    def test_inference_batch_single_identical(self):
-        pass
