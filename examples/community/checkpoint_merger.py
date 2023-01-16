@@ -169,9 +169,6 @@ class CheckpointMergerPipeline(DiffusionPipeline):
             cached_folders[0], torch_dtype=torch_dtype, device_map=device_map
         )
         final_pipe.to(self.device)
-        import ipdb
-
-        ipdb.set_trace()
 
         checkpoint_path_2 = None
         if len(cached_folders) > 2:
