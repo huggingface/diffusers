@@ -169,9 +169,9 @@ class StableDiffusionPipeline(DiffusionPipeline):
         Loads textual inversion embeddings. Receives a dictionary with the following keys:
         - `token`: name of the token to be added to the tokenizers' vocabulary
         - `embedding`: path to the embedding of the token to be added to the text encoder's embedding matrix
-        
-        Iters through the dictionary and adds the token to the tokenizer's vocabulary and the embedding to the
-        text encoder's embedding matrix.
+
+        Iters through the dictionary and adds the token to the tokenizer's vocabulary and the embedding to the text
+        encoder's embedding matrix.
         """
         for token, embedding_path in embeddings.items():
             # check if token in tokenizer vocab
