@@ -5,7 +5,7 @@ import math
 import os
 import warnings
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Dict, Optional
 
 import torch
 import torch.nn.functional as F
@@ -15,12 +15,13 @@ from torch.utils.data import Dataset
 import datasets
 import diffusers
 import transformers
+import wandb
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
 from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
-from diffusers.optimization import get_scheduler
 from diffusers.models.cross_attention import LoRACrossAttnProcessor
+from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
 from diffusers.utils.import_utils import is_xformers_available
 from huggingface_hub import HfFolder, Repository, whoami
@@ -28,7 +29,7 @@ from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
-import wandb
+
 
 wandb.login()
 

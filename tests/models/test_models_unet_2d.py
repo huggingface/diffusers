@@ -21,13 +21,8 @@ import unittest
 import torch
 
 from diffusers import UNet2DModel
-from diffusers.utils import (
-    floats_tensor,
-    logging,
-    slow,
-    torch_all_close,
-    torch_device,
-)
+from diffusers.utils import floats_tensor, logging, slow, torch_all_close, torch_device
+
 from ..test_modeling_common import ModelTesterMixin
 
 

@@ -537,10 +537,8 @@ class SchedulerCommonTest(unittest.TestCase):
                 )
                 self.assertTrue(
                     hasattr(scheduler, "scale_model_input"),
-                    (
-                        f"{scheduler_class} does not implement a required class method `scale_model_input(sample,"
-                        " timestep)`"
-                    ),
+                    f"{scheduler_class} does not implement a required class method `scale_model_input(sample,"
+                    " timestep)`",
                 )
             self.assertTrue(
                 hasattr(scheduler, "step"),

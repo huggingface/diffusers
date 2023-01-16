@@ -474,7 +474,7 @@ class ModelMixin(torch.nn.Module):
         else:
             if is_safetensors_available():
                 try:
-                    model_file = cls._get_model_file(
+                    model_file = _get_model_file(
                         pretrained_model_name_or_path,
                         weights_name=SAFETENSORS_WEIGHTS_NAME,
                         cache_dir=cache_dir,
@@ -490,7 +490,7 @@ class ModelMixin(torch.nn.Module):
                 except:
                     pass
             if model_file is None:
-                model_file = cls._get_model_file(
+                model_file = _get_model_file(
                     pretrained_model_name_or_path,
                     weights_name=WEIGHTS_NAME,
                     cache_dir=cache_dir,
