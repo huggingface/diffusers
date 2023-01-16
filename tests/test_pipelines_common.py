@@ -16,7 +16,6 @@ from diffusers import (
     CycleDiffusionPipeline,
     DanceDiffusionPipeline,
     DiffusionPipeline,
-    DiTPipeline,
     RePaintPipeline,
     StableDiffusionDepth2ImgPipeline,
     StableDiffusionImg2ImgPipeline,
@@ -82,7 +81,6 @@ class PipelineTesterMixin:
             CycleDiffusionPipeline,
             RePaintPipeline,
             StableDiffusionImg2ImgPipeline,
-            DiTPipeline,
         ):
             # FIXME: inconsistent outputs on MPS
             return
@@ -276,7 +274,6 @@ class PipelineTesterMixin:
             CycleDiffusionPipeline,
             RePaintPipeline,
             StableDiffusionImg2ImgPipeline,
-            DiTPipeline,
         ):
             # FIXME: inconsistent outputs on MPS
             return
@@ -394,7 +391,6 @@ class PipelineTesterMixin:
             CycleDiffusionPipeline,
             RePaintPipeline,
             StableDiffusionImg2ImgPipeline,
-            DiTPipeline,
         ):
             # FIXME: inconsistent outputs on MPS
             return
@@ -466,7 +462,6 @@ class PipelineTesterMixin:
             RePaintPipeline,
             StableDiffusionImg2ImgPipeline,
             StableDiffusionDepth2ImgPipeline,
-            DiTPipeline,
         ):
             # FIXME: inconsistent outputs on MPS
             return
@@ -520,7 +515,7 @@ class PipelineTesterMixin:
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
     )
-    def test_xformers_attention_forward_pass(self):
+    def test_xformers_attention_forwardGenerator_pass(self):
         if not self.test_xformers_attention:
             return
 
