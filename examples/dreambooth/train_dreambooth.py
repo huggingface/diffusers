@@ -57,6 +57,12 @@ def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: st
     else:
         raise ValueError(f"{model_class} is not supported.")
 
+def reportVramUsage(note, device_id):
+    t = torch.cuda.get_device_properties(device_id).total_memory / 1073741824
+    r = torch.cuda.memory_reserved(device_id) / 1073741824
+    a = torch.cuda.memory_allocated(device_id) / 1073741824
+    f = r-a  # free inside reserved
+    print(f"({note}) Device {device_id} === Total: {t:.2f} GB, Reserved: {r:.2f} GB, Allocated: {a:.2f} GB, Free: {f:.2f} GB")   
 
 def parse_args(input_args=None):
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
@@ -780,12 +786,12 @@ def main(args):
                         logger.info(f"Saved state to {save_path}")
 
                         # Also generate and save sample images if specified
-                        if args.save_samples > 0:
+                        if args.samples_per_checkpoint > 0:
                             # Make sure any data leftover from previous interim pipeline is cleared
                             if torch.cuda.is_available():
                                 torch.cuda.empty_cache()
                                 
-                            logger.info(f"Generating {args.save_samples} samples at step {global_step} with prompt: {args.sample_prompt}")
+                            logger.info(f"Generating {args.samples_per_checkpoint} samples at step {global_step} with prompt: {args.sample_prompt}")
                             
                             # Load current training state into a new diffusion pipeline to generate samples
                             pipeline = DiffusionPipeline.from_pretrained(
@@ -804,7 +810,7 @@ def main(args):
                             with torch.cuda.amp.autocast(enabled=True):
                                 images = pipeline(
                                     prompt=args.sample_prompt, 
-                                    num_images_per_prompt=args.save_samples,
+                                    num_images_per_prompt=args.samples_per_checkpoint,
                                     num_inference_steps=args.sample_steps,
                                     generator=sampleGenerator,
                                     width=args.resolution,
