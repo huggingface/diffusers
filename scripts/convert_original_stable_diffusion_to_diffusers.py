@@ -784,17 +784,17 @@ def convert_open_clip_checkpoint(checkpoint):
 
 
 def load_pipeline_from_original_stable_diffusion_ckpt(
-        checkpoint_path: str,
-        original_config_file: str = None,
-        image_size: int = 512,
-        prediction_type: str = None,
-        model_type: str = None,
-        extract_ema: bool = False,
-        scheduler_type: str = 'pndm',
-        num_in_channels: int = None,
-        upcast_attention: bool = None,
-        device: str = None,
-        from_safetensors: bool = False
+    checkpoint_path: str,
+    original_config_file: str = None,
+    image_size: int = 512,
+    prediction_type: str = None,
+    model_type: str = None,
+    extract_ema: bool = False,
+    scheduler_type: str = "pndm",
+    num_in_channels: int = None,
+    upcast_attention: bool = None,
+    device: str = None,
+    from_safetensors: bool = False,
 ) -> StableDiffusionPipeline:
     """
     Load a Stable Diffusion pipeline object from a CompVis-style `.ckpt`/`.safetensors` file and (ideally) a `.yaml` config file.
@@ -998,7 +998,6 @@ def load_pipeline_from_original_stable_diffusion_ckpt(
     return pipe
 
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
@@ -1085,7 +1084,6 @@ if __name__ == "__main__":
         scheduler_type=args.scheduler_type,
         num_in_channels=args.num_in_channels,
         upcast_attention=args.upcast_attention,
-        from_safetensors=args.from_safetensors
+        from_safetensors=args.from_safetensors,
     )
     pipe.save_pretrained(args.dump_path)
-
