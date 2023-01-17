@@ -102,7 +102,7 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
             the `dtype` used for params and computation.
     """
 
-    _compatibles = [e.name for e in FlaxKarrasDiffusionSchedulers]()
+    _compatibles = [e.name for e in FlaxKarrasDiffusionSchedulers]
     _deprecated_kwargs = ["predict_epsilon"]
 
     dtype: jnp.dtype
