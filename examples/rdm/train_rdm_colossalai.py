@@ -19,16 +19,11 @@ from torch.utils.data import Dataset
 import datasets
 import diffusers
 import transformers
-import colossalai
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
-from colossalai.logging import disable_existing_loggers, get_dist_logger
-from colossalai.nn.optimizer.gemini_optimizer import GeminiAdamOptimizer
-from colossalai.nn.parallel.utils import get_static_torch_model
-from colossalai.utils import get_current_device
-from colossalai.utils.model.colo_init_context import ColoInitContext
+from accelerate import Accelerator
+from accelerate.logging import get_logger
+from accelerate.utils import set_seed
 from datasets import load_dataset
-from diffusers import AutoencoderKL, DDPMScheduler, RDMPipeline, UNet2DConditionModel
+from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, RDMPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
 from diffusers.utils.import_utils import is_xformers_available
@@ -36,7 +31,7 @@ from huggingface_hub import HfFolder, Repository, whoami
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPModel, CLIPFeatureExtractor, CLIPTokenizer
-
+from packaging import version
 import sys
 if sys.version_info < (3, 8):
     import importlib_metadata
@@ -45,6 +40,78 @@ else:
 from typing import Callable, List, Optional, Union
 import requests
 import faiss
+import colossalai
+from colossalai.context.parallel_mode import ParallelMode
+from colossalai.core import global_context as gpc
+from colossalai.logging import disable_existing_loggers, get_dist_logger
+from colossalai.nn.optimizer.gemini_optimizer import GeminiAdamOptimizer
+from colossalai.nn.parallel.utils import get_static_torch_model
+from colossalai.utils import get_current_device
+from colossalai.utils.model.colo_init_context import ColoInitContext
+
+if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
+    PIL_INTERPOLATION = {
+        "linear": PIL.Image.Resampling.BILINEAR,
+        "bilinear": PIL.Image.Resampling.BILINEAR,
+        "bicubic": PIL.Image.Resampling.BICUBIC,
+        "lanczos": PIL.Image.Resampling.LANCZOS,
+        "nearest": PIL.Image.Resampling.NEAREST,
+    }
+else:
+    PIL_INTERPOLATION = {
+        "linear": PIL.Image.LINEAR,
+        "bilinear": PIL.Image.BILINEAR,
+        "bicubic": PIL.Image.BICUBIC,
+        "lanczos": PIL.Image.LANCZOS,
+        "nearest": PIL.Image.NEAREST,
+    }
+import importlib
+_wandb_available = importlib.util.find_spec("wandb") is not None
+def is_wandb_available():
+    return _wandb_available
+wandb = None
+if is_wandb_available():
+    import wandb
+
+def wandb_setup(
+    args: dict,
+    project_name: str = "glide-text2im-finetune",
+):
+    return wandb.init(
+        project=project_name,
+        config=args,
+    )
+
+def get_pipeline(vae, clip_model, unet, tokenizer, feature_extractor):
+    # I disabled safety checker as it causes an oom
+    pipeline = RDMPipeline(
+        vae=vae,
+        clip=clip_model,
+        unet=unet,
+        tokenizer=tokenizer,
+        scheduler=PNDMScheduler(
+            beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", skip_prk_steps=True, steps_offset=1
+        ),
+        feature_extractor=feature_extractor
+    )
+    return pipeline
+
+def log_progress(pipeline, args, step, prompt, save_path, wandb_run=None, logs={}, retrieved_images=None):
+    logger.info("Running pipeline")
+    with torch.autocast("cuda"):
+        image = pipeline(
+            prompt, retrieved_images=retrieved_images, height=args.resolution, width=args.resolution, num_inference_steps=50, guidance_scale=args.guidance_scale
+        ).images[0]
+
+    image.save(save_path)
+    if is_wandb_available():
+        wandb_run.log(
+            {
+                **logs,
+                "iter": step,
+                "samples": wandb.Image(save_path, caption=prompt),
+            }
+        )
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.10.0.dev0")
@@ -81,10 +148,22 @@ def preprocess_images(images, feature_extractor: CLIPFeatureExtractor) -> torch.
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
-        "--placement",
+        "--guidance_scale",
+        type=float,
+        default=7.5,
+        help="Guidance scale for inference.",
+    )
+    parser.add_argument(
+        "--project_name",
         type=str,
-        default="cpu",
-        help="Placement Policy for Gemini. Valid when using colossalai as dist plan.",
+        default="huggingface_rdm_training",
+        help="Name of wandb run",
+    )
+    parser.add_argument(
+        "--log_frequency",
+        type=int,
+        default=100,
+        help="Frequency to log/save the model.",
     )
     parser.add_argument(
         "--unet_config",
@@ -93,7 +172,7 @@ def parse_args():
         help="The configuration file for the unet. Defaults to getting the pretrained model",
     )
     parser.add_argument(
-        "--num_query",
+        "--num_queries",
         type=int,
         default=20,
         help="Number of query images.",
@@ -367,6 +446,19 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 dataset_name_mapping = {
     "lambdalabs/pokemon-blip-captions": ("image", "text"),
 }
+def retrieve_images_from_clip_retrieval(client, text, num_queries=10):
+    retrieved_queries = client.query(text=text)
+    retrieved_images = []
+    for retrieved_query in retrieved_queries:
+        if len(retrieved_images) == num_queries:
+            break
+        try:
+            retrieved_image = PIL.Image.open(requests.get(retrieved_query['url'], stream=True).raw)
+            retrieved_image = np.array(retrieved_image)
+            retrieved_images.append(PIL.Image.fromarray(retrieved_image))
+        except:
+            None
+    return retrieved_images
 
 class RDMDataset(Dataset):
     def __init__(
@@ -383,6 +475,7 @@ class RDMDataset(Dataset):
         center_crop=False,
         use_clip_retrieval=True,
         num_queries=20,
+        client=None
     ):
         self.dataset = dataset
         self.image_column = image_column
@@ -397,7 +490,7 @@ class RDMDataset(Dataset):
         self.client = None
         self.num_queries = num_queries
         if use_clip_retrieval:
-            self.client = ClipClient(url="https://knn5.laion.ai/knn-service", indice_name="laion5B")
+            self.client = client
 
 
         self.interpolation = {
@@ -439,7 +532,7 @@ class RDMDataset(Dataset):
             img.shape[1],
         )
         img = img[(h - crop) // 2 : (h + crop) // 2, (w - crop) // 2 : (w + crop) // 2]
-        return img
+        return PIL.Image.fromarray(img)
     def __getitem__(self, i):
         example = {}
         image = self.dataset[self.image_column][i]
@@ -451,25 +544,14 @@ class RDMDataset(Dataset):
         # TODO: remove current image from nearest neighbors?
 
         if self.client:
-            retrieved_queries = self.client.query(text=text)
-            retrieved_images = []
-            for retrieved_query in retrieved_queries:
-                if len(retrieved_images) == self.num_queries:
-                    break
-                try:
-                    retrieved_image = PIL.Image.open(requests.get(retrieved_query['url'], stream=True).raw)
-                    retrieved_image = np.array(retrieved_image)
-                    if self.center_crop:
-                        retrieved_image = self.center_crop_img(retrieved_image)
-                    retrieved_images.append(PIL.Image.fromarray(retrieved_image))
-                except Exception as e:
-                    print(e)
-            print(f"Retrieved {len(retrieved_images)} images")
+            retrieved_images = retrieve_images_from_clip_retrieval(self.client, text, num_queries=self.num_queries)
         else:
             retrieved_images = self.retriever.get_knn_from_text(text).examples[self.image_column][:self.num_queries]
         for i in range(len(retrieved_images)):
             if not retrieved_images[i].mode == "RGB":
                 retrieved_images[i] = retrieved_images[i].convert("RGB")
+            if self.center_crop:
+                retrieved_images[i] = self.center_crop_img(np.array(retrieved_images[i]))
             retrieved_images[i] = self.train_transforms(retrieved_images[i])
             retrieved_images[i] = np.array(retrieved_images[i]).astype(np.float32)
             retrieved_images[i] = (retrieved_images[i] / 127.5 - 1.0).astype(np.float32)
@@ -480,9 +562,6 @@ class RDMDataset(Dataset):
         img = np.array(image).astype(np.uint8)
 
         image = PIL.Image.fromarray(img)
-        if self.center_crop:
-            image = self.center_crop_img(np.array(image))
-            image = PIL.Image.fromarray(image)
         image = self.train_transforms(image)
         image = np.array(image).astype(np.float32)
         image = (image / 127.5 - 1.0).astype(np.float32)
@@ -598,20 +677,19 @@ class EMAModel:
             if len(self.collected_params) != len(self.shadow_params):
                 raise ValueError("collected_params and shadow_params must have the same length")
 
-def gemini_zero_dpp(model: torch.nn.Module, placememt_policy: str = "auto"):
-    from colossalai.nn.parallel import GeminiDDP
-
-    model = GeminiDDP(
-        model, device=get_current_device(), placement_policy=placememt_policy, pin_memory=True, search_range_mb=64
-    )
-    return model
 
 def main():
     args = parse_args()
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
+    wandb_run = None
+    if is_wandb_available():
+        wandb_run = wandb_setup(args, args.project_name)
     if args.use_clip_retrieval:
         assert is_clip_retrieval_available()
-    colossalai.launch_from_torch(config={'gradient_clipping': args.max_grad_norm})
+    if args.seed is None:
+        colossalai.launch_from_torch(config={'gradient_clipping': args.max_grad_norm})
+    else:
+        colossalai.launch_from_torch(config={'gradient_clipping': args.max_grad_norm}, seed=args.seed)
     if args.seed is not None:
         gpc.set_seed(args.seed)
     revision_dtype = torch.float32
@@ -626,6 +704,7 @@ def main():
         weight_dtype = torch.float16
     elif args.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
+
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
@@ -663,20 +742,19 @@ def main():
         args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
     )
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision)
-    with ColoInitContext(device=get_current_device()):
-        if args.unet_config:
-            unet = UNet2DConditionModel.from_config(args.unet_config).to(dtype=revision_dtype)
-        else:
-            unet = UNet2DConditionModel.from_pretrained(
-                args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision, low_cpu_mem_usage=False
-            )
+    if args.unet_config:
+        unet = UNet2DConditionModel.from_config(args.unet_config).to(dtype=revision_dtype)
+    else:
+        unet = UNet2DConditionModel.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
+        )
     feature_extractor = CLIPFeatureExtractor.from_pretrained(args.clip_model)
-    clip_model = CLIPModel.from_pretrained(args.clip_model)
+    clip_model = CLIPModel.from_pretrained(args.clip_model).to(dtype=revision_dtype)
 
     # Freeze vae and text_encoder
     vae.requires_grad_(False)
     clip_model.requires_grad_(False)
-    unet = gemini_zero_dpp(unet, args.placement)
+
     # Create EMA for the unet.
     if args.use_ema:
         ema_unet = UNet2DConditionModel.from_pretrained(
@@ -700,8 +778,10 @@ def main():
 
     if args.scale_lr:
         args.learning_rate = (
-            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * gpc.get_world_size(ParallelMode.DATA)
+            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
+
+    # Initialize the optimizer
     optimizer = GeminiAdamOptimizer(
         unet, lr=args.learning_rate, initial_scale=2**5, clipping_norm=args.max_grad_norm
     )
@@ -766,7 +846,8 @@ def main():
     retriever = None
     if not args.use_clip_retrieval:
         retriever = Retriever(clip_model, tokenizer, feature_extractor, dataset["train"], args.dataset_save_path, accelerator.device, args.image_column)
-    train_dataset = RDMDataset(dataset["train"],args.image_column,args.caption_column, tokenizer,feature_extractor,retriever, center_crop=args.center_crop, size=512, use_clip_retrieval=args.use_clip_retrieval, num_queries=args.num_query)
+    client = ClipClient(url="https://knn5.laion.ai/knn-service", indice_name="laion5B")
+    train_dataset = RDMDataset(dataset["train"],args.image_column,args.caption_column, tokenizer,feature_extractor,retriever, center_crop=args.center_crop, size=512, use_clip_retrieval=args.use_clip_retrieval, num_queries=args.num_queries, client=client)
     train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.train_batch_size, shuffle=True)
 
     # Scheduler and math around the number of training steps.
@@ -782,7 +863,6 @@ def main():
         num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
-
     
 
     # Move text_encode and vae to gpu and cast to weight_dtype
@@ -800,7 +880,6 @@ def main():
 
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
-
     # Train!
     total_batch_size = args.train_batch_size * gpc.get_world_size(ParallelMode.DATA) * args.gradient_accumulation_steps
 
@@ -814,14 +893,14 @@ def main():
     global_step = 0
     first_epoch = 0
 
-    
     # Only show the progress bar once on each machine.
-    progress_bar = tqdm(range(args.max_train_steps), disable=not gpc.get_local_rank(ParallelMode.DATA) == 0)
+    progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
     progress_bar.set_description("Steps")
     if vae.config.latent_channels == 4:
         scaling_factor = 0.18215
     elif vae.config.latent_channels == 16:
         scaling_factor = 0.22765929
+
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
         train_loss = 0.0
@@ -830,6 +909,8 @@ def main():
             # Move batch to gpu
             for key, value in batch.items():
                 batch[key] = value.to(get_current_device(), non_blocking=True)
+            # Skip steps until we reach the resumed step
+            optimizer.zero_grad()
             # Convert images to latent space
             latents = vae.encode(batch["pixel_values"].to(weight_dtype)).latent_dist.sample()
             latents = latents * scaling_factor
@@ -853,14 +934,15 @@ def main():
             retrieved_images = batch["nearest_neighbors"]
 
             if retrieved_images is not None:
+                clip_hidden_states = []
                 for i in range(retrieved_images.shape[0]):
                     # preprocess retrieved images
-                    processed_images = retrieved_images[i].to(accelerator.device, dtype=weight_dtype)
+                    processed_images = retrieved_images[i].to(get_current_device(), dtype=weight_dtype, non_blocking=True)
                     image_embeddings = clip_model.get_image_features(processed_images)
                     image_embeddings = image_embeddings / torch.linalg.norm(image_embeddings, dim=-1, keepdim=True)
-                    image_embeddings = image_embeddings[None, ...]
 
-                    text_embeddings = torch.cat([text_embeddings, image_embeddings], dim=1)
+                    clip_hidden_states.append(torch.cat([text_embeddings[i], image_embeddings]))
+                text_embeddings = torch.stack(clip_hidden_states)
             encoder_hidden_states = text_embeddings
             # Get the target for loss depending on the prediction type
             if noise_scheduler.config.prediction_type == "epsilon":
@@ -872,13 +954,10 @@ def main():
 
             # Predict the noise residual and compute loss
             model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
-            print(f"model pred: {model_pred.shape}, target: {target.shape}")
             loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
-            print(f"loss: {loss.shape} {loss.device}, {loss.dtype}")
 
             # Gather the losses across all processes for logging (if we use distributed training).
             train_loss += loss.detach().item()
-
             # Backpropagate=
             optimizer.backward(loss)
             optimizer.step()
@@ -887,19 +966,18 @@ def main():
             optimizer.zero_grad()
 
             # Checks if the accelerator has performed an optimization step behind the scenes
+            if args.use_ema:
+                ema_unet.step(unet.parameters())
             progress_bar.update(1)
+            global_step += 1
+            wandb_run.log({"train_loss": train_loss, "iter": global_step})
+            train_loss = 0.0
             if global_step % args.log_frequency == 0:
                 torch.cuda.synchronize()
                 torch_unet = get_static_torch_model(unet)
                 if gpc.get_local_rank(ParallelMode.DATA) == 0:
-                    if args.use_ema:
-                        ema_unet.step(unet.parameters())
-                global_step += 1
-                wandb_run.log({"train_loss": train_loss, "iter": global_step})
-                train_loss = 0.0
-                if gpc.get_local_rank(ParallelMode.DATA) == 0:
                     prompt = dataset['train'][args.caption_column][0]
-                    pipeline = get_pipeline(vae, clip_model, unet, tokenizer, feature_extractor, accelerator)
+                    pipeline = get_pipeline(vae, clip_model, torch_unet, tokenizer, feature_extractor)
                     os.makedirs(os.path.join(args.output_dir, "imgs"), exist_ok=True)
                     save_path = os.path.join(args.output_dir, f"imgs/{global_step}.jpg")
                     if client:
@@ -912,28 +990,23 @@ def main():
                         retrieved_images[i] = retrieved_images[i].resize((args.resolution, args.resolution), resample=PIL_INTERPOLATION['bicubic'])
                     log_progress(pipeline, args, global_step, prompt, save_path, wandb_run, retrieved_images=retrieved_images)
                     del pipeline
-                if global_step % args.checkpointing_steps == 0:
-                    if accelerator.is_main_process:
-                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                        accelerator.save_state(save_path)
-                        logger.info(f"Saved state to {save_path}")
+            if global_step % args.checkpointing_steps == 0:
+                torch.cuda.synchronize()
+                torch_unet = get_static_torch_model(unet)
+                if gpc.get_local_rank(ParallelMode.DATA) == 0:
+                    save_path = os.path.join(args.output_dir, f"unet")
+                    torch.save(torch_unet, save_path)
+                    logger.info(f"Saved state to {save_path}")
 
-            logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
-            progress_bar.set_postfix(**logs)
+        logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+        progress_bar.set_postfix(**logs)
 
-            if global_step >= args.max_train_steps:
-                break
-
-            logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
-            progress_bar.set_postfix(**logs)
-
-            if global_step >= args.max_train_steps:
-                break
-
+        if global_step >= args.max_train_steps:
+            break
+    torch.cuda.synchronize()
+    unet = get_static_torch_model(unet)
     # Create the pipeline using the trained modules and save it.
-    accelerator.wait_for_everyone()
-    if accelerator.is_main_process:
-        unet = accelerator.unwrap_model(unet)
+    if gpc.get_local_rank(ParallelMode.DATA) == 0:
         if args.use_ema:
             ema_unet.copy_to(unet.parameters())
 
@@ -949,7 +1022,6 @@ def main():
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
 
-    accelerator.end_training()
 
 if __name__ == "__main__":
     main()
