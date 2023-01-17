@@ -756,12 +756,13 @@ def main():
         args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
     )
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision)
-    if args.unet_config:
-        unet = UNet2DConditionModel.from_config(args.unet_config).to(dtype=revision_dtype)
-    else:
-        unet = UNet2DConditionModel.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
-        )
+    with ColoInitContext(device=get_current_device()):
+        if args.unet_config:
+            unet = UNet2DConditionModel.from_config(args.unet_config, low_cpu_mem_usage=False).to(dtype=revision_dtype)
+        else:
+            unet = UNet2DConditionModel.from_pretrained(
+                args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision, low_cpu_mem_usage=False
+            )
     feature_extractor = CLIPFeatureExtractor.from_pretrained(args.clip_model)
     clip_model = CLIPModel.from_pretrained(args.clip_model).to(dtype=revision_dtype)
 
