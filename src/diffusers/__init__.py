@@ -57,6 +57,7 @@ else:
         DDIMPipeline,
         DDPMPipeline,
         DiffusionPipeline,
+        DiTPipeline,
         ImagePipelineOutput,
         KarrasVePipeline,
         LDMPipeline,

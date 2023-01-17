@@ -19,7 +19,6 @@ from packaging import version
 
 from .. import __version__
 from .constants import (
-    _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS,
     CONFIG_NAME,
     DIFFUSERS_CACHE,
     DIFFUSERS_DYNAMIC_MODULE_NAME,

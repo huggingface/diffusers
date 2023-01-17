@@ -23,7 +23,7 @@ import PIL
 from transformers import CLIPFeatureExtractor, CLIPVisionModelWithProjection
 
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import is_accelerate_available, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
@@ -53,7 +53,7 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
     image_encoder: CLIPVisionModelWithProjection
     image_unet: UNet2DConditionModel
     vae: AutoencoderKL
-    scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler]
+    scheduler: KarrasDiffusionSchedulers
 
     def __init__(
         self,
@@ -61,7 +61,7 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
         image_encoder: CLIPVisionModelWithProjection,
         image_unet: UNet2DConditionModel,
         vae: AutoencoderKL,
-        scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
+        scheduler: KarrasDiffusionSchedulers,
     ):
         super().__init__()
         self.register_modules(
