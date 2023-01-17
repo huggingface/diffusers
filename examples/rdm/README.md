@@ -17,7 +17,7 @@ accelerate launch train_rdm.py --pretrained_model_name_or_path="fusing/rdm" --da
 ```
 Training on colossalai
 ```
-python -m torch.distributed.launch --nproc_per_node 1 train_rdm_colossalai.py --pretrained_model_name_or_path="fusing/rdm" --dataset_name="pcuenq/oxford-pets" --image_column="image" --caption_column="label" --resolution=728 --center_crop --random_flip --train_batch_size=1 --gradient_accumulation_steps=4 --gradient_checkpointing --max_train_steps=15000 --learning_rate=1e-05 --max_grad_norm=1 --lr_scheduler="constant" --lr_warmup_steps=0 --output_dir="pet-model" --dataset_save_path="./data/oxford_pets" --center_crop --use_ema
+python -m torch.distributed.launch --nproc_per_node 1 train_rdm_colossalai.py --pretrained_model_name_or_path="fusing/rdm" --dataset_name="pcuenq/oxford-pets" --image_column="image" --caption_column="label" --resolution=728 --center_crop --random_flip --train_batch_size=1 --gradient_accumulation_steps=4 --gradient_checkpointing --max_train_steps=15000 --learning_rate=1e-05 --max_grad_norm=1 --lr_scheduler="constant" --lr_warmup_steps=0 --output_dir="pet-model" --dataset_save_path="./data/oxford_pets" --center_crop --use_ema --placement="cuda"
 ```
 For training on 6gb, it's unstable but you can try
 ```
