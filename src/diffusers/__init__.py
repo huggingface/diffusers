@@ -6,6 +6,7 @@ from .utils import (
     is_flax_available,
     is_inflect_available,
     is_k_diffusion_available,
+    is_k_diffusion_version,
     is_librosa_available,
     is_onnx_available,
     is_scipy_available,
@@ -13,7 +14,6 @@ from .utils import (
     is_transformers_available,
     is_transformers_version,
     is_unidecode_available,
-    is_k_diffusion_version,
     logging,
 )
 
