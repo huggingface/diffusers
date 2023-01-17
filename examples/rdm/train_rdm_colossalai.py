@@ -81,6 +81,12 @@ def preprocess_images(images, feature_extractor: CLIPFeatureExtractor) -> torch.
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
+        "--placement",
+        type=str,
+        default="cpu",
+        help="Placement Policy for Gemini. Valid when using colossalai as dist plan.",
+    )
+    parser.add_argument(
         "--unet_config",
         type=str,
         default=None,
@@ -605,7 +611,7 @@ def main():
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
     if args.use_clip_retrieval:
         assert is_clip_retrieval_available()
-    colossalai.launch_from_torch(config={})
+    colossalai.launch_from_torch(config={'gradient_clipping': args.max_grad_norm})
     if args.seed is not None:
         gpc.set_seed(args.seed)
     revision_dtype = torch.float32
@@ -615,19 +621,17 @@ def main():
         revision_dtype = torch.bfloat16
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
-    # revision_dtype = torch.float32
-    # if accelerator.mixed_precision == "fp16":
-    #     revision_dtype = torch.float16
-    # elif accelerator.mixed_precision == "bf16":
-    #     revision_dtype = torch.bfloat16
-
+    weight_dtype = torch.float32
+    if args.mixed_precision == "fp16":
+        weight_dtype = torch.float16
+    elif args.mixed_precision == "bf16":
+        weight_dtype = torch.bfloat16
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
         level=logging.INFO,
     )
-    logger.info(accelerator.state, main_process_only=False)
-    if accelerator.is_local_main_process:
+    if gpc.get_local_rank(ParallelMode.DATA) == 0:
         datasets.utils.logging.set_verbosity_warning()
         transformers.utils.logging.set_verbosity_info()
         diffusers.utils.logging.set_verbosity_info()
@@ -636,12 +640,8 @@ def main():
         transformers.utils.logging.set_verbosity_error()
         diffusers.utils.logging.set_verbosity_error()
 
-    # If passed along, set the training seed now.
-    if args.seed is not None:
-        set_seed(args.seed)
-
     # Handle the repository creation
-    if accelerator.is_main_process:
+    if gpc.get_local_rank(ParallelMode.DATA) == 0:
         if args.push_to_hub:
             if args.hub_model_id is None:
                 repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
@@ -663,19 +663,20 @@ def main():
         args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
     )
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision)
-    if args.unet_config:
-        unet = UNet2DConditionModel.from_config(args.unet_config).to(dtype=revision_dtype)
-    else:
-        unet = UNet2DConditionModel.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
-        )
+    with ColoInitContext(device=get_current_device()):
+        if args.unet_config:
+            unet = UNet2DConditionModel.from_config(args.unet_config).to(dtype=revision_dtype)
+        else:
+            unet = UNet2DConditionModel.from_pretrained(
+                args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision, low_cpu_mem_usage=False
+            )
     feature_extractor = CLIPFeatureExtractor.from_pretrained(args.clip_model)
     clip_model = CLIPModel.from_pretrained(args.clip_model)
 
     # Freeze vae and text_encoder
     vae.requires_grad_(False)
     clip_model.requires_grad_(False)
-
+    unet = gemini_zero_dpp(unet, args.placement)
     # Create EMA for the unet.
     if args.use_ema:
         ema_unet = UNet2DConditionModel.from_pretrained(
@@ -699,28 +700,10 @@ def main():
 
     if args.scale_lr:
         args.learning_rate = (
-            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * gpc.get_world_size(ParallelMode.DATA)
         )
-
-    # Initialize the optimizer
-    if args.use_8bit_adam:
-        try:
-            import bitsandbytes as bnb
-        except ImportError:
-            raise ImportError(
-                "Please install bitsandbytes to use 8-bit Adam. You can do so by running `pip install bitsandbytes`"
-            )
-
-        optimizer_cls = bnb.optim.AdamW8bit
-    else:
-        optimizer_cls = torch.optim.AdamW
-
-    optimizer = optimizer_cls(
-        unet.parameters(),
-        lr=args.learning_rate,
-        betas=(args.adam_beta1, args.adam_beta2),
-        weight_decay=args.adam_weight_decay,
-        eps=args.adam_epsilon,
+    optimizer = GeminiAdamOptimizer(
+        unet, lr=args.learning_rate, initial_scale=2**5, clipping_norm=args.max_grad_norm
     )
 
     # Get the datasets: you can either provide your own training and evaluation files (see below)
@@ -777,7 +760,7 @@ def main():
     # Preprocessing the datasets.
     # We need to tokenize input captions and transform the images.
 
-    with accelerator.main_process_first():
+    if gpc.get_local_rank(ParallelMode.DATA) == 0:
         if args.max_train_samples is not None:
             dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
     retriever = None
@@ -800,19 +783,13 @@ def main():
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
 
-    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        unet, optimizer, train_dataloader, lr_scheduler
-    )
-    if args.use_ema:
-        accelerator.register_for_checkpointing(ema_unet)
-
     
 
-    # Move text_encode and vae to gpu and cast to revision_dtype
-    clip_model.to(accelerator.device, dtype=revision_dtype)
-    vae.to(accelerator.device, dtype=revision_dtype)
+    # Move text_encode and vae to gpu and cast to weight_dtype
+    clip_model.to(get_current_device(), dtype=weight_dtype)
+    vae.to(get_current_device(), dtype=weight_dtype)
     if args.use_ema:
-        ema_unet.to(accelerator.device)
+        ema_unet.to(get_current_device())
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -823,11 +800,9 @@ def main():
 
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
-    if accelerator.is_main_process:
-        accelerator.init_trackers("text2image-fine-tune", config=vars(args))
 
     # Train!
-    total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
+    total_batch_size = args.train_batch_size * gpc.get_world_size(ParallelMode.DATA) * args.gradient_accumulation_steps
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataset)}")
@@ -839,110 +814,115 @@ def main():
     global_step = 0
     first_epoch = 0
 
-    if args.resume_from_checkpoint:
-        if args.resume_from_checkpoint != "latest":
-            path = os.path.basename(args.resume_from_checkpoint)
-        else:
-            # Get the most recent checkpoint
-            dirs = os.listdir(args.output_dir)
-            dirs = [d for d in dirs if d.startswith("checkpoint")]
-            dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
-            path = dirs[-1]
-        accelerator.print(f"Resuming from checkpoint {path}")
-        accelerator.load_state(os.path.join(args.output_dir, path))
-        global_step = int(path.split("-")[1])
-
-        resume_global_step = global_step * args.gradient_accumulation_steps
-        first_epoch = resume_global_step // num_update_steps_per_epoch
-        resume_step = resume_global_step % num_update_steps_per_epoch
-
+    
     # Only show the progress bar once on each machine.
-    progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
+    progress_bar = tqdm(range(args.max_train_steps), disable=not gpc.get_local_rank(ParallelMode.DATA) == 0)
     progress_bar.set_description("Steps")
-
+    if vae.config.latent_channels == 4:
+        scaling_factor = 0.18215
+    elif vae.config.latent_channels == 16:
+        scaling_factor = 0.22765929
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
         train_loss = 0.0
         for step, batch in enumerate(train_dataloader):
-            # Skip steps until we reach the resumed step
-            if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
-                if step % args.gradient_accumulation_steps == 0:
-                    progress_bar.update(1)
-                continue
+            torch.cuda.reset_peak_memory_stats()
+            # Move batch to gpu
+            for key, value in batch.items():
+                batch[key] = value.to(get_current_device(), non_blocking=True)
+            # Convert images to latent space
+            latents = vae.encode(batch["pixel_values"].to(weight_dtype)).latent_dist.sample()
+            latents = latents * scaling_factor
 
-            with accelerator.accumulate(unet), accelerator.autocast():
-                # Convert images to latent space
-                latents = vae.encode(batch["pixel_values"].to(revision_dtype)).latent_dist.sample()
-                latents = latents * 0.22765929
+            # Sample noise that we'll add to the latents
+            noise = torch.randn_like(latents)
+            bsz = latents.shape[0]
+            # Sample a random timestep for each image
+            timesteps = torch.randint(0, noise_scheduler.num_train_timesteps, (bsz,), device=latents.device)
+            timesteps = timesteps.long()
 
-                # Sample noise that we'll add to the latents
-                noise = torch.randn_like(latents)
-                bsz = latents.shape[0]
-                # Sample a random timestep for each image
-                timesteps = torch.randint(0, noise_scheduler.num_train_timesteps, (bsz,), device=latents.device)
-                timesteps = timesteps.long()
+            # Add noise to the latents according to the noise magnitude at each timestep
+            # (this is the forward diffusion process)
+            noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-                # Add noise to the latents according to the noise magnitude at each timestep
-                # (this is the forward diffusion process)
-                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+            # Get the text embedding for conditioning
+            text_embeddings = clip_model.get_text_features(batch["input_ids"])
+            text_embeddings = text_embeddings / torch.linalg.norm(text_embeddings, dim=-1, keepdim=True)
+            text_embeddings = text_embeddings[:, None, :]
 
-                # Get the text embedding for conditioning
-                text_embeddings = clip_model.get_text_features(batch["input_ids"])
-                text_embeddings = text_embeddings / torch.linalg.norm(text_embeddings, dim=-1, keepdim=True)
-                text_embeddings = text_embeddings[:, None, :]
+            retrieved_images = batch["nearest_neighbors"]
 
-                retrieved_images = batch["nearest_neighbors"]
+            if retrieved_images is not None:
+                for i in range(retrieved_images.shape[0]):
+                    # preprocess retrieved images
+                    processed_images = retrieved_images[i].to(accelerator.device, dtype=weight_dtype)
+                    image_embeddings = clip_model.get_image_features(processed_images)
+                    image_embeddings = image_embeddings / torch.linalg.norm(image_embeddings, dim=-1, keepdim=True)
+                    image_embeddings = image_embeddings[None, ...]
 
-                if retrieved_images is not None:
-                    for i in range(retrieved_images.shape[0]):
-                        # preprocess retrieved images
-                        processed_images = retrieved_images[i].to(accelerator.device, dtype=revision_dtype)
-                        image_embeddings = clip_model.get_image_features(processed_images)
-                        image_embeddings = image_embeddings / torch.linalg.norm(image_embeddings, dim=-1, keepdim=True)
-                        image_embeddings = image_embeddings[None, ...]
+                    text_embeddings = torch.cat([text_embeddings, image_embeddings], dim=1)
+            encoder_hidden_states = text_embeddings
+            # Get the target for loss depending on the prediction type
+            if noise_scheduler.config.prediction_type == "epsilon":
+                target = noise
+            elif noise_scheduler.config.prediction_type == "v_prediction":
+                target = noise_scheduler.get_velocity(latents, noise, timesteps)
+            else:
+                raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
-                        text_embeddings = torch.cat([text_embeddings, image_embeddings], dim=1)
-                encoder_hidden_states = text_embeddings
-                # Get the target for loss depending on the prediction type
-                if noise_scheduler.config.prediction_type == "epsilon":
-                    target = noise
-                elif noise_scheduler.config.prediction_type == "v_prediction":
-                    target = noise_scheduler.get_velocity(latents, noise, timesteps)
-                else:
-                    raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+            # Predict the noise residual and compute loss
+            model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+            print(f"model pred: {model_pred.shape}, target: {target.shape}")
+            loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+            print(f"loss: {loss.shape} {loss.device}, {loss.dtype}")
 
-                # Predict the noise residual and compute loss
-                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
-                print(f"model pred: {model_pred.shape}, target: {target.shape}")
-                loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
-                print(f"loss: {loss.shape} {loss.device}, {loss.dtype}")
+            # Gather the losses across all processes for logging (if we use distributed training).
+            train_loss += loss.detach().item()
 
-                # Gather the losses across all processes for logging (if we use distributed training).
-                avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
-                train_loss += avg_loss.item() / args.gradient_accumulation_steps
-
-                # Backpropagate=
-                accelerator.backward(loss)
-                if accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
-                optimizer.step()
-                lr_scheduler.step()
-                optimizer.zero_grad()
+            # Backpropagate=
+            optimizer.backward(loss)
+            optimizer.step()
+            lr_scheduler.step()
+            logger.info(f"max GPU_mem cost is {torch.cuda.max_memory_allocated()/2**20} MB", ranks=[0])
+            optimizer.zero_grad()
 
             # Checks if the accelerator has performed an optimization step behind the scenes
-            if accelerator.sync_gradients:
-                if args.use_ema:
-                    ema_unet.step(unet.parameters())
-                progress_bar.update(1)
+            progress_bar.update(1)
+            if global_step % args.log_frequency == 0:
+                torch.cuda.synchronize()
+                torch_unet = get_static_torch_model(unet)
+                if gpc.get_local_rank(ParallelMode.DATA) == 0:
+                    if args.use_ema:
+                        ema_unet.step(unet.parameters())
                 global_step += 1
-                accelerator.log({"train_loss": train_loss}, step=global_step)
+                wandb_run.log({"train_loss": train_loss, "iter": global_step})
                 train_loss = 0.0
-
+                if gpc.get_local_rank(ParallelMode.DATA) == 0:
+                    prompt = dataset['train'][args.caption_column][0]
+                    pipeline = get_pipeline(vae, clip_model, unet, tokenizer, feature_extractor, accelerator)
+                    os.makedirs(os.path.join(args.output_dir, "imgs"), exist_ok=True)
+                    save_path = os.path.join(args.output_dir, f"imgs/{global_step}.jpg")
+                    if client:
+                        retrieved_images = retrieve_images_from_clip_retrieval(client, prompt, num_queries=args.num_queries)
+                    else:
+                        retrieved_images = retriever.get_knn_from_text(prompt).examples[args.image_column][:args.num_queries]
+                    for i in range(len(retrieved_images)):
+                        if not retrieved_images[i].mode == "RGB":
+                            retrieved_images[i] = retrieved_images[i].convert("RGB")
+                        retrieved_images[i] = retrieved_images[i].resize((args.resolution, args.resolution), resample=PIL_INTERPOLATION['bicubic'])
+                    log_progress(pipeline, args, global_step, prompt, save_path, wandb_run, retrieved_images=retrieved_images)
+                    del pipeline
                 if global_step % args.checkpointing_steps == 0:
                     if accelerator.is_main_process:
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
+
+            logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+            progress_bar.set_postfix(**logs)
+
+            if global_step >= args.max_train_steps:
+                break
 
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)

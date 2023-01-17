@@ -82,7 +82,10 @@ class RDMPipeline(DiffusionPipeline):
         feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
-
+        if vae.config.latent_channels == 4:
+            self.scaling_factor = 0.18215
+        elif vae.config.latent_channels == 16:
+            self.scaling_factor = 0.22765929
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
@@ -384,7 +387,7 @@ class RDMPipeline(DiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 callback(i, t, latents)
 
-        latents = 1 / 0.22765929 * latents
+        latents = 1 / self.scaling_factor * latents
         image = self.vae.decode(latents).sample
 
         image = (image / 2 + 0.5).clamp(0, 1)

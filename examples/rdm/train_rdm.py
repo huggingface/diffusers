@@ -935,6 +935,10 @@ def main():
     # Only show the progress bar once on each machine.
     progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
     progress_bar.set_description("Steps")
+    if vae.config.latent_channels == 4:
+        scaling_factor = 0.18215
+    elif vae.config.latent_channels == 16:
+        scaling_factor = 0.22765929
 
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
@@ -949,7 +953,7 @@ def main():
             with accelerator.accumulate(unet), accelerator.autocast():
                 # Convert images to latent space
                 latents = vae.encode(batch["pixel_values"].to(weight_dtype)).latent_dist.sample()
-                latents = latents * 0.22765929
+                latents = latents * scaling_factor
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents)
@@ -979,7 +983,7 @@ def main():
 
                         clip_hidden_states.append(torch.cat([text_embeddings[i], image_embeddings]))
                     text_embeddings = torch.stack(clip_hidden_states)
-                encoder_hidden_states = text_embeddings.to(dtype=weight_dtype)
+                encoder_hidden_states = text_embeddings
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
                     target = noise
