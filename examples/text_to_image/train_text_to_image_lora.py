@@ -36,6 +36,7 @@ from accelerate.logging import get_logger
 from accelerate.utils import set_seed
 from datasets import load_dataset
 from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
+from diffusers.loaders import AttnProcsLayers
 from diffusers.models.cross_attention import LoRACrossAttnProcessor
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
@@ -134,7 +135,13 @@ def parse_args():
         help="The column of the dataset containing a caption or a list of captions.",
     )
     parser.add_argument(
-        "--save_sample_prompt", type=str, default=None, help="A prompt that is sampled during training for inference."
+        "--validation_prompt", type=str, default=None, help="A prompt that is sampled during training for inference."
+    )
+    parser.add_argument(
+        "--num_validation_images",
+        type=int,
+        default=4,
+        help="Number of images that should be generated during validation with `validation_prompt`.",
     )
     parser.add_argument(
         "--max_train_samples",
@@ -427,7 +434,7 @@ def main():
     # Set correct lora layers
     lora_attn_procs = {}
     for name in unet.attn_processors.keys():
-        cross_attention_dim = None if name.endswith("attn1") else unet.config.cross_attention_dim
+        cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
         if name.startswith("mid_block"):
             hidden_size = unet.config.block_out_channels[-1]
         elif name.startswith("up_blocks"):
@@ -442,7 +449,7 @@ def main():
         )
 
     unet.set_attn_processor(lora_attn_procs)
-    lora_layers = LoraLayers(unet.attn_processors)
+    lora_layers = AttnProcsLayers(unet.attn_processors)
 
     state_dict = lora_layers.state_dict()
     lora_layers.load_state_dict(state_dict)
@@ -626,11 +633,6 @@ def main():
     if accelerator.is_main_process:
         accelerator.init_trackers("text2image-fine-tune", config=vars(args))
 
-    # Initialize a Table on WandB if we're logging some sample predictions.
-    if accelerator.is_main_process:
-        if (args.save_sample_prompt is not None) and (wandb.run is not None):
-            generated_table = wandb.Table(columns=["gen_num", "prompt", "generated_images"])
-
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
@@ -739,38 +741,38 @@ def main():
             if global_step >= args.max_train_steps:
                 break
 
-        if args.save_sample_prompt is not None and epoch % 10 == 0:
-            print("Running inference...")
+        if args.validation_prompt is not None and epoch % 10 == 0:
+            logger.info(
+                f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+                f" {args.validation_prompt}."
+            )
+            # create pipeline
             pipeline = StableDiffusionPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 unet=accelerator.unwrap_model(unet),
                 revision=args.revision,
             )
-            pipeline.save_pretrained(args.output_dir)
             pipeline = pipeline.to(accelerator.device)
-            generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
             pipeline.set_progress_bar_config(disable=True)
-            sample_dir = "./samples"
-            os.makedirs(sample_dir, exist_ok=True)
 
-            for i in tqdm(range(5), desc="Generating samples"):
-                prompt = args.save_sample_prompt
-                images = pipeline(prompt, num_inference_steps=30, generator=generator).images
-                image = images[0]
-                image.save(os.path.join(sample_dir, f"{i}.png"))
+            # run inference
+            generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+            prompt = args.num_validation_images * [args.validation_prompt]
+            images = pipeline(prompt, num_inference_steps=30, generator=generator).images
 
-                global_step = epoch * len(train_dataloader) + i
-
-                if wandb.run is not None:
-                    generated_table.add_data(global_step, prompt, wandb.Image(image))
-                    run = wandb.run
-                    run.log({"generated_image": wandb.Image(image)})
+            for tracker in accelerator.trackers:
+                if tracker.name == "wandb":
+                    tracker.log(
+                        {
+                            "validation": [
+                                wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                for i, image in enumerate(images)
+                            ]
+                        }
+                    )
 
             del pipeline
             torch.cuda.empty_cache()
-
-            if wandb.run is not None:
-                run.log({"generated_table": generated_table})
 
     # Save the lora layers
     accelerator.wait_for_everyone()
@@ -779,6 +781,31 @@ def main():
 
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
+
+    # Final inference
+    # Load previous pipeline
+    pipeline = StableDiffusionPipeline.from_pretrained(
+        args.pretrained_model_name_or_path, revision=args.revision, torch_dtype=torch.float16
+    )
+    pipeline = pipeline.to(accelerator.device)
+
+    # load attention processors
+    pipeline.unet.load_attn_procs(args.output_dir)
+
+    # run inference
+    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+    prompt = args.num_validation_images * [args.validation_prompt]
+    images = pipeline(prompt, num_inference_steps=30, generator=generator).images
+
+    for tracker in accelerator.trackers:
+        if tracker.name == "wandb":
+            tracker.log(
+                {
+                    "test": [
+                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}") for i, image in enumerate(images)
+                    ]
+                }
+            )
 
     accelerator.end_training()
 

@@ -143,7 +143,7 @@ import torch
 
 model_path = "path_to_saved_model"
 pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
-pipe.load_lora(model_path, torch_dtype=torch.float16)
+pipeline.unet.load_attn_procs(model_path)
 pipe.to("cuda")
 
 prompt = "A pokemon with green eyes and red legs."
