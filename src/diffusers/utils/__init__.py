@@ -47,6 +47,7 @@ from .import_utils import (
     is_flax_available,
     is_inflect_available,
     is_k_diffusion_available,
+    is_k_diffusion_version,
     is_librosa_available,
     is_modelcards_available,
     is_onnx_available,
