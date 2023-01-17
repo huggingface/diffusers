@@ -683,18 +683,13 @@ def main():
         log_with=args.report_to,
         logging_dir=logging_dir,
     )
-    revision_dtype = torch.float32
-    if args.revision == "fp16":
-        revision_dtype = torch.float16
-    elif args.revision == "bf16":
-        revision_dtype = torch.bfloat16
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
-    # revision_dtype = torch.float32
-    # if accelerator.mixed_precision == "fp16":
-    #     revision_dtype = torch.float16
-    # elif accelerator.mixed_precision == "bf16":
-    #     revision_dtype = torch.bfloat16
+    weight_dtype = torch.float32
+    if accelerator.mixed_precision == "fp16":
+        weight_dtype = torch.float16
+    elif accelerator.mixed_precision == "bf16":
+        weight_dtype = torch.bfloat16
 
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -739,7 +734,7 @@ def main():
     )
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision)
     if args.unet_config:
-        unet = UNet2DConditionModel.from_config(args.unet_config).to(dtype=revision_dtype)
+        unet = UNet2DConditionModel.from_config(args.unet_config)
     else:
         unet = UNet2DConditionModel.from_pretrained(
             args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
@@ -884,9 +879,9 @@ def main():
 
     
 
-    # Move text_encode and vae to gpu and cast to revision_dtype
-    clip_model.to(accelerator.device, dtype=revision_dtype)
-    vae.to(accelerator.device, dtype=revision_dtype)
+    # Move text_encode and vae to gpu and cast to weight_dtype
+    clip_model.to(accelerator.device, dtype=weight_dtype)
+    vae.to(accelerator.device, dtype=weight_dtype)
     if args.use_ema:
         ema_unet.to(accelerator.device)
 
@@ -948,7 +943,7 @@ def main():
 
             with accelerator.accumulate(unet), accelerator.autocast():
                 # Convert images to latent space
-                latents = vae.encode(batch["pixel_values"].to(revision_dtype)).latent_dist.sample()
+                latents = vae.encode(batch["pixel_values"].to(weight_dtype)).latent_dist.sample()
                 latents = latents * 0.22765929
 
                 # Sample noise that we'll add to the latents
@@ -972,7 +967,7 @@ def main():
                 if retrieved_images is not None:
                     for i in range(retrieved_images.shape[0]):
                         # preprocess retrieved images
-                        processed_images = retrieved_images[i].to(accelerator.device, dtype=revision_dtype)
+                        processed_images = retrieved_images[i].to(accelerator.device, dtype=weight_dtype)
                         image_embeddings = clip_model.get_image_features(processed_images)
                         image_embeddings = image_embeddings / torch.linalg.norm(image_embeddings, dim=-1, keepdim=True)
                         image_embeddings = image_embeddings[None, ...]
