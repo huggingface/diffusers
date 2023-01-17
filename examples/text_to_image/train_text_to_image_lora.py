@@ -408,9 +408,10 @@ def main():
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
     )
 
-    # Freeze vae and text_encoder.
+    # Freeze vae, text_encoder, and UNet.
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
+    unet.requires_grad_(False)
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
