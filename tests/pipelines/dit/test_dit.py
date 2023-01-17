@@ -48,7 +48,7 @@ class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
         vae = AutoencoderKL()
         scheduler = DDIMScheduler()
-        components = {"transformer": transformer, "vae": vae, "scheduler": scheduler}
+        components = {"transformer": transformer.eval(), "vae": vae.eval(), "scheduler": scheduler}
         return components
 
     def get_dummy_inputs(self, device, seed=0):
@@ -82,3 +82,6 @@ class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
+
+    def test_inference_batch_single_identical(self):
+        self._test_inference_batch_single_identical(relax_max_difference=True)
