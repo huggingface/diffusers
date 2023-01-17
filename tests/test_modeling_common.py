@@ -205,7 +205,7 @@ class ModelTesterMixin:
         model = self.model_class(**init_dict)
         model.to(torch_device)
         model.train()
-        ema_model = EMAModel(model, device=torch_device)
+        ema_model = EMAModel(model.parameters())
 
         output = model(**inputs_dict)
 
