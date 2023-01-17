@@ -5,3 +5,4 @@ datasets
 ftfy
 tensorboard
 modelcards
+wandb

@@ -763,7 +763,8 @@ def main():
             # run inference
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
             prompt = args.num_validation_images * [args.validation_prompt]
-            images = pipeline(prompt, num_inference_steps=30, generator=generator).images
+            with torch.autocast():
+                images = pipeline(prompt, num_inference_steps=30, generator=generator).images
 
             for tracker in accelerator.trackers:
                 if tracker.name == "wandb":
@@ -792,7 +793,8 @@ def main():
     pipeline = StableDiffusionPipeline.from_pretrained(
         args.pretrained_model_name_or_path, revision=args.revision, torch_dtype=torch.float16
     )
-    pipeline = pipeline.to(accelerator.device)
+    with torch.autocast():
+        pipeline = pipeline.to(accelerator.device)
 
     # load attention processors
     pipeline.unet.load_attn_procs(args.output_dir)
