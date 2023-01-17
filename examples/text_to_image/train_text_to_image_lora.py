@@ -609,11 +609,11 @@ def main():
 
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
-    weight_dtype = torch.float32
-    if accelerator.mixed_precision == "fp16":
-        weight_dtype = torch.float16
-    elif accelerator.mixed_precision == "bf16":
-        weight_dtype = torch.bfloat16
+    # weight_dtype = torch.float32
+    # if accelerator.mixed_precision == "fp16":
+    #     weight_dtype = torch.float16
+    # elif accelerator.mixed_precision == "bf16":
+    #     weight_dtype = torch.bfloat16
 
     # Move text_encoder and vae to gpu and cast to weight_dtype
     # The unet's weight_dtype is kept in full precision because of autocasts
@@ -755,7 +755,7 @@ def main():
                 args.pretrained_model_name_or_path,
                 unet=accelerator.unwrap_model(unet),
                 revision=args.revision,
-                torch_dtype=torch.float16
+                torch_dtype=torch.float16,
             )
             pipeline = pipeline.to(accelerator.device)
             pipeline.set_progress_bar_config(disable=True)
