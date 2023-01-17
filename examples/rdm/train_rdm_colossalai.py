@@ -19,9 +19,7 @@ from torch.utils.data import Dataset
 import datasets
 import diffusers
 import transformers
-from accelerate import Accelerator
 from accelerate.logging import get_logger
-from accelerate.utils import set_seed
 from datasets import load_dataset
 from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, RDMPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
@@ -147,6 +145,12 @@ def preprocess_images(images, feature_extractor: CLIPFeatureExtractor) -> torch.
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
+    parser.add_argument(
+        "--placement",
+        type=str,
+        default="cpu",
+        help="Placement Policy for Gemini. Valid when using colossalai as dist plan.",
+    )
     parser.add_argument(
         "--guidance_scale",
         type=float,
@@ -677,19 +681,25 @@ class EMAModel:
             if len(self.collected_params) != len(self.shadow_params):
                 raise ValueError("collected_params and shadow_params must have the same length")
 
+# Gemini + ZeRO DDP
+def gemini_zero_dpp(model: torch.nn.Module, placememt_policy: str = "auto"):
+    from colossalai.nn.parallel import GeminiDDP
+
+    model = GeminiDDP(
+        model, device=get_current_device(), placement_policy=placememt_policy, pin_memory=True, search_range_mb=64
+    )
+    return model
 
 def main():
     args = parse_args()
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
-    wandb_run = None
-    if is_wandb_available():
-        wandb_run = wandb_setup(args, args.project_name)
+    
     if args.use_clip_retrieval:
         assert is_clip_retrieval_available()
     if args.seed is None:
-        colossalai.launch_from_torch(config={'gradient_clipping': args.max_grad_norm})
+        colossalai.launch_from_torch(config={'gradient_clipping': args.max_grad_norm}, backend="gloo")
     else:
-        colossalai.launch_from_torch(config={'gradient_clipping': args.max_grad_norm}, seed=args.seed)
+        colossalai.launch_from_torch(config={'gradient_clipping': args.max_grad_norm}, seed=args.seed, backend="gloo")
     if args.seed is not None:
         gpc.set_seed(args.seed)
     revision_dtype = torch.float32
@@ -710,10 +720,14 @@ def main():
         datefmt="%m/%d/%Y %H:%M:%S",
         level=logging.INFO,
     )
+    wandb_run = None
+    
     if gpc.get_local_rank(ParallelMode.DATA) == 0:
         datasets.utils.logging.set_verbosity_warning()
         transformers.utils.logging.set_verbosity_info()
         diffusers.utils.logging.set_verbosity_info()
+        if is_wandb_available():
+            wandb_run = wandb_setup(args, args.project_name)
     else:
         datasets.utils.logging.set_verbosity_error()
         transformers.utils.logging.set_verbosity_error()
@@ -778,9 +792,9 @@ def main():
 
     if args.scale_lr:
         args.learning_rate = (
-            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * gpc.get_world_size(ParallelMode.DATA)
         )
-
+    unet = gemini_zero_dpp(unet, args.placement)
     # Initialize the optimizer
     optimizer = GeminiAdamOptimizer(
         unet, lr=args.learning_rate, initial_scale=2**5, clipping_norm=args.max_grad_norm
@@ -845,7 +859,7 @@ def main():
             dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
     retriever = None
     if not args.use_clip_retrieval:
-        retriever = Retriever(clip_model, tokenizer, feature_extractor, dataset["train"], args.dataset_save_path, accelerator.device, args.image_column)
+        retriever = Retriever(clip_model, tokenizer, feature_extractor, dataset["train"], args.dataset_save_path, get_current_device(), args.image_column)
     client = ClipClient(url="https://knn5.laion.ai/knn-service", indice_name="laion5B")
     train_dataset = RDMDataset(dataset["train"],args.image_column,args.caption_column, tokenizer,feature_extractor,retriever, center_crop=args.center_crop, size=512, use_clip_retrieval=args.use_clip_retrieval, num_queries=args.num_queries, client=client)
     train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.train_batch_size, shuffle=True)
@@ -894,7 +908,7 @@ def main():
     first_epoch = 0
 
     # Only show the progress bar once on each machine.
-    progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
+    progress_bar = tqdm(range(args.max_train_steps), disable=not gpc.get_local_rank(ParallelMode.DATA) == 0)
     progress_bar.set_description("Steps")
     if vae.config.latent_channels == 4:
         scaling_factor = 0.18215
