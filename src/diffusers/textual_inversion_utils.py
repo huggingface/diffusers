@@ -2,6 +2,15 @@ import torch
 
 
 class TextualInversionMixin:
+    r"""
+    Mixin class for adding textual inversion tokens and embeddings to the tokenizer and text encoder with method:
+    - [`~TextualInversionMixin.load_textual_inversion_embeddings`]
+    - [`~TextualInversionMixin.add_textual_inversion_embedding`]
+
+    Class attributes:
+    - **textual_inversion_tokens** (`List[str]`): list of tokens added to the tokenizer's vocabulary and the text
+      encoder's embedding matrix
+    """
     textual_inversion_tokens = []
 
     def load_textual_inversion_embeddings(self, embeddings):
