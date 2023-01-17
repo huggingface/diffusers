@@ -84,6 +84,7 @@ else:
         UnCLIPScheduler,
         VQDiffusionScheduler,
     )
+    from .textual_inversion_utils import TextualInversionMixin
     from .training_utils import EMAModel
 
 try:
