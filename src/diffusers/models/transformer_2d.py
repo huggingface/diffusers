@@ -20,7 +20,7 @@ from torch import nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..models.embeddings import ImagePositionalEmbeddings
-from ..utils import BaseOutput
+from ..utils import BaseOutput, deprecate
 from .attention import BasicTransformerBlock
 from .embeddings import PatchEmbed
 from .modeling_utils import ModelMixin
@@ -96,7 +96,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         use_linear_projection: bool = False,
         only_cross_attention: bool = False,
         upcast_attention: bool = False,
-        norm_type: str = "ada_norm",
+        norm_type: str = "layer_norm",
         norm_elementwise_affine: bool = True,
     ):
         super().__init__()
@@ -110,6 +110,18 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         self.is_input_continuous = (in_channels is not None) and (patch_size is None)
         self.is_input_vectorized = num_vector_embeds is not None
         self.is_input_patches = in_channels is not None and patch_size is not None
+
+        if norm_type == "layer_norm" and num_embeds_ada_norm is not None:
+            deprecation_message = (
+                f"The configuration file of this model: {self.__class__} is outdated. `norm_type` is either not set or incorrectly set to `'layer_norm'`."
+                f"Make sure to set `norm_type` to `'ada_norm'` in the config. Please make sure "
+                "to update the config accordingly as leaving `norm_type` might led to incorrect results"
+                " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub,"
+                " it would be very nice if you could open a Pull request for the `transformer/config.json`"
+                " file"
+            )
+            deprecate("norm_type!=num_embeds_ada_norm", "1.0.0", deprecation_message, standard_warn=False)
+            norm_type = "ada_norm"
 
         if self.is_input_continuous and self.is_input_vectorized:
             raise ValueError(

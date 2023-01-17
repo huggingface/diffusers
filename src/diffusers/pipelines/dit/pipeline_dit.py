@@ -138,9 +138,7 @@ class DiTPipeline(DiffusionPipeline):
                 model_output = noise_pred
 
             # compute previous image: x_t -> x_t-1
-            latent_model_input = self.scheduler.step(
-                model_output, t, latent_model_input, generator=generator
-            ).prev_sample
+            latent_model_input = self.scheduler.step(model_output, t, latent_model_input).prev_sample
 
         if guidance_scale > 1:
             latents, _ = latent_model_input.chunk(2, dim=0)
