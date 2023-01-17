@@ -785,7 +785,7 @@ def convert_open_clip_checkpoint(checkpoint):
 
 def load_pipeline_from_original_stable_diffusion_ckpt(
         checkpoint_path: str,
-        original_config_file: None,
+        original_config_file: str = None,
         image_size: int = 512,
         prediction_type: str = None,
         model_type: str = None,
