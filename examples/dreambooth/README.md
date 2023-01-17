@@ -245,6 +245,9 @@ In a nutshell, LoRA allows to adapt pretrained models by adding pairs of rank-de
 - Rank-decomposition matrices have significantly fewer parameters than orginal model which means that trained LoRA weights are easily portable.
 - LoRA attention layers allow to control to which extend the model is adapted torwards new training images via a `scale` parameter.
 
+[cloneofsimo](https://github.com/cloneofsimo) was the first to try out LoRA training for Stable Diffusion in 
+the popular [lora](https://github.com/cloneofsimo/lora) GitHub repository.
+
 ### Training
 
 Let's get started with a simple example. We will re-use the dog example of the [previous section](#dog-toy-example).
