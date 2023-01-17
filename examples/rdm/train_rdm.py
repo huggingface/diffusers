@@ -745,7 +745,7 @@ def main():
             args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
         )
     feature_extractor = CLIPFeatureExtractor.from_pretrained(args.clip_model)
-    clip_model = CLIPModel.from_pretrained(args.clip_model)
+    clip_model = CLIPModel.from_pretrained(args.clip_model).to(dtype=revision_dtype)
 
     # Freeze vae and text_encoder
     vae.requires_grad_(False)
@@ -979,7 +979,7 @@ def main():
 
                         clip_hidden_states.append(torch.cat([text_embeddings[i], image_embeddings]))
                     text_embeddings = torch.stack(clip_hidden_states)
-                encoder_hidden_states = text_embeddings
+                encoder_hidden_states = text_embeddings.to(dtype=weight_dtype)
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
                     target = noise
