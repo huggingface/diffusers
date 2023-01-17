@@ -755,7 +755,7 @@ def main():
                 args.pretrained_model_name_or_path,
                 unet=accelerator.unwrap_model(unet),
                 revision=args.revision,
-                torch_dtype=torch.float16,
+                # torch_dtype=torch.float16,
             )
             pipeline = pipeline.to(accelerator.device)
             pipeline.set_progress_bar_config(disable=True)
