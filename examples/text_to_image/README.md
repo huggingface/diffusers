@@ -110,7 +110,46 @@ image = pipe(prompt="yoda").images[0]
 image.save("yoda-pokemon.png")
 ```
 
+## Training on a 16GB GPU 
 
+We provide [LoRA](https://arxiv.org/abs/2106.09685) supported fine-tuning through the `train_text_to_image_lora.py` script. With this script, it's possible to run fine-tuning
+on a 16GB GPU. Here's how you can use the script:
+
+```bash
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+
+
+accelerate launch train_text_to_image_lora.py \
+  --pretrained_model_name_or_path=$MODEL_NAME \
+  --dataset_name=$DATASET_NAME --caption_column="text" \
+  --resolution=512 --random_flip \
+  --train_batch_size=1 \
+  --num_train_epochs=100 --checkpointing_steps=5000 \
+  --learning_rate=1e-04 --lr_scheduler="constant" --lr_warmup_steps=0 \
+  --seed=42 \
+  --output_dir="sd-pokemon-model-lora" \
+  --save_sample_prompt="cute dragon creature" --report_to="wandb"
+```
+
+The above command will also run inference as fine-tuning progresses and will log the results to Weights and Biases.
+
+Once you have trained a model using above command, the inference can be done simply using the `StableDiffusionPipeline` after loading the trained LoRA weights.  You 
+need to pass the `output_dir` for loading the LoRA weights which, in this case, is `sd-pokemon-model-lora`.
+
+```python
+from diffusers import StableDiffusionPipeline
+import torch
+
+model_path = "path_to_saved_model"
+pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
+pipe.load_lora(model_path, torch_dtype=torch.float16)
+pipe.to("cuda")
+
+prompt = "A pokemon with green eyes and red legs."
+image = pipe(prompt, num_inference_steps=30, guidance_scale=7.5).images[0]
+image.save("pokemon.png")
+```
 
 ## Training with Flax/JAX
 

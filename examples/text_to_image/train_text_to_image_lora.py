@@ -1,3 +1,19 @@
+# coding=utf-8
+# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Fine-tuning script for Stable Diffusion for text2image with support for LoRA."""
+
 import argparse
 import copy
 import logging
@@ -30,12 +46,6 @@ from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
-
-wandb.login()
-
-run = wandb.init(project="stable_diffusion_ft_lora")
-
-generated_table = wandb.Table(columns=["gen_num", "prompt", "generated_images"])
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.10.0.dev0")
@@ -224,7 +234,6 @@ def parse_args():
             " https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices"
         ),
     )
-    parser.add_argument("--use_ema", action="store_true", help="Whether to use EMA model.")
     parser.add_argument(
         "--non_ema_revision",
         type=str,
@@ -331,115 +340,6 @@ dataset_name_mapping = {
 }
 
 
-# Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14
-class EMAModel:
-    """
-    Exponential Moving Average of models weights
-    """
-
-    def __init__(self, parameters: Iterable[torch.nn.Parameter], decay=0.9999):
-        parameters = list(parameters)
-        self.shadow_params = [p.clone().detach() for p in parameters]
-
-        self.collected_params = None
-
-        self.decay = decay
-        self.optimization_step = 0
-
-    @torch.no_grad()
-    def step(self, parameters):
-        parameters = list(parameters)
-
-        self.optimization_step += 1
-
-        # Compute the decay factor for the exponential moving average.
-        value = (1 + self.optimization_step) / (10 + self.optimization_step)
-        one_minus_decay = 1 - min(self.decay, value)
-
-        for s_param, param in zip(self.shadow_params, parameters):
-            if param.requires_grad:
-                s_param.sub_(one_minus_decay * (s_param - param))
-            else:
-                s_param.copy_(param)
-
-        torch.cuda.empty_cache()
-
-    def copy_to(self, parameters: Iterable[torch.nn.Parameter]) -> None:
-        """
-        Copy current averaged parameters into given collection of parameters.
-
-        Args:
-            parameters: Iterable of `torch.nn.Parameter`; the parameters to be
-                updated with the stored moving averages. If `None`, the
-                parameters with which this `ExponentialMovingAverage` was
-                initialized will be used.
-        """
-        parameters = list(parameters)
-        for s_param, param in zip(self.shadow_params, parameters):
-            param.data.copy_(s_param.data)
-
-    def to(self, device=None, dtype=None) -> None:
-        r"""Move internal buffers of the ExponentialMovingAverage to `device`.
-
-        Args:
-            device: like `device` argument to `torch.Tensor.to`
-        """
-        # .to() on the tensors handles None correctly
-        self.shadow_params = [
-            p.to(device=device, dtype=dtype) if p.is_floating_point() else p.to(device=device)
-            for p in self.shadow_params
-        ]
-
-    def state_dict(self) -> dict:
-        r"""
-        Returns the state of the ExponentialMovingAverage as a dict.
-        This method is used by accelerate during checkpointing to save the ema state dict.
-        """
-        # Following PyTorch conventions, references to tensors are returned:
-        # "returns a reference to the state and not its copy!" -
-        # https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict
-        return {
-            "decay": self.decay,
-            "optimization_step": self.optimization_step,
-            "shadow_params": self.shadow_params,
-            "collected_params": self.collected_params,
-        }
-
-    def load_state_dict(self, state_dict: dict) -> None:
-        r"""
-        Loads the ExponentialMovingAverage state.
-        This method is used by accelerate during checkpointing to save the ema state dict.
-        Args:
-            state_dict (dict): EMA state. Should be an object returned
-                from a call to :meth:`state_dict`.
-        """
-        # deepcopy, to be consistent with module API
-        state_dict = copy.deepcopy(state_dict)
-
-        self.decay = state_dict["decay"]
-        if self.decay < 0.0 or self.decay > 1.0:
-            raise ValueError("Decay must be between 0 and 1")
-
-        self.optimization_step = state_dict["optimization_step"]
-        if not isinstance(self.optimization_step, int):
-            raise ValueError("Invalid optimization_step")
-
-        self.shadow_params = state_dict["shadow_params"]
-        if not isinstance(self.shadow_params, list):
-            raise ValueError("shadow_params must be a list")
-        if not all(isinstance(p, torch.Tensor) for p in self.shadow_params):
-            raise ValueError("shadow_params must all be Tensors")
-
-        self.collected_params = state_dict["collected_params"]
-        if self.collected_params is not None:
-            if not isinstance(self.collected_params, list):
-                raise ValueError("collected_params must be a list")
-            if not all(isinstance(p, torch.Tensor) for p in self.collected_params):
-                raise ValueError("collected_params must all be Tensors")
-            if len(self.collected_params) != len(self.shadow_params):
-                raise ValueError("collected_params and shadow_params must have the same length")
-
-
 def main():
     args = parse_args()
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
@@ -501,16 +401,9 @@ def main():
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
     )
 
-    # Freeze vae and text_encoder
+    # Freeze vae and text_encoder.
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
-
-    # Create EMA for the unet.
-    if args.use_ema:
-        ema_unet = UNet2DConditionModel.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
-        )
-        ema_unet = EMAModel(ema_unet.parameters())
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -705,8 +598,6 @@ def main():
     lora_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         lora_layers, optimizer, train_dataloader, lr_scheduler
     )
-    if args.use_ema:
-        accelerator.register_for_checkpointing(ema_unet)
 
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
@@ -722,8 +613,6 @@ def main():
     unet.to(accelerator.device, dtype=weight_dtype)
     text_encoder.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
-    if args.use_ema:
-        ema_unet.to(accelerator.device)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -736,6 +625,11 @@ def main():
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
         accelerator.init_trackers("text2image-fine-tune", config=vars(args))
+
+    # Initialize a Table on WandB if we're logging some sample predictions.
+    if accelerator.is_main_process:
+        if (args.save_sample_prompt is not None) and (wandb.run is not None):
+            generated_table = wandb.Table(columns=["gen_num", "prompt", "generated_images"])
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -828,8 +722,6 @@ def main():
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
-                if args.use_ema:
-                    ema_unet.step(unet.parameters())
                 progress_bar.update(1)
                 global_step += 1
                 accelerator.log({"train_loss": train_loss}, step=global_step)
@@ -852,7 +744,6 @@ def main():
             pipeline = StableDiffusionPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 unet=accelerator.unwrap_model(unet),
-                text_encoder=text_encoder,
                 revision=args.revision,
             )
             pipeline.save_pretrained(args.output_dir)
@@ -866,17 +757,20 @@ def main():
                 prompt = args.save_sample_prompt
                 images = pipeline(prompt, num_inference_steps=30, generator=generator).images
                 image = images[0]
-
                 image.save(os.path.join(sample_dir, f"{i}.png"))
 
                 global_step = epoch * len(train_dataloader) + i
-                generated_table.add_data(global_step, prompt, wandb.Image(image))
-                run.log({"generated_image": wandb.Image(image)})
+
+                if wandb.run is not None:
+                    generated_table.add_data(global_step, prompt, wandb.Image(image))
+                    run = wandb.run
+                    run.log({"generated_image": wandb.Image(image)})
 
             del pipeline
             torch.cuda.empty_cache()
 
-    run.log({"generated_table": generated_table})
+            if wandb.run is not None:
+                run.log({"generated_table": generated_table})
 
     # Save the lora layers
     accelerator.wait_for_everyone()
