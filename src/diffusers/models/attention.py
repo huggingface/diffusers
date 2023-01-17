@@ -198,7 +198,7 @@ class BasicTransformerBlock(nn.Module):
         only_cross_attention: bool = False,
         upcast_attention: bool = False,
         norm_elementwise_affine: bool = True,
-        norm_type: str = "layer",
+        norm_type: str = "layer_norm",
         final_dropout: bool = False,
     ):
         super().__init__()
