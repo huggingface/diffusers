@@ -164,7 +164,7 @@ def parse_args():
     parser.add_argument(
         "--scale_lr",
         action="store_true",
-        default=True,
+        default=False,
         help="Scale the learning rate by the number of GPUs, gradient accumulation steps, and batch size.",
     )
     parser.add_argument(
@@ -381,7 +381,10 @@ class TextualInversionDataset(Dataset):
 
         if self.center_crop:
             crop = min(img.shape[0], img.shape[1])
-            h, w, = (
+            (
+                h,
+                w,
+            ) = (
                 img.shape[0],
                 img.shape[1],
             )

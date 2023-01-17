@@ -23,6 +23,7 @@ from PIL import Image
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDIMScheduler, DDPMScheduler
+from ...utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, BaseOutput, DiffusionPipeline, ImagePipelineOutput
 from .mel import Mel
 
@@ -126,7 +127,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         input_dims = self.get_input_dims()
         self.mel.set_resolution(x_res=input_dims[1], y_res=input_dims[0])
         if noise is None:
-            noise = torch.randn(
+            noise = randn_tensor(
                 (
                     batch_size,
                     self.unet.in_channels,

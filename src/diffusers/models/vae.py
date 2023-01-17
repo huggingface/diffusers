@@ -18,7 +18,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from ..utils import BaseOutput
+from ..utils import BaseOutput, randn_tensor
 from .unet_2d_blocks import UNetMidBlock2D, get_down_block, get_up_block
 
 
@@ -323,11 +323,10 @@ class DiagonalGaussianDistribution(object):
             )
 
     def sample(self, generator: Optional[torch.Generator] = None) -> torch.FloatTensor:
-        device = self.parameters.device
-        sample_device = "cpu" if device.type == "mps" else device
-        sample = torch.randn(self.mean.shape, generator=generator, device=sample_device)
         # make sure sample is on the same device as the parameters and has same dtype
-        sample = sample.to(device=device, dtype=self.parameters.dtype)
+        sample = randn_tensor(
+            self.mean.shape, generator=generator, device=self.parameters.device, dtype=self.parameters.dtype
+        )
         x = self.mean + self.std * sample
         return x
 

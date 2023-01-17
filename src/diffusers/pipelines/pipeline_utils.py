@@ -37,6 +37,7 @@ from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
     CONFIG_NAME,
     DIFFUSERS_CACHE,
+    FLAX_WEIGHTS_NAME,
     HF_HUB_OFFLINE,
     ONNX_WEIGHTS_NAME,
     WEIGHTS_NAME,
@@ -445,6 +446,7 @@ class DiffusionPipeline(ConfigMixin):
         local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
+        from_flax = kwargs.pop("from_flax", False)
         torch_dtype = kwargs.pop("torch_dtype", None)
         custom_pipeline = kwargs.pop("custom_pipeline", None)
         custom_revision = kwargs.pop("custom_revision", None)
@@ -470,10 +472,25 @@ class DiffusionPipeline(ConfigMixin):
             # make sure we only download sub-folders and `diffusers` filenames
             folder_names = [k for k in config_dict.keys() if not k.startswith("_")]
             allow_patterns = [os.path.join(k, "*") for k in folder_names]
-            allow_patterns += [WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, ONNX_WEIGHTS_NAME, cls.config_name]
+            allow_patterns += [
+                WEIGHTS_NAME,
+                SCHEDULER_CONFIG_NAME,
+                CONFIG_NAME,
+                ONNX_WEIGHTS_NAME,
+                cls.config_name,
+            ]
 
             # make sure we don't download flax weights
             ignore_patterns = ["*.msgpack"]
+
+            if from_flax:
+                ignore_patterns = ["*.bin", "*.safetensors"]
+                allow_patterns += [
+                    SCHEDULER_CONFIG_NAME,
+                    CONFIG_NAME,
+                    FLAX_WEIGHTS_NAME,
+                    cls.config_name,
+                ]
 
             if custom_pipeline is not None:
                 allow_patterns += [CUSTOM_PIPELINE_FILE_NAME]
@@ -704,7 +721,14 @@ class DiffusionPipeline(ConfigMixin):
                 # This makes sure that the weights won't be initialized which significantly speeds up loading.
                 if is_diffusers_model or is_transformers_model:
                     loading_kwargs["device_map"] = device_map
-                    loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
+                    if from_flax:
+                        loading_kwargs["from_flax"] = True
+
+                    # if `from_flax` and model is transformer model, can currently not load with `low_cpu_mem_usage`
+                    if not (from_flax and is_transformers_model):
+                        loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
+                    else:
+                        loading_kwargs["low_cpu_mem_usage"] = False
 
                 # check if the module is in a subdirectory
                 if os.path.isdir(os.path.join(cached_folder, name)):
