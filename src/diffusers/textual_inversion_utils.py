@@ -20,7 +20,11 @@ class TextualInversionMixin:
                 )
 
             # load embedding from embedding path then convert it to self.text_encoder's device and dtype
-            embedding = torch.load(embedding_path)
+            embedding_dict = torch.load(embedding_path)
+
+            # get the first key from embedding dict, gets its value and assign it to embedding
+            embedding = list(embedding_dict.values())[0]
+
             embedding = embedding.to(self.text_encoder.device)
             embedding = embedding.to(self.text_encoder.dtype)
 
