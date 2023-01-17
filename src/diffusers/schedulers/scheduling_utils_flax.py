@@ -26,16 +26,13 @@ from ..utils import BaseOutput
 
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
 
-FlaxKarrasDiffusionSchedulers = Enum(
-    "FlaxKarrasDiffusionSchedulers ",
-    [
-        "FlaxDDIMScheduler",
-        "FlaxDDPMScheduler",
-        "FlaxPNDMScheduler",
-        "FlaxLMSDiscreteScheduler",
-        "FlaxDPMSolverMultistepScheduler",
-    ],
-)
+
+class FlaxKarrasDiffusionSchedulers(Enum):
+    FlaxDDIMScheduler = 1
+    FlaxDDPMScheduler = 2
+    FlaxPNDMScheduler = 3
+    FlaxLMSDiscreteScheduler = 4
+    FlaxDPMSolverMultistepScheduler = 5
 
 
 @dataclass

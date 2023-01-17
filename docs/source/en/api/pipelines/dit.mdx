@@ -30,18 +30,26 @@ The original codebase of this paper can be found here: [facebookresearch/dit](ht
 
 
 ## Usage example
-
 ```python
-from diffusers import DiTPipeline
+from diffusers import DiTPipeline, DPMSolverMultistepScheduler
+import torch
 
-# use "kashif/DiT-XL-2-512" for 512x512 model
-pipe = DiTPipeline.from_pretrained("kashif/DiT-XL-2-256")
+pipe = DiTPipeline.from_pretrained("facebook/DiT-XL-2-256", torch_dtype=torch.float16)
+pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
 pipe = pipe.to("cuda")
 
-# Imagenet class labels: https://gist.github.com/yrevar/942d3a0ac09ec9e5eb3a
-output = pipe(class_labels=[207, 360, 387, 974, 88, 979, 417, 279])
+# pick words from Imagenet class labels
+pipe.labels  # to print all available words
 
-image = output.images[4]  # label 88: 'macaw'
+# pick words that exist in ImageNet
+words = ["white shark", "umbrella"]
+
+class_ids = pipe.get_label_ids(words)
+
+generator = torch.manual_seed(33)
+output = pipe(class_labels=class_ids, num_inference_steps=25, generator=generator)
+
+image = output.images[0]  # label 'white shark'
 ```
 
 ## DiTPipeline
