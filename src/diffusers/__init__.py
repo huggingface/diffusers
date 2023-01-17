@@ -13,6 +13,7 @@ from .utils import (
     is_transformers_available,
     is_transformers_version,
     is_unidecode_available,
+    is_k_diffusion_version,
     logging,
 )
 

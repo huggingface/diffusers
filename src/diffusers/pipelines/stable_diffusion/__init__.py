@@ -11,6 +11,7 @@ from ...utils import (
     OptionalDependencyNotAvailable,
     is_flax_available,
     is_k_diffusion_available,
+    is_k_diffusion_version,
     is_onnx_available,
     is_torch_available,
     is_transformers_available,
@@ -64,7 +65,7 @@ else:
 
 
 try:
-    if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
+    if not (is_torch_available() and is_transformers_available() and is_k_diffusion_version(">=", "0.0.12")):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from ...utils.dummy_torch_and_transformers_and_k_diffusion_objects import *  # noqa F403
