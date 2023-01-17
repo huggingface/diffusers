@@ -554,7 +554,7 @@ def main(args):
             else:
                 repo_name = args.hub_model_id
 
-            repo_name = create_repo(repo_name, exists_ok=True)
+            repo_name = create_repo(repo_name, exist_ok=True)
             repo = Repository(args.output_dir, clone_from=repo_name)
 
             with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:

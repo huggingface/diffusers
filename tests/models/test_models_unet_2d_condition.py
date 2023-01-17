@@ -284,7 +284,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
         lora_attn_procs = {}
         for name in model.attn_processors.keys():
-            cross_attention_dim = None if name.endswith("attn1") else model.config.cross_attention_dim
+            cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
             if name.startswith("mid_block"):
                 hidden_size = model.config.block_out_channels[-1]
             elif name.startswith("up_blocks"):
@@ -300,10 +300,10 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
             # add 1 to weights to mock trained weights
             with torch.no_grad():
-                lora_attn_procs[name].to_q_lora.lora_up.weight += 1
-                lora_attn_procs[name].to_k_lora.lora_up.weight += 1
-                lora_attn_procs[name].to_v_lora.lora_up.weight += 1
-                lora_attn_procs[name].to_out_lora.lora_up.weight += 1
+                lora_attn_procs[name].to_q_lora.up.weight += 1
+                lora_attn_procs[name].to_k_lora.up.weight += 1
+                lora_attn_procs[name].to_v_lora.up.weight += 1
+                lora_attn_procs[name].to_out_lora.up.weight += 1
 
         # make sure we can set a list of attention processors
         model.set_attn_processor(lora_attn_procs)
@@ -338,7 +338,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
         lora_attn_procs = {}
         for name in model.attn_processors.keys():
-            cross_attention_dim = None if name.endswith("attn1") else model.config.cross_attention_dim
+            cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
             if name.startswith("mid_block"):
                 hidden_size = model.config.block_out_channels[-1]
             elif name.startswith("up_blocks"):
@@ -355,10 +355,10 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
             # add 1 to weights to mock trained weights
             with torch.no_grad():
-                lora_attn_procs[name].to_q_lora.lora_up.weight += 1
-                lora_attn_procs[name].to_k_lora.lora_up.weight += 1
-                lora_attn_procs[name].to_v_lora.lora_up.weight += 1
-                lora_attn_procs[name].to_out_lora.lora_up.weight += 1
+                lora_attn_procs[name].to_q_lora.up.weight += 1
+                lora_attn_procs[name].to_k_lora.up.weight += 1
+                lora_attn_procs[name].to_v_lora.up.weight += 1
+                lora_attn_procs[name].to_out_lora.up.weight += 1
 
         model.set_attn_processor(lora_attn_procs)
 

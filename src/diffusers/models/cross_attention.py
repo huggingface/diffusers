@@ -253,16 +253,16 @@ class LoRALinearLayer(nn.Module):
         if rank > min(in_features, out_features):
             raise ValueError(f"LoRA rank {rank} must be less or equal than {min(in_features, out_features)}")
 
-        self.lora_down = nn.Linear(in_features, rank, bias=False)
-        self.lora_up = nn.Linear(rank, out_features, bias=False)
+        self.down = nn.Linear(in_features, rank, bias=False)
+        self.up = nn.Linear(rank, out_features, bias=False)
         self.scale = 1.0
 
-        nn.init.normal_(self.lora_down.weight, std=1 / rank)
-        nn.init.zeros_(self.lora_up.weight)
+        nn.init.normal_(self.down.weight, std=1 / rank)
+        nn.init.zeros_(self.up.weight)
 
     def forward(self, hidden_states):
-        down_hidden_states = self.lora_down(hidden_states)
-        up_hidden_states = self.lora_up(down_hidden_states)
+        down_hidden_states = self.down(hidden_states)
+        up_hidden_states = self.up(down_hidden_states)
 
         return up_hidden_states
 
