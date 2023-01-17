@@ -291,9 +291,7 @@ class BasicTransformerBlock(nn.Module):
 
         if self.attn2 is not None:
             if self.use_ada_layer_norm:
-                scale, shift = self.norm2(timestep)
-                norm_hidden_states = self.norm2.norm(hidden_states)
-                norm_hidden_states = norm_hidden_states * (1 + scale) + shift
+                norm_hidden_states = self.norm2(hidden_states, timestep)
             else:
                 norm_hidden_states = self.norm2(hidden_states)
 
