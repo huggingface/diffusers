@@ -269,15 +269,11 @@ class BasicTransformerBlock(nn.Module):
         class_labels=None,
     ):
         if self.use_ada_layer_norm:
-            scale, shift = self.norm1(timestep)
-            norm_hidden_states = self.norm1.norm(hidden_states)
-            norm_hidden_states = norm_hidden_states * (1 + scale) + shift
+            norm_hidden_states = self.norm1(hidden_states, timestep)
         elif self.use_ada_layer_norm_zero:
-            shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(
-                timestep, class_labels, hidden_dtype=hidden_states.dtype
+            norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(
+                hidden_states, timestep, class_labels, hidden_dtype=hidden_states.dtype
             )
-            norm_hidden_states = self.norm1.norm(hidden_states)
-            norm_hidden_states = norm_hidden_states * (1 + scale_msa[:, None]) + shift_msa[:, None]
         else:
             norm_hidden_states = self.norm1(hidden_states)
 
@@ -452,10 +448,11 @@ class AdaLayerNorm(nn.Module):
         self.linear = nn.Linear(embedding_dim, embedding_dim * 2)
         self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False)
 
-    def forward(self, timestep):
+    def forward(self, x, timestep):
         emb = self.linear(self.silu(self.emb(timestep)))
         scale, shift = torch.chunk(emb, 2)
-        return scale, shift
+        x = self.norm(x) * (1 + scale) + shift
+        return x
 
 
 class AdaLayerNormZero(nn.Module):
@@ -472,7 +469,8 @@ class AdaLayerNormZero(nn.Module):
         self.linear = nn.Linear(embedding_dim, 6 * embedding_dim, bias=True)
         self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
 
-    def forward(self, timestep, class_labels, hidden_dtype=None):
+    def forward(self, x, timestep, class_labels, hidden_dtype=None):
         emb = self.linear(self.silu(self.emb(timestep, class_labels, hidden_dtype=hidden_dtype)))
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.chunk(6, dim=1)
-        return shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp
+        x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
+        return x, gate_msa, shift_mlp, scale_mlp, gate_mlp
