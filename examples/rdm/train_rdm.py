@@ -970,13 +970,15 @@ def main():
                 retrieved_images = batch["nearest_neighbors"]
 
                 if retrieved_images is not None:
+                    clip_hidden_states = []
                     for i in range(retrieved_images.shape[0]):
                         # preprocess retrieved images
                         processed_images = retrieved_images[i].to(accelerator.device, dtype=weight_dtype)
                         image_embeddings = clip_model.get_image_features(processed_images)
                         image_embeddings = image_embeddings / torch.linalg.norm(image_embeddings, dim=-1, keepdim=True)
 
-                        text_embeddings[i] = torch.cat([text_embeddings[i], image_embeddings])
+                        clip_hidden_states.append(torch.cat([text_embeddings[i], image_embeddings]))
+                    text_embeddings = torch.stack(clip_hidden_states)
                 encoder_hidden_states = text_embeddings
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
