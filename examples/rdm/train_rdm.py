@@ -976,7 +976,7 @@ def main():
                         image_embeddings = clip_model.get_image_features(processed_images)
                         image_embeddings = image_embeddings / torch.linalg.norm(image_embeddings, dim=-1, keepdim=True)
 
-                        text_embeddings[i] = torch.cat([text_embeddings[i], image_embeddings], dim=1)
+                        text_embeddings[i] = torch.cat([text_embeddings[i], image_embeddings])
                 encoder_hidden_states = text_embeddings
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
