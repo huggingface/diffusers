@@ -215,7 +215,7 @@ class ModelTesterMixin:
         noise = torch.randn((inputs_dict["sample"].shape[0],) + self.output_shape).to(torch_device)
         loss = torch.nn.functional.mse_loss(output, noise)
         loss.backward()
-        ema_model.step(model)
+        ema_model.step(model.parameters())
 
     def test_outputs_equivalence(self):
         def set_nan_tensor_to_zero(t):
