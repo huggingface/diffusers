@@ -6,8 +6,6 @@ from typing import Iterable, Union
 import numpy as np
 import torch
 
-from diffusers.utils import deprecate
-
 
 def enable_full_determinism(seed: int):
     """

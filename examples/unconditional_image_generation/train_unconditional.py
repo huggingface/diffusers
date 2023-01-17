@@ -4,7 +4,7 @@ import inspect
 import math
 import os
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Optional
 
 import torch
 import torch.nn.functional as F

@@ -1,11 +1,10 @@
 import argparse
-import copy
 import logging
 import math
 import os
 import random
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Optional
 
 import numpy as np
 import torch
