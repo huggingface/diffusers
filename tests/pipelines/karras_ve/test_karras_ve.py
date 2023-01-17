@@ -25,6 +25,44 @@ from diffusers.utils.testing_utils import require_torch, slow, torch_device
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
+class KarrasVePipelineFastTests(unittest.TestCase):
+    @property
+    def dummy_uncond_unet(self):
+        torch.manual_seed(0)
+        model = UNet2DModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=3,
+            out_channels=3,
+            down_block_types=("DownBlock2D", "AttnDownBlock2D"),
+            up_block_types=("AttnUpBlock2D", "UpBlock2D"),
+        )
+        return model
+
+    def test_inference(self):
+        unet = self.dummy_uncond_unet
+        scheduler = KarrasVeScheduler()
+
+        pipe = KarrasVePipeline(unet=unet, scheduler=scheduler)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.manual_seed(0)
+        image = pipe(num_inference_steps=2, generator=generator, output_type="numpy").images
+
+        generator = torch.manual_seed(0)
+        image_from_tuple = pipe(num_inference_steps=2, generator=generator, output_type="numpy", return_dict=False)[0]
+
+        image_slice = image[0, -3:, -3:, -1]
+        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 32, 32, 3)
+        expected_slice = np.array([0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+
+
 @slow
 @require_torch
 class KarrasVePipelineIntegrationTests(unittest.TestCase):

@@ -328,7 +328,14 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
             do_classifier_free_guidance=do_classifier_free_guidance,
         )
 
-        decoder_text_mask = F.pad(text_mask, (self.text_proj.clip_extra_context_tokens, 0), value=1)
+        if device.type == "mps":
+            # HACK: MPS: There is a panic when padding bool tensors,
+            # so cast to int tensor for the pad and back to bool afterwards
+            text_mask = text_mask.type(torch.int)
+            decoder_text_mask = F.pad(text_mask, (self.text_proj.clip_extra_context_tokens, 0), value=1)
+            decoder_text_mask = decoder_text_mask.type(torch.bool)
+        else:
+            decoder_text_mask = F.pad(text_mask, (self.text_proj.clip_extra_context_tokens, 0), value=True)
 
         self.decoder_scheduler.set_timesteps(decoder_num_inference_steps, device=device)
         decoder_timesteps_tensor = self.decoder_scheduler.timesteps
@@ -401,13 +408,17 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
                 self.super_res_scheduler,
             )
 
-        interpolate_antialias = {}
-        if "antialias" in inspect.signature(F.interpolate).parameters:
-            interpolate_antialias["antialias"] = True
+        if device.type == "mps":
+            # MPS does not support many interpolations
+            image_upscaled = F.interpolate(image_small, size=[height, width])
+        else:
+            interpolate_antialias = {}
+            if "antialias" in inspect.signature(F.interpolate).parameters:
+                interpolate_antialias["antialias"] = True
 
-        image_upscaled = F.interpolate(
-            image_small, size=[height, width], mode="bicubic", align_corners=False, **interpolate_antialias
-        )
+            image_upscaled = F.interpolate(
+                image_small, size=[height, width], mode="bicubic", align_corners=False, **interpolate_antialias
+            )
 
         for i, t in enumerate(self.progress_bar(super_res_timesteps_tensor)):
             # no classifier free guidance

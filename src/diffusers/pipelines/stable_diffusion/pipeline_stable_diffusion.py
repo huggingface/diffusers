@@ -208,13 +208,10 @@ class StableDiffusionPipeline(DiffusionPipeline):
         device = torch.device(f"cuda:{gpu_id}")
 
         for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
-            if cpu_offloaded_model is not None:
-                cpu_offload(cpu_offloaded_model, device)
+            cpu_offload(cpu_offloaded_model, device)
 
         if self.safety_checker is not None:
-            # TODO(Patrick) - there is currently a bug with cpu offload of nn.Parameter in accelerate
-            # fix by only offloading self.safety_checker for now
-            cpu_offload(self.safety_checker.vision_model, device)
+            cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
 
     @property
     def _execution_device(self):
@@ -452,7 +449,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
                 [`schedulers.DDIMScheduler`], will be ignored for others.
-            generator (`torch.Generator`, *optional*):
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             latents (`torch.FloatTensor`, *optional*):

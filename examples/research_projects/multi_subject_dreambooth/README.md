@@ -1,24 +1,23 @@
-# DreamBooth training example
+# Multi Subject DreamBooth training
 
 [DreamBooth](https://arxiv.org/abs/2208.12242) is a method to personalize text2image models like stable diffusion given just a few(3~5) images of a subject.
-The `train_dreambooth.py` script shows how to implement the training procedure and adapt it for stable diffusion.
+This `train_multi_subject_dreambooth.py` script shows how to implement the training procedure for one or more subjects and adapt it for stable diffusion. Note that this code is based off of the `examples/dreambooth/train_dreambooth.py` script as of 01/06/2022.
 
+This script was added by @kopsahlong, and is not actively maintained. However, if you come across anything that could use fixing, feel free to open an issue and tag @kopsahlong.
 
 ## Running locally with PyTorch
 ### Installing the dependencies
 
-Before running the scripts, make sure to install the library's training dependencies:
+Before running the script, make sure to install the library's training dependencies:
 
-**Important**
-
-To make sure you can successfully run the latest versions of the example scripts, we highly recommend **installing from source** and keeping the install up to date as we update the example scripts frequently and install some example-specific requirements. To do this, execute the following steps in a new virtual environment:
+To start, execute the following steps in a new virtual environment:
 ```bash
 git clone https://github.com/huggingface/diffusers
 cd diffusers
 pip install -e .
 ```
 
-Then cd in the example folder and run
+Then cd into the folder `diffusers/examples/research_projects/multi_subject_dreambooth` and run the following:
 ```bash
 pip install -r requirements.txt
 ```
@@ -42,9 +41,80 @@ from accelerate.utils import write_basic_config
 write_basic_config()
 ```
 
-### Dog toy example
+### Multi Subject Training Example
+In order to have your model learn multiple concepts at once, we simply add in the additional data directories and prompts to our `instance_data_dir` and `instance_prompt` (as well as `class_data_dir` and `class_prompt` if `--with_prior_preservation` is specified) as one comma separated string.
 
-Now let's get our dataset. Download images from [here](https://drive.google.com/drive/folders/1BO_dyz-p65qhBRRMRA4TbZ8qW4rB99JZ) and save them in a directory. This will be our training data.
+See an example with 2 subjects below, which learns a model for one dog subject and one human subject:
+
+```bash
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export OUTPUT_DIR="path-to-save-model"
+
+# Subject 1
+export INSTANCE_DIR_1="path-to-instance-images-concept-1"
+export INSTANCE_PROMPT_1="a photo of a sks dog"
+export CLASS_DIR_1="path-to-class-images-dog"
+export CLASS_PROMPT_1="a photo of a dog"
+
+# Subject 2
+export INSTANCE_DIR_2="path-to-instance-images-concept-2"
+export INSTANCE_PROMPT_2="a photo of a t@y person"
+export CLASS_DIR_2="path-to-class-images-person"
+export CLASS_PROMPT_2="a photo of a person"
+
+accelerate launch train_multi_subject_dreambooth.py \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --instance_data_dir="$INSTANCE_DIR_1,$INSTANCE_DIR_2" \
+  --output_dir=$OUTPUT_DIR \
+  --train_text_encoder \
+  --instance_prompt="$INSTANCE_PROMPT_1,$INSTANCE_PROMPT_2" \
+  --with_prior_preservation \
+  --prior_loss_weight=1.0 \
+  --class_data_dir="$CLASS_DIR_1,$CLASS_DIR_2" \
+  --class_prompt="$CLASS_PROMPT_1,$CLASS_PROMPT_2"\
+  --num_class_images=50 \
+  --resolution=512 \
+  --train_batch_size=1 \
+  --gradient_accumulation_steps=1 \
+  --learning_rate=1e-6 \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --max_train_steps=1500
+```
+
+This example shows training for 2 subjects, but please note that the model can be trained on any number of new concepts. This can be done by continuing to add in the corresponding directories and prompts to the corresponding comma separated string.
+
+Note also that in this script, `sks` and `t@y` were used as tokens to learn the new subjects ([this thread](https://github.com/XavierXiao/Dreambooth-Stable-Diffusion/issues/71) inspired the use of `t@y` as our second identifier). However, there may be better rare tokens to experiment with, and results also seemed to be good when more intuitive words are used.
+
+### Inference
+
+Once you have trained a model using above command, the inference can be done simply using the `StableDiffusionPipeline`. Make sure to include the `identifier`(e.g. sks in above example) in your prompt.
+
+```python
+from diffusers import StableDiffusionPipeline
+import torch
+
+model_id = "path-to-your-trained-model"
+pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
+
+prompt = "A photo of a t@y person petting an sks dog"
+image = pipe(prompt, num_inference_steps=200, guidance_scale=7.5).images[0]
+
+image.save("person-petting-dog.png")
+```
+
+### Inference from a training checkpoint
+
+You can also perform inference from one of the checkpoints saved during the training process, if you used the `--checkpointing_steps` argument. Please, refer to [the documentation](https://huggingface.co/docs/diffusers/main/en/training/dreambooth#performing-inference-using-a-saved-checkpoint) to see how to do it.
+
+## Additional Dreambooth documentation
+Because the `train_multi_subject_dreambooth.py` script here was forked from an original version of `train_dreambooth.py` in the `examples/dreambooth` folder, I've included the original applicable training documentation for single subject examples below.
+
+This should explain how to play with training variables such as prior preservation, fine tuning the text encoder, etc. which is still applicable to our multi subject training code. Note also that the examples below, which are single subject examples, also work with `train_multi_subject_dreambooth.py`, as this script supports 1 (or more) subjects.
+
+### Single subject dog toy example
+
+Let's get our dataset. Download images from [here](https://drive.google.com/drive/folders/1BO_dyz-p65qhBRRMRA4TbZ8qW4rB99JZ) and save them in a directory. This will be our training data.
 
 And launch the training using
 
@@ -204,9 +274,10 @@ accelerate launch train_dreambooth.py \
   --max_train_steps=800
 ```
 
-### Using DreamBooth for pipelines other than Stable Diffusion
+### Using DreamBooth for other pipelines than Stable Diffusion
 
-The [AltDiffusion pipeline](https://huggingface.co/docs/diffusers/api/pipelines/alt_diffusion) also supports dreambooth fine-tuning. The process is the same as above, all you need to do is replace the `MODEL_NAME` like this:
+Altdiffusion also support dreambooth now, the runing comman is basically the same as abouve, all you need to do is replace the `MODEL_NAME` like this:
+One can now simply change the `pretrained_model_name_or_path` to another architecture such as [`AltDiffusion`](https://huggingface.co/docs/diffusers/api/pipelines/alt_diffusion).
 
 ```
 export MODEL_NAME="CompVis/stable-diffusion-v1-4" --> export MODEL_NAME="BAAI/AltDiffusion-m9"
@@ -214,112 +285,7 @@ or
 export MODEL_NAME="CompVis/stable-diffusion-v1-4" --> export MODEL_NAME="BAAI/AltDiffusion"
 ```
 
-### Inference
-
-Once you have trained a model using the above command, you can run inference simply using the `StableDiffusionPipeline`. Make sure to include the `identifier` (e.g. sks in above example) in your prompt.
-
-```python
-from diffusers import StableDiffusionPipeline
-import torch
-
-model_id = "path-to-your-trained-model"
-pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
-
-prompt = "A photo of sks dog in a bucket"
-image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
-
-image.save("dog-bucket.png")
-```
-
-### Inference from a training checkpoint
-
-You can also perform inference from one of the checkpoints saved during the training process, if you used the `--checkpointing_steps` argument. Please, refer to [the documentation](https://huggingface.co/docs/diffusers/main/en/training/dreambooth#performing-inference-using-a-saved-checkpoint) to see how to do it.
-
-## Training with Flax/JAX
-
-For faster training on TPUs and GPUs you can leverage the flax training example. Follow the instructions above to get the model and dataset before running the script.
-
-____Note: The flax example don't yet support features like gradient checkpoint, gradient accumulation etc, so to use flax for faster training we will need >30GB cards.___
-
-
-Before running the scripts, make sure to install the library's training dependencies:
-
-```bash
-pip install -U -r requirements_flax.txt
-```
-
-
-### Training without prior preservation loss
-
-```bash
-export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export INSTANCE_DIR="path-to-instance-images"
-export OUTPUT_DIR="path-to-save-model"
-
-python train_dreambooth_flax.py \
-  --pretrained_model_name_or_path=$MODEL_NAME  \
-  --instance_data_dir=$INSTANCE_DIR \
-  --output_dir=$OUTPUT_DIR \
-  --instance_prompt="a photo of sks dog" \
-  --resolution=512 \
-  --train_batch_size=1 \
-  --learning_rate=5e-6 \
-  --max_train_steps=400
-```
-
-
-### Training with prior preservation loss
-
-```bash
-export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export INSTANCE_DIR="path-to-instance-images"
-export CLASS_DIR="path-to-class-images"
-export OUTPUT_DIR="path-to-save-model"
-
-python train_dreambooth_flax.py \
-  --pretrained_model_name_or_path=$MODEL_NAME  \
-  --instance_data_dir=$INSTANCE_DIR \
-  --class_data_dir=$CLASS_DIR \
-  --output_dir=$OUTPUT_DIR \
-  --with_prior_preservation --prior_loss_weight=1.0 \
-  --instance_prompt="a photo of sks dog" \
-  --class_prompt="a photo of dog" \
-  --resolution=512 \
-  --train_batch_size=1 \
-  --learning_rate=5e-6 \
-  --num_class_images=200 \
-  --max_train_steps=800
-```
-
-
-### Fine-tune text encoder with the UNet.
-
-```bash
-export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export INSTANCE_DIR="path-to-instance-images"
-export CLASS_DIR="path-to-class-images"
-export OUTPUT_DIR="path-to-save-model"
-
-python train_dreambooth_flax.py \
-  --pretrained_model_name_or_path=$MODEL_NAME  \
-  --train_text_encoder \
-  --instance_data_dir=$INSTANCE_DIR \
-  --class_data_dir=$CLASS_DIR \
-  --output_dir=$OUTPUT_DIR \
-  --with_prior_preservation --prior_loss_weight=1.0 \
-  --instance_prompt="a photo of sks dog" \
-  --class_prompt="a photo of dog" \
-  --resolution=512 \
-  --train_batch_size=1 \
-  --learning_rate=2e-6 \
-  --num_class_images=200 \
-  --max_train_steps=800
-```
-
 ### Training with xformers:
 You can enable memory efficient attention by [installing xFormers](https://github.com/facebookresearch/xformers#installing-xformers) and padding the `--enable_xformers_memory_efficient_attention` argument to the script. This is not available with the Flax/JAX implementation.
 
 You can also use Dreambooth to train the specialized in-painting model. See [the script in the research folder for details](https://github.com/huggingface/diffusers/tree/main/examples/research_projects/dreambooth_inpaint).
-
-### Experimental results
-You can refer to [this blog post](https://huggingface.co/blog/dreambooth) that discusses some of DreamBooth experiments in detail. Specifically, it recommends a set of DreamBooth-specific tips and tricks that we have found to work well for a variety of subjects. 

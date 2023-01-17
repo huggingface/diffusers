@@ -108,4 +108,8 @@ try:
 except OptionalDependencyNotAvailable:
     from ..utils.dummy_flax_and_transformers_objects import *  # noqa F403
 else:
-    from .stable_diffusion import FlaxStableDiffusionImg2ImgPipeline, FlaxStableDiffusionPipeline
+    from .stable_diffusion import (
+        FlaxStableDiffusionImg2ImgPipeline,
+        FlaxStableDiffusionInpaintPipeline,
+        FlaxStableDiffusionPipeline,
+    )
