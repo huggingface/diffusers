@@ -22,7 +22,8 @@ from transformers import CLIPTextModelWithProjection, CLIPTokenizer
 from transformers.models.clip.modeling_clip import CLIPTextModelOutput
 
 from ...models import PriorTransformer, UNet2DConditionModel, UNet2DModel
-from ...pipelines import DiffusionPipeline, ImagePipelineOutput
+from ...pipelines import DiffusionPipeline
+from ...pipelines.pipeline_utils import ImagePipelineOutput
 from ...schedulers import UnCLIPScheduler
 from ...utils import is_accelerate_available, logging, randn_tensor
 from .text_proj import UnCLIPTextProjModel
@@ -130,13 +131,20 @@ class UnCLIPPipeline(DiffusionPipeline):
                 prompt,
                 padding="max_length",
                 max_length=self.tokenizer.model_max_length,
+                truncation=True,
                 return_tensors="pt",
             )
             text_input_ids = text_inputs.input_ids
             text_mask = text_inputs.attention_mask.bool().to(device)
 
-            if text_input_ids.shape[-1] > self.tokenizer.model_max_length:
-                removed_text = self.tokenizer.batch_decode(text_input_ids[:, self.tokenizer.model_max_length :])
+            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+
+            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
+                text_input_ids, untruncated_ids
+            ):
+                removed_text = self.tokenizer.batch_decode(
+                    untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
+                )
                 logger.warning(
                     "The following part of your input was truncated because CLIP can only handle sequences up to"
                     f" {self.tokenizer.model_max_length} tokens: {removed_text}"
@@ -249,7 +257,7 @@ class UnCLIPPipeline(DiffusionPipeline):
         prior_num_inference_steps: int = 25,
         decoder_num_inference_steps: int = 25,
         super_res_num_inference_steps: int = 7,
-        generator: Optional[torch.Generator] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         prior_latents: Optional[torch.FloatTensor] = None,
         decoder_latents: Optional[torch.FloatTensor] = None,
         super_res_latents: Optional[torch.FloatTensor] = None,
@@ -278,7 +286,7 @@ class UnCLIPPipeline(DiffusionPipeline):
             super_res_num_inference_steps (`int`, *optional*, defaults to 7):
                 The number of denoising steps for super resolution. More denoising steps usually lead to a higher
                 quality image at the expense of slower inference.
-            generator (`torch.Generator`, *optional*):
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             prior_latents (`torch.FloatTensor` of shape (batch size, embeddings dimension), *optional*):
@@ -394,7 +402,14 @@ class UnCLIPPipeline(DiffusionPipeline):
             do_classifier_free_guidance=do_classifier_free_guidance,
         )
 
-        decoder_text_mask = F.pad(text_mask, (self.text_proj.clip_extra_context_tokens, 0), value=1)
+        if device.type == "mps":
+            # HACK: MPS: There is a panic when padding bool tensors,
+            # so cast to int tensor for the pad and back to bool afterwards
+            text_mask = text_mask.type(torch.int)
+            decoder_text_mask = F.pad(text_mask, (self.text_proj.clip_extra_context_tokens, 0), value=1)
+            decoder_text_mask = decoder_text_mask.type(torch.bool)
+        else:
+            decoder_text_mask = F.pad(text_mask, (self.text_proj.clip_extra_context_tokens, 0), value=True)
 
         self.decoder_scheduler.set_timesteps(decoder_num_inference_steps, device=device)
         decoder_timesteps_tensor = self.decoder_scheduler.timesteps
@@ -465,13 +480,17 @@ class UnCLIPPipeline(DiffusionPipeline):
             self.super_res_scheduler,
         )
 
-        interpolate_antialias = {}
-        if "antialias" in inspect.signature(F.interpolate).parameters:
-            interpolate_antialias["antialias"] = True
+        if device.type == "mps":
+            # MPS does not support many interpolations
+            image_upscaled = F.interpolate(image_small, size=[height, width])
+        else:
+            interpolate_antialias = {}
+            if "antialias" in inspect.signature(F.interpolate).parameters:
+                interpolate_antialias["antialias"] = True
 
-        image_upscaled = F.interpolate(
-            image_small, size=[height, width], mode="bicubic", align_corners=False, **interpolate_antialias
-        )
+            image_upscaled = F.interpolate(
+                image_small, size=[height, width], mode="bicubic", align_corners=False, **interpolate_antialias
+            )
 
         for i, t in enumerate(self.progress_bar(super_res_timesteps_tensor)):
             # no classifier free guidance
