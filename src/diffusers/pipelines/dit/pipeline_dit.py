@@ -60,7 +60,18 @@ class DiTPipeline(DiffusionPipeline):
                     self.labels[label.lstrip().rstrip()] = int(key)
             self.labels = dict(sorted(self.labels.items()))
 
-    def get_label_ids(self, label: Union[str, List[str]]):
+    def get_label_ids(self, label: Union[str, List[str]]) -> List[int]:
+        r"""
+
+        Map label strings, *e.g.* from ImageNet, to corresponding class ids.
+
+        Parameters:
+            label (`str` or `dict` of `str`): label strings to be mapped to class ids.
+
+        Returns:
+            `list` of `int`: Class ids to be processed by pipeline.
+        """
+
         if not isinstance(label, list):
             label = list(label)
 
