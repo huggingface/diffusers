@@ -61,7 +61,10 @@ class AttnProcsLayers(torch.nn.Module):
 class UNet2DConditionLoadersMixin:
     def load_attn_procs(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         r"""
-        Load pretrained attention processor layers into `UNet2DConditionModel`. Attention processor layers have to be defined in [cross_attention.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py) and be a `torch.nn.Module` class.
+        Load pretrained attention processor layers into `UNet2DConditionModel`. Attention processor layers have to be
+        defined in
+        [cross_attention.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py)
+        and be a `torch.nn.Module` class.
 
         <Tip warning={true}>
 
@@ -80,7 +83,8 @@ class UNet2DConditionLoadersMixin:
                       Valid model ids should have an organization name, like `google/ddpm-celebahq-256`.
                     - A path to a *directory* containing model weights saved using [`~ModelMixin.save_config`], e.g.,
                       `./my_model_directory/`.
-                    - A [torch state dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
+                    - A [torch state
+                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
 
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory in which a downloaded pretrained model configuration should be cached if the
