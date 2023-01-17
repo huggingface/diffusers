@@ -89,7 +89,7 @@ class DiTPipeline(DiffusionPipeline):
         class_labels: List[int],
         guidance_scale: float = 4.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        num_inference_steps: int = 25,
+        num_inference_steps: int = 50,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
     ) -> Union[ImagePipelineOutput, Tuple]:

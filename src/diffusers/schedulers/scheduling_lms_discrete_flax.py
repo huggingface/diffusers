@@ -82,7 +82,7 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
             the `dtype` used for params and computation.
     """
 
-    _compatibles = [e.name for e in FlaxKarrasDiffusionSchedulers]()
+    _compatibles = [e.name for e in FlaxKarrasDiffusionSchedulers]
 
     dtype: jnp.dtype
 
