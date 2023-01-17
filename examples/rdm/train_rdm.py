@@ -683,6 +683,11 @@ def main():
         log_with=args.report_to,
         logging_dir=logging_dir,
     )
+    revision_dtype = torch.float32
+    if args.revision == "fp16":
+        revision_dtype = torch.float16
+    elif args.revision == "bf16":
+        revision_dtype = torch.bfloat16
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
@@ -734,7 +739,7 @@ def main():
     )
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision)
     if args.unet_config:
-        unet = UNet2DConditionModel.from_config(args.unet_config)
+        unet = UNet2DConditionModel.from_config(args.unet_config).to(dtype=revision_dtype)
     else:
         unet = UNet2DConditionModel.from_pretrained(
             args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
