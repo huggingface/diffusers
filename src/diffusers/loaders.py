@@ -49,7 +49,7 @@ class AttnProcsLayers(torch.nn.Module):
         def map_from(module, state_dict, *args, **kwargs):
             all_keys = list(state_dict.keys())
             for key in all_keys:
-                replace_key = ".".join(key.split(".processor.")[1:])
+                replace_key = key.split(".processor")[0] + ".processor"
                 new_key = key.replace(replace_key, f"layers.{module.rev_mapping[replace_key]}")
                 state_dict[new_key] = state_dict[key]
                 del state_dict[key]
@@ -59,7 +59,7 @@ class AttnProcsLayers(torch.nn.Module):
 
 
 class AttnProcsLoader:
-    def load_attn_procs(self, pretrained_model_name_or_path, **kwargs):
+    def load_attn_procs(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         force_download = kwargs.pop("force_download", False)
         resume_download = kwargs.pop("resume_download", False)
@@ -67,7 +67,6 @@ class AttnProcsLoader:
         local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
-        torch_dtype = kwargs.pop("torch_dtype", None)
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", ATTN_WEIGHT_NAME)
 
@@ -76,26 +75,23 @@ class AttnProcsLoader:
             "framework": "pytorch",
         }
 
-        if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
-            raise ValueError(
-                f"{torch_dtype} needs to be of type `torch.dtype`, e.g. `torch.float16`, but is {type(torch_dtype)}."
+        if not isinstance(pretrained_model_name_or_path_or_dict, dict):
+            model_file = _get_model_file(
+                pretrained_model_name_or_path_or_dict,
+                weights_name=weight_name,
+                cache_dir=cache_dir,
+                force_download=force_download,
+                resume_download=resume_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                revision=revision,
+                subfolder=subfolder,
+                user_agent=user_agent,
             )
-
-        model_file = _get_model_file(
-            pretrained_model_name_or_path,
-            weights_name=weight_name,
-            cache_dir=cache_dir,
-            force_download=force_download,
-            resume_download=resume_download,
-            proxies=proxies,
-            local_files_only=local_files_only,
-            use_auth_token=use_auth_token,
-            revision=revision,
-            subfolder=subfolder,
-            user_agent=user_agent,
-        )
-
-        state_dict = torch.load(model_file, map_location="cpu")
+            state_dict = torch.load(model_file, map_location="cpu")
+        else:
+            state_dict = pretrained_model_name_or_path_or_dict
 
         # fill attn processors
         attn_processors = {}
@@ -121,12 +117,8 @@ class AttnProcsLoader:
         else:
             raise ValueError(f"{model_file} does not seem to be in the correct format expected by LoRA training.")
 
-        # dtype
-        if torch_dtype is not None:
-            attn_processors = {k: v.to(torch_dtype) for k, v in attn_processors.items()}
-
-        # device
-        attn_processors = {k: v.to(self.device) for k, v in attn_processors.items()}
+        # set correct dtype & device
+        attn_processors = {k: v.to(device=self.device, dtype=self.dtype) for k, v in attn_processors.items()}
 
         # set layers
         self.set_attn_processor(attn_processors)

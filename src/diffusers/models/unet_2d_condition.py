@@ -274,7 +274,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, AttnProcsLoader):
 
         def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttnProcessor]):
             if hasattr(module, "set_processor"):
-                processors[name] = module.processor
+                processors[f"{name}.processor"] = module.processor
 
             for sub_name, child in module.named_children():
                 fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
@@ -300,7 +300,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, AttnProcsLoader):
                 if not isinstance(processor, dict):
                     module.set_processor(processor)
                 else:
-                    module.set_processor(processor.pop(name))
+                    module.set_processor(processor.pop(f"{name}.processor"))
 
             for sub_name, child in module.named_children():
                 fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)

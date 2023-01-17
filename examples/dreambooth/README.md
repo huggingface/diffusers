@@ -5,6 +5,7 @@ The `train_dreambooth.py` script shows how to implement the training procedure a
 
 
 ## Running locally with PyTorch
+
 ### Installing the dependencies
 
 Before running the scripts, make sure to install the library's training dependencies:
@@ -234,6 +235,97 @@ image.save("dog-bucket.png")
 ### Inference from a training checkpoint
 
 You can also perform inference from one of the checkpoints saved during the training process, if you used the `--checkpointing_steps` argument. Please, refer to [the documentation](https://huggingface.co/docs/diffusers/main/en/training/dreambooth#performing-inference-using-a-saved-checkpoint) to see how to do it.
+
+## Training with Low-Rank Adaptation of Large Language Models (LoRA)
+
+Low-Rank Adaption of Large Language Models was first introduced by Microsoft in [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*
+
+In a nutshell, LoRA allows to adapt pretrained models by adding pairs of rank-decomposition matrices to existing weights and **only** training those newly added weights. This has a couple of advantages:
+- Previous pretrained weights are kept frozen so that model is not prone to [catastrophic forgetting](https://www.pnas.org/doi/10.1073/pnas.1611835114)
+- Rank-decomposition matrices have significantly fewer parameters than orginal model which means that trained LoRA weights are easily portable.
+- LoRA attention layers allow to control to which extend the model is adapted torwards new training images via a `scale` parameter.
+
+### Training
+
+Let's get started with a simple example. We will re-use the dog example of the [previous section](#dog-toy-example).
+
+First, you need to set-up your dreambooth training example as is explained in the [installation section](#Installing-the-dependencies).
+Next, let's download the toy dog dataset. Download images from [here](https://drive.google.com/drive/folders/1BO_dyz-p65qhBRRMRA4TbZ8qW4rB99JZ) and save them in a directory. Make sure to set `INSTANCE_DIR` to the name of your directly further below. This will be our training data.
+
+Now, you can launch the training. Here we will use [Stable Diffusion 1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5).
+
+**___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
+
+**___Note: It is quite useful to monitor the training progress by regularly generating sample images during training. [wandb](https://docs.wandb.ai/quickstart) is a nice solution to easily see generating images during training. All you need to do is to run `pip install wandb` before training to automatically log images.___**
+
+
+```bash
+export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export INSTANCE_DIR="path-to-instance-images"
+export OUTPUT_DIR="path-to-save-model"
+```
+
+For this example we want to directly store the trained LoRA embeddings on the Hub, so 
+we need to be logged in and add the `--push_to_hub` flag.
+
+```bash
+huggingface-cli login
+```
+
+Now we can start training!
+
+```bash
+accelerate launch train_dreambooth_lora.py \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --instance_data_dir=$INSTANCE_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --instance_prompt="a photo of sks dog" \
+  --resolution=512 \
+  --train_batch_size=1 \
+  --gradient_accumulation_steps=1 \
+  --checkpointing_steps=100 \
+  --learning_rate=1e-4 \
+  --report_to="wandb" \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --max_train_steps=500 \
+  --validation_prompt="A photo of sks dog in a bucket" \
+  --seed="0" \
+  --push_to_hub
+```
+
+**___Note: When using LoRA we can use a much higher learning rate compared to vanilla dreambooth. Here we 
+use *1e-4* instead of the usual *2e-6*.___**
+
+The final LoRA embedding weights have been uploaded to [patrickvonplaten/lora](https://huggingface.co/patrickvonplaten/lora). **___Note: [The final weights](https://huggingface.co/patrickvonplaten/lora/blob/main/pytorch_attn_procs.bin) are only 3 MB in size which is orders of magnitudes smaller than the original model.**
+
+and the training results are summarized [here](https://wandb.ai/patrickvonplaten/dreambooth/reports/LoRA-DreamBooth-Dog-Example--VmlldzozMzUzMTcx?accessToken=9drrltpimid0jk8q50p91vwovde24cnimc30g3bjd3i5wys5twi7uczd7jdh85dh)
+
+### Inference
+
+After training, LoRA weights can very easily loaded into the original pipeline. First, you need to 
+load the original pipeline:
+
+```python
+from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
+import torch
+
+pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+pipe.to("cuda")
+```
+
+Next, we can load the adapter layers into the UNet with the [`load_attn_procs` function](TODO:).
+
+```python
+pipe.load_attn_procs("patrickvonplaten/lora")
+```
+
+Finally, we can run the model in inference.
+
+```python
+image = pipe("A picture of a sks dog in a bucket", num_inference_steps=25).images[0]
+```
 
 ## Training with Flax/JAX
 

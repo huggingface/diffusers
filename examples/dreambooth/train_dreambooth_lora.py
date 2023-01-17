@@ -19,28 +19,29 @@ import wandb
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
-from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
+from diffusers import (
+    AutoencoderKL,
+    DDPMScheduler,
+    DiffusionPipeline,
+    DPMSolverMultistepScheduler,
+    UNet2DConditionModel,
+)
 from diffusers.loaders import AttnProcsLayers
 from diffusers.models.cross_attention import LoRACrossAttnProcessor
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
 from diffusers.utils.import_utils import is_xformers_available
-from huggingface_hub import HfFolder, Repository, whoami
+from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
 
-wandb.login()
-
-
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.12.0.dev0")
 
 logger = get_logger(__name__)
-
-run = wandb.init(project="stable_diffusion_lora")
 
 generated_table = wandb.Table(columns=["gen_num", "prompt", "generated_images"])
 
@@ -115,7 +116,25 @@ def parse_args(input_args=None):
         help="The prompt to specify images in the same class as provided instance images.",
     )
     parser.add_argument(
-        "--save_sample_prompt", type=str, default=None, help="A prompt that is sampled during training."
+        "--validation_prompt",
+        type=str,
+        default=None,
+        help="A prompt that is used during validation to verify that the model is learning.",
+    )
+    parser.add_argument(
+        "--num_validation_images",
+        type=int,
+        default=4,
+        help="Number of images that should be generated during validation with `validation_prompt`.",
+    )
+    parser.add_argument(
+        "--validation_steps",
+        type=int,
+        default=50,
+        help=(
+            "Run dreambooth validation every X updates. Dreambooth validation consists of running the prompt"
+            " `args.validation_prompt` multiple times: `args.num_validation_images`."
+        ),
     )
     parser.add_argument(
         "--with_prior_preservation",
@@ -534,6 +553,8 @@ def main(args):
                 repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
             else:
                 repo_name = args.hub_model_id
+
+            repo_name = create_repo(repo_name, exists_ok=True)
             repo = Repository(args.output_dir, clone_from=repo_name)
 
             with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
@@ -594,7 +615,7 @@ def main(args):
     # Set correct lora layers
     lora_attn_procs = {}
     for name in unet.attn_processors.keys():
-        cross_attention_dim = None if name.endswith("attn1") else unet.config.cross_attention_dim
+        cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
         if name.startswith("mid_block"):
             hidden_size = unet.config.block_out_channels[-1]
         elif name.startswith("up_blocks"):
@@ -835,44 +856,75 @@ def main(args):
             if global_step >= args.max_train_steps:
                 break
 
-        if args.save_sample_prompt is not None and epoch % 10 == 0:
-            print("Running inference...")
+        if args.validation_prompt is not None and epoch % 10 == 0:
+            logger.info(
+                f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+                f" {args.validation_prompt}."
+            )
+            # create pipeline
             pipeline = DiffusionPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 unet=accelerator.unwrap_model(unet),
                 text_encoder=accelerator.unwrap_model(text_encoder),
                 revision=args.revision,
             )
-            pipeline.save_pretrained(args.output_dir)
+            pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
             pipeline = pipeline.to(accelerator.device)
-            generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
             pipeline.set_progress_bar_config(disable=True)
-            sample_dir = "/home/patrick_huggingface_co/lora-tryout/samples"
-            os.makedirs(sample_dir, exist_ok=True)
 
-            for i in tqdm(range(5), desc="Generating samples"):
-                prompt = args.save_sample_prompt
-                images = pipeline(prompt, num_inference_steps=30, generator=generator).images
-                image = images[0]
+            # run inference
+            generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+            prompt = args.num_validation_images * [args.validation_prompt]
+            images = pipeline(prompt, num_inference_steps=25, generator=generator).images
 
-                image.save(os.path.join(sample_dir, f"{i}.png"))
-
-                global_step = epoch * len(train_dataloader) + i
-                generated_table.add_data(global_step, prompt, wandb.Image(image))
-                run.log({"generated_image": wandb.Image(image)})
+            for tracker in accelerator.trackers:
+                if tracker.name == "wandb":
+                    tracker.log(
+                        {
+                            "validation": [
+                                wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                for i, image in enumerate(images)
+                            ]
+                        }
+                    )
 
             del pipeline
             torch.cuda.empty_cache()
 
-    run.log({"generated_table": generated_table})
-
     # Save the lora layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
+        unet = unet.to(torch.float32)
         unet.save_attn_procs(args.output_dir)
 
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
+
+    # Final inference
+    # Load previous pipeline
+    pipeline = DiffusionPipeline.from_pretrained(
+        args.pretrained_model_name_or_path, revision=args.revision, torch_dtype=torch.float16
+    )
+    pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
+    pipeline = pipeline.to(accelerator.device)
+
+    # load attention processors
+    pipeline.unet.load_attn_procs(args.output_dir)
+
+    # run inference
+    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+    prompt = args.num_validation_images * [args.validation_prompt]
+    images = pipeline(prompt, num_inference_steps=25, generator=generator).images
+
+    for tracker in accelerator.trackers:
+        if tracker.name == "wandb":
+            tracker.log(
+                {
+                    "test": [
+                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}") for i, image in enumerate(images)
+                    ]
+                }
+            )
 
     accelerator.end_training()
 
