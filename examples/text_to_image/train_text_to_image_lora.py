@@ -756,7 +756,7 @@ def main():
                 unet=accelerator.unwrap_model(unet),
                 revision=args.revision,
             )
-            pipeline = pipeline.to(accelerator.device)
+            pipeline = pipeline.to(accelerator.device, torch_dtype=torch.float16)
             pipeline.set_progress_bar_config(disable=True)
 
             # run inference
