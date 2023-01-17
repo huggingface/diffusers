@@ -355,7 +355,7 @@ def main(args):
         model, optimizer, train_dataloader, lr_scheduler
     )
     if args.use_ema:
-        accelerator.register_for_checkpointing(ema_model, lr_scheduler)
+        accelerator.register_for_checkpointing(ema_model)
 
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
