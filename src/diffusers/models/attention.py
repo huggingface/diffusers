@@ -290,10 +290,9 @@ class BasicTransformerBlock(nn.Module):
         hidden_states = attn_output + hidden_states
 
         if self.attn2 is not None:
-            if self.use_ada_layer_norm:
-                norm_hidden_states = self.norm2(hidden_states, timestep)
-            else:
-                norm_hidden_states = self.norm2(hidden_states)
+            norm_hidden_states = (
+                self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
+            )
 
             # 2. Cross-Attention
             attn_output = self.attn2(
