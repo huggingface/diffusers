@@ -110,17 +110,45 @@ image = pipe(prompt="yoda").images[0]
 image.save("yoda-pokemon.png")
 ```
 
-## Training on a 16GB GPU 
+## Training with LoRA
 
-We provide [LoRA](https://arxiv.org/abs/2106.09685) supported fine-tuning through the `train_text_to_image_lora.py` script. With this script, it's possible to run fine-tuning
-on a 16GB GPU. Here's how you can use the script:
+Low-Rank Adaption of Large Language Models was first introduced by Microsoft in [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*.
+
+In a nutshell, LoRA allows to adapt pretrained models by adding pairs of rank-decomposition matrices to existing weights and **only** training those newly added weights. This has a couple of advantages:
+
+- Previous pretrained weights are kept frozen so that model is not prone to [catastrophic forgetting](https://www.pnas.org/doi/10.1073/pnas.1611835114)
+- Rank-decomposition matrices have significantly fewer parameters than orginal model which means that trained LoRA weights are easily portable.
+- LoRA attention layers allow to control to which extend the model is adapted torwards new training images via a `scale` parameter.
+
+[cloneofsimo](https://github.com/cloneofsimo) was the first to try out LoRA training for Stable Diffusion in the popular [lora](https://github.com/cloneofsimo/lora) GitHub repository.
+
+With LoRA, it's possible to fine-tune Stable Diffusion on a custom image-caption pair dataset
+on consumer GPUs like Tesla T4, Tesla V100.
+
+### Training
+
+First, you need to set-up your dreambooth training example as is explained in the [installation section](#installing-the-dependencies). Make sure to set the `MODEL_NAME` and `DATASET_NAME` environment variables. Here, we will use [Stable Diffusion v1-4](https://hf.co/CompVis/stable-diffusion-v1-4) and the [Pokemons dataset](https://hf.colambdalabs/pokemon-blip-captions).  
+
+**___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
+
+**___Note: It is quite useful to monitor the training progress by regularly generating sample images during training. [Weights and Biases](https://docs.wandb.ai/quickstart) is a nice solution to easily see generating images during training. All you need to do is to run `pip install wandb` before training to automatically log images.___**
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+```
 
+For this example we want to directly store the trained LoRA embeddings on the Hub, so 
+we need to be logged in and add the `--push_to_hub` flag.
 
-accelerate launch train_text_to_image_lora.py \
+```bash
+huggingface-cli login
+```
+
+Now we can start training!
+
+```bash
+accelerate --mixed_precision="fp16" launch train_text_to_image_lora.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --dataset_name=$DATASET_NAME --caption_column="text" \
   --resolution=512 --random_flip \
@@ -134,6 +162,12 @@ accelerate launch train_text_to_image_lora.py \
 
 The above command will also run inference as fine-tuning progresses and will log the results to Weights and Biases.
 
+**___Note: When using LoRA we can use a much higher learning rate compared to non-LoRA fine-tuning. Here we use *1e-4* instead of the usual *1e-5*.___**
+
+The final LoRA embedding weights have been uploaded to [TODO](TODO). **___Note: [The final weights](TODO) are only 3 MB in size which is orders of magnitudes smaller than the original model.**
+
+### Inference
+
 Once you have trained a model using above command, the inference can be done simply using the `StableDiffusionPipeline` after loading the trained LoRA weights.  You 
 need to pass the `output_dir` for loading the LoRA weights which, in this case, is `sd-pokemon-model-lora`.
 
@@ -143,7 +177,7 @@ import torch
 
 model_path = "path_to_saved_model"
 pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
-pipeline.unet.load_attn_procs(model_path)
+pipe.unet.load_attn_procs(model_path)
 pipe.to("cuda")
 
 prompt = "A pokemon with green eyes and red legs."
