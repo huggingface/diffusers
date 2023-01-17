@@ -14,6 +14,7 @@
 import importlib
 import os
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Dict, Optional, Union
 
 import torch
@@ -22,6 +23,24 @@ from ..utils import BaseOutput
 
 
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
+
+KarrasDiffusionSchedulers = Enum(
+    "KarrasDiffusionSchedulers ",
+    [
+        "DDIMScheduler",
+        "DDPMScheduler",
+        "PNDMScheduler",
+        "LMSDiscreteScheduler",
+        "EulerDiscreteScheduler",
+        "HeunDiscreteScheduler",
+        "EulerAncestralDiscreteScheduler",
+        "DPMSolverMultistepScheduler",
+        "DPMSolverSinglestepScheduler",
+        "KDPM2DiscreteScheduler",
+        "KDPM2AncestralDiscreteScheduler",
+        "DEISMultistepScheduler",
+    ],
+)
 
 
 @dataclass

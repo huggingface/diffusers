@@ -14,6 +14,7 @@
 
 
 from ..utils import OptionalDependencyNotAvailable, is_flax_available, is_scipy_available, is_torch_available
+from .scheduling_utils import KarrasDiffusionSchedulers
 
 
 try:

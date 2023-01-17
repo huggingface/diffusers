@@ -18,12 +18,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 
 from ...models import AutoencoderKL, Transformer2DModel
-from ...schedulers import DDIMScheduler
+from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
@@ -42,9 +42,35 @@ class DiTPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `dit` to denoise the encoded image latents.
     """
 
-    def __init__(self, transformer: Transformer2DModel, vae: AutoencoderKL, scheduler: DDIMScheduler):
+    def __init__(
+        self,
+        transformer: Transformer2DModel,
+        vae: AutoencoderKL,
+        scheduler: KarrasDiffusionSchedulers,
+        id2label: Optional[Dict[int, str]] = None,
+    ):
         super().__init__()
         self.register_modules(transformer=transformer, vae=vae, scheduler=scheduler)
+
+        # create a imagenet -> id dictionary for easier use
+        self.labels = {}
+        if id2label is not None:
+            for key, value in id2label.items():
+                for label in value.split(","):
+                    self.labels[label.lstrip().rstrip()] = int(key)
+            self.labels = dict(sorted(self.labels.items()))
+
+    def get_label_ids(self, label: Union[str, List[str]]):
+        if not isinstance(label, list):
+            label = list(label)
+
+        for l in label:
+            if l not in self.labels:
+                raise ValueError(
+                    f"{l} does not exist. Please make sure to select one of the following labels: \n {self.labels}."
+                )
+
+        return [self.labels[l] for l in label]
 
     @torch.no_grad()
     def __call__(
@@ -52,7 +78,7 @@ class DiTPipeline(DiffusionPipeline):
         class_labels: List[int],
         guidance_scale: float = 4.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        num_inference_steps: int = 250,
+        num_inference_steps: int = 25,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
     ) -> Union[ImagePipelineOutput, Tuple]:

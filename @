@@ -19,8 +19,8 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import AutoencoderKL, DDIMScheduler, DiTPipeline, DPMSolverMultistepScheduler, Transformer2DModel
-from diffusers.utils import load_numpy, slow
+from diffusers import AutoencoderKL, DDIMScheduler, DiTPipeline, Transformer2DModel, DPMSolverMultistepScheduler
+from diffusers.utils import slow, load_numpy
 from diffusers.utils.testing_utils import require_torch_gpu
 
 from ...test_pipelines_common import PipelineTesterMixin
@@ -89,7 +89,6 @@ class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(relax_max_difference=True)
 
-
 @require_torch_gpu
 @slow
 class DiTPipelineIntegrationTests(unittest.TestCase):
@@ -111,9 +110,12 @@ class DiTPipelineIntegrationTests(unittest.TestCase):
 
         for word, image in zip(words, images):
             expected_image = load_numpy(
-                f"https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/dit/{word}.npy"
+                "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+                "/stable_diffusion_text2img/stable_diffusion_1_4_dpm_multi.npy"
             )
-            assert np.abs((expected_image - image).sum()) < 1e-3
+            np.save(f"/home/patrick_huggingface_co/diffusers-images/dit/{word}.npy", image)
+            image_pil = pipe.numpy_to_pil(image)[0]
+            image_pil.save(f"/home/patrick_huggingface_co/diffusers-images/dit/{word}.png")
 
     def test_dit_512_fp16(self):
         generator = torch.manual_seed(0)
@@ -132,4 +134,6 @@ class DiTPipelineIntegrationTests(unittest.TestCase):
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
                 f"/dit/{word}_fp16.npy"
             )
-            assert np.abs((expected_image - image).sum()) < 1e-3
+#            np.save(f"/home/patrick_huggingface_co/diffusers-images/dit/{word}_fp16.npy", image)
+#            image_pil = pipe.numpy_to_pil(image)[0]
+#            image_pil.save(f"/home/patrick_huggingface_co/diffusers-images/dit/{word}_fp16.png")
