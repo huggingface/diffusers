@@ -58,8 +58,75 @@ class AttnProcsLayers(torch.nn.Module):
         self._register_load_state_dict_pre_hook(map_from, with_module=True)
 
 
-class AttnProcsLoader:
+class UNet2DConditionLoadersMixin:
     def load_attn_procs(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
+        r"""
+        Load pretrained attention processor layers into `UNet2DConditionModel`. Attention processor layers have to be defined in [cross_attention.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py) and be a `torch.nn.Module` class.
+
+        <Tip warning={true}>
+
+            This function is experimental and might change in the future
+
+        </Tip>
+
+         It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
+         models](https://huggingface.co/docs/hub/models-gated#gated-models).
+
+        Parameters:
+            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
+                Can be either:
+
+                    - A string, the *model id* of a pretrained model hosted inside a model repo on huggingface.co.
+                      Valid model ids should have an organization name, like `google/ddpm-celebahq-256`.
+                    - A path to a *directory* containing model weights saved using [`~ModelMixin.save_config`], e.g.,
+                      `./my_model_directory/`.
+                    - A [torch state dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
+
+            cache_dir (`Union[str, os.PathLike]`, *optional*):
+                Path to a directory in which a downloaded pretrained model configuration should be cached if the
+                standard cache should not be used.
+            force_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
+                cached versions if they exist.
+            resume_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to delete incompletely received files. Will attempt to resume the download if such a
+                file exists.
+            proxies (`Dict[str, str]`, *optional*):
+                A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
+                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
+            local_files_only(`bool`, *optional*, defaults to `False`):
+                Whether or not to only look at local files (i.e., do not try to download the model).
+            use_auth_token (`str` or *bool*, *optional*):
+                The token to use as HTTP bearer authorization for remote files. If `True`, will use the token generated
+                when running `diffusers-cli login` (stored in `~/.huggingface`).
+            revision (`str`, *optional*, defaults to `"main"`):
+                The specific model version to use. It can be a branch name, a tag name, or a commit id, since we use a
+                git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
+                identifier allowed by git.
+            subfolder (`str`, *optional*, defaults to `""`):
+                In case the relevant files are located inside a subfolder of the model repo (either remote in
+                huggingface.co or downloaded locally), you can specify the folder name here.
+
+            mirror (`str`, *optional*):
+                Mirror source to accelerate downloads in China. If you are from China and have an accessibility
+                problem, you can set this option to resolve it. Note that we do not guarantee the timeliness or safety.
+                Please refer to the mirror site for more information.
+
+        <Tip>
+
+         It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
+         models](https://huggingface.co/docs/hub/models-gated#gated-models).
+
+        </Tip>
+
+        <Tip>
+
+        Activate the special ["offline-mode"](https://huggingface.co/diffusers/installation.html#offline-mode) to use
+        this method in a firewalled environment.
+
+        </Tip>
+        """
+
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         force_download = kwargs.pop("force_download", False)
         resume_download = kwargs.pop("resume_download", False)
@@ -105,9 +172,9 @@ class AttnProcsLoader:
                 lora_grouped_dict[attn_processor_key][sub_key] = value
 
             for key, value_dict in lora_grouped_dict.items():
-                rank = value_dict["to_k_lora.lora_down.weight"].shape[0]
-                cross_attention_dim = value_dict["to_k_lora.lora_down.weight"].shape[1]
-                hidden_size = value_dict["to_k_lora.lora_up.weight"].shape[0]
+                rank = value_dict["to_k_lora.down.weight"].shape[0]
+                cross_attention_dim = value_dict["to_k_lora.down.weight"].shape[1]
+                hidden_size = value_dict["to_k_lora.up.weight"].shape[0]
 
                 attn_processors[key] = LoRACrossAttnProcessor(
                     hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, rank=rank
@@ -130,9 +197,9 @@ class AttnProcsLoader:
         weights_name: str = ATTN_WEIGHT_NAME,
         save_function: Callable = None,
     ):
-        """
-        Save a model and its configuration file to a directory, so that it can be re-loaded using the
-        `[`~models.ModelMixin.from_pretrained`]` class method.
+        r"""
+        Save an attention procesor to a directory, so that it can be re-loaded using the
+        `[`~loaders.UNet2DConditionLoadersMixin.load_attn_procs`]` method.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -145,8 +212,6 @@ class AttnProcsLoader:
                 The function to use to save the state dictionary. Useful on distributed training like TPUs when one
                 need to replace `torch.save` by another method. Can be configured with the environment variable
                 `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `False`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way (that uses `pickle`).
         """
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
