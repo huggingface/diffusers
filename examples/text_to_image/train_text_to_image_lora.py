@@ -756,8 +756,9 @@ def main():
 
             # run inference
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
-            prompt = args.num_validation_images * [args.validation_prompt]
-            images = pipeline(prompt, num_inference_steps=30, generator=generator).images
+            images = []
+            for _ in range(args.num_validation_images):
+                images.append(pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0])
 
             for tracker in accelerator.trackers:
                 if tracker.name == "wandb":
@@ -793,9 +794,9 @@ def main():
 
     # run inference
     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
-    prompt = args.num_validation_images * [args.validation_prompt]
-    with torch.autocast("cuda"):
-        images = pipeline(prompt, num_inference_steps=30, generator=generator).images
+    images = []
+    for _ in range(args.num_validation_images):
+        images.append(pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0])
 
     for tracker in accelerator.trackers:
         if tracker.name == "wandb":
