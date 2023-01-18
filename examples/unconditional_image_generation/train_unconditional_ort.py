@@ -39,7 +39,6 @@ logger = get_logger(__name__)
 def _extract_into_tensor(arr, timesteps, broadcast_shape):
     """
     Extract values from a 1-D numpy array for a batch of indices.
-
     :param arr: the 1-D numpy array.
     :param timesteps: a tensor of indices into the array to extract.
     :param broadcast_shape: a larger shape of K dimensions with the batch
@@ -212,7 +211,6 @@ def parse_args():
         choices=["epsilon", "sample"],
         help="Whether the model should predict the 'epsilon'/noise error or directly the reconstructed image 'x0'.",
     )
-
     parser.add_argument("--ddpm_num_steps", type=int, default=1000)
     parser.add_argument("--ddpm_beta_schedule", type=str, default="linear")
     parser.add_argument(
@@ -340,8 +338,8 @@ def main(args):
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps,
-        num_training_steps=(len(train_dataloader) * args.num_epochs) // args.gradient_accumulation_steps,
+        num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
+        num_training_steps=(len(train_dataloader) * args.num_epochs),
     )
 
     model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
@@ -383,6 +381,7 @@ def main(args):
 
     global_step = 0
     first_epoch = 0
+
     if args.resume_from_checkpoint:
         if args.resume_from_checkpoint != "latest":
             path = os.path.basename(args.resume_from_checkpoint)
@@ -395,6 +394,7 @@ def main(args):
         accelerator.print(f"Resuming from checkpoint {path}")
         accelerator.load_state(os.path.join(args.output_dir, path))
         global_step = int(path.split("-")[1])
+
         resume_global_step = global_step * args.gradient_accumulation_steps
         first_epoch = resume_global_step // num_update_steps_per_epoch
         resume_step = resume_global_step % num_update_steps_per_epoch
