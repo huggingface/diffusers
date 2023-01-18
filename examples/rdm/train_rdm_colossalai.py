@@ -19,7 +19,6 @@ from torch.utils.data import Dataset
 import datasets
 import diffusers
 import transformers
-from accelerate.logging import get_logger
 from datasets import load_dataset
 from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, RDMPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
@@ -113,7 +112,8 @@ def log_progress(pipeline, args, step, prompt, save_path, wandb_run=None, logs={
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.10.0.dev0")
-logger = get_logger(__name__, log_level="INFO")
+logger = logging.getLogger(__name__)
+logger.setLevel("INFO")
 _clip_retrieval_available = True
 try:
     _clip_retrieval_version = importlib_metadata.version("clip-retrieval")
