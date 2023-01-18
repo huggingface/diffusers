@@ -301,9 +301,10 @@ accelerate launch train_dreambooth_lora.py \
 **___Note: When using LoRA we can use a much higher learning rate compared to vanilla dreambooth. Here we 
 use *1e-4* instead of the usual *2e-6*.___**
 
-The final LoRA embedding weights have been uploaded to [patrickvonplaten/lora](https://huggingface.co/patrickvonplaten/lora). **___Note: [The final weights](https://huggingface.co/patrickvonplaten/lora/blob/main/pytorch_attn_procs.bin) are only 3 MB in size which is orders of magnitudes smaller than the original model.**
+The final LoRA embedding weights have been uploaded to [patrickvonplaten/lora_dreambooth_dog_example](https://huggingface.co/patrickvonplaten/lora_dreambooth_dog_example). **___Note: [The final weights](https://huggingface.co/patrickvonplaten/lora/blob/main/pytorch_attn_procs.bin) are only 3 MB in size which is orders of magnitudes smaller than the original model.**
 
-The training results are summarized [here](https://wandb.ai/patrickvonplaten/dreambooth/reports/LoRA-DreamBooth-Dog-Example--VmlldzozMzUzMTcx?accessToken=9drrltpimid0jk8q50p91vwovde24cnimc30g3bjd3i5wys5twi7uczd7jdh85dh). You can use the `Step` slider to see how the model learned the features of our subject while the model trained.
+The training results are summarized [here](https://api.wandb.ai/report/patrickvonplaten/xm6cd5q5).
+You can use the `Step` slider to see how the model learned the features of our subject while the model trained.
 
 ### Inference
 
