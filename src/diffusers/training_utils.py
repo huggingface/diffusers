@@ -57,7 +57,6 @@ class EMAModel:
         use_ema_warmup: bool = False,
         inv_gamma: Union[float, int] = 1.0,
         power: Union[float, int] = 2 / 3,
-        device: Optional[Union[str, torch.device]] = None,
         **kwargs,
     ):
         """
@@ -109,8 +108,10 @@ class EMAModel:
         parameters = list(parameters)
         self.shadow_params = [p.clone().detach() for p in parameters]
 
-        if device is not None:
-            self.to(device=device)
+        if kwargs.get("device", None) is not None:
+            deprecation_message = "The `device` argument is deprecated. Please use `to` instead."
+            deprecate("device", "1.0.0", deprecation_message, standard_warn=False)
+            self.to(device=kwargs["device"])
 
         self.collected_params = None
 
