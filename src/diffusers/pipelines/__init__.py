@@ -18,6 +18,7 @@ else:
     from .dance_diffusion import DanceDiffusionPipeline
     from .ddim import DDIMPipeline
     from .ddpm import DDPMPipeline
+    from .dit import DiTPipeline
     from .latent_diffusion import LDMSuperResolutionPipeline
     from .latent_diffusion_uncond import LDMPipeline
     from .pipeline_utils import AudioPipelineOutput, DiffusionPipeline, ImagePipelineOutput
@@ -108,4 +109,8 @@ try:
 except OptionalDependencyNotAvailable:
     from ..utils.dummy_flax_and_transformers_objects import *  # noqa F403
 else:
-    from .stable_diffusion import FlaxStableDiffusionImg2ImgPipeline, FlaxStableDiffusionPipeline
+    from .stable_diffusion import (
+        FlaxStableDiffusionImg2ImgPipeline,
+        FlaxStableDiffusionInpaintPipeline,
+        FlaxStableDiffusionPipeline,
+    )

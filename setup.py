@@ -91,7 +91,7 @@ _deps = [
     "isort>=5.5.4",
     "jax>=0.2.8,!=0.3.2",
     "jaxlib>=0.1.65",
-    "k-diffusion",
+    "k-diffusion>=0.0.12",
     "librosa",
     "modelcards>=0.1.4",
     "numpy",

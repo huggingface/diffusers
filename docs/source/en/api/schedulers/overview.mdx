@@ -37,6 +37,7 @@ To this end, the design of schedulers is such that:
 
 - Schedulers can be used interchangeably between diffusion models in inference to find the preferred trade-off between speed and generation quality.
 - Schedulers are currently by default in PyTorch, but are designed to be framework independent (partial Jax support currently exists).
+- Many diffusion pipelines, such as [`StableDiffusionPipeline`] and [`DiTPipeline`] can use any of [`KarrasDiffusionSchedulers`]
 
 ## Schedulers Summary
 
@@ -80,4 +81,6 @@ The class [`SchedulerOutput`] contains the outputs from any schedulers `step(...
 
 [[autodoc]] schedulers.scheduling_utils.SchedulerOutput
 
+### KarrasDiffusionSchedulers
 
+[[autodoc]] schedulers.scheduling_utils.KarrasDiffusionSchedulers

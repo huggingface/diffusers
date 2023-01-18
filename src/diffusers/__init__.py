@@ -6,6 +6,7 @@ from .utils import (
     is_flax_available,
     is_inflect_available,
     is_k_diffusion_available,
+    is_k_diffusion_version,
     is_librosa_available,
     is_onnx_available,
     is_scipy_available,
@@ -56,6 +57,7 @@ else:
         DDIMPipeline,
         DDPMPipeline,
         DiffusionPipeline,
+        DiTPipeline,
         ImagePipelineOutput,
         KarrasVePipeline,
         LDMPipeline,
@@ -182,4 +184,8 @@ try:
 except OptionalDependencyNotAvailable:
     from .utils.dummy_flax_and_transformers_objects import *  # noqa F403
 else:
-    from .pipelines import FlaxStableDiffusionImg2ImgPipeline, FlaxStableDiffusionPipeline
+    from .pipelines import (
+        FlaxStableDiffusionImg2ImgPipeline,
+        FlaxStableDiffusionInpaintPipeline,
+        FlaxStableDiffusionPipeline,
+    )

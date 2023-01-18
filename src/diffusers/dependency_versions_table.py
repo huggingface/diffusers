@@ -4,7 +4,7 @@
 deps = {
     "Pillow": "Pillow",
     "accelerate": "accelerate>=0.11.0",
-    "black": "black==22.8",
+    "black": "black==22.12",
     "datasets": "datasets",
     "filelock": "filelock",
     "flake8": "flake8>=3.8.3",
@@ -15,7 +15,7 @@ deps = {
     "isort": "isort>=5.5.4",
     "jax": "jax>=0.2.8,!=0.3.2",
     "jaxlib": "jaxlib>=0.1.65",
-    "k-diffusion": "k-diffusion",
+    "k-diffusion": "k-diffusion>=0.0.12",
     "librosa": "librosa",
     "modelcards": "modelcards>=0.1.4",
     "numpy": "numpy",
