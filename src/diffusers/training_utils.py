@@ -110,9 +110,7 @@ class EMAModel:
         self.shadow_params = [p.clone().detach() for p in parameters]
 
         if device is not None:
-            self.shadow_params = [
-                p.to(device=device) if p.is_floating_point() else p.to(device=device) for p in self.shadow_params
-            ]
+            self.to(device=device)
 
         self.collected_params = None
 
