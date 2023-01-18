@@ -137,7 +137,6 @@ class EMAModel:
             cur_decay_value = (1 + step) / (10 + step)
 
         cur_decay_value = min(cur_decay_value, self.decay)
-
         # make sure decay is not smaller than min_decay
         cur_decay_value = max(cur_decay_value, self.min_decay)
         return cur_decay_value
@@ -208,6 +207,7 @@ class EMAModel:
         # https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict
         return {
             "decay": self.decay,
+            "min_decay": self.decay,
             "optimization_step": self.optimization_step,
             "update_after_step": self.update_after_step,
             "use_ema_warmup": self.use_ema_warmup,
