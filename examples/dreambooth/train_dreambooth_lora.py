@@ -58,6 +58,22 @@ check_min_version("0.12.0.dev0")
 logger = get_logger(__name__)
 
 
+def create_model_card(images, base_model, prompt):
+    markdown_lines = []
+    ---
+license: creativeml-openrail-m
+tags:
+- stable-diffusion
+- stable-diffusion-diffusers
+- text-to-image
+- diffusers
+inference: true
+---
+
+
+
+
+
 def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision: str):
     text_encoder_config = PretrainedConfig.from_pretrained(
         pretrained_model_name_or_path,
@@ -913,34 +929,37 @@ def main(args):
         unet = unet.to(torch.float32)
         unet.save_attn_procs(args.output_dir)
 
+        # Final inference
+        # Load previous pipeline
+        pipeline = DiffusionPipeline.from_pretrained(
+            args.pretrained_model_name_or_path, revision=args.revision, torch_dtype=weight_dtype
+        )
+        pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
+        pipeline = pipeline.to(accelerator.device)
+
+        # load attention processors
+        pipeline.unet.load_attn_procs(args.output_dir)
+
+        # run inference
+        generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+        prompt = args.num_validation_images * [args.validation_prompt]
+        images = pipeline(prompt, num_inference_steps=25, generator=generator).images
+
+        for tracker in accelerator.trackers:
+            if tracker.name == "wandb":
+                tracker.log(
+                    {
+                        "test": [
+                            wandb.Image(image, caption=f"{i}: {args.validation_prompt}") for i, image in enumerate(images)
+                        ]
+                    }
+                )
+
+        model_card = create_model_card(images, base_model=args.pretrained_model_name_or_path, prompt=args.valiadtion_prompt)
+
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
 
-    # Final inference
-    # Load previous pipeline
-    pipeline = DiffusionPipeline.from_pretrained(
-        args.pretrained_model_name_or_path, revision=args.revision, torch_dtype=weight_dtype
-    )
-    pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
-    pipeline = pipeline.to(accelerator.device)
-
-    # load attention processors
-    pipeline.unet.load_attn_procs(args.output_dir)
-
-    # run inference
-    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
-    prompt = args.num_validation_images * [args.validation_prompt]
-    images = pipeline(prompt, num_inference_steps=25, generator=generator).images
-
-    for tracker in accelerator.trackers:
-        if tracker.name == "wandb":
-            tracker.log(
-                {
-                    "test": [
-                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}") for i, image in enumerate(images)
-                    ]
-                }
-            )
 
     accelerator.end_training()
 
