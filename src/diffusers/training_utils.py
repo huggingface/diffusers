@@ -70,7 +70,8 @@ class EMAModel:
             inv_gamma (float):
                 Inverse multiplicative factor of EMA warmup. Default: 1. Only used if `use_ema_warmup` is True.
             power (float): Exponential factor of EMA warmup. Default: 2/3. Only used if `use_ema_warmup` is True.
-            device (Optional[Union[str, torch.device]]): The device to store the EMA weights on. If None, the weights
+            device (Optional[Union[str, torch.device]]): The device to store the EMA weights on. If None, the EMA
+                        weights will be stored on CPU.
 
         @crowsonkb's notes on EMA Warmup:
             If gamma=1 and power=1, implements a simple average. gamma=1, power=2/3 are good values for models you plan
