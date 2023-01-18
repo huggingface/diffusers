@@ -95,10 +95,9 @@ def get_pipeline(vae, clip_model, unet, tokenizer, feature_extractor):
 
 def log_progress(pipeline, args, step, prompt, save_path, wandb_run=None, logs={}, retrieved_images=None):
     logger.info("Running pipeline")
-    with torch.autocast("cuda"):
-        image = pipeline(
-            prompt, retrieved_images=retrieved_images, height=args.resolution, width=args.resolution, num_inference_steps=50, guidance_scale=args.guidance_scale
-        ).images[0]
+    image = pipeline(
+        prompt, retrieved_images=retrieved_images, height=args.resolution, width=args.resolution, num_inference_steps=50, guidance_scale=args.guidance_scale
+    ).images[0]
 
     image.save(save_path)
     if is_wandb_available():
@@ -943,7 +942,7 @@ def main():
 
             # Get the text embedding for conditioning
             text_embeddings = clip_model.get_text_features(batch["input_ids"])
-            text_embeddings = text_embeddings / torch.linalg.norm(text_embeddings, dim=-1, keepdim=True)
+            text_embeddings = text_embeddings / torchdtype.linalg.norm(text_embeddings, dim=-1, keepdim=True)
             text_embeddings = text_embeddings[:, None, :]
 
             retrieved_images = batch["nearest_neighbors"]
