@@ -322,7 +322,7 @@ class RDMPipeline(DiffusionPipeline):
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
-        text_embeddings = text_embeddings.to(self.unet.device)
+        text_embeddings = text_embeddings.to(self.device)
         # get the initial random noise unless the user supplied it
 
         # Unlike in other pipelines, latents need to be generated in the target device
@@ -331,24 +331,24 @@ class RDMPipeline(DiffusionPipeline):
         latents_shape = (batch_size * num_images_per_prompt, self.unet.in_channels, height // 16, width // 16)
         latents_dtype = text_embeddings.dtype
         if latents is None:
-            if self.unet.device.type == "mps":
+            if self.device.type == "mps":
                 # randn does not work reproducibly on mps
                 latents = torch.randn(latents_shape, generator=generator, device="cpu", dtype=latents_dtype).to(
-                    self.unet.device
+                    self.device
                 )
             else:
-                latents = torch.randn(latents_shape, generator=generator, device=self.unet.device, dtype=latents_dtype)
+                latents = torch.randn(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
-            latents = latents.to(self.unet.device)
+            latents = latents.to(self.device)
 
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
 
         # Some schedulers like PNDM have timesteps as arrays
         # It's more optimized to move all timesteps to correct device beforehand
-        timesteps_tensor = self.scheduler.timesteps.to(self.unet.device)
+        timesteps_tensor = self.scheduler.timesteps.to(self.device)
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
