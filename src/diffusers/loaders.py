@@ -25,7 +25,7 @@ from .utils import DIFFUSERS_CACHE, HF_HUB_OFFLINE, logging
 logger = logging.get_logger(__name__)
 
 
-ATTN_WEIGHT_NAME = "pytorch_attn_procs.bin"
+LORA_WEIGHT_NAME = "pytorch_lora_weights.bin"
 
 
 class AttnProcsLayers(torch.nn.Module):
@@ -71,9 +71,6 @@ class UNet2DConditionLoadersMixin:
             This function is experimental and might change in the future
 
         </Tip>
-
-         It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
-         models](https://huggingface.co/docs/hub/models-gated#gated-models).
 
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
@@ -139,7 +136,7 @@ class UNet2DConditionLoadersMixin:
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
         subfolder = kwargs.pop("subfolder", None)
-        weight_name = kwargs.pop("weight_name", ATTN_WEIGHT_NAME)
+        weight_name = kwargs.pop("weight_name", LORA_WEIGHT_NAME)
 
         user_agent = {
             "file_type": "attn_procs_weights",
@@ -198,7 +195,7 @@ class UNet2DConditionLoadersMixin:
         self,
         save_directory: Union[str, os.PathLike],
         is_main_process: bool = True,
-        weights_name: str = ATTN_WEIGHT_NAME,
+        weights_name: str = LORA_WEIGHT_NAME,
         save_function: Callable = None,
     ):
         r"""

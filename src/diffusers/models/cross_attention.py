@@ -261,10 +261,13 @@ class LoRALinearLayer(nn.Module):
         nn.init.zeros_(self.up.weight)
 
     def forward(self, hidden_states):
-        down_hidden_states = self.down(hidden_states)
+        orig_dtype = hidden_states.dtype
+        dtype = self.down.weight.dtype
+
+        down_hidden_states = self.down(hidden_states.to(dtype))
         up_hidden_states = self.up(down_hidden_states)
 
-        return up_hidden_states
+        return up_hidden_states.to(orig_dtype)
 
 
 class LoRACrossAttnProcessor(nn.Module):
@@ -371,7 +374,6 @@ class XFormersCrossAttnProcessor:
         hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
-
         return hidden_states
 
 

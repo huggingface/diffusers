@@ -1,3 +1,18 @@
+#!/usr/bin/env python
+# coding=utf-8
+# Copyright 2022 The HuggingFace Inc. team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+
 import argparse
 import hashlib
 import logging
@@ -15,7 +30,6 @@ from torch.utils.data import Dataset
 import datasets
 import diffusers
 import transformers
-import wandb
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
@@ -29,7 +43,7 @@ from diffusers import (
 from diffusers.loaders import AttnProcsLayers
 from diffusers.models.cross_attention import LoRACrossAttnProcessor
 from diffusers.optimization import get_scheduler
-from diffusers.utils import check_min_version
+from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from PIL import Image
@@ -42,8 +56,6 @@ from transformers import AutoTokenizer, PretrainedConfig
 check_min_version("0.12.0.dev0")
 
 logger = get_logger(__name__)
-
-generated_table = wandb.Table(columns=["gen_num", "prompt", "generated_images"])
 
 
 def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision: str):
@@ -128,11 +140,11 @@ def parse_args(input_args=None):
         help="Number of images that should be generated during validation with `validation_prompt`.",
     )
     parser.add_argument(
-        "--validation_steps",
+        "--validation_epochs",
         type=int,
         default=50,
         help=(
-            "Run dreambooth validation every X updates. Dreambooth validation consists of running the prompt"
+            "Run dreambooth validation every X epochs. Dreambooth validation consists of running the prompt"
             " `args.validation_prompt` multiple times: `args.num_validation_images`."
         ),
     )
@@ -337,7 +349,7 @@ def parse_args(input_args=None):
     return args
 
 
-class LoRADataset(Dataset):
+class DreamBoothDataset(Dataset):
     """
     A dataset to prepare the instance and class images with the prompts for fine-tuning the model.
     It pre-processes the images and the tokenizes prompts.
@@ -477,6 +489,11 @@ def main(args):
         logging_dir=logging_dir,
     )
 
+    if args.report_to == "wandb":
+        if not is_wandb_available():
+            raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
+        import wandb
+
     # Currently, it's not possible to do gradient accumulation when training two models with accelerate.accumulate
     # This will be enabled soon in accelerate. For now, we don't allow gradient accumulation when training two models.
     # TODO (patil-suraj): Remove this check when gradient accumulation with two models is enabled in accelerate.
@@ -589,9 +606,23 @@ def main(args):
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
 
+    # We only train the additional adapter LoRA layers
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
     unet.requires_grad_(False)
+
+    # For mixed precision training we cast the text_encoder and vae weights to half-precision
+    # as these models are only used for inference, keeping weights in full precision is not required.
+    weight_dtype = torch.float32
+    if accelerator.mixed_precision == "fp16":
+        weight_dtype = torch.float16
+    elif accelerator.mixed_precision == "bf16":
+        weight_dtype = torch.bfloat16
+
+    # Move unet, vae and text_encoder to device and cast to weight_dtype
+    unet.to(accelerator.device, dtype=weight_dtype)
+    vae.to(accelerator.device, dtype=weight_dtype)
+    text_encoder.to(accelerator.device, dtype=weight_dtype)
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -631,9 +662,6 @@ def main(args):
 
     unet.set_attn_processor(lora_attn_procs)
     lora_layers = AttnProcsLayers(unet.attn_processors)
-
-    state_dict = lora_layers.state_dict()
-    lora_layers.load_state_dict(state_dict)
 
     accelerator.register_for_checkpointing(lora_layers)
 
@@ -675,7 +703,7 @@ def main(args):
     )
 
     # Dataset and DataLoaders creation:
-    train_dataset = LoRADataset(
+    train_dataset = DreamBoothDataset(
         instance_data_root=args.instance_data_dir,
         instance_prompt=args.instance_prompt,
         class_data_root=args.class_data_dir if args.with_prior_preservation else None,
@@ -713,19 +741,6 @@ def main(args):
     lora_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         lora_layers, optimizer, train_dataloader, lr_scheduler
     )
-
-    # For mixed precision training we cast the text_encoder and vae weights to half-precision
-    # as these models are only used for inference, keeping weights in full precision is not required.
-    weight_dtype = torch.float32
-    if accelerator.mixed_precision == "fp16":
-        weight_dtype = torch.float16
-    elif accelerator.mixed_precision == "bf16":
-        weight_dtype = torch.bfloat16
-
-    # Move unet, vae and text_encoder to device and cast to weight_dtype
-    unet.to(accelerator.device, dtype=weight_dtype)
-    vae.to(accelerator.device, dtype=weight_dtype)
-    text_encoder.to(accelerator.device, dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -856,7 +871,7 @@ def main(args):
             if global_step >= args.max_train_steps:
                 break
 
-        if args.validation_prompt is not None and epoch % 10 == 0:
+        if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
             logger.info(
                 f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
                 f" {args.validation_prompt}."
@@ -867,6 +882,7 @@ def main(args):
                 unet=accelerator.unwrap_model(unet),
                 text_encoder=accelerator.unwrap_model(text_encoder),
                 revision=args.revision,
+                torch_dtype=weight_dtype,
             )
             pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
             pipeline = pipeline.to(accelerator.device)
@@ -903,7 +919,7 @@ def main(args):
     # Final inference
     # Load previous pipeline
     pipeline = DiffusionPipeline.from_pretrained(
-        args.pretrained_model_name_or_path, revision=args.revision, torch_dtype=torch.float16
+        args.pretrained_model_name_or_path, revision=args.revision, torch_dtype=weight_dtype
     )
     pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
     pipeline = pipeline.to(accelerator.device)

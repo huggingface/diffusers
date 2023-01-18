@@ -293,6 +293,7 @@ accelerate launch train_dreambooth_lora.py \
   --lr_warmup_steps=0 \
   --max_train_steps=500 \
   --validation_prompt="A photo of sks dog in a bucket" \
+  --validation_epochs=50 \
   --seed="0" \
   --push_to_hub
 ```
