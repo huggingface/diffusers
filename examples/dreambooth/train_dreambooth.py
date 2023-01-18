@@ -17,7 +17,6 @@ import datasets
 import diffusers
 import transformers
 from accelerate import Accelerator
-import logging
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
 from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
@@ -35,12 +34,6 @@ from transformers import AutoTokenizer, PretrainedConfig
 check_min_version("0.10.0.dev0")
 
 logger = get_logger(__name__)
-logging.basicConfig(
-        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-        datefmt="%m/%d/%Y %H:%M:%S",
-        level=logging.INFO,
-    )
-
 
 def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision: str):
     text_encoder_config = PretrainedConfig.from_pretrained(
@@ -305,6 +298,10 @@ def parse_args(input_args=None):
     parser.add_argument("--sample_steps", type=int, default=40, help="Number of steps for generating sample images.")
     parser.add_argument("--sample_prompt", type=str, default=None, help="Prompt to use for sample image generation.")
     parser.add_argument("--sample_seed", type=int, default=-1, help="Seed for the per-checkpoint sample image generation. -1 to select random seed")
+    parser.add_argument("--convert_checkpoints", action="store_true", help="Auto-convert checkpoints to an inference ready structure")
+    parser.add_argument("--multires", action="store_true", help="Disables dataset image transforms. Allows training on image datasets of arbitrary resolutions")
+
+    parser.add_argument("--device", type=str, default="cuda", help="Set the device to use for training (cuda, cuda:0, cuda:1, etc.).")
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -345,6 +342,7 @@ class DreamBoothDataset(Dataset):
         class_prompt=None,
         size=512,
         center_crop=False,
+        multires_enabled=False
     ):
         self.size = size
         self.center_crop = center_crop
@@ -355,6 +353,7 @@ class DreamBoothDataset(Dataset):
             raise ValueError(f"Instance {self.instance_data_root} images root doesn't exists.")
 
         self.instance_images_path = list(Path(instance_data_root).iterdir())
+        self.instance_images_path = [path for path in self.instance_images_path if path.suffix in [".jpg", ".png", ".jpeg"]]
         self.num_instance_images = len(self.instance_images_path)
         self.instance_prompt = instance_prompt
         self._length = self.num_instance_images
@@ -369,14 +368,22 @@ class DreamBoothDataset(Dataset):
         else:
             self.class_data_root = None
 
-        self.image_transforms = transforms.Compose(
-            [
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
-                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
-                transforms.ToTensor(),
-                transforms.Normalize([0.5], [0.5]),
-            ]
-        )
+        if multires_enabled:    
+            self.image_transforms = transforms.Compose(
+                [
+                    transforms.ToTensor(),
+                    transforms.Normalize([0.5], [0.5]),
+                ]
+            )
+        else:
+            self.image_transforms = transforms.Compose(
+                [
+                    transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
+                    transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
+                    transforms.ToTensor(),
+                    transforms.Normalize([0.5], [0.5]),
+                ]
+            )
 
     def __len__(self):
         return self._length
@@ -463,12 +470,22 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
 
+    gpu = int(args.device.split(":")[1]) if args.device != "cuda" else "cuda"
+    if torch.cuda.is_available():
+        torch.cuda.set_device(gpu)
+
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
         logging_dir=logging_dir,
     )
+
+    # Accelerator device target is managed by an AcceleratorState object, grabbing
+    # so we can directly set the device to run on
+    acc_state = accelerator.state
+    acc_state.device = torch.device(args.device)
+    accelerator.state = acc_state
 
     # Currently, it's not possible to do gradient accumulation when training two models with accelerate.accumulate
     # This will be enabled soon in accelerate. For now, we don't allow gradient accumulation when training two models.
@@ -645,6 +662,7 @@ def main(args):
         tokenizer=tokenizer,
         size=args.resolution,
         center_crop=args.center_crop,
+        multires_enabled=args.multires
     )
 
     train_dataloader = torch.utils.data.DataLoader(
@@ -840,8 +858,6 @@ def main(args):
                             # Make sure any data leftover from previous interim pipeline is cleared
                             if torch.cuda.is_available():
                                 torch.cuda.empty_cache()
-                                
-                            logger.info(f"Generating {args.samples_per_checkpoint} samples at step {global_step} with prompt: {args.sample_prompt}")
                             
                             # Load current training state into a new diffusion pipeline to generate samples
                             pipeline = DiffusionPipeline.from_pretrained(
@@ -851,27 +867,37 @@ def main(args):
                                 torch_dtype=weight_dtype
                             ).to(accelerator.device)
 
+                            if args.convert_checkpoints:
+                                convertedOutPath = os.path.join(args.output_dir, "converted_checkpoints", f"checkpoint-{global_step}")
+                                logger.info(f"Converting checkpoint-{global_step} to diffusers model at {convertedOutPath}")
+                                pipeline.save_pretrained(convertedOutPath)
+
+                            logger.info(f"Generating {args.samples_per_checkpoint} samples at step {global_step} with prompt: {args.sample_prompt}")
+
                             # Allow a statically set or random seed for for generated samples
                             sampleSeed = args.sample_seed if args.sample_seed != -1 else torch.Generator(accelerator.device).seed()
                             sampleGenerator = torch.Generator(device=accelerator.device)
-                            sampleGenerator.manual_seed(sampleSeed)
 
-                            # Generate samples
-                            with torch.cuda.amp.autocast(enabled=True):
-                                images = pipeline(
-                                    prompt=args.sample_prompt, 
-                                    num_images_per_prompt=args.samples_per_checkpoint,
-                                    num_inference_steps=args.sample_steps,
-                                    generator=sampleGenerator,
-                                    width=args.resolution,
-                                    height=args.resolution).images
+                            for sampleIdx in range(args.samples_per_checkpoint):
+                                sampleGenerator.manual_seed(sampleSeed)
+                                # Generate samples
+                                with torch.cuda.amp.autocast(enabled=True):
+                                    images = pipeline(
+                                        prompt=args.sample_prompt, 
+                                        num_images_per_prompt=1,
+                                        num_inference_steps=args.sample_steps,
+                                        generator=sampleGenerator,
+                                        width=args.resolution,
+                                        height=args.resolution).images
 
-                            # Save samples to 'samples' folder in output directory
-                            for i, image in enumerate(images):
-                                hash_image = hashlib.sha1(image.tobytes()).hexdigest()
-                                os.makedirs(os.path.join(args.output_dir, "samples"), exist_ok=True)
-                                image_filename = os.path.join(args.output_dir, "samples", f"step-{global_step}_loss-{loss.detach().item()}_prompt-{args.sample_prompt}_hash-{hash_image}.png")
-                                image.save(image_filename)
+                                # Save samples to 'samples' folder in output directory
+                                for i, image in enumerate(images):
+                                    hash_image = hashlib.sha1(image.tobytes()).hexdigest()
+                                    os.makedirs(os.path.join(args.output_dir, "samples"), exist_ok=True)
+                                    image_filename = os.path.join(args.output_dir, "samples", f"step-{global_step}_seed-{sampleSeed}_loss-{loss.detach().item()}_hash-{hash_image}.png")
+                                    image.save(image_filename)
+                                
+                                sampleSeed += 1
                             
                             # Remove interim pipeline reference
                             del pipeline
