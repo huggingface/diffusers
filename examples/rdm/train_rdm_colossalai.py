@@ -95,9 +95,10 @@ def get_pipeline(vae, clip_model, unet, tokenizer, feature_extractor):
 
 def log_progress(pipeline, args, step, prompt, save_path, wandb_run=None, logs={}, retrieved_images=None):
     logger.info("Running pipeline")
-    image = pipeline(
-        prompt, retrieved_images=retrieved_images, height=args.resolution, width=args.resolution, num_inference_steps=50, guidance_scale=args.guidance_scale
-    ).images[0]
+    with torch.autocast(pipeline.unet.device, dtype=pipeline.unet.dtype):
+        image = pipeline(
+            prompt, retrieved_images=retrieved_images, height=args.resolution, width=args.resolution, num_inference_steps=50, guidance_scale=args.guidance_scale
+        ).images[0]
 
     image.save(save_path)
     if is_wandb_available():
