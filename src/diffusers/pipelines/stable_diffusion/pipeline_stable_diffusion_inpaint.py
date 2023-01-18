@@ -652,9 +652,9 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
         return mask, masked_image_latents
 
-    def get_timesteps(self, num_inference_steps, image_guidance, device):
+    def get_timesteps(self, num_inference_steps, strength, device):
         # get the original timestep using init_timestep
-        init_timestep = min(int(num_inference_steps * (1.0 - image_guidance)), num_inference_steps)
+        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
 
         t_start = max(num_inference_steps - init_timestep, 0)
         timesteps = self.scheduler.timesteps[t_start:]
@@ -682,7 +682,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
-        image_guidance: Optional[float] = None,
+        strength: Optional[float] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -840,8 +840,8 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
 
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
-        if image_guidance is not None and image_guidance > 0.0:
-            timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, image_guidance, device)
+        if strength is not None and strength < 1.0:
+            timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
             latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
             latents, init_latents_orig, noise = self.prepare_image_based_latents(
                 image, latent_timestep, batch_size, num_images_per_prompt, prompt_embeds.dtype, device, generator

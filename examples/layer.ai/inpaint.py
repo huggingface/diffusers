@@ -16,7 +16,7 @@ class InferenceParameters(NamedTuple):
     height: int = 512
     num_inference_steps: int = 35
     guidance_scale: float = 7.5
-    image_guidance: float = 0.2
+    strength: float = 0.8
     negative_prompt: str | None = None
 
 
@@ -83,7 +83,7 @@ class StableDiffusionInpaintGenerator:
             mask_image=mask_image,
             base_image=init_image,
             negative_prompt=params.negative_prompt,
-            image_guidance=params.image_guidance,
+            strength=params.strength,
         )
 
     def _inpaint(
@@ -99,7 +99,7 @@ class StableDiffusionInpaintGenerator:
         base_image,
         mask_image,
         negative_prompt,
-        image_guidance,
+        strength,
     ):
         import torch
 
@@ -116,7 +116,7 @@ class StableDiffusionInpaintGenerator:
                 image=base_image,
                 mask_image=mask_image,
                 negative_prompt=negative_prompt,
-                image_guidance=image_guidance,
+                strength=strength,
             ).images
         return [GeneratedImage(image=image, index=index) for index, image in enumerate(images)]
 
@@ -140,15 +140,14 @@ if __name__ == "__main__":
     image = download_image(image_url).convert("RGB")
     mask = Image.fromarray(np.array(download_image(mask_url))[..., -1])
     mask.save("mask.png")
-    images = []
-    for guidance in tqdm(list(range(8))):
+    images = [np.array(image)]
+    for i in tqdm(list(range(8))):
         results = generator.generate(
-            InferenceParameters("a house", seed=142857, image_guidance=guidance * 0.125),
+            InferenceParameters("a house", seed=142857, strength=(i + 1) * 0.125),
             image,
             mask,
         )
         images.append(np.array(results[0].image))
-    images.append(np.array(image))
     mat = np.stack(images, axis=0).transpose([0, 3, 1, 2])
     tensor = torch.from_numpy(mat.astype(np.float32) / 255.0)
     torchvision.utils.save_image(tensor, "out.png", normalize=True, nrow=3)
