@@ -78,7 +78,7 @@ class EMAModel:
             at 215.4k steps).
         """
 
-        if issubclass(parameters, torch.nn.Module):
+        if isinstance(parameters, torch.nn.Module):
             deprecation_message = (
                 "Passing a `torch.nn.Module` to `ExponentialMovingAverage` is deprecated. "
                 "Please pass the parameters of the module instead."
@@ -144,7 +144,7 @@ class EMAModel:
 
     @torch.no_grad()
     def step(self, parameters):
-        if issubclass(parameters, torch.nn.Module):
+        if isinstance(parameters, torch.nn.Module):
             deprecation_message = (
                 "Passing a `torch.nn.Module` to `ExponentialMovingAverage.step` is deprecated. "
                 "Please pass the parameters of the module instead."
