@@ -152,6 +152,7 @@ accelerate launch train_unconditional_ort.py \
   --dataset_name="huggan/flowers-102-categories" \
   --resolution=64 \
   --output_dir="ddpm-ema-flowers-64" \
+  --use_ema \
   --train_batch_size=16 \
   --num_epochs=1 \
   --gradient_accumulation_steps=1 \
