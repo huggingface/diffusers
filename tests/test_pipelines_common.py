@@ -36,7 +36,7 @@ class PipelineTesterMixin:
     equivalence of dict and tuple outputs, etc.
     """
 
-    allowed_required_args = ["source_prompt", "prompt", "image", "mask_image", "example_image"]
+    allowed_required_args = ["source_prompt", "prompt", "image", "mask_image", "example_image", "class_labels"]
     required_optional_params = ["generator", "num_inference_steps", "return_dict"]
     num_inference_steps_args = ["num_inference_steps"]
 
@@ -194,8 +194,8 @@ class PipelineTesterMixin:
     ):
         if self.pipeline_class.__name__ in ["CycleDiffusionPipeline", "RePaintPipeline"]:
             # RePaint can hardly be made deterministic since the scheduler is currently always
-            # indeterministic
-            # CycleDiffusion is also slighly undeterministic
+            # nondeterministic
+            # CycleDiffusion is also slightly nondeterministic
             return
 
         if test_max_difference is None:
@@ -515,7 +515,7 @@ class PipelineTesterMixin:
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
     )
-    def test_xformers_attention_forward_pass(self):
+    def test_xformers_attention_forwardGenerator_pass(self):
         if not self.test_xformers_attention:
             return
 

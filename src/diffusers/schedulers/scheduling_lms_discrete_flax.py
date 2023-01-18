@@ -21,8 +21,8 @@ from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from .scheduling_utils_flax import (
-    _FLAX_COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS,
     CommonSchedulerState,
+    FlaxKarrasDiffusionSchedulers,
     FlaxSchedulerMixin,
     FlaxSchedulerOutput,
     broadcast_to_shape_from_left,
@@ -82,7 +82,7 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
             the `dtype` used for params and computation.
     """
 
-    _compatibles = _FLAX_COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
+    _compatibles = [e.name for e in FlaxKarrasDiffusionSchedulers]
 
     dtype: jnp.dtype
 

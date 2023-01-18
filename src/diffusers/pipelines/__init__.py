@@ -18,6 +18,7 @@ else:
     from .dance_diffusion import DanceDiffusionPipeline
     from .ddim import DDIMPipeline
     from .ddpm import DDPMPipeline
+    from .dit import DiTPipeline
     from .latent_diffusion import LDMSuperResolutionPipeline
     from .latent_diffusion_uncond import LDMPipeline
     from .pipeline_utils import AudioPipelineOutput, DiffusionPipeline, ImagePipelineOutput
