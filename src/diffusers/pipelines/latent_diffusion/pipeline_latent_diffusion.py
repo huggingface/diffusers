@@ -26,6 +26,7 @@ from transformers.utils import logging
 
 from ...models import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQModel
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from ...utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
@@ -143,20 +144,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             )
 
         if latents is None:
-            rand_device = "cpu" if self.device.type == "mps" else self.device
-
-            if isinstance(generator, list):
-                latents_shape = (1,) + latents_shape[1:]
-                latents = [
-                    torch.randn(latents_shape, generator=generator[i], device=rand_device, dtype=text_embeddings.dtype)
-                    for i in range(batch_size)
-                ]
-                latents = torch.cat(latents, dim=0)
-            else:
-                latents = torch.randn(
-                    latents_shape, generator=generator, device=rand_device, dtype=text_embeddings.dtype
-                )
-            latents = latents.to(self.device)
+            latents = randn_tensor(latents_shape, generator=generator, device=self.device, dtype=text_embeddings.dtype)
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")

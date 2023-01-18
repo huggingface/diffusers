@@ -19,7 +19,6 @@ from packaging import version
 
 from .. import __version__
 from .constants import (
-    _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS,
     CONFIG_NAME,
     DIFFUSERS_CACHE,
     DIFFUSERS_DYNAMIC_MODULE_NAME,
@@ -32,6 +31,7 @@ from .constants import (
     WEIGHTS_NAME,
 )
 from .deprecation_utils import deprecate
+from .doc_utils import replace_example_docstring
 from .dynamic_modules_utils import get_class_from_dynamic_module
 from .hub_utils import HF_HUB_OFFLINE, http_user_agent
 from .import_utils import (
@@ -46,6 +46,7 @@ from .import_utils import (
     is_flax_available,
     is_inflect_available,
     is_k_diffusion_available,
+    is_k_diffusion_version,
     is_librosa_available,
     is_modelcards_available,
     is_note_seq_available,
@@ -58,11 +59,13 @@ from .import_utils import (
     is_transformers_available,
     is_transformers_version,
     is_unidecode_available,
+    is_xformers_available,
     requires_backends,
 )
 from .logging import get_logger
 from .outputs import BaseOutput
 from .pil_utils import PIL_INTERPOLATION
+from .torch_utils import randn_tensor
 
 
 if is_torch_available():

@@ -21,8 +21,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS
-from .scheduling_utils import SchedulerMixin, SchedulerOutput
+from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SchedulerOutput
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
@@ -83,9 +82,8 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             step there is no previous alpha. When this option is `True` the previous alpha product is fixed to `1`,
             otherwise it uses the value of alpha at step 0.
         prediction_type (`str`, default `epsilon`, optional):
-            prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
-            process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
-            https://imagen.research.google/video/paper.pdf)
+            prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion process)
+            or `v_prediction` (see section 2.4 https://imagen.research.google/video/paper.pdf)
         steps_offset (`int`, default `0`):
             an offset added to the inference steps. You can use a combination of `offset=1` and
             `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
@@ -93,7 +91,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 
     """
 
-    _compatibles = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
+    _compatibles = [e.name for e in KarrasDiffusionSchedulers]
     order = 1
 
     @register_to_config

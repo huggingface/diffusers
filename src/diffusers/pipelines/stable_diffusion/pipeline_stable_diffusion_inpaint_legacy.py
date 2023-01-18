@@ -19,21 +19,13 @@ import numpy as np
 import torch
 
 import PIL
-from diffusers.utils import is_accelerate_available
 from packaging import version
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...schedulers import (
-    DDIMScheduler,
-    DPMSolverMultistepScheduler,
-    EulerAncestralDiscreteScheduler,
-    EulerDiscreteScheduler,
-    LMSDiscreteScheduler,
-    PNDMScheduler,
-)
-from ...utils import PIL_INTERPOLATION, deprecate, logging
+from ...schedulers import KarrasDiffusionSchedulers
+from ...utils import PIL_INTERPOLATION, deprecate, is_accelerate_available, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
@@ -101,14 +93,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: Union[
-            DDIMScheduler,
-            PNDMScheduler,
-            LMSDiscreteScheduler,
-            EulerDiscreteScheduler,
-            EulerAncestralDiscreteScheduler,
-            DPMSolverMultistepScheduler,
-        ],
+        scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
         requires_safety_checker: bool = True,
@@ -206,13 +191,10 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         device = torch.device(f"cuda:{gpu_id}")
 
         for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
-            if cpu_offloaded_model is not None:
-                cpu_offload(cpu_offloaded_model, device)
+            cpu_offload(cpu_offloaded_model, device)
 
         if self.safety_checker is not None:
-            # TODO(Patrick) - there is currently a bug with cpu offload of nn.Parameter in accelerate
-            # fix by only offloading self.safety_checker for now
-            cpu_offload(self.safety_checker.vision_model, device)
+            cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
 
     @property
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
@@ -414,7 +396,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         init_latents_orig = init_latents
 
         # add noise to latents using the timesteps
-        noise = torch.randn(init_latents.shape, generator=generator, device=self.device, dtype=dtype)
+        noise = randn_tensor(init_latents.shape, generator=generator, device=self.device, dtype=dtype)
         init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
         latents = init_latents
         return latents, init_latents_orig, noise
