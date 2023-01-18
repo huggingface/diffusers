@@ -1,7 +1,7 @@
 import copy
 import os
 import random
-from typing import Iterable, Optional, Union
+from typing import Iterable, Union
 
 import numpy as np
 import torch
