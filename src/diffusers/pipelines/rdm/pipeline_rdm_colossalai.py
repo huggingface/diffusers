@@ -20,6 +20,7 @@ from ...schedulers import (
     PNDMScheduler,
 )
 from ...utils import deprecate, logging
+from colossalai.utils import get_current_device
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -41,7 +42,7 @@ def preprocess_images(images: List[Image.Image], feature_extractor: CLIPFeatureE
     return images
 
 
-class RDMPipeline(DiffusionPipeline):
+class RDMPipelineColossal(DiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using Retrieval Augmented Diffusion.
 
@@ -327,27 +328,27 @@ class RDMPipeline(DiffusionPipeline):
         # Unlike in other pipelines, latents need to be generated in the target device
         # for 1-to-1 results reproducibility with the CompVis implementation.
         # However this currently doesn't work in `mps`.
-        latents_shape = (batch_size * num_images_per_prompt, self.unet.in_channels, height // 16, width // 16)
+        latents_shape = (batch_size * num_images_per_prompt, self.vae.latent_channels, height // 16, width // 16)
         latents_dtype = text_embeddings.dtype
         if latents is None:
-            if self.device.type == "mps":
+            if get_current_device().type == "mps":
                 # randn does not work reproducibly on mps
                 latents = torch.randn(latents_shape, generator=generator, device="cpu", dtype=latents_dtype).to(
-                    self.device
+                    get_current_device()
                 )
             else:
-                latents = torch.randn(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
+                latents = torch.randn(latents_shape, generator=generator, device=get_current_device(), dtype=latents_dtype)
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
-            latents = latents.to(self.device)
+            latents = latents.to(get_current_device())
 
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
 
         # Some schedulers like PNDM have timesteps as arrays
         # It's more optimized to move all timesteps to correct device beforehand
-        timesteps_tensor = self.scheduler.timesteps.to(self.device)
+        timesteps_tensor = self.scheduler.timesteps.to(get_current_device())
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma

@@ -20,7 +20,8 @@ import datasets
 import diffusers
 import transformers
 from datasets import load_dataset
-from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, RDMPipeline, UNet2DConditionModel
+from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, UNet2DConditionModel
+from diffusers.pipelines.rdm.pipeline_rdm_colossalai import RDMPipelineColossal
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
 from diffusers.utils.import_utils import is_xformers_available
@@ -81,7 +82,7 @@ def wandb_setup(
 
 def get_pipeline(vae, clip_model, unet, tokenizer, feature_extractor):
     # I disabled safety checker as it causes an oom
-    pipeline = RDMPipeline(
+    pipeline = RDMPipelineColossal(
         vae=vae,
         clip=clip_model,
         unet=unet,
@@ -988,7 +989,7 @@ def main():
             train_loss = 0.0
             if global_step % args.log_frequency == 0:
                 torch.cuda.synchronize()
-                # torch_unet = get_static_torch_model(unet)
+                torch_unet = get_static_torch_model(unet)
                 if gpc.get_local_rank(ParallelMode.DATA) == 0:
                     prompt = dataset['train'][args.caption_column][0]
                     pipeline = get_pipeline(vae, clip_model, unet, tokenizer, feature_extractor)
@@ -1024,7 +1025,7 @@ def main():
         if args.use_ema:
             ema_unet.copy_to(unet.parameters())
 
-        pipeline = RDMPipeline.from_pretrained(
+        pipeline = RDMPipelineColossal.from_pretrained(
             args.pretrained_model_name_or_path,
             clip=clip_model,
             vae=vae,
