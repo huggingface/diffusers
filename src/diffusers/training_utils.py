@@ -123,7 +123,7 @@ class EMAModel:
         self.power = power
         self.optimization_step = 0
 
-    def get_decay(self, optimization_step):
+    def get_decay(self, optimization_step: int) -> float:
         """
         Compute the decay factor for the exponential moving average.
         """
@@ -143,7 +143,7 @@ class EMAModel:
         return cur_decay_value
 
     @torch.no_grad()
-    def step(self, parameters):
+    def step(self, parameters: Iterable[torch.nn.Parameter]):
         if isinstance(parameters, torch.nn.Module):
             deprecation_message = (
                 "Passing a `torch.nn.Module` to `ExponentialMovingAverage.step` is deprecated. "
