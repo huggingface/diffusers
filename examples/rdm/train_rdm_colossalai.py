@@ -942,7 +942,7 @@ def main():
 
             # Get the text embedding for conditioning
             text_embeddings = clip_model.get_text_features(batch["input_ids"])
-            text_embeddings = text_embeddings / torchdtype.linalg.norm(text_embeddings, dim=-1, keepdim=True)
+            text_embeddings = text_embeddings / torch.linalg.norm(text_embeddings, dim=-1, keepdim=True)
             text_embeddings = text_embeddings[:, None, :]
 
             retrieved_images = batch["nearest_neighbors"]
