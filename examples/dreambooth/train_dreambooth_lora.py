@@ -59,9 +59,10 @@ logger = get_logger(__name__)
 
 
 def create_model_card(images, base_model, prompt):
-    markdown_lines = []
-    ---
+    yaml = f"""
+---
 license: creativeml-openrail-m
+base_model: {base_model}
 tags:
 - stable-diffusion
 - stable-diffusion-diffusers
@@ -69,6 +70,7 @@ tags:
 - diffusers
 inference: true
 ---
+    """
 
 
 
