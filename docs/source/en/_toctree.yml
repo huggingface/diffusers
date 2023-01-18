@@ -120,6 +120,8 @@
       title: Safe Stable Diffusion
     - local: api/pipelines/score_sde_ve
       title: Score SDE VE
+    - local: api/pipelines/spectrogram_diffusion
+      title: "Spectrogram Diffusion"
     - sections:
       - local: api/pipelines/stable_diffusion/overview
         title: Overview
