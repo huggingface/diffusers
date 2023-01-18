@@ -95,10 +95,9 @@ def get_pipeline(vae, clip_model, unet, tokenizer, feature_extractor):
 
 def log_progress(pipeline, args, step, prompt, save_path, wandb_run=None, logs={}, retrieved_images=None):
     logger.info("Running pipeline")
-    with torch.autocast("cuda", dtype=pipeline.unet.dtype):
-        image = pipeline(
-            prompt, retrieved_images=retrieved_images, height=args.resolution, width=args.resolution, num_inference_steps=50, guidance_scale=args.guidance_scale
-        ).images[0]
+    image = pipeline(
+        prompt, retrieved_images=retrieved_images, height=args.resolution, width=args.resolution, num_inference_steps=50, guidance_scale=args.guidance_scale
+    ).images[0]
 
     image.save(save_path)
     if is_wandb_available():
@@ -989,10 +988,10 @@ def main():
             train_loss = 0.0
             if global_step % args.log_frequency == 0:
                 torch.cuda.synchronize()
-                torch_unet = get_static_torch_model(unet)
+                # torch_unet = get_static_torch_model(unet)
                 if gpc.get_local_rank(ParallelMode.DATA) == 0:
                     prompt = dataset['train'][args.caption_column][0]
-                    pipeline = get_pipeline(vae, clip_model, torch_unet, tokenizer, feature_extractor)
+                    pipeline = get_pipeline(vae, clip_model, unet, tokenizer, feature_extractor)
                     os.makedirs(os.path.join(args.output_dir, "imgs"), exist_ok=True)
                     save_path = os.path.join(args.output_dir, f"imgs/{global_step}.jpg")
                     if client:

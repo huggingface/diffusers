@@ -373,7 +373,6 @@ class RDMPipeline(DiffusionPipeline):
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
             # predict the noise residual
-            print(self.unet.dtype, latent_model_input.dtype, text_embeddings.dtype)
             noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
 
             # perform guidance
