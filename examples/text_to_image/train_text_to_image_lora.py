@@ -30,7 +30,6 @@ import torch.utils.checkpoint
 import datasets
 import diffusers
 import transformers
-import wandb
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
