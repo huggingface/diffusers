@@ -609,21 +609,16 @@ def main():
 
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
-    # weight_dtype = torch.float32
-    # if accelerator.mixed_precision == "fp16":
-    #     weight_dtype = torch.float16
-    # elif accelerator.mixed_precision == "bf16":
-    #     weight_dtype = torch.bfloat16
+    weight_dtype = torch.float32
+    if accelerator.mixed_precision == "fp16":
+        weight_dtype = torch.float16
+    elif accelerator.mixed_precision == "bf16":
+        weight_dtype = torch.bfloat16
 
-    # Move text_encoder and vae to gpu and cast to weight_dtype
-    # The unet's weight_dtype is kept in full precision because of autocasts
-    # during the backward pass.
-    # unet.to(accelerator.device, dtype=weight_dtype)
-    # text_encoder.to(accelerator.device, dtype=weight_dtype)
-    # vae.to(accelerator.device, dtype=weight_dtype)
-    unet.to(accelerator.device)
-    text_encoder.to(accelerator.device)
-    vae.to(accelerator.device)
+    # Move unet, vae and text_encoder to device and cast to weight_dtype
+    unet.to(accelerator.device, dtype=weight_dtype)
+    vae.to(accelerator.device, dtype=weight_dtype)
+    text_encoder.to(accelerator.device, dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -684,7 +679,7 @@ def main():
 
             with accelerator.accumulate(unet):
                 # Convert images to latent space
-                latents = vae.encode(batch["pixel_values"]).latent_dist.sample()
+                latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
                 latents = latents * 0.18215
 
                 # Sample noise that we'll add to the latents
@@ -755,7 +750,6 @@ def main():
                 args.pretrained_model_name_or_path,
                 unet=accelerator.unwrap_model(unet),
                 revision=args.revision,
-                # torch_dtype=torch.float16,
             )
             pipeline = pipeline.to(accelerator.device)
             pipeline.set_progress_bar_config(disable=True)
@@ -763,8 +757,7 @@ def main():
             # run inference
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
             prompt = args.num_validation_images * [args.validation_prompt]
-            with torch.autocast("cuda"):
-                images = pipeline(prompt, num_inference_steps=30, generator=generator).images
+            images = pipeline(prompt, num_inference_steps=30, generator=generator).images
 
             for tracker in accelerator.trackers:
                 if tracker.name == "wandb":
