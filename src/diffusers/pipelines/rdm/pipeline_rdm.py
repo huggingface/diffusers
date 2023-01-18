@@ -291,13 +291,13 @@ class RDMPipeline(DiffusionPipeline):
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
             text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
-        text_embeddings = self.clip.get_text_features(text_input_ids.to(self.device))
+        text_embeddings = self.clip.get_text_features(text_input_ids.to(self.clip.device))
         text_embeddings = text_embeddings / torch.linalg.norm(text_embeddings, dim=-1, keepdim=True)
         text_embeddings = text_embeddings[:, None, :]
 
         if retrieved_images is not None:
             # preprocess retrieved images
-            retrieved_images = preprocess_images(retrieved_images, self.feature_extractor).to(self.device)
+            retrieved_images = preprocess_images(retrieved_images, self.feature_extractor).to(self.clip.device)
             image_embeddings = self.clip.get_image_features(retrieved_images)
             image_embeddings = image_embeddings / torch.linalg.norm(image_embeddings, dim=-1, keepdim=True)
             image_embeddings = image_embeddings[None, ...]
@@ -316,7 +316,7 @@ class RDMPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
-            uncond_embeddings = torch.zeros_like(text_embeddings)
+            uncond_embeddings = torch.zeros_like(text_embeddings).to(text_embeddings.device)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
