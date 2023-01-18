@@ -62,7 +62,7 @@ def save_model_card(repo_name, images=None, base_model=str, prompt=str, repo_fol
     img_str = ""
     for i, image in enumerate(images):
         image.save(os.path.join(repo_folder, f"image_{i}.png"))
-        img_str += "![img_{i}](./image_{i}.png)\n"
+        img_str += f"![img_{i}](./image_{i}.png)\n"
 
     yaml = f"""
 ---
