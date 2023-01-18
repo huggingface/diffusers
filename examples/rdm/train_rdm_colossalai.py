@@ -112,8 +112,8 @@ def log_progress(pipeline, args, step, prompt, save_path, wandb_run=None, logs={
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.10.0.dev0")
-logger = logging.getLogger(__name__)
-logger.setLevel("INFO")
+logger = get_dist_logger()
+
 _clip_retrieval_available = True
 try:
     _clip_retrieval_version = importlib_metadata.version("clip-retrieval")
