@@ -438,7 +438,7 @@ class ModelMixin(torch.nn.Module):
 
         model_file = None
         if from_flax:
-            model_file = cls._get_model_file(
+            model_file = _get_model_file(
                 pretrained_model_name_or_path,
                 weights_name=FLAX_WEIGHTS_NAME,
                 cache_dir=cache_dir,
@@ -474,7 +474,7 @@ class ModelMixin(torch.nn.Module):
         else:
             if is_safetensors_available():
                 try:
-                    model_file = cls._get_model_file(
+                    model_file = _get_model_file(
                         pretrained_model_name_or_path,
                         weights_name=SAFETENSORS_WEIGHTS_NAME,
                         cache_dir=cache_dir,
@@ -490,7 +490,7 @@ class ModelMixin(torch.nn.Module):
                 except:
                     pass
             if model_file is None:
-                model_file = cls._get_model_file(
+                model_file = _get_model_file(
                     pretrained_model_name_or_path,
                     weights_name=WEIGHTS_NAME,
                     cache_dir=cache_dir,
@@ -598,92 +598,6 @@ class ModelMixin(torch.nn.Module):
             return model, loading_info
 
         return model
-
-    @classmethod
-    def _get_model_file(
-        cls,
-        pretrained_model_name_or_path,
-        *,
-        weights_name,
-        subfolder,
-        cache_dir,
-        force_download,
-        proxies,
-        resume_download,
-        local_files_only,
-        use_auth_token,
-        user_agent,
-        revision,
-    ):
-        pretrained_model_name_or_path = str(pretrained_model_name_or_path)
-        if os.path.isdir(pretrained_model_name_or_path):
-            if os.path.isfile(os.path.join(pretrained_model_name_or_path, weights_name)):
-                # Load from a PyTorch checkpoint
-                model_file = os.path.join(pretrained_model_name_or_path, weights_name)
-            elif subfolder is not None and os.path.isfile(
-                os.path.join(pretrained_model_name_or_path, subfolder, weights_name)
-            ):
-                model_file = os.path.join(pretrained_model_name_or_path, subfolder, weights_name)
-            else:
-                raise EnvironmentError(
-                    f"Error no file named {weights_name} found in directory {pretrained_model_name_or_path}."
-                )
-            return model_file
-        else:
-            try:
-                # Load from URL or cache if already cached
-                model_file = hf_hub_download(
-                    pretrained_model_name_or_path,
-                    filename=weights_name,
-                    cache_dir=cache_dir,
-                    force_download=force_download,
-                    proxies=proxies,
-                    resume_download=resume_download,
-                    local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
-                    user_agent=user_agent,
-                    subfolder=subfolder,
-                    revision=revision,
-                )
-                return model_file
-
-            except RepositoryNotFoundError:
-                raise EnvironmentError(
-                    f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier "
-                    "listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a "
-                    "token having permission to this repo with `use_auth_token` or log in with `huggingface-cli "
-                    "login`."
-                )
-            except RevisionNotFoundError:
-                raise EnvironmentError(
-                    f"{revision} is not a valid git identifier (branch name, tag name or commit id) that exists for "
-                    "this model name. Check the model page at "
-                    f"'https://huggingface.co/{pretrained_model_name_or_path}' for available revisions."
-                )
-            except EntryNotFoundError:
-                raise EnvironmentError(
-                    f"{pretrained_model_name_or_path} does not appear to have a file named {weights_name}."
-                )
-            except HTTPError as err:
-                raise EnvironmentError(
-                    "There was a specific connection error when trying to load"
-                    f" {pretrained_model_name_or_path}:\n{err}"
-                )
-            except ValueError:
-                raise EnvironmentError(
-                    f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load this model, couldn't find it"
-                    f" in the cached files and it looks like {pretrained_model_name_or_path} is not the path to a"
-                    f" directory containing a file named {weights_name} or"
-                    " \nCheckout your internet connection or see how to run the library in"
-                    " offline mode at 'https://huggingface.co/docs/diffusers/installation#offline-mode'."
-                )
-            except EnvironmentError:
-                raise EnvironmentError(
-                    f"Can't load the model for '{pretrained_model_name_or_path}'. If you were trying to load it from "
-                    "'https://huggingface.co/models', make sure you don't have a local directory with the same name. "
-                    f"Otherwise, make sure '{pretrained_model_name_or_path}' is the correct path to a directory "
-                    f"containing a file named {weights_name}"
-                )
 
     @classmethod
     def _load_pretrained_model(
@@ -848,7 +762,9 @@ def _get_model_file(
     revision,
 ):
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
-    if os.path.isdir(pretrained_model_name_or_path):
+    if os.path.isfile(pretrained_model_name_or_path):
+        return pretrained_model_name_or_path
+    elif os.path.isdir(pretrained_model_name_or_path):
         if os.path.isfile(os.path.join(pretrained_model_name_or_path, weights_name)):
             # Load from a PyTorch checkpoint
             model_file = os.path.join(pretrained_model_name_or_path, weights_name)
