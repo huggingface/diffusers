@@ -441,7 +441,6 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]],
         image: Union[torch.FloatTensor, PIL.Image.Image],
-        mask_image: Union[torch.FloatTensor, PIL.Image.Image],
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -574,9 +573,8 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
         # 6. Prepare Image latents
         image_latents = self.prepare_image_latents(
             image,
-            batch_size * num_images_per_prompt,
-            height,
-            width,
+            batch_size,
+            num_images_per_prompt,
             text_embeddings.dtype,
             device,
             generator,
