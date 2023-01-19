@@ -20,7 +20,7 @@ import math
 import os
 import random
 from pathlib import Path
-from typing import  Optional
+from typing import Optional
 
 import numpy as np
 import torch
@@ -50,6 +50,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 check_min_version("0.12.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
+
 
 def save_model_card(repo_name, images=None, base_model=str, dataset_name=str, repo_folder=None):
     img_str = ""
@@ -318,7 +319,6 @@ def parse_args():
     if args.dataset_name is None and args.train_data_dir is None:
         raise ValueError("Need either a dataset name or a training folder.")
 
-
     return args
 
 
@@ -454,7 +454,6 @@ def main():
 
     unet.set_attn_processor(lora_attn_procs)
     lora_layers = AttnProcsLayers(unet.attn_processors)
-
 
     accelerator.register_for_checkpointing(lora_layers)
 
@@ -802,7 +801,8 @@ def main():
                 tracker.log(
                     {
                         "test": [
-                            wandb.Image(image, caption=f"{i}: {args.validation_prompt}") for i, image in enumerate(images)
+                            wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                            for i, image in enumerate(images)
                         ]
                     }
                 )
