@@ -20,7 +20,7 @@ import math
 import os
 import random
 from pathlib import Path
-from typing import Dict, Optional
+from typing import  Optional
 
 import numpy as np
 import torch
@@ -51,34 +51,31 @@ check_min_version("0.12.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
+def save_model_card(repo_name, images=None, base_model=str, dataset_name=str, repo_folder=None):
+    img_str = ""
+    for i, image in enumerate(images):
+        image.save(os.path.join(repo_folder, f"image_{i}.png"))
+        img_str += f"![img_{i}](./image_{i}.png)\n"
 
-    def __init__(self, state_dict: Dict[str, torch.Tensor]):
-        super().__init__()
-        self.layers = torch.nn.ModuleList(state_dict.values())
-        self.mapping = {k: v for k, v in enumerate(state_dict.keys())}
-        self.rev_mapping = {v: k for k, v in enumerate(state_dict.keys())}
-
-        # we add a hook to state_dict() and load_state_dict() so that the
-        # naming fits with `unet.attn_processors`
-        def map_to(module, state_dict, *args, **kwargs):
-            new_state_dict = {}
-            for key, value in state_dict.items():
-                num = int(key.split(".")[1])  # 0 is always "layers"
-                new_key = key.replace(f"layers.{num}", module.mapping[num])
-                new_state_dict[new_key] = value
-
-            return new_state_dict
-
-        def map_from(module, state_dict, *args, **kwargs):
-            all_keys = list(state_dict.keys())
-            for key in all_keys:
-                replace_key = ".".join(key.split(".")[:-3])
-                new_key = key.replace(replace_key, f"layers.{module.rev_mapping[replace_key]}")
-                state_dict[new_key] = state_dict[key]
-                del state_dict[key]
-
-        self._register_state_dict_hook(map_to)
-        self._register_load_state_dict_pre_hook(map_from, with_module=True)
+    yaml = f"""
+---
+license: creativeml-openrail-m
+base_model: {base_model}
+tags:
+- stable-diffusion
+- stable-diffusion-diffusers
+- text-to-image
+- diffusers
+inference: true
+---
+    """
+    model_card = f"""
+# LoRA text2image fine-tuning - {repo_name}
+These are LoRA adaption weights for {repo_name}. The weights were fine-tuned on the {dataset_name} dataset. You can find some example images in the following. \n
+{img_str}
+"""
+    with open(os.path.join(repo_folder, "README.md"), "w") as f:
+        f.write(yaml + model_card)
 
 
 def parse_args():
@@ -521,7 +518,7 @@ def main():
     column_names = dataset["train"].column_names
 
     # 6. Get the column names for input/target.
-    dataset_columns = dataset_name_mapping.get(args.dataset_name, None)
+    dataset_columns = DATASET_NAME_MAPPING.get(args.dataset_name, None)
     if args.image_column is None:
         image_column = dataset_columns[0] if dataset_columns is not None else column_names[0]
     else:
@@ -752,16 +749,17 @@ def main():
             for _ in range(args.num_validation_images):
                 images.append(pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0])
 
-            for tracker in accelerator.trackers:
-                if tracker.name == "wandb":
-                    tracker.log(
-                        {
-                            "validation": [
-                                wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                                for i, image in enumerate(images)
-                            ]
-                        }
-                    )
+            if accelerator.is_main_process:
+                for tracker in accelerator.trackers:
+                    if tracker.name == "wandb":
+                        tracker.log(
+                            {
+                                "validation": [
+                                    wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                    for i, image in enumerate(images)
+                                ]
+                            }
+                        )
 
             del pipeline
             torch.cuda.empty_cache()
@@ -773,6 +771,13 @@ def main():
         unet.save_attn_procs(args.output_dir)
 
         if args.push_to_hub:
+            save_model_card(
+                repo_name,
+                images=images,
+                base_model=args.pretrained_model_name_or_path,
+                dataset_name=args.dataset_name,
+                repo_folder=args.output_dir,
+            )
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
 
     # Final inference
@@ -791,15 +796,16 @@ def main():
     for _ in range(args.num_validation_images):
         images.append(pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0])
 
-    for tracker in accelerator.trackers:
-        if tracker.name == "wandb":
-            tracker.log(
-                {
-                    "test": [
-                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}") for i, image in enumerate(images)
-                    ]
-                }
-            )
+    if accelerator.is_main_process:
+        for tracker in accelerator.trackers:
+            if tracker.name == "wandb":
+                tracker.log(
+                    {
+                        "test": [
+                            wandb.Image(image, caption=f"{i}: {args.validation_prompt}") for i, image in enumerate(images)
+                        ]
+                    }
+                )
 
     accelerator.end_training()
 
