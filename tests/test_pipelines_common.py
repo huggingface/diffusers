@@ -483,8 +483,6 @@ class PipelineTesterMixin:
         output_with_slicing = pipe(**inputs)[0]
 
         if test_max_difference:
-            print("out with slicing", output_with_slicing)
-            print("out without slicing", output_without_slicing)
             max_diff = np.abs(output_with_slicing - output_without_slicing).max()
             self.assertLess(max_diff, 1e-3, "Attention slicing should not affect the inference results")
 
