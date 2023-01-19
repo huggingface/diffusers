@@ -21,7 +21,13 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-import note_seq
+from ...utils import is_note_seq_available
+
+
+if is_note_seq_available():
+    import note_seq
+else:
+    raise ImportError("Please install note-seq via `pip install note-seq`")
 
 
 INPUT_FEATURE_LENGTH = 2048

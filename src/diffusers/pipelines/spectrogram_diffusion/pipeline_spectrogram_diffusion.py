@@ -13,13 +13,12 @@
 # limitations under the License.
 
 import math
-from typing import Optional
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
 import torch.nn as nn
 
-import note_seq
 from transformers.modeling_utils import ModuleUtilsMixin
 from transformers.models.t5.modeling_t5 import (
     T5Attention,
@@ -32,11 +31,11 @@ from transformers.models.t5.modeling_t5 import (
 )
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...modeling_utils import ModelMixin
 from ...models.embeddings import get_timestep_embedding
-from ...onnx_utils import OnnxRuntimeModel
-from ...pipeline_utils import AudioPipelineOutput, DiffusionPipeline
+from ...models import ModelMixin
 from ...schedulers import DDPMScheduler
+from ..onnx_utils import OnnxRuntimeModel
+from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from .midi_utils import (
     DEFAULT_MAX_SHIFT_SECONDS,
     DEFAULT_NUM_VELOCITY_BINS,
@@ -58,6 +57,13 @@ from .midi_utils import (
     note_sequence_to_onsets_and_offsets_and_programs,
     program_to_slakh_program,
 )
+from ...utils import is_note_seq_available
+
+
+if is_note_seq_available():
+    import note_seq
+else:
+    raise ImportError("Please install note-seq via `pip install note-seq`")
 
 
 class FiLMLayer(nn.Module):
@@ -568,7 +574,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
         generator: Optional[torch.Generator] = None,
         num_inference_steps: int = 1000,
         return_dict: bool = True,
-    ):
+    ) -> Union[AudioPipelineOutput, Tuple]:
         ns = note_seq.midi_file_to_note_sequence(midi_file)
         ns_sus = note_seq.apply_sustain_control_changes(ns)
 
