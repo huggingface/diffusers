@@ -391,7 +391,9 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    def prepare_image_latents(self, image, batch_size, num_images_per_prompt, dtype, device, generator=None):
+    def prepare_image_latents(
+        self, image, batch_size, num_images_per_prompt, dtype, device, do_classifier_free_guidance, generator=None
+    ):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
@@ -433,6 +435,8 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
             )
         else:
             image_latents = torch.cat([image_latents], dim=0)
+
+        image_latents = torch.cat([image_latents] * 2) if do_classifier_free_guidance else image_latents
 
         return image_latents
 
@@ -577,6 +581,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
             num_images_per_prompt,
             text_embeddings.dtype,
             device,
+            do_classifier_free_guidance,
             generator,
         )
 
