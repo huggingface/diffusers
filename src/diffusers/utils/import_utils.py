@@ -224,6 +224,13 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _note_seq_available = False
 
+_wandb_available = importlib.util.find_spec("wandb") is not None
+try:
+    _wandb_version = importlib_metadata.version("wandb")
+    logger.debug(f"Successfully imported k-diffusion version {_wandb_version }")
+except importlib_metadata.PackageNotFoundError:
+    _wandb_available = False
+
 
 def is_torch_available():
     return _torch_available
@@ -285,6 +292,10 @@ def is_note_seq_available():
     return _note_seq_available
 
 
+def is_wandb_available():
+    return _wandb_available
+
+
 # docstyle-ignore
 FLAX_IMPORT_ERROR = """
 {0} requires the FLAX library but it was not found in your environment. Checkout the instructions on the
@@ -343,6 +354,11 @@ install k-diffusion`
 NOTE_SEQ_IMPORT_ERROR = """
 {0} requires the note-seq library but it was not found in your environment. You can install it with pip: `pip
 install note-seq`
+
+# docstyle-ignore
+WANDB_IMPORT_ERROR = """
+{0} requires the wandb library but it was not found in your environment. You can install it with pip: `pip
+install wandb`
 """
 
 
@@ -358,6 +374,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("librosa", (is_librosa_available, LIBROSA_IMPORT_ERROR)),
         ("k_diffusion", (is_k_diffusion_available, K_DIFFUSION_IMPORT_ERROR)),
         ("note_seq", (is_note_seq_available, NOTE_SEQ_IMPORT_ERROR)),
+        ("wandb", (is_wandb_available, WANDB_IMPORT_ERROR)),
     ]
 )
 

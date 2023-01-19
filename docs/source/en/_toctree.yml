@@ -90,6 +90,8 @@
       title: Configuration
     - local: api/outputs
       title: Outputs
+    - local: api/loaders
+      title: Loaders
     title: Main Classes
   - sections:
     - local: api/pipelines/overview
