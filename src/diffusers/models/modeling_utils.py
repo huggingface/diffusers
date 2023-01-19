@@ -272,15 +272,6 @@ class ModelMixin(torch.nn.Module):
 
         weights_name = SAFETENSORS_WEIGHTS_NAME if safe_serialization else WEIGHTS_NAME
 
-        # Clean the folder from a previous save
-        for filename in os.listdir(save_directory):
-            full_filename = os.path.join(save_directory, filename)
-            # If we have a shard file that is not going to be replaced, we delete it, but only from the main process
-            # in distributed settings to avoid race conditions.
-            weights_no_suffix = weights_name.replace(".bin", "").replace(".safetensors", "")
-            if filename.startswith(weights_no_suffix) and os.path.isfile(full_filename) and is_main_process:
-                os.remove(full_filename)
-
         # Save the model
         save_function(state_dict, os.path.join(save_directory, weights_name))
 
