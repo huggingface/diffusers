@@ -187,7 +187,35 @@ For all of the following contributions, you will need to open a PR. It is explai
 
 ### 6. Contribute a [community pipeline](https://github.com/huggingface/diffusers/tree/main/docs/source).
 
-	(TODO:PVP) Copy from issue
+	[Pipelines](TODO:PVP) are usually the first point of contact between the diffusers library and the user.
+	Pipelines are examples of how to use diffusers [models](TODO:PVP) and [schedulers](TODO:PVP).
+	We support two types of pipelines:
+
+		- Community Pipelines
+		- Official Pipelines
+
+	Both communtiy and official pipelines follow the same design and consists of the same type of components.
+
+	Community pipeline are contributed and maintained purely by the **community** and are **not** tested. They 
+	reside in [/examples/community]( ) and while they can be accesed via the pypi diffusers package (see [here]( )), their code is not part of the Pypi diffusers package.
+	In contrast, official pipelines are tested and maintained by the core diffusers maintainers. Their code
+	resides in [src/diffusers/pipelines]( ).
+
+	The reason for the distinction is that the core `diffusers` team simply cannot maintain and test all 
+	possible ways diffusion models can be used for inference. 
+	Officially released diffusion pipelines, 
+	such as [Stable Diffusion]( ) are added to the core src/diffusers/pipelines package which ensures a 
+	high quality of maintenance, no backwards-breaking code changes and testing. 
+	More edge-casy, unofficial pipelines should be added as community pipelines. If usage for a community pipeline is high, they pipeline can be moved to the official pipelines upon request from the community.
+
+    To add a community pipeline, one should add a <name-of-the-community>.py file to [examples/community](TODO:PVP) and adapt the [examples/community/README.md](TODO:PVP) to include an example of the new pipeline.
+	
+	TODO(PVP:Copy&Paste test from the issue)
+
+	Community pipeline PRs are only checked at a superficial level and it is desired to be maintained by the author.
+
+	Contributing a community pipline is a great way to understand how to diffusers models and schedulers work. Having contributed a community pipeline is a great stepping stone to contribute an official pipeline to the 
+	core package.
 
 ### 7. Contribute to the [examples](https://github.com/huggingface/diffusers/tree/main/examples).
 
