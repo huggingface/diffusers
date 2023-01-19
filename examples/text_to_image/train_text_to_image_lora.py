@@ -52,7 +52,6 @@ check_min_version("0.12.0.dev0")
 logger = get_logger(__name__, log_level="INFO")
 
 
-class LoraLayers(torch.nn.Module):
     def __init__(self, state_dict: Dict[str, torch.Tensor]):
         super().__init__()
         self.layers = torch.nn.ModuleList(state_dict.values())
@@ -145,7 +144,7 @@ def parse_args():
     parser.add_argument(
         "--validation_epochs",
         type=int,
-        default=10,
+        default=1,
         help=(
             "Run fine-tuning validation every X epochs. The validation process consists of running the prompt"
             " `args.validation_prompt` multiple times: `args.num_validation_images`."
@@ -248,16 +247,6 @@ def parse_args():
             " https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices"
         ),
     )
-    parser.add_argument(
-        "--non_ema_revision",
-        type=str,
-        default=None,
-        required=False,
-        help=(
-            "Revision of pretrained non-ema model identifier. Must be a branch, tag or git identifier of the local or"
-            " remote repository specified with --pretrained_model_name_or_path."
-        ),
-    )
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
@@ -332,9 +321,6 @@ def parse_args():
     if args.dataset_name is None and args.train_data_dir is None:
         raise ValueError("Need either a dataset name or a training folder.")
 
-    # default to using the same revision for the non-ema model if not specified
-    if args.non_ema_revision is None:
-        args.non_ema_revision = args.revision
 
     return args
 
@@ -349,7 +335,7 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
         return f"{organization}/{model_id}"
 
 
-dataset_name_mapping = {
+DATASET_NAME_MAPPING = {
     "lambdalabs/pokemon-blip-captions": ("image", "text"),
 }
 
@@ -417,7 +403,7 @@ def main():
     )
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision)
     unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
+        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
 
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
@@ -472,8 +458,6 @@ def main():
     unet.set_attn_processor(lora_attn_procs)
     lora_layers = AttnProcsLayers(unet.attn_processors)
 
-    state_dict = lora_layers.state_dict()
-    lora_layers.load_state_dict(state_dict)
 
     accelerator.register_for_checkpointing(lora_layers)
 
