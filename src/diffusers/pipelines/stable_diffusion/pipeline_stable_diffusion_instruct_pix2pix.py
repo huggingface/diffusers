@@ -517,7 +517,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
         >>> import torch
         >>> from io import BytesIO
 
-        >>> from diffusers import StableDiffusionInpaintPipeline
+        >>> from diffusers import StableDiffusionInstructPix2PixPipeline
 
 
         >>> def download_image(url):
@@ -526,18 +526,16 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
 
 
         >>> img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
-        >>> mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
 
-        >>> init_image = download_image(img_url).resize((512, 512))
-        >>> mask_image = download_image(mask_url).resize((512, 512))
+        >>> image = download_image(img_url).resize((512, 512))
 
-        >>> pipe = StableDiffusionInpaintPipeline.from_pretrained(
+        >>> pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
         ...     "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 
         >>> prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
-        >>> image = pipe(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
+        >>> image = pipe(prompt=prompt, image=image).images[0]
         ```
 
         Returns:
