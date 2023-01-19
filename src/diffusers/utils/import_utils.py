@@ -354,6 +354,7 @@ install k-diffusion`
 NOTE_SEQ_IMPORT_ERROR = """
 {0} requires the note-seq library but it was not found in your environment. You can install it with pip: `pip
 install note-seq`
+"""
 
 # docstyle-ignore
 WANDB_IMPORT_ERROR = """
