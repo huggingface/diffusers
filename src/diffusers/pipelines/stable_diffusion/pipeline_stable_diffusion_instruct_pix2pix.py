@@ -630,11 +630,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
                 # out_cond, out_img_cond, out_uncond = self.inner_model(cfg_z, cfg_sigma, cond=cfg_cond).chunk(3)
                 # out_uncond + text_cfg_scale * (out_cond - out_img_cond) + image_cfg_scale * (out_img_cond - out_uncond)
                 if do_classifier_free_guidance:
-                    (
-                        noise_pred_text,
-                        noise_pred_image,
-                        noise_pred_uncond,
-                    ) = noise_pred.chunk(3)
+                    noise_pred_text, noise_pred_image, noise_pred_uncond = noise_pred.chunk(3)
                     noise_pred = (
                         noise_pred_uncond
                         + guidance_scale * (noise_pred_text - noise_pred_image)
