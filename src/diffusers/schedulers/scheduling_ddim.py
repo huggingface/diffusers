@@ -327,7 +327,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
                 variance_noise = randn_tensor(
                     model_output.shape, generator=generator, device=device, dtype=model_output.dtype
                 )
-            variance = self._get_variance(timestep, prev_timestep) ** (0.5) * eta * variance_noise
+            variance = std_dev_t * variance_noise
 
             prev_sample = prev_sample + variance
 
