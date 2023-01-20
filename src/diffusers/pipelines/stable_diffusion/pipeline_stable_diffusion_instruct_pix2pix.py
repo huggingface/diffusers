@@ -408,14 +408,10 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
             )
 
         if isinstance(generator, list):
-            image_latents = [
-                self.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)
-            ]
+            image_latents = [self.vae.encode(image[i : i + 1]).latent_dist.mode() for i in range(batch_size)]
             image_latents = torch.cat(image_latents, dim=0)
         else:
-            image_latents = self.vae.encode(image).latent_dist.sample(generator)
-
-        image_latents = 0.18215 * image_latents
+            image_latents = self.vae.encode(image).latent_dist.mode()
 
         if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
             # expand image_latents for batch_size
@@ -620,15 +616,19 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
                 latent_model_input = torch.cat([latents] * 3) if do_classifier_free_guidance else latents
 
                 # concat latents, mask, masked_image_latents in the channel dimension
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-                latent_model_input = torch.cat([latent_model_input, image_latents], dim=1)
+                scaled_latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                scaled_latent_model_input = torch.cat([scaled_latent_model_input, image_latents], dim=1)
 
                 # predict the noise residual
-                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
+                noise_pred = self.unet(scaled_latent_model_input, t, encoder_hidden_states=text_embeddings).sample
+
+                # check if sigmas exist in self.scheduler
+                if hasattr(self.scheduler, "sigmas"):
+                    step_index = (self.scheduler.timesteps == t).nonzero().item()
+                    sigma = self.scheduler.sigmas[step_index]
+                    noise_pred = latent_model_input + -sigma * noise_pred
 
                 # perform guidance
-                # out_cond, out_img_cond, out_uncond = self.inner_model(cfg_z, cfg_sigma, cond=cfg_cond).chunk(3)
-                # out_uncond + text_cfg_scale * (out_cond - out_img_cond) + image_cfg_scale * (out_img_cond - out_uncond)
                 if do_classifier_free_guidance:
                     noise_pred_text, noise_pred_image, noise_pred_uncond = noise_pred.chunk(3)
                     noise_pred = (
@@ -636,6 +636,8 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
                         + guidance_scale * (noise_pred_text - noise_pred_image)
                         + image_guidance_scale * (noise_pred_image - noise_pred_uncond)
                     )
+                    if hasattr(self.scheduler, "sigmas"):
+                        noise_pred = (noise_pred - latents) / (-sigma)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
