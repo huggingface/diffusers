@@ -229,8 +229,8 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def get_inputs(self, device, dtype=torch.float32, seed=0):
-        generator = torch.Generator(device=device).manual_seed(seed)
+    def get_inputs(self, seed=0):
+        generator = torch.manual_seed(seed)
         image = load_image(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main/stable_diffusion_pix2pix/example.jpg"
         )
@@ -253,7 +253,7 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        inputs = self.get_inputs(torch_device)
+        inputs = self.get_inputs()
         image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1].flatten()
 
@@ -270,7 +270,7 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        inputs = self.get_inputs(torch_device)
+        inputs = self.get_inputs()
         image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1].flatten()
 
@@ -287,7 +287,7 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        inputs = self.get_inputs(torch_device)
+        inputs = self.get_inputs()
         image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1].flatten()
 
@@ -324,7 +324,7 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        inputs = self.get_inputs(torch_device, dtype=torch.float16)
+        inputs = self.get_inputs()
         pipe(**inputs, callback=callback_fn, callback_steps=1)
         assert callback_fn.has_been_called
         assert number_of_steps == 3
@@ -342,7 +342,7 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
         pipe.enable_attention_slicing(1)
         pipe.enable_sequential_cpu_offload()
 
-        inputs = self.get_inputs(torch_device, dtype=torch.float16)
+        inputs = self.get_inputs()
         _ = pipe(**inputs)
 
         mem_bytes = torch.cuda.max_memory_allocated()
@@ -350,7 +350,7 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
         assert mem_bytes < 2.2 * 10**9
 
     def test_stable_diffusion_pix2pix_pipeline_multiple_of_8(self):
-        inputs = self.get_inputs(torch_device)
+        inputs = self.get_inputs()
         # resize to resolution that is divisible by 8 but not 16 or 32
         inputs["image"] = inputs["image"].resize((504, 504))
 
