@@ -71,7 +71,7 @@ class MultiTokenCLIPTokenizer(CLIPTokenizer):
         for placeholder_token in self.token_map:
             if placeholder_token in text:
                 tokens = self.token_map[placeholder_token]
-                tokens = tokens[:max(1, int(len(tokens)*prop_tokens_to_load))]
+                tokens = tokens[:1+int(len(tokens)*prop_tokens_to_load)]
                 if vector_shuffle:
                     tokens = copy.copy(tokens)
                     random.shuffle(tokens)
