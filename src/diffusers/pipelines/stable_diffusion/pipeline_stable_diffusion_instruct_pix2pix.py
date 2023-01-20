@@ -228,7 +228,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
             (nsfw) content, according to the `safety_checker`.
         """
         # 0. Check inputs
-        self.check_inputs(prompt, height, width, callback_steps)
+        self.check_inputs(prompt, callback_steps)
 
         # 1. Define call parameters
         batch_size = 1 if isinstance(prompt, str) else len(prompt)
@@ -245,6 +245,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
 
         # 3. Preprocess image
         image = preprocess(image)
+        height, width = image.shape[-2:]
 
         # 4. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -263,7 +264,6 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
 
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
-        height, width = image_latents.shape[1], image_latents.shape[2]
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
@@ -536,13 +536,9 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
-    def check_inputs(self, prompt, height, width, callback_steps):
+    def check_inputs(self, prompt, callback_steps):
         if not isinstance(prompt, str) and not isinstance(prompt, list):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-
-        if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
