@@ -622,11 +622,14 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
                 # predict the noise residual
                 noise_pred = self.unet(scaled_latent_model_input, t, encoder_hidden_states=text_embeddings).sample
 
-                # check if sigmas exist in self.scheduler
+                # Hack:
+                # For karras style schedulers the model does classifer free guidance using the
+                # predicted_original_sample instead of the noise_pred. So we need to compute the
+                # predicted_original_sample here if we are using a karras style scheduler.
                 if hasattr(self.scheduler, "sigmas"):
                     step_index = (self.scheduler.timesteps == t).nonzero().item()
                     sigma = self.scheduler.sigmas[step_index]
-                    noise_pred = latent_model_input -sigma * noise_pred
+                    noise_pred = latent_model_input - sigma * noise_pred
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -636,8 +639,15 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
                         + guidance_scale * (noise_pred_text - noise_pred_image)
                         + image_guidance_scale * (noise_pred_image - noise_pred_uncond)
                     )
-                    if hasattr(self.scheduler, "sigmas"):
-                        noise_pred = (noise_pred - latents) / (-sigma)
+
+                # Hack:
+                # For karras style schedulers the model does classifer free guidance using the
+                # predicted_original_sample instead of the noise_pred. But the scheduler.step function
+                # expects the noise_pred and computes the predicted_original_sample internally. So we
+                # need to overwrite the noise_pred here such that the value of the computed
+                # predicted_original_sample is correct.
+                if hasattr(self.scheduler, "sigmas"):
+                    noise_pred = (noise_pred - latents) / (-sigma)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
