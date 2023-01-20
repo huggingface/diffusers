@@ -157,12 +157,12 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
+                usually at the expense of lower image quality. This pipeline requires a value of at least `1`.
             image_guidance_scale (`float`, *optional*, defaults to 1.5):
                 Image guidance scale is to push the generated image towards the inital image `image` . Image guidance
                 scale is enabled by setting `image_guidance_scale > 1`. Higher image guidance scale encourages to
                 generate images that are closely linked to the image `image`, usually at the expense of lower image
-                quality.
+                quality. This pipeline requires a value of at least `1`.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
@@ -236,7 +236,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
-        do_classifier_free_guidance = guidance_scale > 1.0
+        do_classifier_free_guidance = guidance_scale > 1.0 and image_guidance_scale >= 1.0
 
         # 2. Encode input prompt
         text_embeddings = self._encode_prompt(
