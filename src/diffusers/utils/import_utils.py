@@ -213,9 +213,16 @@ except importlib_metadata.PackageNotFoundError:
 _wandb_available = importlib.util.find_spec("wandb") is not None
 try:
     _wandb_version = importlib_metadata.version("wandb")
-    logger.debug(f"Successfully imported k-diffusion version {_wandb_version }")
+    logger.debug(f"Successfully imported wandb version {_wandb_version }")
 except importlib_metadata.PackageNotFoundError:
     _wandb_available = False
+
+_omegaconf_available = importlib.util.find_spec("omegaconf") is not None
+try:
+    _omegaconf_version = importlib_metadata.version("omegaconf")
+    logger.debug(f"Successfully imported omegaconf version {_omegaconf_version}")
+except importlib_metadata.PackageNotFoundError:
+    _omegaconf_available = False
 
 
 def is_torch_available():
@@ -272,6 +279,10 @@ def is_k_diffusion_available():
 
 def is_wandb_available():
     return _wandb_available
+
+
+def is_omegaconf_available():
+    return _omegaconf_available
 
 
 # docstyle-ignore
@@ -334,6 +345,11 @@ WANDB_IMPORT_ERROR = """
 install wandb`
 """
 
+# docstyle-ignore
+OMEGACONF_IMPORT_ERROR = """
+{0} requires the omegaconf library but it was not found in your environment. You can install it with pip: `pip
+install omegaconf`
+"""
 
 BACKENDS_MAPPING = OrderedDict(
     [
@@ -347,6 +363,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("librosa", (is_librosa_available, LIBROSA_IMPORT_ERROR)),
         ("k_diffusion", (is_k_diffusion_available, K_DIFFUSION_IMPORT_ERROR)),
         ("wandb", (is_wandb_available, WANDB_IMPORT_ERROR)),
+        ("omageconf", (is_omegaconf_available, OMEGACONF_IMPORT_ERROR)),
     ]
 )
 
