@@ -57,7 +57,7 @@ def preprocess(image):
 
 class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-guided image manipulation using Stable Diffusion. *This is an experimental feature*.
+    Pipeline for text-guided image manipulation using Stable Diffusion.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
