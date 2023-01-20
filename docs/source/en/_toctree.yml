@@ -137,6 +137,8 @@
         title: Image-Variation
       - local: api/pipelines/stable_diffusion/upscale
         title: Super-Resolution
+      - local: api/pipelines/stable_diffusion/pix2pix
+        title: InstructPix2Pix
       title: Stable Diffusion
     - local: api/pipelines/stable_diffusion_2
       title: Stable Diffusion 2
