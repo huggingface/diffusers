@@ -230,7 +230,9 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             sample = sample + eps * (sigma_hat**2 - sigma**2) ** 0.5
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
-        if self.config.prediction_type == "epsilon":
+        if self.config.prediction_type == "original_sample":
+            pred_original_sample = model_output
+        elif self.config.prediction_type == "epsilon":
             pred_original_sample = sample - sigma_hat * model_output
         elif self.config.prediction_type == "v_prediction":
             # * c_out + input * c_skip

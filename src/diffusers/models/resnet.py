@@ -1,9 +1,11 @@
 from functools import partial
+from typing import Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .attention import AdaGroupNorm
 
 class Upsample1D(nn.Module):
     """
@@ -364,6 +366,39 @@ class FirDownsample2D(nn.Module):
         return hidden_states
 
 
+# YiYi's notes: downsample/upsample layer used in k-upscaler, might be able to use FirDownsample2D/DirUpsample2D instead
+class KDownsample2d(nn.Module):
+    def __init__(self, pad_mode='reflect'):
+        super().__init__()
+        self.pad_mode = pad_mode
+        kernel_1d = torch.tensor([[1 / 8, 3 / 8, 3 / 8, 1 / 8]])
+        self.pad = kernel_1d.shape[1] // 2 - 1
+        self.register_buffer('kernel', kernel_1d.T @ kernel_1d)
+
+    def forward(self, x):
+        x = F.pad(x, (self.pad,) * 4, self.pad_mode)
+        weight = x.new_zeros([x.shape[1], x.shape[1], self.kernel.shape[0], self.kernel.shape[1]])
+        indices = torch.arange(x.shape[1], device=x.device)
+        weight[indices, indices] = self.kernel.to(weight)
+        return F.conv2d(x, weight, stride=2)
+
+
+class KUpsample2d(nn.Module):
+    def __init__(self, pad_mode='reflect'):
+        super().__init__()
+        self.pad_mode = pad_mode
+        kernel_1d = torch.tensor([[1 / 8, 3 / 8, 3 / 8, 1 / 8]]) * 2
+        self.pad = kernel_1d.shape[1] // 2 - 1
+        self.register_buffer('kernel', kernel_1d.T @ kernel_1d)
+
+    def forward(self, x):
+        x = F.pad(x, ((self.pad + 1) // 2,) * 4, self.pad_mode)
+        weight = x.new_zeros([x.shape[1], x.shape[1], self.kernel.shape[0], self.kernel.shape[1]])
+        indices = torch.arange(x.shape[1], device=x.device)
+        weight[indices, indices] = self.kernel.to(weight)
+        return F.conv_transpose2d(x, weight, stride=2, padding=self.pad * 2 + 1)
+
+
 class ResnetBlock2D(nn.Module):
     def __init__(
         self,
@@ -373,59 +408,89 @@ class ResnetBlock2D(nn.Module):
         conv_shortcut=False,
         dropout=0.0,
         temb_channels=512,
-        groups=32,
+        groups: Optional[int]=32,
         groups_out=None,
         pre_norm=True,
         eps=1e-6,
         non_linearity="swish",
-        time_embedding_norm="default",
+        norm1_scale_shift: bool = False, # if true, will use ada groupnorm (i.e. time embedding scale shift) instead of groupnorm
+        time_embedding_norm="default", # default, scale_shift
         kernel=None,
         output_scale_factor=1.0,
         use_in_shortcut=None,
         up=False,
         down=False,
+        mid_channels=None,
+        dropout_after_conv: bool=False, # if true, will place a dropout after each conv2d
+        group_size: Optional[int]=None, # only effective when groups is None 
+        conv_shortcut_bias: bool=True,  
     ):
         super().__init__()
         self.pre_norm = pre_norm
         self.pre_norm = True
         self.in_channels = in_channels
         out_channels = in_channels if out_channels is None else out_channels
+        mid_channels = out_channels if mid_channels is None else mid_channels
         self.out_channels = out_channels
         self.use_conv_shortcut = conv_shortcut
-        self.time_embedding_norm = time_embedding_norm
         self.up = up
         self.down = down
         self.output_scale_factor = output_scale_factor
-
+        self.norm1_scale_shift = norm1_scale_shift
+        self.time_embedding_norm = time_embedding_norm
+        
         if groups_out is None:
             groups_out = groups
 
-        self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
-
-        self.conv1 = torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
-
+        num_groups_in = groups if groups is not None else max(1, in_channels//group_size)
+        
+        if norm1_scale_shift and temb_channels is not None:
+                self.norm1 = AdaGroupNorm(temb_channels, in_channels, num_groups_in, eps=eps)
+        else:
+            self.norm1 = torch.nn.GroupNorm(num_groups=num_groups_in , num_channels=in_channels, eps=eps, affine=True)
+        
+        self.conv1 = torch.nn.Conv2d(in_channels, mid_channels, kernel_size=3, stride=1, padding=1)
+        
+        if dropout_after_conv:
+            self.dropout1 = torch.nn.Dropout(dropout, inplace=True)
+        else:
+            self.dropout1 = None
+       
+        num_groups_out = groups_out if groups_out is not None else max(1, mid_channels//group_size)
+        
         if temb_channels is not None:
-            if self.time_embedding_norm == "default":
-                time_emb_proj_out_channels = out_channels
+            if time_embedding_norm == "default":
+                self.time_emb_proj = torch.nn.Linear(temb_channels, mid_channels)
+                self.norm2 = torch.nn.GroupNorm(num_groups=num_groups_out, num_channels=mid_channels, eps=eps, affine=True)
             elif self.time_embedding_norm == "scale_shift":
-                time_emb_proj_out_channels = out_channels * 2
+                self.time_emb_proj = None
+                self.norm2 = AdaGroupNorm(temb_channels, mid_channels, num_groups_out, eps=eps)
             else:
                 raise ValueError(f"unknown time_embedding_norm : {self.time_embedding_norm} ")
-
-            self.time_emb_proj = torch.nn.Linear(temb_channels, time_emb_proj_out_channels)
         else:
             self.time_emb_proj = None
+            self.norm2 = torch.nn.GroupNorm(num_groups=num_groups_out, num_channels=mid_channels, eps=eps, affine=True)
 
-        self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
-        self.dropout = torch.nn.Dropout(dropout)
-        self.conv2 = torch.nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        if not dropout_after_conv:
+            self.dropout = torch.nn.Dropout(dropout)
+        else:
+            self.dropout = None
+        
+        self.conv2 = torch.nn.Conv2d(mid_channels, out_channels, kernel_size=3, stride=1, padding=1)
+
+        if dropout_after_conv:
+            self.dropout2 = torch.nn.Dropout(dropout, inplace=True)
+        else:
+            self.dropout2 = None
 
         if non_linearity == "swish":
             self.nonlinearity = lambda x: F.silu(x)
         elif non_linearity == "mish":
-            self.nonlinearity = Mish()
+            self.nonlinearity = nn.Mish()
         elif non_linearity == "silu":
             self.nonlinearity = nn.SiLU()
+        elif non_linearity == 'gelu':
+            self.nonlinearity = nn.GELU()
 
         self.upsample = self.downsample = None
         if self.up:
@@ -449,12 +514,16 @@ class ResnetBlock2D(nn.Module):
 
         self.conv_shortcut = None
         if self.use_in_shortcut:
-            self.conv_shortcut = torch.nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
+            self.conv_shortcut = torch.nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0, bias=conv_shortcut_bias)
 
     def forward(self, input_tensor, temb):
         hidden_states = input_tensor
+    
+        if temb is not None and self.norm1_scale_shift:
+            hidden_states = self.norm1(hidden_states, temb)
+        else:
+            hidden_states = self.norm1(hidden_states) 
 
-        hidden_states = self.norm1(hidden_states)
         hidden_states = self.nonlinearity(hidden_states)
 
         if self.upsample is not None:
@@ -469,23 +538,27 @@ class ResnetBlock2D(nn.Module):
             hidden_states = self.downsample(hidden_states)
 
         hidden_states = self.conv1(hidden_states)
+        if self.dropout1 is not None:
+            hidden_states = self.dropout1(hidden_states)
 
-        if temb is not None:
-            temb = self.time_emb_proj(self.nonlinearity(temb))[:, :, None, None]
-
-        if temb is not None and self.time_embedding_norm == "default":
-            hidden_states = hidden_states + temb
-
-        hidden_states = self.norm2(hidden_states)
-
-        if temb is not None and self.time_embedding_norm == "scale_shift":
-            scale, shift = torch.chunk(temb, 2, dim=1)
-            hidden_states = hidden_states * (1 + scale) + shift
-
+        if temb is None:
+            hidden_states = self.norm2(hidden_states)
+        elif self.time_embedding_norm == "default":
+                temb = self.time_emb_proj(self.nonlinearity(temb))[:, :, None, None]
+                hidden_states = hidden_states + temb
+                hidden_states = self.norm2(hidden_states)
+        elif self.time_embedding_norm == "scale_shift":
+            hidden_states = self.norm2(hidden_states, temb)
+        
         hidden_states = self.nonlinearity(hidden_states)
 
-        hidden_states = self.dropout(hidden_states)
+        if self.dropout is not None:
+            hidden_states = self.dropout(hidden_states) 
+
         hidden_states = self.conv2(hidden_states)
+
+        if self.dropout2 is not None:
+            hidden_states = self.dropout2(hidden_states)
 
         if self.conv_shortcut is not None:
             input_tensor = self.conv_shortcut(input_tensor)

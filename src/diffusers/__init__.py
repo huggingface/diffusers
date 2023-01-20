@@ -125,6 +125,7 @@ else:
         VersatileDiffusionPipeline,
         VersatileDiffusionTextToImagePipeline,
         VQDiffusionPipeline,
+        StableDiffusionLatentUpscalePipeline,
     )
 
 try:
