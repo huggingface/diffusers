@@ -162,9 +162,11 @@ accelerate --mixed_precision="fp16" launch train_text_to_image_lora.py \
 
 The above command will also run inference as fine-tuning progresses and log the results to Weights and Biases.
 
-**___Note: When using LoRA we can use a much higher learning rate compared to non-LoRA fine-tuning. Here we use *1e-4* instead of the usual *1e-5*.___**
+**___Note: When using LoRA we can use a much higher learning rate compared to non-LoRA fine-tuning. Here we use *1e-4* instead of the usual *1e-5*. Also, by using LoRA, it's possible to run `train_text_to_image_lora.py` in consumer GPUs like T4 or V100.**
 
-The final LoRA embedding weights have been uploaded to [TODO](TODO). **___Note: [The final weights](TODO) are only 3 MB in size, which is orders of magnitudes smaller than the original model.**
+The final LoRA embedding weights have been uploaded to [sayakpaul/sd-model-finetuned-lora-t4](https://huggingface.co/sayakpaul/sd-model-finetuned-lora-t4). **___Note: [The final weights](https://huggingface.co/sayakpaul/sd-model-finetuned-lora-t4/blob/main/pytorch_lora_weights.bin) are only 3 MB in size, which is orders of magnitudes smaller than the original model.**
+
+You can check some inference samples that were logged during the course of the fine-tuning process [here](https://wandb.ai/sayakpaul/text2image-fine-tune/runs/q4lc0xsw). 
 
 ### Inference
 
@@ -175,7 +177,7 @@ need to pass the `output_dir` for loading the LoRA weights which, in this case, 
 from diffusers import StableDiffusionPipeline
 import torch
 
-model_path = "path_to_saved_model"
+model_path = "sayakpaul/sd-model-finetuned-lora-t4"
 pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
 pipe.unet.load_attn_procs(model_path)
 pipe.to("cuda")
