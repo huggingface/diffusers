@@ -179,8 +179,6 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]],
         image: Union[torch.FloatTensor, PIL.Image.Image],
-        height: Optional[int] = None,
-        width: Optional[int] = None,
         num_inference_steps: int = 100,
         guidance_scale: float = 7.5,
         image_guidance_scale: float = 1.5,
@@ -202,10 +200,6 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
                 The prompt or prompts to guide the image generation.
             image (`PIL.Image.Image`):
                 `Image`, or tensor representing an image batch which will be repainted according to `prompt`.
-            height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The width in pixels of the generated image.
             num_inference_steps (`int`, *optional*, defaults to 100):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -284,14 +278,10 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
-        # 0. Default height and width to unet
-        height = height or self.unet.config.sample_size * self.vae_scale_factor
-        width = width or self.unet.config.sample_size * self.vae_scale_factor
-
-        # 1. Check inputs
+        # 0. Check inputs
         self.check_inputs(prompt, height, width, callback_steps)
 
-        # 2. Define call parameters
+        # 1. Define call parameters
         batch_size = 1 if isinstance(prompt, str) else len(prompt)
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
@@ -299,19 +289,19 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        # 3. Encode input prompt
+        # 2. Encode input prompt
         text_embeddings = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
 
-        # 4. Preprocess image
+        # 3. Preprocess image
         image = preprocess(image)
 
-        # 5. set timesteps
+        # 4. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
-        # 6. Prepare Image latents
+        # 5. Prepare Image latents
         image_latents = self.prepare_image_latents(
             image,
             batch_size,
@@ -324,6 +314,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
 
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
+        height, width = image_latents.shape[1], image_latents.shape[2]
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
@@ -335,7 +326,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
             latents,
         )
 
-        # 8. Check that shapes of latents and image match the UNet channels
+        # 7. Check that shapes of latents and image match the UNet channels
         num_channels_image = image_latents.shape[1]
         if num_channels_latents + num_channels_image != self.unet.config.in_channels:
             raise ValueError(
@@ -346,10 +337,10 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
                 " `pipeline.unet` or your `image` input."
             )
 
-        # 9. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        # 8. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 10. Denoising loop
+        # 9. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -399,13 +390,13 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
-        # 11. Post-processing
+        # 10. Post-processing
         image = self.decode_latents(latents)
 
-        # 12. Run safety checker
+        # 11. Run safety checker
         image, has_nsfw_concept = self.run_safety_checker(image, device, text_embeddings.dtype)
 
-        # 13. Convert to PIL
+        # 12. Convert to PIL
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
