@@ -27,7 +27,7 @@ from diffusers.utils import check_min_version
 from flax import jax_utils
 from flax.training import train_state
 from flax.training.common_utils import shard
-from huggingface_hub import HfFolder, Repository, whoami
+from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel, set_seed
@@ -255,7 +255,8 @@ def main():
                 repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
             else:
                 repo_name = args.hub_model_id
-            repo = Repository(args.output_dir, clone_from=repo_name)
+            create_repo(repo_name, exist_ok=True, token=args.hub_token)
+            repo = Repository(args.output_dir, clone_from=repo_name, token=args.hub_token)
 
             with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
                 if "step_*" not in gitignore:
