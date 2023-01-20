@@ -21,6 +21,7 @@ import sys
 from collections import OrderedDict
 from typing import Union
 
+from huggingface_hub.utils import is_jinja_available  # noqa: F401
 from packaging import version
 from packaging.version import Version, parse
 
@@ -146,14 +147,6 @@ except importlib_metadata.PackageNotFoundError:
     _unidecode_available = False
 
 
-_modelcards_available = importlib.util.find_spec("modelcards") is not None
-try:
-    _modelcards_version = importlib_metadata.version("modelcards")
-    logger.debug(f"Successfully imported modelcards version {_modelcards_version}")
-except importlib_metadata.PackageNotFoundError:
-    _modelcards_available = False
-
-
 _onnxruntime_version = "N/A"
 _onnx_available = importlib.util.find_spec("onnxruntime") is not None
 if _onnx_available:
@@ -251,10 +244,6 @@ def is_inflect_available():
 
 def is_unidecode_available():
     return _unidecode_available
-
-
-def is_modelcards_available():
-    return _modelcards_available
 
 
 def is_onnx_available():
