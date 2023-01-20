@@ -20,8 +20,9 @@ from torch import nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..models.embeddings import ImagePositionalEmbeddings
-from ..utils import BaseOutput
+from ..utils import BaseOutput, deprecate
 from .attention import BasicTransformerBlock
+from .embeddings import PatchEmbed
 from .modeling_utils import ModelMixin
 
 
@@ -81,6 +82,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         num_attention_heads: int = 16,
         attention_head_dim: int = 88,
         in_channels: Optional[int] = None,
+        out_channels: Optional[int] = None,
         num_layers: int = 1,
         dropout: float = 0.0,
         norm_num_groups: int = 32,
@@ -88,11 +90,14 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         attention_bias: bool = False,
         sample_size: Optional[int] = None,
         num_vector_embeds: Optional[int] = None,
+        patch_size: Optional[int] = None,
         activation_fn: str = "geglu",
         num_embeds_ada_norm: Optional[int] = None,
         use_linear_projection: bool = False,
         only_cross_attention: bool = False,
         upcast_attention: bool = False,
+        norm_type: str = "layer_norm",
+        norm_elementwise_affine: bool = True,
     ):
         super().__init__()
         self.use_linear_projection = use_linear_projection
@@ -102,18 +107,35 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # 1. Transformer2DModel can process both standard continous images of shape `(batch_size, num_channels, width, height)` as well as quantized image embeddings of shape `(batch_size, num_image_vectors)`
         # Define whether input is continuous or discrete depending on configuration
-        self.is_input_continuous = in_channels is not None
+        self.is_input_continuous = (in_channels is not None) and (patch_size is None)
         self.is_input_vectorized = num_vector_embeds is not None
+        self.is_input_patches = in_channels is not None and patch_size is not None
+
+        if norm_type == "layer_norm" and num_embeds_ada_norm is not None:
+            deprecation_message = (
+                f"The configuration file of this model: {self.__class__} is outdated. `norm_type` is either not set or"
+                " incorrectly set to `'layer_norm'`.Make sure to set `norm_type` to `'ada_norm'` in the config."
+                " Please make sure to update the config accordingly as leaving `norm_type` might led to incorrect"
+                " results in future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it"
+                " would be very nice if you could open a Pull request for the `transformer/config.json` file"
+            )
+            deprecate("norm_type!=num_embeds_ada_norm", "1.0.0", deprecation_message, standard_warn=False)
+            norm_type = "ada_norm"
 
         if self.is_input_continuous and self.is_input_vectorized:
             raise ValueError(
                 f"Cannot define both `in_channels`: {in_channels} and `num_vector_embeds`: {num_vector_embeds}. Make"
                 " sure that either `in_channels` or `num_vector_embeds` is None."
             )
-        elif not self.is_input_continuous and not self.is_input_vectorized:
+        elif self.is_input_vectorized and self.is_input_patches:
             raise ValueError(
-                f"Has to define either `in_channels`: {in_channels} or `num_vector_embeds`: {num_vector_embeds}. Make"
-                " sure that either `in_channels` or `num_vector_embeds` is not None."
+                f"Cannot define both `num_vector_embeds`: {num_vector_embeds} and `patch_size`: {patch_size}. Make"
+                " sure that either `num_vector_embeds` or `num_patches` is None."
+            )
+        elif not self.is_input_continuous and not self.is_input_vectorized and not self.is_input_patches:
+            raise ValueError(
+                f"Has to define `in_channels`: {in_channels}, `num_vector_embeds`: {num_vector_embeds}, or patch_size:"
+                f" {patch_size}. Make sure that `in_channels`, `num_vector_embeds` or `num_patches` is not None."
             )
 
         # 2. Define input layers
@@ -137,6 +159,20 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             self.latent_image_embedding = ImagePositionalEmbeddings(
                 num_embed=num_vector_embeds, embed_dim=inner_dim, height=self.height, width=self.width
             )
+        elif self.is_input_patches:
+            assert sample_size is not None, "Transformer2DModel over patched input must provide sample_size"
+
+            self.height = sample_size
+            self.width = sample_size
+
+            self.patch_size = patch_size
+            self.pos_embed = PatchEmbed(
+                height=sample_size,
+                width=sample_size,
+                patch_size=patch_size,
+                in_channels=in_channels,
+                embed_dim=inner_dim,
+            )
 
         # 3. Define transformers blocks
         self.transformer_blocks = nn.ModuleList(
@@ -152,13 +188,17 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     attention_bias=attention_bias,
                     only_cross_attention=only_cross_attention,
                     upcast_attention=upcast_attention,
+                    norm_type=norm_type,
+                    norm_elementwise_affine=norm_elementwise_affine,
                 )
                 for d in range(num_layers)
             ]
         )
 
         # 4. Define output layers
+        self.out_channels = in_channels if out_channels is None else out_channels
         if self.is_input_continuous:
+            # TODO: should use out_channels for continous projections
             if use_linear_projection:
                 self.proj_out = nn.Linear(in_channels, inner_dim)
             else:
@@ -166,12 +206,17 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         elif self.is_input_vectorized:
             self.norm_out = nn.LayerNorm(inner_dim)
             self.out = nn.Linear(inner_dim, self.num_vector_embeds - 1)
+        elif self.is_input_patches:
+            self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
+            self.proj_out_1 = nn.Linear(inner_dim, 2 * inner_dim)
+            self.proj_out_2 = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
 
     def forward(
         self,
         hidden_states,
         encoder_hidden_states=None,
         timestep=None,
+        class_labels=None,
         cross_attention_kwargs=None,
         return_dict: bool = True,
     ):
@@ -185,6 +230,9 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 self-attention.
             timestep ( `torch.long`, *optional*):
                 Optional timestep to be applied as an embedding in AdaLayerNorm's. Used to indicate denoising step.
+            class_labels ( `torch.LongTensor` of shape `(batch size, num classes)`, *optional*):
+                Optional class labels to be applied as an embedding in AdaLayerZeroNorm. Used to indicate class labels
+                conditioning.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
 
@@ -195,7 +243,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         """
         # 1. Input
         if self.is_input_continuous:
-            batch, channel, height, width = hidden_states.shape
+            batch, _, height, width = hidden_states.shape
             residual = hidden_states
 
             hidden_states = self.norm(hidden_states)
@@ -209,6 +257,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 hidden_states = self.proj_in(hidden_states)
         elif self.is_input_vectorized:
             hidden_states = self.latent_image_embedding(hidden_states)
+        elif self.is_input_patches:
+            hidden_states = self.pos_embed(hidden_states)
 
         # 2. Blocks
         for block in self.transformer_blocks:
@@ -217,6 +267,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 encoder_hidden_states=encoder_hidden_states,
                 timestep=timestep,
                 cross_attention_kwargs=cross_attention_kwargs,
+                class_labels=class_labels,
             )
 
         # 3. Output
@@ -237,6 +288,24 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
             # log(p(x_0))
             output = F.log_softmax(logits.double(), dim=1).float()
+        elif self.is_input_patches:
+            # TODO: cleanup!
+            conditioning = self.transformer_blocks[0].norm1.emb(
+                timestep, class_labels, hidden_dtype=hidden_states.dtype
+            )
+            shift, scale = self.proj_out_1(F.silu(conditioning)).chunk(2, dim=1)
+            hidden_states = self.norm_out(hidden_states) * (1 + scale[:, None]) + shift[:, None]
+            hidden_states = self.proj_out_2(hidden_states)
+
+            # unpatchify
+            height = width = int(hidden_states.shape[1] ** 0.5)
+            hidden_states = hidden_states.reshape(
+                shape=(-1, height, width, self.patch_size, self.patch_size, self.out_channels)
+            )
+            hidden_states = torch.einsum("nhwpqc->nchpwq", hidden_states)
+            output = hidden_states.reshape(
+                shape=(-1, self.out_channels, height * self.patch_size, width * self.patch_size)
+            )
 
         if not return_dict:
             return (output,)

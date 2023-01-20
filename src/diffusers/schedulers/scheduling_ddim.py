@@ -23,8 +23,8 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, BaseOutput, deprecate, randn_tensor
-from .scheduling_utils import SchedulerMixin
+from ..utils import BaseOutput, deprecate, randn_tensor
+from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
 
 
 @dataclass
@@ -112,7 +112,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             https://imagen.research.google/video/paper.pdf)
     """
 
-    _compatibles = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
+    _compatibles = [e.name for e in KarrasDiffusionSchedulers]
     _deprecated_kwargs = ["predict_epsilon"]
     order = 1
 
@@ -327,7 +327,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
                 variance_noise = randn_tensor(
                     model_output.shape, generator=generator, device=device, dtype=model_output.dtype
                 )
-            variance = self._get_variance(timestep, prev_timestep) ** (0.5) * eta * variance_noise
+            variance = std_dev_t * variance_noise
 
             prev_sample = prev_sample + variance
 

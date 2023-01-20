@@ -640,7 +640,6 @@ from diffusers import DiffusionPipeline
 
 from PIL import Image
 import requests
-from torch import autocast
 
 processor = CLIPSegProcessor.from_pretrained("CIDAS/clipseg-rd64-refined")
 model = CLIPSegForImageSegmentation.from_pretrained("CIDAS/clipseg-rd64-refined")
@@ -659,8 +658,7 @@ image = Image.open(requests.get(url, stream=True).raw).resize((512, 512))
 text = "a glass"  # will mask out this text
 prompt = "a cup"  # the masked out region will be replaced with this
 
-with autocast("cuda"):
-    image = pipe(image=image, text=text, prompt=prompt).images[0]
+image = pipe(image=image, text=text, prompt=prompt).images[0]
 ```
 
 ### Bit Diffusion 
