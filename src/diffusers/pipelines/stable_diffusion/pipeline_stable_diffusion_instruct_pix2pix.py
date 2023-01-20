@@ -464,13 +464,12 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
             image (`PIL.Image.Image`):
-                `Image`, or tensor representing an image batch which will be inpainted, *i.e.* parts of the image will
-                be masked out with `mask_image` and repainted according to `prompt`.
+                `Image`, or tensor representing an image batch which will be repainted according to `prompt`.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image.
-            num_inference_steps (`int`, *optional*, defaults to 50):
+            num_inference_steps (`int`, *optional*, defaults to 100):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             guidance_scale (`float`, *optional*, defaults to 7.5):
@@ -594,7 +593,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
             latents,
         )
 
-        # 8. Check that sizes of mask, masked image and latents match
+        # 8. Check that shapes of latents and image match the UNet channels
         num_channels_image = image_latents.shape[1]
         if num_channels_latents + num_channels_image != self.unet.config.in_channels:
             raise ValueError(
@@ -615,7 +614,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 3) if do_classifier_free_guidance else latents
 
-                # concat latents, mask, masked_image_latents in the channel dimension
+                # concat latents, image_latents in the channel dimension
                 scaled_latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
                 scaled_latent_model_input = torch.cat([scaled_latent_model_input, image_latents], dim=1)
 
