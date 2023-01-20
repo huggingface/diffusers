@@ -215,6 +215,11 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
+            image_guidance_scale (`float`, *optional*, defaults to 1.5):
+                Image guidance scale is to push the generated image towards the inital image `image` . Image guidance
+                scale is enabled by setting `image_guidance_scale > 1`. Higher image guidance scale encourages to
+                generate images that are closely linked to the image `image`, usually at the expense of lower image
+                quality.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
@@ -259,16 +264,16 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
         ...     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
 
 
-        >>> img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
+        >>> img_url = "https://raw.githubusercontent.com/timothybrooks/instruct-pix2pix/main/imgs/example.jpg"
 
         >>> image = download_image(img_url).resize((512, 512))
 
         >>> pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16
+        ...     "timbrooks/instruct-pix2pix", torch_dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 
-        >>> prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
+        >>> prompt = "turn him into cyborg"
         >>> image = pipe(prompt=prompt, image=image).images[0]
         ```
 
