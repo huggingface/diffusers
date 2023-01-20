@@ -23,14 +23,13 @@ import torch
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
-    DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionInstructPix2PixPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
+from diffusers.utils import floats_tensor, load_image, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
@@ -232,22 +231,21 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
 
     def get_inputs(self, device, dtype=torch.float32, seed=0):
         generator = torch.Generator(device=device).manual_seed(seed)
-        init_image = load_image(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_img2img/sketch-mountains-input.png"
+        image = load_image(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main/stable_diffusion_pix2pix/example.jpg"
         )
         inputs = {
-            "prompt": "a fantasy landscape, concept art, high resolution",
-            "image": init_image,
+            "prompt": "turn him into a cyborg",
+            "image": image,
             "generator": generator,
             "num_inference_steps": 3,
-            "strength": 0.75,
             "guidance_scale": 7.5,
+            "image_guidance_scale": 1.0,
             "output_type": "numpy",
         }
         return inputs
 
-    def test_stable_diffusion_img2img_default(self):
+    def test_stable_diffusion_pix2pix_default(self):
         pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
             "timbrooks/instruct-pix2pix", safety_checker=None
         )
@@ -259,11 +257,11 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
         image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1].flatten()
 
-        assert image.shape == (1, 512, 768, 3)
-        expected_slice = np.array([0.27150, 0.14849, 0.15605, 0.26740, 0.16954, 0.18204, 0.31470, 0.26311, 0.24525])
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.3214, 0.3252, 0.3313, 0.3261, 0.3332, 0.3351, 0.324, 0.3296, 0.3206])
         assert np.abs(expected_slice - image_slice).max() < 1e-3
 
-    def test_stable_diffusion_img2img_k_lms(self):
+    def test_stable_diffusion_pix2pix_k_lms(self):
         pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
             "timbrooks/instruct-pix2pix", safety_checker=None
         )
@@ -276,11 +274,11 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
         image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1].flatten()
 
-        assert image.shape == (1, 512, 768, 3)
-        expected_slice = np.array([0.04890, 0.04862, 0.06422, 0.04655, 0.05108, 0.05307, 0.05926, 0.08759, 0.06852])
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.3893, 0.393, 0.3997, 0.4196, 0.4239, 0.4307, 0.4268, 0.4317, 0.419])
         assert np.abs(expected_slice - image_slice).max() < 1e-3
 
-    def test_stable_diffusion_img2img_ddim(self):
+    def test_stable_diffusion_pix2pix_ddim(self):
         pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
             "timbrooks/instruct-pix2pix", safety_checker=None
         )
@@ -293,11 +291,11 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
         image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1].flatten()
 
-        assert image.shape == (1, 512, 768, 3)
-        expected_slice = np.array([0.06069, 0.05703, 0.08054, 0.05797, 0.06286, 0.06234, 0.08438, 0.11151, 0.08068])
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.5151, 0.5186, 0.5133, 0.5176, 0.5147, 0.5198, 0.522, 0.5122, 0.5244])
         assert np.abs(expected_slice - image_slice).max() < 1e-3
 
-    def test_stable_diffusion_img2img_intermediate_state(self):
+    def test_stable_diffusion_pix2pix_intermediate_state(self):
         number_of_steps = 0
 
         def callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
@@ -306,15 +304,15 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
             number_of_steps += 1
             if step == 1:
                 latents = latents.detach().cpu().numpy()
-                assert latents.shape == (1, 4, 64, 96)
+                assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([0.7705, 0.1045, 0.5, 3.393, 3.723, 4.273, 2.467, 3.486, 1.758])
+                expected_slice = np.array([-0.7178, -0.9165, -1.3906, 1.8174, 1.9482, 1.3652, 1.1533, 1.542, 1.2461])
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
             elif step == 2:
                 latents = latents.detach().cpu().numpy()
-                assert latents.shape == (1, 4, 64, 96)
+                assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([0.765, 0.1047, 0.4973, 3.375, 3.709, 4.258, 2.451, 3.46, 1.755])
+                expected_slice = np.array([-0.7183, -0.9253, -1.3857, 1.8174, 1.9766, 1.3574, 1.1533, 1.5244, 1.2539])
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
 
         callback_fn.has_been_called = False
@@ -351,13 +349,10 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
         # make sure that less than 2.2 GB is allocated
         assert mem_bytes < 2.2 * 10**9
 
-    def test_stable_diffusion_img2img_pipeline_multiple_of_8(self):
-        init_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/img2img/sketch-mountains-input.jpg"
-        )
+    def test_stable_diffusion_pix2pix_pipeline_multiple_of_8(self):
+        inputs = self.get_inputs(torch_device)
         # resize to resolution that is divisible by 8 but not 16 or 32
-        init_image = init_image.resize((760, 504))
+        inputs["image"] = inputs["image"].resize((504, 504))
 
         model_id = "timbrooks/instruct-pix2pix"
         pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
@@ -368,21 +363,11 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        prompt = "A fantasy landscape, trending on artstation"
-
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        output = pipe(
-            prompt=prompt,
-            image=init_image,
-            strength=0.75,
-            guidance_scale=7.5,
-            generator=generator,
-            output_type="np",
-        )
+        output = pipe(**inputs)
         image = output.images[0]
 
         image_slice = image[255:258, 383:386, -1]
 
-        assert image.shape == (504, 760, 3)
-        expected_slice = np.array([0.7124, 0.7105, 0.6993, 0.7140, 0.7106, 0.6945, 0.7198, 0.7172, 0.7031])
+        assert image.shape == (504, 504, 3)
+        expected_slice = np.array([0.1834, 0.2046, 0.2429, 0.1825, 0.2201, 0.2576, 0.1968, 0.2185, 0.2487])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
