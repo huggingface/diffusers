@@ -327,7 +327,7 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
         inputs = self.get_inputs(torch_device, dtype=torch.float16)
         pipe(**inputs, callback=callback_fn, callback_steps=1)
         assert callback_fn.has_been_called
-        assert number_of_steps == 2
+        assert number_of_steps == 3
 
     def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
