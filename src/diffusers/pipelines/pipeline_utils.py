@@ -847,6 +847,12 @@ class DiffusionPipeline(ConfigMixin):
 
         Warning: When Memory Efficient Attention and Sliced attention are both enabled, the Memory Efficient Attention
         is used.
+
+        Parameters:
+            attention_op (`Callable`, *optional*):
+                Override the default `None` operator for use as `op` argument to the
+                [`memory_efficient_attention()`](https://facebookresearch.github.io/xformers/components/ops.html#xformers.ops.memory_efficient_attention)
+                function of xFormers.
         """
         self.set_use_memory_efficient_attention_xformers(True, attention_op)
 
