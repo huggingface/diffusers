@@ -249,7 +249,7 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
 
     def test_stable_diffusion_img2img_default(self):
         pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", safety_checker=None
+            "timbrooks/instruct-pix2pix", safety_checker=None
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -265,7 +265,7 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
 
     def test_stable_diffusion_img2img_k_lms(self):
         pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", safety_checker=None
+            "timbrooks/instruct-pix2pix", safety_checker=None
         )
         pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
         pipe.to(torch_device)
@@ -282,7 +282,7 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
 
     def test_stable_diffusion_img2img_ddim(self):
         pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", safety_checker=None
+            "timbrooks/instruct-pix2pix", safety_checker=None
         )
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.to(torch_device)
@@ -320,7 +320,7 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
         callback_fn.has_been_called = False
 
         pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", safety_checker=None, torch_dtype=torch.float16
+            "timbrooks/instruct-pix2pix", safety_checker=None, torch_dtype=torch.float16
         )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -337,7 +337,7 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
         torch.cuda.reset_peak_memory_stats()
 
         pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", safety_checker=None, torch_dtype=torch.float16
+            "timbrooks/instruct-pix2pix", safety_checker=None, torch_dtype=torch.float16
         )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -359,7 +359,7 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
         # resize to resolution that is divisible by 8 but not 16 or 32
         init_image = init_image.resize((760, 504))
 
-        model_id = "CompVis/stable-diffusion-v1-4"
+        model_id = "timbrooks/instruct-pix2pix"
         pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
             model_id,
             safety_checker=None,
