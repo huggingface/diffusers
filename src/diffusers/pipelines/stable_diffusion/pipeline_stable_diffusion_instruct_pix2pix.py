@@ -32,6 +32,7 @@ from .safety_checker import StableDiffusionSafetyChecker
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.preprocess
 def preprocess(image):
     if isinstance(image, torch.Tensor):
         return image
@@ -237,6 +238,8 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0 and image_guidance_scale >= 1.0
+        # check if scheduler is in sigmas space
+        scheduler_is_in_sigma_space = hasattr(self.scheduler, "sigmas")
 
         # 2. Encode input prompt
         text_embeddings = self._encode_prompt(
@@ -293,7 +296,9 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                # expand the latents if we are doing classifier free guidance
+                # Expand the latents if we are doing classifier free guidance.
+                # The latents are expanded 3 times because for pix2pix the guidance\
+                # is applied for both the text and the input image.
                 latent_model_input = torch.cat([latents] * 3) if do_classifier_free_guidance else latents
 
                 # concat latents, image_latents in the channel dimension
@@ -307,7 +312,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
                 # For karras style schedulers the model does classifer free guidance using the
                 # predicted_original_sample instead of the noise_pred. So we need to compute the
                 # predicted_original_sample here if we are using a karras style scheduler.
-                if hasattr(self.scheduler, "sigmas"):
+                if scheduler_is_in_sigma_space:
                     step_index = (self.scheduler.timesteps == t).nonzero().item()
                     sigma = self.scheduler.sigmas[step_index]
                     noise_pred = latent_model_input - sigma * noise_pred
@@ -327,7 +332,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
                 # expects the noise_pred and computes the predicted_original_sample internally. So we
                 # need to overwrite the noise_pred here such that the value of the computed
                 # predicted_original_sample is correct.
-                if hasattr(self.scheduler, "sigmas"):
+                if scheduler_is_in_sigma_space:
                     noise_pred = (noise_pred - latents) / (-sigma)
 
                 # compute the previous noisy sample x_t -> x_t-1
