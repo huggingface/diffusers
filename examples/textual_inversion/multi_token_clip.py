@@ -22,7 +22,6 @@ TODO:
 5. Loading tokens from embedding
 6. Integrate to training x
 7. Test
-
 """
 import random
 from transformers import CLIPTokenizer
@@ -49,6 +48,13 @@ class MultiTokenCLIPTokenizer(CLIPTokenizer):
                 ith_token = placeholder_token+f'_{i}'
                 self.try_adding_tokens(ith_token, *args, **kwargs)
                 output.append(ith_token)
+        # handle cases where there is a new placeholder token that contains the current placeholder token but is larger
+        for token in self.token_map:
+            if token in placeholder_token:
+                raise ValueError(
+                    f"The tokenizer already has placeholder token {token} that can get confused with {placeholder_token}"
+                    "keep placeholder tokens independent"
+                )
         self.token_map[placeholder_token] = output
     def replace_placeholder_tokens_in_text(self, text, vector_shuffle=False):
         """
@@ -63,7 +69,7 @@ class MultiTokenCLIPTokenizer(CLIPTokenizer):
                 output.append(self.replace_placeholder_tokens_in_text(text[i], vector_shuffle=vector_shuffle))
             return output
         for placeholder_token in self.token_map:
-            if placeholder_token in self.token_map:
+            if placeholder_token in text:
                 tokens = self.token_map[placeholder_token]
                 if vector_shuffle:
                     tokens = copy.copy(tokens)
