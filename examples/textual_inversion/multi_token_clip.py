@@ -56,7 +56,7 @@ class MultiTokenCLIPTokenizer(CLIPTokenizer):
                     "keep placeholder tokens independent"
                 )
         self.token_map[placeholder_token] = output
-    def replace_placeholder_tokens_in_text(self, text, vector_shuffle=False):
+    def replace_placeholder_tokens_in_text(self, text, vector_shuffle=False, prop_tokens_to_load=1.):
         """
         Here, we replace the placeholder tokens in text recorded in token_map so that the text_encoder
         can encode them
@@ -71,12 +71,13 @@ class MultiTokenCLIPTokenizer(CLIPTokenizer):
         for placeholder_token in self.token_map:
             if placeholder_token in text:
                 tokens = self.token_map[placeholder_token]
+                tokens = tokens[:max(1, int(len(tokens)*prop_tokens_to_load))]
                 if vector_shuffle:
                     tokens = copy.copy(tokens)
                     random.shuffle(tokens)
                 text = text.replace(placeholder_token, " ".join(tokens))
         return text
-    def __call__(self, text, *args, vector_shuffle=False, **kwargs):
-        return super().__call__(self.replace_placeholder_tokens_in_text(text, vector_shuffle=vector_shuffle), *args, **kwargs)
-    def encode(self, text, *args, vector_shuffle=False, **kwargs):
-        return super().encode(self.replace_placeholder_tokens_in_text(text, vector_shuffle=vector_shuffle), *args, **kwargs)
+    def __call__(self, text, *args, vector_shuffle=False, prop_tokens_to_load=1., **kwargs):
+        return super().__call__(self.replace_placeholder_tokens_in_text(text, vector_shuffle=vector_shuffle, prop_tokens_to_load=prop_tokens_to_load), *args, **kwargs)
+    def encode(self, text, *args, vector_shuffle=False, prop_tokens_to_load=1., **kwargs):
+        return super().encode(self.replace_placeholder_tokens_in_text(text, vector_shuffle=vector_shuffle, prop_tokens_to_load=prop_tokens_to_load), *args, **kwargs)

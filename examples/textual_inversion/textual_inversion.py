@@ -105,6 +105,18 @@ def get_mask(tokenizer, accelerator):
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
+        "--progressive_tokens_max_steps",
+        type=int,
+        default=2000,
+        help=(
+            "The number of steps until all tokens will be used."
+        ),
+    )
+    parser.add_argument(
+        "--progressive_tokens",
+        action="store_true", help="Progressively train the tokens. For example, first train for 1 token, then 2 tokens and so on."
+    )
+    parser.add_argument(
         "--vector_shuffle",
         action="store_true", help="Shuffling tokens durint training"
     )
@@ -381,6 +393,7 @@ class TextualInversionDataset(Dataset):
         placeholder_token="*",
         center_crop=False,
         vector_shuffle=False,
+        progressive_tokens=False,
     ):
         self.data_root = data_root
         self.tokenizer = tokenizer
@@ -390,6 +403,8 @@ class TextualInversionDataset(Dataset):
         self.center_crop = center_crop
         self.flip_p = flip_p
         self.vector_shuffle = vector_shuffle
+        self.progressive_tokens = progressive_tokens
+        self.prop_tokens_to_load = 0
 
         self.image_paths = [os.path.join(self.data_root, file_path) for file_path in os.listdir(self.data_root)]
 
@@ -428,7 +443,8 @@ class TextualInversionDataset(Dataset):
             truncation=True,
             max_length=self.tokenizer.model_max_length,
             return_tensors="pt",
-            vector_shuffle=self.vector_shuffle
+            vector_shuffle=self.vector_shuffle,
+            prop_tokens_to_load = self.prop_tokens_to_load if self.progressive_tokens else 1.
         )[0]
 
         # default to score-sde preprocessing
@@ -681,12 +697,14 @@ def main():
                 if step % args.gradient_accumulation_steps == 0:
                     progress_bar.update(1)
                 continue
+            if args.progressive_tokens:
+                train_dataset.prop_tokens_to_load = float(step)/args.progressive_tokens_max_steps
 
             with accelerator.accumulate(text_encoder):
                 # Convert images to latent space
                 latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample().detach()
                 latents = latents * 0.18215
-
+                
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents)
                 bsz = latents.shape[0]
