@@ -626,7 +626,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
                 if hasattr(self.scheduler, "sigmas"):
                     step_index = (self.scheduler.timesteps == t).nonzero().item()
                     sigma = self.scheduler.sigmas[step_index]
-                    noise_pred = latent_model_input + -sigma * noise_pred
+                    noise_pred = latent_model_input -sigma * noise_pred
 
                 # perform guidance
                 if do_classifier_free_guidance:
