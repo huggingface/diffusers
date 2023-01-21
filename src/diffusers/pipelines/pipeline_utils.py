@@ -514,9 +514,13 @@ class DiffusionPipeline(ConfigMixin):
                 if is_safetensors_compatible(info):
                     ignore_patterns.append("*.bin")
                 else:
+                    # as a safety mechanism we also don't download safetensors if
+                    # not all safetensors files are there
                     ignore_patterns.append("*.safetensors")
             else:
                 ignore_patterns.append("*.safetensors")
+
+            import ipdb; ipdb.set_trace()
 
             # download all allow_patterns
             cached_folder = snapshot_download(
