@@ -149,7 +149,8 @@ class CheckpointMergerPipeline(DiffusionPipeline):
             requested_pipeline_class = config_dict.get("_class_name")
             user_agent = {"diffusers": __version__, "pipeline_class": requested_pipeline_class}
 
-            cached_folder = snapshot_download(
+            cached_folder = pretrained_model_name_or_path if os.path.isdir(pretrained_model_name_or_path) \
+                else snapshot_download(
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,
                 resume_download=resume_download,
@@ -159,7 +160,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                 revision=revision,
                 allow_patterns=allow_patterns,
                 user_agent=user_agent,
-            )
+            ) 
             print("Cached Folder", cached_folder)
             cached_folders.append(cached_folder)
 
