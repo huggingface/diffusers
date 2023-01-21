@@ -515,6 +515,8 @@ class DiffusionPipeline(ConfigMixin):
                     ignore_patterns.append("*.bin")
                 else:
                     ignore_patterns.append("*.safetensors")
+            else:
+                ignore_patterns.append("*.safetensors")
 
             # download all allow_patterns
             cached_folder = snapshot_download(
