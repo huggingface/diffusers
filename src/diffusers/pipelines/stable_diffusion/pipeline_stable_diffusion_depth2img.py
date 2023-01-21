@@ -25,14 +25,7 @@ from transformers import CLIPTextModel, CLIPTokenizer, DPTFeatureExtractor, DPTF
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...schedulers import (
-    DDIMScheduler,
-    DPMSolverMultistepScheduler,
-    EulerAncestralDiscreteScheduler,
-    EulerDiscreteScheduler,
-    LMSDiscreteScheduler,
-    PNDMScheduler,
-)
+from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import PIL_INTERPOLATION, deprecate, is_accelerate_available, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
@@ -91,14 +84,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: Union[
-            DDIMScheduler,
-            PNDMScheduler,
-            LMSDiscreteScheduler,
-            EulerDiscreteScheduler,
-            EulerAncestralDiscreteScheduler,
-            DPMSolverMultistepScheduler,
-        ],
+        scheduler: KarrasDiffusionSchedulers,
         depth_estimator: DPTForDepthEstimation,
         feature_extractor: DPTFeatureExtractor,
     ):

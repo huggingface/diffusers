@@ -22,8 +22,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS
-from .scheduling_utils import SchedulerMixin, SchedulerOutput
+from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SchedulerOutput
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
@@ -106,7 +105,7 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
 
     """
 
-    _compatibles = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
+    _compatibles = [e.name for e in KarrasDiffusionSchedulers]
     order = 1
 
     @register_to_config

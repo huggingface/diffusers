@@ -25,14 +25,7 @@ from transformers import CLIPFeatureExtractor, XLMRobertaTokenizer
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...schedulers import (
-    DDIMScheduler,
-    DPMSolverMultistepScheduler,
-    EulerAncestralDiscreteScheduler,
-    EulerDiscreteScheduler,
-    LMSDiscreteScheduler,
-    PNDMScheduler,
-)
+from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import PIL_INTERPOLATION, deprecate, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
@@ -129,14 +122,7 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
         text_encoder: RobertaSeriesModelWithTransformation,
         tokenizer: XLMRobertaTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: Union[
-            DDIMScheduler,
-            PNDMScheduler,
-            LMSDiscreteScheduler,
-            EulerDiscreteScheduler,
-            EulerAncestralDiscreteScheduler,
-            DPMSolverMultistepScheduler,
-        ],
+        scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
         requires_safety_checker: bool = True,
@@ -401,7 +387,7 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
         if strength < 0 or strength > 1:
-            raise ValueError(f"The value of strength should in [1.0, 1.0] but is {strength}")
+            raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)

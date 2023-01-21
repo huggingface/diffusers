@@ -21,8 +21,8 @@ import torch
 from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, BaseOutput
-from .scheduling_utils import SchedulerMixin
+from ..utils import BaseOutput
+from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
 
 
 @dataclass
@@ -70,7 +70,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             https://imagen.research.google/video/paper.pdf)
     """
 
-    _compatibles = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
+    _compatibles = [e.name for e in KarrasDiffusionSchedulers]
     order = 1
 
     @register_to_config
