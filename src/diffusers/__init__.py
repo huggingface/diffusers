@@ -65,6 +65,7 @@ else:
         PNDMPipeline,
         RePaintPipeline,
         ScoreSdeVePipeline,
+        PaellaTextToImagePipeline,
     )
     from .schedulers import (
         DDIMScheduler,
@@ -85,6 +86,7 @@ else:
         ScoreSdeVeScheduler,
         UnCLIPScheduler,
         VQDiffusionScheduler,
+        PaellaScheduler,
     )
     from .training_utils import EMAModel
 

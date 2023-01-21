@@ -41,6 +41,7 @@ else:
     from .scheduling_unclip import UnCLIPScheduler
     from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
     from .scheduling_vq_diffusion import VQDiffusionScheduler
+    from .scheduling_paella import PaellaScheduler
 
 try:
     if not is_flax_available():
