@@ -698,7 +698,7 @@ def main():
                     progress_bar.update(1)
                 continue
             if args.progressive_tokens:
-                train_dataset.prop_tokens_to_load = float(step)/args.progressive_tokens_max_steps
+                train_dataset.prop_tokens_to_load = float(global_step)/args.progressive_tokens_max_steps
 
             with accelerator.accumulate(text_encoder):
                 # Convert images to latent space
