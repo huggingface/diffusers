@@ -93,7 +93,8 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         alpha = kwargs.pop("alpha", 0.5)
         interp = kwargs.pop("interp", None)
 
-        print("Recieved list", pretrained_model_name_or_path_list)
+        print("Received list", pretrained_model_name_or_path_list)
+        print(f"Combining with alpha={alpha}, interpolation mode={interp}")
 
         checkpoint_count = len(pretrained_model_name_or_path_list)
         # Ignore result from model_index_json comparision of the two checkpoints
@@ -114,17 +115,16 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         # Step 1: Load the model config and compare the checkpoints. We'll compare the model_index.json first while ignoring the keys starting with '_'
         config_dicts = []
         for pretrained_model_name_or_path in pretrained_model_name_or_path_list:
-            if not os.path.isdir(pretrained_model_name_or_path):
-                config_dict = DiffusionPipeline.get_config_dict(
-                    pretrained_model_name_or_path,
-                    cache_dir=cache_dir,
-                    resume_download=resume_download,
-                    force_download=force_download,
-                    proxies=proxies,
-                    local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
-                    revision=revision,
-                )
+            config_dict = DiffusionPipeline.load_config(
+                pretrained_model_name_or_path,
+                cache_dir=cache_dir,
+                resume_download=resume_download,
+                force_download=force_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                revision=revision,
+            )
             config_dicts.append(config_dict)
 
         comparison_result = True
@@ -149,7 +149,8 @@ class CheckpointMergerPipeline(DiffusionPipeline):
             requested_pipeline_class = config_dict.get("_class_name")
             user_agent = {"diffusers": __version__, "pipeline_class": requested_pipeline_class}
 
-            cached_folder = snapshot_download(
+            cached_folder = pretrained_model_name_or_path if os.path.isdir(pretrained_model_name_or_path) \
+                else snapshot_download(
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,
                 resume_download=resume_download,
@@ -159,7 +160,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                 revision=revision,
                 allow_patterns=allow_patterns,
                 user_agent=user_agent,
-            )
+            ) 
             print("Cached Folder", cached_folder)
             cached_folders.append(cached_folder)
 
@@ -187,6 +188,8 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         for attr in final_pipe.config.keys():
             if not attr.startswith("_"):
                 checkpoint_path_1 = os.path.join(cached_folders[1], attr)
+                print(f'DEBUG: checkpoint_path_1={checkpoint_path_1}')
+                print(f'DEBUG: checkpoint_path_2={checkpoint_path_2}')
                 if os.path.exists(checkpoint_path_1):
                     files = glob.glob(os.path.join(checkpoint_path_1, "*.bin"))
                     checkpoint_path_1 = files[0] if len(files) > 0 else None

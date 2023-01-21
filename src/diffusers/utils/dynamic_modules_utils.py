@@ -33,7 +33,8 @@ from . import DIFFUSERS_DYNAMIC_MODULE_NAME, HF_MODULES_CACHE, logging
 
 
 COMMUNITY_PIPELINES_URL = (
-    "https://raw.githubusercontent.com/huggingface/diffusers/{revision}/examples/community/{pipeline}.py"
+#    "https://raw.githubusercontent.com/huggingface/diffusers/{revision}/examples/community/{pipeline}.py"
+    "https://raw.githubusercontent.com/lstein/diffusers/{revision}/examples/community/{pipeline}.py"
 )
 
 
@@ -281,6 +282,7 @@ def get_cached_module_file(
 
         # community pipeline on GitHub
         github_url = COMMUNITY_PIPELINES_URL.format(revision=revision, pipeline=pretrained_model_name_or_path)
+        print(f'github_url={github_url}')
         try:
             resolved_module_file = cached_download(
                 github_url,
