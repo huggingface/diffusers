@@ -160,7 +160,7 @@ tags
 .pre-commit*
 
 # .lock
-*.lock
+# *.lock
 
 # DS_Store (MacOS)
 .DS_Store
