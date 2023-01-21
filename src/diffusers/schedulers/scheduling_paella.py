@@ -153,6 +153,9 @@ class PaellaScheduler(SchedulerMixin, ConfigMixin):
 
         return PaellaSchedulerOutput(prev_sample=latents)
 
+    def gamma(self, r):
+        return (r * torch.pi / 2).cos()
+        
     def renoise(self, x, r, random_noise=None):
         r = self.gamma(r)[:, None, None]
         mask = torch.bernoulli(
