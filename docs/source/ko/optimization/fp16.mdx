@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # 메모리와 속도
 
-메모리 또는 속도에 대해 🤗 Diffusers _추론_을 최적화하기 위한 몇 가지 기술과 아이디어를 제시합니다. 일반적으로, 메모리 효율적인 어텐션을 위해 [xFormers](https://github.com/facebookresearch/xformers) 사용을 추천하기 때문에, 추천하는 [설치 방법](xformers)을 보세요.
+메모리 또는 속도에 대해 🤗 Diffusers *추론*을 최적화하기 위한 몇 가지 기술과 아이디어를 제시합니다. 일반적으로, 메모리 효율적인 어텐션을 위해 [xFormers](https://github.com/facebookresearch/xformers) 사용을 추천하기 때문에, 추천하는 [설치 방법](xformers)을 보세요.
 
 다음 설정이 성능과 메모리에 미치는 영향에 대해 설명합니다.
 
@@ -31,7 +31,7 @@ specific language governing permissions and limitations under the License.
 
 ## cuDNN auto-tuner 활성화하기
 
-[NVIDIA cuDNN](https://developer.nvidia.com/cudnn)은 컨벌루션을 계산하는 많은 알고리즘을 지원합니다. Autotuner는 짧은 벤wd치마크를 실행하고 주어진 입력 크기에 대해 주어진 하드웨어에서 최고의 성능을 가진 커널을 선택합니다.
+[NVIDIA cuDNN](https://developer.nvidia.com/cudnn)은 컨벌루션을 계산하는 많은 알고리즘을 지원합니다. Autotuner는 짧은 벤치마크를 실행하고 주어진 입력 크기에 대해 주어진 하드웨어에서 최고의 성능을 가진 커널을 선택합니다.
 
 **컨볼루션 네트워크**를 활용하고 있기 때문에 (다른 유형들은 현재 지원되지 않음), 다음 설정을 통해 추론을 시작하기 전에 cuDNN autotuner를 활성화할 수 있습니다:
 
@@ -68,7 +68,7 @@ image = pipe(prompt).images[0]
 ```
 
 <Tip warning={true}>
-  어떤 파이프라인에서도 [`torch.autocast`](https://pytorch.org/docs/stable/amp.html#torch.autocast)를 사용하는 것은 검은색 이미지로 이어질 수 있고, 순수한 float16 정밀도를 사용하는 것보다 항상 느리기 때문에 사용하지 않는 것이 좋습니다. 
+  어떤 파이프라인에서도 [`torch.autocast`](https://pytorch.org/docs/stable/amp.html#torch.autocast) 를 사용하는 것은 검은색 이미지로 이어질 수 있고, 순수한 float16 정밀도를 사용하는 것보다 항상 느리기 때문에 사용하지 않는 것이 좋습니다. 
 </Tip>
 
 ## 추가 메모리 절약을 위한 슬라이스 어텐션
@@ -322,7 +322,7 @@ with torch.inference_mode():
 이를 활용하려면 다음을 만족해야 합니다: 
  - PyTorch > 1.12
  - Cuda 사용 가능
- - [xformers 라이브러리를 설치함](xformers).
+ - [xformers 라이브러리를 설치함](xformers)
 ```python
 from diffusers import StableDiffusionPipeline
 import torch
