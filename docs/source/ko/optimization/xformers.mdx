@@ -1,0 +1,26 @@
+<!--Copyright 2022 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+# xFormers 설치하기
+
+추론과 학습 모두에 [xFormers](https://github.com/facebookresearch/xformers)를 사용하는 것이 좋습니다. 우리의 테스트에서, 어텐션 블록에서 수행된 최적화는 더 빠른 속도와 감소된 메모리 소비를 허용합니다.
+
+xFormers 설치는 역사적으로 바이너리 배포판이 항상 최신 상태가 아니었기 때문에 다소 복잡했습니다. 다행스럽게도, 이 프로젝트는 [매우 최근에](https://github.com/facebookresearch/xformers/pull/591) 프로젝트의 지속적인 통합의 일환으로 pip wheels을 구축하는 프로세스를 통합했고, xFormers 버전 0.0.16부터 많은 개선이 필요합니다. 
+
+xFormers 0.0.16이 배포될 때까지 [`TestPyPI`](https://test.pypi.org/project/formers/)를 사용하여 pip wheel을 설치할 수 있습니다. 다음은 Linux 컴퓨터에서 xFormers 버전 0.0.15를 설치하는 단계입니다:
+
+```bash
+pip install pyre-extensions==0.0.23
+pip install -i https://test.pypi.org/simple/ formers==0.0.15.dev376
+```
+
+wheel이 공식 PyPI 저장소에 게시되면 이 지침을 업데이트할 것입니다.
