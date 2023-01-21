@@ -1,4 +1,5 @@
 import argparse
+import importlib
 import itertools
 import math
 import os
@@ -16,7 +17,7 @@ import PIL
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
-from diffusers import AutoencoderKL, DDPMScheduler,  PNDMScheduler, StableDiffusionPipeline, UNet2DConditionModel
+from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
 from diffusers.utils.import_utils import is_xformers_available
@@ -28,13 +29,19 @@ from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
-import importlib
+
+
 _wandb_available = importlib.util.find_spec("wandb") is not None
+
+
 def is_wandb_available():
     return _wandb_available
+
+
 wandb = None
 if is_wandb_available():
     import wandb
+
 
 def wandb_setup(
     args: dict,
@@ -44,6 +51,7 @@ def wandb_setup(
         project=project_name,
         config=args,
     )
+
 
 def get_pipeline(text_encoder, vae, unet, tokenizer, accelerator):
     # I disabled safety checker as it causes an oom
@@ -56,19 +64,23 @@ def get_pipeline(text_encoder, vae, unet, tokenizer, accelerator):
             beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", skip_prk_steps=True, steps_offset=1
         ),
         safety_checker=None,
-        feature_extractor=None
+        feature_extractor=None,
     )
     return pipeline
+
 
 def log_progress(pipeline, args, step, placeholder_token, save_path, wandb_run=None, logs={}):
     logger.info("Running pipeline")
 
     prompt = f"a photo of a {placeholder_token}"
 
-
     with torch.autocast("cuda"):
         image = pipeline(
-            prompt, height=args.resolution, width=args.resolution, num_inference_steps=50, guidance_scale=args.guidance_scale
+            prompt,
+            height=args.resolution,
+            width=args.resolution,
+            num_inference_steps=50,
+            guidance_scale=args.guidance_scale,
         ).images[0]
 
     image.save(save_path)
@@ -80,6 +92,7 @@ def log_progress(pipeline, args, step, placeholder_token, save_path, wandb_run=N
                 "samples": wandb.Image(save_path, caption=prompt),
             }
         )
+
 
 if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
     PIL_INTERPOLATION = {
