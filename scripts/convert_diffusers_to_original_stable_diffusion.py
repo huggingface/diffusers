@@ -8,7 +8,7 @@ import re
 
 import torch
 
-from safetensors.torch import save_file, load_file
+from safetensors.torch import load_file, save_file
 
 
 # =================#
