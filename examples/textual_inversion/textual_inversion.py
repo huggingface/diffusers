@@ -24,14 +24,14 @@ from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
 from diffusers.utils.import_utils import is_xformers_available
 from huggingface_hub import HfFolder, Repository, whoami
+from multi_token_clip import MultiTokenCLIPTokenizer
 
 # TODO: remove and import from diffusers.utils when the new version of diffusers is released
 from packaging import version
 from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import CLIPFeatureExtractor, CLIPTextModel
-from multi_token_clip import MultiTokenCLIPTokenizer
+from transformers import CLIPTextModel
 
 
 if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
@@ -59,6 +59,7 @@ check_min_version("0.10.0.dev0")
 
 logger = get_logger(__name__)
 
+
 def add_tokens(tokenizer, text_encoder, placeholder_token, num_vec_per_token=1, initializer_token=None):
     """
     Add tokens to the tokenizer and set the initial value of token embeddings
@@ -70,19 +71,23 @@ def add_tokens(tokenizer, text_encoder, placeholder_token, num_vec_per_token=1, 
     if initializer_token:
         token_ids = tokenizer.encode(initializer_token, add_special_tokens=False)
         for i, placeholder_token_id in enumerate(placeholder_token_ids):
-                token_embeds[placeholder_token_id] = token_embeds[token_ids[i * len(token_ids)//num_vec_per_token]]
+            token_embeds[placeholder_token_id] = token_embeds[token_ids[i * len(token_ids) // num_vec_per_token]]
     else:
         for i, placeholder_token_id in enumerate(placeholder_token_ids):
-                token_embeds[placeholder_token_id] = torch.randn_like(token_embeds[placeholder_token_id])
+            token_embeds[placeholder_token_id] = torch.randn_like(token_embeds[placeholder_token_id])
     return placeholder_token
+
+
 def save_progress(tokenizer, text_encoder, accelerator, save_path):
     for placeholder_token in tokenizer.token_map:
         placeholder_token_ids = tokenizer.encode(placeholder_token, add_special_tokens=False)
         learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_ids]
         if len(placeholder_token_ids) == 1:
-                learned_embeds = learned_embeds[None]
+            learned_embeds = learned_embeds[None]
         learned_embeds_dict = {placeholder_token: learned_embeds.detach().cpu()}
         torch.save(learned_embeds_dict, save_path)
+
+
 def load_multitoken_tokenizer(tokenizer, text_encoder, learned_embeds_dict):
     for placeholder_token in learned_embeds_dict:
         num_vec_per_token = learned_embeds_dict[placeholder_token].shape[0]
@@ -90,7 +95,9 @@ def load_multitoken_tokenizer(tokenizer, text_encoder, learned_embeds_dict):
         placeholder_token_ids = tokenizer.encode(placeholder_token, add_special_tokens=False)
         token_embeds = text_encoder.get_input_embeddings().weight.data
         for i, placeholder_token_id in enumerate(placeholder_token_ids):
-            token_embeds[placeholder_token_id] =learned_embeds_dict[placeholder_token][i]        
+            token_embeds[placeholder_token_id] = learned_embeds_dict[placeholder_token][i]
+
+
 def load_multitoken_tokenizer_from_automatic(tokenizer, text_encoder, automatic_dict, placeholder_token):
     """
     Automatic1111's tokens have format
@@ -99,10 +106,12 @@ def load_multitoken_tokenizer_from_automatic(tokenizer, text_encoder, automatic_
         [ 0.0916,  0.0025,  0.0365,  ..., -0.0685, -0.0124,  0.0728],
         [ 0.0812, -0.0199, -0.0100,  ..., -0.0581, -0.0780,  0.0254]],
        requires_grad=True)}, 'name': 'FloralMarble-400', 'step': 399, 'sd_checkpoint': '4bdfc29c', 'sd_checkpoint_name': 'SD2.1-768'}
-    """ 
+    """
     learned_embeds_dict = {}
-    learned_embeds_dict[placeholder_token] = automatic_dict['string_to_param']['*']
+    learned_embeds_dict[placeholder_token] = automatic_dict["string_to_param"]["*"]
     load_multitoken_tokenizer(tokenizer, text_encoder, learned_embeds_dict)
+
+
 def get_mask(tokenizer, accelerator):
     # Get the mask of the weights that won't change
     mask = torch.ones(len(tokenizer)).to(accelerator.device, dtype=torch.bool)
@@ -119,18 +128,14 @@ def parse_args():
         "--progressive_tokens_max_steps",
         type=int,
         default=2000,
-        help=(
-            "The number of steps until all tokens will be used."
-        ),
+        help="The number of steps until all tokens will be used.",
     )
     parser.add_argument(
         "--progressive_tokens",
-        action="store_true", help="Progressively train the tokens. For example, first train for 1 token, then 2 tokens and so on."
+        action="store_true",
+        help="Progressively train the tokens. For example, first train for 1 token, then 2 tokens and so on.",
     )
-    parser.add_argument(
-        "--vector_shuffle",
-        action="store_true", help="Shuffling tokens durint training"
-    )
+    parser.add_argument("--vector_shuffle", action="store_true", help="Shuffling tokens durint training")
     parser.add_argument(
         "--num_vec_per_token",
         type=int,
@@ -455,7 +460,7 @@ class TextualInversionDataset(Dataset):
             max_length=self.tokenizer.model_max_length,
             return_tensors="pt",
             vector_shuffle=self.vector_shuffle,
-            prop_tokens_to_load = self.prop_tokens_to_load if self.progressive_tokens else 1.
+            prop_tokens_to_load=self.prop_tokens_to_load if self.progressive_tokens else 1.0,
         )[0]
 
         # default to score-sde preprocessing
@@ -463,10 +468,7 @@ class TextualInversionDataset(Dataset):
 
         if self.center_crop:
             crop = min(img.shape[0], img.shape[1])
-            (
-                h,
-                w,
-            ) = (
+            (h, w,) = (
                 img.shape[0],
                 img.shape[1],
             )
@@ -709,13 +711,13 @@ def main():
                     progress_bar.update(1)
                 continue
             if args.progressive_tokens:
-                train_dataset.prop_tokens_to_load = float(global_step)/args.progressive_tokens_max_steps
+                train_dataset.prop_tokens_to_load = float(global_step) / args.progressive_tokens_max_steps
 
             with accelerator.accumulate(text_encoder):
                 # Convert images to latent space
                 latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample().detach()
                 latents = latents * 0.18215
-                
+
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents)
                 bsz = latents.shape[0]
@@ -797,7 +799,6 @@ def main():
         # Save the newly trained embeddings
         save_path = os.path.join(args.output_dir, "learned_embeds.bin")
         save_progress(tokenizer, text_encoder, accelerator, save_path)
-
 
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
