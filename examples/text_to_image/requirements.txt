@@ -6,3 +6,4 @@ ftfy
 tensorboard
 modelcards
 wandb
+Jinja2
