@@ -38,8 +38,8 @@ from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNe
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
 from diffusers.utils.import_utils import is_xformers_available
-from multi_token_clip import MultiTokenCLIPTokenizer
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
+from multi_token_clip import MultiTokenCLIPTokenizer
 
 # TODO: remove and import from diffusers.utils when the new version of diffusers is released
 from packaging import version
