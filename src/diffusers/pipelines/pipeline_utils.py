@@ -520,8 +520,6 @@ class DiffusionPipeline(ConfigMixin):
             else:
                 ignore_patterns.append("*.safetensors")
 
-            import ipdb; ipdb.set_trace()
-
             # download all allow_patterns
             cached_folder = snapshot_download(
                 pretrained_model_name_or_path,

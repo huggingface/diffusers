@@ -306,6 +306,7 @@ class PipelineFastTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
         import diffusers
+
         diffusers.utils.import_utils._safetensors_available = True
 
     def dummy_image(self):
@@ -579,9 +580,17 @@ class PipelineFastTests(unittest.TestCase):
     def test_no_pytorch_download_when_doing_safetensors(self):
         # by default we don't download
         with tempfile.TemporaryDirectory() as tmpdirname:
-            _ = StableDiffusionPipeline.from_pretrained("hf-internal-testing/diffusers-stable-diffusion-tiny-all", cache_dir=tmpdirname)
+            _ = StableDiffusionPipeline.from_pretrained(
+                "hf-internal-testing/diffusers-stable-diffusion-tiny-all", cache_dir=tmpdirname
+            )
 
-            path = os.path.join(tmpdirname, "models--hf-internal-testing--diffusers-stable-diffusion-tiny-all", "snapshots", "e4d06632899bccf30e8519b3860b43a97be51c17", "unet")
+            path = os.path.join(
+                tmpdirname,
+                "models--hf-internal-testing--diffusers-stable-diffusion-tiny-all",
+                "snapshots",
+                "07838d72e12f9bcec1375b0482b80c1d399be843",
+                "unet",
+            )
             # safetensors exists
             assert os.path.exists(os.path.join(path, "diffusion_pytorch_model.safetensors"))
             # pytorch does not
@@ -590,12 +599,21 @@ class PipelineFastTests(unittest.TestCase):
     def test_no_safetensors_download_when_doing_pytorch(self):
         # mock diffusers safetensors not available
         import diffusers
+
         diffusers.utils.import_utils._safetensors_available = False
 
         with tempfile.TemporaryDirectory() as tmpdirname:
-            _ = StableDiffusionPipeline.from_pretrained("hf-internal-testing/diffusers-stable-diffusion-tiny-all", cache_dir=tmpdirname)
+            _ = StableDiffusionPipeline.from_pretrained(
+                "hf-internal-testing/diffusers-stable-diffusion-tiny-all", cache_dir=tmpdirname
+            )
 
-            path = os.path.join(tmpdirname, "models--hf-internal-testing--diffusers-stable-diffusion-tiny-all", "snapshots", "e4d06632899bccf30e8519b3860b43a97be51c17", "unet")
+            path = os.path.join(
+                tmpdirname,
+                "models--hf-internal-testing--diffusers-stable-diffusion-tiny-all",
+                "snapshots",
+                "07838d72e12f9bcec1375b0482b80c1d399be843",
+                "unet",
+            )
             # safetensors does not exists
             assert not os.path.exists(os.path.join(path, "diffusion_pytorch_model.safetensors"))
             # pytorch does
