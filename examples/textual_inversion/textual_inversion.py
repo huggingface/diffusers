@@ -90,7 +90,7 @@ def load_multitoken_tokenizer(tokenizer, text_encoder, learned_embeds_dict):
         placeholder_token_ids = tokenizer.encode(placeholder_token, add_special_tokens=False)
         token_embeds = text_encoder.get_input_embeddings().weight.data
         for i, placeholder_token_id in enumerate(placeholder_token_ids):
-            token_embeds[placeholder_token_id] =token_embeds[i]        
+            token_embeds[placeholder_token_id] =learned_embeds_dict[placeholder_token][i]        
 def load_multitoken_tokenizer_from_automatic(tokenizer, text_encoder, automatic_dict, placeholder_token):
     """
     Automatic1111's tokens have format
