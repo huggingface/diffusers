@@ -24,11 +24,12 @@ import jax.numpy as jnp
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import deprecate
 from .scheduling_utils_flax import (
-    _FLAX_COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS,
     CommonSchedulerState,
+    FlaxKarrasDiffusionSchedulers,
     FlaxSchedulerMixin,
     FlaxSchedulerOutput,
     add_noise_common,
+    get_velocity_common,
 )
 
 
@@ -84,7 +85,7 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
             the `dtype` used for params and computation.
     """
 
-    _compatibles = _FLAX_COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
+    _compatibles = [e.name for e in FlaxKarrasDiffusionSchedulers]
     _deprecated_kwargs = ["predict_epsilon"]
 
     dtype: jnp.dtype
@@ -292,6 +293,15 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         timesteps: jnp.ndarray,
     ) -> jnp.ndarray:
         return add_noise_common(state.common, original_samples, noise, timesteps)
+
+    def get_velocity(
+        self,
+        state: DDPMSchedulerState,
+        sample: jnp.ndarray,
+        noise: jnp.ndarray,
+        timesteps: jnp.ndarray,
+    ) -> jnp.ndarray:
+        return get_velocity_common(state.common, sample, noise, timesteps)
 
     def __len__(self):
         return self.config.num_train_timesteps

@@ -18,8 +18,10 @@ else:
     from .dance_diffusion import DanceDiffusionPipeline
     from .ddim import DDIMPipeline
     from .ddpm import DDPMPipeline
+    from .dit import DiTPipeline
     from .latent_diffusion import LDMSuperResolutionPipeline
     from .latent_diffusion_uncond import LDMPipeline
+    from .pipeline_utils import AudioPipelineOutput, DiffusionPipeline, ImagePipelineOutput
     from .pndm import PNDMPipeline
     from .repaint import RePaintPipeline
     from .score_sde_ve import ScoreSdeVePipeline
@@ -49,11 +51,12 @@ else:
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
         StableDiffusionInpaintPipelineLegacy,
+        StableDiffusionInstructPix2PixPipeline,
         StableDiffusionPipeline,
         StableDiffusionUpscalePipeline,
     )
     from .stable_diffusion_safe import StableDiffusionPipelineSafe
-    from .unclip import UnCLIPPipeline
+    from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline
     from .versatile_diffusion import (
         VersatileDiffusionDualGuidedPipeline,
         VersatileDiffusionImageVariationPipeline,
@@ -61,6 +64,14 @@ else:
         VersatileDiffusionTextToImagePipeline,
     )
     from .vq_diffusion import VQDiffusionPipeline
+
+try:
+    if not is_onnx_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils.dummy_onnx_objects import *  # noqa F403
+else:
+    from .onnx_utils import OnnxRuntimeModel
 
 try:
     if not (is_torch_available() and is_transformers_available() and is_onnx_available()):
@@ -84,6 +95,14 @@ except OptionalDependencyNotAvailable:
 else:
     from .stable_diffusion import StableDiffusionKDiffusionPipeline
 
+try:
+    if not is_flax_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils.dummy_flax_objects import *  # noqa F403
+else:
+    from .pipeline_flax_utils import FlaxDiffusionPipeline
+
 
 try:
     if not (is_flax_available() and is_transformers_available()):
@@ -91,4 +110,8 @@ try:
 except OptionalDependencyNotAvailable:
     from ..utils.dummy_flax_and_transformers_objects import *  # noqa F403
 else:
-    from .stable_diffusion import FlaxStableDiffusionImg2ImgPipeline, FlaxStableDiffusionPipeline
+    from .stable_diffusion import (
+        FlaxStableDiffusionImg2ImgPipeline,
+        FlaxStableDiffusionInpaintPipeline,
+        FlaxStableDiffusionPipeline,
+    )

@@ -102,7 +102,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
             test_args = f"""
                 examples/textual_inversion/textual_inversion.py
                 --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5
-                --train_data_dir docs/source/imgs
+                --train_data_dir docs/source/en/imgs
                 --learnable_property object
                 --placeholder_token <cat-toy>
                 --initializer_token toy

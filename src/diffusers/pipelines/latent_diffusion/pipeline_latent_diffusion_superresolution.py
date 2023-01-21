@@ -8,7 +8,6 @@ import torch.utils.checkpoint
 import PIL
 
 from ...models import UNet2DModel, VQModel
-from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import (
     DDIMScheduler,
     DPMSolverMultistepScheduler,
@@ -17,7 +16,8 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ...utils import PIL_INTERPOLATION, deprecate
+from ...utils import PIL_INTERPOLATION, deprecate, randn_tensor
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 def preprocess(image):
@@ -95,12 +95,11 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*):
-                Whether or not to return a [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
+                Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
 
         Returns:
-            [`~pipeline_utils.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if
-            `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is a list with the
-            generated images.
+            [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if `return_dict` is
+            True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
         """
         message = "Please use `image` instead of `init_image`."
         init_image = deprecate("init_image", "0.13.0", message, take_from=kwargs)
@@ -122,12 +121,7 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
         latents_shape = (batch_size, self.unet.in_channels // 2, height, width)
         latents_dtype = next(self.unet.parameters()).dtype
 
-        if self.device.type == "mps":
-            # randn does not work reproducibly on mps
-            latents = torch.randn(latents_shape, generator=generator, device="cpu", dtype=latents_dtype)
-            latents = latents.to(self.device)
-        else:
-            latents = torch.randn(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
+        latents = randn_tensor(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
 
         image = image.to(device=self.device, dtype=latents_dtype)
 
