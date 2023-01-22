@@ -93,7 +93,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         alpha = kwargs.pop("alpha", 0.5)
         interp = kwargs.pop("interp", None)
 
-        print("Recieved list", pretrained_model_name_or_path_list)
+        print("Received list", pretrained_model_name_or_path_list)
 
         checkpoint_count = len(pretrained_model_name_or_path_list)
         # Ignore result from model_index_json comparision of the two checkpoints
@@ -114,17 +114,16 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         # Step 1: Load the model config and compare the checkpoints. We'll compare the model_index.json first while ignoring the keys starting with '_'
         config_dicts = []
         for pretrained_model_name_or_path in pretrained_model_name_or_path_list:
-            if not os.path.isdir(pretrained_model_name_or_path):
-                config_dict = DiffusionPipeline.get_config_dict(
-                    pretrained_model_name_or_path,
-                    cache_dir=cache_dir,
-                    resume_download=resume_download,
-                    force_download=force_download,
-                    proxies=proxies,
-                    local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
-                    revision=revision,
-                )
+            config_dict = DiffusionPipeline.get_config_dict(
+                pretrained_model_name_or_path,
+                cache_dir=cache_dir,
+                resume_download=resume_download,
+                force_download=force_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                revision=revision,
+            )
             config_dicts.append(config_dict)
 
         comparison_result = True
