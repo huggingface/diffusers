@@ -205,10 +205,9 @@ class PaintByExamplePipeline(DiffusionPipeline):
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
 
-        if self.safety_checker is not None:
-            # TODO(Patrick) - there is currently a bug with cpu offload of nn.Parameter in accelerate
-            # fix by only offloading self.safety_checker for now
-            cpu_offload(self.safety_checker.vision_model, device)
+        for cpu_offloaded_model in [self.image_encoder, self.safety_checker]:
+            if cpu_offloaded_model is not None:
+                cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
 
     @property
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
