@@ -201,13 +201,11 @@ class PaintByExamplePipeline(DiffusionPipeline):
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        for cpu_offloaded_model in [self.unet, self.vae]:
-            if cpu_offloaded_model is not None:
-                cpu_offload(cpu_offloaded_model, device)
+        for cpu_offloaded_model in [self.unet, self.vae, self.image_encoder]:
+            cpu_offload(cpu_offloaded_model, execution_device=device, offload_buffers=True)
 
-        for cpu_offloaded_model in [self.image_encoder, self.safety_checker]:
-            if cpu_offloaded_model is not None:
-                cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
+        if self.safety_checker is not None:
+            cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
 
     @property
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
