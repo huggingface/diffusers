@@ -204,12 +204,12 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                     print("SKIPPING ATTR ", attr)
                     continue
                 try:
+                    print(f'checkpoint_path_1 = {checkpoint_path_1}')
                     module = getattr(final_pipe, attr)
                     theta_0 = getattr(module, "state_dict")
                     theta_0 = theta_0()
 
                     update_theta_0 = getattr(module, "load_state_dict")
-                    print(f'checkpoint_path_1 = {checkpoint_path_1}')
                     theta_1 = safetensors.torch.load_file(checkpoint_path_1) if checkpoint_path_1.endswith('.safetensors') else torch.load(checkpoint_path_1, map_location="cpu")
                     theta_2 = None
                     if checkpoint_path_2:
