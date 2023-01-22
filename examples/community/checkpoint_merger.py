@@ -114,7 +114,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         # Step 1: Load the model config and compare the checkpoints. We'll compare the model_index.json first while ignoring the keys starting with '_'
         config_dicts = []
         for pretrained_model_name_or_path in pretrained_model_name_or_path_list:
-            config_dict = DiffusionPipeline.get_config_dict(
+            config_dict = DiffusionPipeline.load_config(
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,
                 resume_download=resume_download,
