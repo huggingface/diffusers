@@ -21,26 +21,10 @@ from ...schedulers import (
 )
 from ...utils import deprecate, logging
 from colossalai.utils import get_current_device
+from pipeline_rdm import normalize_images, preprocess_images
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-def preprocess_images(images: List[Image.Image], feature_extractor: CLIPFeatureExtractor) -> torch.FloatTensor:
-    """
-    Preprocesses a list of images into a batch of tensors.
-
-    Args:
-        images (:obj:`List[Image.Image]`):
-            A list of images to preprocess.
-
-    Returns:
-        :obj:`torch.FloatTensor`: A batch of tensors.
-    """
-    images = [np.array(image) for image in images]
-    images = [(image + 1.) / 2. for image in images]
-    images = feature_extractor(images, return_tensors="pt").pixel_values
-    return images
-
 
 class RDMPipelineColossal(DiffusionPipeline):
     r"""
@@ -298,6 +282,7 @@ class RDMPipelineColossal(DiffusionPipeline):
 
         if retrieved_images is not None:
             # preprocess retrieved images
+            retrieved_images = normalize_images(retrieved_images)
             retrieved_images = preprocess_images(retrieved_images, self.feature_extractor).to(self.clip.device)
             image_embeddings = self.clip.get_image_features(retrieved_images)
             image_embeddings = image_embeddings / torch.linalg.norm(image_embeddings, dim=-1, keepdim=True)
