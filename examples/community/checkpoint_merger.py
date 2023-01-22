@@ -94,6 +94,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         interp = kwargs.pop("interp", None)
 
         print("Received list", pretrained_model_name_or_path_list)
+        print(f"Combining with alpha={alpha}, interpolation mode={interp}")
 
         checkpoint_count = len(pretrained_model_name_or_path_list)
         # Ignore result from model_index_json comparision of the two checkpoints
@@ -114,7 +115,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         # Step 1: Load the model config and compare the checkpoints. We'll compare the model_index.json first while ignoring the keys starting with '_'
         config_dicts = []
         for pretrained_model_name_or_path in pretrained_model_name_or_path_list:
-            config_dict = DiffusionPipeline.get_config_dict(
+            config_dict = DiffusionPipeline.load_config(
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,
                 resume_download=resume_download,
@@ -187,6 +188,8 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         for attr in final_pipe.config.keys():
             if not attr.startswith("_"):
                 checkpoint_path_1 = os.path.join(cached_folders[1], attr)
+                print(f'DEBUG: checkpoint_path_1={checkpoint_path_1}')
+                print(f'DEBUG: checkpoint_path_2={checkpoint_path_2}')
                 if os.path.exists(checkpoint_path_1):
                     files = glob.glob(os.path.join(checkpoint_path_1, "*.bin"))
                     checkpoint_path_1 = files[0] if len(files) > 0 else None
