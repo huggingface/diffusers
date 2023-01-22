@@ -193,22 +193,19 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                         (*glob.glob(os.path.join(checkpoint_path_1, "*.safetensors")),
                          *glob.glob(os.path.join(checkpoint_path_1, "*.bin")))
                     )
-                    print(f'CHECKPOINT_1 files = {files}')
                     checkpoint_path_1 = files[0] if len(files) > 0 else None
                 if checkpoint_path_2 is not None and os.path.exists(checkpoint_path_2):
                     files = list(
                         (*glob.glob(os.path.join(checkpoint_path_2, "*.safetensors")),
                          *glob.glob(os.path.join(checkpoint_path_2, "*.bin")))
                     )
-                    print(f'CHECKPOINT_2 files = {files}')
                     checkpoint_path_2 = files[0] if len(files) > 0 else None
                 # For an attr if both checkpoint_path_1 and 2 are None, ignore.
                 # If atleast one is present, deal with it according to interp method, of course only if the state_dict keys match.
                 if checkpoint_path_1 is None and checkpoint_path_2 is None:
-                    print("SKIPPING ATTR ", attr)
+                    print(f'Skipping {attr}: not present in 2nd or 3d model')
                     continue
                 try:
-                    print(f'checkpoint_path_1 = {checkpoint_path_1}')
                     module = getattr(final_pipe, attr)
                     theta_0 = getattr(module, "state_dict")
                     theta_0 = theta_0()
@@ -220,18 +217,14 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                         theta_2 = safetensors.torch.load_file(checkpoint_path_2) if checkpoint_path_2.endswith('.safetensors') else torch.load(checkpoint_path_2, map_location="cpu") 
 
                     if not theta_0.keys() == theta_1.keys():
-                        print("SKIPPING ATTR ", attr, " DUE TO MISMATCH")
+                        print(f'Skipping {attr}: key mismatch')
                         continue
                     if theta_2 and not theta_1.keys() == theta_2.keys():
-                        print("SKIPPING ATTR ", attr, " DUE TO MISMATCH")
+                        print(f'Skipping {attr}:y mismatch')
                 except Exception as e:
-                    print("SKIPPING ATTR ", attr)
-                    print(str(e))
+                    print(f"skipping {attr}: {str(e)}")
                     continue
-                print("Found dicts for")
-                print(attr)
-                print(checkpoint_path_1)
-                print(checkpoint_path_2)
+                print(f"MERGING {attr}")
 
                 for key in theta_0.keys():
                     if theta_2:
@@ -244,8 +237,6 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                 update_theta_0(theta_0)
 
                 del theta_0
-                print("Diffusion pipeline successfully updated with merged weights")
-
         return final_pipe
 
     @staticmethod
