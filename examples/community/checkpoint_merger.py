@@ -188,6 +188,8 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         for attr in final_pipe.config.keys():
             if not attr.startswith("_"):
                 checkpoint_path_1 = os.path.join(cached_folders[1], attr)
+                print(f'DEBUG: checkpoint_path_1={checkpoint_path_1}')
+                print(f'DEBUG: checkpoint_path_2={checkpoint_path_2}')
                 if os.path.exists(checkpoint_path_1):
                     files = glob.glob(os.path.join(checkpoint_path_1, "*.bin"))
                     checkpoint_path_1 = files[0] if len(files) > 0 else None
