@@ -149,18 +149,21 @@ class CheckpointMergerPipeline(DiffusionPipeline):
             requested_pipeline_class = config_dict.get("_class_name")
             user_agent = {"diffusers": __version__, "pipeline_class": requested_pipeline_class}
 
-            cached_folder = pretrained_model_name_or_path if os.path.isdir(pretrained_model_name_or_path) \
+            cached_folder = (
+                pretrained_model_name_or_path
+                if os.path.isdir(pretrained_model_name_or_path)
                 else snapshot_download(
-                pretrained_model_name_or_path,
-                cache_dir=cache_dir,
-                resume_download=resume_download,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
-                revision=revision,
-                allow_patterns=allow_patterns,
-                user_agent=user_agent,
-            ) 
+                    pretrained_model_name_or_path,
+                    cache_dir=cache_dir,
+                    resume_download=resume_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    use_auth_token=use_auth_token,
+                    revision=revision,
+                    allow_patterns=allow_patterns,
+                    user_agent=user_agent,
+                )
+            )
             print("Cached Folder", cached_folder)
             cached_folders.append(cached_folder)
 
@@ -190,39 +193,51 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                 checkpoint_path_1 = os.path.join(cached_folders[1], attr)
                 if os.path.exists(checkpoint_path_1):
                     files = list(
-                        (*glob.glob(os.path.join(checkpoint_path_1, "*.safetensors")),
-                         *glob.glob(os.path.join(checkpoint_path_1, "*.bin")))
+                        (
+                            *glob.glob(os.path.join(checkpoint_path_1, "*.safetensors")),
+                            *glob.glob(os.path.join(checkpoint_path_1, "*.bin")),
+                        )
                     )
                     checkpoint_path_1 = files[0] if len(files) > 0 else None
                 if checkpoint_path_2 is not None and os.path.exists(checkpoint_path_2):
                     files = list(
-                        (*glob.glob(os.path.join(checkpoint_path_2, "*.safetensors")),
-                         *glob.glob(os.path.join(checkpoint_path_2, "*.bin")))
+                        (
+                            *glob.glob(os.path.join(checkpoint_path_2, "*.safetensors")),
+                            *glob.glob(os.path.join(checkpoint_path_2, "*.bin")),
+                        )
                     )
                     checkpoint_path_2 = files[0] if len(files) > 0 else None
                 # For an attr if both checkpoint_path_1 and 2 are None, ignore.
                 # If atleast one is present, deal with it according to interp method, of course only if the state_dict keys match.
                 if checkpoint_path_1 is None and checkpoint_path_2 is None:
-                    print(f'Skipping {attr}: not present in 2nd or 3d model')
+                    print(f"Skipping {attr}: not present in 2nd or 3d model")
                     continue
                 try:
                     module = getattr(final_pipe, attr)
-                    if isinstance(module,bool): # ignore requires_safety_checker boolean
+                    if isinstance(module, bool):  # ignore requires_safety_checker boolean
                         continue
                     theta_0 = getattr(module, "state_dict")
                     theta_0 = theta_0()
 
                     update_theta_0 = getattr(module, "load_state_dict")
-                    theta_1 = safetensors.torch.load_file(checkpoint_path_1) if checkpoint_path_1.endswith('.safetensors') else torch.load(checkpoint_path_1, map_location="cpu")
+                    theta_1 = (
+                        safetensors.torch.load_file(checkpoint_path_1)
+                        if checkpoint_path_1.endswith(".safetensors")
+                        else torch.load(checkpoint_path_1, map_location="cpu")
+                    )
                     theta_2 = None
                     if checkpoint_path_2:
-                        theta_2 = safetensors.torch.load_file(checkpoint_path_2) if checkpoint_path_2.endswith('.safetensors') else torch.load(checkpoint_path_2, map_location="cpu") 
+                        theta_2 = (
+                            safetensors.torch.load_file(checkpoint_path_2)
+                            if checkpoint_path_2.endswith(".safetensors")
+                            else torch.load(checkpoint_path_2, map_location="cpu")
+                        )
 
                     if not theta_0.keys() == theta_1.keys():
-                        print(f'Skipping {attr}: key mismatch')
+                        print(f"Skipping {attr}: key mismatch")
                         continue
                     if theta_2 and not theta_1.keys() == theta_2.keys():
-                        print(f'Skipping {attr}:y mismatch')
+                        print(f"Skipping {attr}:y mismatch")
                 except Exception as e:
                     print(f"Skipping {attr} do to an unexpected error: {str(e)}")
                     continue
