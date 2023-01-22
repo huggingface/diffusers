@@ -189,14 +189,18 @@ class CheckpointMergerPipeline(DiffusionPipeline):
             if not attr.startswith("_"):
                 checkpoint_path_1 = os.path.join(cached_folders[1], attr)
                 if os.path.exists(checkpoint_path_1):
-                    files = list(*glob.glob(os.path.join(checkpoint_path_1, "*.safetensors")),
-                                 *glob.glob(os.path.join(checkpoint_path_1, "*.bin"))
-                                )
+                    files = list(
+                        (*glob.glob(os.path.join(checkpoint_path_1, "*.safetensors")),
+                         *glob.glob(os.path.join(checkpoint_path_1, "*.bin")))
+                    )
+                    print(f'CHECKPOINT_1 files = {files}')
                     checkpoint_path_1 = files[0] if len(files) > 0 else None
                 if checkpoint_path_2 is not None and os.path.exists(checkpoint_path_2):
-                    files = list(*glob.glob(os.path.join(checkpoint_path_2, "*.safetensors")),
-                                 *glob.glob(os.path.join(checkpoint_path_2, "*.bin"))
-                                 )
+                    files = list(
+                        (*glob.glob(os.path.join(checkpoint_path_2, "*.safetensors")),
+                         *glob.glob(os.path.join(checkpoint_path_2, "*.bin")))
+                    )
+                    print(f'CHECKPOINT_2 files = {files}')
                     checkpoint_path_2 = files[0] if len(files) > 0 else None
                 # For an attr if both checkpoint_path_1 and 2 are None, ignore.
                 # If atleast one is present, deal with it according to interp method, of course only if the state_dict keys match.
@@ -204,22 +208,25 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                     print("SKIPPING ATTR ", attr)
                     continue
                 try:
-                    print("MERGING ATTR ", attr)
+                    print(f'checkpoint_path_1 = {checkpoint_path_1}')
                     module = getattr(final_pipe, attr)
                     theta_0 = getattr(module, "state_dict")
                     theta_0 = theta_0()
 
                     update_theta_0 = getattr(module, "load_state_dict")
-                    theta_1 = safetensors.torch.load_file(checkpoint_path_1) if checkpoint_path_1.endswith('.safetensors') else torch.load(checkpoint_path_1, map_location="cpu") 
-                    theta_2 = safetensors.torch.load_file(checkpoint_path_2) if checkpoint_path_2.endswith('.safetensors') else torch.load(checkpoint_path_2, map_location="cpu") 
+                    theta_1 = safetensors.torch.load_file(checkpoint_path_1) if checkpoint_path_1.endswith('.safetensors') else torch.load(checkpoint_path_1, map_location="cpu")
+                    theta_2 = None
+                    if checkpoint_path_2:
+                        theta_2 = safetensors.torch.load_file(checkpoint_path_2) if checkpoint_path_2.endswith('.safetensors') else torch.load(checkpoint_path_2, map_location="cpu") 
 
                     if not theta_0.keys() == theta_1.keys():
                         print("SKIPPING ATTR ", attr, " DUE TO MISMATCH")
                         continue
                     if theta_2 and not theta_1.keys() == theta_2.keys():
                         print("SKIPPING ATTR ", attr, " DUE TO MISMATCH")
-                except:
+                except Exception as e:
                     print("SKIPPING ATTR ", attr)
+                    print(str(e))
                     continue
                 print("Found dicts for")
                 print(attr)
