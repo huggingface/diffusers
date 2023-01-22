@@ -3,7 +3,7 @@ import os
 from typing import Dict, List, Union
 
 import torch
-
+import safetensors.torch
 from diffusers import DiffusionPipeline, __version__
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, DIFFUSERS_CACHE, ONNX_WEIGHTS_NAME, WEIGHTS_NAME
@@ -189,13 +189,15 @@ class CheckpointMergerPipeline(DiffusionPipeline):
             if not attr.startswith("_"):
                 checkpoint_path_1 = os.path.join(cached_folders[1], attr)
                 print(f'DEBUG: checkpoint_path_1={checkpoint_path_1}')
-                print(f'DEBUG: checkpoint_path_2={checkpoint_path_2}')
                 if os.path.exists(checkpoint_path_1):
-                    files = glob.glob(os.path.join(checkpoint_path_1, "*.bin"))
+                    files = glob.glob(os.path.join(checkpoint_path_1, "*.safetensors"))
+                    files.append(*glob.glob(os.path.join(checkpoint_path_1, "*.bin")))
                     checkpoint_path_1 = files[0] if len(files) > 0 else None
                 if checkpoint_path_2 is not None and os.path.exists(checkpoint_path_2):
-                    files = glob.glob(os.path.join(checkpoint_path_2, "*.bin"))
+                    files = glob.glob(os.path.join(checkpoint_path_2, "*.safetensors"))
+                    files.append(*glob.glob(os.path.join(checkpoint_path_2, "*.bin")))
                     checkpoint_path_2 = files[0] if len(files) > 0 else None
+                print(f'DEBUG: checkpoint_path_2={checkpoint_path_2}')
                 # For an attr if both checkpoint_path_1 and 2 are None, ignore.
                 # If atleast one is present, deal with it according to interp method, of course only if the state_dict keys match.
                 if checkpoint_path_1 is None and checkpoint_path_2 is None:
@@ -207,9 +209,8 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                     theta_0 = theta_0()
 
                     update_theta_0 = getattr(module, "load_state_dict")
-                    theta_1 = torch.load(checkpoint_path_1, map_location="cpu")
-
-                    theta_2 = torch.load(checkpoint_path_2, map_location="cpu") if checkpoint_path_2 else None
+                    theta_1 = safetensors.torch.load_file(checkpoint_path_1) if checkpoint_path_1.endswith('.safetensors') else torch.load(checkpoint_path_1, map_location="cpu") 
+                    theta_2 = safetensors.torch.load_file(checkpoint_path_2) if checkpoint_path_2.endswith('.safetensors') else torch.load(checkpoint_path_2, map_location="cpu") 
 
                     if not theta_0.keys() == theta_1.keys():
                         print("SKIPPING ATTR ", attr, " DUE TO MISMATCH")
