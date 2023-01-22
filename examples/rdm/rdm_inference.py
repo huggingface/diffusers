@@ -655,9 +655,9 @@ def get_rdm_pipeline(args):
         client = ClipClient(url="https://knn5.laion.ai/knn-service", indice_name="laion5B")
 
     # Move text_encode and vae to gpu and cast to weight_dtype
+    unet.to(args.device, dtype=weight_dtype)
     clip_model.to(args.device, dtype=weight_dtype)
     vae.to(args.device, dtype=weight_dtype)
-    prompt = dataset['train'][args.caption_column][0]
     pipeline = get_pipeline(vae, clip_model, unet, tokenizer, feature_extractor)
     return pipeline, client, retriever
 def get_images(prompt, pipeline, client, retriever, img_dir=None, resolution=768, num_queries=10, image_column="image", guidance_scale=7.5, output_dir="sd-model-finetuned", num_log_imgs=3):
