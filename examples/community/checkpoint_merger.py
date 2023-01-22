@@ -165,7 +165,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
             cached_folders.append(cached_folder)
 
         # Step 3:-
-        # Load the first checkpoint as a diffusion pipeline and modify it's module state_dict in place
+        # Load the first checkpoint as a diffusion pipeline and modify its module state_dict in place
         final_pipe = DiffusionPipeline.from_pretrained(
             cached_folders[0], torch_dtype=torch_dtype, device_map=device_map
         )
@@ -188,7 +188,6 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         for attr in final_pipe.config.keys():
             if not attr.startswith("_"):
                 checkpoint_path_1 = os.path.join(cached_folders[1], attr)
-                print(f'DEBUG: checkpoint_path_1={checkpoint_path_1}')
                 if os.path.exists(checkpoint_path_1):
                     files = list(*glob.glob(os.path.join(checkpoint_path_1, "*.safetensors")),
                                  *glob.glob(os.path.join(checkpoint_path_1, "*.bin"))
@@ -199,13 +198,13 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                                  *glob.glob(os.path.join(checkpoint_path_2, "*.bin"))
                                  )
                     checkpoint_path_2 = files[0] if len(files) > 0 else None
-                print(f'DEBUG: checkpoint_path_2={checkpoint_path_2}')
                 # For an attr if both checkpoint_path_1 and 2 are None, ignore.
                 # If atleast one is present, deal with it according to interp method, of course only if the state_dict keys match.
                 if checkpoint_path_1 is None and checkpoint_path_2 is None:
                     print("SKIPPING ATTR ", attr)
                     continue
                 try:
+                    print("MERGING ATTR ", attr)
                     module = getattr(final_pipe, attr)
                     theta_0 = getattr(module, "state_dict")
                     theta_0 = theta_0()
