@@ -94,6 +94,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         interp = kwargs.pop("interp", None)
 
         print("Received list", pretrained_model_name_or_path_list)
+        print(f"Combining with alpha={alpha}, interpolation mode={interp}")
 
         checkpoint_count = len(pretrained_model_name_or_path_list)
         # Ignore result from model_index_json comparision of the two checkpoints
