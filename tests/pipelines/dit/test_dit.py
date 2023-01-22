@@ -111,7 +111,7 @@ class DiTPipelineIntegrationTests(unittest.TestCase):
             expected_image = load_numpy(
                 f"https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/dit/{word}.npy"
             )
-            assert np.abs((expected_image - image).abs()) < 1e-3
+            assert np.abs((expected_image - image).max()) < 1e-3
 
     def test_dit_512_fp16(self):
         generator = torch.manual_seed(0)
