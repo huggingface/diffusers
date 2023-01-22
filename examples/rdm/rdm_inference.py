@@ -69,31 +69,13 @@ def get_pipeline(vae, clip_model, unet, tokenizer, feature_extractor):
     )
     return pipeline
 
-def log_progress(pipeline, args, step, prompt, save_path, wandb_run=None, logs={}, retrieved_images=None):
-    logger.info("Running pipeline")
-    image = pipeline(
-        prompt, retrieved_images=retrieved_images, height=args.resolution, width=args.resolution, num_inference_steps=50, guidance_scale=args.guidance_scale
-    ).images[0]
-
-    image.save(save_path)
-    if is_wandb_available():
-        wandb_run.log(
-            {
-                **logs,
-                "iter": step,
-                "samples": wandb.Image(save_path, caption=prompt),
-            }
-        )
-
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.10.0.dev0")
-logger = get_dist_logger()
 
 _clip_retrieval_available = True
 try:
     _clip_retrieval_version = importlib_metadata.version("clip-retrieval")
     from clip_retrieval.clip_client import ClipClient, Modality
-    logger.debug(f"Successfully imported clip retrieval version {_clip_retrieval_version}")
 except importlib_metadata.PackageNotFoundError:
     _clip_retrieval_available = False
 def is_clip_retrieval_available():
@@ -120,6 +102,24 @@ def preprocess_images(images, feature_extractor: CLIPFeatureExtractor) -> torch.
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
+    parser.add_argument(
+        "--num_log_imgs",
+        type=int,
+        default=3,
+        help="Number of images to log",
+    )
+    parser.add_argument(
+        "--prompt",
+        type=str,
+        default="a photo of a dog",
+        help="Prompt to run rdm on",
+    )
+    parser.add_argument(
+        "--img_dir",
+        type=str,
+        default="frida",
+        help="The path to the iamge to condition rdm on",
+    )
     parser.add_argument(
         "--device",
         type=str,
@@ -548,8 +548,7 @@ class RDMDataset(Dataset):
         # print(f"pixel shape: {example['pixel_values'].shape}")
         return example
 
-def main():
-    args = parse_args()
+def get_rdm_pipeline(args):
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
 
     if args.use_clip_retrieval:
@@ -569,7 +568,6 @@ def main():
 
 
     # Load scheduler, tokenizer and models.
-    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     tokenizer = CLIPTokenizer.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
     )
@@ -661,20 +659,34 @@ def main():
     vae.to(args.device, dtype=weight_dtype)
     prompt = dataset['train'][args.caption_column][0]
     pipeline = get_pipeline(vae, clip_model, unet, tokenizer, feature_extractor)
-    os.makedirs(os.path.join(args.output_dir, "imgs"), exist_ok=True)
+    return pipeline, client, retriever
+def get_images(prompt, pipeline, client, retriever, img_folder=None, resolution=768, num_queries=10, image_column="image", guidance_scale=7.5, output_dir="sd-model-finetuned", num_log_imgs=3):
+    img_output_dir = os.path.join(output_dir, "imgs")
+    os.makedirs(img_output_dir, exist_ok=True)
+    imgs = []
+    if img_folder:
+        for img_path in os.listdir(img_folder):
+            image = Image.open(os.path.join(img_folder, img_path))
+            imgs.append(image)
     if client:
-        retrieved_images = retrieve_images_from_clip_retrieval(client, prompt, num_queries=args.num_queries)
+        retrieved_images = retrieve_images_from_clip_retrieval(client, prompt, num_queries=num_queries)
     else:
-        retrieved_images = retriever.get_knn_from_text(prompt).examples[args.image_column][:args.num_queries]
+        retrieved_images = retriever.get_knn_from_text(prompt).examples[image_column][:num_queries]
+    for img in imgs:
+        retrieved_images.append(img)
     for i in range(len(retrieved_images)):
         if not retrieved_images[i].mode == "RGB":
             retrieved_images[i] = retrieved_images[i].convert("RGB")
-        retrieved_images[i] = retrieved_images[i].resize((args.resolution, args.resolution), resample=PIL_INTERPOLATION['bicubic'])
-    image = pipeline(
-        prompt, retrieved_images=retrieved_images, height=args.resolution, width=args.resolution, num_inference_steps=50, guidance_scale=args.guidance_scale
-    ).images[0]
-    del pipeline
-
-
+        retrieved_images[i] = retrieved_images[i].resize((resolution, resolution), resample=PIL_INTERPOLATION['bicubic'])
+    for i in range(num_log_imgs):
+        image = pipeline(
+            prompt, retrieved_images=retrieved_images, height=resolution, width=resolution, num_inference_steps=50, guidance_scale=guidance_scale
+        ).images[0]
+        image.save(os.path.join(img_output_dir, f"{i}.png"))
+def main():
+    args = parse_args()
+    prompt = args.prompt
+    pipeline, client, retriever = get_rdm_pipeline(args)
+    get_images(prompt, pipeline, client, retriever, img_folder=args.img_folder, resolution=args.resolution, num_queries=args.num_queries, image_column=args.image_column, guidance_scale=args.guidance_scale)
 if __name__ == "__main__":
     main()
