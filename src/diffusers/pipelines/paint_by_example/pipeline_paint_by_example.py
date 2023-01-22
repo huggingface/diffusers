@@ -202,7 +202,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
         device = torch.device(f"cuda:{gpu_id}")
 
         for cpu_offloaded_model in [self.unet, self.vae, self.image_encoder]:
-            cpu_offload(cpu_offloaded_model, execution_device=device, offload_buffers=True)
+            cpu_offload(cpu_offloaded_model, execution_device=device)
 
         if self.safety_checker is not None:
             cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
@@ -364,7 +364,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
             image = self.feature_extractor(images=image, return_tensors="pt").pixel_values
 
         image = image.to(device=device, dtype=dtype)
-        image_embeddings = self.image_encoder(image)
+        image_embeddings, uncond_embeddings = self.image_encoder(image, return_uncond_vector=True)
 
         # duplicate image embeddings for each generation per prompt, using mps friendly method
         bs_embed, seq_len, _ = image_embeddings.shape
@@ -372,7 +372,6 @@ class PaintByExamplePipeline(DiffusionPipeline):
         image_embeddings = image_embeddings.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
         if do_classifier_free_guidance:
-            uncond_embeddings = self.image_encoder.uncond_vector
             uncond_embeddings = uncond_embeddings.repeat(1, image_embeddings.shape[0], 1)
             uncond_embeddings = uncond_embeddings.view(bs_embed * num_images_per_prompt, 1, -1)
 
