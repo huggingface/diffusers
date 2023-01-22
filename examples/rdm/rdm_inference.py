@@ -660,13 +660,13 @@ def get_rdm_pipeline(args):
     prompt = dataset['train'][args.caption_column][0]
     pipeline = get_pipeline(vae, clip_model, unet, tokenizer, feature_extractor)
     return pipeline, client, retriever
-def get_images(prompt, pipeline, client, retriever, img_folder=None, resolution=768, num_queries=10, image_column="image", guidance_scale=7.5, output_dir="sd-model-finetuned", num_log_imgs=3):
+def get_images(prompt, pipeline, client, retriever, img_dir=None, resolution=768, num_queries=10, image_column="image", guidance_scale=7.5, output_dir="sd-model-finetuned", num_log_imgs=3):
     img_output_dir = os.path.join(output_dir, "imgs")
     os.makedirs(img_output_dir, exist_ok=True)
     imgs = []
-    if img_folder:
-        for img_path in os.listdir(img_folder):
-            image = Image.open(os.path.join(img_folder, img_path))
+    if img_dir:
+        for img_path in os.listdir(img_dir):
+            image = Image.open(os.path.join(img_dir, img_path))
             imgs.append(image)
     if client:
         retrieved_images = retrieve_images_from_clip_retrieval(client, prompt, num_queries=num_queries)
@@ -687,6 +687,6 @@ def main():
     args = parse_args()
     prompt = args.prompt
     pipeline, client, retriever = get_rdm_pipeline(args)
-    get_images(prompt, pipeline, client, retriever, img_folder=args.img_folder, resolution=args.resolution, num_queries=args.num_queries, image_column=args.image_column, guidance_scale=args.guidance_scale)
+    get_images(prompt, pipeline, client, retriever, img_dir=args.img_dir, resolution=args.resolution, num_queries=args.num_queries, image_column=args.image_column, guidance_scale=args.guidance_scale)
 if __name__ == "__main__":
     main()
