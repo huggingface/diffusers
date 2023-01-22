@@ -210,8 +210,10 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                     theta_0 = theta_0()
 
                     update_theta_0 = getattr(module, "load_state_dict")
-                    theta_1 = safetensors.torch.load_file(checkpoint_path_1) if checkpoint_path_1.endswith('.safetensors') else torch.load(checkpoint_path_1, map_location="cpu") 
-                    theta_2 = safetensors.torch.load_file(checkpoint_path_2) if checkpoint_path_2.endswith('.safetensors') else torch.load(checkpoint_path_2, map_location="cpu") 
+                    theta_1 = safetensors.torch.load_file(checkpoint_path_1) if checkpoint_path_1.endswith('.safetensors') else torch.load(checkpoint_path_1, map_location="cpu")
+                    theta_2 = None
+                    if checkpoint_path_2:
+                        theta_2 = safetensors.torch.load_file(checkpoint_path_2) if checkpoint_path_2.endswith('.safetensors') else torch.load(checkpoint_path_2, map_location="cpu") 
 
                     if not theta_0.keys() == theta_1.keys():
                         print("SKIPPING ATTR ", attr, " DUE TO MISMATCH")
