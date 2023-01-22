@@ -207,6 +207,8 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                     continue
                 try:
                     module = getattr(final_pipe, attr)
+                    if isinstance(module,bool): # ignore requires_safety_checker boolean
+                        continue
                     theta_0 = getattr(module, "state_dict")
                     theta_0 = theta_0()
 
@@ -222,7 +224,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                     if theta_2 and not theta_1.keys() == theta_2.keys():
                         print(f'Skipping {attr}:y mismatch')
                 except Exception as e:
-                    print(f"skipping {attr}: {str(e)}")
+                    print(f"Skipping {attr} do to an unexpected error: {str(e)}")
                     continue
                 print(f"MERGING {attr}")
 
