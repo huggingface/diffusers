@@ -204,7 +204,6 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                     print("SKIPPING ATTR ", attr)
                     continue
                 try:
-                    print("MERGING ATTR ", attr)
                     module = getattr(final_pipe, attr)
                     theta_0 = getattr(module, "state_dict")
                     theta_0 = theta_0()
@@ -220,8 +219,9 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                         continue
                     if theta_2 and not theta_1.keys() == theta_2.keys():
                         print("SKIPPING ATTR ", attr, " DUE TO MISMATCH")
-                except:
+                except Exception as e:
                     print("SKIPPING ATTR ", attr)
+                    print(str(e))
                     continue
                 print("Found dicts for")
                 print(attr)
