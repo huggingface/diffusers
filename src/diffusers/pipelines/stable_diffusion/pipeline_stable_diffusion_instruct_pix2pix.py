@@ -266,7 +266,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
         # pix2pix has two uncond_embeddings
         half_batch_dim = text_embeddings.shape[0] // 2
         text_embeddings = torch.cat(
-            [text_embeddings[half_batch_dim:], text_embeddings[half_batch_dim:], text_embeddings[half_batch_dim:]]
+            [text_embeddings[half_batch_dim:], text_embeddings[:half_batch_dim], text_embeddings[:half_batch_dim]]
         )
 
         # 3. Preprocess image
