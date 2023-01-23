@@ -26,6 +26,7 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | Checkpoint Merger Pipeline | Diffusion Pipeline that enables merging of saved model checkpoints | [Checkpoint Merger Pipeline](#checkpoint-merger-pipeline)                   | -                                                                                                                                                                                                                  | [Naga Sai Abhinay Devarinti](https://github.com/Abhinay1997/) | 
 Stable Diffusion v1.1-1.4 Comparison | Run all 4 model checkpoints for Stable Diffusion and compare their results together | [Stable Diffusion Comparison](#stable-diffusion-comparisons) | - | [Suvaditya Mukherjee](https://github.com/suvadityamuk) |
 MagicMix | Diffusion Pipeline for semantic mixing of an image and a text prompt | [MagicMix](#magic-mix) | - | [Partho Das](https://github.com/daspartho) |
+| Stable UnCLIP | Diffusion Pipeline for combining prior model (generate clip image embedding from text, UnCLIPPipeline `"kakaobrain/karlo-v1-alpha"`) and decoder pipeline (decode clip image embedding to image, StableDiffusionImageVariationPipeline `"lambdalabs/sd-image-variations-diffusers"` ). | [Stable UnCLIP](#stable-unclip) | -  |[Ray Wang](https://wrong.wang) |
 
 
 
@@ -861,3 +862,92 @@ E.g. the above script generates the following image:
 ![206903104-913a671d-ef53-4ae4-919d-64c3059c8f67](https://user-images.githubusercontent.com/59410571/209578602-70f323fa-05b7-4dd6-b055-e40683e37914.jpg)
 
 For more example generations check out this [demo notebook](https://github.com/daspartho/MagicMix/blob/main/demo.ipynb).
+
+
+### Stable UnCLIP
+
+UnCLIPPipeline("kakaobrain/karlo-v1-alpha") provide a prior model that can generate clip image embedding from text.
+StableDiffusionImageVariationPipeline("lambdalabs/sd-image-variations-diffusers") provide a decoder model than can generate images from clip image embedding.
+
+```python
+import torch
+from diffusers import DiffusionPipeline
+
+device = torch.device("cpu" if not torch.cuda.is_available() else "cuda")
+
+pipeline = DiffusionPipeline.from_pretrained(
+    "kakaobrain/karlo-v1-alpha",
+    torch_dtype=torch.float16,
+    custom_pipeline="stable_unclip",
+    decoder_pipe_kwargs=dict(
+        image_encoder=None,
+    ),
+)
+pipeline.to(device)
+
+prompt = "a shiba inu wearing a beret and black turtleneck"
+random_generator = torch.Generator(device=device).manual_seed(1000)
+output = pipeline(
+    prompt=prompt,
+    width=512,
+    height=512,
+    generator=random_generator,
+    prior_guidance_scale=4,
+    prior_num_inference_steps=25,
+    decoder_guidance_scale=8,
+    decoder_num_inference_steps=50,
+)
+
+image = output.images[0]
+image.save("./shiba-inu.jpg")
+
+# debug
+
+# `pipeline.decoder_pipe` is a regular StableDiffusionImageVariationPipeline instance.
+# It is used to convert clip image embedding to latents, then fed into VAE decoder.
+print(pipeline.decoder_pipe.__class__)
+# <class 'diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_image_variation.StableDiffusionImageVariationPipeline'>
+
+# this pipeline only use prior module in "kakaobrain/karlo-v1-alpha"
+# It is used to convert clip text embedding to clip image embedding.
+print(pipeline)
+# StableUnCLIPPipeline {
+#   "_class_name": "StableUnCLIPPipeline",
+#   "_diffusers_version": "0.12.0.dev0",
+#   "prior": [
+#     "diffusers",
+#     "PriorTransformer"
+#   ],
+#   "prior_scheduler": [
+#     "diffusers",
+#     "UnCLIPScheduler"
+#   ],
+#   "text_encoder": [
+#     "transformers",
+#     "CLIPTextModelWithProjection"
+#   ],
+#   "tokenizer": [
+#     "transformers",
+#     "CLIPTokenizer"
+#   ]
+# }
+
+# pipeline.prior_scheduler is the scheduler used for prior in UnCLIP.
+print(pipeline.prior_scheduler)
+# UnCLIPScheduler {
+#   "_class_name": "UnCLIPScheduler",
+#   "_diffusers_version": "0.12.0.dev0",
+#   "clip_sample": true,
+#   "clip_sample_range": 5.0,
+#   "num_train_timesteps": 1000,
+#   "prediction_type": "sample",
+#   "variance_type": "fixed_small_log"
+# }
+```
+
+
+`shiba-inu.jpg`
+
+
+![shiba-inu](https://user-images.githubusercontent.com/16448529/209185639-6e5ec794-ce9d-4883-aa29-bd6852a2abad.jpg)
+
