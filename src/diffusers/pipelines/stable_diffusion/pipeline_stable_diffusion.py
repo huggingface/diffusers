@@ -482,7 +482,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         # 3. Encode input prompt
         text_embeddings = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
-        )
+        ).to(dtype=self.vae.dtype)
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
