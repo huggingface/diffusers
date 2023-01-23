@@ -771,7 +771,9 @@ def main():
                     pipeline = DiffusionPipeline.from_pretrained(
                         args.pretrained_model_name_or_path,
                         unet=unet,
+                        vae=vae,
                         text_encoder=accelerator.unwrap_model(text_encoder),
+                        tokenizer=tokenizer,
                         revision=args.revision,
                         torch_dtype=weight_dtype,
                     )
@@ -823,8 +825,6 @@ def main():
             pipeline = StableDiffusionPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 text_encoder=accelerator.unwrap_model(text_encoder),
-                vae=vae,
-                unet=unet,
                 tokenizer=tokenizer,
             )
             pipeline.save_pretrained(args.output_dir)
