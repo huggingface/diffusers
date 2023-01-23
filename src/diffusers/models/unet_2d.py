@@ -123,7 +123,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             self.class_embedding = nn.Identity(time_embed_dim, time_embed_dim)
         else:
             self.class_embedding = None
-            
+
         self.down_blocks = nn.ModuleList([])
         self.mid_block = None
         self.up_blocks = nn.ModuleList([])
