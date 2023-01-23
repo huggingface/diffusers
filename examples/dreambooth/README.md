@@ -323,7 +323,7 @@ pipe.to("cuda")
 Next, we can load the adapter layers into the UNet with the [`load_attn_procs` function](https://huggingface.co/docs/diffusers/api/loaders#diffusers.loaders.UNet2DConditionLoadersMixin.load_attn_procs).
 
 ```python
-pipe.load_attn_procs("patrickvonplaten/lora")
+pipe.unet.load_attn_procs("patrickvonplaten/lora_dreambooth_dog_example")
 ```
 
 Finally, we can run the model in inference.
