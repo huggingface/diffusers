@@ -20,7 +20,8 @@ from pathlib import Path
 from typing import Dict, Optional, Union
 from uuid import uuid4
 
-from huggingface_hub import HfFolder, whoami
+from huggingface_hub import HfFolder, ModelCard, ModelCardData, whoami
+from huggingface_hub.utils import is_jinja_available
 
 from .. import __version__
 from .constants import HUGGINGFACE_CO_RESOLVE_ENDPOINT
@@ -31,21 +32,16 @@ from .import_utils import (
     _onnxruntime_version,
     _torch_version,
     is_flax_available,
-    is_modelcards_available,
     is_onnx_available,
     is_torch_available,
 )
 from .logging import get_logger
 
 
-if is_modelcards_available():
-    from modelcards import CardData, ModelCard
-
-
 logger = get_logger(__name__)
 
 
-MODEL_CARD_TEMPLATE_PATH = Path(__file__).parent / "utils" / "model_card_template.md"
+MODEL_CARD_TEMPLATE_PATH = Path(__file__).parent / "model_card_template.md"
 SESSION_ID = uuid4().hex
 HF_HUB_OFFLINE = os.getenv("HF_HUB_OFFLINE", "").upper() in ENV_VARS_TRUE_VALUES
 DISABLE_TELEMETRY = os.getenv("DISABLE_TELEMETRY", "").upper() in ENV_VARS_TRUE_VALUES
@@ -87,10 +83,11 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 
 
 def create_model_card(args, model_name):
-    if not is_modelcards_available:
+    if not is_jinja_available():
         raise ValueError(
-            "Please make sure to have `modelcards` installed when using the `create_model_card` function. You can"
-            " install the package with `pip install modelcards`."
+            "Modelcard rendering is based on Jinja templates."
+            " Please make sure to have `jinja` installed before using `create_model_card`."
+            " To install it, please run `pip install Jinja2`."
         )
 
     if hasattr(args, "local_rank") and args.local_rank not in [-1, 0]:
@@ -100,7 +97,7 @@ def create_model_card(args, model_name):
     repo_name = get_full_repo_name(model_name, token=hub_token)
 
     model_card = ModelCard.from_template(
-        card_data=CardData(  # Card metadata object that will be converted to YAML block
+        card_data=ModelCardData(  # Card metadata object that will be converted to YAML block
             language="en",
             license="apache-2.0",
             library_name="diffusers",

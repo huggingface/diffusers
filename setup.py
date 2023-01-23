@@ -91,9 +91,9 @@ _deps = [
     "isort>=5.5.4",
     "jax>=0.2.8,!=0.3.2",
     "jaxlib>=0.1.65",
+    "Jinja2",
     "k-diffusion>=0.0.12",
     "librosa",
-    "modelcards>=0.1.4",
     "numpy",
     "parameterized",
     "pytest",
@@ -180,9 +180,10 @@ extras = {}
 extras = {}
 extras["quality"] = deps_list("black", "isort", "flake8", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
-extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "modelcards")
+extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "Jinja2")
 extras["test"] = deps_list(
     "datasets",
+    "Jinja2",
     "k-diffusion",
     "librosa",
     "parameterized",
