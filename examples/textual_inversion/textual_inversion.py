@@ -35,7 +35,7 @@ import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
-from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, StableDiffusionPipeline, UNet2DConditionModel
+from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, StableDiffusionPipeline, UNet2DConditionModel, DPMSolverMultistepScheduler
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
 from diffusers.utils.import_utils import is_xformers_available
@@ -71,45 +71,6 @@ def wandb_setup(
     )
 
 
-def get_pipeline(text_encoder, vae, unet, tokenizer, accelerator):
-    # I disabled safety checker as it causes an oom
-    pipeline = StableDiffusionPipeline(
-        text_encoder=accelerator.unwrap_model(text_encoder),
-        vae=vae,
-        unet=unet,
-        tokenizer=tokenizer,
-        scheduler=PNDMScheduler(
-            beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", skip_prk_steps=True, steps_offset=1
-        ),
-        safety_checker=None,
-        feature_extractor=None,
-    )
-    return pipeline
-
-
-def log_progress(pipeline, args, step, placeholder_token, save_path, wandb_run=None, logs={}):
-    logger.info("Running pipeline")
-
-    prompt = f"a photo of a {placeholder_token}"
-
-    with torch.autocast("cuda"):
-        image = pipeline(
-            prompt,
-            height=args.resolution,
-            width=args.resolution,
-            num_inference_steps=50,
-            guidance_scale=args.guidance_scale,
-        ).images[0]
-
-    image.save(save_path)
-    if is_wandb_available():
-        wandb_run.log(
-            {
-                **logs,
-                "iter": step,
-                "samples": wandb.Image(save_path, caption=prompt),
-            }
-        )
 
 
 if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
@@ -144,9 +105,32 @@ def save_progress(text_encoder, placeholder_token_id, accelerator, args, save_pa
     learned_embeds_dict = {args.placeholder_token: learned_embeds.detach().cpu()}
     torch.save(learned_embeds_dict, save_path)
 
-
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
+    parser.add_argument(
+        "--project_name",
+        type=str,
+        default="huggingface_textual_inv",
+        help="Name of wandb run",
+    )
+    parser.add_argument(
+        "--num_inference_steps",
+        type=int,
+        default=25,
+        help="Number of steps for inference.",
+    )
+    parser.add_argument(
+        "--validation_prompt",
+        type=str,
+        default="A photo of <frida>",
+        help="Prompt to use for validation.",
+    )
+    parser.add_argument(
+        "--num_validation_images",
+        type=int,
+        default=1,
+        help="Number of images to generate for validation.",
+    )
     parser.add_argument(
         "--guidance_scale",
         type=float,
@@ -508,16 +492,14 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 def main():
     args = parse_args()
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
-    wandb_run = None
-    if is_wandb_available():
-        wandb_run = wandb_setup(args, args.project_name)
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
         logging_dir=logging_dir,
     )
-
+    if is_wandb_available():
+        accelerator.init_trackers(args.project_name, config=args)
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -789,11 +771,37 @@ def main():
                 progress_bar.update(1)
                 global_step += 1
                 if global_step % args.log_frequency == 0:
-                    pipeline = get_pipeline(text_encoder, vae, unet, tokenizer, accelerator)
-                    os.makedirs(os.path.join(args.output_dir, "imgs"), exist_ok=True)
-                    save_path = os.path.join(args.output_dir, f"imgs/{global_step}.jpg")
-                    log_progress(pipeline, args, global_step, args.placeholder_token, save_path, wandb_run)
+                    logger.info(
+                        f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+                        f" {args.validation_prompt}."
+                    )
+                    # create pipeline
+                    pipeline = DiffusionPipeline.from_pretrained(
+                        args.pretrained_model_name_or_path,
+                        unet=unet,
+                        text_encoder=accelerator.unwrap_model(text_encoder),
+                        revision=args.revision,
+                        torch_dtype=weight_dtype,
+                    )
+                    pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
+                    pipeline = pipeline.to(accelerator.device)
+                    pipeline.set_progress_bar_config(disable=True)
+                    # run inference
+                    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+                    prompt = args.num_validation_images * [args.validation_prompt]
+                    images = pipeline(prompt, num_inference_steps=args.num_inference_steps, generator=generator).images
+                    for tracker in accelerator.trackers:
+                        if tracker.name == "wandb":
+                            tracker.log(
+                                {
+                                    "validation": [
+                                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                        for i, image in enumerate(images)
+                                    ]
+                                }
+                            )
                     del pipeline
+                    torch.cuda.empty_cache()
                 if global_step % args.save_steps == 0:
                     save_path = os.path.join(args.output_dir, f"learned_embeds-steps-{global_step}.bin")
                     save_progress(text_encoder, placeholder_token_id, accelerator, args, save_path)
