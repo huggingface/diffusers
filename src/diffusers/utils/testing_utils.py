@@ -45,6 +45,18 @@ def torch_all_close(a, b, *args, **kwargs):
     return True
 
 
+def print_tensor_test(tensor):
+    test_name = os.environ.get("PYTEST_CURRENT_TEST")
+    if not torch.is_tensor(tensor):
+        tensor = torch.from_numpy(tensor)
+
+    tensor_str = str(tensor.detach().cpu().flatten())
+    # format is usually:
+    # expected_slice = np.array([-0.5713, -0.3018, -0.9814, 0.04663, -0.879, 0.76, -1.734, 0.1044, 1.161])
+    output_str = tensor_str.replace("tensor", "expected_slice = np.array")
+    print(50 * "-" + "\n" + test_name + "\n" + output_str + "\n" + 50 * "-")
+
+
 def get_tests_dir(append_path=None):
     """
     Args:

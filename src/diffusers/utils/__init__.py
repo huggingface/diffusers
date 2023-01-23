@@ -76,6 +76,7 @@ if is_torch_available():
         load_numpy,
         nightly,
         parse_flag_from_env,
+        print_tensor_test,
         require_torch_gpu,
         slow,
         torch_all_close,
