@@ -132,7 +132,7 @@ accelerate launch train_dreambooth.py \
 ```
 
 
-## Training on a 12GB GPU:
+### Training on a 12GB GPU:
 
 It is possible to run dreambooth on a 12GB GPU by using the following optimizations:
 - [gradient checkpointing and the 8-bit optimizer](#training-on-a-16gb-gpu)
