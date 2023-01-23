@@ -584,9 +584,9 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, List[str]],
-        image: Union[torch.FloatTensor, PIL.Image.Image],
-        mask_image: Union[torch.FloatTensor, PIL.Image.Image],
+        prompt: Union[str, List[str]] = None,
+        image: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        mask_image: Union[torch.FloatTensor, PIL.Image.Image] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -709,6 +709,12 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
 
         # 1. Check inputs
         self.check_inputs(prompt, height, width, callback_steps)
+
+        if image is None:
+            raise ValueError("`image` input cannot be undefined.")
+
+        if mask_image is None:
+            raise ValueError("`mask_image` input cannot be undefined.")
 
         # 2. Define call parameters
         batch_size = 1 if isinstance(prompt, str) else len(prompt)

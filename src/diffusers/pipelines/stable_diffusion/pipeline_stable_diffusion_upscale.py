@@ -357,8 +357,8 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, List[str]],
-        image: Union[torch.FloatTensor, PIL.Image.Image, List[PIL.Image.Image]],
+        prompt: Union[str, List[str]] = None,
+        image: Union[torch.FloatTensor, PIL.Image.Image, List[PIL.Image.Image]] = None,
         num_inference_steps: int = 75,
         guidance_scale: float = 9.0,
         noise_level: int = 20,
@@ -462,6 +462,9 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
 
         # 1. Check inputs
         self.check_inputs(prompt, image, noise_level, callback_steps)
+
+        if image is None:
+            raise ValueError("`image` input cannot be undefined.")
 
         # 2. Define call parameters
         batch_size = 1 if isinstance(prompt, str) else len(prompt)

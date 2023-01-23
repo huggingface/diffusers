@@ -477,8 +477,8 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, List[str]],
-        image: Union[torch.FloatTensor, PIL.Image.Image],
+        prompt: Union[str, List[str]] = None,
+        image: Union[torch.FloatTensor, PIL.Image.Image] = None,
         depth_map: Optional[torch.FloatTensor] = None,
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
@@ -581,6 +581,9 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
         """
         # 1. Check inputs
         self.check_inputs(prompt, strength, callback_steps)
+
+        if image is None:
+            raise ValueError("`image` input cannot be undefined.")
 
         # 2. Define call parameters
         batch_size = 1 if isinstance(prompt, str) else len(prompt)

@@ -127,8 +127,8 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, List[str]],
-        image: Union[torch.FloatTensor, PIL.Image.Image],
+        prompt: Union[str, List[str]] = None,
+        image: Union[torch.FloatTensor, PIL.Image.Image] = None,
         num_inference_steps: int = 100,
         guidance_scale: float = 7.5,
         image_guidance_scale: float = 1.5,
@@ -239,6 +239,9 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
         """
         # 0. Check inputs
         self.check_inputs(prompt, callback_steps)
+
+        if image is None:
+            raise ValueError("`image` input cannot be undefined.")
 
         # 1. Define call parameters
         batch_size = 1 if isinstance(prompt, str) else len(prompt)
