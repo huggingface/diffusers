@@ -21,6 +21,7 @@ import torch
 import PIL
 from packaging import version
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+import torchvision
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
@@ -44,17 +45,26 @@ def preprocess_image(image):
     return 2.0 * image - 1.0
 
 
+# add additional output for mask tensor corresponding to input image (in addition to latent mask)
 def preprocess_mask(mask, scale_factor=8):
     mask = mask.convert("L")
     w, h = mask.size
     w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
+
+    input_mask = np.array(mask).astype(np.float32) / 255.0
+    input_mask = np.tile(input_mask, (3, 1, 1))
+    input_mask = input_mask[None].transpose(0, 1, 2, 3)  # add batch dimension
+    input_mask = 1 - input_mask  # repaint white, keep black
+    input_mask = torch.from_numpy(input_mask)
+
     mask = mask.resize((w // scale_factor, h // scale_factor), resample=PIL_INTERPOLATION["nearest"])
     mask = np.array(mask).astype(np.float32) / 255.0
     mask = np.tile(mask, (4, 1, 1))
-    mask = mask[None].transpose(0, 1, 2, 3)  # what does this step do?
+    mask = mask[None].transpose(0, 1, 2, 3)  # add batch dimension
     mask = 1 - mask  # repaint white, keep black
     mask = torch.from_numpy(mask)
-    return mask
+
+    return mask, input_mask
 
 
 class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
@@ -419,6 +429,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
+        preserve_unmasked_image: bool = True,
         **kwargs,
     ):
         r"""
@@ -475,7 +486,10 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
-
+            preserve_unmasked_image (`bool`, *optional*, defaults to `True`):
+                Whether or not to preserve the unmasked portions of the original image in the inpainted output. If False, 
+                inpainting of the masked latents may produce noticeable distortion of unmasked portions of the decoded 
+                image.
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
@@ -508,7 +522,14 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             image = preprocess_image(image)
 
         if not isinstance(mask_image, torch.FloatTensor):
-            mask_image = preprocess_mask(mask_image, self.vae_scale_factor)
+            mask_image, input_mask_image = preprocess_mask(mask_image, self.vae_scale_factor)
+        else:
+            # if mask_image is tensor, we still need to scale mask_image to the latent shape
+            # based on __call__ documentation, mask_image tensor is expected to be size (B, H, W, 1)
+            mask_image = mask_image.permute(0, 3, 1, 2) # permute mask to pytorch standard (B, C, H, W)
+            input_mask_image = mask_image
+            h, w = image.shape[-2]//self.vae_scale_factor, image.shape[-1]//self.vae_scale_factor
+            mask_image = torchvision.transforms.functional.resize(mask_image, (h,w))
 
         # 5. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -562,8 +583,27 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
+        # use original latents corresponding to unmasked portions of the image
+        # necessary step because noise is still added to "init_latents_proper" after final denoising step
+        latents = (init_latents_orig * mask) + (latents * (1 - mask))
+
         # 10. Post-processing
-        image = self.decode_latents(latents)
+        if preserve_unmasked_image:
+            # decode latents
+            latents = 1 / 0.18215 * latents
+            inpaint_image = self.vae.decode(latents).sample
+
+            # restore unmasked parts of image with original image
+            input_mask_image = input_mask_image.to(inpaint_image)
+            image = image.to(inpaint_image)
+            image = (image * input_mask_image) + (inpaint_image * (1 - input_mask_image)) # use original unmasked portions of image to avoid degradation
+
+            # post-processing of image
+            image = (image / 2 + 0.5).clamp(0, 1)
+            # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
+            image = image.cpu().permute(0, 2, 3, 1).float().numpy()
+        else:
+            image = self.decode_latents(latents)
 
         # 11. Run safety checker
         image, has_nsfw_concept = self.run_safety_checker(image, device, text_embeddings.dtype)
