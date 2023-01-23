@@ -3,6 +3,7 @@ import os
 from typing import Dict, List, Union
 
 import torch
+
 import safetensors.torch
 from diffusers import DiffusionPipeline, __version__
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
