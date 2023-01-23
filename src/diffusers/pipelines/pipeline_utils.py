@@ -855,12 +855,13 @@ class DiffusionPipeline(ConfigMixin):
                 function of xFormers.
 
         Examples:
-        ```py
-        from diffusers import DiffusionPipeline
-        from xformers import ...  # some attention op
 
-        pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
-        pipe.enable_xformers_memory_efficient_attention(attention_op=...)
+        ```py
+        >>> from diffusers import DiffusionPipeline
+        >>> from xformers.ops import MemoryEfficientAttentionFlashAttentionOp
+
+        >>> pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to("cuda")
+        >>> pipe.enable_xformers_memory_efficient_attention(attention_op=MemoryEfficientAttentionFlashAttentionOp)
         ```
         """
         self.set_use_memory_efficient_attention_xformers(True, attention_op)
