@@ -224,12 +224,13 @@ class ModelMixin(torch.nn.Module):
                 function of xFormers.
 
         Examples:
-        ```py
-        from diffusers import UNet2DConditionModel
-        from xformers import ...  # some attention op
 
-        model = UNet2DConditionModel.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="unet")
-        model.enable_xformers_memory_efficient_attention(attention_op=...)
+        ```py
+        >>> from diffusers import UNet2DConditionModel
+        >>> from xformers.ops import MemoryEfficientAttentionFlashAttentionOp
+
+        >>> model = UNet2DConditionModel.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="unet").to("cuda")
+        >>>  model.enable_xformers_memory_efficient_attention(attention_op=MemoryEfficientAttentionFlashAttentionOp)
         ```
         """
         self.set_use_memory_efficient_attention_xformers(True, attention_op)
