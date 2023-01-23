@@ -35,7 +35,14 @@ import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
-from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, StableDiffusionPipeline, UNet2DConditionModel, DPMSolverMultistepScheduler
+from diffusers import (
+    AutoencoderKL,
+    DDPMScheduler,
+    DiffusionPipeline,
+    DPMSolverMultistepScheduler,
+    StableDiffusionPipeline,
+    UNet2DConditionModel,
+)
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
 from diffusers.utils.import_utils import is_xformers_available
@@ -71,8 +78,6 @@ def wandb_setup(
     )
 
 
-
-
 if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
     PIL_INTERPOLATION = {
         "linear": PIL.Image.Resampling.BILINEAR,
@@ -104,6 +109,7 @@ def save_progress(text_encoder, placeholder_token_id, accelerator, args, save_pa
     learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_id]
     learned_embeds_dict = {args.placeholder_token: learned_embeds.detach().cpu()}
     torch.save(learned_embeds_dict, save_path)
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
@@ -783,7 +789,12 @@ def main():
                     # run inference
                     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed or 0)
                     prompt = args.num_validation_images * [args.validation_prompt]
-                    images = pipeline(prompt, num_inference_steps=args.num_inference_steps, generator=generator, guidance_scale=args.guidance_scale).images
+                    images = pipeline(
+                        prompt,
+                        num_inference_steps=args.num_inference_steps,
+                        generator=generator,
+                        guidance_scale=args.guidance_scale,
+                    ).images
                     for tracker in accelerator.trackers:
                         if tracker.name == "wandb":
                             tracker.log(
