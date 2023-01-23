@@ -2,7 +2,7 @@
 ## Install
 ```
 conda install faiss-gpu cudatoolkit=11.6
-pip install datasets clip-retrieval
+pip install accelerate transformers timm fairscale albumentations wandb datasets clip-retrieval triton
 ```
 To install xformers on windows, go [here](https://github.com/facebookresearch/xformers/actions/runs/3543179717) and download windows-2019.zip file and pip install the file that corresponds to the version that fits.
 ## Inference
