@@ -760,6 +760,10 @@ def main():
 
             if accelerator.is_main_process:
                 for tracker in accelerator.trackers:
+                    if tracker.name == "tensorboard":
+                        np_images = np.stack([np.asarray(img) for img in images])
+                        np_images = np_images.transpose(0, 3, 1, 2)
+                        tracker.writer.add_images("validation", np_images, epoch)
                     if tracker.name == "wandb":
                         tracker.log(
                             {
@@ -807,6 +811,10 @@ def main():
 
     if accelerator.is_main_process:
         for tracker in accelerator.trackers:
+            if tracker.name == "tensorboard":
+                np_images = np.stack([np.asarray(img) for img in images])
+                np_images = np_images.transpose(0, 3, 1, 2)
+                tracker.writer.add_images("test", np_images, epoch)
             if tracker.name == "wandb":
                 tracker.log(
                     {
