@@ -824,6 +824,8 @@ def main():
         if save_full_model:
             pipeline = StableDiffusionPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
+                unet=unet,
+                vae=vae,
                 text_encoder=accelerator.unwrap_model(text_encoder),
                 tokenizer=tokenizer,
             )
