@@ -21,6 +21,7 @@ import sys
 from collections import OrderedDict
 from typing import Union
 
+from huggingface_hub.utils import is_jinja_available  # noqa: F401
 from packaging import version
 from packaging.version import Version, parse
 
@@ -146,14 +147,6 @@ except importlib_metadata.PackageNotFoundError:
     _unidecode_available = False
 
 
-_modelcards_available = importlib.util.find_spec("modelcards") is not None
-try:
-    _modelcards_version = importlib_metadata.version("modelcards")
-    logger.debug(f"Successfully imported modelcards version {_modelcards_version}")
-except importlib_metadata.PackageNotFoundError:
-    _modelcards_available = False
-
-
 _onnxruntime_version = "N/A"
 _onnx_available = importlib.util.find_spec("onnxruntime") is not None
 if _onnx_available:
@@ -220,9 +213,16 @@ except importlib_metadata.PackageNotFoundError:
 _wandb_available = importlib.util.find_spec("wandb") is not None
 try:
     _wandb_version = importlib_metadata.version("wandb")
-    logger.debug(f"Successfully imported k-diffusion version {_wandb_version }")
+    logger.debug(f"Successfully imported wandb version {_wandb_version }")
 except importlib_metadata.PackageNotFoundError:
     _wandb_available = False
+
+_omegaconf_available = importlib.util.find_spec("omegaconf") is not None
+try:
+    _omegaconf_version = importlib_metadata.version("omegaconf")
+    logger.debug(f"Successfully imported omegaconf version {_omegaconf_version}")
+except importlib_metadata.PackageNotFoundError:
+    _omegaconf_available = False
 
 
 def is_torch_available():
@@ -253,10 +253,6 @@ def is_unidecode_available():
     return _unidecode_available
 
 
-def is_modelcards_available():
-    return _modelcards_available
-
-
 def is_onnx_available():
     return _onnx_available
 
@@ -283,6 +279,10 @@ def is_k_diffusion_available():
 
 def is_wandb_available():
     return _wandb_available
+
+
+def is_omegaconf_available():
+    return _omegaconf_available
 
 
 # docstyle-ignore
@@ -345,6 +345,11 @@ WANDB_IMPORT_ERROR = """
 install wandb`
 """
 
+# docstyle-ignore
+OMEGACONF_IMPORT_ERROR = """
+{0} requires the omegaconf library but it was not found in your environment. You can install it with pip: `pip
+install omegaconf`
+"""
 
 BACKENDS_MAPPING = OrderedDict(
     [
@@ -358,6 +363,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("librosa", (is_librosa_available, LIBROSA_IMPORT_ERROR)),
         ("k_diffusion", (is_k_diffusion_available, K_DIFFUSION_IMPORT_ERROR)),
         ("wandb", (is_wandb_available, WANDB_IMPORT_ERROR)),
+        ("omageconf", (is_omegaconf_available, OMEGACONF_IMPORT_ERROR)),
     ]
 )
 
