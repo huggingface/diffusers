@@ -255,7 +255,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         device,
         num_images_per_prompt,
         do_classifier_free_guidance,
-        negative_prompt,
+        negative_prompt=None,
         text_embeddings: Optional[torch.FloatTensor] = None,
         uncond_embeddings: Optional[torch.FloatTensor] = None,
     ):

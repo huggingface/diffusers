@@ -264,7 +264,10 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
             uncond_embeddings=negative_prompt_embeds,
         )
         # pix2pix has two uncond_embeddings
-        text_embeddings = torch.cat([text_embeddings, text_embeddings[text_embeddings.shape[0] // 2 :]])
+        half_batch_dim = text_embeddings.shape[0] // 2
+        text_embeddings = torch.cat(
+            [text_embeddings[half_batch_dim:], text_embeddings[half_batch_dim:], text_embeddings[half_batch_dim:]]
+        )
 
         # 3. Preprocess image
         image = preprocess(image)
@@ -425,7 +428,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
         device,
         num_images_per_prompt,
         do_classifier_free_guidance,
-        negative_prompt,
+        negative_prompt=None,
         text_embeddings: Optional[torch.FloatTensor] = None,
         uncond_embeddings: Optional[torch.FloatTensor] = None,
     ):
