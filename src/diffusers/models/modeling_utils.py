@@ -222,6 +222,15 @@ class ModelMixin(torch.nn.Module):
                 Override the default `None` operator for use as `op` argument to the
                 [`memory_efficient_attention()`](https://facebookresearch.github.io/xformers/components/ops.html#xformers.ops.memory_efficient_attention)
                 function of xFormers.
+                
+        Examples:
+        ```py
+        from diffusers import UNet2DConditionModel
+        from xformers import ...  # some attention op
+        
+        model = UNet2DConditionModel.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="unet")
+        model.enable_xformers_memory_efficient_attention(attention_op=...)
+        ```
         """
         self.set_use_memory_efficient_attention_xformers(True, attention_op)
 
