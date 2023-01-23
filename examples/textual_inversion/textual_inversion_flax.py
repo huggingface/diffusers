@@ -632,7 +632,7 @@ def main():
 
             if global_step >= args.max_train_steps:
                 break
-            if global_step % args.save_steps==0:
+            if global_step % args.save_steps == 0:
                 learned_embeds = get_params_to_save(state.params)["text_model"]["embeddings"]["token_embedding"]["embedding"][
                     placeholder_token_id
                 ]
