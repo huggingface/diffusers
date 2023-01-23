@@ -230,7 +230,7 @@ class ModelMixin(torch.nn.Module):
         >>> from xformers.ops import MemoryEfficientAttentionFlashAttentionOp
 
         >>> model = UNet2DConditionModel.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="unet").to("cuda")
-        >>>  model.enable_xformers_memory_efficient_attention(attention_op=MemoryEfficientAttentionFlashAttentionOp)
+        >>> model.enable_xformers_memory_efficient_attention(attention_op=MemoryEfficientAttentionFlashAttentionOp)
         ```
         """
         self.set_use_memory_efficient_attention_xformers(True, attention_op)
