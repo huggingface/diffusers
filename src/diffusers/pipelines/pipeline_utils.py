@@ -853,6 +853,15 @@ class DiffusionPipeline(ConfigMixin):
                 Override the default `None` operator for use as `op` argument to the
                 [`memory_efficient_attention()`](https://facebookresearch.github.io/xformers/components/ops.html#xformers.ops.memory_efficient_attention)
                 function of xFormers.
+                
+        Examples:
+        ```py
+        from diffusers import DiffusionPipeline
+        from xformers import ...  # some attention op
+        
+        pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+        pipe.enable_xformers_memory_efficient_attention(attention_op=...)
+        ```
         """
         self.set_use_memory_efficient_attention_xformers(True, attention_op)
 
