@@ -207,6 +207,43 @@ class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
 
         assert image.shape == (1, 32, 32, 3)
 
+    @unittest.skipIf(torch_device != "cuda", "This test requires a GPU")
+    def test_stable_diffusion_img2img_pipeline_multiple_of_8(self):
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/img2img/sketch-mountains-input.jpg"
+        )
+        # resize to resolution that is divisible by 8 but not 16 or 32
+        init_image = init_image.resize((760, 504))
+
+        model_id = "BAAI/AltDiffusion"
+        pipe = AltDiffusionImg2ImgPipeline.from_pretrained(
+            model_id,
+            safety_checker=None,
+        )
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        prompt = "A fantasy landscape, trending on artstation"
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        output = pipe(
+            prompt=prompt,
+            image=init_image,
+            strength=0.75,
+            guidance_scale=7.5,
+            generator=generator,
+            output_type="np",
+        )
+        image = output.images[0]
+
+        image_slice = image[255:258, 383:386, -1]
+
+        assert image.shape == (504, 760, 3)
+        expected_slice = np.array([0.3252, 0.3340, 0.3418, 0.3263, 0.3346, 0.3300, 0.3163, 0.3470, 0.3427])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
 
 @slow
 @require_torch_gpu

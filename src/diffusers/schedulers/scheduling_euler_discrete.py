@@ -19,8 +19,8 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, BaseOutput, logging, randn_tensor
-from .scheduling_utils import SchedulerMixin
+from ..utils import BaseOutput, logging, randn_tensor
+from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -72,7 +72,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     """
 
-    _compatibles = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
+    _compatibles = [e.name for e in KarrasDiffusionSchedulers]
     order = 1
 
     @register_to_config
@@ -198,9 +198,11 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             or isinstance(timestep, torch.LongTensor)
         ):
             raise ValueError(
-                "Passing integer indices (e.g. from `enumerate(timesteps)`) as timesteps to"
-                " `EulerDiscreteScheduler.step()` is not supported. Make sure to pass"
-                " one of the `scheduler.timesteps` as a timestep.",
+                (
+                    "Passing integer indices (e.g. from `enumerate(timesteps)`) as timesteps to"
+                    " `EulerDiscreteScheduler.step()` is not supported. Make sure to pass"
+                    " one of the `scheduler.timesteps` as a timestep."
+                ),
             )
 
         if not self.is_scale_input_called:

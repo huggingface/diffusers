@@ -15,7 +15,7 @@ from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version
-from huggingface_hub import HfFolder, Repository, whoami
+from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from onnxruntime.training.ortmodule import ORTModule
 from torchvision.transforms import (
     CenterCrop,
@@ -157,7 +157,6 @@ def parse_args():
     parser.add_argument(
         "--use_ema",
         action="store_true",
-        default=True,
         help="Whether to use Exponential Moving Average for the final model weights.",
     )
     parser.add_argument("--ema_inv_gamma", type=float, default=1.0, help="The inverse gamma value for the EMA decay.")
@@ -287,8 +286,17 @@ def main(args):
             "UpBlock2D",
         ),
     )
-    accepts_prediction_type = "prediction_type" in set(inspect.signature(DDPMScheduler.__init__).parameters.keys())
 
+    if args.use_ema:
+        ema_model = EMAModel(
+            model.parameters(),
+            decay=args.ema_max_decay,
+            use_ema_warmup=True,
+            inv_gamma=args.ema_inv_gamma,
+            power=args.ema_power,
+        )
+
+    accepts_prediction_type = "prediction_type" in set(inspect.signature(DDPMScheduler.__init__).parameters.keys())
     if accepts_prediction_type:
         noise_scheduler = DDPMScheduler(
             num_train_timesteps=args.ddpm_num_steps,
@@ -347,16 +355,12 @@ def main(args):
     model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, lr_scheduler
     )
-    accelerator.register_for_checkpointing(lr_scheduler)
+
+    if args.use_ema:
+        accelerator.register_for_checkpointing(ema_model)
+        ema_model.to(accelerator.device)
 
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
-
-    ema_model = EMAModel(
-        accelerator.unwrap_model(model),
-        inv_gamma=args.ema_inv_gamma,
-        power=args.ema_power,
-        max_value=args.ema_max_decay,
-    )
 
     model = ORTModule(model)
 
@@ -367,7 +371,8 @@ def main(args):
                 repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
             else:
                 repo_name = args.hub_model_id
-            repo = Repository(args.output_dir, clone_from=repo_name)
+            create_repo(repo_name, exist_ok=True, token=args.hub_token)
+            repo = Repository(args.output_dir, clone_from=repo_name, token=args.hub_token)
 
             with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
                 if "step_*" not in gitignore:
@@ -448,7 +453,7 @@ def main(args):
                 optimizer.step()
                 lr_scheduler.step()
                 if args.use_ema:
-                    ema_model.step(model)
+                    ema_model.step(model.parameters())
                 optimizer.zero_grad()
 
             # Checks if the accelerator has performed an optimization step behind the scenes
