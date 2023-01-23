@@ -108,12 +108,6 @@ def save_progress(text_encoder, placeholder_token_id, accelerator, args, save_pa
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
-        "--project_name",
-        type=str,
-        default="huggingface_textual_inv",
-        help="Name of wandb run",
-    )
-    parser.add_argument(
         "--num_inference_steps",
         type=int,
         default=25,
@@ -498,8 +492,6 @@ def main():
         log_with=args.report_to,
         logging_dir=logging_dir,
     )
-    if is_wandb_available():
-        accelerator.init_trackers(args.project_name, config=args)
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -787,9 +779,9 @@ def main():
                     pipeline = pipeline.to(accelerator.device)
                     pipeline.set_progress_bar_config(disable=True)
                     # run inference
-                    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+                    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed or 0)
                     prompt = args.num_validation_images * [args.validation_prompt]
-                    images = pipeline(prompt, num_inference_steps=args.num_inference_steps, generator=generator).images
+                    images = pipeline(prompt, num_inference_steps=args.num_inference_steps, generator=generator, guidance_scale=args.guidance_scale).images
                     for tracker in accelerator.trackers:
                         if tracker.name == "wandb":
                             tracker.log(
