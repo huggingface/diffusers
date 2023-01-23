@@ -762,7 +762,7 @@ def main():
                 for tracker in accelerator.trackers:
                     if tracker.name == "tensorboard":
                         np_images = np.stack([np.asarray(img) for img in images])
-                        tracker.writer.add_images("validation", np_images, epoch, dataformats='NHWC')
+                        tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
                     if tracker.name == "wandb":
                         tracker.log(
                             {
@@ -812,7 +812,7 @@ def main():
         for tracker in accelerator.trackers:
             if tracker.name == "tensorboard":
                 np_images = np.stack([np.asarray(img) for img in images])
-                tracker.writer.add_images("test", np_images, epoch, dataformats='NHWC')
+                tracker.writer.add_images("test", np_images, epoch, dataformats="NHWC")
             if tracker.name == "wandb":
                 tracker.log(
                     {
