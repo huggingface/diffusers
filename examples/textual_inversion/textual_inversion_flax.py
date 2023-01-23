@@ -122,6 +122,12 @@ def parse_args():
         help="Total number of training steps to perform.  If provided, overrides num_train_epochs.",
     )
     parser.add_argument(
+        "--save_steps",
+        type=int,
+        default=500,
+        help="Save learned_embeds.bin every X updates steps.",
+    )
+    parser.add_argument(
         "--learning_rate",
         type=float,
         default=1e-4,
@@ -626,6 +632,12 @@ def main():
 
             if global_step >= args.max_train_steps:
                 break
+            if global_step % arg.save_steps==0:
+                learned_embeds = get_params_to_save(state.params)["text_model"]["embeddings"]["token_embedding"]["embedding"][
+                    placeholder_token_id
+                ]
+                learned_embeds_dict = {args.placeholder_token: learned_embeds}
+                jnp.save(os.path.join(args.output_dir, "learned_embeds-"+str(global_step)+".npy"), learned_embeds_dict)
 
         train_metric = jax_utils.unreplicate(train_metric)
 
