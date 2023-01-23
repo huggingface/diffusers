@@ -4,6 +4,11 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
+numpy = "*"
+huggingface-hub = "*"
+pillow = "*"
+transformers = "*"
+accelerate = "*"
 
 [dev-packages]
 
