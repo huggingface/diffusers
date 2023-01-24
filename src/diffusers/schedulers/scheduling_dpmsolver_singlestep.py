@@ -278,15 +278,12 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
             if self.config.thresholding:
                 # Dynamic thresholding in https://arxiv.org/abs/2205.11487
                 dtype = x0_pred.dtype
-                dynamic_max_val = torch.quantile(
-                    torch.abs(x0_pred).reshape((x0_pred.shape[0], -1)).float(),
-                    self.config.dynamic_thresholding_ratio,
-                    dim=1,
-                )
-                dynamic_max_val = torch.maximum(
-                    dynamic_max_val,
-                    self.config.sample_max_value * torch.ones_like(dynamic_max_val).to(dynamic_max_val.device),
-                )[(...,) + (None,) * (x0_pred.ndim - 1)]
+                dynamic_max_val = x0_pred \
+                    .flatten(1) \
+                    .abs() \
+                    .quantile(self.config.dynamic_thresholding_ratio, dim=1) \
+                    .clamp_min(self.config.sample_max_value) \
+                    .view(-1, *([1] * (x0_pred.ndim - 1)))
                 x0_pred = torch.clamp(x0_pred, -dynamic_max_val, dynamic_max_val) / dynamic_max_val
                 x0_pred = x0_pred.to(dtype)
             return x0_pred
