@@ -111,6 +111,15 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
             process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
             https://imagen.research.google/video/paper.pdf)
+        thresholding (`bool`, default `False`):
+            whether to use the "dynamic thresholding" method (introduced by Imagen, https://arxiv.org/abs/2205.11487).
+            Note that the thresholding method is unsuitable for latent-space diffusion models (such as
+            stable-diffusion).
+        dynamic_thresholding_ratio (`float`, default `0.995`):
+            the ratio for the dynamic thresholding method. Default is `0.995`, the same as Imagen
+            (https://arxiv.org/abs/2205.11487).
+        clip_sample_range (`float`, default `1.0`):
+            the clip or threshold value. Valid only when `clip_sample=True` or `thresholding=True`
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -128,6 +137,9 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         set_alpha_to_one: bool = True,
         steps_offset: int = 0,
         prediction_type: str = "epsilon",
+        thresholding: bool = False,
+        dynamic_thresholding_ratio: float = 0.995,
+        clip_sample_range: float = 1.0,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -286,9 +298,21 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
                 " `v_prediction`"
             )
 
-        # 4. Clip "predicted x_0"
+        # 4. Clip or threshold "predicted x_0"
         if self.config.clip_sample:
-            pred_original_sample = torch.clamp(pred_original_sample, -1, 1)
+            pred_original_sample = torch.clamp(
+                pred_original_sample, -self.config.clip_sample_range, self.config.clip_sample_range
+            )
+        
+        if self.config.thresholding:
+            # Dynamic thresholding in https://arxiv.org/abs/2205.11487
+            dynamic_max_val = pred_original_sample \
+                .flatten(1) \
+                .abs() \
+                .quantile(self.config.dynamic_thresholding_ratio, dim=1) \
+                .clamp_min(self.config.clip_sample_range) \
+                .view(-1, *([1] * (pred_original_sample.ndim - 1)))
+            pred_original_sample = pred_original_sample.clamp(-dynamic_max_val, dynamic_max_val) / dynamic_max_val
 
         # 5. compute variance: "sigma_t(η)" -> see formula (16)
         # σ_t = sqrt((1 − α_t−1)/(1 − α_t)) * sqrt(1 − α_t/α_t−1)

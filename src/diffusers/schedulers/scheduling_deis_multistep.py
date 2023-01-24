@@ -96,7 +96,7 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
             the ratio for the dynamic thresholding method. Default is `0.995`, the same as Imagen
             (https://arxiv.org/abs/2205.11487).
         sample_max_value (`float`, default `1.0`):
-            the threshold value for dynamic thresholding. Valid woks when `thresholding=True`
+            the threshold value for dynamic thresholding. Valid only when `thresholding=True`
         algorithm_type (`str`, default `deis`):
             the algorithm type for the solver. current we support multistep deis, we will add other variants of DEIS in
             the future
