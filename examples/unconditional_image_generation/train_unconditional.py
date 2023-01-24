@@ -1,5 +1,7 @@
 import argparse
+import copy
 import inspect
+import logging
 import math
 import os
 from pathlib import Path
@@ -8,6 +10,8 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 
+import datasets
+import diffusers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from datasets import load_dataset
@@ -29,10 +33,10 @@ from tqdm.auto import tqdm
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.10.0.dev0")
+check_min_version("0.12.0.dev0")
 
 
-logger = get_logger(__name__)
+logger = get_logger(__name__, log_level="INFO")
 
 
 def _extract_into_tensor(arr, timesteps, broadcast_shape):
@@ -156,7 +160,6 @@ def parse_args():
     parser.add_argument(
         "--use_ema",
         action="store_true",
-        default=True,
         help="Whether to use Exponential Moving Average for the final model weights.",
     )
     parser.add_argument("--ema_inv_gamma", type=float, default=1.0, help="The inverse gamma value for the EMA decay.")
@@ -255,6 +258,7 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 
 def main(args):
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
+
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
@@ -262,6 +266,38 @@ def main(args):
         logging_dir=logging_dir,
     )
 
+    # Make one log on every process with the configuration for debugging.
+    logging.basicConfig(
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+        datefmt="%m/%d/%Y %H:%M:%S",
+        level=logging.INFO,
+    )
+    logger.info(accelerator.state, main_process_only=False)
+    if accelerator.is_local_main_process:
+        datasets.utils.logging.set_verbosity_warning()
+        diffusers.utils.logging.set_verbosity_info()
+    else:
+        datasets.utils.logging.set_verbosity_error()
+        diffusers.utils.logging.set_verbosity_error()
+
+    # Handle the repository creation
+    if accelerator.is_main_process:
+        if args.push_to_hub:
+            if args.hub_model_id is None:
+                repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
+            else:
+                repo_name = args.hub_model_id
+            repo = Repository(args.output_dir, clone_from=repo_name)
+
+            with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
+                if "step_*" not in gitignore:
+                    gitignore.write("step_*\n")
+                if "epoch_*" not in gitignore:
+                    gitignore.write("epoch_*\n")
+        elif args.output_dir is not None:
+            os.makedirs(args.output_dir, exist_ok=True)
+
+    # Initialize the model
     model = UNet2DModel(
         sample_size=args.resolution,
         in_channels=3,
@@ -285,8 +321,19 @@ def main(args):
             "UpBlock2D",
         ),
     )
-    accepts_prediction_type = "prediction_type" in set(inspect.signature(DDPMScheduler.__init__).parameters.keys())
 
+    # Create EMA for the model.
+    if args.use_ema:
+        ema_model = EMAModel(
+            model.parameters(),
+            decay=args.ema_max_decay,
+            use_ema_warmup=True,
+            inv_gamma=args.ema_inv_gamma,
+            power=args.ema_power,
+        )
+
+    # Initialize the scheduler
+    accepts_prediction_type = "prediction_type" in set(inspect.signature(DDPMScheduler.__init__).parameters.keys())
     if accepts_prediction_type:
         noise_scheduler = DDPMScheduler(
             num_train_timesteps=args.ddpm_num_steps,
@@ -296,6 +343,7 @@ def main(args):
     else:
         noise_scheduler = DDPMScheduler(num_train_timesteps=args.ddpm_num_steps, beta_schedule=args.ddpm_beta_schedule)
 
+    # Initialize the optimizer
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
@@ -304,16 +352,11 @@ def main(args):
         eps=args.adam_epsilon,
     )
 
-    augmentations = Compose(
-        [
-            Resize(args.resolution, interpolation=InterpolationMode.BILINEAR),
-            CenterCrop(args.resolution),
-            RandomHorizontalFlip(),
-            ToTensor(),
-            Normalize([0.5], [0.5]),
-        ]
-    )
+    # Get the datasets: you can either provide your own training and evaluation files (see below)
+    # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).
 
+    # In distributed training, the load_dataset function guarantees that only one local process can concurrently
+    # download the dataset.
     if args.dataset_name is not None:
         dataset = load_dataset(
             args.dataset_name,
@@ -323,6 +366,19 @@ def main(args):
         )
     else:
         dataset = load_dataset("imagefolder", data_dir=args.train_data_dir, cache_dir=args.cache_dir, split="train")
+        # See more about loading custom images at
+        # https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder
+
+    # Preprocessing the datasets and DataLoaders creation.
+    augmentations = Compose(
+        [
+            Resize(args.resolution, interpolation=InterpolationMode.BILINEAR),
+            CenterCrop(args.resolution),
+            RandomHorizontalFlip(),
+            ToTensor(),
+            Normalize([0.5], [0.5]),
+        ]
+    )
 
     def transforms(examples):
         images = [augmentations(image.convert("RGB")) for image in examples["image"]]
@@ -335,6 +391,7 @@ def main(args):
         dataset, batch_size=args.train_batch_size, shuffle=True, num_workers=args.dataloader_num_workers
     )
 
+    # Initialize the learning rate scheduler
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
@@ -342,44 +399,37 @@ def main(args):
         num_training_steps=(len(train_dataloader) * args.num_epochs),
     )
 
+    # Prepare everything with our `accelerator`.
     model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, lr_scheduler
     )
-    accelerator.register_for_checkpointing(lr_scheduler)
 
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    if args.use_ema:
+        accelerator.register_for_checkpointing(ema_model)
+        ema_model.to(accelerator.device)
 
-    ema_model = EMAModel(
-        accelerator.unwrap_model(model),
-        inv_gamma=args.ema_inv_gamma,
-        power=args.ema_power,
-        max_value=args.ema_max_decay,
-    )
-
-    # Handle the repository creation
-    if accelerator.is_main_process:
-        if args.push_to_hub:
-            if args.hub_model_id is None:
-                repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
-            else:
-                repo_name = args.hub_model_id
-            repo = Repository(args.output_dir, clone_from=repo_name)
-
-            with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
-                if "step_*" not in gitignore:
-                    gitignore.write("step_*\n")
-                if "epoch_*" not in gitignore:
-                    gitignore.write("epoch_*\n")
-        elif args.output_dir is not None:
-            os.makedirs(args.output_dir, exist_ok=True)
-
+    # We need to initialize the trackers we use, and also store our configuration.
+    # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
         run = os.path.split(__file__)[-1].split(".")[0]
         accelerator.init_trackers(run)
 
+    total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    max_train_steps = args.num_epochs * num_update_steps_per_epoch
+
+    logger.info("***** Running training *****")
+    logger.info(f"  Num examples = {len(dataset)}")
+    logger.info(f"  Num Epochs = {args.num_epochs}")
+    logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
+    logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
+    logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
+    logger.info(f"  Total optimization steps = {max_train_steps}")
+
     global_step = 0
     first_epoch = 0
 
+    # Potentially load in the weights and states from a previous save
     if args.resume_from_checkpoint:
         if args.resume_from_checkpoint != "latest":
             path = os.path.basename(args.resume_from_checkpoint)
@@ -397,6 +447,7 @@ def main(args):
         first_epoch = resume_global_step // num_update_steps_per_epoch
         resume_step = resume_global_step % num_update_steps_per_epoch
 
+    # Train!
     for epoch in range(first_epoch, args.num_epochs):
         model.train()
         progress_bar = tqdm(total=num_update_steps_per_epoch, disable=not accelerator.is_local_main_process)
@@ -445,12 +496,12 @@ def main(args):
                     accelerator.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
                 lr_scheduler.step()
-                if args.use_ema:
-                    ema_model.step(model)
                 optimizer.zero_grad()
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
+                if args.use_ema:
+                    ema_model.step(model.parameters())
                 progress_bar.update(1)
                 global_step += 1
 
@@ -472,8 +523,11 @@ def main(args):
         # Generate sample images for visual inspection
         if accelerator.is_main_process:
             if epoch % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
+                unet = copy.deepcopy(accelerator.unwrap_model(model))
+                if args.use_ema:
+                    ema_model.copy_to(unet.parameters())
                 pipeline = DDPMPipeline(
-                    unet=accelerator.unwrap_model(ema_model.averaged_model if args.use_ema else model),
+                    unet=unet,
                     scheduler=noise_scheduler,
                 )
 
@@ -498,7 +552,6 @@ def main(args):
                 pipeline.save_pretrained(args.output_dir)
                 if args.push_to_hub:
                     repo.push_to_hub(commit_message=f"Epoch {epoch}", blocking=False)
-        accelerator.wait_for_everyone()
 
     accelerator.end_training()
 

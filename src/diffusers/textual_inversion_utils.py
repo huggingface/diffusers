@@ -39,15 +39,15 @@ class TextualInversionMixin:
                     )
 
                 embedding_dict = torch.load(embedding_path)
-                embedding = list(embedding_dict.values())[0]
+                embedding = self.extract_embedding_from_dict(embedding_dict)
 
                 self.add_textual_inversion_embedding(token, embedding)
 
         elif isinstance(embeddings, list):
             for embedding_path in embeddings:
                 embedding_dict = torch.load(embedding_path)
-                token = list(embedding_dict.keys())[0]
-                embedding = embedding_dict[token]
+                token = self.extract_token_from_dict(embedding_dict)
+                embedding = self.extract_embedding_from_dict(embedding_dict)
 
                 # check if token in tokenizer vocab
                 # if yes, raise exception
@@ -56,6 +56,29 @@ class TextualInversionMixin:
                         f"Token {token} already in tokenizer vocabulary. Please choose a different token name."
                     )
                 self.add_textual_inversion_embedding(token, embedding)
+
+    def extract_embedding_from_dict(self, embedding_dict):
+        r"""
+        Extracts the embedding from the embedding dictionary.
+        """
+        # auto1111 embedding case
+        if "string_to_param" in embedding_dict:
+            embedding_dict = embedding_dict["string_to_param"]
+            embedding = embedding_dict["*"]
+            return embedding
+
+        return list(embedding_dict.values())[0]
+
+    def extract_token_from_dict(self, embedding_dict):
+        r"""
+        Extracts the token from the embedding dictionary.
+        """
+        # auto1111 embedding case
+        if "string_to_param" in embedding_dict:
+            token = embedding_dict["name"]
+            return token
+
+        return list(embedding_dict.keys())[0]
 
     def add_textual_inversion_embedding(self, token, embedding):
         r"""

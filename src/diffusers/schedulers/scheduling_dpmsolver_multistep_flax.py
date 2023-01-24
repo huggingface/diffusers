@@ -24,8 +24,8 @@ import jax.numpy as jnp
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import deprecate
 from .scheduling_utils_flax import (
-    _FLAX_COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS,
     CommonSchedulerState,
+    FlaxKarrasDiffusionSchedulers,
     FlaxSchedulerMixin,
     FlaxSchedulerOutput,
     add_noise_common,
@@ -140,7 +140,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
             the `dtype` used for params and computation.
     """
 
-    _compatibles = _FLAX_COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
+    _compatibles = [e.name for e in FlaxKarrasDiffusionSchedulers]
     _deprecated_kwargs = ["predict_epsilon"]
 
     dtype: jnp.dtype

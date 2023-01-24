@@ -90,6 +90,8 @@
       title: Configuration
     - local: api/outputs
       title: Outputs
+    - local: api/loaders
+      title: Loaders
     title: Main Classes
   - sections:
     - local: api/pipelines/overview
@@ -106,6 +108,8 @@
       title: DDIM
     - local: api/pipelines/ddpm
       title: DDPM
+    - local: api/pipelines/dit
+      title: DiT
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
     - local: api/pipelines/paint_by_example
@@ -133,6 +137,8 @@
         title: Image-Variation
       - local: api/pipelines/stable_diffusion/upscale
         title: Super-Resolution
+      - local: api/pipelines/stable_diffusion/pix2pix
+        title: InstructPix2Pix
       title: Stable Diffusion
     - local: api/pipelines/stable_diffusion_2
       title: Stable Diffusion 2
