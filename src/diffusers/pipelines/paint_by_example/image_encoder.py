@@ -36,12 +36,15 @@ class PaintByExampleImageEncoder(CLIPPreTrainedModel):
         # uncondition for scaling
         self.uncond_vector = nn.Parameter(torch.randn((1, 1, self.proj_size)))
 
-    def forward(self, pixel_values):
+    def forward(self, pixel_values, return_uncond_vector=False):
         clip_output = self.model(pixel_values=pixel_values)
         latent_states = clip_output.pooler_output
         latent_states = self.mapper(latent_states[:, None])
         latent_states = self.final_layer_norm(latent_states)
         latent_states = self.proj_out(latent_states)
+        if return_uncond_vector:
+            return latent_states, self.uncond_vector
+
         return latent_states
 
 
