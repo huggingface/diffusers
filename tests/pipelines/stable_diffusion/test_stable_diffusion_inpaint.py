@@ -207,7 +207,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.05978, 0.10983, 0.10514, 0.07922, 0.08483, 0.08587, 0.05302, 0.03218, 0.01636])
-        assert np.abs(expected_slice - image_slice).max() < 1e-4
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(expected_slice - image_slice).max() < 1e-4
 
     def test_stable_diffusion_inpaint_fp16(self):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
@@ -223,7 +223,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.06152, 0.11060, 0.10449, 0.07959, 0.08643, 0.08496, 0.05420, 0.03247, 0.01831])
-        assert np.abs(expected_slice - image_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(expected_slice - image_slice).max() < 1e-2
 
     def test_stable_diffusion_inpaint_pndm(self):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
@@ -240,7 +240,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.06892, 0.06994, 0.07905, 0.05366, 0.04709, 0.04890, 0.04107, 0.05083, 0.04180])
-        assert np.abs(expected_slice - image_slice).max() < 1e-4
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(expected_slice - image_slice).max() < 1e-4
 
     def test_stable_diffusion_inpaint_k_lms(self):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
@@ -257,7 +257,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.23513, 0.22413, 0.29442, 0.24243, 0.26214, 0.30329, 0.26431, 0.25025, 0.25197])
-        assert np.abs(expected_slice - image_slice).max() < 1e-4
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(expected_slice - image_slice).max() < 1e-4
 
     def test_stable_diffusion_inpaint_with_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()

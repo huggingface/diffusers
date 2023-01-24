@@ -259,7 +259,7 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.5902, 0.6015, 0.6027, 0.5983, 0.6092, 0.6061, 0.5765, 0.5785, 0.5555])
-        assert np.abs(expected_slice - image_slice).max() < 1e-3
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(expected_slice - image_slice).max() < 1e-3
 
     def test_stable_diffusion_pix2pix_k_lms(self):
         pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
@@ -276,7 +276,7 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.6578, 0.6817, 0.6972, 0.6761, 0.6856, 0.6916, 0.6428, 0.6516, 0.6301])
-        assert np.abs(expected_slice - image_slice).max() < 1e-3
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(expected_slice - image_slice).max() < 1e-3
 
     def test_stable_diffusion_pix2pix_ddim(self):
         pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
@@ -293,7 +293,7 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.3828, 0.3834, 0.3818, 0.3792, 0.3865, 0.3752, 0.3792, 0.3847, 0.3753])
-        assert np.abs(expected_slice - image_slice).max() < 1e-3
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(expected_slice - image_slice).max() < 1e-3
 
     def test_stable_diffusion_pix2pix_intermediate_state(self):
         number_of_steps = 0
