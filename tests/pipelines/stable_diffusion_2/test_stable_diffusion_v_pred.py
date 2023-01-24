@@ -411,7 +411,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 96, 96)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([-0.2543, -1.2755,  0.4261, -0.9555, -1.1730, -0.5892,  2.4159,  0.1554, -1.2098], dtype=torch.float64)
+                expected_slice = np.array([-0.2543, -1.2755,  0.4261, -0.9555, -1.1730, -0.5892,  2.4159,  0.1554, -1.2098], dtype=torch.float32)
                 from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(expected_slice); assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-3
             elif step == 19:
                 latents = latents.detach().cpu().numpy()

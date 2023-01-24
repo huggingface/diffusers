@@ -227,7 +227,7 @@ class StableDiffusionImageVariationPipelineSlowTests(unittest.TestCase):
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([-0.1572,  0.2837, -0.7980, -0.1201, -1.3040,  0.7754, -2.1200,  0.0443, 1.6270], dtype=torch.float64)
+                expected_slice = np.array([-0.1572,  0.2837, -0.7980, -0.1201, -1.3040,  0.7754, -2.1200,  0.0443, 1.6270], dtype=torch.float32)
                 from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(expected_slice); assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-3
             elif step == 2:
                 latents = latents.detach().cpu().numpy()
