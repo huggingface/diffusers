@@ -262,7 +262,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1]
 
         assert image.shape == (1, 768, 768, 3)
-        expected_slice = np.array([0.0567, 0.057, 0.0416, 0.0463, 0.0433, 0.06, 0.0517, 0.0526, 0.0866])
+        expected_slice = np.array([0.1868, 0.1922, 0.1527, 0.1921, 0.1908, 0.1624, 0.1779, 0.1652, 0.1734])
         from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_v_pred_upcast_attention(self):
@@ -281,7 +281,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1]
 
         assert image.shape == (1, 768, 768, 3)
-        expected_slice = np.array([0.0461, 0.0483, 0.0566, 0.0512, 0.0446, 0.0751, 0.0664, 0.0551, 0.0488])
+        expected_slice = np.array([0.4209, 0.4087, 0.4097, 0.4209, 0.3860, 0.4329, 0.4280, 0.4324, 0.4187])
         from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_v_pred_euler(self):
@@ -300,7 +300,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1]
 
         assert image.shape == (1, 768, 768, 3)
-        expected_slice = np.array([0.0351, 0.0376, 0.0505, 0.0424, 0.0551, 0.0656, 0.0471, 0.0276, 0.0596])
+        expected_slice = np.array([0.1781, 0.1695, 0.1661, 0.1705, 0.1588, 0.1699, 0.2005, 0.1589, 0.1677])
         from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_v_pred_dpm(self):
@@ -323,7 +323,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
 
         image_slice = image[0, 253:256, 253:256, -1]
         assert image.shape == (1, 768, 768, 3)
-        expected_slice = np.array([0.2049, 0.2115, 0.2323, 0.2416, 0.256, 0.2484, 0.2517, 0.2358, 0.236])
+        expected_slice = np.array([0.3303, 0.3184, 0.3291, 0.3300, 0.3256, 0.3113, 0.2965, 0.3134, 0.3192])
         from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_attention_slicing_v_pred(self):

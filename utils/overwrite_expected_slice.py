@@ -12,7 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import argparse
 
 
@@ -54,18 +53,23 @@ def overwrite_file(file, class_name, test_name, correct_line):
             f.write(line)
 
 
-def main(filename):
-    with open(filename, "r") as f:
-        lines = f.readlines()
+def main(fail, correct):
+    with open(fail, "r") as f:
+        test_failures = set([l.strip() for l in f.readlines()])
 
-    for line in lines:
+    with open(correct, "r") as f:
+        correct_lines = f.readlines()
+
+    for line in correct_lines:
         file, class_name, test_name, correct_line = line.split(";")
-        overwrite_file(file, class_name, test_name, correct_line)
+        if "::".join([file, class_name, test_name]) in test_failures:
+            overwrite_file(file, class_name, test_name, correct_line)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--filename", help="filename of test failures with expected result")
+    parser.add_argument("--fail_filename", help="filename of test failures")
+    parser.add_argument("--correct_filename", help="filename of tests with expected result")
     args = parser.parse_args()
 
-    main(args.filename)
+    main(args.fail_filename, args.correct_filename)

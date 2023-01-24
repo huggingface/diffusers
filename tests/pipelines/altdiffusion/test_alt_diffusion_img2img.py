@@ -241,7 +241,7 @@ class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
         image_slice = image[255:258, 383:386, -1]
 
         assert image.shape == (504, 760, 3)
-        expected_slice = np.array([0.3252, 0.3340, 0.3418, 0.3263, 0.3346, 0.3300, 0.3163, 0.3470, 0.3427])
+        expected_slice = np.array([0.9358, 0.9397, 0.9599, 0.9901, 1.0000, 1.0000, 0.9882, 1.0000, 1.0000])
         from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
 

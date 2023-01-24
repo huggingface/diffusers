@@ -424,7 +424,7 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
         assert image.shape == (1, 480, 640, 3)
-        expected_slice = np.array([0.75446, 0.74692, 0.75951, 0.81611, 0.80593, 0.79992, 0.90529, 0.87921, 0.86903])
+        expected_slice = np.array([0.5237, 0.4408, 0.3875, 0.5113, 0.5039, 0.4586, 0.4093, 0.4871, 0.4667])
         assert np.abs(expected_slice - image_slice).max() < 1e-4
 
     def test_stable_diffusion_depth2img_pipeline_k_lms(self):

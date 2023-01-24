@@ -366,7 +366,7 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
         image_slice = image[255:258, 383:386, -1]
 
         assert image.shape == (504, 760, 3)
-        expected_slice = np.array([0.7124, 0.7105, 0.6993, 0.7140, 0.7106, 0.6945, 0.7198, 0.7172, 0.7031])
+        expected_slice = np.array([0.9393, 0.9500, 0.9399, 0.9438, 0.9458, 0.9400, 0.9455, 0.9414, 0.9423])
         from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
 

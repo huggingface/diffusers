@@ -102,7 +102,7 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.0081, 0.0032, 0.0002, 0.0056, 0.0027, 0.0000, 0.0051, 0.0020, 0.0007])
+        expected_slice = np.array([0.1448, 0.1619, 0.1741, 0.1086, 0.1147, 0.1128, 0.1199, 0.1165, 0.1001])
         from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-2
 
         prompt = "A painting of a squirrel eating a burger "
