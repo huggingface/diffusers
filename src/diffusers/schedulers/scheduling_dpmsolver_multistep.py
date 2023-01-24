@@ -253,7 +253,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                     .quantile(self.config.dynamic_thresholding_ratio, dim=1) \
                     .clamp_min(self.config.sample_max_value) \
                     .view(-1, *([1] * (x0_pred.ndim - 1)))
-                x0_pred = torch.clamp(x0_pred, -dynamic_max_val, dynamic_max_val) / dynamic_max_val
+                x0_pred = x0_pred.clamp(-dynamic_max_val, dynamic_max_val) / dynamic_max_val
                 x0_pred = x0_pred.type(orig_dtype)
             return x0_pred
         # DPM-Solver needs to solve an integral of the noise prediction model.

@@ -277,15 +277,17 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
 
             if self.config.thresholding:
                 # Dynamic thresholding in https://arxiv.org/abs/2205.11487
-                dtype = x0_pred.dtype
+                orig_dtype = x0_pred.dtype
+                if orig_dtype not in [torch.float, torch.double]:
+                    x0_pred = x0_pred.float()
                 dynamic_max_val = x0_pred \
                     .flatten(1) \
                     .abs() \
                     .quantile(self.config.dynamic_thresholding_ratio, dim=1) \
                     .clamp_min(self.config.sample_max_value) \
                     .view(-1, *([1] * (x0_pred.ndim - 1)))
-                x0_pred = torch.clamp(x0_pred, -dynamic_max_val, dynamic_max_val) / dynamic_max_val
-                x0_pred = x0_pred.to(dtype)
+                x0_pred = x0_pred.clamp(-dynamic_max_val, dynamic_max_val) / dynamic_max_val
+                x0_pred = x0_pred.type(orig_dtype)
             return x0_pred
         # DPM-Solver needs to solve an integral of the noise prediction model.
         elif self.config.algorithm_type == "dpmsolver":
