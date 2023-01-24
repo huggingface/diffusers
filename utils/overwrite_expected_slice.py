@@ -53,23 +53,26 @@ def overwrite_file(file, class_name, test_name, correct_line):
             f.write(line)
 
 
-def main(fail, correct):
-    with open(fail, "r") as f:
-        test_failures = set([l.strip() for l in f.readlines()])
+def main(correct, fail=None):
+    if fail is not None:
+        with open(fail, "r") as f:
+            test_failures = set([l.strip() for l in f.readlines()])
+    else:
+        test_failures = None
 
     with open(correct, "r") as f:
         correct_lines = f.readlines()
 
     for line in correct_lines:
         file, class_name, test_name, correct_line = line.split(";")
-        if "::".join([file, class_name, test_name]) in test_failures:
+        if test_failures is None or "::".join([file, class_name, test_name]) in test_failures:
             overwrite_file(file, class_name, test_name, correct_line)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--fail_filename", help="filename of test failures")
     parser.add_argument("--correct_filename", help="filename of tests with expected result")
+    parser.add_argument("--fail_filename", help="filename of test failures", type=str, default=None)
     args = parser.parse_args()
 
-    main(args.fail_filename, args.correct_filename)
+    main(args.correct_filename, args.fail_filename)

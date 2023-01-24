@@ -45,7 +45,7 @@ def torch_all_close(a, b, *args, **kwargs):
     return True
 
 
-def print_tensor_test(tensor, filename="test_failures.txt", expected_tensor_name="expected_slice"):
+def print_tensor_test(tensor, filename="test_corrections.txt", expected_tensor_name="expected_slice"):
     test_name = os.environ.get("PYTEST_CURRENT_TEST")
     if not torch.is_tensor(tensor):
         tensor = torch.from_numpy(tensor)
