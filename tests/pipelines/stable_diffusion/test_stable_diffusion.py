@@ -132,7 +132,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5643, 0.6017, 0.4799, 0.5267, 0.5584, 0.4641, 0.5159, 0.4963, 0.4791])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_ddim_factor_8(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -151,7 +151,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 136, 136, 3)
         expected_slice = np.array([0.5524, 0.5626, 0.6069, 0.4727, 0.386, 0.3995, 0.4613, 0.4328, 0.4269])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_pndm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -168,7 +168,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5094, 0.5674, 0.4667, 0.5125, 0.5696, 0.4674, 0.5277, 0.4964, 0.4945])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_no_safety_checker(self):
         pipe = StableDiffusionPipeline.from_pretrained(
@@ -219,7 +219,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                 0.5042197108268738,
             ]
         )
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_k_euler_ancestral(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -249,7 +249,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                 0.504422664642334,
             ]
         )
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_k_euler(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -279,7 +279,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                 0.5042197108268738,
             ]
         )
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_vae_slicing(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -333,7 +333,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                 0.4899061322212219,
             ]
         )
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_num_images_per_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -584,6 +584,8 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         assert np.abs(image_sliced - image).max() < 4e-3
 
     def test_stable_diffusion_fp16_vs_autocast(self):
+        # this test makes sure that the original model with autocast 
+        # and the new model with fp16 yield the same result
         pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)

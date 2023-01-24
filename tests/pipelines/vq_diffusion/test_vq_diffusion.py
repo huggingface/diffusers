@@ -145,7 +145,7 @@ class VQDiffusionPipelineFastTests(unittest.TestCase):
 
         expected_slice = np.array([0.6583, 0.6410, 0.5325, 0.5635, 0.5563, 0.4234, 0.6008, 0.5491, 0.4880])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_vq_diffusion_classifier_free_sampling(self):
@@ -189,7 +189,7 @@ class VQDiffusionPipelineFastTests(unittest.TestCase):
 
         expected_slice = np.array([0.6647, 0.6531, 0.5303, 0.5891, 0.5726, 0.4439, 0.6304, 0.5564, 0.4912])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
 

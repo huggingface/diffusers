@@ -126,7 +126,7 @@ class CycleDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert images.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.4459, 0.4943, 0.4544, 0.6643, 0.5474, 0.4327, 0.5701, 0.5959, 0.5179])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @unittest.skipIf(torch_device != "cuda", "This test requires a GPU")
     def test_stable_diffusion_cycle_fp16(self):
@@ -147,7 +147,7 @@ class CycleDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert images.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.3506, 0.4543, 0.446, 0.4575, 0.5195, 0.4155, 0.5273, 0.518, 0.4116])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
 
 @slow

@@ -213,7 +213,7 @@ class StableDiffusionInpaintLegacyPipelineFastTests(unittest.TestCase):
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.4731, 0.5346, 0.4531, 0.6251, 0.5446, 0.4057, 0.5527, 0.5896, 0.5153])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_inpaint_legacy_negative_prompt(self):
@@ -260,7 +260,7 @@ class StableDiffusionInpaintLegacyPipelineFastTests(unittest.TestCase):
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.4765, 0.5339, 0.4541, 0.6240, 0.5439, 0.4055, 0.5503, 0.5891, 0.5150])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_inpaint_legacy_num_images_per_prompt(self):
         device = "cpu"

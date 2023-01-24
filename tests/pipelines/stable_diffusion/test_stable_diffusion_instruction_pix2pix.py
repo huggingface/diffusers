@@ -122,7 +122,7 @@ class StableDiffusionInstructPix2PixPipelineFastTests(PipelineTesterMixin, unitt
         image_slice = image[0, -3:, -3:, -1]
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.7318, 0.3723, 0.4662, 0.623, 0.5770, 0.5014, 0.4281, 0.5550, 0.4813])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_pix2pix_negative_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -139,7 +139,7 @@ class StableDiffusionInstructPix2PixPipelineFastTests(PipelineTesterMixin, unitt
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.7323, 0.3688, 0.4611, 0.6255, 0.5746, 0.5017, 0.433, 0.5553, 0.4827])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_pix2pix_multiple_init_images(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -161,7 +161,7 @@ class StableDiffusionInstructPix2PixPipelineFastTests(PipelineTesterMixin, unitt
 
         assert image.shape == (2, 32, 32, 3)
         expected_slice = np.array([0.606, 0.5712, 0.5099, 0.598, 0.5805, 0.7205, 0.6793, 0.554, 0.5607])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_pix2pix_euler(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -182,7 +182,7 @@ class StableDiffusionInstructPix2PixPipelineFastTests(PipelineTesterMixin, unitt
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.726, 0.3902, 0.4868, 0.585, 0.5672, 0.511, 0.3906, 0.551, 0.4846])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_pix2pix_num_images_per_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -370,4 +370,4 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (504, 504, 3)
         expected_slice = np.array([0.2726, 0.2529, 0.2664, 0.2655, 0.2641, 0.2642, 0.2591, 0.2649, 0.259])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3

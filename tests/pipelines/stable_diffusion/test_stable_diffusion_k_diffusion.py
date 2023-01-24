@@ -53,7 +53,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.8887, 0.915, 0.91, 0.894, 0.909, 0.912, 0.919, 0.925, 0.883])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_2(self):
         sd_pipe = StableDiffusionKDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1-base")
@@ -74,4 +74,4 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         expected_slice = np.array(
             [0.826810, 0.81958747, 0.8510199, 0.8376758, 0.83958465, 0.8682068, 0.84370345, 0.85251087, 0.85884345]
         )
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

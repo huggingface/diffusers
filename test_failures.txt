@@ -1,0 +1,1 @@
+tests/pipelines/audio_diffusion/test_audio_diffusion.py;PipelineIntegrationTests;test_audio_diffusion;expected_slice = np.array([151, 167, 154, 144, 122, 134, 121, 105,  70,  26], dtype=torch.uint8)

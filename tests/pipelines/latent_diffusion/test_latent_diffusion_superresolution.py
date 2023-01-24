@@ -83,7 +83,7 @@ class LDMSuperResolutionPipelineFastTests(unittest.TestCase):
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.8678, 0.8245, 0.6381, 0.6830, 0.4385, 0.5599, 0.4641, 0.6201, 0.5150])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @unittest.skipIf(torch_device != "cuda", "This test requires a GPU")
     def test_inference_superresolution_fp16(self):
@@ -127,4 +127,4 @@ class LDMSuperResolutionPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (1, 256, 256, 3)
         expected_slice = np.array([0.7418, 0.7472, 0.7424, 0.7422, 0.7463, 0.726, 0.7382, 0.7248, 0.6828])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

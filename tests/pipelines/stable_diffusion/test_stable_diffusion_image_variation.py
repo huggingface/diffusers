@@ -117,7 +117,7 @@ class StableDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unitte
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5167, 0.5746, 0.4835, 0.4914, 0.5605, 0.4691, 0.5201, 0.4898, 0.4958])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_img_variation_multiple_images(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -136,7 +136,7 @@ class StableDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unitte
 
         assert image.shape == (2, 64, 64, 3)
         expected_slice = np.array([0.6568, 0.5470, 0.5684, 0.5444, 0.5945, 0.6221, 0.5508, 0.5531, 0.5263])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_img_variation_num_images_per_prompt(self):
         device = "cpu"
