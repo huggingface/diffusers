@@ -253,8 +253,7 @@ class SafeDiffusionPipelineFastTests(unittest.TestCase):
         sd_pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = sd_pipe([prompt], generator=generator, num_inference_steps=2, output_type="np").images
+        image = sd_pipe([prompt], num_inference_steps=2, output_type="np").images
 
         assert image.shape == (1, 64, 64, 3)
 

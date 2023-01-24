@@ -86,19 +86,11 @@ class DownloadTests(unittest.TestCase):
 
         pipe = pipe.to(torch_device)
         pipe_2 = pipe_2.to(torch_device)
-        if torch_device == "mps":
-            # device type MPS is not supported for torch.Generator() api.
-            generator = torch.manual_seed(0)
-        else:
-            generator = torch.Generator(device=torch_device).manual_seed(0)
 
+        generator = torch.manual_seed(0)
         out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
-        if torch_device == "mps":
-            # device type MPS is not supported for torch.Generator() api.
-            generator = torch.manual_seed(0)
-        else:
-            generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         assert np.max(np.abs(out - out_2)) < 1e-3
@@ -125,20 +117,12 @@ class DownloadTests(unittest.TestCase):
             "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
         )
         pipe = pipe.to(torch_device)
-        if torch_device == "mps":
-            # device type MPS is not supported for torch.Generator() api.
-            generator = torch.manual_seed(0)
-        else:
-            generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         pipe_2 = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
         pipe_2 = pipe_2.to(torch_device)
-        if torch_device == "mps":
-            # device type MPS is not supported for torch.Generator() api.
-            generator = torch.manual_seed(0)
-        else:
-            generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         assert np.max(np.abs(out - out_2)) < 1e-3
@@ -149,11 +133,7 @@ class DownloadTests(unittest.TestCase):
             "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
         )
         pipe = pipe.to(torch_device)
-        if torch_device == "mps":
-            # device type MPS is not supported for torch.Generator() api.
-            generator = torch.manual_seed(0)
-        else:
-            generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -161,11 +141,7 @@ class DownloadTests(unittest.TestCase):
             pipe_2 = StableDiffusionPipeline.from_pretrained(tmpdirname, safety_checker=None)
             pipe_2 = pipe_2.to(torch_device)
 
-            if torch_device == "mps":
-                # device type MPS is not supported for torch.Generator() api.
-                generator = torch.manual_seed(0)
-            else:
-                generator = torch.Generator(device=torch_device).manual_seed(0)
+            generator = torch.manual_seed(0)
 
             out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
@@ -175,11 +151,8 @@ class DownloadTests(unittest.TestCase):
         prompt = "hello"
         pipe = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
         pipe = pipe.to(torch_device)
-        if torch_device == "mps":
-            # device type MPS is not supported for torch.Generator() api.
-            generator = torch.manual_seed(0)
-        else:
-            generator = torch.Generator(device=torch_device).manual_seed(0)
+
+        generator = torch.manual_seed(0)
         out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -187,11 +160,7 @@ class DownloadTests(unittest.TestCase):
             pipe_2 = StableDiffusionPipeline.from_pretrained(tmpdirname)
             pipe_2 = pipe_2.to(torch_device)
 
-            if torch_device == "mps":
-                # device type MPS is not supported for torch.Generator() api.
-                generator = torch.manual_seed(0)
-            else:
-                generator = torch.Generator(device=torch_device).manual_seed(0)
+            generator = torch.manual_seed(0)
 
             out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
@@ -401,12 +370,7 @@ class PipelineFastTests(unittest.TestCase):
         scheduler = scheduler_fn()
         pipeline = pipeline_fn(unet, scheduler).to(torch_device)
 
-        # Device type MPS is not supported for torch.Generator() api.
-        if torch_device == "mps":
-            generator = torch.manual_seed(0)
-        else:
-            generator = torch.Generator(device=torch_device).manual_seed(0)
-
+        generator = torch.manual_seed(0)
         out_image = pipeline(
             generator=generator,
             num_inference_steps=2,
@@ -442,12 +406,7 @@ class PipelineFastTests(unittest.TestCase):
 
         prompt = "A painting of a squirrel eating a burger"
 
-        # Device type MPS is not supported for torch.Generator() api.
-        if torch_device == "mps":
-            generator = torch.manual_seed(0)
-        else:
-            generator = torch.Generator(device=torch_device).manual_seed(0)
-
+        generator = torch.manual_seed(0)
         image_inpaint = inpaint(
             [prompt],
             generator=generator,
@@ -798,7 +757,7 @@ class PipelineSlowTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         image = ddpm(generator=generator, num_inference_steps=5, output_type="numpy").images
 
-        generator = generator.manual_seed(0)
+        generator = torch.Generator(device=torch_device).manual_seed(0)
         new_image = new_ddpm(generator=generator, num_inference_steps=5, output_type="numpy").images
 
         assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
@@ -819,7 +778,7 @@ class PipelineSlowTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         image = ddpm(generator=generator, num_inference_steps=5, output_type="numpy").images
 
-        generator = generator.manual_seed(0)
+        generator = torch.Generator(device=torch_device).manual_seed(0)
         new_image = ddpm_from_hub(generator=generator, num_inference_steps=5, output_type="numpy").images
 
         assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
@@ -842,7 +801,7 @@ class PipelineSlowTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         image = ddpm_from_hub_custom_model(generator=generator, num_inference_steps=5, output_type="numpy").images
 
-        generator = generator.manual_seed(0)
+        generator = torch.Generator(device=torch_device).manual_seed(0)
         new_image = ddpm_from_hub(generator=generator, num_inference_steps=5, output_type="numpy").images
 
         assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
@@ -855,18 +814,17 @@ class PipelineSlowTests(unittest.TestCase):
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        images = pipe(generator=generator, output_type="numpy").images
+        images = pipe(output_type="numpy").images
         assert images.shape == (1, 32, 32, 3)
         assert isinstance(images, np.ndarray)
 
-        images = pipe(generator=generator, output_type="pil", num_inference_steps=4).images
+        images = pipe(output_type="pil", num_inference_steps=4).images
         assert isinstance(images, list)
         assert len(images) == 1
         assert isinstance(images[0], PIL.Image.Image)
 
         # use PIL by default
-        images = pipe(generator=generator, num_inference_steps=4).images
+        images = pipe(num_inference_steps=4).images
         assert isinstance(images, list)
         assert isinstance(images[0], PIL.Image.Image)
 
