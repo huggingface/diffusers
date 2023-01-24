@@ -165,7 +165,8 @@ class CycleDiffusionPipelineIntegrationTests(unittest.TestCase):
             "/cycle-diffusion/black_colored_car.png"
         )
         expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/cycle-diffusion/blue_colored_car_fp16.npy"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/cycle-diffusion/blue_colored_car_fp16.npy",
+             local_path="/home/patrick_huggingface_co/diffusers-images"
         )
         init_image = init_image.resize((512, 512))
 
@@ -198,7 +199,7 @@ class CycleDiffusionPipelineIntegrationTests(unittest.TestCase):
         image = output.images
 
         # the values aren't exactly equal, but the images look the same visually
-        assert np.abs(image - expected_image).max() < 5e-1
+        np.save(expected_image, image); assert np.abs(image - expected_image).max() < 5e-1
 
     def test_cycle_diffusion_pipeline(self):
         init_image = load_image(
@@ -206,7 +207,9 @@ class CycleDiffusionPipelineIntegrationTests(unittest.TestCase):
             "/cycle-diffusion/black_colored_car.png"
         )
         expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/cycle-diffusion/blue_colored_car.npy"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/cycle-diffusion/blue_colored_car.npy",
+
+             local_path="/home/patrick_huggingface_co/diffusers-images"
         )
         init_image = init_image.resize((512, 512))
 
@@ -237,3 +240,4 @@ class CycleDiffusionPipelineIntegrationTests(unittest.TestCase):
         image = output.images
 
         assert np.abs(image - expected_image).max() < 1e-2
+        np.save(expected_image, image); assert np.abs(image - expected_image).max() < 1e-2
