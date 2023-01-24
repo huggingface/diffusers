@@ -217,7 +217,7 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `list(int)`):
+            prompt (`str` or `List[str]`):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
@@ -253,16 +253,16 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
         else:
             attention_mask = None
 
-        text_embeddings = self.text_encoder(
+        prompt_embeds = self.text_encoder(
             text_input_ids.to(device),
             attention_mask=attention_mask,
         )
-        text_embeddings = text_embeddings[0]
+        prompt_embeds = prompt_embeds[0]
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
-        bs_embed, seq_len, _ = text_embeddings.shape
-        text_embeddings = text_embeddings.repeat(1, num_images_per_prompt, 1)
-        text_embeddings = text_embeddings.view(bs_embed * num_images_per_prompt, seq_len, -1)
+        bs_embed, seq_len, _ = prompt_embeds.shape
+        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
@@ -299,16 +299,16 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
             else:
                 attention_mask = None
 
-            uncond_embeddings = self.text_encoder(
+            negative_prompt_embeds = self.text_encoder(
                 uncond_input.input_ids.to(device),
                 attention_mask=attention_mask,
             )
-            uncond_embeddings = uncond_embeddings[0]
+            negative_prompt_embeds = negative_prompt_embeds[0]
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-            seq_len = uncond_embeddings.shape[1]
-            uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt, 1)
-            uncond_embeddings = uncond_embeddings.view(batch_size * num_images_per_prompt, seq_len, -1)
+            seq_len = negative_prompt_embeds.shape[1]
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
             # Encode the safety concept text
             if enable_safety_guidance:
@@ -329,15 +329,15 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
                 # For classifier free guidance + sld, we need to do three forward passes.
                 # Here we concatenate the unconditional and text embeddings into a single batch
                 # to avoid doing three forward passes
-                text_embeddings = torch.cat([uncond_embeddings, text_embeddings, safety_embeddings])
+                prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds, safety_embeddings])
 
             else:
                 # For classifier free guidance, we need to do two forward passes.
                 # Here we concatenate the unconditional and text embeddings into a single batch
                 # to avoid doing two forward passes
-                text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
+                prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
-        return text_embeddings
+        return prompt_embeds
 
     def run_safety_checker(self, image, device, dtype, enable_safety_guidance):
         if self.safety_checker is not None:
@@ -607,7 +607,7 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
             warnings.warn("Safety checker disabled!")
 
         # 3. Encode input prompt
-        text_embeddings = self._encode_prompt(
+        prompt_embeds = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt, enable_safety_guidance
         )
 
@@ -622,7 +622,7 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
             num_channels_latents,
             height,
             width,
-            text_embeddings.dtype,
+            prompt_embeds.dtype,
             device,
             generator,
             latents,
@@ -645,7 +645,7 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
+                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=prompt_embeds).sample
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -704,7 +704,7 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
 
         # 9. Run safety checker
         image, has_nsfw_concept, flagged_images = self.run_safety_checker(
-            image, device, text_embeddings.dtype, enable_safety_guidance
+            image, device, prompt_embeds.dtype, enable_safety_guidance
         )
 
         # 10. Convert to PIL
