@@ -373,7 +373,7 @@ class RDMPipelineColossal(DiffusionPipeline):
                 callback(i, t, latents)
 
         latents = 1 / self.scaling_factor * latents
-        latents = torch.Tensor(latents.data).to(get_current_device())
+        latents = torch.clone(latents.data).to(get_current_device())
         image = self.vae.decode(latents).sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
