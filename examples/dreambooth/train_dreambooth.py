@@ -159,7 +159,7 @@ def parse_args(input_args=None):
         "--center_crop",
         default=False,
         action="store_true",
-        help="Whether to center crop images before resizing to resolution. By default, images are randomly cropped.",
+        help="Whether to center crop images before resizing to resolution. If not set, images are randomly cropped.",
     )
     parser.add_argument(
         "--train_text_encoder",
