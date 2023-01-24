@@ -396,13 +396,21 @@ def main(args):
             dirs = os.listdir(args.output_dir)
             dirs = [d for d in dirs if d.startswith("checkpoint")]
             dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
-            path = dirs[-1]
-        accelerator.print(f"Resuming from checkpoint {path}")
-        accelerator.load_state(os.path.join(args.output_dir, path))
-        global_step = int(path.split("-")[1])
-        resume_global_step = global_step * args.gradient_accumulation_steps
-        first_epoch = resume_global_step // num_update_steps_per_epoch
-        resume_step = resume_global_step % num_update_steps_per_epoch
+            path = dirs[-1] if len(dirs) > 0 else None
+
+        if path is None:
+            accelerator.print(
+                f"Checkpoint '{args.resume_from_checkpoint}' does not exist. Starting a new training run."
+            )
+            args.resume_from_checkpoint = None
+        else:
+            accelerator.print(f"Resuming from checkpoint {path}")
+            accelerator.load_state(os.path.join(args.output_dir, path))
+            global_step = int(path.split("-")[1])
+
+            resume_global_step = global_step * args.gradient_accumulation_steps
+            first_epoch = global_step // num_update_steps_per_epoch
+            resume_step = resume_global_step % (num_update_steps_per_epoch * args.gradient_accumulation_steps)
 
     for epoch in range(first_epoch, args.num_epochs):
         model.train()
