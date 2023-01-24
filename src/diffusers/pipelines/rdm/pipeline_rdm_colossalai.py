@@ -21,7 +21,7 @@ from ...schedulers import (
 )
 from ...utils import deprecate, logging
 from colossalai.utils import get_current_device
-from pipeline_rdm import normalize_images, preprocess_images
+from .pipeline_rdm import normalize_images, preprocess_images
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
