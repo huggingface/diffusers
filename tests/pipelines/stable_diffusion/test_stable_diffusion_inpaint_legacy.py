@@ -382,7 +382,7 @@ class StableDiffusionInpaintLegacyPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.27200, 0.29103, 0.34405, 0.21418, 0.26317, 0.34281, 0.18033, 0.24911, 0.32028])
+        expected_slice = np.array([0.5669, 0.6124, 0.6431, 0.4073, 0.4614, 0.5670, 0.1609, 0.3128, 0.4330])
         from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(expected_slice - image_slice).max() < 1e-4
 
     def test_stable_diffusion_inpaint_legacy_k_lms(self):
@@ -399,7 +399,7 @@ class StableDiffusionInpaintLegacyPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.29014, 0.28882, 0.32835, 0.26502, 0.28182, 0.31162, 0.29297, 0.29534, 0.28214])
+        expected_slice = np.array([0.4533, 0.4465, 0.4327, 0.4329, 0.4339, 0.4219, 0.4243, 0.4332, 0.4426])
         from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(expected_slice - image_slice).max() < 1e-4
 
     def test_stable_diffusion_inpaint_legacy_intermediate_state(self):

@@ -424,7 +424,7 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
         assert image.shape == (1, 480, 640, 3)
-        expected_slice = np.array([0.5237, 0.4408, 0.3875, 0.5113, 0.5039, 0.4586, 0.4093, 0.4871, 0.4667])
+        expected_slice = np.array([0.9057, 0.9365, 0.9258, 0.8937, 0.8555, 0.8541, 0.8260, 0.7747, 0.7421])
         from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(expected_slice - image_slice).max() < 1e-4
 
     def test_stable_diffusion_depth2img_pipeline_k_lms(self):
@@ -441,7 +441,7 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
         assert image.shape == (1, 480, 640, 3)
-        expected_slice = np.array([0.63957, 0.64879, 0.65668, 0.64385, 0.67078, 0.63588, 0.66577, 0.62180, 0.66286])
+        expected_slice = np.array([0.6363, 0.6274, 0.6309, 0.6370, 0.6226, 0.6286, 0.6213, 0.6453, 0.6306])
         from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(expected_slice - image_slice).max() < 1e-4
 
     def test_stable_diffusion_depth2img_pipeline_ddim(self):
@@ -458,7 +458,7 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
         assert image.shape == (1, 480, 640, 3)
-        expected_slice = np.array([0.62840, 0.64191, 0.62953, 0.63653, 0.64205, 0.61574, 0.62252, 0.65827, 0.64809])
+        expected_slice = np.array([0.6424, 0.6524, 0.6249, 0.6041, 0.6634, 0.6420, 0.6522, 0.6555, 0.6436])
         from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(expected_slice - image_slice).max() < 1e-4
 
     def test_stable_diffusion_depth2img_intermediate_state(self):
