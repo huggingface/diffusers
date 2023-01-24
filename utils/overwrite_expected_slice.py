@@ -13,19 +13,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import argparse
+from collections import defaultdict
 
 
-def overwrite_file(file, class_name, test_name, correct_line):
+def overwrite_file(file, class_name, test_name, correct_line, done_test):
+    done_test[file] += 1
+
     with open(file, "r") as f:
         lines = f.readlines()
 
     class_regex = f"class {class_name}("
     test_regex = f"{4 * ' '}def {test_name}("
     line_begin_regex = f"{8 * ' '}{correct_line.split()[0]}"
+    another_line_begin_regex = f"{16 * ' '}{correct_line.split()[0]}"
     in_class = False
     in_func = False
     in_line = False
     insert_line = False
+    count = 0
 
     new_lines = []
     for line in lines:
@@ -33,8 +38,11 @@ def overwrite_file(file, class_name, test_name, correct_line):
             in_class = True
         elif in_class and line.startswith(test_regex):
             in_func = True
-        elif in_class and in_func and line.startswith(line_begin_regex):
-            in_line = True
+        elif in_class and in_func and (line.startswith(line_begin_regex) or line.startswith(another_line_begin_regex)):
+            count += 1
+
+            if count == done_test[file]:
+                in_line = True
 
         if in_class and in_func and in_line:
             if ")" not in line:
@@ -63,10 +71,11 @@ def main(correct, fail=None):
     with open(correct, "r") as f:
         correct_lines = f.readlines()
 
+    done_tests = defaultdict(int)
     for line in correct_lines:
         file, class_name, test_name, correct_line = line.split(";")
         if test_failures is None or "::".join([file, class_name, test_name]) in test_failures:
-            overwrite_file(file, class_name, test_name, correct_line)
+            overwrite_file(file, class_name, test_name, correct_line, done_tests)
 
 
 if __name__ == "__main__":

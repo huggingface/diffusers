@@ -166,7 +166,7 @@ class CycleDiffusionPipelineIntegrationTests(unittest.TestCase):
         )
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/cycle-diffusion/blue_colored_car_fp16.npy",
-             local_path="/home/patrick_huggingface_co/diffusers-images"
+             local_path="/home/patrick_huggingface_co/"
         )
         init_image = init_image.resize((512, 512))
 
@@ -209,7 +209,7 @@ class CycleDiffusionPipelineIntegrationTests(unittest.TestCase):
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/cycle-diffusion/blue_colored_car.npy",
 
-             local_path="/home/patrick_huggingface_co/diffusers-images"
+             local_path="/home/patrick_huggingface_co/"
         )
         init_image = init_image.resize((512, 512))
 
