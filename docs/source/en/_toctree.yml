@@ -71,6 +71,8 @@
     title: Dreambooth
   - local: training/text2image
     title: Text-to-image fine-tuning
+  - local: training/lora
+    title: LoRA Support in Diffusers
   title: Training
 - sections:
   - local: conceptual/philosophy
