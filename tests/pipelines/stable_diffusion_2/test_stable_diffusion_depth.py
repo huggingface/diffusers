@@ -472,7 +472,7 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 60, 80)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([-1.148, -0.2079, -0.622, -2.477, -2.348, 0.3828, -2.055, -1.569, -1.526])
+                expected_slice = np.array([-1.1480, -0.2079, -0.6220, -2.4770, -2.3480,  0.3828, -2.0550, -1.5690, -1.5260], dtype=torch.float64)
                 from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(expected_slice); assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
             elif step == 2:
                 latents = latents.detach().cpu().numpy()

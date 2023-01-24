@@ -413,7 +413,7 @@ class StableDiffusionInpaintLegacyPipelineSlowTests(unittest.TestCase):
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([-0.103, 1.415, -0.02197, -0.5107, -0.5903, 0.1953, 0.75, 0.3477, -1.356])
+                expected_slice = np.array([-0.1030,  1.4150, -0.0220, -0.5107, -0.5903,  0.1953,  0.7500,  0.3477, -1.3560], dtype=torch.float64)
                 from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(expected_slice); assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
             elif step == 2:
                 latents = latents.detach().cpu().numpy()

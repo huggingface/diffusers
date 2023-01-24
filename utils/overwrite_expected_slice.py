@@ -31,6 +31,7 @@ def overwrite_file(file, class_name, test_name, correct_line, done_test):
     in_line = False
     insert_line = False
     count = 0
+    spaces = 0
 
     new_lines = []
     for line in lines:
@@ -39,6 +40,7 @@ def overwrite_file(file, class_name, test_name, correct_line, done_test):
         elif in_class and line.startswith(test_regex):
             in_func = True
         elif in_class and in_func and (line.startswith(line_begin_regex) or line.startswith(another_line_begin_regex)):
+            spaces = len(line.split(correct_line.split()[0])[0])
             count += 1
 
             if count == done_test[file]:
@@ -51,7 +53,7 @@ def overwrite_file(file, class_name, test_name, correct_line, done_test):
                 insert_line = True
 
         if in_class and in_func and in_line and insert_line:
-            new_lines.append(f"{8 * ' '}{correct_line}")
+            new_lines.append(f"{spaces * ' '}{correct_line}")
             in_class = in_func = in_line = insert_line = False
         else:
             new_lines.append(line)
