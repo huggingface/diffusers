@@ -414,7 +414,7 @@ class UnCLIPPipelineCPUIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (256, 256, 3)
-        assert np.abs(expected_image - image).max() < 1e-1
+        np.save(expected_image, image); assert np.abs(expected_image - image).max() < 1e-1
 
 
 @slow

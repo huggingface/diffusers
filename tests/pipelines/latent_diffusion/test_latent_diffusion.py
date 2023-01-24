@@ -185,5 +185,5 @@ class LDMTextToImagePipelineNightlyTests(unittest.TestCase):
         expected_image = load_numpy(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main/ldm_text2img/ldm_large_256_ddim.npy"
         )
-        max_diff = np.abs(expected_image - image).max()
+        np.save(expected_image, image); max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3

@@ -407,7 +407,7 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_img2img/stable_diffusion_1_5_pndm.npy"
         )
-        max_diff = np.abs(expected_image - image).max()
+        np.save(expected_image, image); max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
 
     def test_img2img_ddim(self):
@@ -423,7 +423,7 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_img2img/stable_diffusion_1_5_ddim.npy"
         )
-        max_diff = np.abs(expected_image - image).max()
+        np.save(expected_image, image); max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
 
     def test_img2img_lms(self):
@@ -439,7 +439,7 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_img2img/stable_diffusion_1_5_lms.npy"
         )
-        max_diff = np.abs(expected_image - image).max()
+        np.save(expected_image, image); max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
 
     def test_img2img_dpm(self):
@@ -456,5 +456,5 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_img2img/stable_diffusion_1_5_dpm.npy"
         )
-        max_diff = np.abs(expected_image - image).max()
+        np.save(expected_image, image); max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3

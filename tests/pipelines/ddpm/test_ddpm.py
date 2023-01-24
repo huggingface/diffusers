@@ -107,7 +107,7 @@ class DDPMPipelineFastTests(unittest.TestCase):
         generator = torch.manual_seed(0)
         image = ddpm(generator=generator, num_inference_steps=2, output_type="numpy").images
 
-        generator = generator.manual_seed(0)
+        generator = torch.manual_seed(0)
         image_eps = ddpm(generator=generator, num_inference_steps=2, output_type="numpy")[0]
 
         image_slice = image[0, -3:, -3:, -1]

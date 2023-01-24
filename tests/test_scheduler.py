@@ -1951,6 +1951,8 @@ class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
+        print(result_sum)
+        print(result_mean)
 
         if torch_device in ["cpu", "mps"]:
             assert abs(result_sum.item() - 152.3192) < 1e-2
@@ -1983,6 +1985,8 @@ class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
+        print(result_sum)
+        print(result_mean)
 
         if torch_device in ["cpu", "mps"]:
             assert abs(result_sum.item() - 108.4439) < 1e-2
@@ -2014,6 +2018,8 @@ class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
+        print(result_sum)
+        print(result_mean)
 
         if str(torch_device).startswith("cpu"):
             # The following sum varies between 148 and 156 on mps. Why?
@@ -2736,6 +2742,8 @@ class KDPM2AncestralDiscreteSchedulerTest(SchedulerCommonTest):
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
+        print(result_sum)
+        print(result_mean)
 
         if torch_device in ["cpu", "mps"]:
             assert abs(result_sum.item() - 13849.3945) < 1e-2
@@ -2774,6 +2782,8 @@ class KDPM2AncestralDiscreteSchedulerTest(SchedulerCommonTest):
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
+        print(result_sum)
+        print(result_mean)
 
         if torch_device in ["cpu", "mps"]:
             assert abs(result_sum.item() - 328.9970) < 1e-2
@@ -2806,6 +2816,8 @@ class KDPM2AncestralDiscreteSchedulerTest(SchedulerCommonTest):
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
+        print(result_sum)
+        print(result_mean)
 
         if str(torch_device).startswith("cpu"):
             assert abs(result_sum.item() - 13849.3945) < 1e-2

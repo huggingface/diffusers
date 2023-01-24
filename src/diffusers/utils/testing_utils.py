@@ -8,7 +8,7 @@ import urllib.parse
 from distutils.util import strtobool
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import Union
+from typing import Union, Optional
 
 import numpy as np
 
@@ -165,9 +165,13 @@ def require_onnxruntime(test_case):
     return unittest.skipUnless(is_onnx_available(), "test requires onnxruntime")(test_case)
 
 
-def load_numpy(arry: Union[str, np.ndarray]) -> np.ndarray:
+def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -> np.ndarray:
     if isinstance(arry, str):
-        if arry.startswith("http://") or arry.startswith("https://"):
+        local_path = "/home/patrick_huggingface_co/"
+        if local_path is not None:
+            # local_path can be passed to correct images of tests
+            return local_path + "/".join([arry.split("/")[-5], arry.split("/")[-2], arry.split("/")[-1]])
+        elif arry.startswith("http://") or arry.startswith("https://"):
             response = requests.get(arry)
             response.raise_for_status()
             arry = np.load(BytesIO(response.content))

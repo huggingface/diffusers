@@ -321,7 +321,7 @@ class StableDiffusionInpaintPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_inpaint/stable_diffusion_inpaint_ddim.npy"
         )
-        max_diff = np.abs(expected_image - image).max()
+        np.save(expected_image, image); max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
 
     def test_inpaint_pndm(self):
@@ -337,7 +337,7 @@ class StableDiffusionInpaintPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_inpaint/stable_diffusion_inpaint_pndm.npy"
         )
-        max_diff = np.abs(expected_image - image).max()
+        np.save(expected_image, image); max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
 
     def test_inpaint_lms(self):
@@ -353,7 +353,7 @@ class StableDiffusionInpaintPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_inpaint/stable_diffusion_inpaint_lms.npy"
         )
-        max_diff = np.abs(expected_image - image).max()
+        np.save(expected_image, image); max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
 
     def test_inpaint_dpm(self):
@@ -370,7 +370,7 @@ class StableDiffusionInpaintPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_inpaint/stable_diffusion_inpaint_dpm_multi.npy"
         )
-        max_diff = np.abs(expected_image - image).max()
+        np.save(expected_image, image); max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
 
 

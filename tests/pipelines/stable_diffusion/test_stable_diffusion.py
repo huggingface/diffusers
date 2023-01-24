@@ -701,7 +701,7 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_text2img/stable_diffusion_1_4_pndm.npy"
         )
-        max_diff = np.abs(expected_image - image).max()
+        np.save(expected_image, image); max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
 
     def test_stable_diffusion_1_5_pndm(self):
@@ -715,7 +715,7 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_text2img/stable_diffusion_1_5_pndm.npy"
         )
-        max_diff = np.abs(expected_image - image).max()
+        np.save(expected_image, image); max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
 
     def test_stable_diffusion_ddim(self):
@@ -730,7 +730,7 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_text2img/stable_diffusion_1_4_ddim.npy"
         )
-        max_diff = np.abs(expected_image - image).max()
+        np.save(expected_image, image); max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
 
     def test_stable_diffusion_lms(self):
@@ -745,7 +745,7 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_text2img/stable_diffusion_1_4_lms.npy"
         )
-        max_diff = np.abs(expected_image - image).max()
+        np.save(expected_image, image); max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
 
     def test_stable_diffusion_euler(self):
@@ -760,7 +760,7 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_text2img/stable_diffusion_1_4_euler.npy"
         )
-        max_diff = np.abs(expected_image - image).max()
+        np.save(expected_image, image); max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
 
     def test_stable_diffusion_dpm(self):
@@ -776,5 +776,5 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_text2img/stable_diffusion_1_4_dpm_multi.npy"
         )
-        max_diff = np.abs(expected_image - image).max()
+        np.save(expected_image, image); max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
