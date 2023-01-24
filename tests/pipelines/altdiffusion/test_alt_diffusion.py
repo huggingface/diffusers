@@ -207,7 +207,7 @@ class AltDiffusionPipelineIntegrationTests(unittest.TestCase):
         alt_pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.manual_seed(0)
         with torch.autocast("cuda"):
             output = alt_pipe(
                 [prompt], generator=generator, guidance_scale=6.0, num_inference_steps=20, output_type="np"
@@ -231,7 +231,7 @@ class AltDiffusionPipelineIntegrationTests(unittest.TestCase):
         alt_pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.manual_seed(0)
 
         with torch.autocast("cuda"):
             output = alt_pipe([prompt], generator=generator, num_inference_steps=2, output_type="numpy")
@@ -254,13 +254,13 @@ class AltDiffusionPipelineIntegrationTests(unittest.TestCase):
 
         prompt = "a photograph of an astronaut riding a horse"
 
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.manual_seed(0)
         output_chunked = pipe(
             [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
         )
         image_chunked = output_chunked.images
 
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.manual_seed(0)
         with torch.autocast(torch_device):
             output = pipe(
                 [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy"

@@ -44,7 +44,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         sd_pipe.set_scheduler("sample_euler")
 
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.manual_seed(0)
         output = sd_pipe([prompt], generator=generator, guidance_scale=9.0, num_inference_steps=20, output_type="np")
 
         image = output.images
@@ -63,7 +63,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         sd_pipe.set_scheduler("sample_euler")
 
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.manual_seed(0)
         output = sd_pipe([prompt], generator=generator, guidance_scale=9.0, num_inference_steps=20, output_type="np")
 
         image = output.images

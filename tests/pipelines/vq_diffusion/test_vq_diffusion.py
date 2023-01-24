@@ -212,7 +212,7 @@ class VQDiffusionPipelineIntegrationTests(unittest.TestCase):
         pipeline = pipeline.to(torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.manual_seed(0)
         output = pipeline(
             "teddy bear playing in the pool",
             num_images_per_prompt=1,

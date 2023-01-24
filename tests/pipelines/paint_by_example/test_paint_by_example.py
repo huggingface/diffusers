@@ -205,7 +205,7 @@ class PaintByExamplePipelineIntegrationTests(unittest.TestCase):
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator().manual_seed(321)
+        generator = torch.manual_seed(321)
         output = pipe(
             image=init_image,
             mask_image=mask_image,

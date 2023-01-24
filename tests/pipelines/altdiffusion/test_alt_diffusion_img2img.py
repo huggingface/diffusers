@@ -196,7 +196,7 @@ class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
         alt_pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.manual_seed(0)
         image = alt_pipe(
             [prompt],
             generator=generator,
@@ -275,7 +275,7 @@ class AltDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
 
         prompt = "A fantasy landscape, trending on artstation"
 
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.manual_seed(0)
         output = pipe(
             prompt=prompt,
             image=init_image,

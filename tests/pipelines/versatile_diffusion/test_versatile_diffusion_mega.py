@@ -49,7 +49,7 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
             "https://raw.githubusercontent.com/SHI-Labs/Versatile-Diffusion/master/assets/benz.jpg"
         )
 
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.manual_seed(0)
         image = pipe.dual_guided(
             prompt="first prompt",
             image=prompt_image,
@@ -88,7 +88,7 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
         init_image = load_image(
             "https://raw.githubusercontent.com/SHI-Labs/Versatile-Diffusion/master/assets/benz.jpg"
         )
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.manual_seed(0)
         image = pipe.dual_guided(
             prompt=prompt,
             image=init_image,
@@ -106,7 +106,7 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-2
 
         prompt = "A painting of a squirrel eating a burger "
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.manual_seed(0)
         image = pipe.text_to_image(
             prompt=prompt, generator=generator, guidance_scale=7.5, num_inference_steps=50, output_type="numpy"
         ).images

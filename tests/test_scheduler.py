@@ -288,11 +288,11 @@ class SchedulerCommonTest(unittest.TestCase):
 
             # Set the seed before step() as some schedulers are stochastic like EulerAncestralDiscreteScheduler, EulerDiscreteScheduler
             if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
-                kwargs["generator"] = torch.Generator().manual_seed(0)
+                kwargs["generator"] = torch.manual_seed(0)
             output = scheduler.step(residual, time_step, sample, **kwargs).prev_sample
 
             if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
-                kwargs["generator"] = torch.Generator().manual_seed(0)
+                kwargs["generator"] = torch.manual_seed(0)
             new_output = new_scheduler.step(residual, time_step, sample, **kwargs).prev_sample
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
@@ -330,11 +330,11 @@ class SchedulerCommonTest(unittest.TestCase):
                 kwargs["num_inference_steps"] = num_inference_steps
 
             if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
-                kwargs["generator"] = torch.Generator().manual_seed(0)
+                kwargs["generator"] = torch.manual_seed(0)
             output = scheduler.step(residual, time_step, sample, **kwargs).prev_sample
 
             if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
-                kwargs["generator"] = torch.Generator().manual_seed(0)
+                kwargs["generator"] = torch.manual_seed(0)
             new_output = new_scheduler.step(residual, time_step, sample, **kwargs).prev_sample
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
@@ -372,11 +372,11 @@ class SchedulerCommonTest(unittest.TestCase):
                 kwargs["num_inference_steps"] = num_inference_steps
 
             if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
-                kwargs["generator"] = torch.Generator().manual_seed(0)
+                kwargs["generator"] = torch.manual_seed(0)
             output = scheduler.step(residual, timestep, sample, **kwargs).prev_sample
 
             if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
-                kwargs["generator"] = torch.Generator().manual_seed(0)
+                kwargs["generator"] = torch.manual_seed(0)
             new_output = new_scheduler.step(residual, timestep, sample, **kwargs).prev_sample
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
@@ -510,7 +510,7 @@ class SchedulerCommonTest(unittest.TestCase):
 
             # Set the seed before state as some schedulers are stochastic like EulerAncestralDiscreteScheduler, EulerDiscreteScheduler
             if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
-                kwargs["generator"] = torch.Generator().manual_seed(0)
+                kwargs["generator"] = torch.manual_seed(0)
             outputs_dict = scheduler.step(residual, timestep, sample, **kwargs)
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
@@ -520,7 +520,7 @@ class SchedulerCommonTest(unittest.TestCase):
 
             # Set the seed before state as some schedulers are stochastic like EulerAncestralDiscreteScheduler, EulerDiscreteScheduler
             if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
-                kwargs["generator"] = torch.Generator().manual_seed(0)
+                kwargs["generator"] = torch.manual_seed(0)
             outputs_tuple = scheduler.step(residual, timestep, sample, return_dict=False, **kwargs)
 
             recursive_check(outputs_tuple, outputs_dict)
@@ -664,12 +664,12 @@ class DDPMSchedulerTest(SchedulerCommonTest):
 
         kwargs = {}
         if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
-            kwargs["generator"] = torch.Generator().manual_seed(0)
+            kwargs["generator"] = torch.manual_seed(0)
         output = scheduler.step(residual, time_step, sample, predict_epsilon=False, **kwargs).prev_sample
 
         kwargs = {}
         if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
-            kwargs["generator"] = torch.Generator().manual_seed(0)
+            kwargs["generator"] = torch.manual_seed(0)
         output_eps = scheduler_eps.step(residual, time_step, sample, predict_epsilon=False, **kwargs).prev_sample
 
         assert (output - output_eps).abs().sum() < 1e-5

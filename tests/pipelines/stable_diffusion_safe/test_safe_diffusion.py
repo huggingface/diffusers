@@ -283,7 +283,7 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         guidance_scale = 7
 
         # without safety guidance (sld_guidance_scale = 0)
-        generator = torch.Generator().manual_seed(seed)
+        generator = torch.manual_seed(seed)
         output = sd_pipe(
             [prompt],
             generator=generator,
@@ -303,7 +303,7 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
         # without safety guidance (strong configuration)
-        generator = torch.Generator().manual_seed(seed)
+        generator = torch.manual_seed(seed)
         output = sd_pipe(
             [prompt],
             generator=generator,
@@ -336,7 +336,7 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         seed = 2734971755
         guidance_scale = 7
 
-        generator = torch.Generator().manual_seed(seed)
+        generator = torch.manual_seed(seed)
         output = sd_pipe(
             [prompt],
             generator=generator,
@@ -355,7 +355,7 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-        generator = torch.Generator().manual_seed(seed)
+        generator = torch.manual_seed(seed)
         output = sd_pipe(
             [prompt],
             generator=generator,
@@ -390,7 +390,7 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         seed = 1044355234
         guidance_scale = 12
 
-        generator = torch.Generator().manual_seed(seed)
+        generator = torch.manual_seed(seed)
         output = sd_pipe(
             [prompt],
             generator=generator,
@@ -409,7 +409,7 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-7
 
-        generator = torch.Generator().manual_seed(seed)
+        generator = torch.manual_seed(seed)
         output = sd_pipe(
             [prompt],
             generator=generator,

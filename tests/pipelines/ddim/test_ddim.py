@@ -92,7 +92,7 @@ class DDIMPipelineIntegrationTests(unittest.TestCase):
         ddpm.to(torch_device)
         ddpm.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.manual_seed(0)
         image = ddpm(generator=generator, output_type="numpy").images
 
         image_slice = image[0, -3:, -3:, -1]
@@ -111,7 +111,7 @@ class DDIMPipelineIntegrationTests(unittest.TestCase):
         ddim.to(torch_device)
         ddim.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.manual_seed(0)
         image = ddim(generator=generator, eta=0.0, output_type="numpy").images
 
         image_slice = image[0, -3:, -3:, -1]

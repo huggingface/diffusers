@@ -120,7 +120,7 @@ class LDMSuperResolutionPipelineIntegrationTests(unittest.TestCase):
         ldm.to(torch_device)
         ldm.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.manual_seed(0)
         image = ldm(image=init_image, generator=generator, num_inference_steps=20, output_type="numpy").images
 
         image_slice = image[0, -3:, -3:, -1]

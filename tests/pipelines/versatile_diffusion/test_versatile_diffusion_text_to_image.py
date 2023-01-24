@@ -48,7 +48,7 @@ class VersatileDiffusionTextToImagePipelineIntegrationTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger "
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.manual_seed(0)
         image = pipe(
             prompt=prompt, generator=generator, guidance_scale=7.5, num_inference_steps=2, output_type="numpy"
         ).images
@@ -72,7 +72,7 @@ class VersatileDiffusionTextToImagePipelineIntegrationTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger "
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.manual_seed(0)
         image = pipe(
             prompt=prompt, generator=generator, guidance_scale=7.5, num_inference_steps=50, output_type="numpy"
         ).images

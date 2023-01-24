@@ -113,7 +113,7 @@ class RepaintPipelineNightlyTests(unittest.TestCase):
         repaint.set_progress_bar_config(disable=None)
         repaint.enable_attention_slicing()
 
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.manual_seed(0)
         output = repaint(
             original_image,
             mask_image,
