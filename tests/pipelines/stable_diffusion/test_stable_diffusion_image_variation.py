@@ -312,7 +312,7 @@ class StableDiffusionImageVariationPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_imgvar/lambdalabs_variations_pndm.npy"
         )
-        np.save(expected_image, image); max_diff = np.abs(expected_image - image).max()
+        max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
 
     def test_img_variation_dpm(self):
@@ -329,5 +329,5 @@ class StableDiffusionImageVariationPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_imgvar/lambdalabs_variations_dpm_multi.npy"
         )
-        np.save(expected_image, image); max_diff = np.abs(expected_image - image).max()
+        max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3

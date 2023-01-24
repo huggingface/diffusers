@@ -94,4 +94,4 @@ class StableDiffusionOnnxInpaintLegacyPipelineIntegrationTests(unittest.TestCase
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
-        np.save(expected_image, image); assert np.abs(expected_image - image).max() < 1e-2
+        assert np.abs(expected_image - image).max() < 1e-2

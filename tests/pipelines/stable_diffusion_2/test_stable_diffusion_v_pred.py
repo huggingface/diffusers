@@ -379,7 +379,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (768, 768, 3)
-        np.save(expected_image, image); assert np.abs(expected_image - image).max() < 5e-3
+        assert np.abs(expected_image - image).max() < 5e-3
 
     def test_stable_diffusion_text2img_pipeline_v_pred_fp16(self):
         expected_image = load_numpy(
@@ -398,7 +398,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (768, 768, 3)
-        np.save(expected_image, image); assert np.abs(expected_image - image).max() < 5e-1
+        assert np.abs(expected_image - image).max() < 5e-1
 
     def test_stable_diffusion_text2img_intermediate_state_v_pred(self):
         number_of_steps = 0

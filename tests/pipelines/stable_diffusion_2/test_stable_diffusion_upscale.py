@@ -291,7 +291,7 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
-        np.save(expected_image, image); assert np.abs(expected_image - image).max() < 1e-3
+        assert np.abs(expected_image - image).max() < 1e-3
 
     def test_stable_diffusion_upscale_pipeline_fp16(self):
         image = load_image(
@@ -324,7 +324,7 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
-        np.save(expected_image, image); assert np.abs(expected_image - image).max() < 5e-1
+        assert np.abs(expected_image - image).max() < 5e-1
 
     def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
