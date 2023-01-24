@@ -22,6 +22,7 @@ import warnings
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
@@ -930,6 +931,9 @@ def main(args):
             images = pipeline(prompt, num_inference_steps=25, generator=generator).images
 
             for tracker in accelerator.trackers:
+                if tracker.name == "tensorboard":
+                    np_images = np.stack([np.asarray(img) for img in images])
+                    tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
                 if tracker.name == "wandb":
                     tracker.log(
                         {
@@ -966,6 +970,9 @@ def main(args):
         images = pipeline(prompt, num_inference_steps=25, generator=generator).images
 
         for tracker in accelerator.trackers:
+            if tracker.name == "tensorboard":
+                np_images = np.stack([np.asarray(img) for img in images])
+                tracker.writer.add_images("test", np_images, epoch, dataformats="NHWC")
             if tracker.name == "wandb":
                 tracker.log(
                     {
