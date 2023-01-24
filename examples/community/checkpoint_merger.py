@@ -233,7 +233,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                     if checkpoint_path_2:
                         theta_2 = (
                             safetensors.torch.load_file(checkpoint_path_2)
-                            if checkpoint_path_2.endswith(".safetensors")
+                            if (is_safetensors_available() and checkpoint_path_2.endswith(".safetensors"))
                             else torch.load(checkpoint_path_2, map_location="cpu")
                         )
 
