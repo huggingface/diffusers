@@ -861,11 +861,15 @@ class DiffusionPipeline(ConfigMixin):
         Examples:
 
         ```py
+        >>> import torch
         >>> from diffusers import DiffusionPipeline
         >>> from xformers.ops import MemoryEfficientAttentionFlashAttentionOp
 
-        >>> pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to("cuda")
+        >>> pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16)
+        >>> pipe = pipe.to("cuda")
         >>> pipe.enable_xformers_memory_efficient_attention(attention_op=MemoryEfficientAttentionFlashAttentionOp)
+        >>> # Workaround for not accepting attention shape using VAE for Flash Attention
+        >>> pipe.vae.enable_xformers_memory_efficient_attention(attention_op=None)
         ```
         """
         self.set_use_memory_efficient_attention_xformers(True, attention_op)
