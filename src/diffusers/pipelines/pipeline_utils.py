@@ -32,6 +32,7 @@ from PIL import Image
 from tqdm.auto import tqdm
 
 from ..configuration_utils import ConfigMixin
+from ..loaders import TextualInversionLoaderMixin
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
 from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
@@ -137,7 +138,7 @@ def is_safetensors_compatible(info) -> bool:
     return is_safetensors_compatible
 
 
-class DiffusionPipeline(ConfigMixin):
+class DiffusionPipeline(ConfigMixin, TextualInversionLoaderMixin):
     r"""
     Base class for all models.
 
