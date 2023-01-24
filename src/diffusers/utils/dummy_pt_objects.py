@@ -617,7 +617,7 @@ class VQDiffusionScheduler(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class TextualInversionMixin(metaclass=DummyObject):
+class TextualInversionLoaderMixin(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
