@@ -94,7 +94,6 @@ class DDIMPipeline(DiffusionPipeline):
                 "0.13.0",
                 message,
             )
-            generator = None
 
         # Sample gaussian noise to begin loop
         if isinstance(self.unet.sample_size, int):

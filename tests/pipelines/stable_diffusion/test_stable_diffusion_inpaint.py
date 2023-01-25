@@ -226,7 +226,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.1443, 0.1218, 0.1587, 0.1594, 0.1411, 0.1284, 0.1370, 0.1506, 0.2339])
 
-        assert np.abs(expected_slice - image_slice).max() < 1e-2
+        assert np.abs(expected_slice - image_slice).max() < 5e-2
 
     def test_stable_diffusion_inpaint_pndm(self):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(

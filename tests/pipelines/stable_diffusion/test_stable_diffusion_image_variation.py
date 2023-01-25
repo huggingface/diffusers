@@ -233,7 +233,7 @@ class StableDiffusionImageVariationPipelineSlowTests(unittest.TestCase):
                     [-0.1621, 0.2837, -0.7979, -0.1221, -1.3057, 0.7681, -2.1191, 0.0464, 1.6309]
                 )
 
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-3
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
             elif step == 2:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)

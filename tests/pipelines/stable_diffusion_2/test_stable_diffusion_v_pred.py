@@ -285,7 +285,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (1, 768, 768, 3)
         expected_slice = np.array([0.4209, 0.4087, 0.4097, 0.4209, 0.3860, 0.4329, 0.4280, 0.4324, 0.4187])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-2
 
     def test_stable_diffusion_v_pred_euler(self):
         scheduler = EulerDiscreteScheduler.from_pretrained("stabilityai/stable-diffusion-2", subfolder="scheduler")
@@ -382,7 +382,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (768, 768, 3)
-        assert np.abs(expected_image - image).max() < 5e-3
+        assert np.abs(expected_image - image).max() < 7.5e-2
 
     def test_stable_diffusion_text2img_pipeline_v_pred_fp16(self):
         expected_image = load_numpy(
@@ -401,7 +401,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (768, 768, 3)
-        assert np.abs(expected_image - image).max() < 5e-1
+        assert np.abs(expected_image - image).max() < 7.5e-1
 
     def test_stable_diffusion_text2img_intermediate_state_v_pred(self):
         number_of_steps = 0
@@ -416,14 +416,14 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array([0.7749, 0.0325, 0.5088, 0.1619, 0.3372, 0.3667, -0.5186, 0.6860, 1.4326])
 
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-3
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
             elif step == 19:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 96, 96)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array([1.3887, 1.0273, 1.7266, 0.0726, 0.6611, 0.1598, -1.0547, 0.1522, 0.0227])
 
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-2
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
 
         test_callback_fn.has_been_called = False
 

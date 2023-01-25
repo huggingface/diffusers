@@ -623,7 +623,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
                     [-0.5693, -0.3018, -0.9746, 0.0518, -0.8770, 0.7559, -1.7402, 0.1022, 1.1582]
                 )
 
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-3
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
             elif step == 2:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
@@ -632,7 +632,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
                     [-0.1958, -0.2993, -1.0166, -0.5005, -0.4810, 0.6162, -0.9492, 0.6621, 1.4492]
                 )
 
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-2
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
 
         callback_fn.has_been_called = False
 

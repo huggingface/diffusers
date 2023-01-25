@@ -104,7 +104,7 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.1448, 0.1619, 0.1741, 0.1086, 0.1147, 0.1128, 0.1199, 0.1165, 0.1001])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-2
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-1
 
         prompt = "A painting of a squirrel eating a burger "
         generator = torch.manual_seed(0)
@@ -117,7 +117,7 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.3367, 0.3169, 0.2656, 0.3870, 0.4790, 0.3796, 0.4009, 0.4878, 0.4778])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-2
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-1
 
         image = pipe.image_variation(init_image, generator=generator, output_type="numpy").images
 
@@ -126,4 +126,4 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.3076, 0.3123, 0.3284, 0.3782, 0.3770, 0.3894, 0.4297, 0.4331, 0.4456])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-2
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-1

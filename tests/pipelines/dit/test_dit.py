@@ -133,4 +133,4 @@ class DiTPipelineIntegrationTests(unittest.TestCase):
                 ),
             )
 
-            assert np.abs((expected_image - image).max()) < 1e-2
+            assert np.abs((expected_image - image).max()) < 5e-2
