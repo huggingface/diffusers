@@ -237,8 +237,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         Args:
             model_output (`torch.FloatTensor`): direct output from learned diffusion model.
             timestep (`int`): current discrete timestep in the diffusion chain.
-            sample (`torch.FloatTensor`):
-                current instance of sample being created by diffusion process.
+            sample (`torch.FloatTensor`): current instance of sample being created by diffusion process.
             generator: random number generator.
             return_dict (`bool`): option for returning tuple rather than DDPMSchedulerOutput class
 
