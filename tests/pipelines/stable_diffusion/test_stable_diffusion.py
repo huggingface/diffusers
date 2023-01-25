@@ -635,9 +635,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array(
-                    [-0.5693, -0.3018, -0.9746, 0.0518, -0.8770, 0.7559, -1.7402, 0.1022, 1.1582]
-                )
+                expected_slice = np.array([-0.5693, -0.3018, -0.9746,  0.0518, -0.8770,  0.7559, -1.7402,  0.1022,         1.1582])
                 from diffusers.utils.testing_utils import print_tensor_test
 
                 print_tensor_test(latents_slice)

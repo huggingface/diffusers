@@ -311,7 +311,7 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 96)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([-0.4958, 0.5107, 1.1045, 2.7539, 4.6680, 3.8320, 1.5049, 1.8633, 2.6523])
+                expected_slice = np.array([-0.4958,  0.5107,  1.1045,  2.7539,  4.6680,  3.8320,  1.5049,  1.8633,         2.6523])
                 from diffusers.utils.testing_utils import print_tensor_test
 
                 print_tensor_test(latents_slice)
