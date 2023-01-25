@@ -65,7 +65,7 @@ def randn_tensor(
         ]
         latents = torch.cat(latents, dim=0).to(device)
     else:
-        print(rand_device)
+        
         latents = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype, layout=layout).to(device)
 
     return latents

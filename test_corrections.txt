@@ -1,3 +1,0 @@
-tests/pipelines/stable_diffusion/test_stable_diffusion_img2img.py;StableDiffusionImg2ImgPipelineSlowTests;test_stable_diffusion_img2img_pipeline_multiple_of_8;expected_slice = np.array([0.9393, 0.9500, 0.9399, 0.9438, 0.9458, 0.9400, 0.9455, 0.9414, 0.9423])
-tests/pipelines/stable_diffusion/test_stable_diffusion_instruction_pix2pix.py;StableDiffusionInstructPix2PixPipelineSlowTests;test_stable_diffusion_pix2pix_pipeline_multiple_of_8;expected_slice = np.array([0.2726, 0.2529, 0.2664, 0.2655, 0.2641, 0.2642, 0.2591, 0.2649, 0.2590])
-tests/pipelines/stable_diffusion/test_stable_diffusion_k_diffusion.py;StableDiffusionPipelineIntegrationTests;test_stable_diffusion_2;expected_slice = np.array([0.1237, 0.1320, 0.1438, 0.1359, 0.1390, 0.1132, 0.1277, 0.1175, 0.1112])
