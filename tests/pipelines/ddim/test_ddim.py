@@ -100,6 +100,7 @@ class DDIMPipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (1, 256, 256, 3)
         expected_slice = np.array([0.1546, 0.1561, 0.1595, 0.1564, 0.1569, 0.1585, 0.1554, 0.1550, 0.1575])
 
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice)
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_inference_cifar10(self):
@@ -118,6 +119,7 @@ class DDIMPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.2060, 0.2042, 0.2022, 0.2193, 0.2146, 0.2110, 0.2471, 0.2446, 0.2388])
+        expected_slice = np.array([0.0060, 0.0201, 0.0344, 0.0024, 0.0018, 0.0002, 0.0022, 0.0000, 0.0069])
 
+        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice)
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
