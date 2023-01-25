@@ -186,7 +186,9 @@ class CrossAttention(nn.Module):
             key = key.float()
 
         if attention_mask is None:
-            baddbmm_input = torch.zeros(query.shape[0], query.shape[1], key.shape[1], dtype=query.dtype, device=query.device)
+            baddbmm_input = torch.zeros(
+                query.shape[0], query.shape[1], key.shape[1], dtype=query.dtype, device=query.device
+            )
         else:
             baddbmm_input = attention_mask
 
