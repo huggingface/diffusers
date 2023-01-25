@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional, Union
+from typing import Callable, Optional, Union
 
 import torch
 import torch.nn.functional as F
@@ -93,7 +93,9 @@ class CrossAttention(nn.Module):
         processor = processor if processor is not None else CrossAttnProcessor()
         self.set_processor(processor)
 
-    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
+    def set_use_memory_efficient_attention_xformers(
+        self, use_memory_efficient_attention_xformers: bool, attention_op: Optional[Callable] = None
+    ):
         if use_memory_efficient_attention_xformers:
             if self.added_kv_proj_dim is not None:
                 # TODO(Anton, Patrick, Suraj, William) - currently xformers doesn't work for UnCLIP
@@ -127,7 +129,7 @@ class CrossAttention(nn.Module):
                 except Exception as e:
                     raise e
 
-            processor = XFormersCrossAttnProcessor()
+            processor = XFormersCrossAttnProcessor(attention_op=attention_op)
         else:
             processor = CrossAttnProcessor()
 
@@ -351,6 +353,9 @@ class CrossAttnAddedKVProcessor:
 
 
 class XFormersCrossAttnProcessor:
+    def __init__(self, attention_op: Optional[Callable] = None):
+        self.attention_op = attention_op
+
     def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None):
         batch_size, sequence_length, _ = hidden_states.shape
 
@@ -366,7 +371,9 @@ class XFormersCrossAttnProcessor:
         key = attn.head_to_batch_dim(key).contiguous()
         value = attn.head_to_batch_dim(value).contiguous()
 
-        hidden_states = xformers.ops.memory_efficient_attention(query, key, value, attn_bias=attention_mask)
+        hidden_states = xformers.ops.memory_efficient_attention(
+            query, key, value, attn_bias=attention_mask, op=self.attention_op
+        )
         hidden_states = hidden_states.to(query.dtype)
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
