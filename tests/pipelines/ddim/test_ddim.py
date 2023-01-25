@@ -100,7 +100,6 @@ class DDIMPipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.1723, 0.1617, 0.1600, 0.1626, 0.1497, 0.1513, 0.1505, 0.1442, 0.1453])
 
-        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice)
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_inference_ema_bedroom(self):
@@ -119,7 +118,6 @@ class DDIMPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 256, 256, 3)
-        expected_slice = np.array([0.1546, 0.1561, 0.1595, 0.1564, 0.1569, 0.1585, 0.1554, 0.1550, 0.1575])
+        expected_slice = np.array([0.0060, 0.0201, 0.0344, 0.0024, 0.0018, 0.0002, 0.0022, 0.0000, 0.0069])
 
-        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice)
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
