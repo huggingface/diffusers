@@ -112,9 +112,7 @@ class PipelineIntegrationTests(unittest.TestCase):
 
         assert audio.shape == (1, 2, pipe.unet.sample_size)
         expected_slice = np.array([-0.0192, -0.0231, -0.0318, -0.0059, 0.0002, -0.0020])
-        
 
-        
         assert np.abs(audio_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_dance_diffusion_fp16(self):
@@ -132,7 +130,5 @@ class PipelineIntegrationTests(unittest.TestCase):
 
         assert audio.shape == (1, 2, pipe.unet.sample_size)
         expected_slice = np.array([-0.0367, -0.0488, -0.0771, -0.0525, -0.0444, -0.0341])
-        
 
-        
         assert np.abs(audio_slice.flatten() - expected_slice).max() < 1e-2

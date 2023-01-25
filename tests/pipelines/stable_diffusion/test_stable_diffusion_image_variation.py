@@ -117,9 +117,7 @@ class StableDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unitte
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5167, 0.5746, 0.4835, 0.4914, 0.5605, 0.4691, 0.5201, 0.4898, 0.4958])
-        
 
-        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_img_variation_multiple_images(self):
@@ -139,9 +137,7 @@ class StableDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unitte
 
         assert image.shape == (2, 64, 64, 3)
         expected_slice = np.array([0.6568, 0.5470, 0.5684, 0.5444, 0.5945, 0.6221, 0.5508, 0.5531, 0.5263])
-        
 
-        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_img_variation_num_images_per_prompt(self):
@@ -236,18 +232,14 @@ class StableDiffusionImageVariationPipelineSlowTests(unittest.TestCase):
                 expected_slice = np.array(
                     [-0.1621, 0.2837, -0.7979, -0.1221, -1.3057, 0.7681, -2.1191, 0.0464, 1.6309]
                 )
-                
 
-                
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-3
             elif step == 2:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array([0.6299, 1.7500, 1.1992, -2.1582, -1.8994, 0.7334, -0.7090, 1.0137, 1.5273])
-                
 
-                
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
 
         callback_fn.has_been_called = False

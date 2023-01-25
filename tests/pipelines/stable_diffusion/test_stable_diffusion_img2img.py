@@ -119,9 +119,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.4492, 0.3865, 0.4222, 0.5854, 0.5139, 0.4379, 0.4193, 0.48, 0.4218])
-        
 
-        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_img2img_negative_prompt(self):
@@ -139,9 +137,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.4065, 0.3783, 0.4050, 0.5266, 0.4781, 0.4252, 0.4203, 0.4692, 0.4365])
-        
 
-        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_img2img_multiple_init_images(self):
@@ -159,9 +155,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
 
         assert image.shape == (2, 32, 32, 3)
         expected_slice = np.array([0.5144, 0.4447, 0.4735, 0.6676, 0.5526, 0.5454, 0.645, 0.5149, 0.4689])
-        
 
-        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_img2img_k_lms(self):
@@ -180,9 +174,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.4367, 0.4986, 0.4372, 0.6706, 0.5665, 0.444, 0.5864, 0.6019, 0.5203])
-        
 
-        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_img2img_num_images_per_prompt(self):
@@ -259,9 +251,7 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 768, 3)
         expected_slice = np.array([0.4300, 0.4662, 0.4930, 0.3990, 0.4307, 0.4525, 0.3719, 0.4064, 0.3923])
-        
 
-        
         assert np.abs(expected_slice - image_slice).max() < 1e-3
 
     def test_stable_diffusion_img2img_k_lms(self):
@@ -277,9 +267,7 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 768, 3)
         expected_slice = np.array([0.0389, 0.0346, 0.0415, 0.0290, 0.0218, 0.0210, 0.0408, 0.0567, 0.0271])
-        
 
-        
         assert np.abs(expected_slice - image_slice).max() < 1e-3
 
     def test_stable_diffusion_img2img_ddim(self):
@@ -295,9 +283,7 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 768, 3)
         expected_slice = np.array([0.0593, 0.0607, 0.0851, 0.0582, 0.0636, 0.0721, 0.0751, 0.0981, 0.0781])
-        
 
-        
         assert np.abs(expected_slice - image_slice).max() < 1e-3
 
     def test_stable_diffusion_img2img_intermediate_state(self):
@@ -312,18 +298,14 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
                 assert latents.shape == (1, 4, 64, 96)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array([-0.4958, 0.5107, 1.1045, 2.7539, 4.6680, 3.8320, 1.5049, 1.8633, 2.6523])
-                
 
-                
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
             elif step == 2:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 96)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array([-0.4956, 0.5078, 1.0918, 2.7520, 4.6484, 3.8125, 1.5146, 1.8633, 2.6367])
-                
 
-                
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
 
         callback_fn.has_been_called = False
@@ -394,9 +376,7 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (504, 760, 3)
         expected_slice = np.array([-0.4958, 0.5107, 1.1045, 2.7539, 4.6680, 3.8320, 1.5049, 1.8633, 2.6523])
-        
 
-        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
 

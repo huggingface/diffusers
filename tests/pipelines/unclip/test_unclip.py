@@ -259,9 +259,6 @@ class UnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             ]
         )
 
-        
-
-        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 

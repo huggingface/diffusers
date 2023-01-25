@@ -53,9 +53,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.0447, 0.0492, 0.0468, 0.0408, 0.0383, 0.0408, 0.0354, 0.0380, 0.0339])
-        
 
-        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_2(self):
@@ -77,7 +75,5 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         expected_slice = np.array(
             [0.826810, 0.81958747, 0.8510199, 0.8376758, 0.83958465, 0.8682068, 0.84370345, 0.85251087, 0.85884345]
         )
-        
 
-        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

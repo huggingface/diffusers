@@ -156,9 +156,6 @@ class StableDiffusionUpscalePipelineFastTests(unittest.TestCase):
         assert image.shape == (1, expected_height_width, expected_height_width, 3)
         expected_slice = np.array([0.2562, 0.3606, 0.4204, 0.4469, 0.4822, 0.4647, 0.5315, 0.5748, 0.5606])
 
-        
-
-        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 

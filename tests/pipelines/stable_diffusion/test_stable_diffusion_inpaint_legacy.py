@@ -213,9 +213,7 @@ class StableDiffusionInpaintLegacyPipelineFastTests(unittest.TestCase):
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.4731, 0.5346, 0.4531, 0.6251, 0.5446, 0.4057, 0.5527, 0.5896, 0.5153])
-        
 
-        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -263,9 +261,7 @@ class StableDiffusionInpaintLegacyPipelineFastTests(unittest.TestCase):
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.4765, 0.5339, 0.4541, 0.6240, 0.5439, 0.4055, 0.5503, 0.5891, 0.5150])
-        
 
-        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_inpaint_legacy_num_images_per_prompt(self):
@@ -389,9 +385,7 @@ class StableDiffusionInpaintLegacyPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.5669, 0.6124, 0.6431, 0.4073, 0.4614, 0.5670, 0.1609, 0.3128, 0.4330])
-        
 
-        
         assert np.abs(expected_slice - image_slice).max() < 1e-4
 
     def test_stable_diffusion_inpaint_legacy_k_lms(self):
@@ -409,9 +403,7 @@ class StableDiffusionInpaintLegacyPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.4533, 0.4465, 0.4327, 0.4329, 0.4339, 0.4219, 0.4243, 0.4332, 0.4426])
-        
 
-        
         assert np.abs(expected_slice - image_slice).max() < 1e-4
 
     def test_stable_diffusion_inpaint_legacy_intermediate_state(self):
@@ -426,18 +418,14 @@ class StableDiffusionInpaintLegacyPipelineSlowTests(unittest.TestCase):
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array([0.5977, 1.5449, 1.0586, -0.3250, 0.7383, -0.0862, 0.4631, -0.2571, -1.1289])
-                
 
-                
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
             elif step == 2:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array([0.5190, 1.1621, 0.6885, 0.2424, 0.3337, -0.1617, 0.6914, -0.1957, -0.5474])
-                
 
-                
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
 
         callback_fn.has_been_called = False

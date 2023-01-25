@@ -63,9 +63,7 @@ class DDPMPipelineFastTests(unittest.TestCase):
         expected_slice = np.array(
             [5.589e-01, 7.089e-01, 2.632e-01, 6.841e-01, 1.000e-04, 9.999e-01, 1.973e-01, 1.000e-04, 8.010e-02]
         )
-        
 
-        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -141,7 +139,5 @@ class DDPMPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.4454, 0.2025, 0.0315, 0.3023, 0.2575, 0.1031, 0.0953, 0.1604, 0.2020])
-        
 
-        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

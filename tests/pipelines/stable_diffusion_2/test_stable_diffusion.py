@@ -133,9 +133,6 @@ class StableDiffusion2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5649, 0.6022, 0.4804, 0.5270, 0.5585, 0.4643, 0.5159, 0.4963, 0.4793])
 
-        
-
-        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_pndm(self):
@@ -152,9 +149,7 @@ class StableDiffusion2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5099, 0.5677, 0.4671, 0.5128, 0.5697, 0.4676, 0.5277, 0.4964, 0.4946])
-        
 
-        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_k_lms(self):
@@ -171,9 +166,7 @@ class StableDiffusion2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.4717, 0.5376, 0.4568, 0.5225, 0.5734, 0.4797, 0.5467, 0.5074, 0.5043])
-        
 
-        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_k_euler_ancestral(self):
@@ -190,9 +183,7 @@ class StableDiffusion2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.4715, 0.5376, 0.4569, 0.5224, 0.5734, 0.4797, 0.5465, 0.5074, 0.5046])
-        
 
-        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_k_euler(self):
@@ -209,9 +200,7 @@ class StableDiffusion2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.4717, 0.5376, 0.4568, 0.5225, 0.5734, 0.4797, 0.5467, 0.5074, 0.5043])
-        
 
-        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_long_prompt(self):
@@ -358,9 +347,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
                 expected_slice = np.array(
                     [-0.3862, -0.4507, -1.1729, 0.0686, -1.1045, 0.7124, -1.8301, 0.1903, 1.2773]
                 )
-                
 
-                
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-3
             elif step == 2:
                 latents = latents.detach().cpu().numpy()
@@ -369,9 +356,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
                 expected_slice = np.array(
                     [0.2720, -0.1863, -0.7383, -0.5029, -0.7534, 0.3970, -0.7646, 0.4468, 1.2686]
                 )
-                
 
-                
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-2
 
         callback_fn.has_been_called = False
