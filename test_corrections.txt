@@ -1,0 +1,2 @@
+tests/pipelines/ddim/test_ddim.py;DDIMPipelineIntegrationTests;test_inference_cifar10;expected_slice = np.array([0.1723, 0.1617, 0.1600, 0.1626, 0.1497, 0.1513, 0.1505, 0.1442, 0.1453])
+tests/pipelines/ddim/test_ddim.py;DDIMPipelineIntegrationTests;test_inference_ema_bedroom;expected_slice = np.array([0.0060, 0.0201, 0.0344, 0.0024, 0.0018, 0.0002, 0.0022, 0.0000, 0.0069])
