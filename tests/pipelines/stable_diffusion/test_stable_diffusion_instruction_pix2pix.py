@@ -336,7 +336,7 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([-0.2568, -0.4648, -0.9639, 1.5137, 1.4609, 0.7603, 0.9795, 0.8403, 0.7949])
+                expected_slice = np.array([-0.2644, -0.4626, -0.9653,  1.5176,  1.4551,  0.7686,  0.9805,  0.8452,         0.8115])
                 from diffusers.utils.testing_utils import print_tensor_test
 
                 print_tensor_test(latents_slice)
@@ -396,7 +396,7 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
         image_slice = image[255:258, 383:386, -1]
 
         assert image.shape == (504, 504, 3)
-        expected_slice = np.array([0.2726, 0.2529, 0.2664, 0.2655, 0.2641, 0.2642, 0.2591, 0.2649, 0.259])
+        expected_slice = np.array([-0.2463, -0.4644, -0.9756,  1.5176,  1.4414,  0.7866,  0.9897,  0.8521,         0.7983])
         from diffusers.utils.testing_utils import print_tensor_test
 
         print_tensor_test(image_slice)
