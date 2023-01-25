@@ -126,15 +126,11 @@ image.save("pokemon.png")
 
 Here are some example images you can expect:
 
-<div align="center">
 <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/pokemon-collage.png"/>
-<div>
 
 [`sayakpaul/sd-model-finetuned-lora-t4`](https://huggingface.co/sayakpaul/sd-model-finetuned-lora-t4) contains [LoRA fine-tuned update matrices](https://huggingface.co/sayakpaul/sd-model-finetuned-lora-t4/blob/main/pytorch_lora_weights.bin)
 which is only 3 MBs in size. During inference, the pre-trained Stable Diffusion checkpoints are loaded alongside these update
 matrices and then they are combined to run inference.
-
-<Tip>
 
 You can use the [`huggingface_hub`](https://github.com/huggingface/huggingface_hub) library to retrieve the base model
 from [`sayakpaul/sd-model-finetuned-lora-t4`](https://huggingface.co/sayakpaul/sd-model-finetuned-lora-t4) like so:
@@ -150,8 +146,6 @@ base_model = card.data.to_dict()["base_model"]
 And then you can use `pipe = StableDiffusionPipeline.from_pretrained(base_model, torch_dtype=torch.float16)`.
 
 This is especially useful when you don't want to hardcode the base model identifier during initializing the `StableDiffusionPipeline`.
-
-</Tip>
 
 Inference for DreamBooth training remains the same. Check
 [this section](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth#inference-1) for more details. 
