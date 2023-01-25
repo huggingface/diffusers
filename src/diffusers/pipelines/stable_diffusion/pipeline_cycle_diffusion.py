@@ -623,7 +623,7 @@ class CycleDiffusionPipeline(DiffusionPipeline):
             (nsfw) content, according to the `safety_checker`.
         """
         message = "Please use `image` instead of `init_image`."
-        init_image = deprecate("init_image", "0.13.0", message, take_from=kwargs)
+        init_image = deprecate("init_image", "0.14.0", message, take_from=kwargs)
         image = init_image or image
 
         # 1. Check inputs

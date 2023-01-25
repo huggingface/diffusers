@@ -23,7 +23,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput, deprecate, randn_tensor
+from ..utils import BaseOutput, randn_tensor
 from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
 
 
@@ -113,7 +113,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
-    _deprecated_kwargs = ["predict_epsilon"]
     order = 1
 
     @register_to_config
@@ -128,16 +127,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         set_alpha_to_one: bool = True,
         steps_offset: int = 0,
         prediction_type: str = "epsilon",
-        **kwargs,
     ):
-        message = (
-            "Please make sure to instantiate your scheduler with `prediction_type` instead. E.g. `scheduler ="
-            " DDIMScheduler.from_pretrained(<model_id>, prediction_type='epsilon')`."
-        )
-        predict_epsilon = deprecate("predict_epsilon", "0.13.0", message, take_from=kwargs)
-        if predict_epsilon is not None:
-            self.register_to_config(prediction_type="epsilon" if predict_epsilon else "sample")
-
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
         elif beta_schedule == "linear":

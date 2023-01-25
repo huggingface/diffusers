@@ -19,7 +19,6 @@ import numpy as np
 import torch
 
 from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
-from diffusers.utils import deprecate
 from diffusers.utils.testing_utils import require_torch_gpu, slow, torch_device
 
 
@@ -66,32 +65,6 @@ class DDPMPipelineFastTests(unittest.TestCase):
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
-
-    def test_inference_deprecated_predict_epsilon(self):
-        deprecate("remove this test", "0.13.0", "remove")
-        unet = self.dummy_uncond_unet
-        scheduler = DDPMScheduler(predict_epsilon=False)
-
-        ddpm = DDPMPipeline(unet=unet, scheduler=scheduler)
-        ddpm.to(torch_device)
-        ddpm.set_progress_bar_config(disable=None)
-
-        # Warmup pass when using mps (see #372)
-        if torch_device == "mps":
-            _ = ddpm(num_inference_steps=1)
-
-        generator = torch.manual_seed(0)
-        image = ddpm(generator=generator, num_inference_steps=2, output_type="numpy").images
-
-        generator = torch.manual_seed(0)
-        image_eps = ddpm(generator=generator, num_inference_steps=2, output_type="numpy", predict_epsilon=False)[0]
-
-        image_slice = image[0, -3:, -3:, -1]
-        image_eps_slice = image_eps[0, -3:, -3:, -1]
-
-        assert image.shape == (1, 32, 32, 3)
-        tolerance = 1e-2 if torch_device != "mps" else 3e-2
-        assert np.abs(image_slice.flatten() - image_eps_slice.flatten()).max() < tolerance
 
     def test_inference_predict_sample(self):
         unet = self.dummy_uncond_unet
