@@ -17,7 +17,7 @@ from typing import List, Optional, Tuple, Union
 import torch
 
 from ...schedulers import DDIMScheduler
-from ...utils import deprecate, randn_tensor
+from ...utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
@@ -77,24 +77,6 @@ class DDIMPipeline(DiffusionPipeline):
             [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if `return_dict` is
             True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
         """
-
-        if (
-            generator is not None
-            and isinstance(generator, torch.Generator)
-            and generator.device.type != self.device.type
-            and self.device.type != "mps"
-        ):
-            message = (
-                f"The `generator` device is `{generator.device}` and does not match the pipeline "
-                f"device `{self.device}`, so the `generator` will be ignored. "
-                f'Please use `generator=torch.Generator(device="{self.device}")` instead.'
-            )
-            deprecate(
-                "generator.device == 'cpu'",
-                "0.13.0",
-                message,
-            )
-            generator = None
 
         # Sample gaussian noise to begin loop
         if isinstance(self.unet.sample_size, int):

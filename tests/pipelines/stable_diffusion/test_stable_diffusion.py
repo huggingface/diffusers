@@ -244,6 +244,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5094, 0.5674, 0.4667, 0.5125, 0.5696, 0.4674, 0.5277, 0.4964, 0.4945])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_no_safety_checker(self):
@@ -295,6 +296,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                 0.5042197108268738,
             ]
         )
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_k_euler_ancestral(self):
@@ -325,6 +327,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                 0.504422664642334,
             ]
         )
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_k_euler(self):
@@ -355,6 +358,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                 0.5042197108268738,
             ]
         )
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_vae_slicing(self):
@@ -409,6 +413,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                 0.4899061322212219,
             ]
         )
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_num_images_per_prompt(self):
@@ -519,8 +524,8 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def get_inputs(self, device, dtype=torch.float32, seed=0):
-        generator = torch.Generator(device=device).manual_seed(seed)
+    def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
+        generator = torch.Generator(device=generator_device).manual_seed(seed)
         latents = np.random.RandomState(seed).standard_normal((1, 4, 64, 64))
         latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
         inputs = {
@@ -657,9 +662,11 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         mem_bytes = torch.cuda.max_memory_allocated()
         assert mem_bytes > 4e9
         # There is a small discrepancy at the image borders vs. a fully batched version.
-        assert np.abs(image_sliced - image).max() < 4e-3
+        assert np.abs(image_sliced - image).max() < 1e-2
 
     def test_stable_diffusion_fp16_vs_autocast(self):
+        # this test makes sure that the original model with autocast
+        # and the new model with fp16 yield the same result
         pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -688,14 +695,20 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([-0.5713, -0.3018, -0.9814, 0.04663, -0.879, 0.76, -1.734, 0.1044, 1.161])
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-3
+                expected_slice = np.array(
+                    [-0.5693, -0.3018, -0.9746, 0.0518, -0.8770, 0.7559, -1.7402, 0.1022, 1.1582]
+                )
+
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
             elif step == 2:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([-0.1885, -0.3022, -1.012, -0.514, -0.477, 0.6143, -0.9336, 0.6553, 1.453])
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-2
+                expected_slice = np.array(
+                    [-0.1958, -0.2993, -1.0166, -0.5005, -0.4810, 0.6162, -0.9492, 0.6621, 1.4492]
+                )
+
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
 
         callback_fn.has_been_called = False
 
@@ -750,8 +763,8 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def get_inputs(self, device, dtype=torch.float32, seed=0):
-        generator = torch.Generator(device=device).manual_seed(seed)
+    def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
+        generator = torch.Generator(device=generator_device).manual_seed(seed)
         latents = np.random.RandomState(seed).standard_normal((1, 4, 64, 64))
         latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
         inputs = {

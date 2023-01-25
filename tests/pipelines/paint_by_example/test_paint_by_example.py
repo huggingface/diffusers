@@ -205,7 +205,7 @@ class PaintByExamplePipelineIntegrationTests(unittest.TestCase):
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator(device=torch_device).manual_seed(321)
+        generator = torch.manual_seed(321)
         output = pipe(
             image=init_image,
             mask_image=mask_image,
@@ -221,7 +221,6 @@ class PaintByExamplePipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array(
-            [0.47455794, 0.47086594, 0.47683704, 0.51024145, 0.5064255, 0.5123164, 0.532502, 0.5328063, 0.5428694]
-        )
+        expected_slice = np.array([0.4834, 0.4811, 0.4874, 0.5122, 0.5081, 0.5144, 0.5291, 0.5290, 0.5374])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
