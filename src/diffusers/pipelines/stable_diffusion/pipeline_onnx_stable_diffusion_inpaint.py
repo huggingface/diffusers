@@ -424,9 +424,9 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
 
             # predict the noise residual
             timestep = np.array([t], dtype=timestep_dtype)
-            noise_pred = self.unet(
-                sample=latent_model_input, timestep=timestep, encoder_hidden_states=prompt_embeds
-            )[0]
+            noise_pred = self.unet(sample=latent_model_input, timestep=timestep, encoder_hidden_states=prompt_embeds)[
+                0
+            ]
 
             # perform guidance
             if do_classifier_free_guidance:
