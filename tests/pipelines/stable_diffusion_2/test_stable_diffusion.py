@@ -341,13 +341,13 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array([-0.3857, -0.4507, -1.1670,  0.0740, -1.1080,  0.7183, -1.8220,  0.1915, 1.2830])
-                from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(latent_slice); assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-3
+                from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(latents_slice); assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-3
             elif step == 2:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array([0.268, -0.2095, -0.7744, -0.541, -0.79, 0.3926, -0.7754, 0.465, 1.291])
-                from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(latent_slice); assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-2
+                from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(latents_slice); assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-2
 
         callback_fn.has_been_called = False
 

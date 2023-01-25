@@ -473,13 +473,13 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
                 assert latents.shape == (1, 4, 60, 80)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array([-1.1480, -0.2079, -0.6220, -2.4770, -2.3480,  0.3828, -2.0550, -1.5690, -1.5260])
-                from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(latent_slice); assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
+                from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(latents_slice); assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
             elif step == 2:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 60, 80)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array([-1.145, -0.2063, -0.6216, -2.469, -2.344, 0.3794, -2.05, -1.57, -1.521])
-                from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(latent_slice); assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
+                from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(latents_slice); assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
 
         callback_fn.has_been_called = False
 
