@@ -134,9 +134,9 @@ class PaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.4701, 0.5555, 0.3994, 0.5107, 0.5691, 0.4517, 0.5125, 0.4769, 0.4539])
 
-        from diffusers.utils.testing_utils import print_tensor_test
+        
 
-        print_tensor_test(image_slice)
+        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_paint_by_example_image_tensor(self):
@@ -225,7 +225,7 @@ class PaintByExamplePipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.4834, 0.4811, 0.4874, 0.5122, 0.5081, 0.5144, 0.5291, 0.5290, 0.5374])
-        from diffusers.utils.testing_utils import print_tensor_test
+        
 
-        print_tensor_test(image_slice)
+        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

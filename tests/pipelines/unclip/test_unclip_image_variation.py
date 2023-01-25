@@ -275,9 +275,9 @@ class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCa
             ]
         )
 
-        from diffusers.utils.testing_utils import print_tensor_test
+        
 
-        print_tensor_test(image_slice)
+        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -310,9 +310,9 @@ class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCa
 
         expected_slice = np.array([0.9997, 0.0003, 0.9997, 0.9997, 0.9970, 0.0024, 0.9997, 0.9971, 0.9971])
 
-        from diffusers.utils.testing_utils import print_tensor_test
+        
 
-        print_tensor_test(image_slice)
+        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -365,9 +365,9 @@ class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCa
             ]
         )
 
-        from diffusers.utils.testing_utils import print_tensor_test
+        
 
-        print_tensor_test(image_slice)
+        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -421,9 +421,9 @@ class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCa
             ]
         )
 
-        from diffusers.utils.testing_utils import print_tensor_test
+        
 
-        print_tensor_test(image_slice)
+        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 

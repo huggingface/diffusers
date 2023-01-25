@@ -59,9 +59,9 @@ class PNDMPipelineFastTests(unittest.TestCase):
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0])
-        from diffusers.utils.testing_utils import print_tensor_test
+        
 
-        print_tensor_test(image_slice)
+        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -85,7 +85,7 @@ class PNDMPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.1564, 0.14645, 0.1406, 0.14715, 0.12425, 0.14045, 0.13115, 0.12175, 0.125])
-        from diffusers.utils.testing_utils import print_tensor_test
+        
 
-        print_tensor_test(image_slice)
+        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

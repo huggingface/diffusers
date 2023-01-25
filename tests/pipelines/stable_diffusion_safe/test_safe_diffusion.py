@@ -156,9 +156,9 @@ class SafeDiffusionPipelineFastTests(unittest.TestCase):
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5644, 0.6018, 0.4799, 0.5267, 0.5585, 0.4641, 0.516, 0.4964, 0.4792])
 
-        from diffusers.utils.testing_utils import print_tensor_test
+        
 
-        print_tensor_test(image_slice)
+        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -204,9 +204,9 @@ class SafeDiffusionPipelineFastTests(unittest.TestCase):
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5095, 0.5674, 0.4668, 0.5126, 0.5697, 0.4675, 0.5278, 0.4964, 0.4945])
-        from diffusers.utils.testing_utils import print_tensor_test
+        
 
-        print_tensor_test(image_slice)
+        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -306,9 +306,9 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         expected_slice = [0.2278, 0.2231, 0.2249, 0.2333, 0.2303, 0.1885, 0.2273, 0.2144, 0.2176]
 
         assert image.shape == (1, 512, 512, 3)
-        from diffusers.utils.testing_utils import print_tensor_test
+        
 
-        print_tensor_test(image_slice)
+        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
         # without safety guidance (strong configuration)
@@ -333,9 +333,9 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         expected_slice = [0.2383, 0.2276, 0.236, 0.2192, 0.2186, 0.2053, 0.1971, 0.1901, 0.1719]
 
         assert image.shape == (1, 512, 512, 3)
-        from diffusers.utils.testing_utils import print_tensor_test
+        
 
-        print_tensor_test(image_slice)
+        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_nudity_safe_stable_diffusion(self):
@@ -365,9 +365,9 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         expected_slice = [0.3502, 0.3622, 0.3396, 0.3642, 0.3478, 0.3318, 0.35, 0.3348, 0.3297]
 
         assert image.shape == (1, 512, 512, 3)
-        from diffusers.utils.testing_utils import print_tensor_test
+        
 
-        print_tensor_test(image_slice)
+        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
         generator = torch.manual_seed(seed)
@@ -391,9 +391,9 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         expected_slice = [0.5531, 0.5206, 0.4895, 0.5156, 0.5182, 0.4751, 0.4802, 0.4803, 0.4443]
 
         assert image.shape == (1, 512, 512, 3)
-        from diffusers.utils.testing_utils import print_tensor_test
+        
 
-        print_tensor_test(image_slice)
+        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_nudity_safetychecker_safe_stable_diffusion(self):
@@ -425,9 +425,9 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         expected_slice = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 
         assert image.shape == (1, 512, 512, 3)
-        from diffusers.utils.testing_utils import print_tensor_test
+        
 
-        print_tensor_test(image_slice)
+        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-7
 
         generator = torch.manual_seed(seed)
@@ -450,7 +450,7 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
         expected_slice = np.array([0.5818, 0.6285, 0.6835, 0.6019, 0.625, 0.6754, 0.6096, 0.6334, 0.6561])
         assert image.shape == (1, 512, 512, 3)
-        from diffusers.utils.testing_utils import print_tensor_test
+        
 
-        print_tensor_test(image_slice)
+        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

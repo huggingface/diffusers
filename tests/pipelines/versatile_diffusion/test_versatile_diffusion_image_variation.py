@@ -53,7 +53,7 @@ class VersatileDiffusionImageVariationPipelineIntegrationTests(unittest.TestCase
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.0441, 0.0469, 0.0507, 0.0575, 0.0632, 0.0650, 0.0865, 0.0909, 0.0945])
-        from diffusers.utils.testing_utils import print_tensor_test
+        
 
-        print_tensor_test(image_slice)
+        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

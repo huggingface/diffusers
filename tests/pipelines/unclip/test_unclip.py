@@ -259,9 +259,9 @@ class UnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             ]
         )
 
-        from diffusers.utils.testing_utils import print_tensor_test
+        
 
-        print_tensor_test(image_slice)
+        
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 

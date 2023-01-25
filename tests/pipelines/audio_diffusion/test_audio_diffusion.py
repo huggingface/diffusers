@@ -119,9 +119,9 @@ class PipelineFastTests(unittest.TestCase):
         image_slice = np.frombuffer(image.tobytes(), dtype="uint8")[:10]
         image_from_tuple_slice = np.frombuffer(image_from_tuple.tobytes(), dtype="uint8")[:10]
         expected_slice = np.array([255, 255, 255, 0, 181, 0, 124, 0, 15, 255])
-        from diffusers.utils.testing_utils import print_tensor_test
+        
 
-        print_tensor_test(image_slice)
+        
         assert np.abs(image_slice.flatten() - expected_slice).max() == 0
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() == 0
 
@@ -145,9 +145,9 @@ class PipelineFastTests(unittest.TestCase):
         )
         image_slice = np.frombuffer(image.tobytes(), dtype="uint8")[:10]
         expected_slice = np.array([120, 117, 110, 109, 138, 167, 138, 148, 132, 121])
-        from diffusers.utils.testing_utils import print_tensor_test
+        
 
-        print_tensor_test(image_slice)
+        
         assert np.abs(image_slice.flatten() - expected_slice).max() == 0
 
         dummy_unet_condition = self.dummy_unet_condition
@@ -161,9 +161,9 @@ class PipelineFastTests(unittest.TestCase):
         image = output.images[0]
         image_slice = np.frombuffer(image.tobytes(), dtype="uint8")[:10]
         expected_slice = np.array([120, 139, 147, 123, 124, 96, 115, 121, 126, 144])
-        from diffusers.utils.testing_utils import print_tensor_test
+        
 
-        print_tensor_test(image_slice)
+        
         assert np.abs(image_slice.flatten() - expected_slice).max() == 0
 
 
@@ -192,7 +192,7 @@ class PipelineIntegrationTests(unittest.TestCase):
         assert image.height == pipe.unet.sample_size[0] and image.width == pipe.unet.sample_size[1]
         image_slice = np.frombuffer(image.tobytes(), dtype="uint8")[:10]
         expected_slice = np.array([151, 167, 154, 144, 122, 134, 121, 105, 70, 26])
-        from diffusers.utils.testing_utils import print_tensor_test
+        
 
-        print_tensor_test(image_slice)
+        
         assert np.abs(image_slice.flatten() - expected_slice).max() == 0
