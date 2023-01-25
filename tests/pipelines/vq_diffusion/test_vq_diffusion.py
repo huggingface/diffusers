@@ -218,7 +218,9 @@ class VQDiffusionPipelineIntegrationTests(unittest.TestCase):
         pipeline = pipeline.to(torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
-        generator = torch.manual_seed(0)
+        # requires GPU generator for gumbel softmax
+        # don't use GPU generator in tests though
+        generator = torch.Generator(device=torch_device).manual_seed(0)
         output = pipeline(
             "teddy bear playing in the pool",
             num_images_per_prompt=1,

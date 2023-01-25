@@ -427,7 +427,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 96, 96)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([ 0.7749,  0.0325,  0.5088,  0.1619,  0.3372,  0.3667, -0.5186,  0.6860,         1.4326])
+                expected_slice = np.array([0.7749, 0.0325, 0.5088, 0.1619, 0.3372, 0.3667, -0.5186, 0.6860, 1.4326])
                 from diffusers.utils.testing_utils import print_tensor_test
 
                 print_tensor_test(latents_slice)
@@ -436,7 +436,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 96, 96)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([ 1.3887,  1.0273,  1.7266,  0.0726,  0.6611,  0.1598, -1.0547,  0.1522,         0.0227])
+                expected_slice = np.array([1.3887, 1.0273, 1.7266, 0.0726, 0.6611, 0.1598, -1.0547, 0.1522, 0.0227])
                 from diffusers.utils.testing_utils import print_tensor_test
 
                 print_tensor_test(latents_slice)
