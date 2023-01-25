@@ -190,13 +190,15 @@ class ModelMixin(torch.nn.Module):
         if self._supports_gradient_checkpointing:
             self.apply(partial(self._set_gradient_checkpointing, value=False))
 
-    def set_use_memory_efficient_attention_xformers(self, valid: bool) -> None:
+    def set_use_memory_efficient_attention_xformers(
+        self, valid: bool, attention_op: Optional[Callable] = None
+    ) -> None:
         # Recursively walk through all the children.
         # Any children which exposes the set_use_memory_efficient_attention_xformers method
         # gets the message
         def fn_recursive_set_mem_eff(module: torch.nn.Module):
             if hasattr(module, "set_use_memory_efficient_attention_xformers"):
-                module.set_use_memory_efficient_attention_xformers(valid)
+                module.set_use_memory_efficient_attention_xformers(valid, attention_op)
 
             for child in module.children():
                 fn_recursive_set_mem_eff(child)
@@ -205,7 +207,7 @@ class ModelMixin(torch.nn.Module):
             if isinstance(module, torch.nn.Module):
                 fn_recursive_set_mem_eff(module)
 
-    def enable_xformers_memory_efficient_attention(self):
+    def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
         r"""
         Enable memory efficient attention as implemented in xformers.
 
@@ -214,8 +216,28 @@ class ModelMixin(torch.nn.Module):
 
         Warning: When Memory Efficient Attention and Sliced attention are both enabled, the Memory Efficient Attention
         is used.
+
+        Parameters:
+            attention_op (`Callable`, *optional*):
+                Override the default `None` operator for use as `op` argument to the
+                [`memory_efficient_attention()`](https://facebookresearch.github.io/xformers/components/ops.html#xformers.ops.memory_efficient_attention)
+                function of xFormers.
+
+        Examples:
+
+        ```py
+        >>> import torch
+        >>> from diffusers import UNet2DConditionModel
+        >>> from xformers.ops import MemoryEfficientAttentionFlashAttentionOp
+
+        >>> model = UNet2DConditionModel.from_pretrained(
+        ...     "stabilityai/stable-diffusion-2-1", subfolder="unet", torch_dtype=torch.float16
+        ... )
+        >>> model = model.to("cuda")
+        >>> model.enable_xformers_memory_efficient_attention(attention_op=MemoryEfficientAttentionFlashAttentionOp)
+        ```
         """
-        self.set_use_memory_efficient_attention_xformers(True)
+        self.set_use_memory_efficient_attention_xformers(True, attention_op)
 
     def disable_xformers_memory_efficient_attention(self):
         r"""
