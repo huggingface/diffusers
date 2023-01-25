@@ -114,7 +114,7 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `list(int)`):
+            prompt (`str` or `List[str]`):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
@@ -173,18 +173,18 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
 
             uncond_images = self.image_feature_extractor(images=uncond_images, return_tensors="pt")
             pixel_values = uncond_images.pixel_values.to(device).to(self.image_encoder.dtype)
-            uncond_embeddings = self.image_encoder(pixel_values)
-            uncond_embeddings = normalize_embeddings(uncond_embeddings)
+            negative_prompt_embeds = self.image_encoder(pixel_values)
+            negative_prompt_embeds = normalize_embeddings(negative_prompt_embeds)
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-            seq_len = uncond_embeddings.shape[1]
-            uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt, 1)
-            uncond_embeddings = uncond_embeddings.view(batch_size * num_images_per_prompt, seq_len, -1)
+            seq_len = negative_prompt_embeds.shape[1]
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and conditional embeddings into a single batch
             # to avoid doing two forward passes
-            image_embeddings = torch.cat([uncond_embeddings, image_embeddings])
+            image_embeddings = torch.cat([negative_prompt_embeds, image_embeddings])
 
         return image_embeddings
 

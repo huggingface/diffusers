@@ -136,10 +136,10 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
         text_mask = text_inputs.attention_mask.bool().to(device)
         text_encoder_output = self.text_encoder(text_input_ids.to(device))
 
-        text_embeddings = text_encoder_output.text_embeds
+        prompt_embeds = text_encoder_output.text_embeds
         text_encoder_hidden_states = text_encoder_output.last_hidden_state
 
-        text_embeddings = text_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
+        prompt_embeds = prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
         text_encoder_hidden_states = text_encoder_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
         text_mask = text_mask.repeat_interleave(num_images_per_prompt, dim=0)
 
@@ -155,16 +155,16 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
                 return_tensors="pt",
             )
             uncond_text_mask = uncond_input.attention_mask.bool().to(device)
-            uncond_embeddings_text_encoder_output = self.text_encoder(uncond_input.input_ids.to(device))
+            negative_prompt_embeds_text_encoder_output = self.text_encoder(uncond_input.input_ids.to(device))
 
-            uncond_embeddings = uncond_embeddings_text_encoder_output.text_embeds
-            uncond_text_encoder_hidden_states = uncond_embeddings_text_encoder_output.last_hidden_state
+            negative_prompt_embeds = negative_prompt_embeds_text_encoder_output.text_embeds
+            uncond_text_encoder_hidden_states = negative_prompt_embeds_text_encoder_output.last_hidden_state
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
 
-            seq_len = uncond_embeddings.shape[1]
-            uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt)
-            uncond_embeddings = uncond_embeddings.view(batch_size * num_images_per_prompt, seq_len)
+            seq_len = negative_prompt_embeds.shape[1]
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len)
 
             seq_len = uncond_text_encoder_hidden_states.shape[1]
             uncond_text_encoder_hidden_states = uncond_text_encoder_hidden_states.repeat(1, num_images_per_prompt, 1)
@@ -178,12 +178,12 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
-            text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
             text_encoder_hidden_states = torch.cat([uncond_text_encoder_hidden_states, text_encoder_hidden_states])
 
             text_mask = torch.cat([uncond_text_mask, text_mask])
 
-        return text_embeddings, text_encoder_hidden_states, text_mask
+        return prompt_embeds, text_encoder_hidden_states, text_mask
 
     def _encode_image(self, image, device, num_images_per_prompt, image_embeddings: Optional[torch.Tensor] = None):
         dtype = next(self.image_encoder.parameters()).dtype
@@ -314,7 +314,7 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
 
         do_classifier_free_guidance = decoder_guidance_scale > 1.0
 
-        text_embeddings, text_encoder_hidden_states, text_mask = self._encode_prompt(
+        prompt_embeds, text_encoder_hidden_states, text_mask = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance
         )
 
@@ -323,7 +323,7 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
         # decoder
         text_encoder_hidden_states, additive_clip_time_embeddings = self.text_proj(
             image_embeddings=image_embeddings,
-            text_embeddings=text_embeddings,
+            prompt_embeds=prompt_embeds,
             text_encoder_hidden_states=text_encoder_hidden_states,
             do_classifier_free_guidance=do_classifier_free_guidance,
         )

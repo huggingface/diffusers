@@ -129,11 +129,11 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             uncond_input = self.tokenizer(
                 [""] * batch_size, padding="max_length", max_length=77, truncation=True, return_tensors="pt"
             )
-            uncond_embeddings = self.bert(uncond_input.input_ids.to(self.device))[0]
+            negative_prompt_embeds = self.bert(uncond_input.input_ids.to(self.device))[0]
 
         # get prompt text embeddings
         text_input = self.tokenizer(prompt, padding="max_length", max_length=77, truncation=True, return_tensors="pt")
-        text_embeddings = self.bert(text_input.input_ids.to(self.device))[0]
+        prompt_embeds = self.bert(text_input.input_ids.to(self.device))[0]
 
         # get the initial random noise unless the user supplied it
         latents_shape = (batch_size, self.unet.in_channels, height // 8, width // 8)
@@ -144,7 +144,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             )
 
         if latents is None:
-            latents = randn_tensor(latents_shape, generator=generator, device=self.device, dtype=text_embeddings.dtype)
+            latents = randn_tensor(latents_shape, generator=generator, device=self.device, dtype=prompt_embeds.dtype)
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
@@ -163,13 +163,13 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             if guidance_scale == 1.0:
                 # guidance_scale of 1 means no guidance
                 latents_input = latents
-                context = text_embeddings
+                context = prompt_embeds
             else:
                 # For classifier free guidance, we need to do two forward passes.
                 # Here we concatenate the unconditional and text embeddings into a single batch
                 # to avoid doing two forward passes
                 latents_input = torch.cat([latents] * 2)
-                context = torch.cat([uncond_embeddings, text_embeddings])
+                context = torch.cat([negative_prompt_embeds, prompt_embeds])
 
             # predict the noise residual
             noise_pred = self.unet(latents_input, t, encoder_hidden_states=context).sample
