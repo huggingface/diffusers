@@ -252,13 +252,13 @@ class TextualInversionLoaderMixin:
     """
 
     def load_textual_inversion_embeddings(
-        self, embedding_path_dict_or_list: Union[Dict[str, str], List[Dict[str, str]]]
+        self, embedding_path_dict_or_list: Union[Dict[str, str], List[Dict[str, str]]], allow_replacement: bool = False
     ):
         r"""
         Loads textual inversion embeddings and adds them to the tokenizer's vocabulary and the text encoder's embeddings.
 
         Arguments:
-            embeddings (`Dict[str, str]` or `List[str]`):
+            embeddings_path_dict_or_list (`Dict[str, str]` or `List[str]`):
                 Dictionary of token to embedding path or List of embedding paths to embedding dictionaries.
                 The dictionary must have the following keys:
                     - `token`: name of the token to be added to the tokenizers' vocabulary
@@ -275,29 +275,37 @@ class TextualInversionLoaderMixin:
         if isinstance(embedding_path_dict_or_list, dict):
             for token, embedding_path in embedding_path_dict_or_list.items():
                 # check if token in tokenizer vocab
-                # if yes, raise exception
                 if token in self.tokenizer.get_vocab():
-                    raise ValueError(
-                        f"Token {token} already in tokenizer vocabulary. Please choose a different token name."
-                    )
+                    if allow_replacement:
+                        logger.info(
+                            f"Token {token} already in tokenizer vocabulary. Overwriting existing token and embedding with the new one."
+                        )
+                    else:
+                        raise ValueError(
+                            f"Token {token} already in tokenizer vocabulary. Please choose a different token name."
+                        )
 
-                embedding_dict = torch.load(embedding_path)
+                embedding_dict = torch.load(embedding_path, map_location=self.text_encoder.device)
                 embedding = self._extract_embedding_from_dict(embedding_dict)
 
                 self.add_textual_inversion_embedding(token, embedding)
 
         elif isinstance(embedding_path_dict_or_list, list):
             for embedding_path in embedding_path_dict_or_list:
-                embedding_dict = torch.load(embedding_path)
+                embedding_dict = torch.load(embedding_path, map_location=self.text_encoder.device)
                 token = self._extract_token_from_dict(embedding_dict)
                 embedding = self._extract_embedding_from_dict(embedding_dict)
 
                 # check if token in tokenizer vocab
-                # if yes, raise exception
                 if token in self.tokenizer.get_vocab():
-                    raise ValueError(
-                        f"Token {token} already in tokenizer vocabulary. Please choose a different token name."
-                    )
+                    if allow_replacement:
+                        logger.info(
+                            f"Token {token} already in tokenizer vocabulary. Overwriting existing token and embedding with the new one."
+                        )
+                    else:
+                        raise ValueError(
+                            f"Token {token} already in tokenizer vocabulary. Please choose a different token name."
+                        )
                 self.add_textual_inversion_embedding(token, embedding)
 
     def add_textual_inversion_embedding(self, token: str, embedding: torch.Tensor):
@@ -314,19 +322,24 @@ class TextualInversionLoaderMixin:
         # Validate that inheriting class instance contains required attributes
         self._validate_method_call(self.load_textual_inversion_embeddings)
 
-        # check if token in tokenizer vocab
-        # if yes, raise exception
-        if token in self.tokenizer.get_vocab():
-            raise ValueError(f"Token {token} already in tokenizer vocabulary. Please choose a different token name.")
-
-        embedding = embedding.to(self.text_encoder.device)
         embedding = embedding.to(self.text_encoder.dtype)
 
-        self.tokenizer.add_tokens([token])
+        if token in self.tokenizer.get_vocab():
+            # If user has allowed replacement and the token exists, we only need to
+            # extract the existing id and update the embedding
+            token_id = self.tokenizer.convert_tokens_to_ids(token)
+            self.text_encoder.get_input_embeddings().weight.data[token_id] = embedding
+        else:
+            # If the token does not exist, we add it to the tokenizer, then resize and update the
+            # text encoder acccordingly
+            self.tokenizer.add_tokens([token])
 
-        token_id = self.tokenizer.convert_tokens_to_ids(token)
-        self.text_encoder.resize_token_embeddings(len(self.tokenizer) + 1)
-        self.text_encoder.get_input_embeddings().weight.data[token_id] = embedding
+            token_id = self.tokenizer.convert_tokens_to_ids(token)
+            # NOTE: len() does't start at 0, so we shouldn't need to +1
+            # since we already updated the tokenizer and it's new length
+            # should be old length + 1
+            self.text_encoder.resize_token_embeddings(len(self.tokenizer))
+            self.text_encoder.get_input_embeddings().weight.data[token_id] = embedding
 
     def _extract_embedding_from_dict(self, embedding_dict: Dict[str, str]) -> torch.Tensor:
         r"""
