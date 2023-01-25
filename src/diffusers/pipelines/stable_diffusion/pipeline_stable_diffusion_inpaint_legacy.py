@@ -509,6 +509,11 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
 
         if not isinstance(mask_image, torch.FloatTensor):
             mask_image = preprocess_mask(mask_image, self.vae_scale_factor)
+        else:
+            # permute dimensions to pytorch standard (B, C, H, W)
+            mask_image = mask_image.permute(0, 3, 1, 2)
+            h, w = image.shape[-2] // self.vae_scale_factor, image.shape[-1] // self.vae_scale_factor
+            mask_image = torch.nn.functional.interpolate(mask_image, (h, w))
 
         # 5. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -561,6 +566,9 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
+
+        # use original latents corresponding to unmasked portions of the image
+        latents = (init_latents_orig * mask) + (latents * (1 - mask))
 
         # 10. Post-processing
         image = self.decode_latents(latents)
