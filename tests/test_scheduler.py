@@ -45,7 +45,7 @@ from diffusers import (
 )
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.schedulers.scheduling_utils import SchedulerMixin
-from diffusers.utils import deprecate, torch_device
+from diffusers.utils import torch_device
 from diffusers.utils.testing_utils import CaptureLogger
 
 
@@ -644,35 +644,6 @@ class DDPMSchedulerTest(SchedulerCommonTest):
     def test_prediction_type(self):
         for prediction_type in ["epsilon", "sample", "v_prediction"]:
             self.check_over_configs(prediction_type=prediction_type)
-
-    def test_deprecated_predict_epsilon(self):
-        deprecate("remove this test", "0.13.0", "remove")
-        for predict_epsilon in [True, False]:
-            self.check_over_configs(predict_epsilon=predict_epsilon)
-
-    def test_deprecated_epsilon(self):
-        deprecate("remove this test", "0.13.0", "remove")
-        scheduler_class = self.scheduler_classes[0]
-        scheduler_config = self.get_scheduler_config()
-
-        sample = self.dummy_sample_deter
-        residual = 0.1 * self.dummy_sample_deter
-        time_step = 4
-
-        scheduler = scheduler_class(**scheduler_config)
-        scheduler_eps = scheduler_class(predict_epsilon=False, **scheduler_config)
-
-        kwargs = {}
-        if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
-            kwargs["generator"] = torch.manual_seed(0)
-        output = scheduler.step(residual, time_step, sample, predict_epsilon=False, **kwargs).prev_sample
-
-        kwargs = {}
-        if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
-            kwargs["generator"] = torch.manual_seed(0)
-        output_eps = scheduler_eps.step(residual, time_step, sample, predict_epsilon=False, **kwargs).prev_sample
-
-        assert (output - output_eps).abs().sum() < 1e-5
 
     def test_time_indices(self):
         for t in [0, 500, 999]:
