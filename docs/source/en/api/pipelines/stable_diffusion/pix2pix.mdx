@@ -45,11 +45,9 @@ import torch
 from diffusers import StableDiffusionInstructPix2PixPipeline
 
 model_id = "timbrooks/instruct-pix2pix"
-pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-    model_id, torch_dtype=torch.float16, safety_checker=None
-).to("cuda")
+pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 
-url = "https://raw.githubusercontent.com/timothybrooks/instruct-pix2pix/main/imgs/example.jpg"
+url = "https://huggingface.co/datasets/diffusers/diffusers-images-docs/resolve/main/mountain.png"
 
 
 def download_image(url):
@@ -61,9 +59,9 @@ def download_image(url):
 
 image = download_image(url)
 
-prompt = "turn him into a cyborg"
-images = pipe(prompt, image=image, num_inference_steps=10, guidance_scale=1.1, image_guidance_scale=1).images
-images[0].save("david_cyborg.png")
+prompt = "make the mountains snowy"
+edit = pipe(prompt, image=image, num_inference_steps=20, image_guidance_scale=1.5, guidance_scale=7).images[0]
+images[0].save("snowy_mountains.png")
 ```
 
 ## StableDiffusionInstructPix2PixPipeline
