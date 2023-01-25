@@ -208,7 +208,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
         ...     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
 
 
-        >>> img_url = "https://raw.githubusercontent.com/timothybrooks/instruct-pix2pix/main/imgs/example.jpg"
+        >>> img_url = "https://huggingface.co/datasets/diffusers/diffusers-images-docs/resolve/main/mountain.png"
 
         >>> image = download_image(img_url).resize((512, 512))
 
@@ -217,7 +217,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
         ... )
         >>> pipe = pipe.to("cuda")
 
-        >>> prompt = "turn him into cyborg"
+        >>> prompt = "make the mountains snowy"
         >>> image = pipe(prompt=prompt, image=image).images[0]
         ```
 
