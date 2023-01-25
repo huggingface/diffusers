@@ -54,7 +54,7 @@ from transformers import AutoTokenizer, PretrainedConfig
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.12.0.dev0")
+check_min_version("0.13.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -74,6 +74,7 @@ tags:
 - stable-diffusion-diffusers
 - text-to-image
 - diffusers
+- lora
 inference: true
 ---
     """
@@ -210,7 +211,13 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution"
+        "--center_crop",
+        default=False,
+        action="store_true",
+        help=(
+            "Whether to center crop the input images to the resolution. If not set, the images will be randomly"
+            " cropped. The images will be resized to the resolution first before cropping."
+        ),
     )
     parser.add_argument(
         "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
@@ -977,19 +984,19 @@ def main(args):
             prompt = args.num_validation_images * [args.validation_prompt]
             images = pipeline(prompt, num_inference_steps=25, generator=generator).images
 
-        for tracker in accelerator.trackers:
-            if tracker.name == "tensorboard":
-                np_images = np.stack([np.asarray(img) for img in images])
-                tracker.writer.add_images("test", np_images, epoch, dataformats="NHWC")
-            if tracker.name == "wandb":
-                tracker.log(
-                    {
-                        "test": [
-                            wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                            for i, image in enumerate(images)
-                        ]
-                    }
-                )
+            for tracker in accelerator.trackers:
+                if tracker.name == "tensorboard":
+                    np_images = np.stack([np.asarray(img) for img in images])
+                    tracker.writer.add_images("test", np_images, epoch, dataformats="NHWC")
+                if tracker.name == "wandb":
+                    tracker.log(
+                        {
+                            "test": [
+                                wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                for i, image in enumerate(images)
+                            ]
+                        }
+                    )
 
         if args.push_to_hub:
             save_model_card(

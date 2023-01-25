@@ -4,5 +4,4 @@ transformers>=4.25.1
 datasets
 ftfy
 tensorboard
-wandb
 Jinja2

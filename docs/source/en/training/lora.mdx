@@ -1,0 +1,155 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+# LoRA Support in Diffusers 
+
+Diffusers supports LoRA for faster fine-tuning of Stable Diffusion, allowing greater memory efficiency and easier portability. 
+
+Low-Rank Adaption of Large Language Models was first introduced by Microsoft in
+[LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*.
+
+In a nutshell, LoRA allows adapting pretrained models by adding pairs of rank-decomposition weight matrices (called **update matrices**) 
+to existing weights and **only** training those newly added weights. This has a couple of advantages:
+
+- Previous pretrained weights are kept frozen so that the model is not so prone to [catastrophic forgetting](https://www.pnas.org/doi/10.1073/pnas.1611835114). 
+- Rank-decomposition matrices have significantly fewer parameters than the original model, which means that trained LoRA weights are easily portable.
+- LoRA matrices are generally added to the attention layers of the original model and they control to which extent the model is adapted toward new training images via a `scale` parameter.
+
+**__Note that the usage of LoRA is not just limited to attention layers. In the original LoRA work, the authors found out that just amending
+the attention layers of a language model is sufficient to obtain good downstream performance with great efficiency. This is why, it's common
+to just add the LoRA weights to the attention layers of a model.__**
+
+[cloneofsimo](https://github.com/cloneofsimo) was the first to try out LoRA training for Stable Diffusion in the popular [lora](https://github.com/cloneofsimo/lora) GitHub repository.
+
+<Tip>
+
+LoRA allows us to achieve greater memory efficiency since the pretrained weights are kept frozen and only the LoRA weights are trained, thereby
+allowing us to run fine-tuning on consumer GPUs like Tesla T4, RTX 3080 or even RTX 2080 Ti! One can get access to GPUs like T4 in the free 
+tiers of Kaggle Kernels and Google Colab Notebooks.
+
+</Tip>
+
+## Getting started with LoRA for fine-tuning
+
+Stable Diffusion can be fine-tuned in different ways:
+
+* [Textual inversion](https://huggingface.co/docs/diffusers/main/en/training/text_inversion)
+* [DreamBooth](https://huggingface.co/docs/diffusers/main/en/training/dreambooth) 
+* [Text2Image fine-tuning](https://huggingface.co/docs/diffusers/main/en/training/text2image) 
+
+We provide two end-to-end examples that show how to run fine-tuning with LoRA:
+
+* [DreamBooth](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth#training-with-low-rank-adaptation-of-large-language-models-lora) 
+* [Text2Image](https://github.com/huggingface/diffusers/tree/main/examples/text_to_image#training-with-lora)
+
+If you want to perform DreamBooth training with LoRA, for instance, you would run:
+
+```bash
+export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export INSTANCE_DIR="path-to-instance-images"
+export OUTPUT_DIR="path-to-save-model"
+
+accelerate launch train_dreambooth_lora.py \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --instance_data_dir=$INSTANCE_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --instance_prompt="a photo of sks dog" \
+  --resolution=512 \
+  --train_batch_size=1 \
+  --gradient_accumulation_steps=1 \
+  --checkpointing_steps=100 \
+  --learning_rate=1e-4 \
+  --report_to="wandb" \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --max_train_steps=500 \
+  --validation_prompt="A photo of sks dog in a bucket" \
+  --validation_epochs=50 \
+  --seed="0" \
+  --push_to_hub
+```
+
+A similar process can be followed to fully fine-tune Stable Diffusion on a custom dataset using the
+`examples/text_to_image/train_text_to_image_lora.py` script.
+
+Refer to the respective examples linked above to learn more. 
+
+<Tip>
+
+When using LoRA we can use a much higher learning rate (typically 1e-4 as opposed to ~1e-6) compared to non-LoRA Dreambooth fine-tuning.
+
+</Tip>
+
+But there is no free lunch. For the given dataset and expected generation quality, you'd still need to experiment with
+different hyperparameters. Here are some important ones:
+
+* Training time
+    * Learning rate 
+    * Number of training steps
+* Inference time 
+    * Number of steps 
+    * Scheduler type
+
+Additionally, you can follow [this blog](https://huggingface.co/blog/dreambooth) that documents some of our experimental
+findings for performing DreamBooth training of Stable Diffusion.
+
+When fine-tuning, the LoRA update matrices are only added to the attention layers. To enable this, we added new weight
+loading functionalities. Their details are available [here](https://huggingface.co/docs/diffusers/main/en/api/loaders).
+
+## Inference 
+
+Assuming you used the `examples/text_to_image/train_text_to_image_lora.py` to fine-tune Stable Diffusion on the [Pokemon
+dataset](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions), you can perform inference like so: 
+
+```py 
+from diffusers import StableDiffusionPipeline
+import torch
+
+model_path = "sayakpaul/sd-model-finetuned-lora-t4"
+pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
+pipe.unet.load_attn_procs(model_path)
+pipe.to("cuda")
+
+prompt = "A pokemon with blue eyes."
+image = pipe(prompt, num_inference_steps=30, guidance_scale=7.5).images[0]
+image.save("pokemon.png")
+```
+
+Here are some example images you can expect:
+
+<img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/pokemon-collage.png"/>
+
+[`sayakpaul/sd-model-finetuned-lora-t4`](https://huggingface.co/sayakpaul/sd-model-finetuned-lora-t4) contains [LoRA fine-tuned update matrices](https://huggingface.co/sayakpaul/sd-model-finetuned-lora-t4/blob/main/pytorch_lora_weights.bin)
+which is only 3 MBs in size. During inference, the pre-trained Stable Diffusion checkpoints are loaded alongside these update
+matrices and then they are combined to run inference.
+
+You can use the [`huggingface_hub`](https://github.com/huggingface/huggingface_hub) library to retrieve the base model
+from [`sayakpaul/sd-model-finetuned-lora-t4`](https://huggingface.co/sayakpaul/sd-model-finetuned-lora-t4) like so:
+
+```py
+from huggingface_hub.repocard import RepoCard
+
+card = RepoCard.load("sayakpaul/sd-model-finetuned-lora-t4")
+base_model = card.data.to_dict()["base_model"]
+# 'CompVis/stable-diffusion-v1-4'
+```
+
+And then you can use `pipe = StableDiffusionPipeline.from_pretrained(base_model, torch_dtype=torch.float16)`.
+
+This is especially useful when you don't want to hardcode the base model identifier during initializing the `StableDiffusionPipeline`.
+
+Inference for DreamBooth training remains the same. Check
+[this section](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth#inference-1) for more details. 
+
+## Known limitations 
+
+* Currently, we only support LoRA for the attention layers of [`UNet2DConditionModel`](https://huggingface.co/docs/diffusers/main/en/api/models#diffusers.UNet2DConditionModel).

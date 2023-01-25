@@ -104,14 +104,15 @@ class PipelineIntegrationTests(unittest.TestCase):
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator(device=device).manual_seed(0)
+        generator = torch.manual_seed(0)
         output = pipe(generator=generator, num_inference_steps=100, audio_length_in_s=4.096)
         audio = output.audios
 
         audio_slice = audio[0, -3:, -3:]
 
         assert audio.shape == (1, 2, pipe.unet.sample_size)
-        expected_slice = np.array([-0.1576, -0.1526, -0.127, -0.2699, -0.2762, -0.2487])
+        expected_slice = np.array([-0.0192, -0.0231, -0.0318, -0.0059, 0.0002, -0.0020])
+
         assert np.abs(audio_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_dance_diffusion_fp16(self):
@@ -121,12 +122,13 @@ class PipelineIntegrationTests(unittest.TestCase):
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator(device=device).manual_seed(0)
+        generator = torch.manual_seed(0)
         output = pipe(generator=generator, num_inference_steps=100, audio_length_in_s=4.096)
         audio = output.audios
 
         audio_slice = audio[0, -3:, -3:]
 
         assert audio.shape == (1, 2, pipe.unet.sample_size)
-        expected_slice = np.array([-0.1693, -0.1698, -0.1447, -0.3044, -0.3203, -0.2937])
+        expected_slice = np.array([-0.0367, -0.0488, -0.0771, -0.0525, -0.0444, -0.0341])
+
         assert np.abs(audio_slice.flatten() - expected_slice).max() < 1e-2

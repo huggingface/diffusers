@@ -47,7 +47,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.12.0.dev0")
+check_min_version("0.13.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -67,6 +67,7 @@ tags:
 - stable-diffusion-diffusers
 - text-to-image
 - diffusers
+- lora
 inference: true
 ---
     """
@@ -181,8 +182,12 @@ def parse_args():
     )
     parser.add_argument(
         "--center_crop",
+        default=False,
         action="store_true",
-        help="Whether to center crop images before resizing to resolution (if not set, random crop will be used)",
+        help=(
+            "Whether to center crop the input images to the resolution. If not set, the images will be randomly"
+            " cropped. The images will be resized to the resolution first before cropping."
+        ),
     )
     parser.add_argument(
         "--random_flip",
