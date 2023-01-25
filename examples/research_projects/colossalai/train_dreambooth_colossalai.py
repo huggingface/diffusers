@@ -20,7 +20,7 @@ from colossalai.utils import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
 from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
-from huggingface_hub import HfFolder, Repository, whoami
+from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -139,7 +139,13 @@ def parse_args(input_args=None):
         help="Placement Policy for Gemini. Valid when using colossalai as dist plan.",
     )
     parser.add_argument(
-        "--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution"
+        "--center_crop",
+        default=False,
+        action="store_true",
+        help=(
+            "Whether to center crop the input images to the resolution. If not set, the images will be randomly"
+            " cropped. The images will be resized to the resolution first before cropping."
+        ),
     )
     parser.add_argument(
         "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
@@ -365,6 +371,11 @@ def gemini_zero_dpp(model: torch.nn.Module, placememt_policy: str = "auto"):
 
 
 def main(args):
+    if args.seed is None:
+        colossalai.launch_from_torch(config={})
+    else:
+        colossalai.launch_from_torch(config={}, seed=args.seed)
+
     colossalai.launch_from_torch(config={})
 
     if args.seed is not None:
@@ -415,7 +426,8 @@ def main(args):
                 repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
             else:
                 repo_name = args.hub_model_id
-            repo = Repository(args.output_dir, clone_from=repo_name)
+            create_repo(repo_name, exist_ok=True, token=args.hub_token)
+            repo = Repository(args.output_dir, clone_from=repo_name, token=args.hub_token)
 
             with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
                 if "step_*" not in gitignore:

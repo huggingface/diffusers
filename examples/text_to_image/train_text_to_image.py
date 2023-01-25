@@ -1,11 +1,25 @@
+#!/usr/bin/env python
+# coding=utf-8
+# Copyright 2022 The HuggingFace Inc. team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+
 import argparse
-import copy
 import logging
 import math
 import os
 import random
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Optional
 
 import numpy as np
 import torch
@@ -21,16 +35,17 @@ from accelerate.utils import set_seed
 from datasets import load_dataset
 from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
+from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version
 from diffusers.utils.import_utils import is_xformers_available
-from huggingface_hub import HfFolder, Repository, whoami
+from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.10.0.dev0")
+check_min_version("0.13.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -119,8 +134,12 @@ def parse_args():
     )
     parser.add_argument(
         "--center_crop",
+        default=False,
         action="store_true",
-        help="Whether to center crop images before resizing to resolution (if not set, random crop will be used)",
+        help=(
+            "Whether to center crop the input images to the resolution. If not set, the images will be randomly"
+            " cropped. The images will be resized to the resolution first before cropping."
+        ),
     )
     parser.add_argument(
         "--random_flip",
@@ -192,6 +211,14 @@ def parse_args():
         help=(
             "Revision of pretrained non-ema model identifier. Must be a branch, tag or git identifier of the local or"
             " remote repository specified with --pretrained_model_name_or_path."
+        ),
+    )
+    parser.add_argument(
+        "--dataloader_num_workers",
+        type=int,
+        default=0,
+        help=(
+            "Number of subprocesses to use for data loading. 0 means that the data will be loaded in the main process."
         ),
     )
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
@@ -290,115 +317,6 @@ dataset_name_mapping = {
 }
 
 
-# Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14
-class EMAModel:
-    """
-    Exponential Moving Average of models weights
-    """
-
-    def __init__(self, parameters: Iterable[torch.nn.Parameter], decay=0.9999):
-        parameters = list(parameters)
-        self.shadow_params = [p.clone().detach() for p in parameters]
-
-        self.collected_params = None
-
-        self.decay = decay
-        self.optimization_step = 0
-
-    @torch.no_grad()
-    def step(self, parameters):
-        parameters = list(parameters)
-
-        self.optimization_step += 1
-
-        # Compute the decay factor for the exponential moving average.
-        value = (1 + self.optimization_step) / (10 + self.optimization_step)
-        one_minus_decay = 1 - min(self.decay, value)
-
-        for s_param, param in zip(self.shadow_params, parameters):
-            if param.requires_grad:
-                s_param.sub_(one_minus_decay * (s_param - param))
-            else:
-                s_param.copy_(param)
-
-        torch.cuda.empty_cache()
-
-    def copy_to(self, parameters: Iterable[torch.nn.Parameter]) -> None:
-        """
-        Copy current averaged parameters into given collection of parameters.
-
-        Args:
-            parameters: Iterable of `torch.nn.Parameter`; the parameters to be
-                updated with the stored moving averages. If `None`, the
-                parameters with which this `ExponentialMovingAverage` was
-                initialized will be used.
-        """
-        parameters = list(parameters)
-        for s_param, param in zip(self.shadow_params, parameters):
-            param.data.copy_(s_param.data)
-
-    def to(self, device=None, dtype=None) -> None:
-        r"""Move internal buffers of the ExponentialMovingAverage to `device`.
-
-        Args:
-            device: like `device` argument to `torch.Tensor.to`
-        """
-        # .to() on the tensors handles None correctly
-        self.shadow_params = [
-            p.to(device=device, dtype=dtype) if p.is_floating_point() else p.to(device=device)
-            for p in self.shadow_params
-        ]
-
-    def state_dict(self) -> dict:
-        r"""
-        Returns the state of the ExponentialMovingAverage as a dict.
-        This method is used by accelerate during checkpointing to save the ema state dict.
-        """
-        # Following PyTorch conventions, references to tensors are returned:
-        # "returns a reference to the state and not its copy!" -
-        # https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict
-        return {
-            "decay": self.decay,
-            "optimization_step": self.optimization_step,
-            "shadow_params": self.shadow_params,
-            "collected_params": self.collected_params,
-        }
-
-    def load_state_dict(self, state_dict: dict) -> None:
-        r"""
-        Loads the ExponentialMovingAverage state.
-        This method is used by accelerate during checkpointing to save the ema state dict.
-        Args:
-            state_dict (dict): EMA state. Should be an object returned
-                from a call to :meth:`state_dict`.
-        """
-        # deepcopy, to be consistent with module API
-        state_dict = copy.deepcopy(state_dict)
-
-        self.decay = state_dict["decay"]
-        if self.decay < 0.0 or self.decay > 1.0:
-            raise ValueError("Decay must be between 0 and 1")
-
-        self.optimization_step = state_dict["optimization_step"]
-        if not isinstance(self.optimization_step, int):
-            raise ValueError("Invalid optimization_step")
-
-        self.shadow_params = state_dict["shadow_params"]
-        if not isinstance(self.shadow_params, list):
-            raise ValueError("shadow_params must be a list")
-        if not all(isinstance(p, torch.Tensor) for p in self.shadow_params):
-            raise ValueError("shadow_params must all be Tensors")
-
-        self.collected_params = state_dict["collected_params"]
-        if self.collected_params is not None:
-            if not isinstance(self.collected_params, list):
-                raise ValueError("collected_params must be a list")
-            if not all(isinstance(p, torch.Tensor) for p in self.collected_params):
-                raise ValueError("collected_params must all be Tensors")
-            if len(self.collected_params) != len(self.shadow_params):
-                raise ValueError("collected_params and shadow_params must have the same length")
-
-
 def main():
     args = parse_args()
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
@@ -437,7 +355,8 @@ def main():
                 repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
             else:
                 repo_name = args.hub_model_id
-            repo = Repository(args.output_dir, clone_from=repo_name)
+            create_repo(repo_name, exist_ok=True, token=args.hub_token)
+            repo = Repository(args.output_dir, clone_from=repo_name, token=args.hub_token)
 
             with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
                 if "step_*" not in gitignore:
@@ -608,7 +527,11 @@ def main():
 
     # DataLoaders creation:
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, shuffle=True, collate_fn=collate_fn, batch_size=args.train_batch_size
+        train_dataset,
+        shuffle=True,
+        collate_fn=collate_fn,
+        batch_size=args.train_batch_size,
+        num_workers=args.dataloader_num_workers,
     )
 
     # Scheduler and math around the number of training steps.
@@ -680,13 +603,21 @@ def main():
             dirs = os.listdir(args.output_dir)
             dirs = [d for d in dirs if d.startswith("checkpoint")]
             dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
-            path = dirs[-1]
-        accelerator.print(f"Resuming from checkpoint {path}")
-        accelerator.load_state(os.path.join(args.output_dir, path))
-        global_step = int(path.split("-")[1])
+            path = dirs[-1] if len(dirs) > 0 else None
 
-        first_epoch = global_step // num_update_steps_per_epoch
-        resume_step = global_step % num_update_steps_per_epoch
+        if path is None:
+            accelerator.print(
+                f"Checkpoint '{args.resume_from_checkpoint}' does not exist. Starting a new training run."
+            )
+            args.resume_from_checkpoint = None
+        else:
+            accelerator.print(f"Resuming from checkpoint {path}")
+            accelerator.load_state(os.path.join(args.output_dir, path))
+            global_step = int(path.split("-")[1])
+
+            resume_global_step = global_step * args.gradient_accumulation_steps
+            first_epoch = global_step // num_update_steps_per_epoch
+            resume_step = resume_global_step % (num_update_steps_per_epoch * args.gradient_accumulation_steps)
 
     # Only show the progress bar once on each machine.
     progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)

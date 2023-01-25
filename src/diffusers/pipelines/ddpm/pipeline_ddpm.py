@@ -17,8 +17,7 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 
-from ...configuration_utils import FrozenDict
-from ...utils import deprecate, randn_tensor
+from ...utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
@@ -46,7 +45,6 @@ class DDPMPipeline(DiffusionPipeline):
         num_inference_steps: int = 1000,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""
         Args:
@@ -68,30 +66,6 @@ class DDPMPipeline(DiffusionPipeline):
             [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if `return_dict` is
             True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
         """
-        message = (
-            "Please make sure to instantiate your scheduler with `prediction_type` instead. E.g. `scheduler ="
-            " DDPMScheduler.from_pretrained(<model_id>, prediction_type='epsilon')`."
-        )
-        predict_epsilon = deprecate("predict_epsilon", "0.13.0", message, take_from=kwargs)
-
-        if predict_epsilon is not None:
-            new_config = dict(self.scheduler.config)
-            new_config["prediction_type"] = "epsilon" if predict_epsilon else "sample"
-            self.scheduler._internal_dict = FrozenDict(new_config)
-
-        if generator is not None and generator.device.type != self.device.type and self.device.type != "mps":
-            message = (
-                f"The `generator` device is `{generator.device}` and does not match the pipeline "
-                f"device `{self.device}`, so the `generator` will be ignored. "
-                f'Please use `torch.Generator(device="{self.device}")` instead.'
-            )
-            deprecate(
-                "generator.device == 'cpu'",
-                "0.13.0",
-                message,
-            )
-            generator = None
-
         # Sample gaussian noise to begin loop
         if isinstance(self.unet.sample_size, int):
             image_shape = (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size)

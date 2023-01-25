@@ -81,6 +81,7 @@ class RepaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([1.0000, 0.5426, 0.5497, 0.2200, 1.0000, 1.0000, 0.5623, 1.0000, 0.6274])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
 
@@ -113,7 +114,7 @@ class RepaintPipelineNightlyTests(unittest.TestCase):
         repaint.set_progress_bar_config(disable=None)
         repaint.enable_attention_slicing()
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         output = repaint(
             original_image,
             mask_image,

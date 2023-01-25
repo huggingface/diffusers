@@ -19,7 +19,7 @@ import inspect
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -37,6 +37,7 @@ from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
     CONFIG_NAME,
     DIFFUSERS_CACHE,
+    FLAX_WEIGHTS_NAME,
     HF_HUB_OFFLINE,
     ONNX_WEIGHTS_NAME,
     WEIGHTS_NAME,
@@ -445,6 +446,7 @@ class DiffusionPipeline(ConfigMixin):
         local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
+        from_flax = kwargs.pop("from_flax", False)
         torch_dtype = kwargs.pop("torch_dtype", None)
         custom_pipeline = kwargs.pop("custom_pipeline", None)
         custom_revision = kwargs.pop("custom_revision", None)
@@ -470,10 +472,25 @@ class DiffusionPipeline(ConfigMixin):
             # make sure we only download sub-folders and `diffusers` filenames
             folder_names = [k for k in config_dict.keys() if not k.startswith("_")]
             allow_patterns = [os.path.join(k, "*") for k in folder_names]
-            allow_patterns += [WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, ONNX_WEIGHTS_NAME, cls.config_name]
+            allow_patterns += [
+                WEIGHTS_NAME,
+                SCHEDULER_CONFIG_NAME,
+                CONFIG_NAME,
+                ONNX_WEIGHTS_NAME,
+                cls.config_name,
+            ]
 
             # make sure we don't download flax weights
             ignore_patterns = ["*.msgpack"]
+
+            if from_flax:
+                ignore_patterns = ["*.bin", "*.safetensors"]
+                allow_patterns += [
+                    SCHEDULER_CONFIG_NAME,
+                    CONFIG_NAME,
+                    FLAX_WEIGHTS_NAME,
+                    cls.config_name,
+                ]
 
             if custom_pipeline is not None:
                 allow_patterns += [CUSTOM_PIPELINE_FILE_NAME]
@@ -497,7 +514,11 @@ class DiffusionPipeline(ConfigMixin):
                 if is_safetensors_compatible(info):
                     ignore_patterns.append("*.bin")
                 else:
+                    # as a safety mechanism we also don't download safetensors if
+                    # not all safetensors files are there
                     ignore_patterns.append("*.safetensors")
+            else:
+                ignore_patterns.append("*.safetensors")
 
             # download all allow_patterns
             cached_folder = snapshot_download(
@@ -704,7 +725,14 @@ class DiffusionPipeline(ConfigMixin):
                 # This makes sure that the weights won't be initialized which significantly speeds up loading.
                 if is_diffusers_model or is_transformers_model:
                     loading_kwargs["device_map"] = device_map
-                    loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
+                    if from_flax:
+                        loading_kwargs["from_flax"] = True
+
+                    # if `from_flax` and model is transformer model, can currently not load with `low_cpu_mem_usage`
+                    if not (from_flax and is_transformers_model):
+                        loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
+                    else:
+                        loading_kwargs["low_cpu_mem_usage"] = False
 
                 # check if the module is in a subdirectory
                 if os.path.isdir(os.path.join(cached_folder, name)):
@@ -814,7 +842,7 @@ class DiffusionPipeline(ConfigMixin):
     def set_progress_bar_config(self, **kwargs):
         self._progress_bar_config = kwargs
 
-    def enable_xformers_memory_efficient_attention(self):
+    def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
         r"""
         Enable memory efficient attention as implemented in xformers.
 
@@ -823,8 +851,28 @@ class DiffusionPipeline(ConfigMixin):
 
         Warning: When Memory Efficient Attention and Sliced attention are both enabled, the Memory Efficient Attention
         is used.
+
+        Parameters:
+            attention_op (`Callable`, *optional*):
+                Override the default `None` operator for use as `op` argument to the
+                [`memory_efficient_attention()`](https://facebookresearch.github.io/xformers/components/ops.html#xformers.ops.memory_efficient_attention)
+                function of xFormers.
+
+        Examples:
+
+        ```py
+        >>> import torch
+        >>> from diffusers import DiffusionPipeline
+        >>> from xformers.ops import MemoryEfficientAttentionFlashAttentionOp
+
+        >>> pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16)
+        >>> pipe = pipe.to("cuda")
+        >>> pipe.enable_xformers_memory_efficient_attention(attention_op=MemoryEfficientAttentionFlashAttentionOp)
+        >>> # Workaround for not accepting attention shape using VAE for Flash Attention
+        >>> pipe.vae.enable_xformers_memory_efficient_attention(attention_op=None)
+        ```
         """
-        self.set_use_memory_efficient_attention_xformers(True)
+        self.set_use_memory_efficient_attention_xformers(True, attention_op)
 
     def disable_xformers_memory_efficient_attention(self):
         r"""
@@ -832,13 +880,15 @@ class DiffusionPipeline(ConfigMixin):
         """
         self.set_use_memory_efficient_attention_xformers(False)
 
-    def set_use_memory_efficient_attention_xformers(self, valid: bool) -> None:
+    def set_use_memory_efficient_attention_xformers(
+        self, valid: bool, attention_op: Optional[Callable] = None
+    ) -> None:
         # Recursively walk through all the children.
         # Any children which exposes the set_use_memory_efficient_attention_xformers method
         # gets the message
         def fn_recursive_set_mem_eff(module: torch.nn.Module):
             if hasattr(module, "set_use_memory_efficient_attention_xformers"):
-                module.set_use_memory_efficient_attention_xformers(valid)
+                module.set_use_memory_efficient_attention_xformers(valid, attention_op)
 
             for child in module.children():
                 fn_recursive_set_mem_eff(child)
