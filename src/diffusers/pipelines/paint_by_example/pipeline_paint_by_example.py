@@ -364,7 +364,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
             image = self.feature_extractor(images=image, return_tensors="pt").pixel_values
 
         image = image.to(device=device, dtype=dtype)
-        image_embeddings, uncond_embeddings = self.image_encoder(image, return_uncond_vector=True)
+        image_embeddings, negative_prompt_embeds = self.image_encoder(image, return_uncond_vector=True)
 
         # duplicate image embeddings for each generation per prompt, using mps friendly method
         bs_embed, seq_len, _ = image_embeddings.shape
