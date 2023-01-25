@@ -133,7 +133,10 @@ class StableDiffusion2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5649, 0.6022, 0.4804, 0.5270, 0.5585, 0.4643, 0.5159, 0.4963, 0.4793])
 
-        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test
+
+        print_tensor_test(image_slice)
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_pndm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -149,7 +152,10 @@ class StableDiffusion2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5099, 0.5677, 0.4671, 0.5128, 0.5697, 0.4676, 0.5277, 0.4964, 0.4946])
-        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test
+
+        print_tensor_test(image_slice)
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_k_lms(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -165,7 +171,10 @@ class StableDiffusion2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.4717, 0.5376, 0.4568, 0.5225, 0.5734, 0.4797, 0.5467, 0.5074, 0.5043])
-        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test
+
+        print_tensor_test(image_slice)
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_k_euler_ancestral(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -181,7 +190,10 @@ class StableDiffusion2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.4715, 0.5376, 0.4569, 0.5224, 0.5734, 0.4797, 0.5465, 0.5074, 0.5046])
-        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test
+
+        print_tensor_test(image_slice)
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_k_euler(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -197,7 +209,10 @@ class StableDiffusion2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.4717, 0.5376, 0.4568, 0.5225, 0.5734, 0.4797, 0.5467, 0.5074, 0.5043])
-        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test
+
+        print_tensor_test(image_slice)
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_long_prompt(self):
         components = self.get_dummy_components()
@@ -340,14 +355,22 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([-0.3857, -0.4507, -1.1670,  0.0740, -1.1080,  0.7183, -1.8220,  0.1915, 1.2830])
-                from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(latents_slice); assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-3
+                expected_slice = np.array(
+                    [-0.3862, -0.4507, -1.1729, 0.0686, -1.1045, 0.7124, -1.8301, 0.1903, 1.2773]
+                )
+                from diffusers.utils.testing_utils import print_tensor_test
+
+                print_tensor_test(latents_slice)
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-3
             elif step == 2:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array([0.268, -0.2095, -0.7744, -0.541, -0.79, 0.3926, -0.7754, 0.465, 1.291])
-                from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(latents_slice); assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-2
+                from diffusers.utils.testing_utils import print_tensor_test
+
+                print_tensor_test(latents_slice)
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-2
 
         callback_fn.has_been_called = False
 

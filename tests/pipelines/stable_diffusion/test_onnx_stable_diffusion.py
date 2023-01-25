@@ -60,7 +60,10 @@ class OnnxStableDiffusionPipelineFastTests(OnnxPipelineTesterMixin, unittest.Tes
 
         assert image.shape == (1, 128, 128, 3)
         expected_slice = np.array([0.65072, 0.58492, 0.48219, 0.55521, 0.53180, 0.55939, 0.50697, 0.39800, 0.46455])
-        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test
+
+        print_tensor_test(image_slice)
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_pipeline_pndm(self):
         pipe = OnnxStableDiffusionPipeline.from_pretrained(self.hub_checkpoint, provider="CPUExecutionProvider")
@@ -73,7 +76,10 @@ class OnnxStableDiffusionPipelineFastTests(OnnxPipelineTesterMixin, unittest.Tes
 
         assert image.shape == (1, 128, 128, 3)
         expected_slice = np.array([0.65863, 0.59425, 0.49326, 0.56313, 0.53875, 0.56627, 0.51065, 0.39777, 0.46330])
-        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test
+
+        print_tensor_test(image_slice)
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_pipeline_lms(self):
         pipe = OnnxStableDiffusionPipeline.from_pretrained(self.hub_checkpoint, provider="CPUExecutionProvider")
@@ -86,7 +92,10 @@ class OnnxStableDiffusionPipelineFastTests(OnnxPipelineTesterMixin, unittest.Tes
 
         assert image.shape == (1, 128, 128, 3)
         expected_slice = np.array([0.53755, 0.60786, 0.47402, 0.49488, 0.51869, 0.49819, 0.47985, 0.38957, 0.44279])
-        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test
+
+        print_tensor_test(image_slice)
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_pipeline_euler(self):
         pipe = OnnxStableDiffusionPipeline.from_pretrained(self.hub_checkpoint, provider="CPUExecutionProvider")
@@ -99,7 +108,10 @@ class OnnxStableDiffusionPipelineFastTests(OnnxPipelineTesterMixin, unittest.Tes
 
         assert image.shape == (1, 128, 128, 3)
         expected_slice = np.array([0.53755, 0.60786, 0.47402, 0.49488, 0.51869, 0.49819, 0.47985, 0.38957, 0.44279])
-        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test
+
+        print_tensor_test(image_slice)
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_pipeline_euler_ancestral(self):
         pipe = OnnxStableDiffusionPipeline.from_pretrained(self.hub_checkpoint, provider="CPUExecutionProvider")
@@ -112,7 +124,10 @@ class OnnxStableDiffusionPipelineFastTests(OnnxPipelineTesterMixin, unittest.Tes
 
         assert image.shape == (1, 128, 128, 3)
         expected_slice = np.array([0.53817, 0.60812, 0.47384, 0.49530, 0.51894, 0.49814, 0.47984, 0.38958, 0.44271])
-        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test
+
+        print_tensor_test(image_slice)
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_pipeline_dpm_multistep(self):
         pipe = OnnxStableDiffusionPipeline.from_pretrained(self.hub_checkpoint, provider="CPUExecutionProvider")
@@ -125,7 +140,10 @@ class OnnxStableDiffusionPipelineFastTests(OnnxPipelineTesterMixin, unittest.Tes
 
         assert image.shape == (1, 128, 128, 3)
         expected_slice = np.array([0.53895, 0.60808, 0.47933, 0.49608, 0.51886, 0.49950, 0.48053, 0.38957, 0.44200])
-        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        from diffusers.utils.testing_utils import print_tensor_test
+
+        print_tensor_test(image_slice)
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
 
 @nightly
@@ -169,7 +187,10 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.0452, 0.0390, 0.0087, 0.0350, 0.0617, 0.0364, 0.0544, 0.0523, 0.0720])
-        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        from diffusers.utils.testing_utils import print_tensor_test
+
+        print_tensor_test(image_slice)
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_inference_ddim(self):
         ddim_scheduler = DDIMScheduler.from_pretrained(
@@ -194,7 +215,10 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.2867, 0.1974, 0.1481, 0.7294, 0.7251, 0.6667, 0.4194, 0.5642, 0.6486])
-        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        from diffusers.utils.testing_utils import print_tensor_test
+
+        print_tensor_test(image_slice)
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_inference_k_lms(self):
         lms_scheduler = LMSDiscreteScheduler.from_pretrained(
@@ -219,7 +243,10 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.2306, 0.1959, 0.1593, 0.6549, 0.6394, 0.5408, 0.5065, 0.6010, 0.6161])
-        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        from diffusers.utils.testing_utils import print_tensor_test
+
+        print_tensor_test(image_slice)
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_intermediate_state(self):
         number_of_steps = 0
@@ -234,14 +261,20 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
                 expected_slice = np.array(
                     [-0.6772, -0.3835, -1.2456, 0.1905, -1.0974, 0.6967, -1.9353, 0.0178, 1.0167]
                 )
-                from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(latents_slice); assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
+                from diffusers.utils.testing_utils import print_tensor_test
+
+                print_tensor_test(latents_slice)
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
             elif step == 5:
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array(
                     [-0.3351, 0.2241, -0.1837, -0.2325, -0.6577, 0.3393, -0.0241, 0.5899, 1.3875]
                 )
-                from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(latents_slice); assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
+                from diffusers.utils.testing_utils import print_tensor_test
+
+                print_tensor_test(latents_slice)
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
 
         test_callback_fn.has_been_called = False
 

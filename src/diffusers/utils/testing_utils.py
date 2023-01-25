@@ -8,7 +8,7 @@ import urllib.parse
 from distutils.util import strtobool
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import Union, Optional
+from typing import Optional, Union
 
 import numpy as np
 
@@ -56,7 +56,7 @@ def print_tensor_test(tensor, filename="test_corrections.txt", expected_tensor_n
     output_str = tensor_str.replace("tensor", f"{expected_tensor_name} = np.array")
     test_file, test_class, test_fn = test_name.split("::")
     test_fn = test_fn.split()[0]
-    with open(filename, 'a') as f:
+    with open(filename, "a") as f:
         print(";".join([test_file, test_class, test_fn, output_str]), file=f)
 
 

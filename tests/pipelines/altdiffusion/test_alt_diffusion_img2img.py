@@ -162,7 +162,10 @@ class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
         expected_slice = np.array(
             [0.41293705, 0.38656747, 0.40876025, 0.4782187, 0.4656803, 0.41394007, 0.4142093, 0.47150758, 0.4570448]
         )
-        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1.5e-3
+        from diffusers.utils.testing_utils import print_tensor_test
+
+        print_tensor_test(image_slice)
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1.5e-3
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1.5e-3
 
     @unittest.skipIf(torch_device != "cuda", "This test requires a GPU")
@@ -242,7 +245,10 @@ class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
 
         assert image.shape == (504, 760, 3)
         expected_slice = np.array([0.9358, 0.9397, 0.9599, 0.9901, 1.0000, 1.0000, 0.9882, 1.0000, 1.0000])
-        from diffusers.utils.testing_utils import print_tensor_test; print_tensor_test(image_slice); assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        from diffusers.utils.testing_utils import print_tensor_test
+
+        print_tensor_test(image_slice)
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
 
 @slow
