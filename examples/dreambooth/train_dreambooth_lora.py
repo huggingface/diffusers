@@ -74,6 +74,7 @@ tags:
 - stable-diffusion-diffusers
 - text-to-image
 - diffusers
+- lora
 inference: true
 ---
     """
