@@ -418,7 +418,6 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(
         self,
         prompt,
@@ -541,7 +540,6 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
             )
             negative_prompt_embeds = negative_prompt_embeds[0]
 
-        # End copy
         if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
