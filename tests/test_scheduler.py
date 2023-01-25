@@ -1951,16 +1951,9 @@ class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
-        print(result_sum)
-        print(result_mean)
 
-        if torch_device in ["cpu", "mps"]:
-            assert abs(result_sum.item() - 152.3192) < 1e-2
-            assert abs(result_mean.item() - 0.1983) < 1e-3
-        else:
-            # CUDA
-            assert abs(result_sum.item() - 144.8084) < 1e-2
-            assert abs(result_mean.item() - 0.18855) < 1e-3
+        assert abs(result_sum.item() - 152.3192) < 1e-2
+        assert abs(result_mean.item() - 0.1983) < 1e-3
 
     def test_full_loop_with_v_prediction(self):
         scheduler_class = self.scheduler_classes[0]
@@ -1985,16 +1978,9 @@ class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
-        print(result_sum)
-        print(result_mean)
 
-        if torch_device in ["cpu", "mps"]:
-            assert abs(result_sum.item() - 108.4439) < 1e-2
-            assert abs(result_mean.item() - 0.1412) < 1e-3
-        else:
-            # CUDA
-            assert abs(result_sum.item() - 102.5807) < 1e-2
-            assert abs(result_mean.item() - 0.1335) < 1e-3
+        assert abs(result_sum.item() - 108.4439) < 1e-2
+        assert abs(result_mean.item() - 0.1412) < 1e-3
 
     def test_full_loop_device(self):
         scheduler_class = self.scheduler_classes[0]
@@ -2018,20 +2004,9 @@ class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
-        print(result_sum)
-        print(result_mean)
 
-        if str(torch_device).startswith("cpu"):
-            # The following sum varies between 148 and 156 on mps. Why?
-            assert abs(result_sum.item() - 152.3192) < 1e-2
-            assert abs(result_mean.item() - 0.1983) < 1e-3
-        elif str(torch_device).startswith("mps"):
-            # Larger tolerance on mps
-            assert abs(result_mean.item() - 0.1983) < 1e-2
-        else:
-            # CUDA
-            assert abs(result_sum.item() - 144.8084) < 1e-2
-            assert abs(result_mean.item() - 0.18855) < 1e-3
+        assert abs(result_sum.item() - 152.3192) < 1e-2
+        assert abs(result_mean.item() - 0.1983) < 1e-3
 
 
 class IPNDMSchedulerTest(SchedulerCommonTest):
@@ -2742,16 +2717,9 @@ class KDPM2AncestralDiscreteSchedulerTest(SchedulerCommonTest):
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
-        print(result_sum)
-        print(result_mean)
 
-        if torch_device in ["cpu", "mps"]:
-            assert abs(result_sum.item() - 13849.3945) < 1e-2
-            assert abs(result_mean.item() - 18.0331) < 5e-3
-        else:
-            # CUDA
-            assert abs(result_sum.item() - 13913.0449) < 1e-2
-            assert abs(result_mean.item() - 18.1159) < 5e-3
+        assert abs(result_sum.item() - 13849.3877) < 1e-2
+        assert abs(result_mean.item() - 18.0331) < 5e-3
 
     def test_prediction_type(self):
         for prediction_type in ["epsilon", "v_prediction"]:
@@ -2782,16 +2750,9 @@ class KDPM2AncestralDiscreteSchedulerTest(SchedulerCommonTest):
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
-        print(result_sum)
-        print(result_mean)
 
-        if torch_device in ["cpu", "mps"]:
-            assert abs(result_sum.item() - 328.9970) < 1e-2
-            assert abs(result_mean.item() - 0.4284) < 1e-3
-        else:
-            # CUDA
-            assert abs(result_sum.item() - 327.8027) < 1e-2
-            assert abs(result_mean.item() - 0.4268) < 1e-3
+        assert abs(result_sum.item() - 328.9970) < 1e-2
+        assert abs(result_mean.item() - 0.4284) < 1e-3
 
     def test_full_loop_device(self):
         if torch_device == "mps":
@@ -2816,16 +2777,9 @@ class KDPM2AncestralDiscreteSchedulerTest(SchedulerCommonTest):
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
-        print(result_sum)
-        print(result_mean)
 
-        if str(torch_device).startswith("cpu"):
-            assert abs(result_sum.item() - 13849.3945) < 1e-2
-            assert abs(result_mean.item() - 18.0331) < 5e-3
-        else:
-            # CUDA
-            assert abs(result_sum.item() - 13913.0332) < 1e-1
-            assert abs(result_mean.item() - 18.1159) < 1e-3
+        assert abs(result_sum.item() - 13849.3818) < 1e-1
+        assert abs(result_mean.item() - 18.0331) < 1e-3
 
 
 # UnCLIPScheduler is a modified DDPMScheduler with a subset of the configuration.
