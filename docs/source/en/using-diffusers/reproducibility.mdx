@@ -115,7 +115,7 @@ Running the above now prints a value of 1389.8634 - even though we're using the 
 This is unfortunate as it means we cannot reproduce the results we achieved on GPU, also on CPU.
 Nevertheless, it should be expected since the GPU uses a different random number generator than the CPU.
 
-To circumvent this problem, we created a [~`randn_tensor`] function, which can create random noise 
+To circumvent this problem, we created a [`randn_tensor`](#diffusers.utils.randn_tensor) function, which can create random noise 
 on the CPU and then move the tensor to GPU if necessary. The function is used everywhere inside the pipelines allowing the user to **always** pass a CPU generator even if the pipeline is run on GPU:
 
 ```python
