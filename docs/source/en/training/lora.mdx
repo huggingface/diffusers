@@ -22,9 +22,9 @@ to existing weights and **only** training those newly added weights. This has a 
 
 - Previous pretrained weights are kept frozen so that the model is not so prone to [catastrophic forgetting](https://www.pnas.org/doi/10.1073/pnas.1611835114). 
 - Rank-decomposition matrices have significantly fewer parameters than the original model, which means that trained LoRA weights are easily portable.
-- LoRA matrices are generally added to the attention layers of the original model and they control to control to which extent the model is adapted toward new training images via a `scale` parameter.
+- LoRA matrices are generally added to the attention layers of the original model and they control to which extent the model is adapted toward new training images via a `scale` parameter.
 
-**__Note that the usage of LoRA is not limited to only attention layers. In the original LoRA work, the authors found out that just ammending
+**__Note that the usage of LoRA is not just limited to attention layers. In the original LoRA work, the authors found out that just amending
 the attention layers of a language model is sufficient to obtain good downstream performance with great efficiency. This is why, it's common
 to just add the LoRA weights to the attention layers of a model.__**
 
