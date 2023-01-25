@@ -265,11 +265,6 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
         )
-        # pix2pix has two negative_prompt_embeds
-        half_batch_dim = prompt_embeds.shape[0] // 2
-        prompt_embeds = torch.cat(
-            [prompt_embeds[half_batch_dim:], prompt_embeds[:half_batch_dim], prompt_embeds[:half_batch_dim]]
-        )
 
         # 3. Preprocess image
         image = preprocess(image)
@@ -555,10 +550,14 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
+        # End copy
+
+        if do_classifier_free_guidance:
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+            # pix2pix has two  negative embeddings, and unlike in other pipelines latents are ordered [prompt_embeds, negative_prompt_embeds, negative_prompt_embeds]
+            prompt_embeds = torch.cat([prompt_embeds, negative_prompt_embeds, negative_prompt_embeds])
 
         return prompt_embeds
 
