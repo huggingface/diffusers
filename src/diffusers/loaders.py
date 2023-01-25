@@ -247,8 +247,8 @@ class UNet2DConditionLoadersMixin:
 class TextualInversionLoaderMixin:
     r"""
     Mixin class for adding textual inversion tokens and embeddings to the tokenizer and text encoder with method:
-    - [`~TextualInversionMixin.load_textual_inversion_embeddings`]
-    - [`~TextualInversionMixin.add_textual_inversion_embedding`]
+    - [`~TextualInversionLoaderMixin.load_textual_inversion_embeddings`]
+    - [`~TextualInversionLoaderMixin.add_textual_inversion_embedding`]
     """
 
     def load_textual_inversion_embeddings(
