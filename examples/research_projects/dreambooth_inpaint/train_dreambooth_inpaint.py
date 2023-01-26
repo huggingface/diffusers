@@ -33,7 +33,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.10.0.dev0")
+check_min_version("0.13.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -699,13 +699,13 @@ def main():
                 # Convert images to latent space
 
                 latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
-                latents = latents * 0.18215
+                latents = latents * vae.config.scaling_factor
 
                 # Convert masked images to latent space
                 masked_latents = vae.encode(
                     batch["masked_images"].reshape(batch["pixel_values"].shape).to(dtype=weight_dtype)
                 ).latent_dist.sample()
-                masked_latents = masked_latents * 0.18215
+                masked_latents = masked_latents * vae.config.scaling_factor
 
                 masks = batch["masks"]
                 # resize the mask to latents shape as we concatenate the mask to the latents

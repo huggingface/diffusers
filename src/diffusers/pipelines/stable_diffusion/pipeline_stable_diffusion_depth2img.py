@@ -310,7 +310,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
-        latents = 1 / 0.18215 * latents
+        latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
@@ -413,7 +413,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
         else:
             init_latents = self.vae.encode(image).latent_dist.sample(generator)
 
-        init_latents = 0.18215 * init_latents
+        init_latents = self.vae.config.scaling_factor * init_latents
 
         if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
             # expand init_latents for batch_size
