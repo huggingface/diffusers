@@ -24,7 +24,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDPMScheduler, KarrasDiffusionSchedulers
-from ...utils import is_accelerate_available, logging, randn_tensor, deprecate
+from ...utils import deprecate, is_accelerate_available, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
@@ -105,8 +105,6 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
             )
             deprecate("wrong scaling_factor", "1.0.0", deprecation_message, standard_warn=False)
             vae.register_to_config(scaling_factor=0.08333)
-            new_config["scaling_factor"] = 0.08333
-            vae._internal_dict = FrozenDict(new_config)
 
         self.register_modules(
             vae=vae,

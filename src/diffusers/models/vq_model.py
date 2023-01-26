@@ -74,6 +74,7 @@ class VQModel(ModelMixin, ConfigMixin):
         num_vq_embeddings: int = 256,
         norm_num_groups: int = 32,
         vq_embed_dim: Optional[int] = None,
+        scaling_factor: int = 0.18215,
     ):
         super().__init__()
 
