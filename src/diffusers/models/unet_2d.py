@@ -72,6 +72,9 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             for resnet blocks, see [`~models.resnet.ResnetBlock2D`]. Choose from `default` or `scale_shift`.
         class_embed_type (`str`, *optional*, defaults to None): The type of class embedding to use which is ultimately
             summed with the time embeddings. Choose from `None`, `"timestep"`, or `"identity"`.
+        num_class_embeds (`int`, *optional*, defaults to None):
+            Input dimension of the learnable embedding matrix to be projected to `time_embed_dim`, when performing
+            class conditioning with `class_embed_type` equal to `None`.
     """
 
     @register_to_config
@@ -97,6 +100,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         resnet_time_scale_shift: str = "default",
         add_attention: bool = True,
         class_embed_type: Optional[str] = None,
+        num_class_embeds: Optional[int] = None,
     ):
         super().__init__()
 
@@ -117,7 +121,9 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         self.time_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim)
 
         # class embedding
-        if class_embed_type == "timestep":
+        if class_embed_type is None and num_class_embeds is not None:
+            self.class_embedding = nn.Embedding(num_class_embeds, time_embed_dim)
+        elif class_embed_type == "timestep":
             self.class_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim)
         elif class_embed_type == "identity":
             self.class_embedding = nn.Identity(time_embed_dim, time_embed_dim)
@@ -241,7 +247,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
 
         if self.class_embedding is not None:
             if class_labels is None:
-                raise ValueError("class_labels should be provided when doing class embedding")
+                raise ValueError("class_labels should be provided when doing class conditioning")
 
             if self.config.class_embed_type == "timestep":
                 class_labels = self.time_proj(class_labels)
