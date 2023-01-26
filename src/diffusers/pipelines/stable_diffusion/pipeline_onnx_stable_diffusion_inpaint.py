@@ -370,7 +370,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
         masked_image = masked_image.astype(latents.dtype)
 
         masked_image_latents = self.vae_encoder(sample=masked_image)[0]
-        masked_image_latents = self.vae.config.scaling_factor * masked_image_latents
+        masked_image_latents = 0.18215 * masked_image_latents
 
         # duplicate mask and masked_image_latents for each generation per prompt
         mask = mask.repeat(batch_size * num_images_per_prompt, 0)
@@ -443,7 +443,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 callback(i, t, latents)
 
-        latents = 1 / self.vae.config.scaling_factor * latents
+        latents = 1 / 0.18215 * latents
         # image = self.vae_decoder(latent_sample=latents)[0]
         # it seems likes there is a strange result for using half-precision vae decoder if batchsize>1
         image = np.concatenate(
