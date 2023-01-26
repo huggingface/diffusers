@@ -399,7 +399,7 @@ class OnnxStableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
 
             # predict the noise residual
             noise_pred = self.unet(
-                sample=latent_model_input, timestep=np.array([t]), encoder_hidden_states=prompt_embeds
+                sample=latent_model_input, timestep=np.array([t], dtype="float32"), encoder_hidden_states=prompt_embeds
             )[0]
 
             # perform guidance
