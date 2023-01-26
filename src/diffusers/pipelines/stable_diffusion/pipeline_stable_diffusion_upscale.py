@@ -100,7 +100,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
                 " version of `stabilityai/stable-diffusion-x4-upscaler` you should change 'scaling_factor' to 0.08333"
                 " Please make sure to update the config accordingly, as not doing so might lead to incorrect results"
                 " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be"
-                " very nice if you could open a Pull request for the `vae/config.json` file"
+                " very nice if you could open a Pull Request for the `vae/config.json` file"
             )
             deprecate("wrong scaling_factor", "1.0.0", deprecation_message, standard_warn=False)
             vae.register_to_config(scaling_factor=0.08333)
