@@ -33,7 +33,7 @@ from . import DIFFUSERS_DYNAMIC_MODULE_NAME, HF_MODULES_CACHE, logging
 
 
 COMMUNITY_PIPELINES_URL = (
-#    "https://raw.githubusercontent.com/huggingface/diffusers/{revision}/examples/community/{pipeline}.py"
+    #    "https://raw.githubusercontent.com/huggingface/diffusers/{revision}/examples/community/{pipeline}.py"
     "https://raw.githubusercontent.com/lstein/diffusers/{revision}/examples/community/{pipeline}.py"
 )
 
