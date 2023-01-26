@@ -485,10 +485,7 @@ class DiffusionPipeline(ConfigMixin):
             if from_flax:
                 ignore_patterns = ["*.bin", "*.safetensors"]
                 allow_patterns += [
-                    SCHEDULER_CONFIG_NAME,
-                    CONFIG_NAME,
                     FLAX_WEIGHTS_NAME,
-                    cls.config_name,
                 ]
 
             if custom_pipeline is not None:
