@@ -555,7 +555,7 @@ def main():
                 with accelerator.accumulate(text_encoder):
                     # Convert images to latent space
                     latents = vae.encode(batch["pixel_values"]).latent_dist.sample().detach()
-                    latents = latents * 0.18215
+                    latents = latents * vae.config.scaling_factor
 
                     # Sample noise that we'll add to the latents
                     noise = torch.randn(latents.shape).to(latents.device)

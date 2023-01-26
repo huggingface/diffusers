@@ -607,7 +607,7 @@ def main(args):
             optimizer.zero_grad()
 
             latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
-            latents = latents * 0.18215
+            latents = latents * vae.config.scaling_factor
 
             # Sample noise that we'll add to the latents
             noise = torch.randn_like(latents)

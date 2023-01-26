@@ -21,7 +21,6 @@ import torch
 import PIL
 from transformers import CLIPTextModel, CLIPTokenizer
 
-from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDPMScheduler, KarrasDiffusionSchedulers
 from ...utils import deprecate, is_accelerate_available, logging, randn_tensor

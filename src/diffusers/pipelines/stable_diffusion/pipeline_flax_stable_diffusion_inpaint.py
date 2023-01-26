@@ -259,7 +259,7 @@ class FlaxStableDiffusionInpaintPipeline(FlaxDiffusionPipeline):
             {"params": params["vae"]}, masked_image, method=self.vae.encode
         ).latent_dist
         masked_image_latents = masked_image_latent_dist.sample(key=mask_prng_seed).transpose((0, 3, 1, 2))
-        masked_image_latents = 0.18215 * masked_image_latents
+        masked_image_latents = self.vae.config.scaling_factor * masked_image_latents
         del mask_prng_seed
 
         mask = jax.image.resize(mask, (*mask.shape[:-2], *masked_image_latents.shape[-2:]), method="nearest")
@@ -327,7 +327,7 @@ class FlaxStableDiffusionInpaintPipeline(FlaxDiffusionPipeline):
             )
 
         # scale and decode the image latents with vae
-        latents = 1 / 0.18215 * latents
+        latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.apply({"params": params["vae"]}, latents, method=self.vae.decode).sample
 
         image = (image / 2 + 0.5).clip(0, 1).transpose(0, 2, 3, 1)
