@@ -225,7 +225,6 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
         init_latent_dist = self.vae.apply({"params": params["vae"]}, image, method=self.vae.encode).latent_dist
         init_latents = init_latent_dist.sample(key=prng_seed).transpose((0, 3, 1, 2))
         init_latents = self.vae.config.scaling_factor * init_latents
-        latents_shape = (batch_size, self.unet.in_channels, height // 8, width // 8)
 
         def loop_body(step, args):
             latents, scheduler_state = args
