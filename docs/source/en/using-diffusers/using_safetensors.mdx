@@ -51,11 +51,12 @@ If you want to make **sure** you're not using pytorch weights, you can use `use_
 
 If you are really paranoid about this, the ultimate weapon would be disabling `torch.load`:
 ```python
-
 import torch
+
 
 def _raise():
     raise RuntimeError("I don't want to use pickle")
+
 
 torch.load = lambda *args, **kwargs: _raise()
 ```
@@ -75,7 +76,9 @@ Then in order to use the model, even before the branch gets accepted by the orig
 ```python
 from diffusers import StableDiffusionPipeline
 
-pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1", use_safetensors=True, revision="refs/pr/22")
+pipe = StableDiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-2-1", use_safetensors=True, revision="refs/pr/22"
+)
 ```
 
 And that's it !
