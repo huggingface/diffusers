@@ -13,9 +13,10 @@
 # limitations under the License.
 import os
 from collections import defaultdict
-from typing import Callable, Dict, Union
+from typing import Callable, Dict, Union, List
 
 import torch
+from transformers import PreTrainedModel, PreTrainedTokenizer
 
 from .models.cross_attention import LoRACrossAttnProcessor
 from .models.modeling_utils import _get_model_file
@@ -241,3 +242,166 @@ class UNet2DConditionLoadersMixin:
         save_function(state_dict, os.path.join(save_directory, weights_name))
 
         logger.info(f"Model weights saved in {os.path.join(save_directory, weights_name)}")
+
+
+class TextualInversionLoaderMixin:
+    r"""
+    Mixin class for adding textual inversion tokens and embeddings to the tokenizer and text encoder with method:
+    - [`~TextualInversionLoaderMixin.load_textual_inversion_embeddings`]
+    - [`~TextualInversionLoaderMixin.add_textual_inversion_embedding`]
+    """
+
+    def load_textual_inversion_embeddings(
+        self, embedding_path_dict_or_list: Union[Dict[str, str], List[Dict[str, str]]], allow_replacement: bool = False
+    ):
+        r"""
+        Loads textual inversion embeddings and adds them to the tokenizer's vocabulary and the text encoder's embeddings.
+
+        Arguments:
+            embeddings_path_dict_or_list (`Dict[str, str]` or `List[str]`):
+                Dictionary of token to embedding path or List of embedding paths to embedding dictionaries.
+                The dictionary must have the following keys:
+                    - `token`: name of the token to be added to the tokenizers' vocabulary
+                    - `embedding`: path to the embedding of the token to be added to the text encoder's embedding matrix
+                The list must contain paths to embedding dictionaries where the keys are the tokens and the
+                values are the embeddings (same as above dictionary definition).
+
+        Returns:
+            None
+        """
+        # Validate that inheriting class instance contains required attributes
+        self._validate_method_call(self.load_textual_inversion_embeddings)
+
+        if isinstance(embedding_path_dict_or_list, dict):
+            for token, embedding_path in embedding_path_dict_or_list.items():
+                # check if token in tokenizer vocab
+                if token in self.tokenizer.get_vocab():
+                    if allow_replacement:
+                        logger.info(
+                            f"Token {token} already in tokenizer vocabulary. Overwriting existing token and embedding with the new one."
+                        )
+                    else:
+                        raise ValueError(
+                            f"Token {token} already in tokenizer vocabulary. Please choose a different token name."
+                        )
+
+                embedding_dict = torch.load(embedding_path, map_location=self.text_encoder.device)
+                embedding = self._extract_embedding_from_dict(embedding_dict)
+
+                self.add_textual_inversion_embedding(token, embedding)
+
+        elif isinstance(embedding_path_dict_or_list, list):
+            for embedding_path in embedding_path_dict_or_list:
+                embedding_dict = torch.load(embedding_path, map_location=self.text_encoder.device)
+                token = self._extract_token_from_dict(embedding_dict)
+                embedding = self._extract_embedding_from_dict(embedding_dict)
+
+                # check if token in tokenizer vocab
+                if token in self.tokenizer.get_vocab():
+                    if allow_replacement:
+                        logger.info(
+                            f"Token {token} already in tokenizer vocabulary. Overwriting existing token and embedding with the new one."
+                        )
+                    else:
+                        raise ValueError(
+                            f"Token {token} already in tokenizer vocabulary. Please choose a different token name."
+                        )
+                self.add_textual_inversion_embedding(token, embedding)
+
+    def add_textual_inversion_embedding(self, token: str, embedding: torch.Tensor):
+        r"""
+        Adds a token to the tokenizer's vocabulary and an embedding to the text encoder's embedding matrix.
+
+        Arguments:
+            token (`str`):
+                The token to be added to the tokenizers' vocabulary
+            embedding (`torch.Tensor`):
+                The embedding of the token to be added to the text encoder's embedding matrix
+        """
+        # NOTE: Not clear to me that we intend for this to be a public/exposed method.
+        # Validate that inheriting class instance contains required attributes
+        self._validate_method_call(self.load_textual_inversion_embeddings)
+
+        embedding = embedding.to(self.text_encoder.dtype)
+
+        if token in self.tokenizer.get_vocab():
+            # If user has allowed replacement and the token exists, we only need to
+            # extract the existing id and update the embedding
+            token_id = self.tokenizer.convert_tokens_to_ids(token)
+            self.text_encoder.get_input_embeddings().weight.data[token_id] = embedding
+        else:
+            # If the token does not exist, we add it to the tokenizer, then resize and update the
+            # text encoder acccordingly
+            self.tokenizer.add_tokens([token])
+
+            token_id = self.tokenizer.convert_tokens_to_ids(token)
+            # NOTE: len() does't start at 0, so we shouldn't need to +1
+            # since we already updated the tokenizer and it's new length
+            # should be old length + 1
+            self.text_encoder.resize_token_embeddings(len(self.tokenizer))
+            self.text_encoder.get_input_embeddings().weight.data[token_id] = embedding
+
+    def _extract_embedding_from_dict(self, embedding_dict: Dict[str, str]) -> torch.Tensor:
+        r"""
+        Extracts the embedding from the embedding dictionary.
+
+        Arguments:
+            embedding_dict (`Dict[str, str]`):
+                The embedding dictionary loaded from the embedding path
+
+        Returns:
+            embedding (`torch.Tensor`):
+                The embedding to be added to the text encoder's embedding matrix
+        """
+        # auto1111 embedding case
+        if "string_to_param" in embedding_dict:
+            embedding_dict = embedding_dict["string_to_param"]
+            embedding = embedding_dict["*"]
+            return embedding
+
+        return list(embedding_dict.values())[0]
+
+    def _extract_token_from_dict(self, embedding_dict: Dict[str, str]) -> str:
+        r"""
+        Extracts the token from the embedding dictionary.
+
+        Arguments:
+            embedding_dict (`Dict[str, str]`):
+                The embedding dictionary loaded from the embedding path
+
+        Returns:
+            token (`str`):
+                The token to be added to the tokenizers' vocabulary
+        """
+        # auto1111 embedding case
+        if "string_to_param" in embedding_dict:
+            token = embedding_dict["name"]
+            return token
+
+        return list(embedding_dict.keys())[0]
+
+    def _validate_method_call(self, method: Callable):
+        r"""
+        Validates that the method is being called from a class instance that has the required attributes.
+
+        Arguments:
+            method (`function`):
+                The class's method being called
+
+        Raises:
+            ValueError:
+                If the method is being called from a class instance that does not have
+                the required attributes, the method will not be callable.
+
+        Returns:
+            None
+        """
+        if not hasattr(self, "tokenizer") or not isinstance(self.tokenizer, PreTrainedTokenizer):
+            raise ValueError(
+                f"{self.__class__.__name__} requires `self.tokenizer` of type `PreTrainedTokenizer` for calling `{method.__name__}`"
+            )
+
+        if not hasattr(self, "text_encoder") or not isinstance(self.text_encoder, PreTrainedModel):
+            raise ValueError(
+                f"{self.__class__.__name__} requires `self.text_encoder` of type `PreTrainedModel` for calling `{method.__name__}`"
+            )
