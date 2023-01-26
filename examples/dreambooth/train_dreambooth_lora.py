@@ -69,6 +69,7 @@ def save_model_card(repo_name, images=None, base_model=str, prompt=str, repo_fol
 ---
 license: creativeml-openrail-m
 base_model: {base_model}
+instance_prompt: {prompt}
 tags:
 - stable-diffusion
 - stable-diffusion-diffusers
