@@ -28,7 +28,6 @@ from PIL import Image
 from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel
 
 from ...models import FlaxAutoencoderKL, FlaxUNet2DConditionModel
-from ...pipeline_flax_utils import FlaxDiffusionPipeline
 from ...schedulers import (
     FlaxDDIMScheduler,
     FlaxDPMSolverMultistepScheduler,
@@ -36,6 +35,7 @@ from ...schedulers import (
     FlaxPNDMScheduler,
 )
 from ...utils import deprecate, logging
+from ..pipeline_flax_utils import FlaxDiffusionPipeline
 from . import FlaxStableDiffusionPipelineOutput
 from .safety_checker_flax import FlaxStableDiffusionSafetyChecker
 
@@ -184,23 +184,19 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         self,
         prompt_ids: jnp.array,
         params: Union[Dict, FrozenDict],
-        prng_seed: jax.random.PRNGKey,
-        num_inference_steps: int = 50,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-        guidance_scale: float = 7.5,
+        prng_seed: jax.random.KeyArray,
+        num_inference_steps: int,
+        height: int,
+        width: int,
+        guidance_scale: float,
         latents: Optional[jnp.array] = None,
-        neg_prompt_ids: jnp.array = None,
+        neg_prompt_ids: Optional[jnp.array] = None,
     ):
-        # 0. Default height and width to unet
-        height = height or self.unet.config.sample_size * self.vae_scale_factor
-        width = width or self.unet.config.sample_size * self.vae_scale_factor
-
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         # get prompt text embeddings
-        text_embeddings = self.text_encoder(prompt_ids, params=params["text_encoder"])[0]
+        prompt_embeds = self.text_encoder(prompt_ids, params=params["text_encoder"])[0]
 
         # TODO: currently it is assumed `do_classifier_free_guidance = guidance_scale > 1.0`
         # implement this conditional `do_classifier_free_guidance = guidance_scale > 1.0`
@@ -214,8 +210,8 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
             ).input_ids
         else:
             uncond_input = neg_prompt_ids
-        uncond_embeddings = self.text_encoder(uncond_input, params=params["text_encoder"])[0]
-        context = jnp.concatenate([uncond_embeddings, text_embeddings])
+        negative_prompt_embeds = self.text_encoder(uncond_input, params=params["text_encoder"])[0]
+        context = jnp.concatenate([negative_prompt_embeds, prompt_embeds])
 
         latents_shape = (
             batch_size,
@@ -281,15 +277,15 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         self,
         prompt_ids: jnp.array,
         params: Union[Dict, FrozenDict],
-        prng_seed: jax.random.PRNGKey,
+        prng_seed: jax.random.KeyArray,
         num_inference_steps: int = 50,
         height: Optional[int] = None,
         width: Optional[int] = None,
         guidance_scale: Union[float, jnp.array] = 7.5,
         latents: jnp.array = None,
+        neg_prompt_ids: jnp.array = None,
         return_dict: bool = True,
         jit: bool = False,
-        neg_prompt_ids: jnp.array = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.

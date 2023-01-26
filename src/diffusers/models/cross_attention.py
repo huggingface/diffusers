@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional, Union
+from typing import Callable, Optional, Union
 
 import torch
 import torch.nn.functional as F
@@ -93,7 +93,9 @@ class CrossAttention(nn.Module):
         processor = processor if processor is not None else CrossAttnProcessor()
         self.set_processor(processor)
 
-    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
+    def set_use_memory_efficient_attention_xformers(
+        self, use_memory_efficient_attention_xformers: bool, attention_op: Optional[Callable] = None
+    ):
         if use_memory_efficient_attention_xformers:
             if self.added_kv_proj_dim is not None:
                 # TODO(Anton, Patrick, Suraj, William) - currently xformers doesn't work for UnCLIP
@@ -105,8 +107,10 @@ class CrossAttention(nn.Module):
                 )
             elif not is_xformers_available():
                 raise ModuleNotFoundError(
-                    "Refer to https://github.com/facebookresearch/xformers for more information on how to install"
-                    " xformers",
+                    (
+                        "Refer to https://github.com/facebookresearch/xformers for more information on how to install"
+                        " xformers"
+                    ),
                     name="xformers",
                 )
             elif not torch.cuda.is_available():
@@ -125,7 +129,7 @@ class CrossAttention(nn.Module):
                 except Exception as e:
                     raise e
 
-            processor = XFormersCrossAttnProcessor()
+            processor = XFormersCrossAttnProcessor(attention_op=attention_op)
         else:
             processor = CrossAttnProcessor()
 
@@ -206,7 +210,14 @@ class CrossAttention(nn.Module):
             return attention_mask
 
         if attention_mask.shape[-1] != target_length:
-            attention_mask = F.pad(attention_mask, (0, target_length), value=0.0)
+            if attention_mask.device.type == "mps":
+                # HACK: MPS: Does not support padding by greater than dimension of input tensor.
+                # Instead, we can manually construct the padding tensor.
+                padding_shape = (attention_mask.shape[0], attention_mask.shape[1], target_length)
+                padding = torch.zeros(padding_shape, device=attention_mask.device)
+                attention_mask = torch.concat([attention_mask, padding], dim=2)
+            else:
+                attention_mask = F.pad(attention_mask, (0, target_length), value=0.0)
             attention_mask = attention_mask.repeat_interleave(head_size, dim=0)
         return attention_mask
 
@@ -231,6 +242,68 @@ class CrossAttnProcessor:
 
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        return hidden_states
+
+
+class LoRALinearLayer(nn.Module):
+    def __init__(self, in_features, out_features, rank=4):
+        super().__init__()
+
+        if rank > min(in_features, out_features):
+            raise ValueError(f"LoRA rank {rank} must be less or equal than {min(in_features, out_features)}")
+
+        self.down = nn.Linear(in_features, rank, bias=False)
+        self.up = nn.Linear(rank, out_features, bias=False)
+        self.scale = 1.0
+
+        nn.init.normal_(self.down.weight, std=1 / rank)
+        nn.init.zeros_(self.up.weight)
+
+    def forward(self, hidden_states):
+        orig_dtype = hidden_states.dtype
+        dtype = self.down.weight.dtype
+
+        down_hidden_states = self.down(hidden_states.to(dtype))
+        up_hidden_states = self.up(down_hidden_states)
+
+        return up_hidden_states.to(orig_dtype)
+
+
+class LoRACrossAttnProcessor(nn.Module):
+    def __init__(self, hidden_size, cross_attention_dim=None, rank=4):
+        super().__init__()
+
+        self.to_q_lora = LoRALinearLayer(hidden_size, hidden_size)
+        self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size)
+        self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size)
+        self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size)
+
+    def __call__(
+        self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0
+    ):
+        batch_size, sequence_length, _ = hidden_states.shape
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
+
+        query = attn.to_q(hidden_states) + scale * self.to_q_lora(hidden_states)
+        query = attn.head_to_batch_dim(query)
+
+        encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
+
+        key = attn.to_k(encoder_hidden_states) + scale * self.to_k_lora(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states) + scale * self.to_v_lora(encoder_hidden_states)
+
+        key = attn.head_to_batch_dim(key)
+        value = attn.head_to_batch_dim(value)
+
+        attention_probs = attn.get_attention_scores(query, key, attention_mask)
+        hidden_states = torch.bmm(attention_probs, value)
+        hidden_states = attn.batch_to_head_dim(hidden_states)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states) + scale * self.to_out_lora(hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
@@ -280,6 +353,9 @@ class CrossAttnAddedKVProcessor:
 
 
 class XFormersCrossAttnProcessor:
+    def __init__(self, attention_op: Optional[Callable] = None):
+        self.attention_op = attention_op
+
     def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None):
         batch_size, sequence_length, _ = hidden_states.shape
 
@@ -295,12 +371,49 @@ class XFormersCrossAttnProcessor:
         key = attn.head_to_batch_dim(key).contiguous()
         value = attn.head_to_batch_dim(value).contiguous()
 
-        hidden_states = xformers.ops.memory_efficient_attention(query, key, value, attn_bias=attention_mask)
+        hidden_states = xformers.ops.memory_efficient_attention(
+            query, key, value, attn_bias=attention_mask, op=self.attention_op
+        )
         hidden_states = hidden_states.to(query.dtype)
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+        return hidden_states
+
+
+class LoRAXFormersCrossAttnProcessor(nn.Module):
+    def __init__(self, hidden_size, cross_attention_dim, rank=4):
+        super().__init__()
+
+        self.to_q_lora = LoRALinearLayer(hidden_size, hidden_size)
+        self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size)
+        self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size)
+        self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size)
+
+    def __call__(
+        self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0
+    ):
+        batch_size, sequence_length, _ = hidden_states.shape
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
+
+        query = attn.to_q(hidden_states) + scale * self.to_q_lora(hidden_states)
+        query = attn.head_to_batch_dim(query).contiguous()
+
+        encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
+
+        key = attn.to_k(encoder_hidden_states) + scale * self.to_k_lora(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states) + scale * self.to_v_lora(encoder_hidden_states)
+
+        key = attn.head_to_batch_dim(key).contiguous()
+        value = attn.head_to_batch_dim(value).contiguous()
+
+        hidden_states = xformers.ops.memory_efficient_attention(query, key, value, attn_bias=attention_mask)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states) + scale * self.to_out_lora(hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 

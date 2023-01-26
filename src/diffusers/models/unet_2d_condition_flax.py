@@ -20,9 +20,9 @@ import jax.numpy as jnp
 from flax.core.frozen_dict import FrozenDict
 
 from ..configuration_utils import ConfigMixin, flax_register_to_config
-from ..modeling_flax_utils import FlaxModelMixin
 from ..utils import BaseOutput
 from .embeddings_flax import FlaxTimestepEmbedding, FlaxTimesteps
+from .modeling_flax_utils import FlaxModelMixin
 from .unet_2d_blocks_flax import (
     FlaxCrossAttnDownBlock2D,
     FlaxCrossAttnUpBlock2D,
@@ -112,7 +112,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     flip_sin_to_cos: bool = True
     freq_shift: int = 0
 
-    def init_weights(self, rng: jax.random.PRNGKey) -> FrozenDict:
+    def init_weights(self, rng: jax.random.KeyArray) -> FrozenDict:
         # init input tensors
         sample_shape = (1, self.in_channels, self.sample_size, self.sample_size)
         sample = jnp.zeros(sample_shape, dtype=jnp.float32)

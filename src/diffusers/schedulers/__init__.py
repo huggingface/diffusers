@@ -24,6 +24,7 @@ except OptionalDependencyNotAvailable:
 else:
     from .scheduling_ddim import DDIMScheduler
     from .scheduling_ddpm import DDPMScheduler
+    from .scheduling_deis_multistep import DEISMultistepScheduler
     from .scheduling_dpmsolver_multistep import DPMSolverMultistepScheduler
     from .scheduling_dpmsolver_singlestep import DPMSolverSinglestepScheduler
     from .scheduling_euler_ancestral_discrete import EulerAncestralDiscreteScheduler
@@ -38,7 +39,7 @@ else:
     from .scheduling_sde_ve import ScoreSdeVeScheduler
     from .scheduling_sde_vp import ScoreSdeVpScheduler
     from .scheduling_unclip import UnCLIPScheduler
-    from .scheduling_utils import SchedulerMixin
+    from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
     from .scheduling_vq_diffusion import VQDiffusionScheduler
 
 try:
@@ -54,7 +55,12 @@ else:
     from .scheduling_lms_discrete_flax import FlaxLMSDiscreteScheduler
     from .scheduling_pndm_flax import FlaxPNDMScheduler
     from .scheduling_sde_ve_flax import FlaxScoreSdeVeScheduler
-    from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput, broadcast_to_shape_from_left
+    from .scheduling_utils_flax import (
+        FlaxKarrasDiffusionSchedulers,
+        FlaxSchedulerMixin,
+        FlaxSchedulerOutput,
+        broadcast_to_shape_from_left,
+    )
 
 
 try:

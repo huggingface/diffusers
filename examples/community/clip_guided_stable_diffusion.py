@@ -78,12 +78,12 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
         )
 
         self.normalize = transforms.Normalize(mean=feature_extractor.image_mean, std=feature_extractor.image_std)
-        cut_out_size = (
+        self.cut_out_size = (
             feature_extractor.size
             if isinstance(feature_extractor.size, int)
             else feature_extractor.size["shortest_edge"]
         )
-        self.make_cutouts = MakeCutouts(cut_out_size)
+        self.make_cutouts = MakeCutouts(self.cut_out_size)
 
         set_requires_grad(self.text_encoder, False)
         set_requires_grad(self.clip_model, False)
@@ -157,7 +157,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
         if use_cutouts:
             image = self.make_cutouts(image, num_cutouts)
         else:
-            image = transforms.Resize(self.feature_extractor.size)(image)
+            image = transforms.Resize(self.cut_out_size)(image)
         image = self.normalize(image).to(latents.dtype)
 
         image_embeddings_clip = self.clip_model.get_image_features(image)

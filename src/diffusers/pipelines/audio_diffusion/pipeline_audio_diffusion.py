@@ -22,8 +22,9 @@ import torch
 from PIL import Image
 
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...pipeline_utils import AudioPipelineOutput, BaseOutput, DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import DDIMScheduler, DDPMScheduler
+from ...utils import randn_tensor
+from ..pipeline_utils import AudioPipelineOutput, BaseOutput, DiffusionPipeline, ImagePipelineOutput
 from .mel import Mel
 
 
@@ -89,9 +90,11 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         step_generator: torch.Generator = None,
         eta: float = 0,
         noise: torch.Tensor = None,
+        encoding: torch.Tensor = None,
         return_dict=True,
     ) -> Union[
-        Union[AudioPipelineOutput, ImagePipelineOutput], Tuple[List[Image.Image], Tuple[int, List[np.ndarray]]]
+        Union[AudioPipelineOutput, ImagePipelineOutput],
+        Tuple[List[Image.Image], Tuple[int, List[np.ndarray]]],
     ]:
         """Generate random mel spectrogram from audio input and convert to audio.
 
@@ -108,6 +111,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
             step_generator (`torch.Generator`): random number generator used to de-noise or None
             eta (`float`): parameter between 0 and 1 used with DDIM scheduler
             noise (`torch.Tensor`): noise tensor of shape (batch_size, 1, height, width) or None
+            encoding (`torch.Tensor`): for UNet2DConditionModel shape (batch_size, seq_length, cross_attention_dim)
             return_dict (`bool`): if True return AudioPipelineOutput, ImagePipelineOutput else Tuple
 
         Returns:
@@ -123,8 +127,13 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         input_dims = self.get_input_dims()
         self.mel.set_resolution(x_res=input_dims[1], y_res=input_dims[0])
         if noise is None:
-            noise = torch.randn(
-                (batch_size, self.unet.in_channels, self.unet.sample_size[0], self.unet.sample_size[1]),
+            noise = randn_tensor(
+                (
+                    batch_size,
+                    self.unet.in_channels,
+                    self.unet.sample_size[0],
+                    self.unet.sample_size[1],
+                ),
                 generator=generator,
                 device=self.device,
             )
@@ -157,15 +166,25 @@ class AudioDiffusionPipeline(DiffusionPipeline):
             mask = self.scheduler.add_noise(input_images, noise, torch.tensor(self.scheduler.timesteps[start_step:]))
 
         for step, t in enumerate(self.progress_bar(self.scheduler.timesteps[start_step:])):
-            model_output = self.unet(images, t)["sample"]
+            if isinstance(self.unet, UNet2DConditionModel):
+                model_output = self.unet(images, t, encoding)["sample"]
+            else:
+                model_output = self.unet(images, t)["sample"]
 
             if isinstance(self.scheduler, DDIMScheduler):
                 images = self.scheduler.step(
-                    model_output=model_output, timestep=t, sample=images, eta=eta, generator=step_generator
+                    model_output=model_output,
+                    timestep=t,
+                    sample=images,
+                    eta=eta,
+                    generator=step_generator,
                 )["prev_sample"]
             else:
                 images = self.scheduler.step(
-                    model_output=model_output, timestep=t, sample=images, generator=step_generator
+                    model_output=model_output,
+                    timestep=t,
+                    sample=images,
+                    generator=step_generator,
                 )["prev_sample"]
 
             if mask is not None:

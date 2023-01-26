@@ -7,9 +7,9 @@ import PIL.Image
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer, CLIPVisionModel
 
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...pipeline_utils import DiffusionPipeline
-from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import logging
+from ..pipeline_utils import DiffusionPipeline
 from .pipeline_versatile_diffusion_dual_guided import VersatileDiffusionDualGuidedPipeline
 from .pipeline_versatile_diffusion_image_variation import VersatileDiffusionImageVariationPipeline
 from .pipeline_versatile_diffusion_text_to_image import VersatileDiffusionTextToImagePipeline
@@ -53,7 +53,7 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
     image_unet: UNet2DConditionModel
     text_unet: UNet2DConditionModel
     vae: AutoencoderKL
-    scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler]
+    scheduler: KarrasDiffusionSchedulers
 
     def __init__(
         self,
@@ -64,7 +64,7 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
         image_unet: UNet2DConditionModel,
         text_unet: UNet2DConditionModel,
         vae: AutoencoderKL,
-        scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
+        scheduler: KarrasDiffusionSchedulers,
     ):
         super().__init__()
 

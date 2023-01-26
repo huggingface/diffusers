@@ -7,8 +7,7 @@ import torch
 
 import diffusers
 import PIL
-from diffusers import OnnxStableDiffusionPipeline, SchedulerMixin
-from diffusers.onnx_utils import OnnxRuntimeModel
+from diffusers import OnnxRuntimeModel, OnnxStableDiffusionPipeline, SchedulerMixin
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.utils import deprecate, logging
 from packaging import version
@@ -16,7 +15,7 @@ from transformers import CLIPFeatureExtractor, CLIPTokenizer
 
 
 try:
-    from diffusers.onnx_utils import ORT_TO_NP_TYPE
+    from diffusers.pipelines.onnx_utils import ORT_TO_NP_TYPE
 except ImportError:
     ORT_TO_NP_TYPE = {
         "tensor(bool)": np.bool_,
@@ -746,7 +745,7 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(OnnxStableDiffusionPipeline
             (nsfw) content, according to the `safety_checker`.
         """
         message = "Please use `image` instead of `init_image`."
-        init_image = deprecate("init_image", "0.13.0", message, take_from=kwargs)
+        init_image = deprecate("init_image", "0.14.0", message, take_from=kwargs)
         image = init_image or image
 
         # 0. Default height and width to unet
