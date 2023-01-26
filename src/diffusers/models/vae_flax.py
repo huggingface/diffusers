@@ -752,9 +752,9 @@ class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
             Latent space channels
         norm_num_groups (:obj:`int`, *optional*, defaults to `32`):
             Norm num group
-        sample_size (:obj:`int`, *optional*, defaults to `32`):
+        sample_size (:obj:`int`, *optional*, defaults to 32):
             Sample input size
-        scaling_factor (`float`, *optional*, defaults to `0.18215`):
+        scaling_factor (`float`, *optional*, defaults to 0.18215):
             The component-wise standard deviation of the trained latent space computed using the first batch of the
             training set. This is used to scale the latent space to have unit variance when training the diffusion
             model. The latents are scaled with the formula `z = z * scaling_factor` before being passed to the

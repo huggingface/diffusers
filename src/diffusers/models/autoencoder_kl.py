@@ -54,9 +54,9 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         block_out_channels (`Tuple[int]`, *optional*, defaults to :
             obj:`(64,)`): Tuple of block output channels.
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
-        latent_channels (`int`, *optional*, defaults to `4`): Number of channels in the latent space.
+        latent_channels (`int`, *optional*, defaults to 4): Number of channels in the latent space.
         sample_size (`int`, *optional*, defaults to `32`): TODO
-        scaling_factor (`float`, *optional*, defaults to `0.18215`):
+        scaling_factor (`float`, *optional*, defaults to 0.18215):
             The component-wise standard deviation of the trained latent space computed using the first batch of the
             training set. This is used to scale the latent space to have unit variance when training the diffusion
             model. The latents are scaled with the formula `z = z * scaling_factor` before being passed to the
