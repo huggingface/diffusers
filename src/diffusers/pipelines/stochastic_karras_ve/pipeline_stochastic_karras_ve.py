@@ -19,7 +19,7 @@ import torch
 from ...models import UNet2DModel
 from ...schedulers import KarrasVeScheduler
 from ...utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput, PipelineType
 
 
 class KarrasVePipeline(DiffusionPipeline):
@@ -36,6 +36,8 @@ class KarrasVePipeline(DiffusionPipeline):
         scheduler ([`KarrasVeScheduler`]):
             Scheduler for the diffusion process to be used in combination with `unet` to denoise the encoded image.
     """
+
+    pipeline_type = PipelineType.UNCONDITIONAL_IMAGE_GENERATION
 
     # add type hints for linting
     unet: UNet2DModel

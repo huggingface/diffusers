@@ -18,7 +18,7 @@ import torch
 
 from ...schedulers import DDIMScheduler
 from ...utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput, PipelineType
 
 
 class DDIMPipeline(DiffusionPipeline):
@@ -32,6 +32,7 @@ class DDIMPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `unet` to denoise the encoded image. Can be one of
             [`DDPMScheduler`], or [`DDIMScheduler`].
     """
+    pipeline_type = PipelineType.UNCONDITIONAL_IMAGE_GENERATION
 
     def __init__(self, unet, scheduler):
         super().__init__()

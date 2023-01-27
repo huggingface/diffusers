@@ -25,7 +25,7 @@ from transformers import CLIPFeatureExtractor
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import logging, randn_tensor
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, PipelineType
 from ..stable_diffusion import StableDiffusionPipelineOutput
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from .image_encoder import PaintByExampleImageEncoder
@@ -164,6 +164,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
     # TODO: feature_extractor is required to encode initial images (if they are in PIL format),
     # we should give a descriptive message if the pipeline doesn't have one.
     _optional_components = ["safety_checker"]
+    pipeline_type = PipelineType.TEXT_GUIDED_INPAINTING
 
     def __init__(
         self,

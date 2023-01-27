@@ -12,7 +12,7 @@ from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import deprecate, is_accelerate_available, logging, randn_tensor
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, PipelineType
 from . import StableDiffusionSafePipelineOutput
 from .safety_checker import SafeStableDiffusionSafetyChecker
 
@@ -51,6 +51,7 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
     """
 
     _optional_components = ["safety_checker", "feature_extractor"]
+    pipeline_type = PipelineType.TEXT_TO_IMAGE
 
     def __init__(
         self,

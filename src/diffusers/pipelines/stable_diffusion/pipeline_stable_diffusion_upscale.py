@@ -24,7 +24,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDPMScheduler, KarrasDiffusionSchedulers
 from ...utils import deprecate, is_accelerate_available, logging, randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput, PipelineType
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -76,6 +76,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
+    pipeline_type = PipelineType.TEXT_GUIDED_IMAGE_VARIATION
 
     def __init__(
         self,

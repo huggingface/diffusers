@@ -33,7 +33,7 @@ from ...utils import (
     randn_tensor,
     replace_example_docstring,
 )
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, PipelineType
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
@@ -118,6 +118,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
     _optional_components = ["safety_checker", "feature_extractor"]
+    pipeline_type = PipelineType.TEXT_GUIDED_IMAGE_VARIATION
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.__init__
     def __init__(

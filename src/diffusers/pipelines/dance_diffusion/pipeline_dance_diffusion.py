@@ -18,7 +18,7 @@ from typing import List, Optional, Tuple, Union
 import torch
 
 from ...utils import logging, randn_tensor
-from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
+from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline, PipelineType
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -36,6 +36,8 @@ class DanceDiffusionPipeline(DiffusionPipeline):
             [`IPNDMScheduler`].
     """
 
+    pipeline_type = PipelineType.UNCONDITIONAL_AUDIO_GENERATION
+
     def __init__(self, unet, scheduler):
         super().__init__()
         self.register_modules(unet=unet, scheduler=scheduler)
@@ -47,6 +49,7 @@ class DanceDiffusionPipeline(DiffusionPipeline):
         num_inference_steps: int = 100,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         audio_length_in_s: Optional[float] = None,
+        output_type: str = "np",
         return_dict: bool = True,
     ) -> Union[AudioPipelineOutput, Tuple]:
         r"""
@@ -62,6 +65,8 @@ class DanceDiffusionPipeline(DiffusionPipeline):
             audio_length_in_s (`float`, *optional*, defaults to `self.unet.config.sample_size/self.unet.config.sample_rate`):
                 The length of the generated audio sample in seconds. Note that the output of the pipeline, *i.e.*
                 `sample_size`, will be `audio_length_in_s` * `self.unet.sample_rate`.
+            output_type (`str`, *optional*, defaults to `"np"`):
+                The output format of the generated auto. Only supports `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.AudioPipelineOutput`] instead of a plain tuple.
 

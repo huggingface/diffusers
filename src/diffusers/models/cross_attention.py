@@ -59,12 +59,15 @@ class CrossAttention(nn.Module):
         added_kv_proj_dim: Optional[int] = None,
         norm_num_groups: Optional[int] = None,
         processor: Optional["AttnProcessor"] = None,
+        eps: float = 1e-5,
+        rescale_output_factor: float = 1.0,
     ):
         super().__init__()
         inner_dim = dim_head * heads
         cross_attention_dim = cross_attention_dim if cross_attention_dim is not None else query_dim
         self.upcast_attention = upcast_attention
         self.upcast_softmax = upcast_softmax
+        self.rescale_output_factor = rescale_output_factor
 
         self.scale = dim_head**-0.5
 
@@ -77,7 +80,7 @@ class CrossAttention(nn.Module):
         self.added_kv_proj_dim = added_kv_proj_dim
 
         if norm_num_groups is not None:
-            self.group_norm = nn.GroupNorm(num_channels=inner_dim, num_groups=norm_num_groups, eps=1e-5, affine=True)
+            self.group_norm = nn.GroupNorm(num_channels=inner_dim, num_groups=norm_num_groups, eps=eps, affine=True)
         else:
             self.group_norm = None
 
@@ -269,6 +272,44 @@ class CrossAttnProcessor:
         return hidden_states
 
 
+class SpatialAttnProcessor:
+    def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None):
+        if attention_mask is not None:
+            raise ValueError(f"{self.__class__.__name__} does not yet support `attention_mask`")
+
+        residual = hidden_states
+        batch, channel, height, width = hidden_states.shape
+
+        hidden_states = attn.group_norm(hidden_states)
+
+        hidden_states = hidden_states.view(batch, channel, height * width).transpose(1, 2)
+
+        query = attn.to_q(hidden_states)
+
+        encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        query = attn.head_to_batch_dim(query)
+        key = attn.head_to_batch_dim(key)
+        value = attn.head_to_batch_dim(value)
+
+        attention_probs = attn.get_attention_scores(query, key)
+        hidden_states = torch.bmm(attention_probs, value)
+        hidden_states = attn.batch_to_head_dim(hidden_states)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        hidden_states = hidden_states.transpose(-1, -2).reshape(batch, channel, height, width)
+
+        hidden_states = (hidden_states + residual) / attn.rescale_output_factor
+
+        return hidden_states
+
+
 class LoRALinearLayer(nn.Module):
     def __init__(self, in_features, out_features, rank=4):
         super().__init__()
@@ -401,6 +442,47 @@ class XFormersCrossAttnProcessor:
         hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
+        return hidden_states
+
+
+class XFormersSpatialAttnProcessor:
+    def __init__(self, attention_op: Optional[Callable] = None):
+        self.attention_op = attention_op
+
+    def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None):
+        if attention_mask is not None:
+            raise ValueError(f"{self.__class__.__name__} does not yet support `attention_mask`")
+
+        residual = hidden_states
+        batch, channel, height, width = hidden_states.shape
+
+        hidden_states = attn.group_norm(hidden_states)
+
+        hidden_states = hidden_states.view(batch, channel, height * width).transpose(1, 2)
+
+        query = attn.to_q(hidden_states)
+
+        encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        query = attn.head_to_batch_dim(query).contiguous()
+        key = attn.head_to_batch_dim(key).contiguous()
+        value = attn.head_to_batch_dim(value).contiguous()
+
+        hidden_states = xformers.ops.memory_efficient_attention(query, key, value, op=self.attention_op)
+        hidden_states = hidden_states.to(query.dtype)
+        hidden_states = attn.batch_to_head_dim(hidden_states)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        hidden_states = hidden_states.transpose(-1, -2).reshape(batch, channel, height, width)
+
+        hidden_states = (hidden_states + residual) / attn.rescale_output_factor
+
         return hidden_states
 
 

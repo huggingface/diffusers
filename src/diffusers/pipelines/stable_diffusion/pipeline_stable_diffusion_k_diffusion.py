@@ -22,6 +22,7 @@ from k_diffusion.external import CompVisDenoiser, CompVisVDenoiser
 from ...pipelines import DiffusionPipeline
 from ...schedulers import LMSDiscreteScheduler
 from ...utils import is_accelerate_available, logging, randn_tensor
+from ..pipeline_utils import PipelineType
 from . import StableDiffusionPipelineOutput
 
 
@@ -76,6 +77,7 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
     _optional_components = ["safety_checker", "feature_extractor"]
+    pipeline_type = PipelineType.TEXT_TO_IMAGE
 
     def __init__(
         self,

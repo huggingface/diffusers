@@ -24,7 +24,7 @@ from PIL import Image
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDIMScheduler, DDPMScheduler
 from ...utils import randn_tensor
-from ..pipeline_utils import AudioPipelineOutput, BaseOutput, DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import AudioPipelineOutput, BaseOutput, DiffusionPipeline, ImagePipelineOutput, PipelineType
 from .mel import Mel
 
 
@@ -41,6 +41,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
     """
 
     _optional_components = ["vqvae"]
+    pipeline_type = PipelineType.AUDIO_VARIATION
 
     def __init__(
         self,

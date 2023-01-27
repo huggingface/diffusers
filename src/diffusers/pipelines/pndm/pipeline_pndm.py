@@ -20,7 +20,7 @@ import torch
 from ...models import UNet2DModel
 from ...schedulers import PNDMScheduler
 from ...utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput, PipelineType
 
 
 class PNDMPipeline(DiffusionPipeline):
@@ -33,6 +33,7 @@ class PNDMPipeline(DiffusionPipeline):
         scheduler ([`SchedulerMixin`]):
             The `PNDMScheduler` to be used in combination with `unet` to denoise the encoded image.
     """
+    pipeline_type = PipelineType.UNCONDITIONAL_IMAGE_GENERATION
 
     unet: UNet2DModel
     scheduler: PNDMScheduler

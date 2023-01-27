@@ -27,7 +27,7 @@ from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import PIL_INTERPOLATION, deprecate, logging, randn_tensor, replace_example_docstring
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, PipelineType
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from . import AltDiffusionPipelineOutput, RobertaSeriesModelWithTransformation
 
@@ -115,6 +115,7 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
     _optional_components = ["safety_checker", "feature_extractor"]
+    pipeline_type = PipelineType.TEXT_GUIDED_IMAGE_VARIATION
 
     def __init__(
         self,

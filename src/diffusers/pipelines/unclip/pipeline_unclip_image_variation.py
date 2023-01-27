@@ -30,6 +30,7 @@ from ...models import UNet2DConditionModel, UNet2DModel
 from ...pipelines import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import UnCLIPScheduler
 from ...utils import is_accelerate_available, logging, randn_tensor
+from ..pipeline_utils import PipelineType
 from .text_proj import UnCLIPTextProjModel
 
 
@@ -81,6 +82,8 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
 
     decoder_scheduler: UnCLIPScheduler
     super_res_scheduler: UnCLIPScheduler
+
+    pipeline_type = PipelineType.IMAGE_VARIATION
 
     def __init__(
         self,

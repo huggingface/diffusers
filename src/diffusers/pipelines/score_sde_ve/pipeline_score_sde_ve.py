@@ -19,7 +19,7 @@ import torch
 from ...models import UNet2DModel
 from ...schedulers import ScoreSdeVeScheduler
 from ...utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput, PipelineType
 
 
 class ScoreSdeVePipeline(DiffusionPipeline):
@@ -32,6 +32,8 @@ class ScoreSdeVePipeline(DiffusionPipeline):
     """
     unet: UNet2DModel
     scheduler: ScoreSdeVeScheduler
+
+    pipeline_type = PipelineType.UNCONDITIONAL_IMAGE_GENERATION
 
     def __init__(self, unet: UNet2DModel, scheduler: DiffusionPipeline):
         super().__init__()

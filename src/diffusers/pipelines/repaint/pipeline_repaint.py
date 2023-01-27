@@ -23,7 +23,7 @@ import PIL
 from ...models import UNet2DModel
 from ...schedulers import RePaintScheduler
 from ...utils import PIL_INTERPOLATION, deprecate, logging, randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput, PipelineType
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -74,6 +74,8 @@ def _preprocess_mask(mask: Union[List, PIL.Image.Image, torch.Tensor]):
 class RePaintPipeline(DiffusionPipeline):
     unet: UNet2DModel
     scheduler: RePaintScheduler
+
+    pipeline_type = PipelineType.INPAINTING
 
     def __init__(self, unet, scheduler):
         super().__init__()

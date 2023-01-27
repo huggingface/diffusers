@@ -25,7 +25,7 @@ import torch
 from ...models import AutoencoderKL, Transformer2DModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput, PipelineType
 
 
 class DiTPipeline(DiffusionPipeline):
@@ -41,6 +41,7 @@ class DiTPipeline(DiffusionPipeline):
         scheduler ([`DDIMScheduler`]):
             A scheduler to be used in combination with `dit` to denoise the encoded image latents.
     """
+    pipeline_type = PipelineType.CLASS_CONDITIONAL_IMAGE_GENERATION
 
     def __init__(
         self,

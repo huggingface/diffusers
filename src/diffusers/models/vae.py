@@ -46,6 +46,7 @@ class Encoder(nn.Module):
         norm_num_groups=32,
         act_fn="silu",
         double_z=True,
+        attention_block_type: str = "AttentionBlock",
     ):
         super().__init__()
         self.layers_per_block = layers_per_block
@@ -74,6 +75,7 @@ class Encoder(nn.Module):
                 resnet_groups=norm_num_groups,
                 attn_num_head_channels=None,
                 temb_channels=None,
+                attention_block_type=attention_block_type,
             )
             self.down_blocks.append(down_block)
 
@@ -87,6 +89,7 @@ class Encoder(nn.Module):
             attn_num_head_channels=None,
             resnet_groups=norm_num_groups,
             temb_channels=None,
+            attention_block_type=attention_block_type,
         )
 
         # out
@@ -125,6 +128,7 @@ class Decoder(nn.Module):
         layers_per_block=2,
         norm_num_groups=32,
         act_fn="silu",
+        attention_block_type: str = "AttentionBlock",
     ):
         super().__init__()
         self.layers_per_block = layers_per_block
@@ -144,6 +148,7 @@ class Decoder(nn.Module):
             attn_num_head_channels=None,
             resnet_groups=norm_num_groups,
             temb_channels=None,
+            attention_block_type=attention_block_type,
         )
 
         # up
@@ -167,6 +172,7 @@ class Decoder(nn.Module):
                 resnet_groups=norm_num_groups,
                 attn_num_head_channels=None,
                 temb_channels=None,
+                attention_block_type=attention_block_type,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel

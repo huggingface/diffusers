@@ -20,7 +20,8 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 class VersatileDiffusionPipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-to-image generation using Stable Diffusion.
+    Wrapper pipeline for unconditional image variation, text guided image variation, and text to image versatile
+    diffusion pipelines.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)

@@ -30,7 +30,7 @@ from transformers import (
 from ...models import AutoencoderKL, DualTransformer2DModel, Transformer2DModel, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import is_accelerate_available, logging, randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput, PipelineType
 from .modeling_text_unet import UNetFlatConditionModel
 
 
@@ -65,6 +65,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
     scheduler: KarrasDiffusionSchedulers
 
     _optional_components = ["text_unet"]
+    pipeline_type = PipelineType.TEXT_GUIDED_IMAGE_VARIATION
 
     def __init__(
         self,

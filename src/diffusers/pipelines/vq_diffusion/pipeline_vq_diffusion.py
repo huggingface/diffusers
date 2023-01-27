@@ -22,7 +22,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...models import ModelMixin, Transformer2DModel, VQModel
 from ...schedulers import VQDiffusionScheduler
 from ...utils import logging
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput, PipelineType
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -80,6 +80,8 @@ class VQDiffusionPipeline(DiffusionPipeline):
     transformer: Transformer2DModel
     learned_classifier_free_sampling_embeddings: LearnedClassifierFreeSamplingEmbeddings
     scheduler: VQDiffusionScheduler
+
+    pipeline_type = PipelineType.TEXT_TO_IMAGE
 
     def __init__(
         self,

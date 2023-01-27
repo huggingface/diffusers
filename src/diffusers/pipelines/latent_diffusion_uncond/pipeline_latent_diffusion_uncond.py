@@ -20,7 +20,7 @@ import torch
 from ...models import UNet2DModel, VQModel
 from ...schedulers import DDIMScheduler
 from ...utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput, PipelineType
 
 
 class LDMPipeline(DiffusionPipeline):
@@ -35,6 +35,7 @@ class LDMPipeline(DiffusionPipeline):
         scheduler ([`SchedulerMixin`]):
             [`DDIMScheduler`] is to be used in combination with `unet` to denoise the encoded image latents.
     """
+    pipeline_type = PipelineType.UNCONDITIONAL_IMAGE_GENERATION
 
     def __init__(self, vqvae: VQModel, unet: UNet2DModel, scheduler: DDIMScheduler):
         super().__init__()

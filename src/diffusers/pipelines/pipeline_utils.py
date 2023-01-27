@@ -18,6 +18,7 @@ import importlib
 import inspect
 import os
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -92,6 +93,21 @@ for library in LOADABLE_CLASSES:
     ALL_IMPORTABLE_CLASSES.update(LOADABLE_CLASSES[library])
 
 
+class PipelineType(Enum):
+    UNCONDITIONAL_IMAGE_GENERATION = "UNCONDITIONAL_IMAGE_GENERATION"
+    CLASS_CONDITIONAL_IMAGE_GENERATION = "CLASS_CONDITIONAL_IMAGE_GENERATION"
+    TEXT_TO_IMAGE = "TEXT_TO_IMAGE"
+
+    IMAGE_VARIATION = "IMAGE_VARIATION"
+    TEXT_GUIDED_IMAGE_VARIATION = "TEXT_GUIDED_IMAGE_VARIATION"
+
+    INPAINTING = "INPAINTING"
+    TEXT_GUIDED_INPAINTING = "TEXT_GUIDED_INPAINTING"
+
+    UNCONDITIONAL_AUDIO_GENERATION = "UNCONDITIONAL_AUDIO_GENERATION"
+    AUDIO_VARIATION = "AUDIO_VARIATION"
+
+
 @dataclass
 class ImagePipelineOutput(BaseOutput):
     """
@@ -153,9 +169,12 @@ class DiffusionPipeline(ConfigMixin):
           components of the diffusion pipeline.
         - **_optional_components** (List[`str`]) -- list of all components that are optional so they don't have to be
           passed for the pipeline to function (should be overridden by subclasses).
+        - **pipeline_type** (`PipelineType`, *optional*) -- Optional field for specifying the type of the pipeline.
+          I.e. text to image, image variation, text guided image variation, etc...
     """
     config_name = "model_index.json"
     _optional_components = []
+    pipeline_type = None
 
     def register_modules(self, **kwargs):
         # import it here to avoid circular import

@@ -27,7 +27,7 @@ from transformers.utils import logging
 from ...models import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQModel
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput, PipelineType
 
 
 class LDMTextToImagePipeline(DiffusionPipeline):
@@ -48,6 +48,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
+    pipeline_type = PipelineType.TEXT_TO_IMAGE
 
     def __init__(
         self,

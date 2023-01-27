@@ -23,7 +23,7 @@ from transformers.models.clip.modeling_clip import CLIPTextModelOutput
 
 from ...models import PriorTransformer, UNet2DConditionModel, UNet2DModel
 from ...pipelines import DiffusionPipeline
-from ...pipelines.pipeline_utils import ImagePipelineOutput
+from ...pipelines.pipeline_utils import ImagePipelineOutput, PipelineType
 from ...schedulers import UnCLIPScheduler
 from ...utils import is_accelerate_available, logging, randn_tensor
 from .text_proj import UnCLIPTextProjModel
@@ -75,6 +75,8 @@ class UnCLIPPipeline(DiffusionPipeline):
     prior_scheduler: UnCLIPScheduler
     decoder_scheduler: UnCLIPScheduler
     super_res_scheduler: UnCLIPScheduler
+
+    pipeline_type = PipelineType.TEXT_TO_IMAGE
 
     def __init__(
         self,

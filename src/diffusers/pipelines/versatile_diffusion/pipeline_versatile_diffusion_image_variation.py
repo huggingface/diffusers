@@ -25,7 +25,7 @@ from transformers import CLIPFeatureExtractor, CLIPVisionModelWithProjection
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import is_accelerate_available, logging, randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput, PipelineType
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -54,6 +54,8 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
     image_unet: UNet2DConditionModel
     vae: AutoencoderKL
     scheduler: KarrasDiffusionSchedulers
+
+    pipeline_type = PipelineType.IMAGE_VARIATION
 
     def __init__(
         self,
