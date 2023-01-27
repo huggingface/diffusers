@@ -363,7 +363,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("librosa", (is_librosa_available, LIBROSA_IMPORT_ERROR)),
         ("k_diffusion", (is_k_diffusion_available, K_DIFFUSION_IMPORT_ERROR)),
         ("wandb", (is_wandb_available, WANDB_IMPORT_ERROR)),
-        ("omageconf", (is_omegaconf_available, OMEGACONF_IMPORT_ERROR)),
+        ("omegaconf", (is_omegaconf_available, OMEGACONF_IMPORT_ERROR)),
     ]
 )
 

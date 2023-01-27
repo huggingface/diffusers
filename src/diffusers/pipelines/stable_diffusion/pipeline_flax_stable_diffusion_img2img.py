@@ -224,7 +224,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
         # Create init_latents
         init_latent_dist = self.vae.apply({"params": params["vae"]}, image, method=self.vae.encode).latent_dist
         init_latents = init_latent_dist.sample(key=prng_seed).transpose((0, 3, 1, 2))
-        init_latents = 0.18215 * init_latents
+        init_latents = self.vae.config.scaling_factor * init_latents
 
         def loop_body(step, args):
             latents, scheduler_state = args
@@ -272,7 +272,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
             latents, _ = jax.lax.fori_loop(start_timestep, num_inference_steps, loop_body, (latents, scheduler_state))
 
         # scale and decode the image latents with vae
-        latents = 1 / 0.18215 * latents
+        latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.apply({"params": params["vae"]}, latents, method=self.vae.decode).sample
 
         image = (image / 2 + 0.5).clip(0, 1).transpose(0, 2, 3, 1)

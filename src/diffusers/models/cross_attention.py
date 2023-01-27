@@ -17,7 +17,11 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from ..utils import logging
 from ..utils.import_utils import is_xformers_available
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 if is_xformers_available():
@@ -151,6 +155,16 @@ class CrossAttention(nn.Module):
         self.set_processor(processor)
 
     def set_processor(self, processor: "AttnProcessor"):
+        # if current processor is in `self._modules` and if passed `processor` is not, we need to
+        # pop `processor` from `self._modules`
+        if (
+            hasattr(self, "processor")
+            and isinstance(self.processor, torch.nn.Module)
+            and not isinstance(processor, torch.nn.Module)
+        ):
+            logger.info(f"You are removing possibly trained weights of {self.processor} with {processor}")
+            self._modules.pop("processor")
+
         self.processor = processor
 
     def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None, **cross_attention_kwargs):
@@ -185,16 +199,22 @@ class CrossAttention(nn.Module):
             query = query.float()
             key = key.float()
 
+        if attention_mask is None:
+            baddbmm_input = torch.empty(
+                query.shape[0], query.shape[1], key.shape[1], dtype=query.dtype, device=query.device
+            )
+            beta = 0
+        else:
+            baddbmm_input = attention_mask
+            beta = 1
+
         attention_scores = torch.baddbmm(
-            torch.empty(query.shape[0], query.shape[1], key.shape[1], dtype=query.dtype, device=query.device),
+            baddbmm_input,
             query,
             key.transpose(-1, -2),
-            beta=0,
+            beta=beta,
             alpha=self.scale,
         )
-
-        if attention_mask is not None:
-            attention_scores = attention_scores + attention_mask
 
         if self.upcast_softmax:
             attention_scores = attention_scores.float()
@@ -228,11 +248,12 @@ class CrossAttnProcessor:
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
 
         query = attn.to_q(hidden_states)
-        query = attn.head_to_batch_dim(query)
 
         encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
+
+        query = attn.head_to_batch_dim(query)
         key = attn.head_to_batch_dim(key)
         value = attn.head_to_batch_dim(value)
 
@@ -257,7 +278,6 @@ class LoRALinearLayer(nn.Module):
 
         self.down = nn.Linear(in_features, rank, bias=False)
         self.up = nn.Linear(rank, out_features, bias=False)
-        self.scale = 1.0
 
         nn.init.normal_(self.down.weight, std=1 / rank)
         nn.init.zeros_(self.up.weight)

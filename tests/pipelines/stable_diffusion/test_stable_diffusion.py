@@ -38,6 +38,7 @@ from diffusers.utils import load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
+from ...models.test_models_unet_2d_condition import create_lora_layers
 from ...test_pipelines_common import PipelineTesterMixin
 
 
@@ -133,6 +134,40 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         expected_slice = np.array([0.5643, 0.6017, 0.4799, 0.5267, 0.5584, 0.4641, 0.5159, 0.4963, 0.4791])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_stable_diffusion_lora(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionPipeline(**components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        # forward 1
+        inputs = self.get_dummy_inputs(device)
+        output = sd_pipe(**inputs)
+        image = output.images
+        image_slice = image[0, -3:, -3:, -1]
+
+        # set lora layers
+        lora_attn_procs = create_lora_layers(sd_pipe.unet)
+        sd_pipe.unet.set_attn_processor(lora_attn_procs)
+        sd_pipe = sd_pipe.to(torch_device)
+
+        # forward 2
+        inputs = self.get_dummy_inputs(device)
+        output = sd_pipe(**inputs, cross_attention_kwargs={"scale": 0.0})
+        image = output.images
+        image_slice_1 = image[0, -3:, -3:, -1]
+
+        # forward 3
+        inputs = self.get_dummy_inputs(device)
+        output = sd_pipe(**inputs, cross_attention_kwargs={"scale": 0.5})
+        image = output.images
+        image_slice_2 = image[0, -3:, -3:, -1]
+
+        assert np.abs(image_slice - image_slice_1).max() < 1e-2
+        assert np.abs(image_slice - image_slice_2).max() > 1e-2
 
     def test_stable_diffusion_prompt_embeds(self):
         components = self.get_dummy_components()

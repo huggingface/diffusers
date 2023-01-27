@@ -87,6 +87,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             for resnet blocks, see [`~models.resnet.ResnetBlock2D`]. Choose from `default` or `scale_shift`.
         class_embed_type (`str`, *optional*, defaults to None): The type of class embedding to use which is ultimately
             summed with the time embeddings. Choose from `None`, `"timestep"`, or `"identity"`.
+        num_class_embeds (`int`, *optional*, defaults to None):
+            Input dimension of the learnable embedding matrix to be projected to `time_embed_dim`, when performing
+            class conditioning with `class_embed_type` equal to `None`.
     """
 
     _supports_gradient_checkpointing = True
@@ -407,6 +410,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             encoder_hidden_states (`torch.FloatTensor`): (batch, sequence_length, feature_dim) encoder hidden states
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttnProcessor` as defined under
+                `self.processor` in
+                [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
 
         Returns:
             [`~models.unet_2d_condition.UNet2DConditionOutput`] or `tuple`:
