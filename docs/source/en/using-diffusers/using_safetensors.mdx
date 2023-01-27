@@ -77,9 +77,7 @@ Then in order to use the model, even before the branch gets accepted by the orig
 ```python
 from diffusers import StableDiffusionPipeline
 
-pipe = StableDiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-2-1", revision="refs/pr/22"
-)
+pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1", revision="refs/pr/22")
 ```
 
 And that's it !
