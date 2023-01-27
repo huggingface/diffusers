@@ -15,12 +15,13 @@
 
 import argparse
 import hashlib
+import itertools
 import logging
 import math
 import os
 import warnings
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 import torch
@@ -42,7 +43,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.loaders import AttnProcsLayers
-from diffusers.models.cross_attention import LoRACrossAttnProcessor
+from diffusers.models.cross_attention import LoRACrossAttnProcessor, LoRALinearLayer
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
@@ -50,7 +51,7 @@ from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import AutoTokenizer, PretrainedConfig
+from transformers import AutoTokenizer, PretrainedConfig, CLIPTextModel
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -218,6 +219,11 @@ def parse_args(input_args=None):
             "Whether to center crop the input images to the resolution. If not set, the images will be randomly"
             " cropped. The images will be resized to the resolution first before cropping."
         ),
+    )
+    parser.add_argument(
+        "--train_text_encoder",
+        action="store_true",
+        help="Whether to train the text encoder. If set, the text encoder should be float32 precision.",
     )
     parser.add_argument(
         "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
@@ -664,9 +670,13 @@ def main(args):
         weight_dtype = torch.bfloat16
 
     # Move unet, vae and text_encoder to device and cast to weight_dtype
-    unet.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
-    text_encoder.to(accelerator.device, dtype=weight_dtype)
+    if not args.train_text_encoder:
+        unet.to(accelerator.device, dtype=weight_dtype)
+        text_encoder.to(accelerator.device, dtype=weight_dtype)
+    else:
+        unet.to(accelerator.device)
+        text_encoder.to(accelerator.device)
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -707,7 +717,15 @@ def main(args):
     unet.set_attn_processor(lora_attn_procs)
     lora_layers = AttnProcsLayers(unet.attn_processors)
 
+    # optionally we will add new LoRA weights to the text encoder
+    lora_text_encoder_layers = None
+    if args.train_text_encoder:
+        lora_text_encoder_state_dict = inject_lora_text_encoder_params(text_encoder)
+        lora_text_encoder_layers = AttnProcsLayers(lora_text_encoder_state_dict)
+
     accelerator.register_for_checkpointing(lora_layers)
+    if args.train_text_encoder:
+        accelerator.register_for_checkpointing(lora_text_encoder_layers)
 
     if args.scale_lr:
         args.learning_rate = (
@@ -738,8 +756,13 @@ def main(args):
         optimizer_class = torch.optim.AdamW
 
     # Optimizer creation
+    params_to_optimize = (
+        itertools.chain(lora_layers.parameters(), lora_text_encoder_layers.parameters())
+        if args.train_text_encoder
+        else lora_layers.parameters()
+    )
     optimizer = optimizer_class(
-        lora_layers.parameters(),
+        params_to_optimize,
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -782,9 +805,14 @@ def main(args):
     )
 
     # Prepare everything with our `accelerator`.
-    lora_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        lora_layers, optimizer, train_dataloader, lr_scheduler
-    )
+    if args.train_text_encoder:
+        lora_layers, lora_text_encoder_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            lora_layers, lora_text_encoder_layers, optimizer, train_dataloader, lr_scheduler
+        )
+    else:
+        lora_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            lora_layers, optimizer, train_dataloader, lr_scheduler
+        )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -843,6 +871,8 @@ def main(args):
 
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
+        if args.train_text_encoder:
+            text_encoder.train()
         for step, batch in enumerate(train_dataloader):
             # Skip steps until we reach the resumed step
             if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
@@ -870,6 +900,8 @@ def main(args):
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0]
 
                 # Predict the noise residual
+                if args.train_text_encoder:
+                    noisy_latents = noisy_latents.to(torch.float32)
                 model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
 
                 # Get the target for loss depending on the prediction type
@@ -898,7 +930,11 @@ def main(args):
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    params_to_clip = lora_layers.parameters()
+                    params_to_clip = (
+                        itertools.chain(lora_layers.parameters(), lora_text_encoder_layers.parameters())
+                        if args.train_text_encoder
+                        else lora_layers.parameters()
+                    )
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
@@ -966,6 +1002,13 @@ def main(args):
     if accelerator.is_main_process:
         unet = unet.to(torch.float32)
         unet.save_attn_procs(args.output_dir)
+        # Save the lora text encoder layers
+        if args.train_text_encoder:
+            text_encoder = text_encoder.to(dtype=torch.float32)
+            torch.save(
+                lora_text_encoder_layers.state_dict(),
+                os.path.join(args.output_dir, "pytorch_lora.text_encoder_weights.bin"),
+            )
 
         # Final inference
         # Load previous pipeline
@@ -1009,6 +1052,53 @@ def main(args):
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
 
     accelerator.end_training()
+
+
+def inject_lora_text_encoder_params(
+    text_encoder: CLIPTextModel, pretrained_model_path_or_dict: Union[str, dict, None] = None
+):
+    """
+    Inject lora into text encoder. If `state_dict` is not given, we consider it to be
+    training mode and use random weights to initialize. Else, we update the weight inplaced.
+    """
+
+    if isinstance(pretrained_model_path_or_dict, str):
+        pretrained_state_dict = torch.load(pretrained_model_path_or_dict, map_location="cpu")
+    else:
+        pretrained_state_dict = pretrained_model_path_or_dict
+    new_state_dict = {}
+    ancestors = [module for module in text_encoder.modules() if module.__class__.__name__ == "CLIPAttention"]
+    for i, ancestor in enumerate(ancestors):
+        for fullname, module in ancestor.named_modules():
+
+            if any([isinstance(module, _class) for _class in [torch.nn.Linear]]):
+                # Find the direct parent if this is a descendant, not a child, of target
+                *path, name = fullname.split(".")
+                parent = ancestor
+                while path:
+                    parent = parent.get_submodule(path.pop(0))
+
+                _module, name, _child_module = parent, name, module
+
+                _tmp = LoRALinearLayer(
+                    _child_module.in_features,
+                    _child_module.out_features,
+                )
+
+                # switch the module
+                _tmp.to(_child_module.weight.device).to(_child_module.weight.dtype)
+                _module._modules[name] = _tmp
+
+                if not pretrained_state_dict:
+                    new_state_dict[f"{i}.{name}"] = _module._modules[name]
+
+                    _module._modules[name].up.weight.requires_grad = True
+                    _module._modules[name].down.weight.requires_grad = True
+                else:
+                    if name in pretrained_state_dict:
+                        _module._modules[name] = pretrained_state_dict[f"{i}.{name}"]
+
+    return pretrained_state_dict or new_state_dict
 
 
 if __name__ == "__main__":
