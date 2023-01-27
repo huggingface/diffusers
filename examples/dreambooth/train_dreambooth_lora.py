@@ -226,6 +226,11 @@ def parse_args(input_args=None):
         help="Whether to train the text encoder. If set, the text encoder should be float32 precision.",
     )
     parser.add_argument(
+        "--lora_text_encoder_only",
+        action="store_true",
+        help="Whether to train the text encoder lora layers only, or train the base text encoder entirely.",
+    )
+    parser.add_argument(
         "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
     )
     parser.add_argument(
@@ -658,7 +663,8 @@ def main(args):
 
     # We only train the additional adapter LoRA layers
     vae.requires_grad_(False)
-    text_encoder.requires_grad_(False)
+    if not args.train_text_encoder or args.lora_text_encoder_only:
+        text_encoder.requires_grad_(False)
     unet.requires_grad_(False)
 
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
@@ -720,12 +726,16 @@ def main(args):
     # optionally we will add new LoRA weights to the text encoder
     lora_text_encoder_layers = None
     if args.train_text_encoder:
-        lora_text_encoder_state_dict = inject_lora_text_encoder_params(text_encoder)
-        lora_text_encoder_layers = AttnProcsLayers(lora_text_encoder_state_dict)
+        if args.lora_text_encoder_only:
+            lora_text_encoder_state_dict = inject_lora_text_encoder_params(text_encoder)
+            lora_text_encoder_layers = AttnProcsLayers(lora_text_encoder_state_dict)
 
     accelerator.register_for_checkpointing(lora_layers)
     if args.train_text_encoder:
-        accelerator.register_for_checkpointing(lora_text_encoder_layers)
+        if args.lora_text_encoder_only:
+            accelerator.register_for_checkpointing(lora_text_encoder_layers)
+        else:
+            text_encoder.gradient_checkpointing_enable()
 
     if args.scale_lr:
         args.learning_rate = (
@@ -756,11 +766,13 @@ def main(args):
         optimizer_class = torch.optim.AdamW
 
     # Optimizer creation
-    params_to_optimize = (
-        itertools.chain(lora_layers.parameters(), lora_text_encoder_layers.parameters())
-        if args.train_text_encoder
-        else lora_layers.parameters()
-    )
+    if args.train_text_encoder:
+        if args.lora_text_encoder_only:
+            params_to_optimize = itertools.chain(lora_layers.parameters(), lora_text_encoder_layers.parameters())
+        else:
+            params_to_optimize = itertools.chain(lora_layers.parameters(), text_encoder.parameters())
+    else:
+        params_to_optimize = lora_layers.parameters()
     optimizer = optimizer_class(
         params_to_optimize,
         lr=args.learning_rate,
@@ -806,9 +818,14 @@ def main(args):
 
     # Prepare everything with our `accelerator`.
     if args.train_text_encoder:
-        lora_layers, lora_text_encoder_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-            lora_layers, lora_text_encoder_layers, optimizer, train_dataloader, lr_scheduler
-        )
+        if args.lora_text_encoder_only:
+            lora_layers, lora_text_encoder_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+                lora_layers, lora_text_encoder_layers, optimizer, train_dataloader, lr_scheduler
+            )
+        else:
+            lora_layers, text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+                lora_layers, text_encoder, optimizer, train_dataloader, lr_scheduler
+            )
     else:
         lora_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
             lora_layers, optimizer, train_dataloader, lr_scheduler
@@ -930,11 +947,15 @@ def main(args):
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    params_to_clip = (
-                        itertools.chain(lora_layers.parameters(), lora_text_encoder_layers.parameters())
-                        if args.train_text_encoder
-                        else lora_layers.parameters()
-                    )
+                    if args.train_text_encoder:
+                        if args.lora_text_encoder_only:
+                            params_to_clip = itertools.chain(
+                                lora_layers.parameters(), lora_text_encoder_layers.parameters()
+                            )
+                        else:
+                            params_to_clip = itertools.chain(lora_layers.parameters(), text_encoder.parameters())
+                    else:
+                        params_to_clip = lora_layers.parameters()
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
@@ -969,7 +990,7 @@ def main(args):
                 unet=accelerator.unwrap_model(unet),
                 text_encoder=accelerator.unwrap_model(text_encoder),
                 revision=args.revision,
-                torch_dtype=weight_dtype,
+                torch_dtype=weight_dtype if not args.train_text_encoder else torch.float32,
             )
             pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
             pipeline = pipeline.to(accelerator.device)
@@ -1005,10 +1026,13 @@ def main(args):
         # Save the lora text encoder layers
         if args.train_text_encoder:
             text_encoder = text_encoder.to(dtype=torch.float32)
-            torch.save(
-                lora_text_encoder_layers.state_dict(),
-                os.path.join(args.output_dir, "pytorch_lora.text_encoder_weights.bin"),
-            )
+            if args.lora_text_encoder_only:
+                torch.save(
+                    lora_text_encoder_layers.state_dict(),
+                    os.path.join(args.output_dir, "pytorch_lora.text_encoder_weights.bin"),
+                )
+            else:
+                text_encoder.save_pretrained(os.path.join(args.output_dir, "text_encoder"))
 
         # Final inference
         # Load previous pipeline
@@ -1020,6 +1044,13 @@ def main(args):
 
         # load attention processors
         pipeline.unet.load_attn_procs(args.output_dir)
+        if args.train_text_encoder:
+            if args.lora_text_encoder_only:
+                inject_lora_text_encoder_params(
+                    pipeline.text_encoder, os.path.join(args.output_dir, "pytorch_lora.text_encoder_weights.bin")
+                )
+            else:
+                pipeline.text_encoder = CLIPTextModel.from_pretrained(os.path.join(args.output_dir, "text_encoder"))
 
         # run inference
         if args.validation_prompt and args.num_validation_images > 0:
