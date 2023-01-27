@@ -168,7 +168,7 @@ image = pipe(prompt, num_inference_steps=30, guidance_scale=7.5, cross_attention
 image.save("pokemon.png")
 ```
 
-A value of `0` is the same as _not_ using the LoRA weights, whereas `1` means only the fine-tuned weights will be used. Values between 0 and 1 will merge the two versions accordingly.
+A value of `0` is the same as _not_ using the LoRA weights, whereas `1` means only the LoRA fine-tuned weights will be used. Values between 0 and 1 will merge the two versions accordingly.
 
 
 ## Known limitations 
