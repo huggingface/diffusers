@@ -1101,7 +1101,6 @@ def inject_lora_text_encoder_params(
     ancestors = [module for module in text_encoder.modules() if module.__class__.__name__ == "CLIPAttention"]
     for i, ancestor in enumerate(ancestors):
         for fullname, module in ancestor.named_modules():
-
             if any([isinstance(module, _class) for _class in [torch.nn.Linear]]):
                 # Find the direct parent if this is a descendant, not a child, of target
                 *path, name = fullname.split(".")
