@@ -112,6 +112,32 @@ accelerate launch train_dreambooth.py \
   --max_train_steps=800
 ```
 
+### Using prompt per image
+
+You can use `--read_prompts_from_txts` to make the script use a separate prompt for each image. This makes the training act like regular fine-tuning and not like Dreambooth. For each image, you need to create a txt file with the prompt. For example, if image is named `dog.png` create `dog.png.txt`.
+
+```bash
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export INSTANCE_DIR="path-to-instance-images"
+export OUTPUT_DIR="path-to-save-model"
+
+accelerate launch train_dreambooth.py \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --instance_data_dir=$INSTANCE_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --resolution=512 \
+  --train_batch_size=1 \
+  --train_text_encoder \
+  --mixed_precision="fp16" \
+  --use_8bit_adam \
+  --gradient_accumulation_steps=1 \
+  --gradient_checkpointing \
+  --learning_rate=1e-6 \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --max_train_steps=800 \
+  --read_prompts_from_txts
+```
 
 ### Training on a 16GB GPU:
 

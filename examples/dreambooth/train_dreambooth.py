@@ -252,6 +252,11 @@ def parse_args(input_args=None):
         default=None,
         help="Path to json containing multiple concepts, will overwrite parameters like instance_prompt, class_prompt, etc.",
     )
+    parser.add_argument(
+        "--read_prompts_from_txts",
+        action="store_true",
+        help="Use prompt per image. Put prompts in the same directory as images, e.g. for image.png create image.png.txt.",
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -280,19 +285,25 @@ class DreamBoothDataset(Dataset):
         center_crop=False,
         num_class_images=None,
         pad_tokens=False,
-        hflip=False
+        hflip=False,
+        read_prompts_from_txts=False,
     ):
         self.size = size
         self.center_crop = center_crop
         self.tokenizer = tokenizer
         self.with_prior_preservation = with_prior_preservation
         self.pad_tokens = pad_tokens
+        self.read_prompts_from_txts = read_prompts_from_txts
 
         self.instance_images_path = []
         self.class_images_path = []
 
         for concept in concepts_list:
-            inst_img_path = [(x, concept["instance_prompt"]) for x in Path(concept["instance_data_dir"]).iterdir() if x.is_file()]
+            inst_img_path = [
+                (x, concept["instance_prompt"])
+                for x in Path(concept["instance_data_dir"]).iterdir()
+                if x.is_file() and not str(x).endswith(".txt")
+            ]
             self.instance_images_path.extend(inst_img_path)
 
             if with_prior_preservation:
@@ -320,9 +331,15 @@ class DreamBoothDataset(Dataset):
     def __getitem__(self, index):
         example = {}
         instance_path, instance_prompt = self.instance_images_path[index % self.num_instance_images]
+
+        if self.read_prompts_from_txts:
+            with open(str(instance_path) + ".txt") as f:
+                instance_prompt = f.read().strip()
+
         instance_image = Image.open(instance_path)
         if not instance_image.mode == "RGB":
             instance_image = instance_image.convert("RGB")
+
         example["instance_images"] = self.image_transforms(instance_image)
         example["instance_prompt_ids"] = self.tokenizer(
             instance_prompt,
@@ -562,7 +579,8 @@ def main(args):
         center_crop=args.center_crop,
         num_class_images=args.num_class_images,
         pad_tokens=args.pad_tokens,
-        hflip=args.hflip
+        hflip=args.hflip,
+        read_prompts_from_txts=args.read_prompts_from_txts,
     )
 
     def collate_fn(examples):
