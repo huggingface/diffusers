@@ -21,17 +21,21 @@ And a secondary reason, is **the speed of loading**. Safetensors can load models
 than regular pickle files. If you spend a lot of times switching models, this can be
 a huge timesave.
 
-TODO: Numbers are not final
+Numbers taken AMD EPYC 7742 64-Core Processor 
 ```
 from diffusers import StableDiffusionPipeline
 
-pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1", use_safetensors=True)
-# Loaded in safetensors 0:00:01.998426
-# Loaded in Pytorch 0:00:05.339772
-#
-pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1", use_safetensors=True, device=0)
-# Loaded in safetensors 0:00:01.998426 <--- this requires a special environment variable SAFETENSORS_FAST_GPU=1 to be set, as this particular fast loading method wasn't properly audited (yet).
-# Loaded in Pytorch 0:00:05.339772
+pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1")
+
+# Loaded in safetensors 0:00:02.033658
+# Loaded in Pytorch 0:00:02.663379
+```
+
+This is for the entire loading time, the actual weights loading time to load 500MB:
+
+```
+Safetensors: 3.4873ms
+PyTorch: 172.7537ms
 ```
 
 Performance in general is a tricky business, and there are a few things to understand:
@@ -47,8 +51,6 @@ Performance in general is a tricky business, and there are a few things to under
 If you have `safetensors` installed, and all the weights are available in `safetensors` format, \
 then by default it will use that instead of the pytorch weights.
 
-If you want to make **sure** you're not using pytorch weights, you can use `use_safetensors=True` in your loading method.
-
 If you are really paranoid about this, the ultimate weapon would be disabling `torch.load`:
 ```python
 import torch
@@ -60,7 +62,6 @@ def _raise():
 
 torch.load = lambda *args, **kwargs: _raise()
 ```
-but in general `diffusers` previous options should be enough.
 
 # I want to use model X but it doesn't have safetensors weights.
 
@@ -77,7 +78,7 @@ Then in order to use the model, even before the branch gets accepted by the orig
 from diffusers import StableDiffusionPipeline
 
 pipe = StableDiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-2-1", use_safetensors=True, revision="refs/pr/22"
+    "stabilityai/stable-diffusion-2-1", revision="refs/pr/22"
 )
 ```
 
