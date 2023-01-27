@@ -152,7 +152,9 @@ Inference for DreamBooth training remains the same. Check
 
 ### Merging LoRA with original model
 
-You can adjust the merging ratio between the fine-tuned model and the original. This is controlled by a parameter called α (alpha) in the paper, or `scale` in our implementation. You can tweak it with the following code, that passes `scale` as `cross_attention_kwargs` in the pipeline call:
+When performing inference, you can merge the trained LoRA weights with the frozen pre-trained model weights, to interpolate between the original model's inference result (as if no fine-tuning had occurred) and the fully fine-tuned version.
+
+You can adjust the merging ratio with a parameter called α (alpha) in the paper, or `scale` in our implementation. You can tweak it with the following code, that passes `scale` as `cross_attention_kwargs` in the pipeline call:
 
 ```py 
 from diffusers import StableDiffusionPipeline
@@ -168,7 +170,7 @@ image = pipe(prompt, num_inference_steps=30, guidance_scale=7.5, cross_attention
 image.save("pokemon.png")
 ```
 
-A value of `0` is the same as _not_ using the LoRA weights, whereas `1` means only the LoRA fine-tuned weights will be used. Values between 0 and 1 will merge the two versions accordingly.
+A value of `0` is the same as _not_ using the LoRA weights, whereas `1` means only the LoRA fine-tuned weights will be used. Values between 0 and 1 will interpolate between the two versions.
 
 
 ## Known limitations 
