@@ -111,10 +111,8 @@ class CrossAttention(nn.Module):
                 )
             elif not is_xformers_available():
                 raise ModuleNotFoundError(
-                    (
-                        "Refer to https://github.com/facebookresearch/xformers for more information on how to install"
-                        " xformers"
-                    ),
+                    "Refer to https://github.com/facebookresearch/xformers for more information on how to install"
+                    " xformers",
                     name="xformers",
                 )
             elif not torch.cuda.is_available():
