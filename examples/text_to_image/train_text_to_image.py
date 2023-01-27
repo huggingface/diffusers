@@ -27,6 +27,7 @@ import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 
+import accelerate
 import datasets
 import diffusers
 import transformers
@@ -39,6 +40,7 @@ from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
 from diffusers.utils.import_utils import is_xformers_available
 from huggingface_hub import HfFolder, Repository, whoami
+from packaging import version
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
@@ -491,6 +493,43 @@ def main():
             unet.enable_xformers_memory_efficient_attention()
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
+
+    # `accelerate` 0.15.0 will have better support for customized saving
+    if version.parse(accelerate.__version__) >= version.parse("0.15.0.dev0"):
+        # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
+        def save_model_hook(models, weights, output_dir):
+            for i, model in enumerate(models):
+                # if we use_ema, we save it under "unet_ema"
+                if args.use_ema and i == 1:
+                    sub_folder = "unet_ema"
+                else:
+                    sub_folder = "unet"
+
+                model.save_pretrained(os.path.join(output_dir, sub_folder))
+
+                # make sure to pop weight so that corresponding model is not saved again
+                weights.pop()
+
+        def load_model_hook(models, input_dir):
+            for i in range(len(models)):
+                # pop models so that they are not loaded again
+                model = models.pop()
+
+                # if we use_ema, we save it under "unet_ema"
+                if args.use_ema and i == 1:
+                    sub_folder = "unet_ema"
+                else:
+                    sub_folder = "unet"
+
+                # load diffusers style into model
+                load_model = UNet2DConditionModel.from_pretrained(input_dir, subfolder=sub_folder)
+                model.register_to_config(**load_model.config)
+
+                model.load_state_dict(load_model.state_dict())
+                del load_model
+
+        accelerator.register_save_state_pre_hook(save_model_hook)
+        accelerator.register_load_state_pre_hook(load_model_hook)
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
