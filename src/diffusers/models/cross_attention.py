@@ -278,7 +278,6 @@ class LoRALinearLayer(nn.Module):
 
         self.down = nn.Linear(in_features, rank, bias=False)
         self.up = nn.Linear(rank, out_features, bias=False)
-        self.scale = 1.0
 
         nn.init.normal_(self.down.weight, std=1 / rank)
         nn.init.zeros_(self.up.weight)
