@@ -501,7 +501,7 @@ class DiffusionPipeline(ConfigMixin):
 
             user_agent = http_user_agent(user_agent)
 
-            if is_safetensors_available():
+            if is_safetensors_available() and not local_files_only:
                 info = model_info(
                     pretrained_model_name_or_path,
                     use_auth_token=use_auth_token,
