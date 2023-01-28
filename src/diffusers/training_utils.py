@@ -253,7 +253,7 @@ class EMAModel:
         if not isinstance(self.inv_gamma, (float, int)):
             raise ValueError("Invalid inv_gamma")
 
-        self.power = state_dict["power"].get("power", self.power)
+        self.power = state_dict.get("power", self.power)
         if not isinstance(self.power, (float, int)):
             raise ValueError("Invalid power")
 
