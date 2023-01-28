@@ -168,7 +168,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `list(int)`):
+            prompt (`str` or `List[str]`):
                 prompt to be encoded
             num_images_per_prompt (`int`):
                 number of images that should be generated per prompt
@@ -198,8 +198,8 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
 
-        text_embeddings = self.text_encoder(input_ids=text_input_ids.astype(np.int32))[0]
-        text_embeddings = np.repeat(text_embeddings, num_images_per_prompt, axis=0)
+        prompt_embeds = self.text_encoder(input_ids=text_input_ids.astype(np.int32))[0]
+        prompt_embeds = np.repeat(prompt_embeds, num_images_per_prompt, axis=0)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
@@ -230,15 +230,15 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
                 truncation=True,
                 return_tensors="np",
             )
-            uncond_embeddings = self.text_encoder(input_ids=uncond_input.input_ids.astype(np.int32))[0]
-            uncond_embeddings = np.repeat(uncond_embeddings, num_images_per_prompt, axis=0)
+            negative_prompt_embeds = self.text_encoder(input_ids=uncond_input.input_ids.astype(np.int32))[0]
+            negative_prompt_embeds = np.repeat(negative_prompt_embeds, num_images_per_prompt, axis=0)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
-            text_embeddings = np.concatenate([uncond_embeddings, text_embeddings])
+            prompt_embeds = np.concatenate([negative_prompt_embeds, prompt_embeds])
 
-        return text_embeddings
+        return prompt_embeds
 
     @torch.no_grad()
     def __call__(
@@ -351,13 +351,13 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        text_embeddings = self._encode_prompt(
+        prompt_embeds = self._encode_prompt(
             prompt, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
 
         num_channels_latents = NUM_LATENT_CHANNELS
         latents_shape = (batch_size * num_images_per_prompt, num_channels_latents, height // 8, width // 8)
-        latents_dtype = text_embeddings.dtype
+        latents_dtype = prompt_embeds.dtype
         if latents is None:
             latents = generator.randn(*latents_shape).astype(latents_dtype)
         else:
@@ -424,9 +424,9 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
 
             # predict the noise residual
             timestep = np.array([t], dtype=timestep_dtype)
-            noise_pred = self.unet(
-                sample=latent_model_input, timestep=timestep, encoder_hidden_states=text_embeddings
-            )[0]
+            noise_pred = self.unet(sample=latent_model_input, timestep=timestep, encoder_hidden_states=prompt_embeds)[
+                0
+            ]
 
             # perform guidance
             if do_classifier_free_guidance:

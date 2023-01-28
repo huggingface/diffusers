@@ -460,11 +460,9 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
         pipe.enable_attention_slicing()
         pipe.enable_sequential_cpu_offload()
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
         _ = pipe(
             "horse",
             num_images_per_prompt=1,
-            generator=generator,
             prior_num_inference_steps=2,
             decoder_num_inference_steps=2,
             super_res_num_inference_steps=2,
