@@ -13,9 +13,10 @@
 # limitations under the License.
 import os
 from collections import defaultdict
-from typing import Callable, Dict, Union, List
+from typing import Callable, Dict, List, Union
 
 import torch
+
 from transformers import PreTrainedModel, PreTrainedTokenizer
 
 from .models.cross_attention import LoRACrossAttnProcessor
@@ -255,16 +256,18 @@ class TextualInversionLoaderMixin:
         self, embedding_path_dict_or_list: Union[Dict[str, str], List[Dict[str, str]]], allow_replacement: bool = False
     ):
         r"""
-        Loads textual inversion embeddings and adds them to the tokenizer's vocabulary and the text encoder's embeddings.
+        Loads textual inversion embeddings and adds them to the tokenizer's vocabulary and the text encoder's
+        embeddings.
 
         Arguments:
             embeddings_path_dict_or_list (`Dict[str, str]` or `List[str]`):
-                Dictionary of token to embedding path or List of embedding paths to embedding dictionaries.
-                The dictionary must have the following keys:
+                Dictionary of token to embedding path or List of embedding paths to embedding dictionaries. The
+                dictionary must have the following keys:
                     - `token`: name of the token to be added to the tokenizers' vocabulary
-                    - `embedding`: path to the embedding of the token to be added to the text encoder's embedding matrix
-                The list must contain paths to embedding dictionaries where the keys are the tokens and the
-                values are the embeddings (same as above dictionary definition).
+                    - `embedding`: path to the embedding of the token to be added to the text encoder's embedding
+                      matrix
+                The list must contain paths to embedding dictionaries where the keys are the tokens and the values are
+                the embeddings (same as above dictionary definition).
 
         Returns:
             None
@@ -278,7 +281,8 @@ class TextualInversionLoaderMixin:
                 if token in self.tokenizer.get_vocab():
                     if allow_replacement:
                         logger.info(
-                            f"Token {token} already in tokenizer vocabulary. Overwriting existing token and embedding with the new one."
+                            f"Token {token} already in tokenizer vocabulary. Overwriting existing token and embedding"
+                            " with the new one."
                         )
                     else:
                         raise ValueError(
@@ -300,7 +304,8 @@ class TextualInversionLoaderMixin:
                 if token in self.tokenizer.get_vocab():
                     if allow_replacement:
                         logger.info(
-                            f"Token {token} already in tokenizer vocabulary. Overwriting existing token and embedding with the new one."
+                            f"Token {token} already in tokenizer vocabulary. Overwriting existing token and embedding"
+                            " with the new one."
                         )
                     else:
                         raise ValueError(
@@ -390,18 +395,20 @@ class TextualInversionLoaderMixin:
 
         Raises:
             ValueError:
-                If the method is being called from a class instance that does not have
-                the required attributes, the method will not be callable.
+                If the method is being called from a class instance that does not have the required attributes, the
+                method will not be callable.
 
         Returns:
             None
         """
         if not hasattr(self, "tokenizer") or not isinstance(self.tokenizer, PreTrainedTokenizer):
             raise ValueError(
-                f"{self.__class__.__name__} requires `self.tokenizer` of type `PreTrainedTokenizer` for calling `{method.__name__}`"
+                f"{self.__class__.__name__} requires `self.tokenizer` of type `PreTrainedTokenizer` for calling"
+                f" `{method.__name__}`"
             )
 
         if not hasattr(self, "text_encoder") or not isinstance(self.text_encoder, PreTrainedModel):
             raise ValueError(
-                f"{self.__class__.__name__} requires `self.text_encoder` of type `PreTrainedModel` for calling `{method.__name__}`"
+                f"{self.__class__.__name__} requires `self.text_encoder` of type `PreTrainedModel` for calling"
+                f" `{method.__name__}`"
             )

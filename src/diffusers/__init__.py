@@ -32,6 +32,7 @@ try:
 except OptionalDependencyNotAvailable:
     from .utils.dummy_pt_objects import *  # noqa F403
 else:
+    from .loaders import TextualInversionLoaderMixin
     from .models import (
         AutoencoderKL,
         ModelMixin,
@@ -86,7 +87,6 @@ else:
         UnCLIPScheduler,
         VQDiffusionScheduler,
     )
-    from .loaders import TextualInversionLoaderMixin
     from .training_utils import EMAModel
 
 try:
