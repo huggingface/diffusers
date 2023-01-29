@@ -789,7 +789,6 @@ def main():
                             del pipeline
                             torch.cuda.empty_cache()
 
-
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
 
