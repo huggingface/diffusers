@@ -297,6 +297,18 @@ def parse_args():
     parser.add_argument(
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
+    parser.add_argument(
+        "--validation_prompt",
+        type=str,
+        default=None,
+        help="A prompt that is used during validation to verify that the model is learning.",
+    )
+    parser.add_argument(
+        "--num_validation_images",
+        type=int,
+        default=4,
+        help="Number of images that should be generated during validation with `validation_prompt`.",
+    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -755,6 +767,28 @@ def main():
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
+
+                        if args.validation_prompt:
+                            pipeline = StableDiffusionPipeline.from_pretrained(
+                                args.pretrained_model_name_or_path,
+                                text_encoder=text_encoder,
+                                vae=vae,
+                                unet=accelerator.unwrap_model(unet),
+                                revision=args.revision,
+                                torch_dtype=weight_dtype,
+                            )
+                            pipeline = pipeline.to(accelerator.device)
+                            pipeline.set_progress_bar_config(disable=True)
+
+                            # run inference
+                            prompt = [args.validation_prompt]
+                            images = pipeline(prompt, num_images_per_prompt=args.num_validation_images).images
+
+                            for i, image in enumerate(images):
+                                image.save(os.path.join(args.output_dir, f"sample-{global_step}-{i}.jpg"))
+                            del pipeline
+                            torch.cuda.empty_cache()
+
 
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
