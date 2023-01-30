@@ -158,7 +158,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
 
         prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         output = pipe(
             prompt=prompt,
             image=init_image,
@@ -196,7 +196,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
 
         prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         output = pipe(
             prompt=prompt,
             image=init_image,
@@ -237,7 +237,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
 
         prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         _ = pipe(
             prompt=prompt,
             image=init_image,

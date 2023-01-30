@@ -126,7 +126,7 @@ class LDMTextToImagePipelineSlowTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def get_inputs(self, device, dtype=torch.float32, seed=0):
-        generator = torch.Generator(device=device).manual_seed(seed)
+        generator = torch.manual_seed(seed)
         latents = np.random.RandomState(seed).standard_normal((1, 4, 32, 32))
         latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
         inputs = {
@@ -162,7 +162,7 @@ class LDMTextToImagePipelineNightlyTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def get_inputs(self, device, dtype=torch.float32, seed=0):
-        generator = torch.Generator(device=device).manual_seed(seed)
+        generator = torch.manual_seed(seed)
         latents = np.random.RandomState(seed).standard_normal((1, 4, 32, 32))
         latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
         inputs = {

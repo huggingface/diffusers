@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
-from typing import Optional
+from typing import Callable, Optional
 
 import torch
 import torch.nn.functional as F
@@ -72,6 +72,7 @@ class AttentionBlock(nn.Module):
         self.proj_attn = nn.Linear(channels, channels, 1)
 
         self._use_memory_efficient_attention_xformers = False
+        self._attention_op = None
 
     def reshape_heads_to_batch_dim(self, tensor):
         batch_size, seq_len, dim = tensor.shape
@@ -87,7 +88,9 @@ class AttentionBlock(nn.Module):
         tensor = tensor.permute(0, 2, 1, 3).reshape(batch_size // head_size, seq_len, dim * head_size)
         return tensor
 
-    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
+    def set_use_memory_efficient_attention_xformers(
+        self, use_memory_efficient_attention_xformers: bool, attention_op: Optional[Callable] = None
+    ):
         if use_memory_efficient_attention_xformers:
             if not is_xformers_available():
                 raise ModuleNotFoundError(
@@ -113,6 +116,7 @@ class AttentionBlock(nn.Module):
                 except Exception as e:
                     raise e
         self._use_memory_efficient_attention_xformers = use_memory_efficient_attention_xformers
+        self._attention_op = attention_op
 
     def forward(self, hidden_states):
         residual = hidden_states
@@ -136,7 +140,9 @@ class AttentionBlock(nn.Module):
 
         if self._use_memory_efficient_attention_xformers:
             # Memory efficient attention
-            hidden_states = xformers.ops.memory_efficient_attention(query_proj, key_proj, value_proj, attn_bias=None)
+            hidden_states = xformers.ops.memory_efficient_attention(
+                query_proj, key_proj, value_proj, attn_bias=None, op=self._attention_op
+            )
             hidden_states = hidden_states.to(query_proj.dtype)
         else:
             attention_scores = torch.baddbmm(

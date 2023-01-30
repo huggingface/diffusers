@@ -182,7 +182,7 @@ class CycleDiffusionPipelineIntegrationTests(unittest.TestCase):
         source_prompt = "A black colored car"
         prompt = "A blue colored car"
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         output = pipe(
             prompt=prompt,
             source_prompt=source_prompt,
@@ -221,7 +221,7 @@ class CycleDiffusionPipelineIntegrationTests(unittest.TestCase):
         source_prompt = "A black colored car"
         prompt = "A blue colored car"
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         output = pipe(
             prompt=prompt,
             source_prompt=source_prompt,

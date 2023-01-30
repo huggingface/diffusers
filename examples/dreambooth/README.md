@@ -131,6 +131,42 @@ accelerate launch train_dreambooth.py \
   --max_train_steps=800
 ```
 
+
+### Training on a 12GB GPU:
+
+It is possible to run dreambooth on a 12GB GPU by using the following optimizations:
+- [gradient checkpointing and the 8-bit optimizer](#training-on-a-16gb-gpu)
+- [xformers](#training-with-xformers)
+- [setting grads to none](#set-grads-to-none)
+
+```bash
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export INSTANCE_DIR="path-to-instance-images"
+export CLASS_DIR="path-to-class-images"
+export OUTPUT_DIR="path-to-save-model"
+
+accelerate launch train_dreambooth.py \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --instance_data_dir=$INSTANCE_DIR \
+  --class_data_dir=$CLASS_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --with_prior_preservation --prior_loss_weight=1.0 \
+  --instance_prompt="a photo of sks dog" \
+  --class_prompt="a photo of dog" \
+  --resolution=512 \
+  --train_batch_size=1 \
+  --gradient_accumulation_steps=1 --gradient_checkpointing \
+  --use_8bit_adam \
+  --enable_xformers_memory_efficient_attention \
+  --set_grads_to_none \
+  --learning_rate=2e-6 \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --num_class_images=200 \
+  --max_train_steps=800
+```
+
+
 ### Training on a 8 GB GPU:
 
 By using [DeepSpeed](https://www.deepspeed.ai/) it's possible to offload some
@@ -243,7 +279,7 @@ Low-Rank Adaption of Large Language Models was first introduced by Microsoft in 
 In a nutshell, LoRA allows to adapt pretrained models by adding pairs of rank-decomposition matrices to existing weights and **only** training those newly added weights. This has a couple of advantages:
 - Previous pretrained weights are kept frozen so that the model is not prone to [catastrophic forgetting](https://www.pnas.org/doi/10.1073/pnas.1611835114)
 - Rank-decomposition matrices have significantly fewer parameters than the original model, which means that trained LoRA weights are easily portable.
-- LoRA attention layers allow to control to which extent the model is adapted torwards new training images via a `scale` parameter.
+- LoRA attention layers allow to control to which extent the model is adapted towards new training images via a `scale` parameter.
 
 [cloneofsimo](https://github.com/cloneofsimo) was the first to try out LoRA training for Stable Diffusion in 
 the popular [lora](https://github.com/cloneofsimo/lora) GitHub repository.
@@ -417,6 +453,12 @@ python train_dreambooth_flax.py \
 You can enable memory efficient attention by [installing xFormers](https://github.com/facebookresearch/xformers#installing-xformers) and padding the `--enable_xformers_memory_efficient_attention` argument to the script. This is not available with the Flax/JAX implementation.
 
 You can also use Dreambooth to train the specialized in-painting model. See [the script in the research folder for details](https://github.com/huggingface/diffusers/tree/main/examples/research_projects/dreambooth_inpaint).
+
+### Set grads to none
+
+To save even more memory, pass the `--set_grads_to_none` argument to the script. This will set grads to None instead of zero. However, be aware that it changes certain behaviors, so if you start experiencing any problems, remove this argument.
+
+More info: https://pytorch.org/docs/stable/generated/torch.optim.Optimizer.zero_grad.html
 
 ### Experimental results
 You can refer to [this blog post](https://huggingface.co/blog/dreambooth) that discusses some of DreamBooth experiments in detail. Specifically, it recommends a set of DreamBooth-specific tips and tricks that we have found to work well for a variety of subjects. 

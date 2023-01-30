@@ -57,7 +57,7 @@ else:
 # ------------------------------------------------------------------------------
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.10.0.dev0")
+check_min_version("0.13.0.dev0")
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +109,7 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution"
+        "--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution."
     )
     parser.add_argument(
         "--train_batch_size", type=int, default=16, help="Batch size (per device) for the training dataloader."
@@ -525,7 +525,7 @@ def main():
             latents = vae_outputs.latent_dist.sample(sample_rng)
             # (NHWC) -> (NCHW)
             latents = jnp.transpose(latents, (0, 3, 1, 2))
-            latents = latents * 0.18215
+            latents = latents * vae.config.scaling_factor
 
             noise_rng, timestep_rng = jax.random.split(sample_rng)
             noise = jax.random.normal(noise_rng, latents.shape)

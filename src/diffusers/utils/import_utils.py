@@ -381,7 +381,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("k_diffusion", (is_k_diffusion_available, K_DIFFUSION_IMPORT_ERROR)),
         ("note_seq", (is_note_seq_available, NOTE_SEQ_IMPORT_ERROR)),
         ("wandb", (is_wandb_available, WANDB_IMPORT_ERROR)),
-        ("omageconf", (is_omegaconf_available, OMEGACONF_IMPORT_ERROR)),
+        ("omegaconf", (is_omegaconf_available, OMEGACONF_IMPORT_ERROR)),
     ]
 )
 
@@ -410,10 +410,10 @@ def requires_backends(obj, backends):
 
     if name in [
         "StableDiffusionDepth2ImgPipeline",
-    ] and is_transformers_version("<", "4.26.0.dev0"):
+    ] and is_transformers_version("<", "4.26.0"):
         raise ImportError(
-            f"You need to install `transformers` from 'main' in order to use {name}: \n```\n pip install"
-            " git+https://github.com/huggingface/transformers \n```"
+            f"You need to install `transformers>=4.26` in order to use {name}: \n```\n pip install"
+            " --upgrade transformers \n```"
         )
 
 

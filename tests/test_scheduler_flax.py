@@ -18,7 +18,7 @@ import unittest
 from typing import Dict, List, Tuple
 
 from diffusers import FlaxDDIMScheduler, FlaxDDPMScheduler, FlaxPNDMScheduler
-from diffusers.utils import deprecate, is_flax_available
+from diffusers.utils import is_flax_available
 from diffusers.utils.testing_utils import require_flax
 
 
@@ -625,22 +625,6 @@ class FlaxDDIMSchedulerTest(FlaxSchedulerCommonTest):
     def test_prediction_type(self):
         for prediction_type in ["epsilon", "sample", "v_prediction"]:
             self.check_over_configs(prediction_type=prediction_type)
-
-    def test_deprecated_predict_epsilon(self):
-        deprecate("remove this test", "0.13.0", "remove")
-        for predict_epsilon in [True, False]:
-            self.check_over_configs(predict_epsilon=predict_epsilon)
-
-    def test_deprecated_predict_epsilon_to_prediction_type(self):
-        deprecate("remove this test", "0.13.0", "remove")
-        for scheduler_class in self.scheduler_classes:
-            scheduler_config = self.get_scheduler_config(predict_epsilon=True)
-            scheduler = scheduler_class.from_config(scheduler_config)
-            assert scheduler.prediction_type == "epsilon"
-
-            scheduler_config = self.get_scheduler_config(predict_epsilon=False)
-            scheduler = scheduler_class.from_config(scheduler_config)
-            assert scheduler.prediction_type == "sample"
 
 
 @require_flax

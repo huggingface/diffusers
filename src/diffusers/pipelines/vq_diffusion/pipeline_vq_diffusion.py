@@ -120,7 +120,7 @@ class VQDiffusionPipeline(DiffusionPipeline):
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
             text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
-        text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
+        prompt_embeds = self.text_encoder(text_input_ids.to(self.device))[0]
 
         # NOTE: This additional step of normalizing the text embeddings is from VQ-Diffusion.
         # While CLIP does normalize the pooled output of the text transformer when combining
@@ -128,15 +128,15 @@ class VQDiffusionPipeline(DiffusionPipeline):
         #
         # CLIP normalizing the pooled output.
         # https://github.com/huggingface/transformers/blob/d92e22d1f28324f513f3080e5c47c071a3916721/src/transformers/models/clip/modeling_clip.py#L1052-L1053
-        text_embeddings = text_embeddings / text_embeddings.norm(dim=-1, keepdim=True)
+        prompt_embeds = prompt_embeds / prompt_embeds.norm(dim=-1, keepdim=True)
 
         # duplicate text embeddings for each generation per prompt
-        text_embeddings = text_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
+        prompt_embeds = prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
 
         if do_classifier_free_guidance:
             if self.learned_classifier_free_sampling_embeddings.learnable:
-                uncond_embeddings = self.learned_classifier_free_sampling_embeddings.embeddings
-                uncond_embeddings = uncond_embeddings.unsqueeze(0).repeat(batch_size, 1, 1)
+                negative_prompt_embeds = self.learned_classifier_free_sampling_embeddings.embeddings
+                negative_prompt_embeds = negative_prompt_embeds.unsqueeze(0).repeat(batch_size, 1, 1)
             else:
                 uncond_tokens = [""] * batch_size
 
@@ -148,21 +148,21 @@ class VQDiffusionPipeline(DiffusionPipeline):
                     truncation=True,
                     return_tensors="pt",
                 )
-                uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
+                negative_prompt_embeds = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
                 # See comment for normalizing text embeddings
-                uncond_embeddings = uncond_embeddings / uncond_embeddings.norm(dim=-1, keepdim=True)
+                negative_prompt_embeds = negative_prompt_embeds / negative_prompt_embeds.norm(dim=-1, keepdim=True)
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-            seq_len = uncond_embeddings.shape[1]
-            uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt, 1)
-            uncond_embeddings = uncond_embeddings.view(batch_size * num_images_per_prompt, seq_len, -1)
+            seq_len = negative_prompt_embeds.shape[1]
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
-            text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
-        return text_embeddings
+        return prompt_embeds
 
     @torch.no_grad()
     def __call__(
@@ -234,7 +234,7 @@ class VQDiffusionPipeline(DiffusionPipeline):
 
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        text_embeddings = self._encode_prompt(prompt, num_images_per_prompt, do_classifier_free_guidance)
+        prompt_embeds = self._encode_prompt(prompt, num_images_per_prompt, do_classifier_free_guidance)
 
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
@@ -273,9 +273,7 @@ class VQDiffusionPipeline(DiffusionPipeline):
 
             # predict the un-noised image
             # model_output == `log_p_x_0`
-            model_output = self.transformer(
-                latent_model_input, encoder_hidden_states=text_embeddings, timestep=t
-            ).sample
+            model_output = self.transformer(latent_model_input, encoder_hidden_states=prompt_embeds, timestep=t).sample
 
             if do_classifier_free_guidance:
                 model_output_uncond, model_output_text = model_output.chunk(2)

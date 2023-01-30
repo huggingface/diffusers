@@ -22,6 +22,7 @@ import warnings
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
@@ -53,7 +54,7 @@ from transformers import AutoTokenizer, PretrainedConfig
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.12.0.dev0")
+check_min_version("0.13.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -73,13 +74,14 @@ tags:
 - stable-diffusion-diffusers
 - text-to-image
 - diffusers
+- lora
 inference: true
 ---
     """
     model_card = f"""
 # LoRA DreamBooth - {repo_name}
 
-These are LoRA adaption weights for {repo_name}. The weights were trained on {prompt} using [DreamBooth](https://dreambooth.github.io/). You can find some example images in the following. \n
+These are LoRA adaption weights for {base_model}. The weights were trained on {prompt} using [DreamBooth](https://dreambooth.github.io/). You can find some example images in the following. \n
 {img_str}
 """
     with open(os.path.join(repo_folder, "README.md"), "w") as f:
@@ -209,7 +211,13 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution"
+        "--center_crop",
+        default=False,
+        action="store_true",
+        help=(
+            "Whether to center crop the input images to the resolution. If not set, the images will be randomly"
+            " cropped. The images will be resized to the resolution first before cropping."
+        ),
     )
     parser.add_argument(
         "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
@@ -285,6 +293,14 @@ def parse_args(input_args=None):
         help="Number of hard resets of the lr in cosine_with_restarts scheduler.",
     )
     parser.add_argument("--lr_power", type=float, default=1.0, help="Power factor of the polynomial scheduler.")
+    parser.add_argument(
+        "--dataloader_num_workers",
+        type=int,
+        default=0,
+        help=(
+            "Number of subprocesses to use for data loading. 0 means that the data will be loaded in the main process."
+        ),
+    )
     parser.add_argument(
         "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
     )
@@ -746,7 +762,7 @@ def main(args):
         batch_size=args.train_batch_size,
         shuffle=True,
         collate_fn=lambda examples: collate_fn(examples, args.with_prior_preservation),
-        num_workers=1,
+        num_workers=args.dataloader_num_workers,
     )
 
     # Scheduler and math around the number of training steps.
@@ -805,14 +821,21 @@ def main(args):
             dirs = os.listdir(args.output_dir)
             dirs = [d for d in dirs if d.startswith("checkpoint")]
             dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
-            path = dirs[-1]
-        accelerator.print(f"Resuming from checkpoint {path}")
-        accelerator.load_state(os.path.join(args.output_dir, path))
-        global_step = int(path.split("-")[1])
+            path = dirs[-1] if len(dirs) > 0 else None
 
-        resume_global_step = global_step * args.gradient_accumulation_steps
-        first_epoch = resume_global_step // num_update_steps_per_epoch
-        resume_step = resume_global_step % num_update_steps_per_epoch
+        if path is None:
+            accelerator.print(
+                f"Checkpoint '{args.resume_from_checkpoint}' does not exist. Starting a new training run."
+            )
+            args.resume_from_checkpoint = None
+        else:
+            accelerator.print(f"Resuming from checkpoint {path}")
+            accelerator.load_state(os.path.join(args.output_dir, path))
+            global_step = int(path.split("-")[1])
+
+            resume_global_step = global_step * args.gradient_accumulation_steps
+            first_epoch = global_step // num_update_steps_per_epoch
+            resume_step = resume_global_step % (num_update_steps_per_epoch * args.gradient_accumulation_steps)
 
     # Only show the progress bar once on each machine.
     progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
@@ -830,7 +853,7 @@ def main(args):
             with accelerator.accumulate(unet):
                 # Convert images to latent space
                 latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
-                latents = latents * 0.18215
+                latents = latents * vae.config.scaling_factor
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents)
@@ -922,6 +945,9 @@ def main(args):
             images = pipeline(prompt, num_inference_steps=25, generator=generator).images
 
             for tracker in accelerator.trackers:
+                if tracker.name == "tensorboard":
+                    np_images = np.stack([np.asarray(img) for img in images])
+                    tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
                 if tracker.name == "wandb":
                     tracker.log(
                         {
@@ -953,20 +979,24 @@ def main(args):
         pipeline.unet.load_attn_procs(args.output_dir)
 
         # run inference
-        generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
-        prompt = args.num_validation_images * [args.validation_prompt]
-        images = pipeline(prompt, num_inference_steps=25, generator=generator).images
+        if args.validation_prompt and args.num_validation_images > 0:
+            generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+            prompt = args.num_validation_images * [args.validation_prompt]
+            images = pipeline(prompt, num_inference_steps=25, generator=generator).images
 
-        for tracker in accelerator.trackers:
-            if tracker.name == "wandb":
-                tracker.log(
-                    {
-                        "test": [
-                            wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                            for i, image in enumerate(images)
-                        ]
-                    }
-                )
+            for tracker in accelerator.trackers:
+                if tracker.name == "tensorboard":
+                    np_images = np.stack([np.asarray(img) for img in images])
+                    tracker.writer.add_images("test", np_images, epoch, dataformats="NHWC")
+                if tracker.name == "wandb":
+                    tracker.log(
+                        {
+                            "test": [
+                                wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                for i, image in enumerate(images)
+                            ]
+                        }
+                    )
 
         if args.push_to_hub:
             save_model_card(
