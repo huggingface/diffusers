@@ -10,12 +10,9 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 
-
 import accelerate
-
 import datasets
 import diffusers
-
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from datasets import load_dataset
@@ -23,7 +20,6 @@ from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version
-
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from packaging import version
 from torchvision.transforms import (
@@ -435,14 +431,11 @@ def main(args):
         model, optimizer, train_dataloader, lr_scheduler
     )
 
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    if args.use_ema:
+        accelerator.register_for_checkpointing(ema_model)
+        ema_model.to(accelerator.device)
 
-    ema_model = EMAModel(
-        accelerator.unwrap_model(model),
-        inv_gamma=args.ema_inv_gamma,
-        power=args.ema_power,
-        max_value=args.ema_max_decay,
-    )
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -452,10 +445,6 @@ def main(args):
             else:
                 repo_name = args.hub_model_id
             repo = Repository(args.output_dir, clone_from=repo_name)
-
-    if args.use_ema:
-        accelerator.register_for_checkpointing(ema_model)
-        ema_model.to(accelerator.device)
 
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
@@ -498,17 +487,6 @@ def main(args):
             accelerator.print(f"Resuming from checkpoint {path}")
             accelerator.load_state(os.path.join(args.output_dir, path))
             global_step = int(path.split("-")[1])
-
-            if args.use_ema:
-                ema_model = UNet2DModel.from_pretrained(os.path.join(args.output_dir, path, "unet_ema"))
-                ema_model = EMAModel(
-                    ema_model,
-                    inv_gamma=args.ema_inv_gamma,
-                    power=args.ema_power,
-                    max_value=args.ema_max_decay,
-                    device=accelerator.unwrap_model(model).device,
-                    optimization_step=global_step,
-                )
 
             resume_global_step = global_step * args.gradient_accumulation_steps
             first_epoch = global_step // num_update_steps_per_epoch
@@ -577,9 +555,6 @@ def main(args):
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
 
-                        if args.use_ema:
-                            ema_model.averaged_model.save_pretrained(os.path.join(save_path, "unet_ema"))
-
                         logger.info(f"Saved state to {save_path}")
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
@@ -598,7 +573,7 @@ def main(args):
                 if args.use_ema:
                     ema_model.copy_to(unet.parameters())
                 pipeline = DDPMPipeline(
-                    unet=accelerator.unwrap_model(ema_model.averaged_model if args.use_ema else unet),
+                    unet=unet,
                     scheduler=noise_scheduler,
                 )
 

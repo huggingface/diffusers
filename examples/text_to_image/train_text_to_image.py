@@ -41,7 +41,6 @@ from diffusers.utils import check_min_version, deprecate
 from diffusers.utils.import_utils import is_xformers_available
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from packaging import version
-
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
@@ -401,13 +400,10 @@ def main():
 
     # Create EMA for the unet.
     if args.use_ema:
-        ema_unet = EMAModel(
-            unet.parameters(),
-            decay=args.ema_max_decay,
-            use_ema_warmup=True,
-            inv_gamma=args.ema_inv_gamma,
-            power=args.ema_power,
+        ema_unet = UNet2DConditionModel.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
         )
+        ema_unet = EMAModel(ema_unet.parameters())
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -597,6 +593,10 @@ def main():
         unet, optimizer, train_dataloader, lr_scheduler
     )
 
+    if args.use_ema:
+        accelerator.register_for_checkpointing(ema_unet)
+        ema_unet.to(accelerator.device)
+
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
@@ -608,8 +608,6 @@ def main():
     # Move text_encode and vae to gpu and cast to weight_dtype
     text_encoder.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
-    if args.use_ema:
-        ema_unet.to(accelerator.device)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -656,17 +654,6 @@ def main():
             accelerator.print(f"Resuming from checkpoint {path}")
             accelerator.load_state(os.path.join(args.output_dir, path))
             global_step = int(path.split("-")[1])
-
-            if args.use_ema:
-                ema_model = UNet2DConditionModel.from_pretrained(os.path.join(args.output_dir, path, "unet_ema"))
-                ema_model = EMAModel(
-                    ema_model,
-                    inv_gamma=args.ema_inv_gamma,
-                    power=args.ema_power,
-                    max_value=args.ema_max_decay,
-                    device=accelerator.unwrap_model(unet).device,
-                    optimization_step=global_step,
-                )
 
             resume_global_step = global_step * args.gradient_accumulation_steps
             first_epoch = global_step // num_update_steps_per_epoch
@@ -743,9 +730,6 @@ def main():
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
-
-                        if args.use_ema:
-                            ema_unet.averaged_model.save_pretrained(os.path.join(save_path, "unet_ema"))
 
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
