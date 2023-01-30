@@ -121,7 +121,6 @@ class EMAModel:
         self.use_ema_warmup = use_ema_warmup
         self.inv_gamma = inv_gamma
         self.power = power
-
         self.optimization_step = 0
 
     def get_decay(self, optimization_step: int) -> float:
