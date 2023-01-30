@@ -31,9 +31,10 @@ from transformers.models.t5.modeling_t5 import (
 )
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...models.embeddings import get_timestep_embedding
 from ...models import ModelMixin
+from ...models.embeddings import get_timestep_embedding
 from ...schedulers import DDPMScheduler
+from ...utils import is_note_seq_available, randn_tensor
 from ..onnx_utils import OnnxRuntimeModel
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from .midi_utils import (
@@ -57,7 +58,6 @@ from .midi_utils import (
     note_sequence_to_onsets_and_offsets_and_programs,
     program_to_slakh_program,
 )
-from ...utils import is_note_seq_available, randn_tensor
 
 
 if is_note_seq_available():
