@@ -150,7 +150,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
         else:
             raise ValueError(f"scheduler type {type(self.scheduler)} not supported")
 
-        sample = 1 / 0.18215 * sample
+        sample = 1 / self.vae.config.scaling_factor * sample
         image = self.vae.decode(sample).sample
         image = (image / 2 + 0.5).clamp(0, 1)
 
@@ -336,7 +336,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
             latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
         # scale and decode the image latents with vae
-        latents = 1 / 0.18215 * latents
+        latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
 
         image = (image / 2 + 0.5).clamp(0, 1)

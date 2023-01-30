@@ -48,7 +48,7 @@ class VersatileDiffusionTextToImagePipelineIntegrationTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger "
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         image = pipe(
             prompt=prompt, generator=generator, guidance_scale=7.5, num_inference_steps=2, output_type="numpy"
         ).images
@@ -72,7 +72,7 @@ class VersatileDiffusionTextToImagePipelineIntegrationTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger "
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         image = pipe(
             prompt=prompt, generator=generator, guidance_scale=7.5, num_inference_steps=50, output_type="numpy"
         ).images
@@ -80,5 +80,6 @@ class VersatileDiffusionTextToImagePipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.0408, 0.0181, 0.0, 0.0388, 0.0046, 0.0461, 0.0411, 0.0, 0.0222])
+        expected_slice = np.array([0.3493, 0.3757, 0.4093, 0.4495, 0.4233, 0.4102, 0.4507, 0.4756, 0.4787])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

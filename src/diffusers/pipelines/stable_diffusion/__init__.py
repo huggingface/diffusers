@@ -43,6 +43,7 @@ if is_transformers_available() and is_torch_available():
     from .pipeline_stable_diffusion_img2img import StableDiffusionImg2ImgPipeline
     from .pipeline_stable_diffusion_inpaint import StableDiffusionInpaintPipeline
     from .pipeline_stable_diffusion_inpaint_legacy import StableDiffusionInpaintPipelineLegacy
+    from .pipeline_stable_diffusion_instruct_pix2pix import StableDiffusionInstructPix2PixPipeline
     from .pipeline_stable_diffusion_upscale import StableDiffusionUpscalePipeline
     from .safety_checker import StableDiffusionSafetyChecker
 
@@ -56,7 +57,7 @@ else:
 
 
 try:
-    if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.26.0.dev0")):
+    if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.26.0")):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from ...utils.dummy_torch_and_transformers_objects import StableDiffusionDepth2ImgPipeline

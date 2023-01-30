@@ -241,7 +241,7 @@ class StableDiffusionUpscalePipelineFastTests(unittest.TestCase):
         sd_pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         image = sd_pipe(
             [prompt],
             image=low_res_image,
@@ -281,7 +281,7 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
 
         prompt = "a cat sitting on a park bench"
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         output = pipe(
             prompt=prompt,
             image=image,
@@ -314,7 +314,7 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
 
         prompt = "a cat sitting on a park bench"
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         output = pipe(
             prompt=prompt,
             image=image,
@@ -348,7 +348,7 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
 
         prompt = "a cat sitting on a park bench"
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         _ = pipe(
             prompt=prompt,
             image=image,

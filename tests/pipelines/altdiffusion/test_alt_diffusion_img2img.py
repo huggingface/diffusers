@@ -162,6 +162,7 @@ class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
         expected_slice = np.array(
             [0.41293705, 0.38656747, 0.40876025, 0.4782187, 0.4656803, 0.41394007, 0.4142093, 0.47150758, 0.4570448]
         )
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1.5e-3
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1.5e-3
 
@@ -196,7 +197,7 @@ class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
         alt_pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         image = alt_pipe(
             [prompt],
             generator=generator,
@@ -227,7 +228,7 @@ class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
 
         prompt = "A fantasy landscape, trending on artstation"
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         output = pipe(
             prompt=prompt,
             image=init_image,
@@ -241,7 +242,8 @@ class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
         image_slice = image[255:258, 383:386, -1]
 
         assert image.shape == (504, 760, 3)
-        expected_slice = np.array([0.3252, 0.3340, 0.3418, 0.3263, 0.3346, 0.3300, 0.3163, 0.3470, 0.3427])
+        expected_slice = np.array([0.9358, 0.9397, 0.9599, 0.9901, 1.0000, 1.0000, 0.9882, 1.0000, 1.0000])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
 
@@ -275,7 +277,7 @@ class AltDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
 
         prompt = "A fantasy landscape, trending on artstation"
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         output = pipe(
             prompt=prompt,
             image=init_image,

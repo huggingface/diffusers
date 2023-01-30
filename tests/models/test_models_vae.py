@@ -166,7 +166,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
 
     def get_generator(self, seed=0):
         if torch_device == "mps":
-            return torch.Generator().manual_seed(seed)
+            return torch.manual_seed(seed)
         return torch.Generator(device=torch_device).manual_seed(seed)
 
     @parameterized.expand(

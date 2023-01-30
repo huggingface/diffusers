@@ -39,7 +39,7 @@ from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DCon
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
 from diffusers.utils.import_utils import is_xformers_available
-from huggingface_hub import HfFolder, Repository, whoami
+from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from packaging import version
 from PIL import Image
 from torchvision import transforms
@@ -48,7 +48,7 @@ from transformers import AutoTokenizer, PretrainedConfig
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.10.0.dev0")
+check_min_version("0.13.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -158,7 +158,13 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution"
+        "--center_crop",
+        default=False,
+        action="store_true",
+        help=(
+            "Whether to center crop the input images to the resolution. If not set, the images will be randomly"
+            " cropped. The images will be resized to the resolution first before cropping."
+        ),
     )
     parser.add_argument(
         "--train_text_encoder",
@@ -242,6 +248,14 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
     )
+    parser.add_argument(
+        "--dataloader_num_workers",
+        type=int,
+        default=0,
+        help=(
+            "Number of subprocesses to use for data loading. 0 means that the data will be loaded in the main process."
+        ),
+    )
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
@@ -305,6 +319,15 @@ def parse_args(input_args=None):
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
     parser.add_argument(
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
+    )
+    parser.add_argument(
+        "--set_grads_to_none",
+        action="store_true",
+        help=(
+            "Save more memory by using setting grads to None instead of zero. Be aware, that this changes certain"
+            " behaviors, so disable this argument if it causes any problems. More info:"
+            " https://pytorch.org/docs/stable/generated/torch.optim.Optimizer.zero_grad.html"
+        ),
     )
 
     if input_args is not None:
@@ -553,7 +576,8 @@ def main(args):
                 repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
             else:
                 repo_name = args.hub_model_id
-            repo = Repository(args.output_dir, clone_from=repo_name)
+            create_repo(repo_name, exist_ok=True, token=args.hub_token)
+            repo = Repository(args.output_dir, clone_from=repo_name, token=args.hub_token)
 
             with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
                 if "step_*" not in gitignore:
@@ -633,6 +657,23 @@ def main(args):
         if args.train_text_encoder:
             text_encoder.gradient_checkpointing_enable()
 
+    # Check that all trainable models are in full precision
+    low_precision_error_string = (
+        "Please make sure to always have all model weights in full float32 precision when starting training - even if"
+        " doing mixed precision training. copy of the weights should still be float32."
+    )
+
+    if accelerator.unwrap_model(unet).dtype != torch.float32:
+        raise ValueError(
+            f"Unet loaded as datatype {accelerator.unwrap_model(unet).dtype}. {low_precision_error_string}"
+        )
+
+    if args.train_text_encoder and accelerator.unwrap_model(text_encoder).dtype != torch.float32:
+        raise ValueError(
+            f"Text encoder loaded as datatype {accelerator.unwrap_model(text_encoder).dtype}."
+            f" {low_precision_error_string}"
+        )
+
     # Enable TF32 for faster training on Ampere GPUs,
     # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
     if args.allow_tf32:
@@ -684,7 +725,7 @@ def main(args):
         batch_size=args.train_batch_size,
         shuffle=True,
         collate_fn=lambda examples: collate_fn(examples, args.with_prior_preservation),
-        num_workers=1,
+        num_workers=args.dataloader_num_workers,
     )
 
     # Scheduler and math around the number of training steps.
@@ -726,17 +767,6 @@ def main(args):
     if not args.train_text_encoder:
         text_encoder.to(accelerator.device, dtype=weight_dtype)
 
-    low_precision_error_string = (
-        "Please make sure to always have all model weights in full float32 precision when starting training - even if"
-        " doing mixed precision training. copy of the weights should still be float32."
-    )
-
-    if unet.dtype != torch.float32:
-        raise ValueError(f"Unet loaded as datatype {unet.dtype}. {low_precision_error_string}")
-
-    if args.train_text_encoder and text_encoder.dtype != torch.float32:
-        raise ValueError(f"Text encoder loaded as datatype {text_encoder.dtype}. {low_precision_error_string}")
-
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
@@ -772,14 +802,21 @@ def main(args):
             dirs = os.listdir(args.output_dir)
             dirs = [d for d in dirs if d.startswith("checkpoint")]
             dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
-            path = dirs[-1]
-        accelerator.print(f"Resuming from checkpoint {path}")
-        accelerator.load_state(os.path.join(args.output_dir, path))
-        global_step = int(path.split("-")[1])
+            path = dirs[-1] if len(dirs) > 0 else None
 
-        resume_global_step = global_step * args.gradient_accumulation_steps
-        first_epoch = resume_global_step // num_update_steps_per_epoch
-        resume_step = resume_global_step % num_update_steps_per_epoch
+        if path is None:
+            accelerator.print(
+                f"Checkpoint '{args.resume_from_checkpoint}' does not exist. Starting a new training run."
+            )
+            args.resume_from_checkpoint = None
+        else:
+            accelerator.print(f"Resuming from checkpoint {path}")
+            accelerator.load_state(os.path.join(args.output_dir, path))
+            global_step = int(path.split("-")[1])
+
+            resume_global_step = global_step * args.gradient_accumulation_steps
+            first_epoch = global_step // num_update_steps_per_epoch
+            resume_step = resume_global_step % (num_update_steps_per_epoch * args.gradient_accumulation_steps)
 
     # Only show the progress bar once on each machine.
     progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
@@ -799,7 +836,7 @@ def main(args):
             with accelerator.accumulate(unet):
                 # Convert images to latent space
                 latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
-                latents = latents * 0.18215
+                latents = latents * vae.config.scaling_factor
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents)
@@ -852,7 +889,7 @@ def main(args):
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
-                optimizer.zero_grad()
+                optimizer.zero_grad(set_to_none=args.set_grads_to_none)
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
