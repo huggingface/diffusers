@@ -57,7 +57,6 @@ class EMAModel:
         use_ema_warmup: bool = False,
         inv_gamma: Union[float, int] = 1.0,
         power: Union[float, int] = 2 / 3,
-        optimization_step=0,
         **kwargs,
     ):
         """
@@ -123,10 +122,7 @@ class EMAModel:
         self.inv_gamma = inv_gamma
         self.power = power
 
-        if optimization_step == 0:
-            self.optimization_step = 0
-        else:
-            self.optimization_step = optimization_step
+        self.optimization_step = 0
 
     def get_decay(self, optimization_step: int) -> float:
         """
