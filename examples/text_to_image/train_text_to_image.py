@@ -14,13 +14,12 @@
 # See the License for the specific language governing permissions and
 
 import argparse
-import copy
 import logging
 import math
 import os
 import random
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Optional
 
 import numpy as np
 import torch
@@ -37,7 +36,8 @@ from accelerate.utils import set_seed
 from datasets import load_dataset
 from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
-from diffusers.utils import check_min_version
+from diffusers.training_utils import EMAModel
+from diffusers.utils import check_min_version, deprecate
 from diffusers.utils.import_utils import is_xformers_available
 from huggingface_hub import HfFolder, Repository, whoami
 from packaging import version
@@ -201,6 +201,9 @@ def parse_args():
         ),
     )
     parser.add_argument("--use_ema", action="store_true", help="Whether to use EMA model.")
+    parser.add_argument("--ema_inv_gamma", type=float, default=1.0, help="The inverse gamma value for the EMA decay.")
+    parser.add_argument("--ema_power", type=float, default=3 / 4, help="The power value for the EMA decay.")
+    parser.add_argument("--ema_max_decay", type=float, default=0.9999, help="The maximum decay magnitude for EMA.")
     parser.add_argument(
         "--non_ema_revision",
         type=str,
@@ -307,117 +310,18 @@ dataset_name_mapping = {
 }
 
 
-# Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14
-class EMAModel:
-    """
-    Exponential Moving Average of models weights
-    """
-
-    def __init__(self, parameters: Iterable[torch.nn.Parameter], decay=0.9999):
-        parameters = list(parameters)
-        self.shadow_params = [p.clone().detach() for p in parameters]
-
-        self.collected_params = None
-
-        self.decay = decay
-        self.optimization_step = 0
-
-    @torch.no_grad()
-    def step(self, parameters):
-        parameters = list(parameters)
-
-        self.optimization_step += 1
-
-        # Compute the decay factor for the exponential moving average.
-        value = (1 + self.optimization_step) / (10 + self.optimization_step)
-        one_minus_decay = 1 - min(self.decay, value)
-
-        for s_param, param in zip(self.shadow_params, parameters):
-            if param.requires_grad:
-                s_param.sub_(one_minus_decay * (s_param - param))
-            else:
-                s_param.copy_(param)
-
-        torch.cuda.empty_cache()
-
-    def copy_to(self, parameters: Iterable[torch.nn.Parameter]) -> None:
-        """
-        Copy current averaged parameters into given collection of parameters.
-
-        Args:
-            parameters: Iterable of `torch.nn.Parameter`; the parameters to be
-                updated with the stored moving averages. If `None`, the
-                parameters with which this `ExponentialMovingAverage` was
-                initialized will be used.
-        """
-        parameters = list(parameters)
-        for s_param, param in zip(self.shadow_params, parameters):
-            param.data.copy_(s_param.data)
-
-    def to(self, device=None, dtype=None) -> None:
-        r"""Move internal buffers of the ExponentialMovingAverage to `device`.
-
-        Args:
-            device: like `device` argument to `torch.Tensor.to`
-        """
-        # .to() on the tensors handles None correctly
-        self.shadow_params = [
-            p.to(device=device, dtype=dtype) if p.is_floating_point() else p.to(device=device)
-            for p in self.shadow_params
-        ]
-
-    def state_dict(self) -> dict:
-        r"""
-        Returns the state of the ExponentialMovingAverage as a dict.
-        This method is used by accelerate during checkpointing to save the ema state dict.
-        """
-        # Following PyTorch conventions, references to tensors are returned:
-        # "returns a reference to the state and not its copy!" -
-        # https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict
-        return {
-            "decay": self.decay,
-            "optimization_step": self.optimization_step,
-            "shadow_params": self.shadow_params,
-            "collected_params": self.collected_params,
-        }
-
-    def load_state_dict(self, state_dict: dict) -> None:
-        r"""
-        Loads the ExponentialMovingAverage state.
-        This method is used by accelerate during checkpointing to save the ema state dict.
-        Args:
-            state_dict (dict): EMA state. Should be an object returned
-                from a call to :meth:`state_dict`.
-        """
-        # deepcopy, to be consistent with module API
-        state_dict = copy.deepcopy(state_dict)
-
-        self.decay = state_dict["decay"]
-        if self.decay < 0.0 or self.decay > 1.0:
-            raise ValueError("Decay must be between 0 and 1")
-
-        self.optimization_step = state_dict["optimization_step"]
-        if not isinstance(self.optimization_step, int):
-            raise ValueError("Invalid optimization_step")
-
-        self.shadow_params = state_dict["shadow_params"]
-        if not isinstance(self.shadow_params, list):
-            raise ValueError("shadow_params must be a list")
-        if not all(isinstance(p, torch.Tensor) for p in self.shadow_params):
-            raise ValueError("shadow_params must all be Tensors")
-
-        self.collected_params = state_dict["collected_params"]
-        if self.collected_params is not None:
-            if not isinstance(self.collected_params, list):
-                raise ValueError("collected_params must be a list")
-            if not all(isinstance(p, torch.Tensor) for p in self.collected_params):
-                raise ValueError("collected_params must all be Tensors")
-            if len(self.collected_params) != len(self.shadow_params):
-                raise ValueError("collected_params and shadow_params must have the same length")
-
-
 def main():
     args = parse_args()
+
+    if args.non_ema_revision is not None:
+        deprecate(
+            "non_ema_revision!=None",
+            "0.15.0",
+            message=(
+                "Downloading 'non_ema' weights from revision branches of the Hub is deprecated. Please make sure to"
+                " use `--variant=non_ema` instead."
+            ),
+        )
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
 
     accelerator = Accelerator(
@@ -483,10 +387,13 @@ def main():
 
     # Create EMA for the unet.
     if args.use_ema:
-        ema_unet = UNet2DConditionModel.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
+        ema_unet = EMAModel(
+            unet.parameters(),
+            decay=args.ema_max_decay,
+            use_ema_warmup=True,
+            inv_gamma=args.ema_inv_gamma,
+            power=args.ema_power,
         )
-        ema_unet = EMAModel(ema_unet.parameters())
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -499,13 +406,7 @@ def main():
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
         def save_model_hook(models, weights, output_dir):
             for i, model in enumerate(models):
-                # if we use_ema, we save it under "unet_ema"
-                if args.use_ema and i == 1:
-                    sub_folder = "unet_ema"
-                else:
-                    sub_folder = "unet"
-
-                model.save_pretrained(os.path.join(output_dir, sub_folder))
+                model.save_pretrained(os.path.join(output_dir, "unet"))
 
                 # make sure to pop weight so that corresponding model is not saved again
                 weights.pop()
@@ -515,14 +416,8 @@ def main():
                 # pop models so that they are not loaded again
                 model = models.pop()
 
-                # if we use_ema, we save it under "unet_ema"
-                if args.use_ema and i == 1:
-                    sub_folder = "unet_ema"
-                else:
-                    sub_folder = "unet"
-
                 # load diffusers style into model
-                load_model = UNet2DConditionModel.from_pretrained(input_dir, subfolder=sub_folder)
+                load_model = UNet2DConditionModel.from_pretrained(input_dir, subfolder="unet")
                 model.register_to_config(**load_model.config)
 
                 model.load_state_dict(load_model.state_dict())
@@ -683,8 +578,6 @@ def main():
     unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         unet, optimizer, train_dataloader, lr_scheduler
     )
-    if args.use_ema:
-        accelerator.register_for_checkpointing(ema_unet)
 
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
@@ -738,6 +631,17 @@ def main():
         accelerator.print(f"Resuming from checkpoint {path}")
         accelerator.load_state(os.path.join(args.output_dir, path))
         global_step = int(path.split("-")[1])
+
+        if args.use_ema:
+            ema_model = UNet2DConditionModel.from_pretrained(os.path.join(args.output_dir, path, "unet_ema"))
+            ema_model = EMAModel(
+                ema_model,
+                inv_gamma=args.ema_inv_gamma,
+                power=args.ema_power,
+                max_value=args.ema_max_decay,
+                device=accelerator.unwrap_model(unet).device,
+                optimization_step=global_step,
+            )
 
         first_epoch = global_step // num_update_steps_per_epoch
         resume_step = global_step % num_update_steps_per_epoch
@@ -813,6 +717,9 @@ def main():
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
+
+                        if args.use_ema:
+                            ema_unet.averaged_model.save_pretrained(os.path.join(save_path, "unet_ema"))
 
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)

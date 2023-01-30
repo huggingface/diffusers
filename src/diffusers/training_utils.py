@@ -53,6 +53,7 @@ class EMAModel:
         min_value=0.0,
         max_value=0.9999,
         device=None,
+        optimization_step=0,
     ):
         """
         @crowsonkb's notes on EMA Warmup:
@@ -79,8 +80,12 @@ class EMAModel:
         if device is not None:
             self.averaged_model = self.averaged_model.to(device=device)
 
-        self.decay = 0.0
-        self.optimization_step = 0
+        if optimization_step == 0:
+            self.decay = 0.0
+            self.optimization_step = 0
+        else:
+            self.optimization_step = optimization_step
+            self.decay = self.get_decay(optimization_step)
 
     def get_decay(self, optimization_step):
         """

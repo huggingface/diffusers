@@ -269,13 +269,7 @@ def main(args):
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
         def save_model_hook(models, weights, output_dir):
             for i, model in enumerate(models):
-                # if we use_ema, we save it under "unet_ema"
-                if args.use_ema and i == 1:
-                    sub_folder = "unet_ema"
-                else:
-                    sub_folder = "unet"
-
-                model.save_pretrained(os.path.join(output_dir, sub_folder))
+                model.save_pretrained(os.path.join(output_dir, "unet"))
 
                 # make sure to pop weight so that corresponding model is not saved again
                 weights.pop()
@@ -285,14 +279,8 @@ def main(args):
                 # pop models so that they are not loaded again
                 model = models.pop()
 
-                # if we use_ema, we save it under "unet_ema"
-                if args.use_ema and i == 1:
-                    sub_folder = "unet_ema"
-                else:
-                    sub_folder = "unet"
-
                 # load diffusers style into model
-                load_model = UNet2DModel.from_pretrained(input_dir, subfolder=sub_folder)
+                load_model = UNet2DModel.from_pretrained(input_dir, subfolder="unet")
                 model.register_to_config(**load_model.config)
 
                 model.load_state_dict(load_model.state_dict())
@@ -384,7 +372,6 @@ def main(args):
     model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, lr_scheduler
     )
-    accelerator.register_for_checkpointing(lr_scheduler)
 
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
 
@@ -431,6 +418,17 @@ def main(args):
         accelerator.print(f"Resuming from checkpoint {path}")
         accelerator.load_state(os.path.join(args.output_dir, path))
         global_step = int(path.split("-")[1])
+
+        if args.use_ema:
+            ema_model = UNet2DModel.from_pretrained(os.path.join(args.output_dir, path, "unet_ema"))
+            ema_model = EMAModel(
+                ema_model,
+                inv_gamma=args.ema_inv_gamma,
+                power=args.ema_power,
+                max_value=args.ema_max_decay,
+                device=accelerator.unwrap_model(model).device,
+                optimization_step=global_step,
+            )
 
         resume_global_step = global_step * args.gradient_accumulation_steps
         first_epoch = resume_global_step // num_update_steps_per_epoch
@@ -497,6 +495,10 @@ def main(args):
                     if accelerator.is_main_process:
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
+
+                        if args.use_ema:
+                            ema_model.averaged_model.save_pretrained(os.path.join(save_path, "unet_ema"))
+
                         logger.info(f"Saved state to {save_path}")
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
@@ -512,7 +514,7 @@ def main(args):
         if accelerator.is_main_process:
             if epoch % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
                 pipeline = DDPMPipeline(
-                    unet=accelerator.unwrap_model(ema_model.averaged_model if args.use_ema else model),
+                    unet=accelerator.unwrap_model(model.averaged_model if args.use_ema else model),
                     scheduler=noise_scheduler,
                 )
 
