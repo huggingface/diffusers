@@ -19,6 +19,7 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
+from onnxruntime.training.ortmodule import ORTModule
 from torchvision.transforms import (
     CenterCrop,
     Compose,
@@ -29,7 +30,7 @@ from torchvision.transforms import (
     ToTensor,
 )
 from tqdm.auto import tqdm
-from onnxruntime.training.ortmodule import ORTModule
+
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.13.0.dev0")

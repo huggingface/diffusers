@@ -39,10 +39,10 @@ from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version
 from diffusers.utils.import_utils import is_xformers_available
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
+from onnxruntime.training.ortmodule import ORTModule
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
-from onnxruntime.training.ortmodule import ORTModule
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
