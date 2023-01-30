@@ -629,37 +629,37 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
                 # to all 1s.
                 encoder_continuous_mask = np.ones((1, TARGET_FEATURE_LENGTH), dtype=np.bool)
 
-                target_shape = encoder_continuous_inputs.shape
-                encoder_continuous_inputs = self.scale_features(
-                    encoder_continuous_inputs, output_range=[-1.0, 1.0], clip=True
+            target_shape = encoder_continuous_inputs.shape
+            encoder_continuous_inputs = self.scale_features(
+                encoder_continuous_inputs, output_range=[-1.0, 1.0], clip=True
+            )
+
+            encodings_and_masks = self.encode(
+                input_tokens=torch.IntTensor([encoder_input_tokens]).to(self.device),
+                continuous_inputs=encoder_continuous_inputs,
+                continuous_mask=torch.from_numpy(encoder_continuous_mask.copy()).to(self.device),
+            )
+
+            # Sample gaussian noise to begin loop
+            x = torch.randn(target_shape, generator=generator)
+            x = x.to(self.device)
+
+            # set step values
+            self.scheduler.set_timesteps(num_inference_steps)
+
+            # Denoising diffusion loop
+            for t in self.progress_bar(self.scheduler.timesteps):
+                output = self.decode(
+                    encodings_and_masks=encodings_and_masks,
+                    input_tokens=x,
+                    noise_time=t / num_inference_steps,  # rescale to [0, 1)
                 )
 
-                encodings_and_masks = self.encode(
-                    input_tokens=torch.IntTensor([encoder_input_tokens]).to(self.device),
-                    continuous_inputs=encoder_continuous_inputs,
-                    continuous_mask=torch.from_numpy(encoder_continuous_mask.copy()).to(self.device),
-                )
+                # Compute previous output: x_t -> x_t-1
+                x = self.scheduler.step(output, t, x, generator=generator).prev_sample
 
-                # Sample gaussian noise to begin loop
-                x = torch.randn(target_shape, generator=generator)
-                x = x.to(self.device)
-
-                # set step values
-                self.scheduler.set_timesteps(num_inference_steps)
-
-                # Denoising diffusion loop
-                for t in self.progress_bar(self.scheduler.timesteps):
-                    output = self.decode(
-                        encodings_and_masks=encodings_and_masks,
-                        input_tokens=x,
-                        noise_time=t / num_inference_steps,  # rescale to [0, 1)
-                    )
-
-                    # Compute previous output: x_t -> x_t-1
-                    x = self.scheduler.step(output, t, x, generator=generator).prev_sample
-
-                mel = self.scale_to_features(x, input_range=[-1.0, 1.0])
-                pred_mel = mel.cpu().numpy()
+            mel = self.scale_to_features(x, input_range=[-1.0, 1.0])
+            pred_mel = mel.cpu().numpy()
 
             full_pred_mel = np.concatenate([full_pred_mel, pred_mel[:1]], axis=1)
             print("Generated segment", i)
