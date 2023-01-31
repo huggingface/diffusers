@@ -40,7 +40,7 @@ class DDPMPipelineFastTests(unittest.TestCase):
         )
         return model
 
-    def test_inference(self):
+    def test_fast_inference(self):
         device = "cpu"
         unet = self.dummy_uncond_unet
         scheduler = DDPMScheduler()
@@ -60,7 +60,33 @@ class DDPMPipelineFastTests(unittest.TestCase):
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array(
-            [5.589e-01, 7.089e-01, 2.632e-01, 6.841e-01, 1.000e-04, 9.999e-01, 1.973e-01, 1.000e-04, 8.010e-02]
+            [9.956e-01, 5.785e-01, 4.675e-01, 9.930e-01, 0.0, 1.000, 1.199e-03, 2.648e-04, 5.101e-04]
+        )
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_full_inference(self):
+        device = "cpu"
+        unet = self.dummy_uncond_unet
+        scheduler = DDPMScheduler()
+
+        ddpm = DDPMPipeline(unet=unet, scheduler=scheduler)
+        ddpm.to(device)
+        ddpm.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device=device).manual_seed(0)
+        image = ddpm(generator=generator, output_type="numpy").images
+
+        generator = torch.Generator(device=device).manual_seed(0)
+        image_from_tuple = ddpm(generator=generator, output_type="numpy", return_dict=False)[0]
+
+        image_slice = image[0, -3:, -3:, -1]
+        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 32, 32, 3)
+        expected_slice = np.array(
+            [1.0, 3.495e-02, 2.939e-01, 9.821e-01, 9.448e-01, 6.261e-03, 7.998e-01, 8.9e-01, 1.122e-02]
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
