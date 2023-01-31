@@ -167,6 +167,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         # class 
         if class_labels_dim is not None:
             self.class_proj = nn.Linear(class_labels_dim, timestep_input_dim, bias=False)
+        else:
+            self.class_proj = None
 
         # class embedding
         if class_embed_type is None and num_class_embeds is not None:
