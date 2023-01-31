@@ -90,6 +90,12 @@ def save_progress(text_encoder, placeholder_token_id, accelerator, args, save_pa
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
+        "--reuse_model_for_logging",
+        action="store_true",
+        default=False,
+        help="Reuse models used for training for the logging pipeline.",
+    )
+    parser.add_argument(
         "--save_steps",
         type=int,
         default=500,
@@ -780,11 +786,23 @@ def main():
                 f" {args.validation_prompt}."
             )
             # create pipeline (note: unet and vae are loaded again in float32)
-            pipeline = DiffusionPipeline.from_pretrained(
-                args.pretrained_model_name_or_path,
-                text_encoder=accelerator.unwrap_model(text_encoder),
-                revision=args.revision,
-            )
+            if args.reuse_model_for_logging:
+                pipeline = DiffusionPipeline.from_pretrained(
+                    args.pretrained_model_name_or_path,
+                    text_encoder=accelerator.unwrap_model(text_encoder),
+                    tokenizer=tokenizer,
+                    unet=unet,
+                    vae=vae,
+                    revision=args.revision,
+                    torch_dtype=weight_dtype,
+                )
+            else:
+                pipeline = DiffusionPipeline.from_pretrained(
+                    args.pretrained_model_name_or_path,
+                    text_encoder=accelerator.unwrap_model(text_encoder),
+                    revision=args.revision,
+                    torch_dtype=weight_dtype,
+                )
             pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
             pipeline = pipeline.to(accelerator.device)
             pipeline.set_progress_bar_config(disable=True)
