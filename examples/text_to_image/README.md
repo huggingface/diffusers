@@ -157,7 +157,7 @@ accelerate --mixed_precision="fp16" launch train_text_to_image_lora.py \
   --learning_rate=1e-04 --lr_scheduler="constant" --lr_warmup_steps=0 \
   --seed=42 \
   --output_dir="sd-pokemon-model-lora" \
-  --save_sample_prompt="cute dragon creature" --report_to="wandb"
+  --validation_prompt="cute dragon creature" --report_to="wandb"
 ```
 
 The above command will also run inference as fine-tuning progresses and log the results to Weights and Biases.
