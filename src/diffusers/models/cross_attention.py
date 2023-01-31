@@ -246,9 +246,6 @@ class CrossAttention(nn.Module):
             alpha=self.scale,
         )
 
-        if attention_mask is not None:
-            attention_scores = attention_scores + attention_mask.repeat_interleave(self.heads, dim=0)
-
         if self.upcast_softmax:
             attention_scores = attention_scores.float()
 
@@ -280,6 +277,9 @@ class CrossAttnProcessor:
         if prepare_mask:
             batch_size, sequence_length, _ = hidden_states.shape
             attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
+        else:
+            if attention_mask is not None:
+                attention_mask = attention_mask.repeat_interleave(attn.heads, dim=0)
 
         query = attn.to_q(hidden_states)    
         if attn.use_conv_proj:
