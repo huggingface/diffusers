@@ -33,6 +33,7 @@ class FlaxAttentionBlock(nn.Module):
             Parameters `dtype`
         use_memory_efficient (`bool`, *optional*, defaults to `False`):
             enable memory efficient attention https://arxiv.org/abs/2112.05682
+            
 
     """
     query_dim: int
