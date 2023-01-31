@@ -315,7 +315,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         return 1 * (sigma ** 2 + self.config.sigma_data ** 2) ** -0.5
 
     def c_noise(self, sigma):
-        return np.log(sigma) * 0.25
+        return torch.log(sigma) * 0.25
         
     @torch.no_grad()
     def __call__(
