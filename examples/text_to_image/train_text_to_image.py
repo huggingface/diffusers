@@ -729,7 +729,7 @@ def main():
                 )
                 # create pipeline
                 pt_safety_checker = StableDiffusionSafetyChecker.from_pretrained(
-                    args.pretrained_model_name_or_path, subfolder="safety_checker", revision=args.non_ema_version
+                    args.pretrained_model_name_or_path, subfolder="safety_checker", revision=args.non_ema_revision
                 )
                 pt_safety_checker.to(accelerator.device, dtype=weight_dtype)
                 pipeline = StableDiffusionPipeline.from_pretrained(
