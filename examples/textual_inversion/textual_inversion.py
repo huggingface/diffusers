@@ -54,6 +54,7 @@ from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
+
 if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
     PIL_INTERPOLATION = {
         "linear": PIL.Image.Resampling.BILINEAR,
@@ -84,6 +85,7 @@ def save_progress(text_encoder, placeholder_token_id, accelerator, args, save_pa
     learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_id]
     learned_embeds_dict = {args.placeholder_token: learned_embeds.detach().cpu()}
     torch.save(learned_embeds_dict, save_path)
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
@@ -780,7 +782,11 @@ def main():
                     pipeline.set_progress_bar_config(disable=True)
 
                     # run inference
-                    generator = None if args.seed is None else torch.Generator(device=accelerator.device).manual_seed(args.seed)
+                    generator = (
+                        None
+                        if args.seed is None
+                        else torch.Generator(device=accelerator.device).manual_seed(args.seed)
+                    )
                     prompt = args.num_validation_images * [args.validation_prompt]
                     images = pipeline(prompt, num_inference_steps=25, generator=generator).images
 
@@ -792,7 +798,8 @@ def main():
                             tracker.log(
                                 {
                                     "validation": [
-                                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}") for i, image in enumerate(images)
+                                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                        for i, image in enumerate(images)
                                     ]
                                 }
                             )
