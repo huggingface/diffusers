@@ -45,7 +45,6 @@ def preprocess_image(image):
 
 
 def preprocess_mask(mask, scale_factor=8):
-
     if not isinstance(mask, torch.FloatTensor):
         mask = mask.convert("L")
         w, h = mask.size
@@ -65,7 +64,8 @@ def preprocess_mask(mask, scale_factor=8):
             mask = mask.permute(0, 3, 1, 2)
         elif mask.shape[1] not in valid_mask_channel_sizes:
             raise ValueError(
-                f"Mask channel dimension of size in {valid_mask_channel_sizes} should be second or fourth dimension, but received mask of shape {tuple(mask.shape)}"
+                f"Mask channel dimension of size in {valid_mask_channel_sizes} should be second or fourth dimension,"
+                f" but received mask of shape {tuple(mask.shape)}"
             )
         # (potentially) reduce mask channel dimension from 3 to 1 for broadcasting to latent shape
         mask = mask.mean(dim=1, keepdim=True)
@@ -515,7 +515,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             mask_image (`torch.FloatTensor` or `PIL.Image.Image`):
                 `Image`, or tensor representing an image batch, to mask `image`. White pixels in the mask will be
                 replaced by noise and therefore repainted, while black pixels will be preserved. If `mask_image` is a
-                PIL image, it will be converted to a single channel (luminance) before use. If mask is a tensor, the 
+                PIL image, it will be converted to a single channel (luminance) before use. If mask is a tensor, the
                 expected shape should be either `(B, H, W, C)` or `(B, C, H, W)`, where C is 1 or 3.
             strength (`float`, *optional*, defaults to 0.8):
                 Conceptually, indicates how much to inpaint the masked area. Must be between 0 and 1. When `strength`
