@@ -151,7 +151,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                 "The following part of your input was truncated because CLIP can only handle sequences up to"
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
-        
+
         attention_mask = text_inputs.attention_mask.to(device)
 
         if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
@@ -248,7 +248,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
-        latents = 1/ 0.18215 * latents
+        latents = 1 / 0.18215 * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
@@ -299,7 +299,8 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         else:
             if latents.shape != shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
-            latents = latents.to(device)
+
+        latents = latents.to(device=device, dtype=dtype)
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
@@ -457,6 +458,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         noise_level = torch.cat([noise_level] * image.shape[0])
         
         image_cond = F.interpolate(image, scale_factor=2, mode='nearest') * self.c_in(noise_level)[:, None,None,None]
+        image_cond = image_cond.to(text_embeddings.dtype)
         # YiYi's notes: 
           # the original repo use a fourier feature layer here to project noise level to noise_level_embed
           # and that's the only weights that I can't add to unet, so hardcode it for now
@@ -507,13 +509,12 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
+                sample = torch.cat([self.c_in(sigma.to(image_cond.dtype)) * latent_model_input, image_cond], dim=1)
                 noise_pred = self.unet(
-                    torch.cat(
-                        [self.c_in(sigma) * latent_model_input, 
-                        image_cond], dim=1), 
-                    self.c_noise(sigma), 
-                    encoder_hidden_states=text_embeddings, 
-                    attention_mask = attention_mask,
+                    sample,
+                    self.c_noise(sigma),
+                    encoder_hidden_states=text_embeddings,
+                    attention_mask=attention_mask,
                     class_labels=class_labels
                 ).sample
 
@@ -538,8 +539,8 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         if output_type == "latent":
             image = latents
         else:
-        # 10. Post-processing
-        # make sure the VAE is in float32 mode, as it overflows in float16
+            # 10. Post-processing
+            # make sure the VAE is in float32 mode, as it overflows in float16
             self.vae.to(dtype=torch.float32)
             image = self.decode_latents(latents.float())
 
@@ -551,4 +552,3 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                 return (image,)
 
         return ImagePipelineOutput(images=image)
-
