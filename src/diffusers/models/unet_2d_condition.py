@@ -186,7 +186,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         if only_cross_attention is not None:
             attn1_types = ['cross' if x == True else 'self' for x in only_cross_attention]
-            attn2_types = ['cross'] * len(down_block_type)
+            attn2_types = ['cross'] * len(down_block_types)
 
         if isinstance(attention_head_dim, int):
             attention_head_dim = (attention_head_dim,) * len(down_block_types)
