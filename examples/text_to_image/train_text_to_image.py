@@ -738,8 +738,8 @@ def main():
             # run inference
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
             images = []
-            for _ in range(args.num_validation_images):
-                with torch.autocast(device_type="cuda", dtype=weight_dtype):
+            with torch.autocast(device_type="cuda", dtype=weight_dtype):
+                for _ in range(args.num_validation_images):
                     images.append(
                         pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0]
                     )
@@ -785,8 +785,11 @@ def main():
             # run inference
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
             images = []
-            for _ in range(args.num_validation_images):
-                images.append(pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0])
+            with torch.autocast(device_type="cuda", dtype=weight_dtype):
+                for _ in range(args.num_validation_images):
+                    images.append(
+                        pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0]
+                    )
 
             if accelerator.is_main_process:
                 for tracker in accelerator.trackers:
