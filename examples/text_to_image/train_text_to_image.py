@@ -728,9 +728,8 @@ def main():
             # create pipeline
             pipeline = StableDiffusionPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
-                unet=unet,
+                unet=accelerator.unwrap_model(unet),
                 revision=args.revision,
-                # torch_dtype=weight_dtype,
             )
             pipeline = pipeline.to(accelerator.device)
             pipeline.set_progress_bar_config(disable=True)
@@ -738,11 +737,10 @@ def main():
             # run inference
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
             images = []
-            with torch.autocast(device_type="cuda", dtype=weight_dtype):
-                for _ in range(args.num_validation_images):
-                    images.append(
-                        pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0]
-                    )
+            for _ in range(args.num_validation_images):
+                images.append(
+                    pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0]
+                )
 
             if accelerator.is_main_process:
                 for tracker in accelerator.trackers:
@@ -785,11 +783,10 @@ def main():
             # run inference
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
             images = []
-            with torch.autocast(device_type="cuda", dtype=weight_dtype):
-                for _ in range(args.num_validation_images):
-                    images.append(
-                        pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0]
-                    )
+            for _ in range(args.num_validation_images):
+                images.append(
+                    pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0]
+                )
 
             if accelerator.is_main_process:
                 for tracker in accelerator.trackers:
