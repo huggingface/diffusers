@@ -91,6 +91,7 @@ else:
         OnnxStableDiffusionImg2ImgPipeline,
         OnnxStableDiffusionInpaintPipeline,
         OnnxStableDiffusionInpaintPipelineLegacy,
+        OnnxStableDiffusionUpscalePipeline,
         OnnxStableDiffusionPipeline,
         StableDiffusionOnnxPipeline,
     )

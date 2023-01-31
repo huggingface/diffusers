@@ -3,10 +3,12 @@ from typing import Any, Callable, List, Optional, Union
 
 import numpy as np
 import torch
+import PIL
 
-from diffusers import DDPMScheduler, OnnxRuntimeModel, StableDiffusionUpscalePipeline
-from diffusers.pipeline_utils import ImagePipelineOutput
-from PIL import Image
+from ...schedulers import DDPMScheduler
+from ..onnx_utils import ORT_TO_NP_TYPE, OnnxRuntimeModel
+from ..pipeline_utils import ImagePipelineOutput
+from . import StableDiffusionUpscalePipeline
 
 
 logger = getLogger(__name__)
@@ -16,9 +18,6 @@ num_channels_latents = 4
 
 # TODO: make this dynamic, from self.unet.config.in_channels
 unet_in_channels = 7
-
-# TODO: make this dynamic, convert numpy to torch
-text_embeddings_dtype = torch.float32
 
 ###
 # This is based on a combination of the ONNX img2img pipeline and the PyTorch upscale pipeline:
@@ -30,10 +29,10 @@ text_embeddings_dtype = torch.float32
 def preprocess(image):
     if isinstance(image, torch.Tensor):
         return image
-    elif isinstance(image, Image.Image):
+    elif isinstance(image, PIL.Image.Image):
         image = [image]
 
-    if isinstance(image[0], Image.Image):
+    if isinstance(image[0], PIL.Image.Image):
         w, h = image[0].size
         w, h = map(lambda x: x - x % 64, (w, h))  # resize to integer multiple of 32
 
@@ -65,7 +64,7 @@ class OnnxStableDiffusionUpscalePipeline(StableDiffusionUpscalePipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        image: Union[torch.FloatTensor, Image.Image, List[Image.Image]],
+        image: Union[torch.FloatTensor, PIL.Image.Image, List[PIL.Image.Image]],
         num_inference_steps: int = 75,
         guidance_scale: float = 9.0,
         noise_level: int = 20,
@@ -94,6 +93,7 @@ class OnnxStableDiffusionUpscalePipeline(StableDiffusionUpscalePipeline):
         text_embeddings = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
+        text_embeddings_dtype = ORT_TO_NP_TYPE[text_embeddings.dtype]
 
         # 4. Preprocess image
         image = preprocess(image)
@@ -104,7 +104,6 @@ class OnnxStableDiffusionUpscalePipeline(StableDiffusionUpscalePipeline):
         timesteps = self.scheduler.timesteps
 
         # 5. Add noise to image
-
         noise_level = torch.tensor([noise_level], dtype=torch.long, device=device)
         noise = torch.randn(image.shape, generator=generator, device=device, dtype=text_embeddings_dtype)
         image = self.low_res_scheduler.add_noise(image, noise, noise_level)

@@ -90,7 +90,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
 
         # check if vae has a config attribute `scaling_factor` and if it is set to 0.08333, else set it to 0.08333 and deprecate
         is_vae_scaling_factor_set_to_0_08333 = (
-            hasattr(vae.config, "scaling_factor") and vae.config.scaling_factor == 0.08333
+            hasattr(vae, "config") and hasattr(vae.config, "scaling_factor") and vae.config.scaling_factor == 0.08333
         )
         if not is_vae_scaling_factor_set_to_0_08333:
             deprecation_message = (
