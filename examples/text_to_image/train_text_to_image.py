@@ -35,6 +35,7 @@ from accelerate.utils import set_seed
 from datasets import load_dataset
 from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
+from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
@@ -720,27 +721,34 @@ def main():
             if global_step >= args.max_train_steps:
                 break
 
-        if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
-            logger.info(
-                f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
-                f" {args.validation_prompt}."
-            )
-            # create pipeline
-            pipeline = StableDiffusionPipeline.from_pretrained(
-                args.pretrained_model_name_or_path,
-                unet=accelerator.unwrap_model(unet),
-                revision=args.revision,
-            )
-            pipeline = pipeline.to(accelerator.device)
-            pipeline.set_progress_bar_config(disable=True)
+        if accelerator.is_main_process:
+            if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
+                logger.info(
+                    f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+                    f" {args.validation_prompt}."
+                )
+                # create pipeline
+                pt_safety_checker = StableDiffusionSafetyChecker.from_pretrained(
+                    args.pretrained_model_name_or_path, subfolder="safety_checker", revision=args.non_ema_version
+                )
+                pt_safety_checker.to(accelerator.device, dtype=weight_dtype)
+                pipeline = StableDiffusionPipeline.from_pretrained(
+                    args.pretrained_model_name_or_path,
+                    unet=accelerator.unwrap_model(unet),
+                    safety_checker=pt_safety_checker,
+                    revision=args.revision,
+                )
+                pipeline = pipeline.to(accelerator.device)
+                pipeline.set_progress_bar_config(disable=True)
 
-            # run inference
-            generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
-            images = []
-            for _ in range(args.num_validation_images):
-                images.append(pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0])
+                # run inference
+                generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+                images = []
+                for _ in range(args.num_validation_images):
+                    images.append(
+                        pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0]
+                    )
 
-            if accelerator.is_main_process:
                 for tracker in accelerator.trackers:
                     if tracker.name == "tensorboard":
                         np_images = np.stack([np.asarray(img) for img in images])
@@ -755,8 +763,8 @@ def main():
                             }
                         )
 
-            del pipeline
-            torch.cuda.empty_cache()
+                del pipeline
+                torch.cuda.empty_cache()
 
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
@@ -784,20 +792,19 @@ def main():
             for _ in range(args.num_validation_images):
                 images.append(pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0])
 
-            if accelerator.is_main_process:
-                for tracker in accelerator.trackers:
-                    if tracker.name == "tensorboard":
-                        np_images = np.stack([np.asarray(img) for img in images])
-                        tracker.writer.add_images("test", np_images, epoch, dataformats="NHWC")
-                    if tracker.name == "wandb":
-                        tracker.log(
-                            {
-                                "test": [
-                                    wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                                    for i, image in enumerate(images)
-                                ]
-                            }
-                        )
+            for tracker in accelerator.trackers:
+                if tracker.name == "tensorboard":
+                    np_images = np.stack([np.asarray(img) for img in images])
+                    tracker.writer.add_images("test", np_images, epoch, dataformats="NHWC")
+                if tracker.name == "wandb":
+                    tracker.log(
+                        {
+                            "test": [
+                                wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                for i, image in enumerate(images)
+                            ]
+                        }
+                    )
 
     accelerator.end_training()
 
