@@ -88,6 +88,8 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         flip_sin_to_cos (`bool`, *optional*, defaults to `True`):
             Whether to flip the sin to cos in the time embedding.
         freq_shift (`int`, *optional*, defaults to 0): The frequency shift to apply to the time embedding.
+        use_memory_efficient (`bool`, *optional*, defaults to `False`):
+            enable memory efficient attention https://arxiv.org/abs/2112.05682
 
     """
 
@@ -111,6 +113,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     dtype: jnp.dtype = jnp.float32
     flip_sin_to_cos: bool = True
     freq_shift: int = 0
+    use_memory_efficient:bool = False
 
     def init_weights(self, rng: jax.random.KeyArray) -> FrozenDict:
         # init input tensors
@@ -170,6 +173,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     use_linear_projection=self.use_linear_projection,
                     only_cross_attention=only_cross_attention[i],
                     dtype=self.dtype,
+                    use_memory_efficient=self.use_memory_efficient,
                 )
             else:
                 down_block = FlaxDownBlock2D(
@@ -191,6 +195,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             attn_num_head_channels=attention_head_dim[-1],
             use_linear_projection=self.use_linear_projection,
             dtype=self.dtype,
+            use_memory_efficient=self.use_memory_efficient,
         )
 
         # up
@@ -218,6 +223,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     use_linear_projection=self.use_linear_projection,
                     only_cross_attention=only_cross_attention[i],
                     dtype=self.dtype,
+                    use_memory_efficient=self.use_memory_efficient,
                 )
             else:
                 up_block = FlaxUpBlock2D(

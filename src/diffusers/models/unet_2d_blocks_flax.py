@@ -39,6 +39,8 @@ class FlaxCrossAttnDownBlock2D(nn.Module):
             Whether to add downsampling layer before each final output
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
+        use_memory_efficient (`bool`, *optional*, defaults to `False`):
+            enable memory efficient attention https://arxiv.org/abs/2112.05682
     """
     in_channels: int
     out_channels: int
@@ -49,6 +51,7 @@ class FlaxCrossAttnDownBlock2D(nn.Module):
     use_linear_projection: bool = False
     only_cross_attention: bool = False
     dtype: jnp.dtype = jnp.float32
+    use_memory_efficient:bool = False
 
     def setup(self):
         resnets = []
@@ -73,6 +76,7 @@ class FlaxCrossAttnDownBlock2D(nn.Module):
                 use_linear_projection=self.use_linear_projection,
                 only_cross_attention=self.only_cross_attention,
                 dtype=self.dtype,
+                use_memory_efficient=self.use_memory_efficient,
             )
             attentions.append(attn_block)
 
@@ -174,6 +178,8 @@ class FlaxCrossAttnUpBlock2D(nn.Module):
             Whether to add upsampling layer before each final output
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
+        use_memory_efficient (`bool`, *optional*, defaults to `False`):
+            enable memory efficient attention https://arxiv.org/abs/2112.05682
     """
     in_channels: int
     out_channels: int
@@ -185,6 +191,7 @@ class FlaxCrossAttnUpBlock2D(nn.Module):
     use_linear_projection: bool = False
     only_cross_attention: bool = False
     dtype: jnp.dtype = jnp.float32
+    use_memory_efficient:bool = False
 
     def setup(self):
         resnets = []
@@ -210,6 +217,7 @@ class FlaxCrossAttnUpBlock2D(nn.Module):
                 use_linear_projection=self.use_linear_projection,
                 only_cross_attention=self.only_cross_attention,
                 dtype=self.dtype,
+                use_memory_efficient=self.use_memory_efficient,
             )
             attentions.append(attn_block)
 
@@ -313,6 +321,8 @@ class FlaxUNetMidBlock2DCrossAttn(nn.Module):
             Number of attention heads of each spatial transformer block
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
+        use_memory_efficient (`bool`, *optional*, defaults to `False`):
+            enable memory efficient attention https://arxiv.org/abs/2112.05682
     """
     in_channels: int
     dropout: float = 0.0
@@ -320,6 +330,7 @@ class FlaxUNetMidBlock2DCrossAttn(nn.Module):
     attn_num_head_channels: int = 1
     use_linear_projection: bool = False
     dtype: jnp.dtype = jnp.float32
+    use_memory_efficient:bool = False
 
     def setup(self):
         # there is always at least one resnet
@@ -342,6 +353,7 @@ class FlaxUNetMidBlock2DCrossAttn(nn.Module):
                 depth=1,
                 use_linear_projection=self.use_linear_projection,
                 dtype=self.dtype,
+                use_memory_efficient=self.use_memory_efficient,
             )
             attentions.append(attn_block)
 
