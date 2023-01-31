@@ -3,10 +3,11 @@ from typing import Any, Callable, List, Optional, Union
 
 import numpy as np
 import torch
+
 import PIL
 
 from ...schedulers import DDPMScheduler
-from ..onnx_utils import ORT_TO_NP_TYPE, OnnxRuntimeModel
+from ..onnx_utils import OnnxRuntimeModel
 from ..pipeline_utils import ImagePipelineOutput
 from . import StableDiffusionUpscalePipeline
 
@@ -93,7 +94,7 @@ class OnnxStableDiffusionUpscalePipeline(StableDiffusionUpscalePipeline):
         text_embeddings = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
-        text_embeddings_dtype = ORT_TO_NP_TYPE[text_embeddings.dtype]
+        text_embeddings_dtype = torch.float32  # TODO: ORT_TO_NP_TYPE[text_embeddings.dtype]
 
         # 4. Preprocess image
         image = preprocess(image)
