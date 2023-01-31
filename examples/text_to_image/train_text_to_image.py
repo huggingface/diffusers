@@ -728,9 +728,9 @@ def main():
             # create pipeline
             pipeline = StableDiffusionPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
-                unet=accelerator.unwrap_model(unet),
+                unet=unet,
                 revision=args.revision,
-                torch_dtype=weight_dtype,
+                # torch_dtype=weight_dtype,
             )
             pipeline = pipeline.to(accelerator.device)
             pipeline.set_progress_bar_config(disable=True)
