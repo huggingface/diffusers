@@ -94,7 +94,7 @@ class OnnxStableDiffusionUpscalePipeline(StableDiffusionUpscalePipeline):
         text_embeddings = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
-        text_embeddings_dtype = torch.float32  # TODO: ORT_TO_NP_TYPE[text_embeddings.dtype]
+        text_embeddings_dtype = torch.float32  # TODO: convert text_embeddings.dtype to torch dtype
 
         # 4. Preprocess image
         image = preprocess(image)
@@ -215,6 +215,11 @@ class OnnxStableDiffusionUpscalePipeline(StableDiffusionUpscalePipeline):
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
 
+        if hasattr(text_inputs, "attention_mask"):
+            attention_mask = text_inputs.attention_mask.to(device)
+        else:
+            attention_mask = None
+
         # no positional arguments to text_encoder
         text_embeddings = self.text_encoder(
             # TODO: is this int() safe?
@@ -258,6 +263,11 @@ class OnnxStableDiffusionUpscalePipeline(StableDiffusionUpscalePipeline):
                 truncation=True,
                 return_tensors="pt",
             )
+
+            if hasattr(uncond_input, "attention_mask"):
+                attention_mask = uncond_input.attention_mask.to(device)
+            else:
+                attention_mask = None
 
             uncond_embeddings = self.text_encoder(
                 # TODO: is this int() safe?
