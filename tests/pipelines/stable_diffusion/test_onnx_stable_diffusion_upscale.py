@@ -27,7 +27,7 @@ from ...test_pipelines_onnx_common import OnnxPipelineTesterMixin
 
 class OnnxStableDiffusionUpscalePipelineFastTests(OnnxPipelineTesterMixin, unittest.TestCase):
     # TODO: is there an appropriate internal test set?
-    hub_checkpoint = "/home/ssube/code/github/ssube/onnx-web/models/upscaling-stable-diffusion-x4"
+    hub_checkpoint = "ssube/stable-diffusion-x4-upscaler-onnx"
 
     def get_dummy_inputs(self, seed=0):
         image = floats_tensor((1, 3, 128, 128), rng=random.Random(seed))
