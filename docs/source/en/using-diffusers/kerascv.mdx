@@ -68,27 +68,27 @@ On the tool, we supply the following things:
 * Placeholder token (only applicable for Textual Inversion)
 
 <div align="center">
-<img src="https://i.imgur.com/JMATVKJ.png"/>
+<img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/space_snap.png"/>
 </div> 
 
 As soon as you hit "Submit", the conversion process will begin. Once it's complete, you should see the following:
 
 <div align="center">
-<img src="https://i.imgur.com/gJyVD9g.png"/>
+<img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/model_push_success.png"/>
 </div> 
 
 If you click the [link](https://huggingface.co/sayakpaul/textual-inversion-cat-kerascv_sd_diffusers_pipeline/tree/main), you
 should see something like so: 
 
 <div align="center">
-<img src="https://i.imgur.com/vl6w7Zm.png"/>
+<img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/model_repo_contents.png"/>
 </div> 
 
 If you head over to the [model card of the repository](https://huggingface.co/sayakpaul/textual-inversion-cat-kerascv_sd_diffusers_pipeline), the
 following should appear: 
 
 <div align="center">
-<img src="https://i.imgur.com/PxCNRFh.png"/>
+<img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/model_card.png"/>
 </div> 
 
 <Tip>
@@ -105,7 +105,7 @@ Just beside the model card of the [repository](https://huggingface.co/sayakpaul/
 you'd notice an inference widget to try out the model directly from the UI 🤗
 
 <div align="center">
-<img src="https://i.imgur.com/jv8Ikes.png"/>
+<img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inference_widget_output.png"/>
 </div> 
 
 On the top right hand side, we provide a "Use in Diffusers" button. If you click the button, you should see the following code-snippet: 
@@ -132,7 +132,7 @@ image = pipeline(prompt, num_inference_steps=50).images[0]
 And we get: 
 
 <div align="center">
-<img src="https://i.imgur.com/0uTomgz.png"/>
+<img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/diffusers_output_one.png"/>
 </div> 
 
 _**Note that if you specified a `placeholder_token` while performing the conversion, the tool will log it accordingly. Refer
@@ -168,7 +168,7 @@ image = pipeline(prompt, num_inference_steps=50).images[0]
 ```
 
 <div align="center">
-<img src="https://i.imgur.com/fYHgzSc.png"/>
+<img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/diffusers_output_two.png"/>
 </div> 
 
 One can also continue fine-tuning from these Diffusers checkpoints by leveraging efficient optimization tools from Diffusers. Refer [here](https://huggingface.co/docs/diffusers/main/en/optimization/fp16) for 
