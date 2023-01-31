@@ -728,14 +728,14 @@ def main():
                     f" {args.validation_prompt}."
                 )
                 # create pipeline
-                pt_safety_checker = StableDiffusionSafetyChecker.from_pretrained(
+                safety_checker = StableDiffusionSafetyChecker.from_pretrained(
                     args.pretrained_model_name_or_path, subfolder="safety_checker", revision=args.non_ema_revision
                 )
-                pt_safety_checker.to(accelerator.device, dtype=weight_dtype)
+                # safety_checker.to(accelerator.device, dtype=weight_dtype)
                 pipeline = StableDiffusionPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     unet=accelerator.unwrap_model(unet),
-                    safety_checker=pt_safety_checker,
+                    safety_checker=safety_checker,
                     revision=args.revision,
                 )
                 pipeline = pipeline.to(accelerator.device)
@@ -762,7 +762,7 @@ def main():
                                 ]
                             }
                         )
-
+                del safety_checker
                 del pipeline
                 torch.cuda.empty_cache()
 
