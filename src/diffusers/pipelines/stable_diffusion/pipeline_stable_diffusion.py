@@ -577,7 +577,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
-        )
+        ).to(dtype=self.unet.dtype)
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -594,7 +594,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             device,
             generator,
             latents,
-        )
+        ).to(dtype=self.unet.dtype)
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
