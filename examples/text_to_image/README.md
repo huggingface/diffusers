@@ -148,7 +148,7 @@ huggingface-cli login
 Now we can start training!
 
 ```bash
-accelerate --mixed_precision="fp16" launch train_text_to_image_lora.py \
+accelerate launch --mixed_precision="fp16" train_text_to_image_lora.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --dataset_name=$DATASET_NAME --caption_column="text" \
   --resolution=512 --random_flip \
