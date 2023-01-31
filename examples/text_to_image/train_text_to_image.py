@@ -36,7 +36,7 @@ from datasets import load_dataset
 from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
-from diffusers.utils import check_min_version
+from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from torchvision import transforms
@@ -100,6 +100,24 @@ def parse_args():
         type=str,
         default="text",
         help="The column of the dataset containing a caption or a list of captions.",
+    )
+    parser.add_argument(
+        "--validation_prompt", type=str, default=None, help="A prompt that is sampled during training for inference."
+    )
+    parser.add_argument(
+        "--num_validation_images",
+        type=int,
+        default=4,
+        help="Number of images that should be generated during validation with `validation_prompt`.",
+    )
+    parser.add_argument(
+        "--validation_epochs",
+        type=int,
+        default=1,
+        help=(
+            "Run fine-tuning validation every X epochs. The validation process consists of running the prompt"
+            " `args.validation_prompt` multiple times: `args.num_validation_images`."
+        ),
     )
     parser.add_argument(
         "--max_train_samples",
@@ -327,6 +345,11 @@ def main():
         log_with=args.report_to,
         logging_dir=logging_dir,
     )
+
+    if args.report_to == "wandb":
+        if not is_wandb_available():
+            raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
+        import wandb
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
@@ -697,6 +720,45 @@ def main():
             if global_step >= args.max_train_steps:
                 break
 
+        if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
+            logger.info(
+                f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+                f" {args.validation_prompt}."
+            )
+            # create pipeline
+            pipeline = StableDiffusionPipeline.from_pretrained(
+                args.pretrained_model_name_or_path,
+                unet=accelerator.unwrap_model(unet),
+                revision=args.revision,
+                torch_dtype=weight_dtype,
+            )
+            pipeline = pipeline.to(accelerator.device)
+            pipeline.set_progress_bar_config(disable=True)
+
+            # run inference
+            generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+            images = []
+            for _ in range(args.num_validation_images):
+                images.append(pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0])
+
+            if accelerator.is_main_process:
+                for tracker in accelerator.trackers:
+                    if tracker.name == "tensorboard":
+                        np_images = np.stack([np.asarray(img) for img in images])
+                        tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+                    if tracker.name == "wandb":
+                        tracker.log(
+                            {
+                                "validation": [
+                                    wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                    for i, image in enumerate(images)
+                                ]
+                            }
+                        )
+
+            del pipeline
+            torch.cuda.empty_cache()
+
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
@@ -715,6 +777,28 @@ def main():
 
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
+
+        if args.validation_prompt is not None:
+            # run inference
+            generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+            images = []
+            for _ in range(args.num_validation_images):
+                images.append(pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0])
+
+            if accelerator.is_main_process:
+                for tracker in accelerator.trackers:
+                    if tracker.name == "tensorboard":
+                        np_images = np.stack([np.asarray(img) for img in images])
+                        tracker.writer.add_images("test", np_images, epoch, dataformats="NHWC")
+                    if tracker.name == "wandb":
+                        tracker.log(
+                            {
+                                "test": [
+                                    wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                    for i, image in enumerate(images)
+                                ]
+                            }
+                        )
 
     accelerator.end_training()
 
