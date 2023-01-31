@@ -52,11 +52,11 @@ A Stable Diffusion model has three primary components:
 
 Depending on the fine-tuning task, we may fine-tune one or more of these components (the VAE is almost always left untouched). Here are some common combinations:
 
-* DreamBooth: UNet and Text encoder 
+* DreamBooth: UNet and text encoder 
 * Classical text to image fine-tuning: UNet 
-* Textual Inversion: Just the newly initialized embeddings in the text encoder.
+* Textual Inversion: Just the newly initialized embeddings in the text encoder
 
-## Performing the Conversion
+### Performing the Conversion
 
 Let's use [this checkpoint](https://huggingface.co/sayakpaul/textual-inversion-kerasio/resolve/main/textual_inversion_kerasio.h5) which was generated
 by conducting Textual Inversion with the following "placeholder token": `<my-funny-cat-token>`. 
@@ -91,7 +91,11 @@ following should appear:
 <img src="https://i.imgur.com/PxCNRFh.png"/>
 </div> 
 
-_**Note that we're not specifying the UNet weights here since the UNet is not fine-tuned during Textual Inversion.**_
+<Tip>
+
+Note that we're not specifying the UNet weights here since the UNet is not fine-tuned during Textual Inversion.
+
+</Tip>
 
 And that's it! You now have your fine-tuned KerasCV Stable Diffusion model in Diffusers 🧨
 
@@ -138,8 +142,8 @@ as an example.**_
 We welcome you to use the tool for various Stable Diffusion fine-tuning scenarios and let us know your feedback! Here are some examples 
 of Diffusers checkpoints that were obtained using the tool: 
 
-* [sayakpaul/text-unet-dogs-kerascv_sd_diffusers_pipeline](https://huggingface.co/sayakpaul/text-unet-dogs-kerascv_sd_diffusers_pipeline)
-* [sayakpaul/unet-dogs-kerascv_sd_diffusers_pipeline](https://huggingface.co/sayakpaul/unet-dogs-kerascv_sd_diffusers_pipeline)
+* [sayakpaul/text-unet-dogs-kerascv_sd_diffusers_pipeline](https://huggingface.co/sayakpaul/text-unet-dogs-kerascv_sd_diffusers_pipeline) (DreamBooth with both the text encoder and UNet fine-tuned)
+* [sayakpaul/unet-dogs-kerascv_sd_diffusers_pipeline](https://huggingface.co/sayakpaul/unet-dogs-kerascv_sd_diffusers_pipeline) (DreamBooth with only the UNet fine-tuned)
 
 ## Incorporating Diffusers Goodies 🎁
 
