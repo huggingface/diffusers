@@ -1,6 +1,5 @@
 import argparse
 import hashlib
-import itertools
 import math
 import os
 import random
