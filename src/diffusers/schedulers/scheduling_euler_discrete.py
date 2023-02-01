@@ -136,7 +136,9 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.is_scale_input_called = True
         return sample
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None, dtype: Optional[torch.dtype] = None, interpolation_type: str = "linear"):
+    def set_timesteps(
+        self, num_inference_steps: int, device: Union[str, torch.device] = None, interpolation_type: str = "linear"
+    ):
         """
         Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -156,16 +158,18 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         elif interpolation_type == "log_linear":
             sigmas = torch.linspace(np.log(sigmas[-1]), np.log(sigmas[0]), num_inference_steps + 1).exp()
         else:
-            raise ValueError(f"{interpolation_type} is not implemented. Please specify interpolation_type to either 'linear' or 'log_linear'")
+            raise ValueError(
+                f"{interpolation_type} is not implemented. Please specify interpolation_type to either 'linear' or"
+                " 'log_linear'"
+            )
 
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
+        self.sigmas = torch.from_numpy(sigmas).to(device=device)
         if str(device).startswith("mps"):
             # mps does not support float64
             self.timesteps = torch.from_numpy(timesteps).to(device, dtype=torch.float32)
-            self.sigmas = torch.from_numpy(sigmas).to(device=device, dtype=torch.float32)
         else:
-            self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=dtype)
-            self.sigmas = torch.from_numpy(sigmas).to(device=device, dtype=dtype)
+            self.timesteps = torch.from_numpy(timesteps).to(device=device)
 
     def step(
         self,

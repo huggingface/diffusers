@@ -304,18 +304,6 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    def c_skip(self, sigma):
-        return 1 / (sigma**2 + 1)
-
-    def c_out(self, sigma):
-        return sigma * (1 + sigma**2) ** -0.5
-
-    def c_in(self, sigma):
-        return 1 * (sigma**2 + 1) ** -0.5
-
-    def c_noise(self, sigma):
-        return torch.log(sigma) * 0.25
-
     @torch.no_grad()
     def __call__(
         self,
@@ -436,7 +424,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         image = image.to(dtype=text_embeddings.dtype, device=device)
 
         # 5. set timesteps
-        self.scheduler.set_timesteps(num_inference_steps, device=device, dtype=text_embeddings.dtype, interpolation_type="log_linear")
+        self.scheduler.set_timesteps(num_inference_steps, device=device, interpolation_type="log_linear")
         timesteps = self.scheduler.timesteps
 
         # 5. Add noise to image
@@ -450,7 +438,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         image = torch.cat([image] * batch_multiplier * num_images_per_prompt)
         noise_level = torch.cat([noise_level] * image.shape[0])
 
-        inv_noise_level = (noise_level ** 2 + 1) ** (-0.5)
+        inv_noise_level = (noise_level**2 + 1) ** (-0.5)
         image_cond = F.interpolate(image, scale_factor=2, mode="nearest") * inv_noise_level[:, None, None, None]
         image_cond = image_cond.to(text_embeddings.dtype)
         # YiYi's notes:
@@ -503,12 +491,13 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                 sigma = self.scheduler.sigmas[i]
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                scaled_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                sample = torch.cat([latent_model_input, image_cond], dim=1)
+                scaled_model_input = torch.cat([scaled_model_input, image_cond], dim=1)
                 timestep = torch.log(sigma) * 0.25
+
                 noise_pred = self.unet(
-                    sample,
+                    scaled_model_input,
                     timestep,
                     encoder_hidden_states=text_embeddings,
                     attention_mask=attention_mask,
@@ -518,7 +507,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                 # YiYi's notes: in original repo, the output contains a variance channel that's not used
                 noise_pred = noise_pred[:, :-1]
 
-                inv_sigma = (1 / (sigma ** 2 + 1))
+                inv_sigma = 1 / (sigma**2 + 1)
                 noise_pred = inv_sigma * latent_model_input + self.scheduler.scale_model_input(sigma, t) * noise_pred
 
                 # perform guidance
