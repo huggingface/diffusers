@@ -755,7 +755,7 @@ def main():
             if global_step >= args.max_train_steps:
                 break
         # Multi-prompt validation
-        if args.validation_prompt_path is not None and epoch % args.validation_epchs == 0:
+        if args.validation_prompt_path is not None and epoch % args.validation_epochs == 0:
             logger.info(
                 f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
                 f"load from {args.validation_prompt_path}."
