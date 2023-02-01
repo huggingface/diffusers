@@ -775,14 +775,14 @@ def main():
                                 vae=vae,
                                 unet=accelerator.unwrap_model(unet),
                                 revision=args.revision,
-                                torch_dtype=weight_dtype,
                             )
                             pipeline = pipeline.to(accelerator.device)
                             pipeline.set_progress_bar_config(disable=True)
 
                             # run inference
                             prompt = [args.validation_prompt]
-                            images = pipeline(prompt, num_images_per_prompt=args.num_validation_images).images
+                            with torch.autocast("cuda"):                                
+                                images = pipeline(prompt, num_images_per_prompt=args.num_validation_images).images
 
                             for i, image in enumerate(images):
                                 image.save(os.path.join(args.output_dir, f"sample-{global_step}-{i}.jpg"))
