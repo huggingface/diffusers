@@ -108,6 +108,7 @@ else:
         AltDiffusionPipeline,
         CycleDiffusionPipeline,
         LDMTextToImagePipeline,
+        MultiDiffusionText2PanoramaPipeline,
         PaintByExamplePipeline,
         StableDiffusionDepth2ImgPipeline,
         StableDiffusionImageVariationPipeline,
