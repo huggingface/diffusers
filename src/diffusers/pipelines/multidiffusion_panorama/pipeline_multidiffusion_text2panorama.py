@@ -658,8 +658,9 @@ class MultiDiffusionText2PanoramaPipeline(DiffusionPipeline):
                         noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                     # compute the previous noisy sample x_t -> x_t-1
-                    latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
-                    latents_view_denoised = self.scheduler.step(noise_pred, t, latents_for_view)["prev_sample"]
+                    latents_view_denoised = self.scheduler.step(
+                        noise_pred, t, latents_for_view, **extra_step_kwargs
+                    ).prev_sample
                     value[:, :, h_start:h_end, w_start:w_end] += latents_view_denoised
                     count[:, :, h_start:h_end, w_start:w_end] += 1
 
