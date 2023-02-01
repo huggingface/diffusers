@@ -6,15 +6,7 @@ import numpy as np
 import PIL
 from PIL import Image
 
-from ...utils import (
-    BaseOutput,
-    OptionalDependencyNotAvailable,
-    is_k_diffusion_version,
-    is_onnx_available,
-    is_torch_available,
-    is_transformers_available,
-    is_transformers_version,
-)
+from ...utils import BaseOutput, is_torch_available, is_transformers_available
 
 
 @dataclass
