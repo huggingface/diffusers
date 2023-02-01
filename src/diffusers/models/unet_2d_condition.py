@@ -128,7 +128,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         num_class_embeds: Optional[int] = None,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
-        time_embed_dim: int = None,
         time_embedding_type: str = "positional",  # fourier, positional
         timestep_act_2: bool = False,
         time_cond_proj_dim: Optional[int] = None,
@@ -145,8 +144,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         self.sample_size = sample_size
         self.skip_freq = skip_freq
-        if time_embed_dim is None:
-            time_embed_dim = block_out_channels[0] * 4
 
         # input
         conv_in_padding = (conv_in_kernel - 1) // 2
@@ -156,6 +153,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         # time
         if time_embedding_type == "fourier":
+            time_embed_dim = block_out_channels[0] * 2
             if time_embed_dim % 2 != 0:
                 raise ValueError(f"`time_embed_dim` should be divisible by 2, but is {time_embed_dim}.")
             self.time_proj = GaussianFourierProjection(
@@ -163,19 +161,16 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             )
             timestep_input_dim = time_embed_dim
         elif time_embedding_type == "positional":
+            time_embed_dim = block_out_channels[0] * 4
+
             self.time_proj = Timesteps(block_out_channels[0], flip_sin_to_cos, freq_shift)
             timestep_input_dim = block_out_channels[0]
+        else:
+            raise ValueError(f"{time_embedding_type} does not exist. Pleaes make sure to use one of `fourier` or `positional`.")
 
         self.time_embedding = TimestepEmbedding(
             timestep_input_dim, time_embed_dim, act_fn=act_fn, act_2=timestep_act_2, cond_proj_dim=time_cond_proj_dim
         )
-
-        # class
-#        time_cond_proj_dim = class_labels_dim
-#        if time_cond_proj_dim is not None:
-#            self.class_proj = nn.Linear(time_cond_proj_dim, timestep_input_dim, bias=False)
-#        else:
-#            self.class_proj = None
 
         # class embedding
         if class_embed_type is None and num_class_embeds is not None:
