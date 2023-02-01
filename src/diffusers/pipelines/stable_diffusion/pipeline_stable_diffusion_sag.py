@@ -747,7 +747,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
 
         return degraded_latents
 
-    # Copied from diffusers.schedulers.scheduling_ddim.DDIMScheduler.step
+    # Modified from diffusers.schedulers.scheduling_ddim.DDIMScheduler.step
     def pred_x0_from_eps(self, sample, model_output, timestep):
         # 1. get previous step value (=t-1)
         # prev_timestep = timestep - self.scheduler.config.num_train_timesteps // self.scheduler.num_inference_steps
