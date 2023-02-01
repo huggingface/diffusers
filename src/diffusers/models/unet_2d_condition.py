@@ -131,7 +131,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         time_embed_dim: int = None,
         time_embedding_type: str = "positional",  # fourier, positional
         timestep_act_2: bool = False,
-        class_labels_dim: Optional[int] = None,
+        time_cond_proj_dim: Optional[int] = None,
         conv_in_kernel: int = 3,
         conv_out_kernel: int = 3,
         norm_out: bool = True,
@@ -167,14 +167,15 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             timestep_input_dim = block_out_channels[0]
 
         self.time_embedding = TimestepEmbedding(
-            timestep_input_dim, time_embed_dim, act_fn=act_fn, act_2=timestep_act_2
+            timestep_input_dim, time_embed_dim, act_fn=act_fn, act_2=timestep_act_2, cond_proj_dim=time_cond_proj_dim
         )
 
         # class
-        if class_labels_dim is not None:
-            self.class_proj = nn.Linear(class_labels_dim, timestep_input_dim, bias=False)
-        else:
-            self.class_proj = None
+#        time_cond_proj_dim = class_labels_dim
+#        if time_cond_proj_dim is not None:
+#            self.class_proj = nn.Linear(time_cond_proj_dim, timestep_input_dim, bias=False)
+#        else:
+#            self.class_proj = None
 
         # class embedding
         if class_embed_type is None and num_class_embeds is not None:
@@ -460,6 +461,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
         class_labels: Optional[torch.Tensor] = None,
+        timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
@@ -529,13 +531,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         # there might be better ways to encapsulate this.
         t_emb = t_emb.to(dtype=self.dtype)
 
-        if class_labels is not None and self.class_proj is not None:
-            class_emb = self.class_proj(class_labels)
-            class_emb = class_emb.to(dtype=self.dtype)
-            if self.class_embedding is None:
-                t_emb = t_emb + class_emb
-
-        emb = self.time_embedding(t_emb)
+        emb = self.time_embedding(t_emb, timestep_cond)
 
         if self.class_embedding is not None:
             if class_labels is None:

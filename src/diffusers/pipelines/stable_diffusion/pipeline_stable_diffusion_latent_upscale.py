@@ -451,7 +451,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
             dim=1,
         )
 
-        class_labels = torch.cat([noise_level_embed, text_pooler_out], dim=1)
+        timestep_condition = torch.cat([noise_level_embed, text_pooler_out], dim=1)
 
         # 6. Prepare latent variables
         height, width = image.shape[2:]
@@ -499,7 +499,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                     timestep,
                     encoder_hidden_states=text_embeddings,
                     attention_mask=attention_mask,
-                    class_labels=class_labels,
+                    timestep_cond=timestep_condition,
                 ).sample
 
                 # YiYi's notes: in original repo, the output contains a variance channel that's not used

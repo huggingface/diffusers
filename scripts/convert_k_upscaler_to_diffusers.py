@@ -187,7 +187,7 @@ def unet_to_diffusers_checkpoint(model, checkpoint):
             "time_embedding.linear_1.bias": checkpoint["inner_model.mapping.0.bias"],
             "time_embedding.linear_2.weight": checkpoint["inner_model.mapping.2.weight"],
             "time_embedding.linear_2.bias": checkpoint["inner_model.mapping.2.bias"],
-            "class_proj.weight": checkpoint["inner_model.mapping_cond.weight"],
+            "time_embedding.cond_proj.weight": checkpoint["inner_model.mapping_cond.weight"],
         }
     )
 
