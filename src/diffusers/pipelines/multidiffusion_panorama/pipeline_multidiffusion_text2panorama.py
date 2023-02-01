@@ -22,7 +22,7 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...schedulers import KarrasDiffusionSchedulers
+from ...schedulers import DDIMScheduler
 from ...utils import deprecate, is_accelerate_available, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from . import MultiDiffusionText2PanoramaPipelineOutput
@@ -69,8 +69,8 @@ class MultiDiffusionText2PanoramaPipeline(DiffusionPipeline):
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
-            [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
+            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Original
+            work uses the [`DDIMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
@@ -85,7 +85,7 @@ class MultiDiffusionText2PanoramaPipeline(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: KarrasDiffusionSchedulers,
+        scheduler: DDIMScheduler,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
         requires_safety_checker: bool = True,
