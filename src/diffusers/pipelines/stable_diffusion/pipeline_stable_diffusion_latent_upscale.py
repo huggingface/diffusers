@@ -63,7 +63,6 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
-        sigma_data: float = 1.0,
     ):
         super().__init__()
 
@@ -74,7 +73,6 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
             unet=unet,
             scheduler=scheduler,
         )
-        self.register_to_config(sigma_data=sigma_data)
 
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
@@ -432,13 +430,13 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         # (see below notes from the author):
         # "the This step theoretically can make the model work better on out-of-distribution inputs, but mostly just seems to make it match the input less, so it's turned off by default."
         noise_level = torch.tensor([0.0], dtype=torch.long, device=device)
-        batch_multiplier = 2 if do_classifier_free_guidance else 1
+        noise_level = torch.cat([noise_level] * image.shape[0])
+        inv_noise_level = (noise_level**2 + 1) ** (-0.5)
 
+        batch_multiplier = 2 if do_classifier_free_guidance else 1
         image = image[None, :] if image.ndim == 3 else image
         image = torch.cat([image] * batch_multiplier * num_images_per_prompt)
-        noise_level = torch.cat([noise_level] * image.shape[0])
 
-        inv_noise_level = (noise_level**2 + 1) ** (-0.5)
         image_cond = F.interpolate(image, scale_factor=2, mode="nearest") * inv_noise_level[:, None, None, None]
         image_cond = image_cond.to(text_embeddings.dtype)
         # YiYi's notes:
