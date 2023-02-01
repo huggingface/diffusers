@@ -81,27 +81,27 @@ class CrossAttention(nn.Module):
         self.sliceable_head_dim = heads
 
         self.added_kv_proj_dim = added_kv_proj_dim
-        
+
         if norm_num_groups is not None:
             self.group_norm = nn.GroupNorm(num_channels=inner_dim, num_groups=norm_num_groups, eps=1e-5, affine=True)
         else:
             self.group_norm = None
-        
+
         if cross_attention_norm:
             self.norm_cross = nn.LayerNorm(cross_attention_dim)
-        
+
         if use_conv_proj:
             self.to_q = nn.Conv2d(query_dim, inner_dim, 1)
         else:
             self.to_q = nn.Linear(query_dim, inner_dim, bias=bias)
-        
-        if use_conv_proj and not self.is_cross :
+
+        if use_conv_proj and not self.is_cross:
             self.to_k = nn.Conv2d(cross_attention_dim, inner_dim, 1)
             self.to_v = nn.Conv2d(cross_attention_dim, inner_dim, 1)
         else:
             self.to_k = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
             self.to_v = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
-            
+
         if self.added_kv_proj_dim is not None:
             self.add_k_proj = nn.Linear(added_kv_proj_dim, cross_attention_dim)
             self.add_v_proj = nn.Linear(added_kv_proj_dim, cross_attention_dim)
@@ -114,10 +114,10 @@ class CrossAttention(nn.Module):
         self.to_out = nn.ModuleList([])
 
         if use_conv_proj:
-            self.to_out.append(nn.Conv2d(inner_dim, query_dim,1))
+            self.to_out.append(nn.Conv2d(inner_dim, query_dim, 1))
         else:
             self.to_out.append(nn.Linear(inner_dim, query_dim))
-        
+
         if dropout is not None:
             self.to_out.append(nn.Dropout(dropout))
         else:
@@ -222,7 +222,7 @@ class CrossAttention(nn.Module):
         tensor = tensor.reshape(batch_size, seq_len, head_size, dim // head_size)
         tensor = tensor.permute(0, 2, 1, 3).reshape(batch_size * head_size, seq_len, dim // head_size)
         return tensor
-    
+
     def get_attention_scores(self, query, key, attention_mask=None):
         dtype = query.dtype
         if self.upcast_attention:
@@ -273,7 +273,15 @@ class CrossAttention(nn.Module):
 
 
 class CrossAttnProcessor:
-    def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None, prepare_mask=True, **kwargs):         
+    def __call__(
+        self,
+        attn: CrossAttention,
+        hidden_states,
+        encoder_hidden_states=None,
+        attention_mask=None,
+        prepare_mask=True,
+        **kwargs,
+    ):
         if prepare_mask:
             batch_size, sequence_length, _ = hidden_states.shape
             attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
@@ -281,7 +289,7 @@ class CrossAttnProcessor:
             if attention_mask is not None:
                 attention_mask = attention_mask.repeat_interleave(attn.heads, dim=0)
 
-        query = attn.to_q(hidden_states)    
+        query = attn.to_q(hidden_states)
         if attn.use_conv_proj:
             batch_size, dim, height, width = query.shape
             query = query.permute(0, 2, 3, 1).reshape(batch_size, height * width, dim)
@@ -307,10 +315,10 @@ class CrossAttnProcessor:
             attention_probs = attn.att_dropout(attention_probs)
         hidden_states = torch.bmm(attention_probs, value)
         hidden_states = attn.batch_to_head_dim(hidden_states)
- 
+
         if attn.use_conv_proj:
             hidden_states = hidden_states.permute(0, 2, 1).reshape(batch_size, dim, height, width)
-        
+
         # proj
         hidden_states = attn.to_out[0](hidden_states)
         # dropout
@@ -603,7 +611,9 @@ class SlicedAttnAddedKVProcessor:
     def __init__(self, slice_size):
         self.slice_size = slice_size
 
-    def __call__(self, attn: "CrossAttention", hidden_states, encoder_hidden_states=None, attention_mask=None, **kwargs):
+    def __call__(
+        self, attn: "CrossAttention", hidden_states, encoder_hidden_states=None, attention_mask=None, **kwargs
+    ):
         residual = hidden_states
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
         encoder_hidden_states = encoder_hidden_states.transpose(1, 2)

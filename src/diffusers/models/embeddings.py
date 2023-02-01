@@ -152,11 +152,18 @@ class PatchEmbed(nn.Module):
 
 
 class TimestepEmbedding(nn.Module):
-    def __init__(self, in_channels: int, time_embed_dim: int, act_fn: str = "silu", out_dim: int = None, act_2: bool = False):
+    def __init__(
+        self, in_channels: int, time_embed_dim: int, act_fn: str = "silu", out_dim: int = None, act_2: bool = False, cond_proj_dim=None,
+    ):
         super().__init__()
 
         self.linear_1 = nn.Linear(in_channels, time_embed_dim)
-        self.act = None
+
+        if cond_proj_dim is not None:
+            self.cond_proj = nn.Linear(cond_proj_dim, in_channels, bias=False)
+        else:
+            self.class_proj = None
+
         if act_fn == "silu":
             self.act = nn.SiLU()
         elif act_fn == "mish":
@@ -169,7 +176,7 @@ class TimestepEmbedding(nn.Module):
         else:
             time_embed_dim_out = time_embed_dim
         self.linear_2 = nn.Linear(time_embed_dim, time_embed_dim_out)
-        
+
         self.act_2 = None
         if act_2:
             if act_fn == "silu":
@@ -179,7 +186,10 @@ class TimestepEmbedding(nn.Module):
             elif act_fn == "gelu":
                 self.act_2 = nn.GELU()
 
-    def forward(self, sample):
+    def forward(self, sample, condition=None):
+
+        if condition is not None:
+            sample = sample + self.cond_proj(condition)
         sample = self.linear_1(sample)
 
         if self.act is not None:
