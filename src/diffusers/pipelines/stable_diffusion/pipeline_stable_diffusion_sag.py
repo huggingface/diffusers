@@ -639,6 +639,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 7. Denoising loop
+        self.unet.mid_block.attentions[0].transformer_blocks[0].attn1.processor = CrossAttnStoreProcessor()
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
