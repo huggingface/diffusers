@@ -203,6 +203,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
+
         Args:
              prompt (`str` or `List[str]`, *optional*):
                 prompt to be encoded
