@@ -372,8 +372,11 @@ def main():
 
     if args.report_to == "wandb":
         if not is_wandb_available():
-            raise ImportError("Make sure to install wandb if you want to use it for logging during training.  You can do so by doing `pip install wandb`")
-        import wandb    # Make one log on every process with the configuration for debugging.
+            raise ImportError(
+                "Make sure to install wandb if you want to use it for logging during training.  You can do so by doing"
+                " `pip install wandb`"
+            )
+        import wandb  # Make one log on every process with the configuration for debugging.
 
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -790,7 +793,7 @@ def main():
 
                             # run inference
                             prompt = [args.validation_prompt]
-                            with torch.autocast("cuda"):                                
+                            with torch.autocast("cuda"):
                                 images = pipeline(prompt, num_images_per_prompt=args.num_validation_images).images
 
                             for i, image in enumerate(images):
@@ -807,7 +810,7 @@ def main():
                                                 for i, image in enumerate(images)
                                             ]
                                         }
-                                    )                            
+                                    )
                             del pipeline
                             torch.cuda.empty_cache()
 
