@@ -3,6 +3,7 @@ import hashlib
 import itertools
 import random
 import json
+import logging
 import math
 import os
 from contextlib import nullcontext
@@ -426,6 +427,12 @@ def main(args):
         mixed_precision=args.mixed_precision,
         log_with="tensorboard",
         logging_dir=logging_dir,
+    )
+
+    logging.basicConfig(
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+        datefmt="%m/%d/%Y %H:%M:%S",
+        level=logging.INFO,
     )
 
     # Currently, it's not possible to do gradient accumulation when training two models with accelerate.accumulate
