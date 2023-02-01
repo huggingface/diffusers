@@ -236,6 +236,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
             cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
 
     @property
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
     def _execution_device(self):
         r"""
         Returns the device on which the pipeline's models will be executed. After calling
