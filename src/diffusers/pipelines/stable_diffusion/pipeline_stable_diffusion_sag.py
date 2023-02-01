@@ -1,4 +1,4 @@
-# Copyright 2022 Susung Hong and The HuggingFace Team. All rights reserved.
+# Copyright 2022 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,13 +13,12 @@
 # limitations under the License.
 
 import inspect
+import math
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import math
-
 import torch
-import torchvision.transforms as T
 
+import torchvision.transforms as T
 from packaging import version
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
@@ -47,6 +46,7 @@ EXAMPLE_DOC_STRING = """
         >>> image = pipe(prompt).images[0]
         ```
 """
+
 
 # processes and stores attention probabilities
 class CrossAttnStoreProcessor:
@@ -496,8 +496,8 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
-        guidance_scale: float = 1.0,
-        sag_scale: float = 1.0,
+        guidance_scale: float = 7.5,
+        sag_scale: float = 0.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
@@ -659,7 +659,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-                
+
                 # perform self-attention guidance with the stored self-attentnion map
                 if do_self_attention_guidance:
                     # classifier-free guidance produces two chunks of attention map
@@ -669,10 +669,15 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
                         # DDIM-like prediction of x0
                         pred_x0 = self.pred_x0_from_eps(latents, noise_pred_uncond, t)
                         # get the stored attention maps
-                        uncond_attn, cond_attn = self.unet.mid_block.attentions[0].transformer_blocks[0] \
-                                                .attn1.processor.attention_probs.chunk(2)
+                        uncond_attn, cond_attn = (
+                            self.unet.mid_block.attentions[0]
+                            .transformer_blocks[0]
+                            .attn1.processor.attention_probs.chunk(2)
+                        )
                         # self-attention-based degrading of latents
-                        degraded_latents = self.sag_masking(pred_x0, uncond_attn, t, self.pred_eps_from_noise(latents, noise_pred_uncond, t))
+                        degraded_latents = self.sag_masking(
+                            pred_x0, uncond_attn, t, self.pred_eps_from_noise(latents, noise_pred_uncond, t)
+                        )
                         uncond_emb, _ = prompt_embeds.chunk(2)
                         # forward and give guidance
                         degraded_pred = self.unet(degraded_latents, t, encoder_hidden_states=uncond_emb).sample
@@ -681,14 +686,16 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
                         # DDIM-like prediction of x0
                         pred_x0 = self.pred_x0_from_eps(latents, noise_pred, t)
                         # get the stored attention maps
-                        cond_attn = self.unet.mid_block.attentions[0].transformer_blocks[0] \
-                                                .attn1.processor.attention_probs
+                        cond_attn = (
+                            self.unet.mid_block.attentions[0].transformer_blocks[0].attn1.processor.attention_probs
+                        )
                         # self-attention-based degrading of latents
-                        degraded_latents = self.sag_masking(pred_x0, cond_attn, t, self.pred_eps_from_noise(latents, noise_pred, t))
+                        degraded_latents = self.sag_masking(
+                            pred_x0, cond_attn, t, self.pred_eps_from_noise(latents, noise_pred, t)
+                        )
                         # forward and give guidance
                         degraded_pred = self.unet(degraded_latents, t, encoder_hidden_states=prompt_embeds).sample
                         noise_pred += sag_scale * (noise_pred - degraded_pred)
-
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
@@ -717,7 +724,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
     def sag_masking(self, original_latents, attn_map, t, eps):
         # Same masking process as in SAG paper: https://arxiv.org/pdf/2210.00939.pdf
         bh, hw1, hw2 = attn_map.shape
-        b, latent_channel, latent_h, latent_w= original_latents.shape
+        b, latent_channel, latent_h, latent_w = original_latents.shape
         h = self.unet.attention_head_dim
         if isinstance(h, list):
             h = h[-1]
@@ -726,7 +733,9 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
         # Produce attention mask
         attn_map = attn_map.reshape(b, h, hw1, hw2)
         attn_mask = attn_map.mean(1, keepdim=False).sum(1, keepdim=False) > 1.0
-        attn_mask = attn_mask.reshape(b, map_size, map_size).unsqueeze(1).repeat(1, latent_channel, 1, 1).type(attn_map.dtype)
+        attn_mask = (
+            attn_mask.reshape(b, map_size, map_size).unsqueeze(1).repeat(1, latent_channel, 1, 1).type(attn_map.dtype)
+        )
         attn_mask = torch.nn.functional.interpolate(attn_mask, (latent_h, latent_w))
 
         # Blur according to the self-attention mask
@@ -736,17 +745,19 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
 
         # Noise it again to match the noise level
         degraded_latents = self.scheduler.add_noise(degraded_latents, noise=eps, timesteps=t)
-        
+
         return degraded_latents
 
     # Copied from diffusers.schedulers.scheduling_ddim.DDIMScheduler.step
     def pred_x0_from_eps(self, sample, model_output, timestep):
         # 1. get previous step value (=t-1)
-        prev_timestep = timestep - self.scheduler.config.num_train_timesteps // self.scheduler.num_inference_steps
+        # prev_timestep = timestep - self.scheduler.config.num_train_timesteps // self.scheduler.num_inference_steps
 
         # 2. compute alphas, betas
         alpha_prod_t = self.scheduler.alphas_cumprod[timestep]
-        alpha_prod_t_prev = self.scheduler.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.scheduler.final_alpha_cumprod
+        # alpha_prod_t_prev = (
+        #     self.scheduler.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.scheduler.final_alpha_cumprod
+        # )
 
         beta_prod_t = 1 - alpha_prod_t
         # 3. compute predicted original sample from predicted noise also called
@@ -761,8 +772,8 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
             model_output = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
         else:
             raise ValueError(
-                f"prediction_type given as {self.scheduler.config.prediction_type} must be one of `epsilon`, `sample`, or"
-                " `v_prediction`"
+                f"prediction_type given as {self.scheduler.config.prediction_type} must be one of `epsilon`, `sample`,"
+                " or `v_prediction`"
             )
         # # 4. Clip "predicted x_0"
         # if self.scheduler.config.clip_sample:
@@ -772,11 +783,13 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
 
     def pred_eps_from_noise(self, sample, model_output, timestep):
         # 1. get previous step value (=t-1)
-        prev_timestep = timestep - self.scheduler.config.num_train_timesteps // self.scheduler.num_inference_steps
+        # prev_timestep = timestep - self.scheduler.config.num_train_timesteps // self.scheduler.num_inference_steps
 
         # 2. compute alphas, betas
         alpha_prod_t = self.scheduler.alphas_cumprod[timestep]
-        alpha_prod_t_prev = self.scheduler.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.scheduler.final_alpha_cumprod
+        # alpha_prod_t_prev = (
+        #     self.scheduler.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.scheduler.final_alpha_cumprod
+        # )
 
         beta_prod_t = 1 - alpha_prod_t
         # 3. compute predicted eps from model output
@@ -788,8 +801,8 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
             pred_eps = (beta_prod_t**0.5) * sample + (alpha_prod_t**0.5) * model_output
         else:
             raise ValueError(
-                f"prediction_type given as {self.scheduler.config.prediction_type} must be one of `epsilon`, `sample`, or"
-                " `v_prediction`"
+                f"prediction_type given as {self.scheduler.config.prediction_type} must be one of `epsilon`, `sample`,"
+                " or `v_prediction`"
             )
 
         return pred_eps
