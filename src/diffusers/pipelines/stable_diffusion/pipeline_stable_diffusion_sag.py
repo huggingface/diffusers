@@ -652,7 +652,8 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 7. Denoising loop
-        self.unet.mid_block.attentions[0].transformer_blocks[0].attn1.processor = CrossAttnStoreProcessor()
+        store_processor = CrossAttnStoreProcessor()
+        self.unet.mid_block.attentions[0].transformer_blocks[0].attn1.processor = store_processor
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -682,11 +683,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
                         # DDIM-like prediction of x0
                         pred_x0 = self.pred_x0_from_eps(latents, noise_pred_uncond, t)
                         # get the stored attention maps
-                        uncond_attn, cond_attn = (
-                            self.unet.mid_block.attentions[0]
-                            .transformer_blocks[0]
-                            .attn1.processor.attention_probs.chunk(2)
-                        )
+                        uncond_attn, cond_attn = store_processor.attention_probs.chunk(2)
                         # self-attention-based degrading of latents
                         degraded_latents = self.sag_masking(
                             pred_x0, uncond_attn, t, self.pred_eps_from_noise(latents, noise_pred_uncond, t)
@@ -699,9 +696,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
                         # DDIM-like prediction of x0
                         pred_x0 = self.pred_x0_from_eps(latents, noise_pred, t)
                         # get the stored attention maps
-                        cond_attn = (
-                            self.unet.mid_block.attentions[0].transformer_blocks[0].attn1.processor.attention_probs
-                        )
+                        cond_attn = store_processor.attention_probs
                         # self-attention-based degrading of latents
                         degraded_latents = self.sag_masking(
                             pred_x0, cond_attn, t, self.pred_eps_from_noise(latents, noise_pred, t)
