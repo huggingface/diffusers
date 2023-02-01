@@ -118,7 +118,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         mid_block_scale_factor: float = 1,
         act_fn: str = "silu",
         norm_num_groups: Optional[int] = 32,
-        norm_group_size: Optional[int] = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1280,
         attention_head_dim: Union[int, Tuple[int]] = 8,
@@ -135,14 +134,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         conv_out_kernel: int = 3,
         attn1_types: Tuple[bool, None] = (None, "self", "self", "self"),
         attn2_types: Tuple[bool, None] = (None, "cross", "cross", "cross"),
-        downsample: Optional[Tuple[bool]] = None,
-        upsample: Optional[Tuple[bool]] = None,
-        skip_freq: str = "layer",  # layer, block
     ):
         super().__init__()
 
         self.sample_size = sample_size
-        self.skip_freq = skip_freq
 
         # input
         conv_in_padding = (conv_in_kernel - 1) // 2
@@ -194,9 +189,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if isinstance(attention_head_dim, int):
             attention_head_dim = (attention_head_dim,) * len(down_block_types)
 
-        if isinstance(downsample, bool):
-            downsample = (downsample,) * len(down_block_types)
-
         # down
         output_channel = block_out_channels[0]
         for i, down_block_type in enumerate(down_block_types):
@@ -210,11 +202,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 in_channels=input_channel,
                 out_channels=output_channel,
                 temb_channels=time_embed_dim,
-                add_downsample=not is_final_block if downsample is None else downsample[i],
+                add_downsample=not is_final_block,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
-                resnet_group_size=norm_group_size,
                 cross_attention_dim=cross_attention_dim,
                 attn_num_head_channels=attention_head_dim[i],
                 downsample_padding=downsample_padding,
@@ -269,9 +260,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         reversed_attn1_types = list(reversed(attn1_types))
         reversed_attn2_types = list(reversed(attn2_types))
 
-        if isinstance(upsample, bool):
-            upsample = (upsample,) * len(up_block_types)
-
         output_channel = reversed_block_out_channels[0]
         for i, up_block_type in enumerate(up_block_types):
             is_final_block = i == len(block_out_channels) - 1
@@ -282,13 +270,14 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             input_channel = reversed_block_out_channels[min(i + 1, len(block_out_channels) - 1)]
 
             # add upsample block for all BUT final layer
-            add_upsample = not is_final_block if upsample is None else upsample[i]
+            # add_upsample = not is_final_block if upsample is None else upsample[i]
+            add_upsample = not is_final_block
             if add_upsample:
                 self.num_upsamplers += 1
 
             up_block = get_up_block(
                 up_block_type,
-                num_layers=layers_per_block + 1 if skip_freq == "layer" else layers_per_block,
+                num_layers=layers_per_block + 1,
                 in_channels=input_channel,
                 out_channels=output_channel,
                 prev_output_channel=prev_output_channel,
@@ -297,7 +286,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
-                resnet_group_size=norm_group_size,
                 cross_attention_dim=cross_attention_dim,
                 attn_num_head_channels=reversed_attention_head_dim[i],
                 dual_cross_attention=dual_cross_attention,
@@ -570,14 +558,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         for i, upsample_block in enumerate(self.up_blocks):
             is_final_block = i == len(self.up_blocks) - 1
 
-            if self.skip_freq == "block":
-                res_samples = down_block_res_samples[-1] if i > 0 else None
-                down_block_res_samples = down_block_res_samples[:-1]
-            elif self.skip_freq == "layer":
-                res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
-                down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
-            else:
-                raise ValueError(f"skip_freq can only be block or layer but {self.skip_freq}")
+            res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
+            down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
 
             # if we have not reached the final block and need to forward the
             # upsample size, we do it here
