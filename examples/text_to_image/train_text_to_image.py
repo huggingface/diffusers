@@ -32,6 +32,11 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
+from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
+from diffusers.optimization import get_scheduler
+from diffusers.training_utils import EMAModel
+from diffusers.utils import check_min_version, is_wandb_available
+from diffusers.utils.import_utils import is_xformers_available
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from packaging import version
 from torchvision import transforms
@@ -365,7 +370,11 @@ def main():
         project_config=accelerator_project_config,
     )
 
-    # Make one log on every process with the configuration for debugging.
+    if args.report_to == "wandb":
+        if not is_wandb_available():
+            raise ImportError("Make sure to install wandb if you want to use it for logging during training.  You can do so by doing `pip install wandb`")
+        import wandb    # Make one log on every process with the configuration for debugging.
+
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
@@ -786,6 +795,19 @@ def main():
 
                             for i, image in enumerate(images):
                                 image.save(os.path.join(args.output_dir, f"sample-{global_step}-{i}.jpg"))
+                            for tracker in accelerator.trackers:
+                                if tracker.name == "tensorboard":
+                                    np_images = np.stack([np.asarray(img) for img in images])
+                                    tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+                                if tracker.name == "wandb":
+                                    tracker.log(
+                                        {
+                                            "validation": [
+                                                wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                                for i, image in enumerate(images)
+                                            ]
+                                        }
+                                    )                            
                             del pipeline
                             torch.cuda.empty_cache()
 
