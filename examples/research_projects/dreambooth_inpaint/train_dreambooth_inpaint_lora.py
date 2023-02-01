@@ -510,7 +510,6 @@ def main():
     text_encoder.requires_grad_(False)
     unet.requires_grad_(False)
 
-
     weight_dtype = torch.float32
     if args.mixed_precision == "fp16":
         weight_dtype = torch.float16
@@ -529,7 +528,7 @@ def main():
             unet.enable_xformers_memory_efficient_attention()
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
-    
+
     # now we will add new LoRA weights to the attention layers
     # It's important to realize here how many attention weights will be added and of which sizes
     # The sizes of the attention layers consist only of two different variables:
@@ -565,7 +564,6 @@ def main():
 
     accelerator.register_for_checkpointing(lora_layers)
 
-
     if args.scale_lr:
         args.learning_rate = (
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
@@ -583,7 +581,6 @@ def main():
         optimizer_class = bnb.optim.AdamW8bit
     else:
         optimizer_class = torch.optim.AdamW
-
 
     optimizer = optimizer_class(
         lora_layers.parameters(),
@@ -665,14 +662,11 @@ def main():
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
 
-
     # Prepare everything with our `accelerator`.
     lora_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         lora_layers, optimizer, train_dataloader, lr_scheduler
     )
     # accelerator.register_for_checkpointing(lr_scheduler)
-
-    
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
