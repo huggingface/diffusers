@@ -583,7 +583,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             if self.skip_freq == "block":
                 res_samples = down_block_res_samples[-1] if i > 0 else None
                 down_block_res_samples = down_block_res_samples[:-1]
-            elif self.skip_Freq == "layer":
+            elif self.skip_freq == "layer":
                 res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
                 down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
             else:
