@@ -19,6 +19,7 @@ from accelerate.logging import get_logger
 from accelerate.utils import set_seed
 from diffusers import AutoencoderKL, DDIMScheduler, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
+from diffusers.utils.import_utils import is_xformers_available
 from huggingface_hub import HfFolder, Repository, whoami
 from PIL import Image
 from torchvision import transforms
@@ -111,7 +112,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--save_infer_steps",
         type=int,
-        default=50,
+        default=20,
         help="The number of inference steps for save sample.",
     )
     parser.add_argument(
@@ -474,6 +475,9 @@ def main(args):
                         safety_checker=None,
                         revision=args.revision
                     )
+                    pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
+                    if is_xformers_available():
+                        pipeline.enable_xformers_memory_efficient_attention()
                     pipeline.set_progress_bar_config(disable=True)
                     pipeline.to(accelerator.device)
 
@@ -489,7 +493,10 @@ def main(args):
                     for example in tqdm(
                         sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
                     ):
-                        images = pipeline(example["prompt"]).images
+                        images = pipeline(
+                            example["prompt"],
+                            num_inference_steps=args.save_infer_steps
+                            ).images
 
                         for i, image in enumerate(images):
                             hash_image = hashlib.sha1(image.tobytes()).hexdigest()
@@ -534,6 +541,12 @@ def main(args):
     vae.requires_grad_(False)
     if not args.train_text_encoder:
         text_encoder.requires_grad_(False)
+
+    if is_xformers_available():
+        vae.enable_xformers_memory_efficient_attention()
+        unet.enable_xformers_memory_efficient_attention()
+    else:
+        logger.warning("xformers is not available. Make sure it is installed correctly")
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
@@ -700,7 +713,6 @@ def main(args):
                 text_enc_model = accelerator.unwrap_model(text_encoder, keep_fp32_wrapper=True)
             else:
                 text_enc_model = CLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision)
-            scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", clip_sample=False, set_alpha_to_one=False)
             pipeline = StableDiffusionPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 unet=accelerator.unwrap_model(unet, keep_fp32_wrapper=True),
@@ -711,10 +723,12 @@ def main(args):
                     revision=None if args.pretrained_vae_name_or_path else args.revision,
                 ),
                 safety_checker=None,
-                scheduler=scheduler,
                 torch_dtype=torch.float16,
                 revision=args.revision,
             )
+            pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
+            if is_xformers_available():
+                pipeline.enable_xformers_memory_efficient_attention()
             save_dir = os.path.join(args.output_dir, f"{step}")
             pipeline.save_pretrained(save_dir)
             with open(os.path.join(save_dir, "args.json"), "w") as f:
