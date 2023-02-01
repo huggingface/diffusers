@@ -52,8 +52,10 @@ num_images_per_prompt = 1
 sag_scale = 1.0
 
 set_seed(seed)
-images = pipe(prompt, num_images_per_prompt=num_images_per_prompt, guidance_scale=guidance_scale, sag_scale=sag_scale).images
-images[0].save('example.png')
+images = pipe(
+    prompt, num_images_per_prompt=num_images_per_prompt, guidance_scale=guidance_scale, sag_scale=sag_scale
+).images
+images[0].save("example.png")
 ```
 
 ## StableDiffusionSAGPipeline
