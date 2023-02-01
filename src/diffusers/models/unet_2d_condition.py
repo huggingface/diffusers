@@ -133,7 +133,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         time_cond_proj_dim: Optional[int] = None,
         conv_in_kernel: int = 3,
         conv_out_kernel: int = 3,
-        norm_out: bool = True,
         attn1_types: Tuple[bool, None] = (None, "self", "self", "self"),
         attn2_types: Tuple[bool, None] = (None, "cross", "cross", "cross"),
         downsample: Optional[Tuple[bool]] = None,
@@ -256,7 +255,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 resnet_groups=norm_num_groups,
                 resnet_time_scale_shift=resnet_time_scale_shift,
             )
-        elif mid_block_type == None:
+        elif mid_block_type is None:
             self.mid_block = None
         else:
             raise ValueError(f"unknown mid_block_type : {mid_block_type}")
@@ -313,7 +312,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             prev_output_channel = output_channel
 
         # out
-        if norm_out:
+        if norm_num_groups is not None:
             self.conv_norm_out = nn.GroupNorm(
                 num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=norm_eps
             )
