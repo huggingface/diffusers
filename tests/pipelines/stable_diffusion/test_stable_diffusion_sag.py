@@ -43,7 +43,9 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
 
         prompt = "."
         generator = torch.manual_seed(0)
-        output = sag_pipe([prompt], generator=generator, guidance_scale=7.5, sag_scale=1.0, num_inference_steps=20, output_type="np")
+        output = sag_pipe(
+            [prompt], generator=generator, guidance_scale=7.5, sag_scale=1.0, num_inference_steps=20, output_type="np"
+        )
 
         image = output.images
 
@@ -61,7 +63,9 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
 
         prompt = "."
         generator = torch.manual_seed(0)
-        output = sag_pipe([prompt], generator=generator, guidance_scale=7.5, sag_scale=1.0, num_inference_steps=20, output_type="np")
+        output = sag_pipe(
+            [prompt], generator=generator, guidance_scale=7.5, sag_scale=1.0, num_inference_steps=20, output_type="np"
+        )
 
         image = output.images
 
