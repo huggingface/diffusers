@@ -276,7 +276,7 @@ class BasicTransformerBlock(nn.Module):
             self.norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
 
 
-        if cross_attention_dim is not None:
+        if attn2_type == 'cross':
             # We currently only use AdaLayerNormZero for self attention where there will only be one attention block.
             # I.e. the number of returned modulation chunks from AdaLayerZero would not make sense if returned during
             # the second cross attention block.
