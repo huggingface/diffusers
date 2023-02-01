@@ -44,7 +44,7 @@ overview of the different ways Stable Diffusion models can be fine-tuned [using 
 * [DreamBooth](https://keras.io/examples/generative/dreambooth/)
 * [Prompt-to-Prompt editing](https://github.com/miguelCalado/prompt-to-prompt-tensorflow)
 
-A Stable Diffusion model has three primary components:
+Stable Diffusion is comprised of the following models:
 
 * Text encoder 
 * UNet 
@@ -155,7 +155,7 @@ fine-tuning.
 
 You can read more details about this process in [this section](https://huggingface.co/docs/diffusers/using-diffusers/schedulers).
 
-```
+```py
 from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
 
 pipeline = DiffusionPipeline.from_pretrained("sayakpaul/textual-inversion-cat-kerascv_sd_diffusers_pipeline")
