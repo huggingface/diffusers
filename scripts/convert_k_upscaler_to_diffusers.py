@@ -253,7 +253,6 @@ def unet_model_from_original_config(original_config):
         downsample=(False, True,True,True),
         upsample=(True,True,True,False),
         skip_freq="block",
-        upcast_attention=True,
         )
 
     return unet
