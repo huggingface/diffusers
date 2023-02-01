@@ -53,7 +53,7 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
         if is_accelerate_available():
             import accelerate
 
-            transformers_version = accelerate.__version__
+            accelerate_version = accelerate.__version__
 
         xformers_version = "not installed"
         if is_xformers_available():

@@ -14,13 +14,16 @@ specific language governing permissions and limitations under the License.
 
 We recommend the use of [xFormers](https://github.com/facebookresearch/xformers) for both inference and training. In our tests, the optimizations performed in the attention blocks allow for both faster speed and reduced memory consumption.
 
-Installing xFormers has historically been a bit involved, as binary distributions were not always up to date. Fortunately, the project has [very recently](https://github.com/facebookresearch/xformers/pull/591) integrated a process to build pip wheels as part of the project's continuous integration, so this should improve a lot starting from xFormers version 0.0.16.
-
-Until xFormers 0.0.16 is deployed, you can install pip wheels using [`TestPyPI`](https://test.pypi.org/project/formers/). These are the steps that worked for us in a Linux computer to install xFormers version 0.0.15:
+Starting from version `0.0.16` of xFormers, released on January 2023, installation can be easily performed using pre-built pip wheels:
 
 ```bash
-pip install pyre-extensions==0.0.23
-pip install -i https://test.pypi.org/simple/ formers==0.0.15.dev376
+pip install xformers
 ```
 
-We'll update these instructions when the wheels are published to the official PyPI repository.
+<Tip>
+
+The xFormers PIP package requires the latest version of PyTorch (1.13.1 as of xFormers 0.0.16). If you need to use a previous version of PyTorch, then we recommend you install xFormers from source using [the project instructions](https://github.com/facebookresearch/xformers#installing-xformers).
+
+</Tip>
+
+After xFormers is installed, you can use `enable_xformers_memory_efficient_attention()` for faster inference and reduced memory consumption, as discussed [here](fp16#memory-efficient-attention).

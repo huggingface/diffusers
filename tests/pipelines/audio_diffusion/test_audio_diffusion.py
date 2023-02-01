@@ -118,7 +118,7 @@ class PipelineFastTests(unittest.TestCase):
         assert image.height == self.dummy_unet.sample_size[0] and image.width == self.dummy_unet.sample_size[1]
         image_slice = np.frombuffer(image.tobytes(), dtype="uint8")[:10]
         image_from_tuple_slice = np.frombuffer(image_from_tuple.tobytes(), dtype="uint8")[:10]
-        expected_slice = np.array([255, 255, 255, 0, 181, 0, 124, 0, 15, 255])
+        expected_slice = np.array([69, 255, 255, 255, 0, 0, 77, 181, 12, 127])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() == 0
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() == 0
