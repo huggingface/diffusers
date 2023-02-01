@@ -22,7 +22,7 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...schedulers import DDIMScheduler
+from ...schedulers import DDIMScheduler, PNDMScheduler
 from ...utils import deprecate, is_accelerate_available, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from . import MultiDiffusionText2PanoramaPipelineOutput
@@ -35,10 +35,12 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import MultiDiffusionText2PanoramaPipeline
+        >>> from diffusers import MultiDiffusionText2PanoramaPipeline, DDIMScheduler
 
+        >>> model_ckpt = "stabilityai/stable-diffusion-2-base"
+        >>> scheduler = DDIMScheduler.from_pretrained(model_ckpt, subfolder="scheduler")
         >>> pipe = MultiDiffusionText2PanoramaPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-2-base", torch_dtype=torch.float16
+        ...     model_ckpt, scheduler=scheduler, torch_dtype=torch.float16
         ... )
 
         >>> pipe = pipe.to("cuda")
@@ -69,8 +71,8 @@ class MultiDiffusionText2PanoramaPipeline(DiffusionPipeline):
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Original
-            work uses the [`DDIMScheduler`].
+            A scheduler to be used in combination with `unet` to denoise the encoded image latents. The original work
+            on Multi Diffsion used the [`DDIMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
@@ -91,6 +93,9 @@ class MultiDiffusionText2PanoramaPipeline(DiffusionPipeline):
         requires_safety_checker: bool = True,
     ):
         super().__init__()
+
+        if isinstance(scheduler, PNDMScheduler):
+            logger.error("PNDMScheduler for this pipeline is currently not supported.")
 
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
             deprecation_message = (
