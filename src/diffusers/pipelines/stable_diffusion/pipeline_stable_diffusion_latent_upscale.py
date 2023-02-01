@@ -306,13 +306,13 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         return latents
 
     def c_skip(self, sigma):
-        return (self.config.sigma_data**2) / (sigma**2 + self.config.sigma_data**2)
+        return 1 / (sigma**2 + 1)
 
     def c_out(self, sigma):
-        return sigma * self.config.sigma_data * (self.config.sigma_data**2 + sigma**2) ** -0.5
+        return sigma * (1 + sigma**2) ** -0.5
 
     def c_in(self, sigma):
-        return 1 * (sigma**2 + self.config.sigma_data**2) ** -0.5
+        return 1 * (sigma**2 + 1) ** -0.5
 
     def c_noise(self, sigma):
         return torch.log(sigma) * 0.25
@@ -437,14 +437,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         image = image.to(dtype=text_embeddings.dtype, device=device)
 
         # 5. set timesteps
-        # YiYi's notes:
-        # hack: overwrite the sigmas in scheduler (can we maybe initialize the schedulers with sigmas instead of betas?)
-        sigma_min, sigma_max = 0.029167532920837402, 14.614642143249512
-        sigmas = torch.linspace(np.log(sigma_max), np.log(sigma_min), num_inference_steps + 1).exp().to(device)
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
-        self.scheduler.sigmas = sigmas
-
-        self.scheduler.init_noise_sigma = self.scheduler.sigmas.max()
+        self.scheduler.set_timesteps(num_inference_steps, device=device, dtype=text_embeddings.dtype, interpolation_type="log_linear")
         timesteps = self.scheduler.timesteps
 
         # 5. Add noise to image
@@ -506,13 +499,13 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         num_warmup_steps = 0
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
-            for i, (t, sigma) in enumerate(zip(timesteps, sigmas)):
+            for i, t in enumerate(timesteps):
+                sigma = self.scheduler.sigmas[i]
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                # hey = self.scheduler.scale_model_input(latent_model_input, t)
-
-                sample = torch.cat([self.c_in(sigma.to(image_cond.dtype)) * latent_model_input, image_cond], dim=1)
+                sample = torch.cat([latent_model_input, image_cond], dim=1)
                 noise_pred = self.unet(
                     sample,
                     self.c_noise(sigma),
