@@ -135,6 +135,12 @@ def parse_args():
         "--validation_prompt", type=str, default=None, help="A prompt that is sampled during training for inference."
     )
     parser.add_argument(
+        "--validation_prompt_path",
+        type=str,
+        default=None,
+        help="File pass for multi-prompt validation",
+    )
+    parser.add_argument(
         "--num_validation_images",
         type=int,
         default=4,
@@ -748,8 +754,59 @@ def main():
 
             if global_step >= args.max_train_steps:
                 break
+        # Multi-prompt validation
+        if args.validation_prompt_path is not None and epoch % args.validation_epchs == 0:
+            logger.info(
+                f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+                f"load from {args.validation_prompt_path}."
+            )
+            # create pipeline
+            pipeline = DiffusionPipeline.from_pretrained(
+                args.pretrained_model_name_or_path,
+                unet=accelerator.unwrap_model(unet),
+                revision=args.revision,
+                torch_dtype=weight_dtype,
+            )
+            pipeline = pipeline.to(accelerator.device)
+            pipeline.set_progress_bar_config(disable=True)
 
-        if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
+            # run validation
+            generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+            images = {}
+            with open(args.validation_prompt_path, "r") as prompt_file:
+                for prompt in prompt_file.readlines():
+                    prompt = prompt.rstrip()
+                    images[prompt] = []
+                    logger.info(f"prompt:{prompt}")
+                    for _ in range(args.num_validation_images):
+                        images[prompt].append(
+                            pipeline(
+                                prompt.rstrip(),
+                                num_inference_steps=30,
+                                generator=generator,
+                            ).images[0]
+                        )
+
+            if accelerator.is_main_process:
+                for tracker in accelerator.trackers:
+                    if tracker.name == "wandb":
+                        tracker.log(
+                            {
+                                f"validation:{prompt}": [
+                                    wandb.Image(
+                                        image,
+                                        caption=f"{i}",
+                                    )
+                                    for i, image in enumerate(img_list)
+                                ]
+                                for prompt, img_list in images.items()
+                            }
+                        )
+
+            del pipeline
+            torch.cuda.empty_cache()
+
+        elif args.validation_prompt is not None and epoch % args.validation_epochs == 0:
             logger.info(
                 f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
                 f" {args.validation_prompt}."
