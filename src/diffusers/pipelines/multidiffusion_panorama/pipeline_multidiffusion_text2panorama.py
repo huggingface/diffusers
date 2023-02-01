@@ -640,7 +640,7 @@ class MultiDiffusionText2PanoramaPipeline(DiffusionPipeline):
                 value.zero_()
 
                 # generate views
-                # credits to Omer Bar Tal for this view generation utility.
+                # credits to Omer Bar Tal for this utility.
                 for h_start, h_end, w_start, w_end in views:
                     # get the latents corresponding to the current view coordinates
                     latents_for_view = latents[:, :, h_start:h_end, w_start:w_end]
