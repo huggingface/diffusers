@@ -7,9 +7,9 @@ from typing import Callable, Dict, List, Optional, Union
 
 import torch
 
+from diffusers import DiffusionPipeline
 from diffusers.configuration_utils import FrozenDict
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
-from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
@@ -68,7 +68,7 @@ class WildcardStableDiffusionPipeline(DiffusionPipeline):
     Example Usage:
         pipe = WildcardStableDiffusionPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4",
-            revision="fp16",
+
             torch_dtype=torch.float16,
         )
         prompt = "__animal__ sitting on a __object__ wearing a __clothing__"

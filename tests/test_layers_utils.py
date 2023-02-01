@@ -20,9 +20,10 @@ import numpy as np
 import torch
 from torch import nn
 
-from diffusers.models.attention import GEGLU, AdaLayerNorm, ApproximateGELU, AttentionBlock, Transformer2DModel
+from diffusers.models.attention import GEGLU, AdaLayerNorm, ApproximateGELU, AttentionBlock
 from diffusers.models.embeddings import get_timestep_embedding
-from diffusers.models.resnet import Downsample2D, Upsample2D
+from diffusers.models.resnet import Downsample2D, ResnetBlock2D, Upsample2D
+from diffusers.models.transformer_2d import Transformer2DModel
 from diffusers.utils import torch_device
 
 
@@ -221,6 +222,98 @@ class Downsample2DBlockTests(unittest.TestCase):
         assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
 
 
+class ResnetBlock2DTests(unittest.TestCase):
+    def test_resnet_default(self):
+        torch.manual_seed(0)
+        sample = torch.randn(1, 32, 64, 64).to(torch_device)
+        temb = torch.randn(1, 128).to(torch_device)
+        resnet_block = ResnetBlock2D(in_channels=32, temb_channels=128).to(torch_device)
+        with torch.no_grad():
+            output_tensor = resnet_block(sample, temb)
+
+        assert output_tensor.shape == (1, 32, 64, 64)
+        output_slice = output_tensor[0, -1, -3:, -3:]
+        expected_slice = torch.tensor(
+            [-1.9010, -0.2974, -0.8245, -1.3533, 0.8742, -0.9645, -2.0584, 1.3387, -0.4746], device=torch_device
+        )
+        assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
+
+    def test_restnet_with_use_in_shortcut(self):
+        torch.manual_seed(0)
+        sample = torch.randn(1, 32, 64, 64).to(torch_device)
+        temb = torch.randn(1, 128).to(torch_device)
+        resnet_block = ResnetBlock2D(in_channels=32, temb_channels=128, use_in_shortcut=True).to(torch_device)
+        with torch.no_grad():
+            output_tensor = resnet_block(sample, temb)
+
+        assert output_tensor.shape == (1, 32, 64, 64)
+        output_slice = output_tensor[0, -1, -3:, -3:]
+        expected_slice = torch.tensor(
+            [0.2226, -1.0791, -0.1629, 0.3659, -0.2889, -1.2376, 0.0582, 0.9206, 0.0044], device=torch_device
+        )
+        assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
+
+    def test_resnet_up(self):
+        torch.manual_seed(0)
+        sample = torch.randn(1, 32, 64, 64).to(torch_device)
+        temb = torch.randn(1, 128).to(torch_device)
+        resnet_block = ResnetBlock2D(in_channels=32, temb_channels=128, up=True).to(torch_device)
+        with torch.no_grad():
+            output_tensor = resnet_block(sample, temb)
+
+        assert output_tensor.shape == (1, 32, 128, 128)
+        output_slice = output_tensor[0, -1, -3:, -3:]
+        expected_slice = torch.tensor(
+            [1.2130, -0.8753, -0.9027, 1.5783, -0.5362, -0.5001, 1.0726, -0.7732, -0.4182], device=torch_device
+        )
+        assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
+
+    def test_resnet_down(self):
+        torch.manual_seed(0)
+        sample = torch.randn(1, 32, 64, 64).to(torch_device)
+        temb = torch.randn(1, 128).to(torch_device)
+        resnet_block = ResnetBlock2D(in_channels=32, temb_channels=128, down=True).to(torch_device)
+        with torch.no_grad():
+            output_tensor = resnet_block(sample, temb)
+
+        assert output_tensor.shape == (1, 32, 32, 32)
+        output_slice = output_tensor[0, -1, -3:, -3:]
+        expected_slice = torch.tensor(
+            [-0.3002, -0.7135, 0.1359, 0.0561, -0.7935, 0.0113, -0.1766, -0.6714, -0.0436], device=torch_device
+        )
+        assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
+
+    def test_restnet_with_kernel_fir(self):
+        torch.manual_seed(0)
+        sample = torch.randn(1, 32, 64, 64).to(torch_device)
+        temb = torch.randn(1, 128).to(torch_device)
+        resnet_block = ResnetBlock2D(in_channels=32, temb_channels=128, kernel="fir", down=True).to(torch_device)
+        with torch.no_grad():
+            output_tensor = resnet_block(sample, temb)
+
+        assert output_tensor.shape == (1, 32, 32, 32)
+        output_slice = output_tensor[0, -1, -3:, -3:]
+        expected_slice = torch.tensor(
+            [-0.0934, -0.5729, 0.0909, -0.2710, -0.5044, 0.0243, -0.0665, -0.5267, -0.3136], device=torch_device
+        )
+        assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
+
+    def test_restnet_with_kernel_sde_vp(self):
+        torch.manual_seed(0)
+        sample = torch.randn(1, 32, 64, 64).to(torch_device)
+        temb = torch.randn(1, 128).to(torch_device)
+        resnet_block = ResnetBlock2D(in_channels=32, temb_channels=128, kernel="sde_vp", down=True).to(torch_device)
+        with torch.no_grad():
+            output_tensor = resnet_block(sample, temb)
+
+        assert output_tensor.shape == (1, 32, 32, 32)
+        output_slice = output_tensor[0, -1, -3:, -3:]
+        expected_slice = torch.tensor(
+            [-0.3002, -0.7135, 0.1359, 0.0561, -0.7935, 0.0113, -0.1766, -0.6714, -0.0436], device=torch_device
+        )
+        assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
+
+
 class AttentionBlockTests(unittest.TestCase):
     @unittest.skipIf(
         torch_device == "mps", "Matmul crashes on MPS, see https://github.com/pytorch/pytorch/issues/84039"
@@ -295,7 +388,7 @@ class Transformer2DModelTests(unittest.TestCase):
         output_slice = attention_scores[0, -1, -3:, -3:]
 
         expected_slice = torch.tensor(
-            [-1.2447, -0.0137, -0.9559, -1.5223, 0.6991, -1.0126, -2.0974, 0.8921, -1.0201], device=torch_device
+            [-1.9455, -0.0066, -1.3933, -1.5878, 0.5325, -0.6486, -1.8648, 0.7515, -0.9689], device=torch_device
         )
         assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
 
@@ -386,7 +479,7 @@ class Transformer2DModelTests(unittest.TestCase):
         output_slice = attention_scores[0, -1, -3:, -3:]
 
         expected_slice = torch.tensor(
-            [-1.2448, -0.0190, -0.9471, -1.5140, 0.7069, -1.0144, -2.1077, 0.9099, -1.0091], device=torch_device
+            [-1.9380, -0.0083, -1.3771, -1.5819, 0.5209, -0.6441, -1.8545, 0.7563, -0.9615], device=torch_device
         )
         assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
 
@@ -417,14 +510,13 @@ class Transformer2DModelTests(unittest.TestCase):
 
         output_slice = attention_scores[0, -2:, -3:]
 
-        expected_slice = torch.tensor([-0.8957, -1.8370, -1.3390, -0.9152, -0.5187, -1.1702], device=torch_device)
+        expected_slice = torch.tensor([-1.7648, -1.0241, -2.0985, -1.8035, -1.6404, -1.2098], device=torch_device)
         assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
 
     def test_spatial_transformer_default_norm_layers(self):
         spatial_transformer_block = Transformer2DModel(num_attention_heads=1, attention_head_dim=32, in_channels=32)
 
         assert spatial_transformer_block.transformer_blocks[0].norm1.__class__ == nn.LayerNorm
-        assert spatial_transformer_block.transformer_blocks[0].norm2.__class__ == nn.LayerNorm
         assert spatial_transformer_block.transformer_blocks[0].norm3.__class__ == nn.LayerNorm
 
     def test_spatial_transformer_ada_norm_layers(self):
@@ -436,7 +528,6 @@ class Transformer2DModelTests(unittest.TestCase):
         )
 
         assert spatial_transformer_block.transformer_blocks[0].norm1.__class__ == AdaLayerNorm
-        assert spatial_transformer_block.transformer_blocks[0].norm2.__class__ == AdaLayerNorm
         assert spatial_transformer_block.transformer_blocks[0].norm3.__class__ == nn.LayerNorm
 
     def test_spatial_transformer_default_ff_layers(self):

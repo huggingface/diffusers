@@ -6,9 +6,20 @@ Creating a training image set is [described in a different document](https://hug
 
 Before running the scripts, make sure to install the library's training dependencies:
 
+**Important**
+
+To make sure you can successfully run the latest versions of the example scripts, we highly recommend **installing from source** and keeping the install up to date as we update the example scripts frequently and install some example-specific requirements. To do this, execute the following steps in a new virtual environment:
 ```bash
-pip install diffusers[training] accelerate datasets tensorboard
+git clone https://github.com/huggingface/diffusers
+cd diffusers
+pip install .
 ```
+
+Then cd in the example folder  and run
+```bash
+pip install -r requirements.txt
+```
+
 
 And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
 
@@ -28,6 +39,7 @@ accelerate launch train_unconditional.py \
   --train_batch_size=16 \
   --num_epochs=100 \
   --gradient_accumulation_steps=1 \
+  --use_ema \
   --learning_rate=1e-4 \
   --lr_warmup_steps=500 \
   --mixed_precision=no \
@@ -52,6 +64,7 @@ accelerate launch train_unconditional.py \
   --train_batch_size=16 \
   --num_epochs=100 \
   --gradient_accumulation_steps=1 \
+  --use_ema \
   --learning_rate=1e-4 \
   --lr_warmup_steps=500 \
   --mixed_precision=no \
@@ -139,6 +152,7 @@ accelerate launch train_unconditional_ort.py \
   --dataset_name="huggan/flowers-102-categories" \
   --resolution=64 \
   --output_dir="ddpm-ema-flowers-64" \
+  --use_ema \
   --train_batch_size=16 \
   --num_epochs=1 \
   --gradient_accumulation_steps=1 \

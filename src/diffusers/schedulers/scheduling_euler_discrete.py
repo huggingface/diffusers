@@ -13,14 +13,14 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, BaseOutput, logging
-from .scheduling_utils import SchedulerMixin
+from ..utils import BaseOutput, logging, randn_tensor
+from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -65,10 +65,15 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             `linear` or `scaled_linear`.
         trained_betas (`np.ndarray`, optional):
             option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
+        prediction_type (`str`, default `epsilon`, optional):
+            prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
+            process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
+            https://imagen.research.google/video/paper.pdf)
 
     """
 
-    _compatibles = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
+    _compatibles = [e.name for e in KarrasDiffusionSchedulers]
+    order = 1
 
     @register_to_config
     def __init__(
@@ -77,11 +82,11 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[np.ndarray] = None,
+        trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
         prediction_type: str = "epsilon",
     ):
         if trained_betas is not None:
-            self.betas = torch.from_numpy(trained_betas)
+            self.betas = torch.tensor(trained_betas, dtype=torch.float32)
         elif beta_schedule == "linear":
             self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
@@ -193,9 +198,11 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             or isinstance(timestep, torch.LongTensor)
         ):
             raise ValueError(
-                "Passing integer indices (e.g. from `enumerate(timesteps)`) as timesteps to"
-                " `EulerDiscreteScheduler.step()` is not supported. Make sure to pass"
-                " one of the `scheduler.timesteps` as a timestep.",
+                (
+                    "Passing integer indices (e.g. from `enumerate(timesteps)`) as timesteps to"
+                    " `EulerDiscreteScheduler.step()` is not supported. Make sure to pass"
+                    " one of the `scheduler.timesteps` as a timestep."
+                ),
             )
 
         if not self.is_scale_input_called:
@@ -212,16 +219,9 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         gamma = min(s_churn / (len(self.sigmas) - 1), 2**0.5 - 1) if s_tmin <= sigma <= s_tmax else 0.0
 
-        device = model_output.device
-        if device.type == "mps":
-            # randn does not work reproducibly on mps
-            noise = torch.randn(model_output.shape, dtype=model_output.dtype, device="cpu", generator=generator).to(
-                device
-            )
-        else:
-            noise = torch.randn(model_output.shape, dtype=model_output.dtype, device=device, generator=generator).to(
-                device
-            )
+        noise = randn_tensor(
+            model_output.shape, dtype=model_output.dtype, device=model_output.device, generator=generator
+        )
 
         eps = noise * s_noise
         sigma_hat = sigma * (gamma + 1)

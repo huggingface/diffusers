@@ -1,0 +1,19 @@
+# What is safetensors ? 
+
+[safetensors](https://github.com/huggingface/safetensors) is a different format
+from the classic `.bin` which uses Pytorch which uses pickle.
+
+Pickle is notoriously unsafe which allow any malicious file to execute arbitrary code.
+The hub itself tries to prevent issues from it, but it's not a silver bullet.
+
+`safetensors` first and foremost goal is to make loading machine learning models *safe*
+in the sense that no takeover of your computer can be done.
+
+# Why use safetensors ?
+
+**Safety** can be one reason, if you're attempting to use a not well known model and
+you're not sure about the source of the file.
+
+And a secondary reason, is **the speed of loading**. Safetensors can load models much faster
+than regular pickle files. If you spend a lot of times switching models, this can be
+a huge timesave.

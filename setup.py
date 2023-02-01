@@ -80,7 +80,7 @@ from setuptools import find_packages, setup
 _deps = [
     "Pillow",  # keep the PIL.Image.Resampling deprecation away
     "accelerate>=0.11.0",
-    "black==22.8",
+    "black==22.12",
     "datasets",
     "filelock",
     "flake8>=3.8.3",
@@ -91,12 +91,15 @@ _deps = [
     "isort>=5.5.4",
     "jax>=0.2.8,!=0.3.2",
     "jaxlib>=0.1.65",
-    "modelcards>=0.1.4",
+    "Jinja2",
+    "k-diffusion>=0.0.12",
+    "librosa",
     "numpy",
     "parameterized",
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
+    "safetensors",
     "sentencepiece>=0.1.91,!=0.1.92",
     "scipy",
     "regex!=2019.12.17",
@@ -104,7 +107,7 @@ _deps = [
     "tensorboard",
     "torch>=1.4",
     "torchvision",
-    "transformers>=4.21.0",
+    "transformers>=4.25.1",
 ]
 
 # this is a lookup table with items like:
@@ -177,17 +180,21 @@ extras = {}
 extras = {}
 extras["quality"] = deps_list("black", "isort", "flake8", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
-extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "modelcards")
+extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "Jinja2")
 extras["test"] = deps_list(
     "datasets",
+    "Jinja2",
+    "k-diffusion",
+    "librosa",
     "parameterized",
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
+    "safetensors",
     "sentencepiece",
     "scipy",
     "torchvision",
-    "transformers"
+    "transformers",
 )
 extras["torch"] = deps_list("torch", "accelerate")
 
@@ -212,7 +219,7 @@ install_requires = [
 
 setup(
     name="diffusers",
-    version="0.9.0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.13.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="Diffusers",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

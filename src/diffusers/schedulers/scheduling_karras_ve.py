@@ -20,7 +20,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
+from ..utils import BaseOutput, randn_tensor
 from .scheduling_utils import SchedulerMixin
 
 
@@ -76,6 +76,8 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
             A reasonable range is [0.2, 80].
 
     """
+
+    order = 2
 
     @register_to_config
     def __init__(
@@ -145,7 +147,7 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
             gamma = 0
 
         # sample eps ~ N(0, S_noise^2 * I)
-        eps = self.config.s_noise * torch.randn(sample.shape, generator=generator).to(sample.device)
+        eps = self.config.s_noise * randn_tensor(sample.shape, generator=generator).to(sample.device)
         sigma_hat = sigma + gamma * sigma
         sample_hat = sample + ((sigma_hat**2 - sigma**2) ** 0.5 * eps)
 

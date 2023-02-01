@@ -1,9 +1,8 @@
-diffusers>==0.5.1
-transformers>=4.21.0
+transformers>=4.25.1
 flax
 optax
 torch
 torchvision
 ftfy
 tensorboard
-modelcards
+Jinja2

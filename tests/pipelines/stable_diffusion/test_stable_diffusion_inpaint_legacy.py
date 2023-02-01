@@ -22,26 +22,25 @@ import torch
 
 from diffusers import (
     AutoencoderKL,
+    DDIMScheduler,
+    DPMSolverMultistepScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
-    StableDiffusionInpaintPipeline,
     StableDiffusionInpaintPipelineLegacy,
     UNet2DConditionModel,
     UNet2DModel,
     VQModel,
 )
-from diffusers.utils import floats_tensor, load_image, slow, torch_device
+from diffusers.utils import floats_tensor, load_image, nightly, slow, torch_device
 from diffusers.utils.testing_utils import load_numpy, require_torch_gpu
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
-
-from ...test_pipelines_common import PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class StableDiffusionInpaintLegacyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionInpaintLegacyPipelineFastTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -191,7 +190,7 @@ class StableDiffusionInpaintLegacyPipelineFastTests(PipelineTesterMixin, unittes
             guidance_scale=6.0,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             mask_image=mask_image,
         )
 
@@ -204,7 +203,7 @@ class StableDiffusionInpaintLegacyPipelineFastTests(PipelineTesterMixin, unittes
             guidance_scale=6.0,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             mask_image=mask_image,
             return_dict=False,
         )[0]
@@ -213,7 +212,8 @@ class StableDiffusionInpaintLegacyPipelineFastTests(PipelineTesterMixin, unittes
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.4731, 0.5346, 0.4531, 0.6251, 0.5446, 0.4057, 0.5527, 0.5896, 0.5153])
+        expected_slice = np.array([0.4941, 0.5396, 0.4689, 0.6338, 0.5392, 0.4094, 0.5477, 0.5904, 0.5165])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -252,7 +252,7 @@ class StableDiffusionInpaintLegacyPipelineFastTests(PipelineTesterMixin, unittes
             guidance_scale=6.0,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             mask_image=mask_image,
         )
 
@@ -260,7 +260,8 @@ class StableDiffusionInpaintLegacyPipelineFastTests(PipelineTesterMixin, unittes
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.4765, 0.5339, 0.4541, 0.6240, 0.5439, 0.4055, 0.5503, 0.5891, 0.5150])
+        expected_slice = np.array([0.4941, 0.5396, 0.4689, 0.6338, 0.5392, 0.4094, 0.5477, 0.5904, 0.5165])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_inpaint_legacy_num_images_per_prompt(self):
@@ -295,7 +296,7 @@ class StableDiffusionInpaintLegacyPipelineFastTests(PipelineTesterMixin, unittes
             prompt,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             mask_image=mask_image,
         ).images
 
@@ -307,7 +308,7 @@ class StableDiffusionInpaintLegacyPipelineFastTests(PipelineTesterMixin, unittes
             [prompt] * batch_size,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             mask_image=mask_image,
         ).images
 
@@ -319,7 +320,7 @@ class StableDiffusionInpaintLegacyPipelineFastTests(PipelineTesterMixin, unittes
             prompt,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             mask_image=mask_image,
             num_images_per_prompt=num_images_per_prompt,
         ).images
@@ -332,7 +333,7 @@ class StableDiffusionInpaintLegacyPipelineFastTests(PipelineTesterMixin, unittes
             [prompt] * batch_size,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             mask_image=mask_image,
             num_images_per_prompt=num_images_per_prompt,
         ).images
@@ -342,146 +343,196 @@ class StableDiffusionInpaintLegacyPipelineFastTests(PipelineTesterMixin, unittes
 
 @slow
 @require_torch_gpu
-class StableDiffusionInpaintLegacyPipelineIntegrationTests(unittest.TestCase):
+class StableDiffusionInpaintLegacyPipelineSlowTests(unittest.TestCase):
     def tearDown(self):
-        # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_stable_diffusion_inpaint_legacy_pipeline(self):
+    def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
+        generator = torch.Generator(device=generator_device).manual_seed(seed)
         init_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/in_paint/overture-creations-5sI6fQgYIuo.png"
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_inpaint/input_bench_image.png"
         )
         mask_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_inpaint/input_bench_mask.png"
         )
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/in_paint"
-            "/red_cat_sitting_on_a_park_bench.npy"
-        )
+        inputs = {
+            "prompt": "A red cat sitting on a park bench",
+            "image": init_image,
+            "mask_image": mask_image,
+            "generator": generator,
+            "num_inference_steps": 3,
+            "strength": 0.75,
+            "guidance_scale": 7.5,
+            "output_type": "numpy",
+        }
+        return inputs
 
-        model_id = "CompVis/stable-diffusion-v1-4"
-        pipe = StableDiffusionInpaintPipeline.from_pretrained(model_id, safety_checker=None)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        pipe.enable_attention_slicing()
-
-        prompt = "A red cat sitting on a park bench"
-
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        output = pipe(
-            prompt=prompt,
-            init_image=init_image,
-            mask_image=mask_image,
-            strength=0.75,
-            guidance_scale=7.5,
-            generator=generator,
-            output_type="np",
-        )
-        image = output.images[0]
-
-        assert image.shape == (512, 512, 3)
-        assert np.abs(expected_image - image).max() < 1e-3
-
-    def test_stable_diffusion_inpaint_legacy_pipeline_k_lms(self):
-        init_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/in_paint/overture-creations-5sI6fQgYIuo.png"
-        )
-        mask_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
-        )
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/in_paint"
-            "/red_cat_sitting_on_a_park_bench_k_lms.npy"
-        )
-
-        model_id = "CompVis/stable-diffusion-v1-4"
-        lms = LMSDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler")
-        pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            model_id,
-            scheduler=lms,
-            safety_checker=None,
+    def test_stable_diffusion_inpaint_legacy_pndm(self):
+        pipe = StableDiffusionInpaintPipelineLegacy.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", safety_checker=None
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        prompt = "A red cat sitting on a park bench"
+        inputs = self.get_inputs(torch_device)
+        image = pipe(**inputs).images
+        image_slice = image[0, 253:256, 253:256, -1].flatten()
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        output = pipe(
-            prompt=prompt,
-            init_image=init_image,
-            mask_image=mask_image,
-            strength=0.75,
-            guidance_scale=7.5,
-            generator=generator,
-            output_type="np",
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.5669, 0.6124, 0.6431, 0.4073, 0.4614, 0.5670, 0.1609, 0.3128, 0.4330])
+
+        assert np.abs(expected_slice - image_slice).max() < 1e-4
+
+    def test_stable_diffusion_inpaint_legacy_k_lms(self):
+        pipe = StableDiffusionInpaintPipelineLegacy.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", safety_checker=None
         )
-        image = output.images[0]
+        pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
 
-        assert image.shape == (512, 512, 3)
-        assert np.abs(expected_image - image).max() < 1e-3
+        inputs = self.get_inputs(torch_device)
+        image = pipe(**inputs).images
+        image_slice = image[0, 253:256, 253:256, -1].flatten()
+
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.4533, 0.4465, 0.4327, 0.4329, 0.4339, 0.4219, 0.4243, 0.4332, 0.4426])
+
+        assert np.abs(expected_slice - image_slice).max() < 1e-4
 
     def test_stable_diffusion_inpaint_legacy_intermediate_state(self):
         number_of_steps = 0
 
-        def test_callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
-            test_callback_fn.has_been_called = True
+        def callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
+            callback_fn.has_been_called = True
             nonlocal number_of_steps
             number_of_steps += 1
-            if step == 0:
+            if step == 1:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array(
-                    [-0.5472, 1.1218, -0.5505, -0.9390, -1.0794, 0.4063, 0.5158, 0.6429, -1.5246]
-                )
+                expected_slice = np.array([0.5977, 1.5449, 1.0586, -0.3250, 0.7383, -0.0862, 0.4631, -0.2571, -1.1289])
+
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
-            elif step == 37:
+            elif step == 2:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([0.4781, 1.1572, 0.6258, 0.2291, 0.2554, -0.1443, 0.7085, -0.1598, -0.5659])
+                expected_slice = np.array([0.5190, 1.1621, 0.6885, 0.2424, 0.3337, -0.1617, 0.6914, -0.1957, -0.5474])
+
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
 
-        test_callback_fn.has_been_called = False
+        callback_fn.has_been_called = False
 
-        init_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/in_paint/overture-creations-5sI6fQgYIuo.png"
+        pipe = StableDiffusionInpaintPipelineLegacy.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", safety_checker=None, torch_dtype=torch.float16
         )
-        mask_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
-        )
-
-        pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16
-        )
-        pipe.to(torch_device)
+        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        prompt = "A red cat sitting on a park bench"
+        inputs = self.get_inputs(torch_device, dtype=torch.float16)
+        pipe(**inputs, callback=callback_fn, callback_steps=1)
+        assert callback_fn.has_been_called
+        assert number_of_steps == 2
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        with torch.autocast(torch_device):
-            pipe(
-                prompt=prompt,
-                init_image=init_image,
-                mask_image=mask_image,
-                strength=0.75,
-                num_inference_steps=50,
-                guidance_scale=7.5,
-                generator=generator,
-                callback=test_callback_fn,
-                callback_steps=1,
-            )
-        assert test_callback_fn.has_been_called
-        assert number_of_steps == 38
+
+@nightly
+@require_torch_gpu
+class StableDiffusionInpaintLegacyPipelineNightlyTests(unittest.TestCase):
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
+        generator = torch.Generator(device=generator_device).manual_seed(seed)
+        init_image = load_image(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_inpaint/input_bench_image.png"
+        )
+        mask_image = load_image(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_inpaint/input_bench_mask.png"
+        )
+        inputs = {
+            "prompt": "A red cat sitting on a park bench",
+            "image": init_image,
+            "mask_image": mask_image,
+            "generator": generator,
+            "num_inference_steps": 50,
+            "strength": 0.75,
+            "guidance_scale": 7.5,
+            "output_type": "numpy",
+        }
+        return inputs
+
+    def test_inpaint_pndm(self):
+        sd_pipe = StableDiffusionInpaintPipelineLegacy.from_pretrained("runwayml/stable-diffusion-v1-5")
+        sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_inpaint_legacy/stable_diffusion_1_5_pndm.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
+
+    def test_inpaint_ddim(self):
+        sd_pipe = StableDiffusionInpaintPipelineLegacy.from_pretrained("runwayml/stable-diffusion-v1-5")
+        sd_pipe.scheduler = DDIMScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_inpaint_legacy/stable_diffusion_1_5_ddim.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
+
+    def test_inpaint_lms(self):
+        sd_pipe = StableDiffusionInpaintPipelineLegacy.from_pretrained("runwayml/stable-diffusion-v1-5")
+        sd_pipe.scheduler = LMSDiscreteScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_inpaint_legacy/stable_diffusion_1_5_lms.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
+
+    def test_inpaint_dpm(self):
+        sd_pipe = StableDiffusionInpaintPipelineLegacy.from_pretrained("runwayml/stable-diffusion-v1-5")
+        sd_pipe.scheduler = DPMSolverMultistepScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 30
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_inpaint_legacy/stable_diffusion_1_5_dpm_multi.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3

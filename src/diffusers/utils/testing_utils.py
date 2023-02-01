@@ -8,7 +8,7 @@ import urllib.parse
 from distutils.util import strtobool
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 import numpy as np
 
@@ -43,6 +43,21 @@ def torch_all_close(a, b, *args, **kwargs):
     if not torch.allclose(a, b, *args, **kwargs):
         assert False, f"Max diff is absolute {(a - b).abs().max()}. Diff tensor is {(a - b).abs()}."
     return True
+
+
+def print_tensor_test(tensor, filename="test_corrections.txt", expected_tensor_name="expected_slice"):
+    test_name = os.environ.get("PYTEST_CURRENT_TEST")
+    if not torch.is_tensor(tensor):
+        tensor = torch.from_numpy(tensor)
+
+    tensor_str = str(tensor.detach().cpu().flatten().to(torch.float32)).replace("\n", "")
+    # format is usually:
+    # expected_slice = np.array([-0.5713, -0.3018, -0.9814, 0.04663, -0.879, 0.76, -1.734, 0.1044, 1.161])
+    output_str = tensor_str.replace("tensor", f"{expected_tensor_name} = np.array")
+    test_file, test_class, test_fn = test_name.split("::")
+    test_fn = test_fn.split()[0]
+    with open(filename, "a") as f:
+        print(";".join([test_file, test_class, test_fn, output_str]), file=f)
 
 
 def get_tests_dir(append_path=None):
@@ -83,6 +98,7 @@ def parse_flag_from_env(key, default=False):
 
 
 _run_slow_tests = parse_flag_from_env("RUN_SLOW", default=False)
+_run_nightly_tests = parse_flag_from_env("RUN_NIGHTLY", default=False)
 
 
 def floats_tensor(shape, scale=1.0, rng=None, name=None):
@@ -109,6 +125,16 @@ def slow(test_case):
 
     """
     return unittest.skipUnless(_run_slow_tests, "test is slow")(test_case)
+
+
+def nightly(test_case):
+    """
+    Decorator marking a test that runs nightly in the diffusers CI.
+
+    Slow tests are skipped by default. Set the RUN_NIGHTLY environment variable to a truthy value to run them.
+
+    """
+    return unittest.skipUnless(_run_nightly_tests, "test is nightly")(test_case)
 
 
 def require_torch(test_case):
@@ -139,9 +165,13 @@ def require_onnxruntime(test_case):
     return unittest.skipUnless(is_onnx_available(), "test requires onnxruntime")(test_case)
 
 
-def load_numpy(arry: Union[str, np.ndarray]) -> np.ndarray:
+def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -> np.ndarray:
     if isinstance(arry, str):
-        if arry.startswith("http://") or arry.startswith("https://"):
+        # local_path = "/home/patrick_huggingface_co/"
+        if local_path is not None:
+            # local_path can be passed to correct images of tests
+            return os.path.join(local_path, "/".join([arry.split("/")[-5], arry.split("/")[-2], arry.split("/")[-1]]))
+        elif arry.startswith("http://") or arry.startswith("https://"):
             response = requests.get(arry)
             response.raise_for_status()
             arry = np.load(BytesIO(response.content))

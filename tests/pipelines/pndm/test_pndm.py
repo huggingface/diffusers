@@ -21,13 +21,11 @@ import torch
 from diffusers import PNDMPipeline, PNDMScheduler, UNet2DModel
 from diffusers.utils.testing_utils import require_torch, slow, torch_device
 
-from ...test_pipelines_common import PipelineTesterMixin
-
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class PNDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class PNDMPipelineFastTests(unittest.TestCase):
     @property
     def dummy_uncond_unet(self):
         torch.manual_seed(0)
@@ -61,6 +59,7 @@ class PNDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -84,4 +83,5 @@ class PNDMPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.1564, 0.14645, 0.1406, 0.14715, 0.12425, 0.14045, 0.13115, 0.12175, 0.125])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
