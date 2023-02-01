@@ -442,7 +442,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        sag_scale: float = 0.1,
+        sag_scale: float = 0.75,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
@@ -476,7 +476,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
-            sag_scale (`float`, *optional*, defaults to 0.1):
+            sag_scale (`float`, *optional*, defaults to 0.75):
                 SAG scale as defined in [Improving Sample Quality of Diffusion Models Using Self-Attention Guidance]
                 (https://arxiv.org/abs/2210.00939). `sag_scale` is defined as `s_s` of equation (24) of SAG paper:
                 https://arxiv.org/pdf/2210.00939.pdf. Typically chosen between [0, 1.0] for better quality.
