@@ -52,9 +52,9 @@ else:
         StableDiffusionInpaintPipeline,
         StableDiffusionInpaintPipelineLegacy,
         StableDiffusionInstructPix2PixPipeline,
+        StableDiffusionLatentUpscalePipeline,
         StableDiffusionPipeline,
         StableDiffusionUpscalePipeline,
-        StableDiffusionLatentUpscalePipeline,
     )
     from .stable_diffusion_safe import StableDiffusionPipelineSafe
     from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline

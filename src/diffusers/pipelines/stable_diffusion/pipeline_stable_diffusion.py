@@ -635,7 +635,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             # 8. Post-processing
             image = self.decode_latents(latents)
 
-           # 9. Run safety checker
+            # 9. Run safety checker
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
             # 10. Convert to PIL

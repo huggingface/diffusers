@@ -17,7 +17,6 @@ from typing import Callable, List, Optional, Union
 
 import numpy as np
 import torch
-
 import torch.nn.functional as F
 
 import PIL
@@ -65,7 +64,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
-        sigma_data: float = 1.,
+        sigma_data: float = 1.0,
     ):
         super().__init__()
 
@@ -162,7 +161,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         text_encoder_out = self.text_encoder(
             text_input_ids.to(device),
             attention_mask=attention_mask if use_attention_mask else None,
-            output_hidden_states=True
+            output_hidden_states=True,
         )
         text_embeddings = text_encoder_out.hidden_states[-1]
         text_pooler_out = text_encoder_out.pooler_output
@@ -305,19 +304,19 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
-    
+
     def c_skip(self, sigma):
-        return (self.config.sigma_data ** 2) / (sigma ** 2 + self.config.sigma_data ** 2)
+        return (self.config.sigma_data**2) / (sigma**2 + self.config.sigma_data**2)
 
     def c_out(self, sigma):
-        return sigma * self.config.sigma_data * (self.config.sigma_data ** 2 + sigma ** 2) ** -0.5
+        return sigma * self.config.sigma_data * (self.config.sigma_data**2 + sigma**2) ** -0.5
 
     def c_in(self, sigma):
-        return 1 * (sigma ** 2 + self.config.sigma_data ** 2) ** -0.5
+        return 1 * (sigma**2 + self.config.sigma_data**2) ** -0.5
 
     def c_noise(self, sigma):
         return torch.log(sigma) * 0.25
-        
+
     @torch.no_grad()
     def __call__(
         self,
@@ -426,51 +425,52 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        if guidance_scale == 0: prompt =  [""] * batch_size 
+        if guidance_scale == 0:
+            prompt = [""] * batch_size
 
-        # 3. Encode input prompt 
+        # 3. Encode input prompt
         text_embeddings, attention_mask, text_pooler_out = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
 
         # 4. Preprocess image
         image = image.to(dtype=text_embeddings.dtype, device=device)
-        
+
         # 5. set timesteps
-        # YiYi's notes: 
-         # hack: overwrite the sigmas in scheduler (can we maybe initialize the schedulers with sigmas instead of betas?)
+        # YiYi's notes:
+        # hack: overwrite the sigmas in scheduler (can we maybe initialize the schedulers with sigmas instead of betas?)
         sigma_min, sigma_max = 0.029167532920837402, 14.614642143249512
-        sigmas = torch.linspace(np.log(sigma_max), np.log(sigma_min), num_inference_steps+1).exp().to(device)
+        sigmas = torch.linspace(np.log(sigma_max), np.log(sigma_min), num_inference_steps + 1).exp().to(device)
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         self.scheduler.sigmas = sigmas
 
         self.scheduler.init_noise_sigma = self.scheduler.sigmas.max()
         timesteps = self.scheduler.timesteps
-        
-        # 5. Add noise to image 
-          # YiYi's notes: hardcode to be 0 for now 
-          # (see below notes from the author):
-          # "the This step theoretically can make the model work better on out-of-distribution inputs, but mostly just seems to make it match the input less, so it's turned off by default."
-        noise_level = torch.tensor([0.], dtype=torch.long, device=device)
+
+        # 5. Add noise to image
+        # YiYi's notes: hardcode to be 0 for now
+        # (see below notes from the author):
+        # "the This step theoretically can make the model work better on out-of-distribution inputs, but mostly just seems to make it match the input less, so it's turned off by default."
+        noise_level = torch.tensor([0.0], dtype=torch.long, device=device)
         batch_multiplier = 2 if do_classifier_free_guidance else 1
 
         image = torch.cat([image] * batch_multiplier * num_images_per_prompt)
         noise_level = torch.cat([noise_level] * image.shape[0])
-        
-        image_cond = F.interpolate(image, scale_factor=2, mode='nearest') * self.c_in(noise_level)[:, None,None,None]
+
+        image_cond = F.interpolate(image, scale_factor=2, mode="nearest") * self.c_in(noise_level)[:, None, None, None]
         image_cond = image_cond.to(text_embeddings.dtype)
-        # YiYi's notes: 
-          # the original repo use a fourier feature layer here to project noise level to noise_level_embed
-          # and that's the only weights that I can't add to unet, so hardcode it for now
-          # can create a wrapper model if we want to support non-zero noise level 
+        # YiYi's notes:
+        # the original repo use a fourier feature layer here to project noise level to noise_level_embed
+        # and that's the only weights that I can't add to unet, so hardcode it for now
+        # can create a wrapper model if we want to support non-zero noise level
         noise_level_embed = torch.cat(
             [
-                torch.ones(text_pooler_out.shape[0], 64, dtype = text_pooler_out.dtype, device = device),
-                torch.zeros(text_pooler_out.shape[0], 64, dtype = text_pooler_out.dtype, device = device)
-                ],
-                dim =1 
-                )
-        
+                torch.ones(text_pooler_out.shape[0], 64, dtype=text_pooler_out.dtype, device=device),
+                torch.zeros(text_pooler_out.shape[0], 64, dtype=text_pooler_out.dtype, device=device),
+            ],
+            dim=1,
+        )
+
         class_labels = torch.cat([noise_level_embed, text_pooler_out], dim=1)
 
         # 6. Prepare latent variables
@@ -479,14 +479,14 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
-            height * 2, # 2x upscale 
+            height * 2,  # 2x upscale
             width * 2,
             text_embeddings.dtype,
             device,
             generator,
             latents,
         )
-        
+
         # 7. Check that sizes of image and latents match
         num_channels_image = image.shape[1]
         if num_channels_latents + num_channels_image != self.unet.config.in_channels:
@@ -500,12 +500,12 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
 
         # 8. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
-        
+
         # 9. Denoising loop
         num_warmup_steps = 0
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
-            for i, (t, sigma) in enumerate(zip(timesteps,sigmas)):
+            for i, (t, sigma) in enumerate(zip(timesteps, sigmas)):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
@@ -515,12 +515,12 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                     self.c_noise(sigma),
                     encoder_hidden_states=text_embeddings,
                     attention_mask=attention_mask,
-                    class_labels=class_labels
+                    class_labels=class_labels,
                 ).sample
 
                 # YiYi's notes: in original repo, the output contains a variance channel that's not used
                 noise_pred = noise_pred[:, :-1]
-                noise_pred = self.c_skip(sigma) * latent_model_input +  self.c_out(sigma) * noise_pred
+                noise_pred = self.c_skip(sigma) * latent_model_input + self.c_out(sigma) * noise_pred
 
                 # perform guidance
                 if do_classifier_free_guidance:

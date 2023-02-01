@@ -7,6 +7,7 @@ import torch.nn.functional as F
 
 from .attention import AdaGroupNorm
 
+
 class Upsample1D(nn.Module):
     """
     An upsampling layer with an optional convolution.
@@ -368,12 +369,12 @@ class FirDownsample2D(nn.Module):
 
 # YiYi's notes: downsample/upsample layer used in k-upscaler, might be able to use FirDownsample2D/DirUpsample2D instead
 class KDownsample2d(nn.Module):
-    def __init__(self, pad_mode='reflect'):
+    def __init__(self, pad_mode="reflect"):
         super().__init__()
         self.pad_mode = pad_mode
         kernel_1d = torch.tensor([[1 / 8, 3 / 8, 3 / 8, 1 / 8]])
         self.pad = kernel_1d.shape[1] // 2 - 1
-        self.register_buffer('kernel', kernel_1d.T @ kernel_1d)
+        self.register_buffer("kernel", kernel_1d.T @ kernel_1d)
 
     def forward(self, x):
         x = F.pad(x, (self.pad,) * 4, self.pad_mode)
@@ -384,12 +385,12 @@ class KDownsample2d(nn.Module):
 
 
 class KUpsample2d(nn.Module):
-    def __init__(self, pad_mode='reflect'):
+    def __init__(self, pad_mode="reflect"):
         super().__init__()
         self.pad_mode = pad_mode
         kernel_1d = torch.tensor([[1 / 8, 3 / 8, 3 / 8, 1 / 8]]) * 2
         self.pad = kernel_1d.shape[1] // 2 - 1
-        self.register_buffer('kernel', kernel_1d.T @ kernel_1d)
+        self.register_buffer("kernel", kernel_1d.T @ kernel_1d)
 
     def forward(self, x):
         x = F.pad(x, ((self.pad + 1) // 2,) * 4, self.pad_mode)
@@ -408,22 +409,22 @@ class ResnetBlock2D(nn.Module):
         conv_shortcut=False,
         dropout=0.0,
         temb_channels=512,
-        groups: Optional[int]=32,
+        groups: Optional[int] = 32,
         groups_out=None,
         pre_norm=True,
         eps=1e-6,
         non_linearity="swish",
-        norm1_scale_shift: bool = False, # if true, will use ada groupnorm (i.e. time embedding scale shift) instead of groupnorm
-        time_embedding_norm="default", # default, scale_shift
+        norm1_scale_shift: bool = False,  # if true, will use ada groupnorm (i.e. time embedding scale shift) instead of groupnorm
+        time_embedding_norm="default",  # default, scale_shift
         kernel=None,
         output_scale_factor=1.0,
         use_in_shortcut=None,
         up=False,
         down=False,
         mid_channels=None,
-        dropout_after_conv: bool=False, # if true, will place a dropout after each conv2d
-        group_size: Optional[int]=None, # only effective when groups is None 
-        conv_shortcut_bias: bool=True,  
+        dropout_after_conv: bool = False,  # if true, will place a dropout after each conv2d
+        group_size: Optional[int] = None,  # only effective when groups is None
+        conv_shortcut_bias: bool = True,
     ):
         super().__init__()
         self.pre_norm = pre_norm
@@ -438,30 +439,32 @@ class ResnetBlock2D(nn.Module):
         self.output_scale_factor = output_scale_factor
         self.norm1_scale_shift = norm1_scale_shift
         self.time_embedding_norm = time_embedding_norm
-        
+
         if groups_out is None:
             groups_out = groups
 
-        num_groups_in = groups if groups is not None else max(1, in_channels//group_size)
-        
+        num_groups_in = groups if groups is not None else max(1, in_channels // group_size)
+
         if norm1_scale_shift and temb_channels is not None:
-                self.norm1 = AdaGroupNorm(temb_channels, in_channels, num_groups_in, eps=eps)
+            self.norm1 = AdaGroupNorm(temb_channels, in_channels, num_groups_in, eps=eps)
         else:
-            self.norm1 = torch.nn.GroupNorm(num_groups=num_groups_in , num_channels=in_channels, eps=eps, affine=True)
-        
+            self.norm1 = torch.nn.GroupNorm(num_groups=num_groups_in, num_channels=in_channels, eps=eps, affine=True)
+
         self.conv1 = torch.nn.Conv2d(in_channels, mid_channels, kernel_size=3, stride=1, padding=1)
-        
+
         if dropout_after_conv:
             self.dropout1 = torch.nn.Dropout(dropout, inplace=True)
         else:
             self.dropout1 = None
-       
-        num_groups_out = groups_out if groups_out is not None else max(1, mid_channels//group_size)
-        
+
+        num_groups_out = groups_out if groups_out is not None else max(1, mid_channels // group_size)
+
         if temb_channels is not None:
             if time_embedding_norm == "default":
                 self.time_emb_proj = torch.nn.Linear(temb_channels, mid_channels)
-                self.norm2 = torch.nn.GroupNorm(num_groups=num_groups_out, num_channels=mid_channels, eps=eps, affine=True)
+                self.norm2 = torch.nn.GroupNorm(
+                    num_groups=num_groups_out, num_channels=mid_channels, eps=eps, affine=True
+                )
             elif self.time_embedding_norm == "scale_shift":
                 self.time_emb_proj = None
                 self.norm2 = AdaGroupNorm(temb_channels, mid_channels, num_groups_out, eps=eps)
@@ -475,7 +478,7 @@ class ResnetBlock2D(nn.Module):
             self.dropout = torch.nn.Dropout(dropout)
         else:
             self.dropout = None
-        
+
         self.conv2 = torch.nn.Conv2d(mid_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
         if dropout_after_conv:
@@ -489,7 +492,7 @@ class ResnetBlock2D(nn.Module):
             self.nonlinearity = nn.Mish()
         elif non_linearity == "silu":
             self.nonlinearity = nn.SiLU()
-        elif non_linearity == 'gelu':
+        elif non_linearity == "gelu":
             self.nonlinearity = nn.GELU()
 
         self.upsample = self.downsample = None
@@ -514,15 +517,17 @@ class ResnetBlock2D(nn.Module):
 
         self.conv_shortcut = None
         if self.use_in_shortcut:
-            self.conv_shortcut = torch.nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0, bias=conv_shortcut_bias)
+            self.conv_shortcut = torch.nn.Conv2d(
+                in_channels, out_channels, kernel_size=1, stride=1, padding=0, bias=conv_shortcut_bias
+            )
 
     def forward(self, input_tensor, temb):
         hidden_states = input_tensor
-    
+
         if temb is not None and self.norm1_scale_shift:
             hidden_states = self.norm1(hidden_states, temb)
         else:
-            hidden_states = self.norm1(hidden_states) 
+            hidden_states = self.norm1(hidden_states)
 
         hidden_states = self.nonlinearity(hidden_states)
 
@@ -544,16 +549,16 @@ class ResnetBlock2D(nn.Module):
         if temb is None:
             hidden_states = self.norm2(hidden_states)
         elif self.time_embedding_norm == "default":
-                temb = self.time_emb_proj(self.nonlinearity(temb))[:, :, None, None]
-                hidden_states = hidden_states + temb
-                hidden_states = self.norm2(hidden_states)
+            temb = self.time_emb_proj(self.nonlinearity(temb))[:, :, None, None]
+            hidden_states = hidden_states + temb
+            hidden_states = self.norm2(hidden_states)
         elif self.time_embedding_norm == "scale_shift":
             hidden_states = self.norm2(hidden_states, temb)
-        
+
         hidden_states = self.nonlinearity(hidden_states)
 
         if self.dropout is not None:
-            hidden_states = self.dropout(hidden_states) 
+            hidden_states = self.dropout(hidden_states)
 
         hidden_states = self.conv2(hidden_states)
 

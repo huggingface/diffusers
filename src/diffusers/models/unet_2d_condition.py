@@ -22,7 +22,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import UNet2DConditionLoadersMixin
 from ..utils import BaseOutput, logging
 from .cross_attention import AttnProcessor
-from .embeddings import TimestepEmbedding, GaussianFourierProjection, Timesteps
+from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
 from .unet_2d_blocks import (
     CrossAttnDownBlock2D,
@@ -129,17 +129,17 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
         time_embed_dim: int = None,
-        time_embedding_type: str = "positional", # fourier, positional
-        timestep_act_2: bool = False, 
+        time_embedding_type: str = "positional",  # fourier, positional
+        timestep_act_2: bool = False,
         class_labels_dim: Optional[int] = None,
         conv_in_kernel: int = 3,
         conv_out_kernel: int = 3,
         norm_out: bool = True,
-        attn1_types: Tuple[bool, None]=(None,'self','self','self'),
-        attn2_types: Tuple[bool, None] = (None, 'cross','cross','cross'),
+        attn1_types: Tuple[bool, None] = (None, "self", "self", "self"),
+        attn2_types: Tuple[bool, None] = (None, "cross", "cross", "cross"),
         downsample: Optional[Tuple[bool]] = None,
         upsample: Optional[Tuple[bool]] = None,
-        skip_freq: str = "layer" # layer, block
+        skip_freq: str = "layer",  # layer, block
     ):
         super().__init__()
 
@@ -149,22 +149,28 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             time_embed_dim = block_out_channels[0] * 4
 
         # input
-        conv_in_padding = (conv_in_kernel-1)//2
-        self.conv_in = nn.Conv2d(in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding)
+        conv_in_padding = (conv_in_kernel - 1) // 2
+        self.conv_in = nn.Conv2d(
+            in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
+        )
 
         # time
         if time_embedding_type == "fourier":
             if time_embed_dim % 2 != 0:
                 raise ValueError(f"`time_embed_dim` should be divisible by 2, but is {time_embed_dim}.")
-            self.time_proj =  GaussianFourierProjection(time_embed_dim//2, set_W_to_weight=False,log=False, flip_sin_to_cos=flip_sin_to_cos)
+            self.time_proj = GaussianFourierProjection(
+                time_embed_dim // 2, set_W_to_weight=False, log=False, flip_sin_to_cos=flip_sin_to_cos
+            )
             timestep_input_dim = time_embed_dim
         elif time_embedding_type == "positional":
             self.time_proj = Timesteps(block_out_channels[0], flip_sin_to_cos, freq_shift)
             timestep_input_dim = block_out_channels[0]
-        
-        self.time_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim, act_fn=act_fn, act_2=timestep_act_2)
-        
-        # class 
+
+        self.time_embedding = TimestepEmbedding(
+            timestep_input_dim, time_embed_dim, act_fn=act_fn, act_2=timestep_act_2
+        )
+
+        # class
         if class_labels_dim is not None:
             self.class_proj = nn.Linear(class_labels_dim, timestep_input_dim, bias=False)
         else:
@@ -187,12 +193,12 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             only_cross_attention = [only_cross_attention] * len(down_block_types)
 
         if only_cross_attention is not None:
-            attn1_types = ['cross' if x == True else 'self' for x in only_cross_attention]
-            attn2_types = ['cross'] * len(down_block_types)
+            attn1_types = ["cross" if x == True else "self" for x in only_cross_attention]
+            attn2_types = ["cross"] * len(down_block_types)
 
         if isinstance(attention_head_dim, int):
             attention_head_dim = (attention_head_dim,) * len(down_block_types)
-        
+
         if isinstance(downsample, bool):
             downsample = (downsample,) * len(down_block_types)
 
@@ -219,8 +225,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 downsample_padding=downsample_padding,
                 dual_cross_attention=dual_cross_attention,
                 use_linear_projection=use_linear_projection,
-                attn1_type = attn1_types[i],
-                attn2_type = attn2_types[i],
+                attn1_type=attn1_types[i],
+                attn2_type=attn2_types[i],
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
             )
@@ -267,7 +273,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         reversed_attention_head_dim = list(reversed(attention_head_dim))
         reversed_attn1_types = list(reversed(attn1_types))
         reversed_attn2_types = list(reversed(attn2_types))
-        
+
         if isinstance(upsample, bool):
             upsample = (upsample,) * len(up_block_types)
 
@@ -283,11 +289,11 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             # add upsample block for all BUT final layer
             add_upsample = not is_final_block if upsample is None else upsample[i]
             if add_upsample:
-                 self.num_upsamplers += 1
+                self.num_upsamplers += 1
 
             up_block = get_up_block(
                 up_block_type,
-                num_layers= layers_per_block + 1 if skip_freq == "layer" else layers_per_block,
+                num_layers=layers_per_block + 1 if skip_freq == "layer" else layers_per_block,
                 in_channels=input_channel,
                 out_channels=output_channel,
                 prev_output_channel=prev_output_channel,
@@ -303,7 +309,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 use_linear_projection=use_linear_projection,
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
-                is_first_block = is_first_block,
+                is_first_block=is_first_block,
                 attn1_type=reversed_attn1_types[i],
                 attn2_type=reversed_attn2_types[i],
             )
@@ -312,14 +318,18 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         # out
         if norm_out:
-            self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=norm_eps)
+            self.conv_norm_out = nn.GroupNorm(
+                num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=norm_eps
+            )
             self.conv_act = nn.SiLU()
         else:
             self.conv_norm_out = None
             self.conv_act = None
 
-        conv_out_padding = (conv_out_kernel-1)//2
-        self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding)
+        conv_out_padding = (conv_out_kernel - 1) // 2
+        self.conv_out = nn.Conv2d(
+            block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
+        )
 
     @property
     def attn_processors(self) -> Dict[str, AttnProcessor]:
@@ -489,7 +499,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if attention_mask is not None:
             attention_mask = (1 - attention_mask.to(sample.dtype)) * -10000.0
             attention_mask = attention_mask.unsqueeze(1)
-            cross_attention_kwargs = {'prepare_mask':False}
+            cross_attention_kwargs = {"prepare_mask": False}
 
         # 0. center input if necessary
         if self.config.center_input_sample:
@@ -536,7 +546,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
             class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
             emb = emb + class_emb
-        
+
         # 2. pre-process
         sample = self.conv_in(sample)
 
@@ -564,16 +574,16 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 encoder_hidden_states=encoder_hidden_states,
                 attention_mask=attention_mask,
                 cross_attention_kwargs=cross_attention_kwargs,
-        )
+            )
 
         # 5. up
         for i, upsample_block in enumerate(self.up_blocks):
             is_final_block = i == len(self.up_blocks) - 1
-            
-            if self.skip_freq=="block":
+
+            if self.skip_freq == "block":
                 res_samples = down_block_res_samples[-1] if i > 0 else None
-                down_block_res_samples = down_block_res_samples[: -1]
-            elif self.skip_Freq=="layer":
+                down_block_res_samples = down_block_res_samples[:-1]
+            elif self.skip_Freq == "layer":
                 res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
                 down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
             else:
