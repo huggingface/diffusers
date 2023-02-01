@@ -15,7 +15,6 @@
 import inspect
 from typing import Callable, List, Optional, Union
 
-import numpy as np
 import torch
 import torch.nn.functional as F
 
@@ -23,7 +22,7 @@ import PIL
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...schedulers import DDIMScheduler, DDPMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import is_accelerate_available, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
@@ -451,7 +450,8 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         image = torch.cat([image] * batch_multiplier * num_images_per_prompt)
         noise_level = torch.cat([noise_level] * image.shape[0])
 
-        image_cond = F.interpolate(image, scale_factor=2, mode="nearest") * self.c_in(noise_level)[:, None, None, None]
+        inv_noise_level = (noise_level ** 2 + 1) ** (-0.5)
+        image_cond = F.interpolate(image, scale_factor=2, mode="nearest") * inv_noise_level[:, None, None, None]
         image_cond = image_cond.to(text_embeddings.dtype)
         # YiYi's notes:
         # the original repo use a fourier feature layer here to project noise level to noise_level_embed
@@ -506,9 +506,10 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 sample = torch.cat([latent_model_input, image_cond], dim=1)
+                timestep = torch.log(sigma) * 0.25
                 noise_pred = self.unet(
                     sample,
-                    self.c_noise(sigma),
+                    timestep,
                     encoder_hidden_states=text_embeddings,
                     attention_mask=attention_mask,
                     class_labels=class_labels,
@@ -516,7 +517,9 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
 
                 # YiYi's notes: in original repo, the output contains a variance channel that's not used
                 noise_pred = noise_pred[:, :-1]
-                noise_pred = self.c_skip(sigma) * latent_model_input + self.c_out(sigma) * noise_pred
+
+                inv_sigma = (1 / (sigma ** 2 + 1))
+                noise_pred = inv_sigma * latent_model_input + self.scheduler.scale_model_input(sigma, t) * noise_pred
 
                 # perform guidance
                 if do_classifier_free_guidance:
