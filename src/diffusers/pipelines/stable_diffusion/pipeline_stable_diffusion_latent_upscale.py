@@ -276,7 +276,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
             if isinstance(image, list):
                 image_batch_size = len(image)
             else:
-                image_batch_size = image.shape[0]
+                image_batch_size = image.shape[0] if image.ndim == 4 else 1
             if batch_size != image_batch_size:
                 raise ValueError(
                     f"`prompt` has batch size {batch_size} and `image` has batch size {image_batch_size}."
@@ -454,6 +454,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         noise_level = torch.tensor([0.0], dtype=torch.long, device=device)
         batch_multiplier = 2 if do_classifier_free_guidance else 1
 
+        image = image[None, :] if image.ndim == 3 else image
         image = torch.cat([image] * batch_multiplier * num_images_per_prompt)
         noise_level = torch.cat([noise_level] * image.shape[0])
 
@@ -508,6 +509,8 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
             for i, (t, sigma) in enumerate(zip(timesteps, sigmas)):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+
+                # hey = self.scheduler.scale_model_input(latent_model_input, t)
 
                 sample = torch.cat([self.c_in(sigma.to(image_cond.dtype)) * latent_model_input, image_cond], dim=1)
                 noise_pred = self.unet(
