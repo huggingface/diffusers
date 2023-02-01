@@ -31,8 +31,8 @@ class ModelUtilsTest(unittest.TestCase):
         with self.assertRaises(ValueError) as error_context:
             UNet2DConditionModel.from_pretrained("hf-internal-testing/stable-diffusion-broken", subfolder="unet")
 
-        import ipdb; ipdb.set_trace()
-        assert True
+        # make sure that error message states what keys are missing
+        assert "conv_out.bias" in str(error_context.exception)
 
 
 class ModelTesterMixin:
