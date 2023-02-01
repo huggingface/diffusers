@@ -773,7 +773,7 @@ def main():
                                 args.pretrained_model_name_or_path,
                                 text_encoder=text_encoder,
                                 vae=vae,
-                                unet=accelerator.unwrap_model(unet),
+                                unet=unet,
                                 revision=args.revision,
                             )
                             pipeline = pipeline.to(accelerator.device)
