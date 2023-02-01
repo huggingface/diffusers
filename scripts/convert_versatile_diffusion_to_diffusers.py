@@ -692,7 +692,7 @@ if __name__ == "__main__":
         "--scheduler_type",
         default="pndm",
         type=str,
-        help="Type of scheduler to use. Should be one of ['pndm', 'lms', 'ddim', 'euler', 'euler-ancest', 'dpm']",
+        help="Type of scheduler to use. Should be one of ['pndm', 'lms', 'ddim', 'euler', 'euler-ancestral', 'dpm']",
     )
     parser.add_argument(
         "--extract_ema",

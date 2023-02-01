@@ -25,13 +25,11 @@ from diffusers.utils import load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
-from ...test_pipelines_common import PipelineTesterMixin
-
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class VQDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class VQDiffusionPipelineFastTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -214,6 +212,8 @@ class VQDiffusionPipelineIntegrationTests(unittest.TestCase):
         pipeline = pipeline.to(torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
+        # requires GPU generator for gumbel softmax
+        # don't use GPU generator in tests though
         generator = torch.Generator(device=torch_device).manual_seed(0)
         output = pipeline(
             "teddy bear playing in the pool",

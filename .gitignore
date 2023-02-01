@@ -166,3 +166,6 @@ tags
 .DS_Store
 # RL pipelines may produce mp4 outputs
 *.mp4
+
+# dependencies
+/transformers

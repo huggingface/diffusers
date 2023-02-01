@@ -18,9 +18,9 @@ import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..modeling_utils import ModelMixin
 from ..utils import BaseOutput
 from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
+from .modeling_utils import ModelMixin
 from .unet_2d_blocks import UNetMidBlock2D, get_down_block, get_up_block
 
 
@@ -55,6 +55,8 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         down_block_types (`Tuple[str]`, *optional*, defaults to :
             obj:`("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D")`): Tuple of downsample block
             types.
+        mid_block_type (`str`, *optional*, defaults to `"UNetMidBlock2D"`):
+            The mid block type. Choose from `UNetMidBlock2D` or `UnCLIPUNetMidBlock2D`.
         up_block_types (`Tuple[str]`, *optional*, defaults to :
             obj:`("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D")`): Tuple of upsample block types.
         block_out_channels (`Tuple[int]`, *optional*, defaults to :
@@ -66,6 +68,13 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         attention_head_dim (`int`, *optional*, defaults to `8`): The attention head dimension.
         norm_num_groups (`int`, *optional*, defaults to `32`): The number of groups for the normalization.
         norm_eps (`float`, *optional*, defaults to `1e-5`): The epsilon for the normalization.
+        resnet_time_scale_shift (`str`, *optional*, defaults to `"default"`): Time scale shift config
+            for resnet blocks, see [`~models.resnet.ResnetBlock2D`]. Choose from `default` or `scale_shift`.
+        class_embed_type (`str`, *optional*, defaults to None): The type of class embedding to use which is ultimately
+            summed with the time embeddings. Choose from `None`, `"timestep"`, or `"identity"`.
+        num_class_embeds (`int`, *optional*, defaults to None):
+            Input dimension of the learnable embedding matrix to be projected to `time_embed_dim`, when performing
+            class conditioning with `class_embed_type` equal to `None`.
     """
 
     @register_to_config
@@ -88,6 +97,10 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         attention_head_dim: int = 8,
         norm_num_groups: int = 32,
         norm_eps: float = 1e-5,
+        resnet_time_scale_shift: str = "default",
+        add_attention: bool = True,
+        class_embed_type: Optional[str] = None,
+        num_class_embeds: Optional[int] = None,
     ):
         super().__init__()
 
@@ -106,6 +119,16 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             timestep_input_dim = block_out_channels[0]
 
         self.time_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim)
+
+        # class embedding
+        if class_embed_type is None and num_class_embeds is not None:
+            self.class_embedding = nn.Embedding(num_class_embeds, time_embed_dim)
+        elif class_embed_type == "timestep":
+            self.class_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim)
+        elif class_embed_type == "identity":
+            self.class_embedding = nn.Identity(time_embed_dim, time_embed_dim)
+        else:
+            self.class_embedding = None
 
         self.down_blocks = nn.ModuleList([])
         self.mid_block = None
@@ -130,6 +153,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 resnet_groups=norm_num_groups,
                 attn_num_head_channels=attention_head_dim,
                 downsample_padding=downsample_padding,
+                resnet_time_scale_shift=resnet_time_scale_shift,
             )
             self.down_blocks.append(down_block)
 
@@ -140,9 +164,10 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             resnet_eps=norm_eps,
             resnet_act_fn=act_fn,
             output_scale_factor=mid_block_scale_factor,
-            resnet_time_scale_shift="default",
+            resnet_time_scale_shift=resnet_time_scale_shift,
             attn_num_head_channels=attention_head_dim,
             resnet_groups=norm_num_groups,
+            add_attention=add_attention,
         )
 
         # up
@@ -167,6 +192,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
                 attn_num_head_channels=attention_head_dim,
+                resnet_time_scale_shift=resnet_time_scale_shift,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -181,12 +207,15 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         self,
         sample: torch.FloatTensor,
         timestep: Union[torch.Tensor, float, int],
+        class_labels: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> Union[UNet2DOutput, Tuple]:
         r"""
         Args:
             sample (`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
             timestep (`torch.FloatTensor` or `float` or `int): (batch) timesteps
+            class_labels (`torch.FloatTensor`, *optional*, defaults to `None`):
+                Optional class labels for conditioning. Their embeddings will be summed with the timestep embeddings.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.unet_2d.UNet2DOutput`] instead of a plain tuple.
 
@@ -215,6 +244,16 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         # there might be better ways to encapsulate this.
         t_emb = t_emb.to(dtype=self.dtype)
         emb = self.time_embedding(t_emb)
+
+        if self.class_embedding is not None:
+            if class_labels is None:
+                raise ValueError("class_labels should be provided when doing class conditioning")
+
+            if self.config.class_embed_type == "timestep":
+                class_labels = self.time_proj(class_labels)
+
+            class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
+            emb = emb + class_emb
 
         # 2. pre-process
         skip_sample = sample

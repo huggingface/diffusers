@@ -21,13 +21,11 @@ import torch
 from diffusers import ScoreSdeVePipeline, ScoreSdeVeScheduler, UNet2DModel
 from diffusers.utils.testing_utils import require_torch, slow, torch_device
 
-from ...test_pipelines_common import PipelineTesterMixin
-
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class ScoreSdeVeipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class ScoreSdeVeipelineFastTests(unittest.TestCase):
     @property
     def dummy_uncond_unet(self):
         torch.manual_seed(0)
@@ -63,6 +61,7 @@ class ScoreSdeVeipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -88,4 +87,5 @@ class ScoreSdeVePipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (1, 256, 256, 3)
 
         expected_slice = np.array([0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

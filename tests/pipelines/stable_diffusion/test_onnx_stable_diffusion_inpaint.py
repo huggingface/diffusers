@@ -18,7 +18,13 @@ import unittest
 import numpy as np
 
 from diffusers import LMSDiscreteScheduler, OnnxStableDiffusionInpaintPipeline
-from diffusers.utils.testing_utils import is_onnx_available, load_image, require_onnxruntime, require_torch_gpu, slow
+from diffusers.utils.testing_utils import (
+    is_onnx_available,
+    load_image,
+    nightly,
+    require_onnxruntime,
+    require_torch_gpu,
+)
 
 from ...test_pipelines_onnx_common import OnnxPipelineTesterMixin
 
@@ -32,7 +38,7 @@ class OnnxStableDiffusionPipelineFastTests(OnnxPipelineTesterMixin, unittest.Tes
     pass
 
 
-@slow
+@nightly
 @require_onnxruntime
 @require_torch_gpu
 class OnnxStableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
@@ -64,6 +70,8 @@ class OnnxStableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         pipe = OnnxStableDiffusionInpaintPipeline.from_pretrained(
             "runwayml/stable-diffusion-inpainting",
             revision="onnx",
+            safety_checker=None,
+            feature_extractor=None,
             provider=self.gpu_provider,
             sess_options=self.gpu_options,
         )
@@ -86,6 +94,7 @@ class OnnxStableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
 
         assert images.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.2514, 0.3007, 0.3517, 0.1790, 0.2382, 0.3167, 0.1944, 0.2273, 0.2464])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_inference_k_lms(self):
@@ -104,6 +113,8 @@ class OnnxStableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             "runwayml/stable-diffusion-inpainting",
             revision="onnx",
             scheduler=lms_scheduler,
+            safety_checker=None,
+            feature_extractor=None,
             provider=self.gpu_provider,
             sess_options=self.gpu_options,
         )
@@ -117,7 +128,7 @@ class OnnxStableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             image=init_image,
             mask_image=mask_image,
             guidance_scale=7.5,
-            num_inference_steps=10,
+            num_inference_steps=20,
             generator=generator,
             output_type="np",
         )
@@ -125,5 +136,6 @@ class OnnxStableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         image_slice = images[0, 255:258, 255:258, -1]
 
         assert images.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.2520, 0.2743, 0.2643, 0.2641, 0.2517, 0.2650, 0.2498, 0.2688, 0.2529])
+        expected_slice = np.array([0.0086, 0.0077, 0.0083, 0.0093, 0.0107, 0.0139, 0.0094, 0.0097, 0.0125])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
