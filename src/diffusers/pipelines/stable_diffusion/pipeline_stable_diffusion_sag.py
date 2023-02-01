@@ -37,13 +37,13 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import StableDiffusionPipeline
+        >>> from diffusers import StableDiffusionSAGPipeline
 
         >>> pipe = StableDiffusionSAGPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
 
         >>> prompt = "a photo of an astronaut riding a horse on mars"
-        >>> image = pipe(prompt).images[0]
+        >>> image = pipe(prompt, sag_scale=0.75).images[0]
         ```
 """
 
@@ -530,6 +530,10 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
+            sag_scale (`float`, *optional*, defaults to 0.1):
+                SAG scale as defined in [Improving Sample Quality of Diffusion Models Using Self-Attention Guidance]
+                (https://arxiv.org/abs/2210.00939). `sag_scale` is defined as `s_s` of equation (24) of SAG paper:
+                https://arxiv.org/pdf/2210.00939.pdf. Typically chosen between [0, 1.0] for better quality.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
