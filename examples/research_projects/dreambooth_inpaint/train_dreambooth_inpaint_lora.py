@@ -20,7 +20,6 @@ from diffusers import (
     AutoencoderKL,
     DDPMScheduler,
     StableDiffusionInpaintPipeline,
-    StableDiffusionPipeline,
     UNet2DConditionModel,
 )
 from diffusers.loaders import AttnProcsLayers
