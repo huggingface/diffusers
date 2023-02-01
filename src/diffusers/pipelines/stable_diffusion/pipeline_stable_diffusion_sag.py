@@ -207,6 +207,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
         """
         self.vae.enable_slicing()
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_slicing
     def disable_vae_slicing(self):
         r"""
         Disable sliced VAE decoding. If `enable_vae_slicing` was previously invoked, this method will go back to
