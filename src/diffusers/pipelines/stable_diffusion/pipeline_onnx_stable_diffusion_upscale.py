@@ -215,24 +215,22 @@ class OnnxStableDiffusionUpscalePipeline(StableDiffusionUpscalePipeline):
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
 
-        if hasattr(text_inputs, "attention_mask"):
-            attention_mask = text_inputs.attention_mask.to(device)
-        else:
-            attention_mask = None
+        # if hasattr(text_inputs, "attention_mask"):
+        #     attention_mask = text_inputs.attention_mask.to(device)
+        # else:
+        #     attention_mask = None
 
         # no positional arguments to text_encoder
         text_embeddings = self.text_encoder(
-            # TODO: is this int() safe?
             input_ids=text_input_ids.int().to(device),
-            # TODO: is this needed?
             # attention_mask=attention_mask,
         )
         text_embeddings = text_embeddings[0]
 
+        bs_embed, seq_len, _ = text_embeddings.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         text_embeddings = text_embeddings.repeat(1, num_images_per_prompt)
-        # TODO: is this needed?
-        # text_embeddings = text_embeddings.view(bs_embed * num_images_per_prompt, seq_len, -1)
+        text_embeddings = text_embeddings.reshape(bs_embed * num_images_per_prompt, seq_len, -1)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
@@ -264,23 +262,21 @@ class OnnxStableDiffusionUpscalePipeline(StableDiffusionUpscalePipeline):
                 return_tensors="pt",
             )
 
-            if hasattr(uncond_input, "attention_mask"):
-                attention_mask = uncond_input.attention_mask.to(device)
-            else:
-                attention_mask = None
+            # if hasattr(uncond_input, "attention_mask"):
+            #     attention_mask = uncond_input.attention_mask.to(device)
+            # else:
+            #     attention_mask = None
 
             uncond_embeddings = self.text_encoder(
-                # TODO: is this int() safe?
                 input_ids=uncond_input.input_ids.int().to(device),
-                # TODO: is this needed?
                 # attention_mask=attention_mask,
             )
             uncond_embeddings = uncond_embeddings[0]
 
+            seq_len = uncond_embeddings.shape[1]
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt)
-            # TODO: is this needed?
-            # uncond_embeddings = uncond_embeddings.view(batch_size * num_images_per_prompt, seq_len, -1)
+            uncond_embeddings = uncond_embeddings.reshape(batch_size * num_images_per_prompt, seq_len, -1)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
