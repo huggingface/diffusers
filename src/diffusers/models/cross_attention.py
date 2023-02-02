@@ -410,7 +410,7 @@ class LoRACrossAttnProcessor(nn.Module):
 
 
 class CrossAttnAddedKVProcessor:
-    def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None, **kwargs):
+    def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None):
         residual = hidden_states
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
         batch_size, sequence_length, _ = hidden_states.shape
@@ -455,7 +455,7 @@ class XFormersCrossAttnProcessor:
     def __init__(self, attention_op: Optional[Callable] = None):
         self.attention_op = attention_op
 
-    def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None, **kwargs):
+    def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None):
         batch_size, sequence_length, _ = hidden_states.shape
 
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
@@ -523,7 +523,7 @@ class SlicedAttnProcessor:
     def __init__(self, slice_size):
         self.slice_size = slice_size
 
-    def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None, **kwargs):
+    def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None):
         batch_size, sequence_length, _ = hidden_states.shape
 
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
@@ -572,7 +572,7 @@ class SlicedAttnAddedKVProcessor:
         self.slice_size = slice_size
 
     def __call__(
-        self, attn: "CrossAttention", hidden_states, encoder_hidden_states=None, attention_mask=None, **kwargs
+        self, attn: "CrossAttention", hidden_states, encoder_hidden_states=None, attention_mask=None
     ):
         residual = hidden_states
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
