@@ -25,13 +25,14 @@ import os
 
 class IndexConfig:
     def __init__(self, clip_name_or_path="openai/clip-vit-large-patch14", dataset_name="Isamu136/oxford_pets_with_l14_emb", \
-                 image_column="image", index_name="embeddings", index_path=None, passage_path):
+                 image_column="image", index_name="embeddings", index_path=None, passage_path=None):
         assert index_path
         self.clip_name_or_path = clip_name_or_path
         self.dataset_name = dataset_name
         self.image_column = image_column
         self.index_name = index_name
         self.index_path = index_path
+        self.passage_path = passage_path
 
 class Index:
     """
