@@ -20,13 +20,12 @@ import numpy as np
 from ..utils import deprecate, logging
 from transformers.models.rag.retrieval_rag import LegacyIndex, CustomHFIndex, CanonicalHFIndex
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-from diffusers.pipelines.rdm import preprocess_images
+from diffusers.pipelines.rdm.pipeline_rdm import preprocess_images
 import os
 
 class IndexConfig:
     def __init__(self, clip_name_or_path="openai/clip-vit-large-patch14", dataset_name="Isamu136/oxford_pets_with_l14_emb", \
                  image_column="image", index_name="embeddings", index_path=None, passage_path=None):
-        assert index_path
         self.clip_name_or_path = clip_name_or_path
         self.dataset_name = dataset_name
         self.image_column = image_column
@@ -57,8 +56,8 @@ class Index:
                 try:
                     self.dataset.load_faiss_index(self.index_name, self.index_path)
                     self.index_initialized = True
-                except FileNotFoundError:
-                    raise FileNotFoundError(f"Invalid index path: {self.index_path}")
+                except:
+                    logger.info("Index not initialized")
             if self.index_name in self.dataset.features:
                 self.dataset.add_faiss_index(column=self.index_name)
                 self.index_initialized = True
@@ -68,12 +67,18 @@ class Index:
             self.feature_extractor = self.feature_extractor or CLIPFeatureExtractor.from_pretrained(self.config.clip_name_or_path).to(device=device, dtype=torch_dtype)
             self.dataset = get_dataset_with_emb(self.dataset, self.clip_model, self.feature_extractor, device=device, image_column=self.config.image_column, embedding_column=self.config.embeddings_column)
             self.init_index()
-    def retrieve(self, vec, k:int=20):
+    def retrieve_imgs(self, vec, k:int=20):
         vec = np.array(vec).astype(np.float32)
         return self.dataset.get_nearest_examples(self.index_name, vec, k=k)
-    def retrieve_from_text(self, prompt, k=20):
+    def retrieve_imgs_from_text(self, prompt, k=20):
         vec = map_txt_to_clip_feature(self.clip_model, self.tokenizer, prompt, self.device)
         return self.retrieve(vec, k)
+    def retrieve_embs(self, vec, k:int=20):
+        vec = np.array(vec).astype(np.float32)
+        return self.dataset.search(self.index_name, vec, k=k)
+    def retrieve_embs_from_text(self, prompt, k=20):
+        vec = map_txt_to_clip_feature(self.clip_model, self.tokenizer, prompt, self.device)
+        return self.retrieve_embs(vec, k)
 class Retriever:
     def __init__(self, config:IndexConfig, index:Index=None):
         self.config = config
@@ -100,7 +105,7 @@ class Retriever:
         return index
 
     def save_pretrained(self, save_directory):
-        if self.config.index_path is None:
+        if self.config.index_path  is None:
             index_path = os.path.join(save_directory, "hf_dataset_index.faiss")
             self.index.dataset.get_index(self.config.index_name).save(index_path)
             self.config.index_path = index_path
@@ -120,7 +125,7 @@ class Retriever:
 
         logger.info("initializing retrieval")
         self.index.init_index()
-    def retrieve(self, embeddings: np.ndarray, k: int) -> Tuple[np.ndarray, List[dict]]:
+    def retrieve_imgs(self, embeddings: np.ndarray, k: int):
         """
         Retrieves images for specified `embeddings`.
         Args:
@@ -134,14 +139,28 @@ class Retriever:
               of the retrieved docs per query.
             - **doc_dicts** (`List[dict]`): The `retrieved_doc_embeds` examples per query.
         """
-        return self.index.retrieve(embeddings, k)
-
+        return self.index.retrieve_imgs(embeddings, k)
+    def retrieve_embs(self, embeddings: np.ndarray, k: int):
+        """
+        Retrieves images for specified `embeddings`.
+        Args:
+            embeddings (`np.ndarray` of shape `(vector_size)`):
+                A batch of query vectors to retrieve with.
+            k (`int`):
+                The number of nearest neighbor images retrieved per query.
+        Return:
+            `Tuple[np.ndarray, np.ndarray, List[dict]]`: A tuple with the following objects:
+            - **retrieved_doc_embeds** (`np.ndarray` of shape `(batch_size, n_docs, dim)`) -- The retrieval embeddings
+              of the retrieved docs per query.
+            - **doc_dicts** (`List[dict]`): The `retrieved_doc_embeds` examples per query.
+        """
+        return self.index.retrieve_embs(embeddings, k)
     def __call__(
         self,
         text: str,
         k: int=None,
     ):
-        return self.index.retrieve_from_text(text, k)
+        return self.index.retrieve_imgs_from_text(text, k)
 def map_img_to_clip_feature(clip, feature_extractor, imgs, device="cuda"):
     for i, image in enumerate(imgs):
         if not image.mode == "RGB":
