@@ -95,7 +95,6 @@ class CrossAttention(nn.Module):
             self.add_v_proj = nn.Linear(added_kv_proj_dim, cross_attention_dim)
 
         self.to_out = nn.ModuleList([])
-
         self.to_out.append(nn.Linear(inner_dim, query_dim))
         self.to_out.append(nn.Dropout(dropout))
 
@@ -303,7 +302,7 @@ class CrossAttnProcessor:
         hidden_states = torch.bmm(attention_probs, value)
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
-        # linear
+        # linear proj
         hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
