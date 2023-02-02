@@ -111,7 +111,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         ),
         mid_block_type: Optional[str] = "UNetMidBlock2DCrossAttn",
         up_block_types: Tuple[str] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
-        only_cross_attention: Union[bool, Tuple[bool], None] = False,
+        only_cross_attention: Union[bool, Tuple[bool]] = False,
         block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
         layers_per_block: int = 2,
         downsample_padding: int = 1,
@@ -132,8 +132,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         time_cond_proj_dim: Optional[int] = None,
         conv_in_kernel: int = 3,
         conv_out_kernel: int = 3,
-        attn1_types: Tuple[bool, None] = (None, "self", "self", "self"),
-        attn2_types: Tuple[bool, None] = (None, "cross", "cross", "cross"),
     ):
         super().__init__()
 
@@ -182,10 +180,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if isinstance(only_cross_attention, bool):
             only_cross_attention = [only_cross_attention] * len(down_block_types)
 
-        if only_cross_attention is not None:
-            attn1_types = ["cross" if x == True else "self" for x in only_cross_attention]
-            attn2_types = ["cross"] * len(down_block_types)
-
         if isinstance(attention_head_dim, int):
             attention_head_dim = (attention_head_dim,) * len(down_block_types)
 
@@ -211,11 +205,11 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 downsample_padding=downsample_padding,
                 dual_cross_attention=dual_cross_attention,
                 use_linear_projection=use_linear_projection,
-                attn1_type=attn1_types[i],
-                attn2_type=attn2_types[i],
+                only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
-            )
+                # YiYI's comments: needed this to determine attn1_type for KCrossAttnDownBlock2D
+                is_final_block = is_final_block,)
             self.down_blocks.append(down_block)
 
         # mid
@@ -257,8 +251,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
         reversed_attention_head_dim = list(reversed(attention_head_dim))
-        reversed_attn1_types = list(reversed(attn1_types))
-        reversed_attn2_types = list(reversed(attn2_types))
 
         output_channel = reversed_block_out_channels[0]
         for i, up_block_type in enumerate(up_block_types):
@@ -270,7 +262,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             input_channel = reversed_block_out_channels[min(i + 1, len(block_out_channels) - 1)]
 
             # add upsample block for all BUT final layer
-            # add_upsample = not is_final_block if upsample is None else upsample[i]
             add_upsample = not is_final_block
             if add_upsample:
                 self.num_upsamplers += 1
@@ -290,11 +281,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 attn_num_head_channels=reversed_attention_head_dim[i],
                 dual_cross_attention=dual_cross_attention,
                 use_linear_projection=use_linear_projection,
+                only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 is_first_block=is_first_block,
-                attn1_type=reversed_attn1_types[i],
-                attn2_type=reversed_attn2_types[i],
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -570,7 +560,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 sample = upsample_block(
                     hidden_states=sample,
                     temb=emb,
-                    res_hidden_states_tuple=res_samples,
+                    res_hidden_states_tuple= None if self.mid_block is None and i==0 else res_samples,
                     encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=cross_attention_kwargs,
                     upsample_size=upsample_size,

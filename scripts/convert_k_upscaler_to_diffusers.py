@@ -222,7 +222,7 @@ def unet_model_from_original_config(original_config):
     layers_per_block = original_config["depths"][0]
 
     class_labels_dim = original_config["mapping_cond_dim"]
-    time_embed_dim = original_config["mapping_out"]
+    #time_embed_dim = original_config["mapping_out"]
     cross_attention_dim = original_config["cross_cond_dim"]
 
     attn1_types = []
@@ -246,27 +246,18 @@ def unet_model_from_original_config(original_config):
         down_block_types=("KDownBlock2D", "KCrossAttnDownBlock2D", "KCrossAttnDownBlock2D", "KCrossAttnDownBlock2D"),
         mid_block_type=None,
         up_block_types=("KCrossAttnUpBlock2D", "KCrossAttnUpBlock2D", "KCrossAttnUpBlock2D", "KUpBlock2D"),
-        only_cross_attention=None,
         block_out_channels=block_out_channels,
         layers_per_block=layers_per_block,
         act_fn="gelu",
         norm_num_groups=None,
-        norm_group_size=32,
         cross_attention_dim=cross_attention_dim,
         attention_head_dim=64,
-        class_labels_dim=class_labels_dim,
+        time_cond_proj_dim=class_labels_dim,
         resnet_time_scale_shift="scale_shift",
-        time_embed_dim=time_embed_dim,
         time_embedding_type="fourier",
         timestep_act_2=True,
         conv_in_kernel=1,
         conv_out_kernel=1,
-        norm_out=False,
-        attn1_types=attn1_types,
-        attn2_types=attn2_types,
-        downsample=(False, True, True, True),
-        upsample=(True, True, True, False),
-        skip_freq="block",
         )
 
     return unet
