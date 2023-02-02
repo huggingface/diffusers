@@ -39,9 +39,9 @@ def get_down_block(
     downsample_padding=None,
     dual_cross_attention=False,
     use_linear_projection=False,
+    only_cross_attention=False,
     upcast_attention=False,
     resnet_time_scale_shift="default",
-    only_cross_attention=False,
 ):
     down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
     if down_block_type == "DownBlock2D":
@@ -100,9 +100,9 @@ def get_down_block(
             attn_num_head_channels=attn_num_head_channels,
             dual_cross_attention=dual_cross_attention,
             use_linear_projection=use_linear_projection,
+            only_cross_attention=only_cross_attention,
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
-            only_cross_attention=only_cross_attention,
         )
     elif down_block_type == "SimpleCrossAttnDownBlock2D":
         if cross_attention_dim is None:
@@ -793,6 +793,7 @@ class CrossAttnDownBlock2D(nn.Module):
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
+                        only_cross_attention=only_cross_attention,
                         upcast_attention=upcast_attention,
                     )
                 )
@@ -2428,6 +2429,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
         attention_mask=None,
         cross_attention_kwargs=None,
     ):
+        cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         for resnet, attn in zip(self.resnets, self.attentions):
             # resnet
             # pop res hidden states
@@ -2442,7 +2444,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
                 attention_mask=attention_mask,
-                cross_attention_kwargs=cross_attention_kwargs,
+                **cross_attention_kwargs,
             )
 
         if self.upsamplers is not None:
