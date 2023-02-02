@@ -209,7 +209,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 # YiYI's comments: needed this to determine attn1_type for KCrossAttnDownBlock2D
-                is_final_block = is_final_block,)
+                is_final_block=is_final_block,)
             self.down_blocks.append(down_block)
 
         # mid
@@ -560,7 +560,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 sample = upsample_block(
                     hidden_states=sample,
                     temb=emb,
-                    res_hidden_states_tuple= None if self.mid_block is None and i==0 else res_samples,
+                    res_hidden_states_tuple=res_samples,
                     encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=cross_attention_kwargs,
                     upsample_size=upsample_size,
