@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
+from typing import Optional
 
 import numpy as np
 import torch
@@ -158,7 +159,7 @@ class TimestepEmbedding(nn.Module):
         time_embed_dim: int,
         act_fn: str = "silu",
         out_dim: int = None,
-        act_2: bool = False,
+        act_2_fn: Optional[str] = None,
         cond_proj_dim=None,
     ):
         super().__init__()
@@ -184,12 +185,12 @@ class TimestepEmbedding(nn.Module):
         self.linear_2 = nn.Linear(time_embed_dim, time_embed_dim_out)
 
         self.act_2 = None
-        if act_2:
-            if act_fn == "silu":
+        if act_2_fn:
+            if act_2_fn == "silu":
                 self.act_2 = nn.SiLU()
-            elif act_fn == "mish":
+            elif act_2_fn == "mish":
                 self.act_2 = nn.Mish()
-            elif act_fn == "gelu":
+            elif act_2_fn == "gelu":
                 self.act_2 = nn.GELU()
 
     def forward(self, sample, condition=None):
