@@ -17,7 +17,11 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from ..utils import logging
 from ..utils.import_utils import is_xformers_available
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 if is_xformers_available():
@@ -151,6 +155,16 @@ class CrossAttention(nn.Module):
         self.set_processor(processor)
 
     def set_processor(self, processor: "AttnProcessor"):
+        # if current processor is in `self._modules` and if passed `processor` is not, we need to
+        # pop `processor` from `self._modules`
+        if (
+            hasattr(self, "processor")
+            and isinstance(self.processor, torch.nn.Module)
+            and not isinstance(processor, torch.nn.Module)
+        ):
+            logger.info(f"You are removing possibly trained weights of {self.processor} with {processor}")
+            self._modules.pop("processor")
+
         self.processor = processor
 
     def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None, **cross_attention_kwargs):
@@ -264,7 +278,6 @@ class LoRALinearLayer(nn.Module):
 
         self.down = nn.Linear(in_features, rank, bias=False)
         self.up = nn.Linear(rank, out_features, bias=False)
-        self.scale = 1.0
 
         nn.init.normal_(self.down.weight, std=1 / rank)
         nn.init.zeros_(self.up.weight)
@@ -283,10 +296,10 @@ class LoRACrossAttnProcessor(nn.Module):
     def __init__(self, hidden_size, cross_attention_dim=None, rank=4):
         super().__init__()
 
-        self.to_q_lora = LoRALinearLayer(hidden_size, hidden_size)
-        self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size)
-        self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size)
-        self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size)
+        self.to_q_lora = LoRALinearLayer(hidden_size, hidden_size, rank)
+        self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank)
+        self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank)
+        self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank)
 
     def __call__(
         self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0
@@ -395,10 +408,10 @@ class LoRAXFormersCrossAttnProcessor(nn.Module):
     def __init__(self, hidden_size, cross_attention_dim, rank=4):
         super().__init__()
 
-        self.to_q_lora = LoRALinearLayer(hidden_size, hidden_size)
-        self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size)
-        self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size)
-        self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size)
+        self.to_q_lora = LoRALinearLayer(hidden_size, hidden_size, rank)
+        self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank)
+        self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank)
+        self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank)
 
     def __call__(
         self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0
