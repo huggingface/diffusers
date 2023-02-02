@@ -1572,16 +1572,13 @@ class KCrossAttnDownBlock2D(nn.Module):
                     out_channels,
                     out_channels // attn_num_head_channels,
                     attn_num_head_channels,
-                    dropout=None,
                     cross_attention_dim=cross_attention_dim,
                     temb_channels=temb_channels,
                     attention_bias=True,
                     attn1_type=attn1_type,
                     attn2_type=attn2_type,
                     with_ff=False,
-                    use_conv_proj=True,
                     cross_attention_norm=True,
-                    attention_dropout=dropout,
                     group_size=resnet_group_size,
                     norm_type="ada_group",
                 )
@@ -2595,16 +2592,13 @@ class KCrossAttnUpBlock2D(nn.Module):
                     if (i == num_layers - 1)
                     else k_mid_channels // attn_num_head_channels,
                     attn_num_head_channels,
-                    dropout=None,
                     cross_attention_dim=cross_attention_dim,
                     temb_channels=temb_channels,
                     attention_bias=True,
                     attn1_type=attn1_type,
                     attn2_type=attn2_type,
                     with_ff=False,
-                    use_conv_proj=True,
                     cross_attention_norm=True,
-                    attention_dropout=dropout,
                     upcast_attention=upcast_attention,
                     norm_type="ada_group",
                 )
@@ -2694,7 +2688,7 @@ class KAttentionBlock(nn.Module):
         dim: int,
         num_attention_heads: int,
         attention_head_dim: int,
-        dropout: Optional[float] = 0.0,
+        dropout: float = 0.0,
         cross_attention_dim: Optional[int] = None,
         activation_fn: str = "geglu",
         num_embeds_ada_norm: Optional[int] = None,
@@ -2708,9 +2702,7 @@ class KAttentionBlock(nn.Module):
         attn1_type: str = "cross",  # cross, self
         attn2_type: Optional[str] = None,  # None, cross
         with_ff: bool = True,
-        use_conv_proj: bool = False,
         cross_attention_norm: bool = False,
-        attention_dropout: Optional[float] = None,
         group_size: int = 32,
     ):
         super().__init__()
@@ -2737,9 +2729,7 @@ class KAttentionBlock(nn.Module):
             bias=attention_bias,
             cross_attention_dim=cross_attention_dim if attn1_type == "cross" else None,
             upcast_attention=upcast_attention,
-            use_conv_proj=use_conv_proj,
             cross_attention_norm=cross_attention_norm if attn1_type == "cross" else None,
-            attention_dropout=attention_dropout,
         )
 
         # 2. Cross-Attn
@@ -2752,9 +2742,7 @@ class KAttentionBlock(nn.Module):
                 dropout=dropout,
                 bias=attention_bias,
                 upcast_attention=upcast_attention,
-                use_conv_proj=use_conv_proj,
                 cross_attention_norm=cross_attention_norm,
-                attention_dropout=attention_dropout,
             )
         else:
             self.attn2 = None
@@ -2802,6 +2790,9 @@ class KAttentionBlock(nn.Module):
         else:
             norm_hidden_states = self.norm1(hidden_states)
 
+        batch_size, dim, height, width = norm_hidden_states.shape
+        norm_hidden_states = norm_hidden_states.permute(0, 2, 3, 1).reshape(batch_size, height * width, dim)
+
         # 1. Self-Attention
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         attn_output = self.attn1(
@@ -2810,6 +2801,8 @@ class KAttentionBlock(nn.Module):
             attention_mask=attention_mask if self.attn1_type == "cross" else None,
             **cross_attention_kwargs,
         )
+        attn_output = attn_output.permute(0, 2, 1).reshape(batch_size, dim, height, width)
+
         if self.use_ada_layer_norm_zero:
             attn_output = gate_msa.unsqueeze(1) * attn_output
         hidden_states = attn_output + hidden_states
@@ -2823,12 +2816,17 @@ class KAttentionBlock(nn.Module):
             else:
                 norm_hidden_states = self.norm2(hidden_states)
 
+            batch_size, dim, height, width = norm_hidden_states.shape
+            norm_hidden_states = norm_hidden_states.permute(0, 2, 3, 1).reshape(batch_size, height * width, dim)
+
             attn_output = self.attn2(
                 norm_hidden_states,
                 encoder_hidden_states=encoder_hidden_states if self.attn2_type == "cross" else None,
                 attention_mask=attention_mask if self.attn2_type == "cross" else None,
                 **cross_attention_kwargs,
             )
+            attn_output = attn_output.permute(0, 2, 1).reshape(batch_size, dim, height, width)
+
             hidden_states = attn_output + hidden_states
 
         return hidden_states

@@ -52,26 +52,20 @@ class CrossAttention(nn.Module):
         cross_attention_dim: Optional[int] = None,
         heads: int = 8,
         dim_head: int = 64,
-        dropout: Optional[float] = 0.0,
+        dropout: float = 0.0,
         bias=False,
         upcast_attention: bool = False,
         upcast_softmax: bool = False,
-        use_conv_proj: bool = False,
         cross_attention_norm: bool = False,
-        attention_dropout: Optional[float] = None,
         added_kv_proj_dim: Optional[int] = None,
         norm_num_groups: Optional[int] = None,
         processor: Optional["AttnProcessor"] = None,
     ):
         super().__init__()
-        # TODO (Patrick) - clean
-        dropout = 0.0
         inner_dim = dim_head * heads
-        self.is_cross = cross_attention_dim is not None
         cross_attention_dim = cross_attention_dim if cross_attention_dim is not None else query_dim
         self.upcast_attention = upcast_attention
         self.upcast_softmax = upcast_softmax
-        self.use_conv_proj = use_conv_proj
         self.cross_attention_norm = cross_attention_norm
 
         self.scale = dim_head**-0.5
@@ -205,6 +199,9 @@ class CrossAttention(nn.Module):
         self.processor = processor
 
     def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None, **cross_attention_kwargs):
+        # The `CrossAttention` class can call different attention processors / attention functions
+        # here we simply pass along all tensors to the selected processor class
+        # For standard processors that are defined here, `**cross_attention_kwargs` is empty
         return self.processor(
             self,
             hidden_states,
@@ -284,12 +281,7 @@ class CrossAttnProcessor:
         encoder_hidden_states=None,
         attention_mask=None,
         prepare_mask=True,
-        **kwargs,
     ):
-        if attn.use_conv_proj:
-            batch_size, dim, height, width = hidden_states.shape
-            hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch_size, height * width, dim)
-
         if prepare_mask:
             batch_size, sequence_length, _ = hidden_states.shape
             attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
@@ -319,9 +311,6 @@ class CrossAttnProcessor:
         hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
-
-        if attn.use_conv_proj:
-            hidden_states = hidden_states.permute(0, 2, 1).reshape(batch_size, dim, height, width)
 
         return hidden_states
 
