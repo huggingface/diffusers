@@ -94,11 +94,10 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         activation_fn: str = "geglu",
         num_embeds_ada_norm: Optional[int] = None,
         use_linear_projection: bool = False,
+        only_cross_attention: bool = False,
         upcast_attention: bool = False,
         norm_type: str = "layer_norm",
         norm_elementwise_affine: bool = True,
-        attn1_type: str = "self",
-        attn2_type: Optional[str] = "cross",
     ):
         super().__init__()
         self.use_linear_projection = use_linear_projection
@@ -187,11 +186,10 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     activation_fn=activation_fn,
                     num_embeds_ada_norm=num_embeds_ada_norm,
                     attention_bias=attention_bias,
+                    only_cross_attention=only_cross_attention,
                     upcast_attention=upcast_attention,
                     norm_type=norm_type,
                     norm_elementwise_affine=norm_elementwise_affine,
-                    attn1_type=attn1_type,
-                    attn2_type=attn2_type,
                 )
                 for d in range(num_layers)
             ]
