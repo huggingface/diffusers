@@ -38,13 +38,12 @@ class Index:
     Each index for a retrieval model is specific to the clip model used and the dataset used.
     """
     def __init__(self, config:IndexConfig, dataset: Dataset, clip_model:CLIPModel=None, \
-                 feature_extractor:CLIPFeatureExtractor=None, tokenizer:CLIPTokenizer=None):
+                 feature_extractor:CLIPFeatureExtractor=None):
         self.config = config
         self.dataset = dataset
         self.index_initialized = False
         self.clip_model = clip_model
         self.feature_extractor = feature_extractor
-        self.tokenizer = tokenizer
         self.index_name = config.index_name
         self.index_path = config.index_path
         self.init_index()
@@ -63,44 +62,37 @@ class Index:
                 self.index_initialized = True
     def build_index(self, device:str="cuda", torch_dtype=torch.float32):
         if not self.index_initialized:
-            self.clip_model = self.clip_model or CLIPModel.from_pretrained(self.config.clip_name_or_path).to(device=device, dtype=torch_dtype)
-            self.feature_extractor = self.feature_extractor or CLIPFeatureExtractor.from_pretrained(self.config.clip_name_or_path).to(device=device, dtype=torch_dtype)
-            self.dataset = get_dataset_with_emb(self.dataset, self.clip_model, self.feature_extractor, device=device, image_column=self.config.image_column, embedding_column=self.config.embeddings_column)
+            clip_model = self.clip_model or CLIPModel.from_pretrained(self.config.clip_name_or_path).to(device=device, dtype=torch_dtype)
+            feature_extractor = self.feature_extractor or CLIPFeatureExtractor.from_pretrained(self.config.clip_name_or_path).to(device=device, dtype=torch_dtype)
+            self.dataset = get_dataset_with_emb(self.dataset, clip_model, feature_extractor, device=device, image_column=self.config.image_column, embedding_column=self.config.embeddings_column)
             self.init_index()
     def retrieve_imgs(self, vec, k:int=20):
         vec = np.array(vec).astype(np.float32)
         return self.dataset.get_nearest_examples(self.index_name, vec, k=k)
-    def retrieve_imgs_from_text(self, prompt, k=20):
-        vec = map_txt_to_clip_feature(self.clip_model, self.tokenizer, prompt, self.device)
-        return self.retrieve(vec, k)
     def retrieve_embs(self, vec, k:int=20):
         vec = np.array(vec).astype(np.float32)
         return self.dataset.search(self.index_name, vec, k=k)
-    def retrieve_embs_from_text(self, prompt, k=20):
-        vec = map_txt_to_clip_feature(self.clip_model, self.tokenizer, prompt, self.device)
-        return self.retrieve_embs(vec, k)
 class Retriever:
-    def __init__(self, config:IndexConfig, index:Index=None):
+    def __init__(self, config:IndexConfig, index:Index=None, dataset:Dataset=None, clip_model:CLIPModel=None,\
+                         feature_extractor:CLIPFeatureExtractor=None, tokenizer:CLIPTokenizer=None):
         self.config = config
-        self.index = index or self._build_index(config)
+        self.index = index or self._build_index._build_index(config, dataset, clip_model=clip_model, feature_extractor=feature_extractor, tokenizer=tokenizer)
     @classmethod
-    def from_pretrained(cls, retriever_name_or_path:str, dataset:Dataset=None, clip_model:CLIPModel=None,\
-                         feature_extractor:CLIPFeatureExtractor=None, tokenizer:CLIPTokenizer=None, **kwargs):
+    def from_pretrained(cls, retriever_name_or_path:str, index:Index=None, dataset:Dataset=None, clip_model:CLIPModel=None,\
+                         feature_extractor:CLIPFeatureExtractor=None, **kwargs):
         config = kwargs.pop("config", None) or IndexConfig.from_pretrained(retriever_name_or_path, **kwargs)
-        clip_model = clip_model or CLIPModel.from_pretrained(config.clip_name_or_path)
-        tokenizer = tokenizer or CLIPTokenizer.from_pretrained(config.clip_name_or_path)
-        feature_extractor = feature_extractor or CLIPFeatureExtractor.from_pretrained(config.clip_name_or_path)
-        dataset = dataset or load_dataset(config.dataset_name)
-        index =cls._build_index(config, dataset, clip_model=clip_model, feature_extractor=feature_extractor, tokenizer=tokenizer)
         return cls(
             config,
-            index=index
+            index=index,
+            dataset=dataset,
+            clip_model=clip_model,
+            feature_extractor=feature_extractor
         )
     @staticmethod
     def _build_index(config:IndexConfig, dataset:Dataset=None, clip_model:CLIPModel=None,\
-                         feature_extractor:CLIPFeatureExtractor=None, tokenizer:CLIPTokenizer=None):
+                         feature_extractor:CLIPFeatureExtractor=None):
         dataset = dataset or load_dataset(config.dataset_name)
-        index =Index(config, dataset, clip_model=clip_model, feature_extractor=feature_extractor, tokenizer=tokenizer)
+        index =Index(config, dataset, clip_model=clip_model, feature_extractor=feature_extractor)
         index.build_index()
         return index
 
@@ -157,10 +149,10 @@ class Retriever:
         return self.index.retrieve_embs(embeddings, k)
     def __call__(
         self,
-        text: str,
+        embeddings,
         k: int=None,
     ):
-        return self.index.retrieve_imgs_from_text(text, k)
+        return self.index.retrieve_embs(embeddings, k)
 def map_img_to_clip_feature(clip, feature_extractor, imgs, device="cuda"):
     for i, image in enumerate(imgs):
         if not image.mode == "RGB":
