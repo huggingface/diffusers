@@ -92,20 +92,9 @@ class CrossAttention(nn.Module):
         if cross_attention_norm:
             self.norm_cross = nn.LayerNorm(cross_attention_dim)
 
-        if use_conv_proj:
-            self.to_q = nn.Conv2d(query_dim, inner_dim, 1)
-            self.to_q_temp = nn.Linear(query_dim, inner_dim, bias=bias)
-        else:
-            self.to_q = nn.Linear(query_dim, inner_dim, bias=bias)
-
-        if use_conv_proj and not self.is_cross:
-            self.to_k = nn.Conv2d(cross_attention_dim, inner_dim, 1)
-            self.to_v = nn.Conv2d(cross_attention_dim, inner_dim, 1)
-            self.to_k_temp = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
-            self.to_v_temp = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
-        else:
-            self.to_k = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
-            self.to_v = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
+        self.to_q = nn.Linear(query_dim, inner_dim, bias=bias)
+        self.to_k = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
+        self.to_v = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
 
         if self.added_kv_proj_dim is not None:
             self.add_k_proj = nn.Linear(added_kv_proj_dim, cross_attention_dim)
@@ -113,12 +102,7 @@ class CrossAttention(nn.Module):
 
         self.to_out = nn.ModuleList([])
 
-        if use_conv_proj:
-            self.to_out.append(nn.Conv2d(inner_dim, query_dim, 1))
-            self.to_out_temp = nn.Linear(inner_dim, query_dim)
-        else:
-            self.to_out.append(nn.Linear(inner_dim, query_dim))
-
+        self.to_out.append(nn.Linear(inner_dim, query_dim))
         self.to_out.append(nn.Dropout(dropout))
 
         # set attention processor
@@ -149,8 +133,6 @@ class CrossAttention(nn.Module):
             self.to_out_temp.load_state_dict(state_dict)
 
             self.to_out[0] = self.to_out_temp
-
-        # import ipdb; ipdb.set_trace()
 
     def set_use_memory_efficient_attention_xformers(
         self, use_memory_efficient_attention_xformers: bool, attention_op: Optional[Callable] = None
@@ -223,10 +205,6 @@ class CrossAttention(nn.Module):
         self.processor = processor
 
     def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None, **cross_attention_kwargs):
-        self.set_weights()
-        # The `CrossAttention` class can call different attention processors / attention functions
-        # here we simply pass along all tensors to the selected processor class
-        # For standard processors that are defined here, `**cross_attention_kwargs` is empty
         return self.processor(
             self,
             hidden_states,
@@ -571,9 +549,7 @@ class SlicedAttnAddedKVProcessor:
     def __init__(self, slice_size):
         self.slice_size = slice_size
 
-    def __call__(
-        self, attn: "CrossAttention", hidden_states, encoder_hidden_states=None, attention_mask=None
-    ):
+    def __call__(self, attn: "CrossAttention", hidden_states, encoder_hidden_states=None, attention_mask=None):
         residual = hidden_states
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
         encoder_hidden_states = encoder_hidden_states.transpose(1, 2)
