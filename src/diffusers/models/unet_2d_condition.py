@@ -163,7 +163,11 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             )
 
         self.time_embedding = TimestepEmbedding(
-            timestep_input_dim, time_embed_dim, act_fn=act_fn, act_2_fn=timestep_act_2, cond_proj_dim=time_cond_proj_dim
+            timestep_input_dim,
+            time_embed_dim,
+            act_fn=act_fn,
+            act_2_fn=timestep_act_2,
+            cond_proj_dim=time_cond_proj_dim,
         )
 
         # class embedding
