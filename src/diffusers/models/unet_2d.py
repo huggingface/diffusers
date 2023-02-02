@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, List
 
 import torch
 import torch.nn as nn
@@ -90,7 +90,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         down_block_types: Tuple[str] = ("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"),
         up_block_types: Tuple[str] = ("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"),
         block_out_channels: Tuple[int] = (224, 448, 672, 896),
-        layers_per_block: int = 2,
+        layers_per_block: Union[int, List, Tuple] = 2,
         mid_block_scale_factor: float = 1,
         downsample_padding: int = 1,
         act_fn: str = "silu",
@@ -103,6 +103,9 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         num_class_embeds: Optional[int] = None,
     ):
         super().__init__()
+
+        if isinstance(layers_per_block, int):
+            layers_per_block = (layers_per_block,) * len(block_out_channels)
 
         self.sample_size = sample_size
         time_embed_dim = block_out_channels[0] * 4
@@ -143,7 +146,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
 
             down_block = get_down_block(
                 down_block_type,
-                num_layers=layers_per_block,
+                num_layers=layers_per_block[i],
                 in_channels=input_channel,
                 out_channels=output_channel,
                 temb_channels=time_embed_dim,
@@ -182,7 +185,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
 
             up_block = get_up_block(
                 up_block_type,
-                num_layers=layers_per_block + 1,
+                num_layers=layers_per_block[-i-1] + 1,
                 in_channels=input_channel,
                 out_channels=output_channel,
                 prev_output_channel=prev_output_channel,
