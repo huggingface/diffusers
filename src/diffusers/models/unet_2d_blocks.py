@@ -266,9 +266,9 @@ def get_up_block(
             attn_num_head_channels=attn_num_head_channels,
             dual_cross_attention=dual_cross_attention,
             use_linear_projection=use_linear_projection,
+            only_cross_attention=only_cross_attention,
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
-            only_cross_attention=only_cross_attention,
         )
     elif up_block_type == "SimpleCrossAttnUpBlock2D":
         if cross_attention_dim is None:
@@ -757,9 +757,8 @@ class CrossAttnDownBlock2D(nn.Module):
         add_downsample=True,
         dual_cross_attention=False,
         use_linear_projection=False,
+        only_cross_attention=False,
         upcast_attention=False,
-        attn1_type="self",
-        attn2_type="cross",
     ):
         super().__init__()
         resnets = []
@@ -795,8 +794,6 @@ class CrossAttnDownBlock2D(nn.Module):
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
                         upcast_attention=upcast_attention,
-                        attn1_type=attn1_type,
-                        attn2_type=attn2_type,
                     )
                 )
             else:
