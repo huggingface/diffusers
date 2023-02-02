@@ -422,7 +422,6 @@ class ResnetBlock2D(nn.Module):
         up=False,
         down=False,
         mid_channels=None,
-        dropout_after_conv: bool = False,  # if true, will place a dropout after each conv2d
         group_size: Optional[int] = None,  # only effective when groups is None
         conv_shortcut_bias: bool = True,
     ):
@@ -452,11 +451,6 @@ class ResnetBlock2D(nn.Module):
 
         self.conv1 = torch.nn.Conv2d(in_channels, mid_channels, kernel_size=3, stride=1, padding=1)
 
-        if dropout_after_conv:
-            self.dropout1 = torch.nn.Dropout(dropout, inplace=True)
-        else:
-            self.dropout1 = None
-
         num_groups_out = groups_out if groups_out is not None else max(1, mid_channels // group_size)
 
         if temb_channels is not None:
@@ -474,17 +468,9 @@ class ResnetBlock2D(nn.Module):
             self.time_emb_proj = None
             self.norm2 = torch.nn.GroupNorm(num_groups=num_groups_out, num_channels=mid_channels, eps=eps, affine=True)
 
-        if not dropout_after_conv:
-            self.dropout = torch.nn.Dropout(dropout)
-        else:
-            self.dropout = None
+        self.dropout = torch.nn.Dropout(dropout)
 
         self.conv2 = torch.nn.Conv2d(mid_channels, out_channels, kernel_size=3, stride=1, padding=1)
-
-        if dropout_after_conv:
-            self.dropout2 = torch.nn.Dropout(dropout, inplace=True)
-        else:
-            self.dropout2 = None
 
         if non_linearity == "swish":
             self.nonlinearity = lambda x: F.silu(x)
@@ -543,8 +529,6 @@ class ResnetBlock2D(nn.Module):
             hidden_states = self.downsample(hidden_states)
 
         hidden_states = self.conv1(hidden_states)
-        if self.dropout1 is not None:
-            hidden_states = self.dropout1(hidden_states)
 
         if temb is None:
             hidden_states = self.norm2(hidden_states)
@@ -557,13 +541,9 @@ class ResnetBlock2D(nn.Module):
 
         hidden_states = self.nonlinearity(hidden_states)
 
-        if self.dropout is not None:
-            hidden_states = self.dropout(hidden_states)
+        hidden_states = self.dropout(hidden_states)
 
         hidden_states = self.conv2(hidden_states)
-
-        if self.dropout2 is not None:
-            hidden_states = self.dropout2(hidden_states)
 
         if self.conv_shortcut is not None:
             input_tensor = self.conv_shortcut(input_tensor)

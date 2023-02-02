@@ -1481,7 +1481,6 @@ class KDownBlock2D(nn.Module):
                     non_linearity=resnet_act_fn,
                     norm1_scale_shift=True,
                     time_embedding_norm=resnet_time_scale_shift,
-                    dropout_after_conv=True,
                     conv_shortcut_bias=False,
                 )
             )
@@ -1559,7 +1558,6 @@ class KCrossAttnDownBlock2D(nn.Module):
                     non_linearity=resnet_act_fn,
                     norm1_scale_shift=True,
                     time_embedding_norm=resnet_time_scale_shift,
-                    dropout_after_conv=True,
                     group_size=resnet_group_size,
                     conv_shortcut_bias=False,
                 )
@@ -2490,7 +2488,6 @@ class KUpBlock2D(nn.Module):
                     non_linearity=resnet_act_fn,
                     norm1_scale_shift=True,
                     time_embedding_norm=resnet_time_scale_shift,
-                    dropout_after_conv=True,
                     conv_shortcut_bias=False,
                 )
             )
@@ -2578,7 +2575,6 @@ class KCrossAttnUpBlock2D(nn.Module):
                     non_linearity=resnet_act_fn,
                     norm1_scale_shift=True,
                     time_embedding_norm=resnet_time_scale_shift,
-                    dropout_after_conv=True,
                     conv_shortcut_bias=False,
                 )
             )
