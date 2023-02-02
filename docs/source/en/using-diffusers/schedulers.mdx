@@ -275,7 +275,7 @@ from flax.training.common_utils import shard
 from diffusers import FlaxStableDiffusionPipeline, FlaxDPMSolverMultistepScheduler
 
 model_id = "runwayml/stable-diffusion-v1-5"
-scheduler, scheduler_state = FlaxDDPMScheduler.from_pretrained(
+scheduler, scheduler_state = FlaxDPMSolverMultistepScheduler.from_pretrained(
     model_id,
     subfolder="scheduler"
 )
