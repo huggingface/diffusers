@@ -196,7 +196,7 @@ class BasicTransformerBlock(nn.Module):
         dim: int,
         num_attention_heads: int,
         attention_head_dim: int,
-        dropout: Optional[float] = 0.0,
+        dropout=0.0,
         cross_attention_dim: Optional[int] = None,
         activation_fn: str = "geglu",
         num_embeds_ada_norm: Optional[int] = None,
@@ -206,24 +206,12 @@ class BasicTransformerBlock(nn.Module):
         norm_elementwise_affine: bool = True,
         norm_type: str = "layer_norm",
         final_dropout: bool = False,
-        temb_channels: Optional[int] = None,  # for ada_group_norm
-        attn1_type: str = "cross",  # cross, self
-        attn2_type: Optional[str] = None,  # None, cross
-        with_ff: bool = True,
-        use_conv_proj: bool = False,
-        cross_attention_norm: bool = False,
-        attention_dropout: Optional[float] = None,
-        group_size: int = 32,
     ):
         super().__init__()
-
         self.only_cross_attention = only_cross_attention
-        self.attn1_type = attn1_type
-        self.attn2_type = attn2_type
 
         self.use_ada_layer_norm_zero = (num_embeds_ada_norm is not None) and norm_type == "ada_norm_zero"
         self.use_ada_layer_norm = (num_embeds_ada_norm is not None) and norm_type == "ada_norm"
-        self.use_ada_group_norm = (temb_channels is not None) and norm_type == "ada_group"
 
         if norm_type in ("ada_norm", "ada_norm_zero") and num_embeds_ada_norm is None:
             raise ValueError(
@@ -231,26 +219,21 @@ class BasicTransformerBlock(nn.Module):
                 f" define `num_embeds_ada_norm` if setting `norm_type` to {norm_type}."
             )
 
+        # 1. Self-Attn
         self.attn1 = CrossAttention(
             query_dim=dim,
             heads=num_attention_heads,
             dim_head=attention_head_dim,
             dropout=dropout,
             bias=attention_bias,
-            cross_attention_dim=cross_attention_dim if attn1_type == "cross" else None,
+            cross_attention_dim=cross_attention_dim if only_cross_attention else None,
             upcast_attention=upcast_attention,
-            use_conv_proj=use_conv_proj,
-            cross_attention_norm=cross_attention_norm if attn1_type == "cross" else None,
-            attention_dropout=attention_dropout,
         )
 
-        if with_ff:
-            self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn, final_dropout=final_dropout)
-        else:
-            self.ff = None
+        self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn, final_dropout=final_dropout)
 
         # 2. Cross-Attn
-        if attn2_type == "cross":
+        if cross_attention_dim is not None:
             self.attn2 = CrossAttention(
                 query_dim=dim,
                 cross_attention_dim=cross_attention_dim,
@@ -259,10 +242,7 @@ class BasicTransformerBlock(nn.Module):
                 dropout=dropout,
                 bias=attention_bias,
                 upcast_attention=upcast_attention,
-                use_conv_proj=use_conv_proj,
-                cross_attention_norm=cross_attention_norm,
-                attention_dropout=attention_dropout,
-            )
+            )  # is self-attn if encoder_hidden_states is none
         else:
             self.attn2 = None
 
@@ -270,36 +250,29 @@ class BasicTransformerBlock(nn.Module):
             self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm)
         elif self.use_ada_layer_norm_zero:
             self.norm1 = AdaLayerNormZero(dim, num_embeds_ada_norm)
-        elif self.use_ada_group_norm:
-            self.norm1 = AdaGroupNorm(temb_channels, dim, max(1, dim // group_size))
         else:
             self.norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
 
-        if attn2_type == "cross":
+        if cross_attention_dim is not None:
             # We currently only use AdaLayerNormZero for self attention where there will only be one attention block.
             # I.e. the number of returned modulation chunks from AdaLayerZero would not make sense if returned during
             # the second cross attention block.
-            if self.use_ada_layer_norm:
-                self.norm2 = AdaLayerNorm(dim, num_embeds_ada_norm)
-            elif self.use_ada_group_norm:
-                self.norm2 = AdaGroupNorm(temb_channels, dim, max(1, dim // group_size))
-            else:
-                self.norm2 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
+            self.norm2 = (
+                AdaLayerNorm(dim, num_embeds_ada_norm)
+                if self.use_ada_layer_norm
+                else nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
+            )
         else:
             self.norm2 = None
 
         # 3. Feed-forward
-        if with_ff:
-            self.norm3 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
-        else:
-            self.norm3 = None
+        self.norm3 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
 
     def forward(
         self,
         hidden_states,
         encoder_hidden_states=None,
         timestep=None,
-        emb=None,
         attention_mask=None,
         cross_attention_kwargs=None,
         class_labels=None,
@@ -310,8 +283,6 @@ class BasicTransformerBlock(nn.Module):
             norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(
                 hidden_states, timestep, class_labels, hidden_dtype=hidden_states.dtype
             )
-        elif self.use_ada_group_norm:
-            norm_hidden_states = self.norm1(hidden_states, emb)
         else:
             norm_hidden_states = self.norm1(hidden_states)
 
@@ -319,8 +290,8 @@ class BasicTransformerBlock(nn.Module):
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         attn_output = self.attn1(
             norm_hidden_states,
-            encoder_hidden_states=encoder_hidden_states if self.attn1_type == "cross" else None,
-            attention_mask=attention_mask if self.attn1_type == "cross" else None,
+            encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
+            attention_mask=attention_mask,
             **cross_attention_kwargs,
         )
         if self.use_ada_layer_norm_zero:
@@ -328,35 +299,31 @@ class BasicTransformerBlock(nn.Module):
         hidden_states = attn_output + hidden_states
 
         if self.attn2 is not None:
-            # 2. Cross-Attention
-            if self.use_ada_layer_norm:
-                norm_hidden_states = self.norm2(hidden_states, timestep)
-            elif self.use_ada_group_norm:
-                norm_hidden_states = self.norm2(hidden_states, emb)
-            else:
-                norm_hidden_states = self.norm2(hidden_states)
+            norm_hidden_states = (
+                self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
+            )
 
+            # 2. Cross-Attention
             attn_output = self.attn2(
                 norm_hidden_states,
-                encoder_hidden_states=encoder_hidden_states if self.attn2_type == "cross" else None,
-                attention_mask=attention_mask if self.attn2_type == "cross" else None,
+                encoder_hidden_states=encoder_hidden_states,
+                attention_mask=attention_mask,
                 **cross_attention_kwargs,
             )
             hidden_states = attn_output + hidden_states
 
         # 3. Feed-forward
-        if self.ff is not None:
-            norm_hidden_states = self.norm3(hidden_states)
+        norm_hidden_states = self.norm3(hidden_states)
 
-            if self.use_ada_layer_norm_zero:
-                norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
+        if self.use_ada_layer_norm_zero:
+            norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
 
-            ff_output = self.ff(norm_hidden_states)
+        ff_output = self.ff(norm_hidden_states)
 
-            if self.use_ada_layer_norm_zero:
-                ff_output = gate_mlp.unsqueeze(1) * ff_output
+        if self.use_ada_layer_norm_zero:
+            ff_output = gate_mlp.unsqueeze(1) * ff_output
 
-            hidden_states = ff_output + hidden_states
+        hidden_states = ff_output + hidden_states
 
         return hidden_states
 
@@ -494,6 +461,27 @@ class AdaLayerNorm(nn.Module):
         return x
 
 
+class AdaLayerNormZero(nn.Module):
+    """
+    Norm layer adaptive layer norm zero (adaLN-Zero).
+    """
+
+    def __init__(self, embedding_dim, num_embeddings):
+        super().__init__()
+
+        self.emb = CombinedTimestepLabelEmbeddings(num_embeddings, embedding_dim)
+
+        self.silu = nn.SiLU()
+        self.linear = nn.Linear(embedding_dim, 6 * embedding_dim, bias=True)
+        self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
+
+    def forward(self, x, timestep, class_labels, hidden_dtype=None):
+        emb = self.linear(self.silu(self.emb(timestep, class_labels, hidden_dtype=hidden_dtype)))
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.chunk(6, dim=1)
+        x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
+        return x, gate_msa, shift_mlp, scale_mlp, gate_mlp
+
+
 class AdaGroupNorm(nn.Module):
     """
     GroupNorm layer modified to incorporate timestep embeddings.
@@ -527,24 +515,3 @@ class AdaGroupNorm(nn.Module):
         x = F.group_norm(x, self.num_groups, eps=self.eps)
         x = x * (1 + scale) + shift
         return x
-
-
-class AdaLayerNormZero(nn.Module):
-    """
-    Norm layer adaptive layer norm zero (adaLN-Zero).
-    """
-
-    def __init__(self, embedding_dim, num_embeddings):
-        super().__init__()
-
-        self.emb = CombinedTimestepLabelEmbeddings(num_embeddings, embedding_dim)
-
-        self.silu = nn.SiLU()
-        self.linear = nn.Linear(embedding_dim, 6 * embedding_dim, bias=True)
-        self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
-
-    def forward(self, x, timestep, class_labels, hidden_dtype=None):
-        emb = self.linear(self.silu(self.emb(timestep, class_labels, hidden_dtype=hidden_dtype)))
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.chunk(6, dim=1)
-        x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
-        return x, gate_msa, shift_mlp, scale_mlp, gate_mlp
