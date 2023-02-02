@@ -1,0 +1,282 @@
+<!--Copyright 2022 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+# DreamBooth 미세 조정 예시
+
+[DreamBooth](https://arxiv.org/abs/2208.12242)는 한 주제에 대한 적은 이미지(3~5개)만으로도 stable diffusion과 같이 text-to-image 모델을 개인화하는 방법입니다.
+
+![프로젝트 블로그로부터의 DreamBooth 예시](https://dreambooth.github.io/DreamBooth_files/teaser_static.jpg)
+_[프로젝트 블로그](https://dreambooth.github.io)로부터의 DreamBooth 예시._
+
+[Dreambooth 학습 스크립트](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth)는 사전 학습된 Stable Diffusion 모델에서 학습 순서를 구현하는 방법을 보여줍니다.
+
+<Tip warning={true}>
+
+Dreambooth 미세 조정은 하이퍼파라미터에 매우 민감하고 과적합되기 쉽습니다. 다양한 주제에 대한 권장 설정이 포함된 [심층 분석](https://huggingface.co/blog/dreambooth)을 살펴보고 거기서에서 시작하는 것이 좋습니다.
+
+</Tip>
+
+## 로컬에서 학습하기
+
+### dependency 설치하기
+
+스크립트를 실행하기 전에, 라이브러리의 학습 dependency들을 설치해야 합니다. 또한 `main` github 브랜치에서 `diffusers`를 설치하는 것이 좋습니다.
+
+
+```bash
+pip install git+https://github.com/huggingface/diffusers
+pip install -U -r diffusers/examples/dreambooth/requirements.txt
+```
+
+xFormers는 학습 요구 사항의 일부는 아니지만 [가능하면 설치하는 것이 좋습니다](../optimization/xformers). 이는 훈련 속도를 높이고 메모리 집약도를 낮출 수 있습니다.
+
+모든 dependency가 세팅되었으면, 다음으로 [🤗 가속](https://github.com/huggingface/accelerate/) 환경을 구성할 수 있습니다:
+
+```bash
+accelerate config
+```
+
+이 예시에서는 모델 버전 `v1-4`를 사용하므로, [이 링크](https://huggingface.co/CompVis/stable-diffusion-v1-4)를 방문하여 라이선스를 주의 깊게 읽어본 후 진행하시기 바랍니다.
+
+아래 명령은 모델의 허브 id `CompVis/stable-diffusion-v1-4`를 사용하기 때문에 허브에서 모델 가중치를 다운로드하고 캐시합니다. 리포지토리를 로컬로 복제하고 체크아웃이 저장된 시스템의 로컬 경로를 사용할 수도 있습니다.
+
+### 간단한 개 예시
+
+이 예시에서는 [이 이미지들](https://drive.google.com/drive/folders/1BO_dyz-p65qhBRRMRA4TbZ8qW4rB99JZ)를 사용하여 Dreambooth 프로세스를 사용하여 Stable Diffusion에 새로운 개념을 추가합니다. 그것들은 우리의 훈련 데이터가 될 것입니다. 다운로드하여 시스템 어딘가에 배치하십시오.
+
+그런 다음 다음을 사용하여 학습 스크립트를 시작할 수 있습니다:
+
+```bash
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export INSTANCE_DIR="path_to_training_images"
+export OUTPUT_DIR="path_to_saved_model"
+
+accelerate launch train_dreambooth.py \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --instance_data_dir=$INSTANCE_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --instance_prompt="a photo of sks dog" \
+  --resolution=512 \
+  --train_batch_size=1 \
+  --gradient_accumulation_steps=1 \
+  --learning_rate=5e-6 \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --max_train_steps=400
+```
+
+### 사전 보존 손실을 사용한 학습
+
+과적합과 language drift를 방지하기 위해 사전 보존이 사용됩니다. 관심이 있는 경우 자세한 내용은 논문를 참조하십시오. 사전 보존을 위해 동일한 클래스의 다른 이미지를 교육 프로세스의 일부로 사용합니다. 좋은 점은 Stable Diffusion 모델 자체를 사용하여 이러한 이미지를 생성할 수 있다는 것입니다! 학습 스크립트는 생성된 이미지를 우리가 지정한 로컬 경로에 저장합니다.
+
+논문에 따르면, 사전 보존을 위해 `num_epochs * num_samples`개의 이미지를 생성하는 것이 좋습니다. 200-300개에서 대부분 잘 작동합니다.
+
+```bash
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export INSTANCE_DIR="path_to_training_images"
+export CLASS_DIR="path_to_class_images"
+export OUTPUT_DIR="path_to_saved_model"
+
+accelerate launch train_dreambooth.py \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --instance_data_dir=$INSTANCE_DIR \
+  --class_data_dir=$CLASS_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --with_prior_preservation --prior_loss_weight=1.0 \
+  --instance_prompt="a photo of sks dog" \
+  --class_prompt="a photo of dog" \
+  --resolution=512 \
+  --train_batch_size=1 \
+  --gradient_accumulation_steps=1 \
+  --learning_rate=5e-6 \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --num_class_images=200 \
+  --max_train_steps=800
+```
+
+### 학습 중 체크포인트 저장하기
+
+Dreambooth로 훈련하는 동안 과적합하기 쉬우므로, 때때로 프로세스 중에 정기적인 체크포인트를 저장하는 것이 유용합니다. 중간 체크포인트 중 하나가 최종 모델보다 더 잘 작동할 수 있습니다! 이 기능을 사용하려면 학습 스크립트에 다음 인수를 전달해야 합니다:
+
+```bash
+  --checkpointing_steps=500
+```
+
+이렇게 하면 `output_dir`의 하위 폴더에 전체 학습 상태가 저장됩니다. 하위 폴더 이름은 접두사 `checkpoint-`로 시작하고 지금까지 수행된 step 수입니다. 예: `checkpoint-1500`은 1500 학습 step 후에 저장된 체크포인트입니다.
+
+#### 저장된 체크포인트에서 훈련 재개하기
+
+저장된 체크포인트에서 훈련을 재개하려면, `--resume_from_checkpoint` 인수를 전달한 다음 사용할 체크포인트의 이름을 지정하면 됩니다. 특수 문자열 `"latest"`를 사용하여 저장된 마지막 체크포인트(즉, step 수가 가장 많은 체크포인트)에서 재개할 수도 있습니다. 예를 들어 다음은 1500 step 후에 저장된 체크포인트에서부터 학습을 재개합니다:
+
+```bash
+  --resume_from_checkpoint="checkpoint-1500"
+```
+
+원하는 경우 일부 하이퍼파라미터를 조정할 수 있는 좋은 기회일 수 있습니다.
+
+#### 저장된 체크포인트를 사용하여 추론 수행하기
+
+저장된 체크포인트는 훈련 재개에 적합한 형식으로 저장됩니다. 여기에는 모델 가중치뿐만 아니라 옵티마이저, 데이터 로더 및 학습률의 상태도 포함됩니다.
+
+추론을 위해 체크포인트를 사용할 수 있지만, 먼저 이를 추론 파이프라인으로 변환해야 합니다. 이는 다음과 같이 할 수 있습니다:
+
+```python
+from accelerate import Accelerator
+from diffusers import DiffusionPipeline
+
+# 학습에 사용된 것과 동일한 인수(모델, 개정)로 파이프라인을 로드합니다.
+model_id = "CompVis/stable-diffusion-v1-4"
+pipeline = DiffusionPipeline.from_pretrained(model_id)
+
+accelerator = Accelerator()
+
+# 초기 학습에 `--train_text_encoder`가 사용된 경우 text_encoder를 사용합니다.
+unet, text_encoder = accelerator.prepare(pipeline.unet, pipeline.text_encoder)
+
+# 체크포인트 경로로부터 상태를 복원합니다. 여기서는 절대 경로를 사용해야 합니다.
+accelerator.load_state("/sddata/dreambooth/daruma-v2-1/checkpoint-100")
+
+# unwrapped 모델로 파이프라인을 다시 빌드합니다.(.unet and .text_encoder로의 할당도 작동해야 합니다)
+pipeline = DiffusionPipeline.from_pretrained(
+    model_id,
+    unet=accelerator.unwrap_model(unet),
+    text_encoder=accelerator.unwrap_model(text_encoder),
+)
+
+# 추론을 수행하거나 저장하거나, 허브에 푸시합니다.
+pipeline.save_pretrained("dreambooth-pipeline")
+```
+
+### 16GB GPU에서 훈련하기
+
+Gradient checkpointing과 [bitsandbytes](https://github.com/TimDettmers/bitsandbytes)의 8비트 옵티마이저의 도움으로, 16GB GPU에서 dreambooth를 훈련할 수 있습니다.
+
+```bash
+pip install bitsandbytes
+```
+
+그 다음, 학습 스크립트에 `--use_8bit_adam` 옵션을 명시합니다.
+
+```bash
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export INSTANCE_DIR="path_to_training_images"
+export CLASS_DIR="path_to_class_images"
+export OUTPUT_DIR="path_to_saved_model"
+
+accelerate launch train_dreambooth.py \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --instance_data_dir=$INSTANCE_DIR \
+  --class_data_dir=$CLASS_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --with_prior_preservation --prior_loss_weight=1.0 \
+  --instance_prompt="a photo of sks dog" \
+  --class_prompt="a photo of dog" \
+  --resolution=512 \
+  --train_batch_size=1 \
+  --gradient_accumulation_steps=2 --gradient_checkpointing \
+  --use_8bit_adam \
+  --learning_rate=5e-6 \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --num_class_images=200 \
+  --max_train_steps=800
+```
+
+### UNet뿐만 아니라 텍스트 인코더 미세 조정
+
+이 스크립트는 또한 `unet`과 함께 `text_encoder`를 미세 조정할 수 있습니다. 이것은 특히 얼굴에서 훨씬 더 나은 결과를 제공한다는 것이 실험적으로 관찰되었습니다. 자세한 내용은 [블로그](https://huggingface.co/blog/dreambooth)를 참조하세요.
+
+이 옵션을 활성화하려면, 학습 스크립트에 `--train_text_encoder` 인수를 전달하세요.
+
+<Tip>
+텍스트 인코더를 학습하려면 추가 메모리가 필요하므로, 학습에 16GB GPU에 적합하지 않습니다. 이 옵션을 사용하려면 최소 24GB VRAM이 필요합니다.
+</Tip>
+
+```bash
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export INSTANCE_DIR="path_to_training_images"
+export CLASS_DIR="path_to_class_images"
+export OUTPUT_DIR="path_to_saved_model"
+
+accelerate launch train_dreambooth.py \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --train_text_encoder \
+  --instance_data_dir=$INSTANCE_DIR \
+  --class_data_dir=$CLASS_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --with_prior_preservation --prior_loss_weight=1.0 \
+  --instance_prompt="a photo of sks dog" \
+  --class_prompt="a photo of dog" \
+  --resolution=512 \
+  --train_batch_size=1 \
+  --use_8bit_adam
+  --gradient_checkpointing \
+  --learning_rate=2e-6 \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --num_class_images=200 \
+  --max_train_steps=800
+```
+
+### 8GB GPU에서 학습하기
+
+[DeepSpeed](https://www.deepspeed.ai/)를 사용하면 일부 텐서를 VRAM에서 CPU 또는 NVME로 오프로드하여 더 적은 GPU 메모리로 학습할 수도 있습니다.
+
+DeepSpeed는 `accelerate config`로 활성화할 수 있습니다. 구성하는 동안, "DeepSpeed를 사용하시겠습니까?"에 예라고 대답하세요. DeepSpeed 2단계, fp16 혼합 정밀도를 결합하고 모델 매개변수와 옵티마이저 상태를 모두 CPU로 오프로드하면 8GB VRAM 미만에서 학습할 수 있습니다. 단점은 더 많은 시스템 RAM(약 25GB)이 필요하다는 것입니다. 추가 구성 옵션은 [DeepSpeed 문서](https://huggingface.co/docs/accelerate/usage_guides/deepspeed)를 참조하세요.
+
+기본 Adam 옵티마이저를 DeepSpeed의 특수 버전인 Adam `deepspeed.ops.adam.DeepSpeedCPUAdam`으로 변경하면 속도가 상당히 향상되지만, 활성화하려면 시스템의 CUDA 도구 체인 버전이 PyTorch로 설치된 것과 동일해야 합니다. 8비트 옵티마이저는 현재 DeepSpeed와 호환되지 않는 것 같습니다.
+
+```bash
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export INSTANCE_DIR="path_to_training_images"
+export CLASS_DIR="path_to_class_images"
+export OUTPUT_DIR="path_to_saved_model"
+
+accelerate launch train_dreambooth.py \
+  --pretrained_model_name_or_path=$MODEL_NAME \
+  --instance_data_dir=$INSTANCE_DIR \
+  --class_data_dir=$CLASS_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --with_prior_preservation --prior_loss_weight=1.0 \
+  --instance_prompt="a photo of sks dog" \
+  --class_prompt="a photo of dog" \
+  --resolution=512 \
+  --train_batch_size=1 \
+  --sample_batch_size=1 \
+  --gradient_accumulation_steps=1 --gradient_checkpointing \
+  --learning_rate=5e-6 \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --num_class_images=200 \
+  --max_train_steps=800 \
+  --mixed_precision=fp16
+```
+
+## 추론
+
+모델을 학습한 후에는, 모델이 저장된 경로를 표시하기만 하면 `StableDiffusionPipeline`을 사용하여 추론을 수행할 수 있습니다. 프롬프트에 학습에 사용된 특수 `식별자`(이전 예시의 `sks`)가 포함되어 있는지 확인하세요.
+
+```python
+from diffusers import StableDiffusionPipeline
+import torch
+
+model_id = "path_to_saved_model"
+pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
+
+prompt = "A photo of sks dog in a bucket"
+image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
+
+image.save("dog-bucket.png")
+```
+
+[저장된 학습 체크포인트](#performing-inference-using-a-saved-checkpoint)에서도 추론을 실행할 수도 있습니다.
