@@ -74,9 +74,9 @@ class Index:
         return self.dataset.search(self.index_name, vec, k=k)
 class Retriever:
     def __init__(self, config:IndexConfig, index:Index=None, dataset:Dataset=None, clip_model:CLIPModel=None,\
-                         feature_extractor:CLIPFeatureExtractor=None, tokenizer:CLIPTokenizer=None):
+                         feature_extractor:CLIPFeatureExtractor=None):
         self.config = config
-        self.index = index or self._build_index(config, dataset, clip_model=clip_model, feature_extractor=feature_extractor, tokenizer=tokenizer)
+        self.index = index or self._build_index(config, dataset, clip_model=clip_model, feature_extractor=feature_extractor)
     @classmethod
     def from_pretrained(cls, retriever_name_or_path:str, index:Index=None, dataset:Dataset=None, clip_model:CLIPModel=None,\
                          feature_extractor:CLIPFeatureExtractor=None, **kwargs):
