@@ -1778,7 +1778,7 @@ class CrossAttnUpBlock2D(nn.Module):
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
-                        only_cross_attention=False,
+                        only_cross_attention=only_cross_attention,
                         upcast_attention=upcast_attention,
                     )
                 )
