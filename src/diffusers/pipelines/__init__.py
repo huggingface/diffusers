@@ -44,6 +44,7 @@ else:
     from .alt_diffusion import AltDiffusionImg2ImgPipeline, AltDiffusionPipeline
     from .latent_diffusion import LDMTextToImagePipeline
     from .paint_by_example import PaintByExamplePipeline
+    from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
     from .stable_diffusion import (
         CycleDiffusionPipeline,
         StableDiffusionDepth2ImgPipeline,
@@ -56,7 +57,6 @@ else:
         StableDiffusionUpscalePipeline,
     )
     from .stable_diffusion_safe import StableDiffusionPipelineSafe
-    from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
     from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline
     from .versatile_diffusion import (
         VersatileDiffusionDualGuidedPipeline,
