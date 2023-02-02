@@ -255,7 +255,7 @@ class CrossAttention(nn.Module):
 
         return attention_probs
 
-    def prepare_attention_mask(self, attention_mask, target_length):
+    def prepare_attention_mask(self, attention_mask, target_length, batch_size):
         head_size = self.heads
         if attention_mask is None:
             return attention_mask
@@ -269,6 +269,8 @@ class CrossAttention(nn.Module):
                 attention_mask = torch.concat([attention_mask, padding], dim=2)
             else:
                 attention_mask = F.pad(attention_mask, (0, target_length), value=0.0)
+
+        if attention_mask.shape[0] < batch_size * head_size:
             attention_mask = attention_mask.repeat_interleave(head_size, dim=0)
         return attention_mask
 
@@ -280,15 +282,9 @@ class CrossAttnProcessor:
         hidden_states,
         encoder_hidden_states=None,
         attention_mask=None,
-        prepare_mask=True,
     ):
-        if prepare_mask:
-            batch_size, sequence_length, _ = hidden_states.shape
-            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
-        else:
-            if attention_mask is not None:
-                attention_mask = attention_mask.repeat_interleave(attn.heads, dim=0)
-
+        batch_size, sequence_length, _ = hidden_states.shape
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
         query = attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:

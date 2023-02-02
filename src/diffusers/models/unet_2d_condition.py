@@ -476,7 +476,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if attention_mask is not None:
             attention_mask = (1 - attention_mask.to(sample.dtype)) * -10000.0
             attention_mask = attention_mask.unsqueeze(1)
-            cross_attention_kwargs = {"prepare_mask": False}
 
         # 0. center input if necessary
         if self.config.center_input_sample:

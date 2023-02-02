@@ -148,16 +148,8 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
 
-        attention_mask = text_inputs.attention_mask.to(device)
-
-        if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
-            use_attention_mask = True
-        else:
-            use_attention_mask = False
-
         text_encoder_out = self.text_encoder(
             text_input_ids.to(device),
-            attention_mask=attention_mask if use_attention_mask else None,
             output_hidden_states=True,
         )
         text_embeddings = text_encoder_out.hidden_states[-1]
@@ -199,11 +191,8 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                 return_tensors="pt",
             )
 
-            uncond_attention_mask = uncond_input.attention_mask.to(device)
-
             uncond_encoder_out = self.text_encoder(
                 uncond_input.input_ids.to(device),
-                attention_mask=uncond_attention_mask if use_attention_mask else None,
                 output_hidden_states=True,
             )
 
@@ -219,10 +208,9 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
-            attention_mask = torch.cat([uncond_attention_mask, attention_mask])
             text_pooler_out = torch.cat([uncond_pooler_out, text_pooler_out])
 
-        return text_embeddings, attention_mask, text_pooler_out
+        return text_embeddings, text_pooler_out
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -414,7 +402,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
             prompt = [""] * batch_size
 
         # 3. Encode input prompt
-        text_embeddings, attention_mask, text_pooler_out = self._encode_prompt(
+        text_embeddings, text_pooler_out = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
 
@@ -498,7 +486,6 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                     scaled_model_input,
                     timestep,
                     encoder_hidden_states=text_embeddings,
-                    attention_mask=attention_mask,
                     timestep_cond=timestep_condition,
                 ).sample
 

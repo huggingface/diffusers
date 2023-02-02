@@ -17,7 +17,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from .attention import AttentionBlock, AdaLayerNorm, AdaLayerNormZero, AdaGroupNorm
+from .attention import AdaGroupNorm, AdaLayerNorm, AdaLayerNormZero, AttentionBlock
 from .cross_attention import CrossAttention, CrossAttnAddedKVProcessor
 from .dual_transformer_2d import DualTransformer2DModel
 from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, KDownsample2d, KUpsample2d, ResnetBlock2D, Upsample2D
@@ -2432,7 +2432,6 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
         attention_mask=None,
         cross_attention_kwargs=None,
     ):
-        cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         for resnet, attn in zip(self.resnets, self.attentions):
             # resnet
             # pop res hidden states
@@ -2447,7 +2446,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
                 attention_mask=attention_mask,
-                **cross_attention_kwargs,
+                cross_attention_kwargs=cross_attention_kwargs,
             )
 
         if self.upsamplers is not None:
@@ -2776,9 +2775,10 @@ class KAttentionBlock(nn.Module):
         timestep=None,
         emb=None,
         attention_mask=None,
-        cross_attention_kwargs=None,
         class_labels=None,
+        cross_attention_kwargs=None,
     ):
+        cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         if self.use_ada_layer_norm:
             norm_hidden_states = self.norm1(hidden_states, timestep)
         elif self.use_ada_layer_norm_zero:
@@ -2794,11 +2794,9 @@ class KAttentionBlock(nn.Module):
         norm_hidden_states = norm_hidden_states.permute(0, 2, 3, 1).reshape(batch_size, height * width, dim)
 
         # 1. Self-Attention
-        cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         attn_output = self.attn1(
             norm_hidden_states,
             encoder_hidden_states=encoder_hidden_states if self.attn1_type == "cross" else None,
-            attention_mask=attention_mask if self.attn1_type == "cross" else None,
             **cross_attention_kwargs,
         )
         attn_output = attn_output.permute(0, 2, 1).reshape(batch_size, dim, height, width)
@@ -2822,7 +2820,6 @@ class KAttentionBlock(nn.Module):
             attn_output = self.attn2(
                 norm_hidden_states,
                 encoder_hidden_states=encoder_hidden_states if self.attn2_type == "cross" else None,
-                attention_mask=attention_mask if self.attn2_type == "cross" else None,
                 **cross_attention_kwargs,
             )
             attn_output = attn_output.permute(0, 2, 1).reshape(batch_size, dim, height, width)
