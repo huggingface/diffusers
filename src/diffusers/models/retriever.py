@@ -25,88 +25,78 @@ from diffusers.pipelines.rdm import preprocess_images
 
 class IndexConfig:
     def __init__(self, clip_name_or_path="openai/clip-vit-large-patch14", dataset_name="Isamu136/oxford_pets_with_l14_emb", \
-                 image_column="image", embeddings_column="embeddings"):
+                 image_column="image", index_name="embeddings", index_path=None):
         self.clip_name_or_path = clip_name_or_path
-        assert dataset_name
         self.dataset_name = dataset_name
         self.image_column = image_column
-        self.embeddings_column = embeddings_column
+        self.index_name = index_name
+        self.index_path = index_path
 
 class Index:
     """
     Each index for a retrieval model is specific to the clip model used and the dataset used.
     """
-    def __init__(self, config:IndexConfig, dataset: Dataset, index_name: str = None):
+    def __init__(self, config:IndexConfig, dataset: Dataset, clip_model:CLIPModel=None, \
+                 feature_extractor:CLIPFeatureExtractor=None, tokenizer:CLIPTokenizer=None):
         self.config = config
         self.dataset = dataset
-        self.index_name = index_name
         self.index_initialized = False
-        self.embeddings_column = self.config.embeddings_column
-    def set_index_name(self, index_name):
+        self.clip_model = clip_model
+        self.feature_extractor = feature_extractor
+        self.tokenizer = tokenizer
+        self.index_name = config.index_name
+        self.index_path = config.index_path
+        self.init_index()
+    def set_index_name(self, index_name:str):
         self.index_name = index_name
     def init_index(self):
         if not self.index_initialized:
-            if self.index_name:
-                self.dataset.load_index(self.index_name)
+            if self.index_path and self.index_name:
+                try:
+                    self.dataset.load_faiss_index(self.index_name, self.index_path)
+                    self.index_initialized = True
+                except FileNotFoundError as e:
+                    raise FileNotFoundError("Invalid index name")
+            if self.index_name in self.dataset.features:
+                self.dataset.add_faiss_index(column=self.index_name)
                 self.index_initialized = True
-            if self.embeddings_column in self.dataset.features:
-                self.dataset.add_faiss_index(column=self.embeddings_column)
-    def build_index(self, clip_model:CLIPModel=None, feature_extractor:CLIPFeatureExtractor=None, device:str="cuda", torch_dtype=torch.float32):
-        clip_model = clip_model or CLIPModel.from_pretrained(self.config.clip_name_or_path).to(device=device, dtype=torch_dtype)
-        feature_extractor = feature_extractor or CLIPFeatureExtractor.from_pretrained(self.config.clip_name_or_path).to(device=device, dtype=torch_dtype)
-        self.dataset = get_dataset_with_emb(self.dataset, clip_model, feature_extractor, device=device, image_column=self.config.image_column, embedding_column=self.config.embeddings_column)
-        self.init_index()
-
-class Retriever:
+    def build_index(self, device:str="cuda", torch_dtype=torch.float32):
+        if not self.index_initialized:
+            self.clip_model = self.clip_model or CLIPModel.from_pretrained(self.config.clip_name_or_path).to(device=device, dtype=torch_dtype)
+            self.feature_extractor = self.feature_extractor or CLIPFeatureExtractor.from_pretrained(self.config.clip_name_or_path).to(device=device, dtype=torch_dtype)
+            self.dataset = get_dataset_with_emb(self.dataset, self.clip_model, self.feature_extractor, device=device, image_column=self.config.image_column, embedding_column=self.config.embeddings_column)
+            self.init_index()
     def get_knn(self, vec, k=20):
         vec = np.array(vec).astype(np.float32)
-        return self.dataset.get_nearest_examples('embeddings', vec, k=k)
+        return self.dataset.get_nearest_examples(self.index_name, vec, k=k)
     def get_knn_from_text(self, prompt, k=20):
         vec = map_txt_to_clip_feature(self.clip_model, self.tokenizer, prompt, self.device)
         return self.get_knn(vec, k)
+
+class Retriever:
     def __init__(self, config:IndexConfig, index:Index=None):
         self.config = config
         self.index = index or self._build_index(config)
-    @staticmethod
-    def _build_index(config):
-        return Index()
-    def __init__(self, config, question_encoder_tokenizer, generator_tokenizer, index=None, init_retrieval=True):
-        self._init_retrieval = init_retrieval
-        super().__init__()
-        self.generator_tokenizer = generator_tokenizer
-        self.question_encoder_tokenizer = question_encoder_tokenizer
-
-        self.n_docs = config.n_docs
-        self.batch_size = config.retrieval_batch_size
-
-        self.config = config
-        if self._init_retrieval:
-            self.init_retrieval()
-
-        self.ctx_encoder_tokenizer = None
-        self.return_tokenized_docs = False
-
-
     @classmethod
-    def from_pretrained(cls, retriever_name_or_path, indexed_dataset=None, **kwargs):
-        config = kwargs.pop("config", None) or RagConfig.from_pretrained(retriever_name_or_path, **kwargs)
-        clip_model = CLIPModel.from_pretrained(config.clip_name_or_path)
-        tokenizer = CLIPTokenizer.from_pretrained(config.clip_name_or_path)
-        feature_extractor = CLIPFeatureExtractor.from_pretrained(config.clip_name_or_path)
-        rag_tokenizer = RagTokenizer.from_pretrained(retriever_name_or_path, config=config)
-        question_encoder_tokenizer = rag_tokenizer.question_encoder
-        generator_tokenizer = rag_tokenizer.generator
-        if indexed_dataset is not None:
-            config.index_name = "custom"
-            index = CustomHFIndex(config.retrieval_vector_size, indexed_dataset)
-        else:
-            index = cls._build_index(config)
+    def from_pretrained(cls, retriever_name_or_path:str, dataset:Dataset=None, clip_model:CLIPModel=None,\
+                         feature_extractor:CLIPFeatureExtractor=None, tokenizer:CLIPTokenizer=None, **kwargs):
+        config = kwargs.pop("config", None) or IndexConfig.from_pretrained(retriever_name_or_path, **kwargs)
+        clip_model = clip_model or CLIPModel.from_pretrained(config.clip_name_or_path)
+        tokenizer = tokenizer or CLIPTokenizer.from_pretrained(config.clip_name_or_path)
+        feature_extractor = feature_extractor or CLIPFeatureExtractor.from_pretrained(config.clip_name_or_path)
+        dataset = dataset or load_dataset(config.dataset_name)
+        index =cls._build_index(config, dataset, clip_model=clip_model, feature_extractor=feature_extractor, tokenizer=tokenizer)
         return cls(
             config,
-            question_encoder_tokenizer=question_encoder_tokenizer,
-            generator_tokenizer=generator_tokenizer,
-            index=index,
+            index=index
         )
+    @staticmethod
+    def _build_index(config:IndexConfig, dataset:Dataset=None, clip_model:CLIPModel=None,\
+                         feature_extractor:CLIPFeatureExtractor=None, tokenizer:CLIPTokenizer=None):
+        dataset = dataset or load_dataset(config.dataset_name)
+        index =Index(config, dataset, clip_model=clip_model, feature_extractor=feature_extractor, tokenizer=tokenizer)
+        index.build_index()
+        return index
 
     def save_pretrained(self, save_directory):
         if isinstance(self.index, CustomHFIndex):
