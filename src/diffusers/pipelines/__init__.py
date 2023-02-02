@@ -56,6 +56,7 @@ else:
         StableDiffusionUpscalePipeline,
     )
     from .stable_diffusion_safe import StableDiffusionPipelineSafe
+    from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
     from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline
     from .versatile_diffusion import (
         VersatileDiffusionDualGuidedPipeline,

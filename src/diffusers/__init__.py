@@ -117,6 +117,7 @@ else:
         StableDiffusionInstructPix2PixPipeline,
         StableDiffusionPipeline,
         StableDiffusionPipelineSafe,
+        SemanticStableDiffusionPipeline,
         StableDiffusionUpscalePipeline,
         UnCLIPImageVariationPipeline,
         UnCLIPPipeline,
