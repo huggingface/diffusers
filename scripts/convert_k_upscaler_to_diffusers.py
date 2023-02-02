@@ -222,7 +222,7 @@ def unet_model_from_original_config(original_config):
     layers_per_block = original_config["depths"][0]
 
     class_labels_dim = original_config["mapping_cond_dim"]
-    #time_embed_dim = original_config["mapping_out"]
+    # time_embed_dim = original_config["mapping_out"]
     cross_attention_dim = original_config["cross_cond_dim"]
 
     attn1_types = []
@@ -258,7 +258,7 @@ def unet_model_from_original_config(original_config):
         timestep_act_2=True,
         conv_in_kernel=1,
         conv_out_kernel=1,
-        )
+    )
 
     return unet
 

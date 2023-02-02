@@ -158,7 +158,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             self.time_proj = Timesteps(block_out_channels[0], flip_sin_to_cos, freq_shift)
             timestep_input_dim = block_out_channels[0]
         else:
-            raise ValueError(f"{time_embedding_type} does not exist. Pleaes make sure to use one of `fourier` or `positional`.")
+            raise ValueError(
+                f"{time_embedding_type} does not exist. Pleaes make sure to use one of `fourier` or `positional`."
+            )
 
         self.time_embedding = TimestepEmbedding(
             timestep_input_dim, time_embed_dim, act_fn=act_fn, act_2=timestep_act_2, cond_proj_dim=time_cond_proj_dim
@@ -209,7 +211,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 # YiYI's comments: needed this to determine attn1_type for KCrossAttnDownBlock2D
-                is_final_block=is_final_block,)
+                is_final_block=is_final_block,
+            )
             self.down_blocks.append(down_block)
 
         # mid
