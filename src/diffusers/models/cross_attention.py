@@ -64,6 +64,8 @@ class CrossAttention(nn.Module):
         processor: Optional["AttnProcessor"] = None,
     ):
         super().__init__()
+        # TODO (Patrick) - clean
+        dropout = 0.0
         inner_dim = dim_head * heads
         self.is_cross = cross_attention_dim is not None
         cross_attention_dim = cross_attention_dim if cross_attention_dim is not None else query_dim
@@ -92,12 +94,15 @@ class CrossAttention(nn.Module):
 
         if use_conv_proj:
             self.to_q = nn.Conv2d(query_dim, inner_dim, 1)
+            self.to_q_temp = nn.Linear(query_dim, inner_dim, bias=bias)
         else:
             self.to_q = nn.Linear(query_dim, inner_dim, bias=bias)
 
         if use_conv_proj and not self.is_cross:
             self.to_k = nn.Conv2d(cross_attention_dim, inner_dim, 1)
             self.to_v = nn.Conv2d(cross_attention_dim, inner_dim, 1)
+            self.to_k_temp = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
+            self.to_v_temp = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
         else:
             self.to_k = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
             self.to_v = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
@@ -110,12 +115,42 @@ class CrossAttention(nn.Module):
 
         if use_conv_proj:
             self.to_out.append(nn.Conv2d(inner_dim, query_dim, 1))
+            self.to_out_temp = nn.Linear(inner_dim, query_dim)
         else:
             self.to_out.append(nn.Linear(inner_dim, query_dim))
+
+        self.to_out.append(nn.Dropout(dropout))
 
         # set attention processor
         processor = processor if processor is not None else CrossAttnProcessor()
         self.set_processor(processor)
+
+    def set_weights(self):
+        if isinstance(self.to_q, nn.Conv2d):
+            state_dict_q = self.to_q.state_dict()
+            state_dict_q["weight"] = state_dict_q["weight"][:, :, 0, 0]
+
+            self.to_q_temp.load_state_dict(state_dict_q)
+            self.to_q = self.to_q_temp
+        if isinstance(self.to_k, nn.Conv2d):
+            state_dict_k = self.to_k.state_dict()
+            state_dict_k["weight"] = state_dict_k["weight"][:, :, 0, 0]
+            state_dict_v = self.to_v.state_dict()
+            state_dict_v["weight"] = state_dict_v["weight"][:, :, 0, 0]
+
+            self.to_k_temp.load_state_dict(state_dict_k)
+            self.to_v_temp.load_state_dict(state_dict_v)
+
+            self.to_k = self.to_k_temp
+            self.to_v = self.to_v_temp
+        if isinstance(self.to_out[0], nn.Conv2d):
+            state_dict = self.to_out[0].state_dict()
+            state_dict["weight"] = state_dict["weight"][:, :, 0, 0]
+            self.to_out_temp.load_state_dict(state_dict)
+
+            self.to_out[0] = self.to_out_temp
+
+        # import ipdb; ipdb.set_trace()
 
     def set_use_memory_efficient_attention_xformers(
         self, use_memory_efficient_attention_xformers: bool, attention_op: Optional[Callable] = None
@@ -188,6 +223,7 @@ class CrossAttention(nn.Module):
         self.processor = processor
 
     def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None, **cross_attention_kwargs):
+        self.set_weights()
         # The `CrossAttention` class can call different attention processors / attention functions
         # here we simply pass along all tensors to the selected processor class
         # For standard processors that are defined here, `**cross_attention_kwargs` is empty
@@ -272,6 +308,10 @@ class CrossAttnProcessor:
         prepare_mask=True,
         **kwargs,
     ):
+        if attn.use_conv_proj:
+            batch_size, dim, height, width = hidden_states.shape
+            hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch_size, height * width, dim)
+
         if prepare_mask:
             batch_size, sequence_length, _ = hidden_states.shape
             attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
@@ -280,10 +320,6 @@ class CrossAttnProcessor:
                 attention_mask = attention_mask.repeat_interleave(attn.heads, dim=0)
 
         query = attn.to_q(hidden_states)
-        if attn.use_conv_proj:
-            batch_size, dim, height, width = query.shape
-            query = query.permute(0, 2, 3, 1).reshape(batch_size, height * width, dim)
-        query = attn.head_to_batch_dim(query)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
@@ -293,10 +329,7 @@ class CrossAttnProcessor:
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
-        if attn.use_conv_proj and not attn.is_cross:
-            key = key.permute(0, 2, 3, 1).reshape(batch_size, height * width, dim)
-            value = value.permute(0, 2, 3, 1).reshape(batch_size, height * width, dim)
-
+        query = attn.head_to_batch_dim(query)
         key = attn.head_to_batch_dim(key)
         value = attn.head_to_batch_dim(value)
 
@@ -304,13 +337,13 @@ class CrossAttnProcessor:
         hidden_states = torch.bmm(attention_probs, value)
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
-        if attn.use_conv_proj:
-            hidden_states = hidden_states.permute(0, 2, 1).reshape(batch_size, dim, height, width)
-
-        # proj
+        # linear
         hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
+
+        if attn.use_conv_proj:
+            hidden_states = hidden_states.permute(0, 2, 1).reshape(batch_size, dim, height, width)
 
         return hidden_states
 
