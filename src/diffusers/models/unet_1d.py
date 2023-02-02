@@ -91,6 +91,8 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         super().__init__()
         self.sample_size = sample_size
 
+        assert out_block_type is not None, "It is necessary to specify an out_block_type"
+
         # time
         if time_embedding_type == "fourier":
             self.time_proj = GaussianFourierProjection(
@@ -146,35 +148,38 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             out_channels=block_out_channels[-1],
             embed_dim=block_out_channels[0],
             num_layers=layers_per_block,
-            add_downsample=downsample_each_block,
+            add_downsample=False,
         )
 
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
         output_channel = reversed_block_out_channels[0]
+
         if out_block_type is None:
             final_upsample_channels = out_channels
         else:
             final_upsample_channels = block_out_channels[0]
 
+        output_channel = reversed_block_out_channels[0]
         for i, up_block_type in enumerate(up_block_types):
-            prev_output_channel = output_channel
-            output_channel = (
+            input_channel = (
                 reversed_block_out_channels[i + 1] if i < len(up_block_types) - 1 else final_upsample_channels
             )
+            prev_output_channel = output_channel
+            output_channel = reversed_block_out_channels[i]
 
             is_final_block = i == len(block_out_channels) - 1
 
             up_block = get_up_block(
                 up_block_type,
-                num_layers=layers_per_block,
-                in_channels=prev_output_channel,
+                num_layers=layers_per_block if (is_final_block and out_block_type is not None) else layers_per_block+1,
+                in_channels=input_channel,
                 out_channels=output_channel,
+                prev_output_channel=prev_output_channel,
                 temb_channels=block_out_channels[0],
                 add_upsample=not is_final_block,
             )
             self.up_blocks.append(up_block)
-            prev_output_channel = output_channel
 
         # out
         num_groups_out = norm_num_groups if norm_num_groups is not None else min(block_out_channels[0] // 4, 32)
@@ -221,7 +226,11 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             timestep_embed = timestep_embed.broadcast_to((sample.shape[:1] + timestep_embed.shape[1:]))
 
         # 2. down
-        down_block_res_samples = ()
+        if self.out_block is not None:
+            down_block_res_samples = ()
+        else:
+            down_block_res_samples = (sample,)
+
         for downsample_block in self.down_blocks:
             sample, res_samples = downsample_block(hidden_states=sample, temb=timestep_embed)
             down_block_res_samples += res_samples
@@ -232,8 +241,8 @@ class UNet1DModel(ModelMixin, ConfigMixin):
 
         # 4. up
         for i, upsample_block in enumerate(self.up_blocks):
-            res_samples = down_block_res_samples[-1:]
-            down_block_res_samples = down_block_res_samples[:-1]
+            res_samples = down_block_res_samples[-len(upsample_block.resnets) :]  # Just pull off enough samples to feed resnets
+            down_block_res_samples = down_block_res_samples[:-len(upsample_block.resnets)]  # everything except the pulled samples
             sample = upsample_block(sample, res_hidden_states_tuple=res_samples, temb=timestep_embed)
 
         # 5. post-process

@@ -48,10 +48,11 @@ class DownResnetBlock1D(nn.Module):
             groups_out = groups
 
         # there will always be at least one resnet
-        resnets = [ResidualTemporalBlock1D(in_channels, out_channels, embed_dim=temb_channels)]
+        resnets = []
 
-        for _ in range(num_layers):
-            resnets.append(ResidualTemporalBlock1D(out_channels, out_channels, embed_dim=temb_channels))
+        for i in range(num_layers):
+            in_channels = in_channels if i == 0 else out_channels
+            resnets.append(ResidualTemporalBlock1D(in_channels, out_channels, embed_dim=temb_channels))
 
         self.resnets = nn.ModuleList(resnets)
 
@@ -71,8 +72,7 @@ class DownResnetBlock1D(nn.Module):
     def forward(self, hidden_states, temb=None):
         output_states = ()
 
-        hidden_states = self.resnets[0](hidden_states, temb)
-        for resnet in self.resnets[1:]:
+        for resnet in self.resnets:  
             hidden_states = resnet(hidden_states, temb)
 
         output_states += (hidden_states,)
@@ -82,6 +82,7 @@ class DownResnetBlock1D(nn.Module):
 
         if self.downsample is not None:
             hidden_states = self.downsample(hidden_states)
+            output_states += (hidden_states,)
 
         return hidden_states, output_states
 
@@ -91,6 +92,7 @@ class UpResnetBlock1D(nn.Module):
         self,
         in_channels,
         out_channels=None,
+        prev_output_channel:int=0,
         num_layers=1,
         temb_channels=32,
         groups=32,
@@ -112,10 +114,12 @@ class UpResnetBlock1D(nn.Module):
             groups_out = groups
 
         # there will always be at least one resnet
-        resnets = [ResidualTemporalBlock1D(2 * in_channels, out_channels, embed_dim=temb_channels)]
+        resnets = []
 
-        for _ in range(num_layers):
-            resnets.append(ResidualTemporalBlock1D(out_channels, out_channels, embed_dim=temb_channels))
+        for i in range(num_layers):
+            res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
+            resnet_in_channels = prev_output_channel if i == 0 else out_channels
+            resnets.append(ResidualTemporalBlock1D(resnet_in_channels + res_skip_channels, out_channels, embed_dim=temb_channels))
 
         self.resnets = nn.ModuleList(resnets)
 
@@ -133,12 +137,10 @@ class UpResnetBlock1D(nn.Module):
             self.upsample = Upsample1D(out_channels, use_conv_transpose=True)
 
     def forward(self, hidden_states, res_hidden_states_tuple=None, temb=None):
-        if res_hidden_states_tuple is not None:
+        for resnet in self.resnets:
             res_hidden_states = res_hidden_states_tuple[-1]
+            res_hidden_states_tuple = res_hidden_states_tuple[:-1]
             hidden_states = torch.cat((hidden_states, res_hidden_states), dim=1)
-
-        hidden_states = self.resnets[0](hidden_states, temb)
-        for resnet in self.resnets[1:]:
             hidden_states = resnet(hidden_states, temb)
 
         if self.nonlinearity is not None:
@@ -232,6 +234,7 @@ class OutConv1DBlock(nn.Module):
         super().__init__()
         self.final_conv1d_1 = nn.Conv1d(embed_dim, embed_dim, 5, padding=2)
         self.final_conv1d_gn = nn.GroupNorm(num_groups_out, embed_dim)
+        self.final_conv1d_act = None
         if act_fn == "silu":
             self.final_conv1d_act = nn.SiLU()
         if act_fn == "mish":
@@ -243,7 +246,8 @@ class OutConv1DBlock(nn.Module):
         hidden_states = rearrange_dims(hidden_states)
         hidden_states = self.final_conv1d_gn(hidden_states)
         hidden_states = rearrange_dims(hidden_states)
-        hidden_states = self.final_conv1d_act(hidden_states)
+        if self.final_conv1d_act is not None:
+            hidden_states = self.final_conv1d_act(hidden_states)
         hidden_states = self.final_conv1d_2(hidden_states)
         return hidden_states
 
@@ -626,17 +630,27 @@ def get_down_block(down_block_type, num_layers, in_channels, out_channels, temb_
     raise ValueError(f"{down_block_type} does not exist.")
 
 
-def get_up_block(up_block_type, num_layers, in_channels, out_channels, temb_channels, add_upsample):
+def get_up_block(
+    up_block_type, 
+    num_layers, 
+    in_channels, 
+    out_channels, 
+    prev_output_channel,
+    temb_channels, 
+    add_upsample):
     if up_block_type == "UpResnetBlock1D":
         return UpResnetBlock1D(
             in_channels=in_channels,
             num_layers=num_layers,
             out_channels=out_channels,
+            prev_output_channel=prev_output_channel,
             temb_channels=temb_channels,
             add_upsample=add_upsample,
         )
     elif up_block_type == "UpBlock1D":
-        return UpBlock1D(in_channels=in_channels, out_channels=out_channels)
+        return UpBlock1D(
+            in_channels=in_channels, 
+            out_channels=out_channels)
     elif up_block_type == "AttnUpBlock1D":
         return AttnUpBlock1D(in_channels=in_channels, out_channels=out_channels)
     elif up_block_type == "UpBlock1DNoSkip":
