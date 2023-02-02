@@ -42,7 +42,6 @@ def get_down_block(
     upcast_attention=False,
     resnet_time_scale_shift="default",
     only_cross_attention=False,
-    is_final_block=False,
 ):
     down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
     if down_block_type == "DownBlock2D":
@@ -198,8 +197,8 @@ def get_down_block(
             cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attn_num_head_channels,
             resnet_time_scale_shift=resnet_time_scale_shift,
-            attn1_type="self" if is_final_block else "cross",
-            attn2_type="cross" if is_final_block else None,
+            attn1_type="self" if not add_downsample else "cross",
+            attn2_type="cross" if not add_downsample else None,
         )
     raise ValueError(f"{down_block_type} does not exist.")
 
@@ -222,7 +221,6 @@ def get_up_block(
     only_cross_attention=False,
     upcast_attention=False,
     resnet_time_scale_shift="default",
-    is_first_block=False,
 ):
     up_block_type = up_block_type[7:] if up_block_type.startswith("UNetRes") else up_block_type
     if up_block_type == "UpBlock2D":
@@ -366,6 +364,7 @@ def get_up_block(
     elif up_block_type == "KCrossAttnUpBlock2D":
         if cross_attention_dim is None:
             raise ValueError("cross_attention_dim must be specified for KCrossAttnUpBlock2D")
+        is_first_block = (in_channels == out_channels == temb_channels)
         return KCrossAttnUpBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,

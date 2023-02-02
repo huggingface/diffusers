@@ -210,8 +210,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
-                # YiYI's comments: needed this to determine attn1_type for KCrossAttnDownBlock2D
-                is_final_block=is_final_block,
             )
             self.down_blocks.append(down_block)
 
@@ -258,16 +256,17 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         output_channel = reversed_block_out_channels[0]
         for i, up_block_type in enumerate(up_block_types):
             is_final_block = i == len(block_out_channels) - 1
-            is_first_block = i == 0
 
             prev_output_channel = output_channel
             output_channel = reversed_block_out_channels[i]
             input_channel = reversed_block_out_channels[min(i + 1, len(block_out_channels) - 1)]
 
             # add upsample block for all BUT final layer
-            add_upsample = not is_final_block
-            if add_upsample:
+            if not is_final_block:
+                add_upsample = True
                 self.num_upsamplers += 1
+            else:
+                add_upsample = False
 
             up_block = get_up_block(
                 up_block_type,
@@ -287,7 +286,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
-                is_first_block=is_first_block,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
