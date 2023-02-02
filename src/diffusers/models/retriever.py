@@ -25,25 +25,23 @@ import os
 
 class IndexConfig:
     def __init__(self, clip_name_or_path="openai/clip-vit-large-patch14", dataset_name="Isamu136/oxford_pets_with_l14_emb", \
-                 image_column="image", index_name="embeddings", index_path=None, passage_path=None):
+                 image_column="image", index_name="embeddings", index_path=None, passage_path=None, dataset_set="train"):
         self.clip_name_or_path = clip_name_or_path
         self.dataset_name = dataset_name
         self.image_column = image_column
         self.index_name = index_name
         self.index_path = index_path
         self.passage_path = passage_path
+        self.dataset_set = dataset_set
 
 class Index:
     """
     Each index for a retrieval model is specific to the clip model used and the dataset used.
     """
-    def __init__(self, config:IndexConfig, dataset: Dataset, clip_model:CLIPModel=None, \
-                 feature_extractor:CLIPFeatureExtractor=None):
+    def __init__(self, config:IndexConfig, dataset: Dataset):
         self.config = config
         self.dataset = dataset
         self.index_initialized = False
-        self.clip_model = clip_model
-        self.feature_extractor = feature_extractor
         self.index_name = config.index_name
         self.index_path = config.index_path
         self.init_index()
@@ -60,10 +58,10 @@ class Index:
             if self.index_name in self.dataset.features:
                 self.dataset.add_faiss_index(column=self.index_name)
                 self.index_initialized = True
-    def build_index(self, device:str="cuda", torch_dtype=torch.float32):
+    def build_index(self, clip_model:CLIPModel=None, feature_extractor:CLIPFeatureExtractor=None, device:str="cuda", torch_dtype=torch.float32):
         if not self.index_initialized:
-            clip_model = self.clip_model or CLIPModel.from_pretrained(self.config.clip_name_or_path).to(device=device, dtype=torch_dtype)
-            feature_extractor = self.feature_extractor or CLIPFeatureExtractor.from_pretrained(self.config.clip_name_or_path).to(device=device, dtype=torch_dtype)
+            clip_model = clip_model or CLIPModel.from_pretrained(self.config.clip_name_or_path).to(device=device, dtype=torch_dtype)
+            feature_extractor = feature_extractor or CLIPFeatureExtractor.from_pretrained(self.config.clip_name_or_path).to(device=device, dtype=torch_dtype)
             self.dataset = get_dataset_with_emb(self.dataset, clip_model, feature_extractor, device=device, image_column=self.config.image_column, embedding_column=self.config.embeddings_column)
             self.init_index()
     def retrieve_imgs(self, vec, k:int=20):
@@ -92,8 +90,9 @@ class Retriever:
     def _build_index(config:IndexConfig, dataset:Dataset=None, clip_model:CLIPModel=None,\
                          feature_extractor:CLIPFeatureExtractor=None):
         dataset = dataset or load_dataset(config.dataset_name)
-        index =Index(config, dataset, clip_model=clip_model, feature_extractor=feature_extractor)
-        index.build_index()
+        dataset = dataset[config.dataset_set]
+        index =Index(config, dataset)
+        index.build_index(clip_model=clip_model, feature_extractor=feature_extractor)
         return index
 
     def save_pretrained(self, save_directory):
