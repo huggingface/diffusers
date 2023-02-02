@@ -253,14 +253,14 @@ class BasicTransformerBlock(nn.Module):
         if attn2_type == "cross":
             self.attn2 = CrossAttention(
                 query_dim=dim,
-                cross_attention_dim=cross_attention_dim if attn2_type == "cross" else None,
+                cross_attention_dim=cross_attention_dim,
                 heads=num_attention_heads,
                 dim_head=attention_head_dim,
                 dropout=dropout,
                 bias=attention_bias,
                 upcast_attention=upcast_attention,
                 use_conv_proj=use_conv_proj,
-                cross_attention_norm=cross_attention_norm if attn2_type == "cross" else None,
+                cross_attention_norm=cross_attention_norm,
                 attention_dropout=attention_dropout,
             )
         else:
