@@ -24,6 +24,7 @@ except OptionalDependencyNotAvailable:
 else:
     from .scheduling_ddim import DDIMScheduler
     from .scheduling_ddpm import DDPMScheduler
+    from .scheduling_improved_ddpm import ImprovedDDPMScheduler
     from .scheduling_deis_multistep import DEISMultistepScheduler
     from .scheduling_dpmsolver_multistep import DPMSolverMultistepScheduler
     from .scheduling_dpmsolver_singlestep import DPMSolverSinglestepScheduler

@@ -56,6 +56,7 @@ else:
         DanceDiffusionPipeline,
         DDIMPipeline,
         DDPMPipeline,
+        DifFacePipeline,
         DiffusionPipeline,
         DiTPipeline,
         ImagePipelineOutput,
@@ -69,6 +70,7 @@ else:
     from .schedulers import (
         DDIMScheduler,
         DDPMScheduler,
+        ImprovedDDPMScheduler,
         DEISMultistepScheduler,
         DPMSolverMultistepScheduler,
         DPMSolverSinglestepScheduler,
