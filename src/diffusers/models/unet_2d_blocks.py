@@ -364,7 +364,7 @@ def get_up_block(
     elif up_block_type == "KCrossAttnUpBlock2D":
         if cross_attention_dim is None:
             raise ValueError("cross_attention_dim must be specified for KCrossAttnUpBlock2D")
-        is_first_block = (in_channels == out_channels == temb_channels)
+        is_first_block = in_channels == out_channels == temb_channels
         return KCrossAttnUpBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -2767,6 +2767,12 @@ class KAttentionBlock(nn.Module):
         else:
             self.norm2 = None
 
+    def _to_3d(self, hidden_states, height, weight):
+        return hidden_states.permute(0, 2, 3, 1).reshape(hidden_states.shape[0], height * weight, -1)
+
+    def _to_4d(self, hidden_states, height, weight):
+        return hidden_states.permute(0, 2, 1).reshape(hidden_states.shape[0], -1, height, weight)
+
     def forward(
         self,
         hidden_states,
@@ -2789,8 +2795,8 @@ class KAttentionBlock(nn.Module):
         else:
             norm_hidden_states = self.norm1(hidden_states)
 
-        batch_size, dim, height, width = norm_hidden_states.shape
-        norm_hidden_states = norm_hidden_states.permute(0, 2, 3, 1).reshape(batch_size, height * width, dim)
+        height, weight = norm_hidden_states.shape[2:]
+        norm_hidden_states = self._to_3d(norm_hidden_states, height, weight)
 
         # 1. Self-Attention
         attn_output = self.attn1(
@@ -2798,7 +2804,7 @@ class KAttentionBlock(nn.Module):
             encoder_hidden_states=encoder_hidden_states if self.attn1_type == "cross" else None,
             **cross_attention_kwargs,
         )
-        attn_output = attn_output.permute(0, 2, 1).reshape(batch_size, dim, height, width)
+        attn_output = self._to_4d(attn_output, height, weight)
 
         if self.use_ada_layer_norm_zero:
             attn_output = gate_msa.unsqueeze(1) * attn_output
@@ -2813,15 +2819,14 @@ class KAttentionBlock(nn.Module):
             else:
                 norm_hidden_states = self.norm2(hidden_states)
 
-            batch_size, dim, height, width = norm_hidden_states.shape
-            norm_hidden_states = norm_hidden_states.permute(0, 2, 3, 1).reshape(batch_size, height * width, dim)
-
+            height, weight = norm_hidden_states.shape[2:]
+            norm_hidden_states = self._to_3d(norm_hidden_states, height, weight)
             attn_output = self.attn2(
                 norm_hidden_states,
                 encoder_hidden_states=encoder_hidden_states if self.attn2_type == "cross" else None,
                 **cross_attention_kwargs,
             )
-            attn_output = attn_output.permute(0, 2, 1).reshape(batch_size, dim, height, width)
+            attn_output = self._to_4d(attn_output, height, weight)
 
             hidden_states = attn_output + hidden_states
 
