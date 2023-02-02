@@ -87,7 +87,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        for cpu_offloaded_model in [self.unet, self.text_encoder]:
+        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
 
@@ -413,6 +413,10 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps, device=device, interpolation_type="log_linear")
         timesteps = self.scheduler.timesteps
 
+        batch_multiplier = 2 if do_classifier_free_guidance else 1
+        image = image[None, :] if image.ndim == 3 else image
+        image = torch.cat([image] * batch_multiplier * num_images_per_prompt)
+
         # 5. Add noise to image
         # YiYi's notes: hardcode to be 0 for now
         # (see below notes from the author):
@@ -420,10 +424,6 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         noise_level = torch.tensor([0.0], dtype=torch.long, device=device)
         noise_level = torch.cat([noise_level] * image.shape[0])
         inv_noise_level = (noise_level**2 + 1) ** (-0.5)
-
-        batch_multiplier = 2 if do_classifier_free_guidance else 1
-        image = image[None, :] if image.ndim == 3 else image
-        image = torch.cat([image] * batch_multiplier * num_images_per_prompt)
 
         image_cond = F.interpolate(image, scale_factor=2, mode="nearest") * inv_noise_level[:, None, None, None]
         image_cond = image_cond.to(text_embeddings.dtype)
@@ -509,19 +509,16 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
-        if output_type == "latent":
-            image = latents
-        else:
-            # 10. Post-processing
-            # make sure the VAE is in float32 mode, as it overflows in float16
-            self.vae.to(dtype=torch.float32)
-            image = self.decode_latents(latents.float())
+        # 10. Post-processing
+        # make sure the VAE is in float32 mode, as it overflows in float16
+        self.vae.to(dtype=torch.float32)
+        image = self.decode_latents(latents.float())
 
-            # 11. Convert to PIL
-            if output_type == "pil":
-                image = self.numpy_to_pil(image)
+        # 11. Convert to PIL
+        if output_type == "pil":
+            image = self.numpy_to_pil(image)
 
-            if not return_dict:
-                return (image,)
+        if not return_dict:
+            return (image,)
 
         return ImagePipelineOutput(images=image)
