@@ -15,13 +15,12 @@ from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.optimizer.gemini_optimizer import GeminiAdamOptimizer
-from colossalai.nn.parallel.utils import convert_to_torch_module
-from colossalai.tensor import ProcessGroup
+from colossalai.nn.parallel.utils import get_static_torch_model
 from colossalai.utils import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
 from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
-from huggingface_hub import HfFolder, Repository, whoami
+from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -140,7 +139,13 @@ def parse_args(input_args=None):
         help="Placement Policy for Gemini. Valid when using colossalai as dist plan.",
     )
     parser.add_argument(
-        "--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution"
+        "--center_crop",
+        default=False,
+        action="store_true",
+        help=(
+            "Whether to center crop the input images to the resolution. If not set, the images will be randomly"
+            " cropped. The images will be resized to the resolution first before cropping."
+        ),
     )
     parser.add_argument(
         "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
@@ -356,26 +361,22 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 
 
 # Gemini + ZeRO DDP
-def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placememt_policy: str = "auto"):
+def gemini_zero_dpp(model: torch.nn.Module, placememt_policy: str = "auto"):
     from colossalai.nn.parallel import GeminiDDP
 
     model = GeminiDDP(
-        model, device=get_current_device(), placement_policy=placememt_policy, pin_memory=True, search_range_mb=32
+        model, device=get_current_device(), placement_policy=placememt_policy, pin_memory=True, search_range_mb=64
     )
     return model
 
 
 def main(args):
-    # config for colossalai
+    if args.seed is None:
+        colossalai.launch_from_torch(config={})
+    else:
+        colossalai.launch_from_torch(config={}, seed=args.seed)
 
-    config = {
-        "BATCH": args.train_batch_size,
-        "gradient_accumulation_steps": args.gradient_accumulation_steps,
-        "clip_grad_norm": args.max_grad_norm,
-    }
-
-    colossalai.launch_from_torch(config=config)
-    pg = ProcessGroup()
+    colossalai.launch_from_torch(config={})
 
     if args.seed is not None:
         gpc.set_seed(args.seed)
@@ -425,7 +426,8 @@ def main(args):
                 repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
             else:
                 repo_name = args.hub_model_id
-            repo = Repository(args.output_dir, clone_from=repo_name)
+            create_repo(repo_name, exist_ok=True, token=args.hub_token)
+            repo = Repository(args.output_dir, clone_from=repo_name, token=args.hub_token)
 
             with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
                 if "step_*" not in gitignore:
@@ -472,7 +474,7 @@ def main(args):
     )
 
     logger.info(f"Loading UNet2DConditionModel from {args.pretrained_model_name_or_path}", ranks=[0])
-    with ColoInitContext():
+    with ColoInitContext(device=get_current_device()):
         unet = UNet2DConditionModel.from_pretrained(
             args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, low_cpu_mem_usage=False
         )
@@ -484,12 +486,19 @@ def main(args):
         unet.enable_gradient_checkpointing()
 
     if args.scale_lr:
-        args.learning_rate = args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * 2
+        args.learning_rate = (
+            args.learning_rate
+            * args.gradient_accumulation_steps
+            * args.train_batch_size
+            * gpc.get_world_size(ParallelMode.DATA)
+        )
 
-    unet = gemini_zero_dpp(unet, pg, args.placement)
+    unet = gemini_zero_dpp(unet, args.placement)
 
     # config optimizer for colossalai zero
-    optimizer = GeminiAdamOptimizer(unet, lr=args.learning_rate, initial_scale=2**5)
+    optimizer = GeminiAdamOptimizer(
+        unet, lr=args.learning_rate, initial_scale=2**5, clipping_norm=args.max_grad_norm
+    )
 
     # load noise_scheduler
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
@@ -598,7 +607,7 @@ def main(args):
             optimizer.zero_grad()
 
             latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
-            latents = latents * 0.18215
+            latents = latents * vae.config.scaling_factor
 
             # Sample noise that we'll add to the latents
             noise = torch.randn_like(latents)
@@ -657,10 +666,11 @@ def main(args):
 
             if global_step % args.save_steps == 0:
                 torch.cuda.synchronize()
+                torch_unet = get_static_torch_model(unet)
                 if gpc.get_local_rank(ParallelMode.DATA) == 0:
                     pipeline = DiffusionPipeline.from_pretrained(
                         args.pretrained_model_name_or_path,
-                        unet=convert_to_torch_module(unet),
+                        unet=torch_unet,
                         revision=args.revision,
                     )
                     save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
@@ -670,7 +680,7 @@ def main(args):
                 break
 
     torch.cuda.synchronize()
-    unet = convert_to_torch_module(unet)
+    unet = get_static_torch_model(unet)
 
     if gpc.get_local_rank(ParallelMode.DATA) == 0:
         pipeline = DiffusionPipeline.from_pretrained(

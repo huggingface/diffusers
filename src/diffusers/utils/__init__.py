@@ -19,7 +19,6 @@ from packaging import version
 
 from .. import __version__
 from .constants import (
-    _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS,
     CONFIG_NAME,
     DIFFUSERS_CACHE,
     DIFFUSERS_DYNAMIC_MODULE_NAME,
@@ -47,8 +46,9 @@ from .import_utils import (
     is_flax_available,
     is_inflect_available,
     is_k_diffusion_available,
+    is_k_diffusion_version,
     is_librosa_available,
-    is_modelcards_available,
+    is_omegaconf_available,
     is_onnx_available,
     is_safetensors_available,
     is_scipy_available,
@@ -58,6 +58,7 @@ from .import_utils import (
     is_transformers_available,
     is_transformers_version,
     is_unidecode_available,
+    is_wandb_available,
     is_xformers_available,
     requires_backends,
 )
@@ -75,6 +76,7 @@ if is_torch_available():
         load_numpy,
         nightly,
         parse_flag_from_env,
+        print_tensor_test,
         require_torch_gpu,
         slow,
         torch_all_close,

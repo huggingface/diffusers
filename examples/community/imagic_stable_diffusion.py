@@ -185,7 +185,7 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline):
             (nsfw) content, according to the `safety_checker`.
         """
         message = "Please use `image` instead of `init_image`."
-        init_image = deprecate("init_image", "0.13.0", message, take_from=kwargs)
+        init_image = deprecate("init_image", "0.14.0", message, take_from=kwargs)
         image = init_image or image
 
         accelerator = Accelerator(
@@ -229,7 +229,7 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline):
             prompt,
             padding="max_length",
             max_length=self.tokenizer.model_max_length,
-            truncaton=True,
+            truncation=True,
             return_tensors="pt",
         )
         text_embeddings = torch.nn.Parameter(
