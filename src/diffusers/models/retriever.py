@@ -25,13 +25,13 @@ import os
 
 class IndexConfig:
     def __init__(self, clip_name_or_path="openai/clip-vit-large-patch14", dataset_name="Isamu136/oxford_pets_with_l14_emb", \
-                 image_column="image", index_name="embeddings", index_path=None, passage_path=None, dataset_set="train"):
+                 image_column="image", index_name="embeddings", index_path=None, passages_path=None, dataset_set="train"):
         self.clip_name_or_path = clip_name_or_path
         self.dataset_name = dataset_name
         self.image_column = image_column
         self.index_name = index_name
         self.index_path = index_path
-        self.passage_path = passage_path
+        self.passages_path = passages_path
         self.dataset_set = dataset_set
 
 class Index:
@@ -61,8 +61,8 @@ class Index:
     def build_index(self, clip_model:CLIPModel=None, feature_extractor:CLIPFeatureExtractor=None, device:str="cuda", torch_dtype=torch.float32):
         if not self.index_initialized:
             clip_model = clip_model or CLIPModel.from_pretrained(self.config.clip_name_or_path).to(device=device, dtype=torch_dtype)
-            feature_extractor = feature_extractor or CLIPFeatureExtractor.from_pretrained(self.config.clip_name_or_path).to(device=device, dtype=torch_dtype)
-            self.dataset = get_dataset_with_emb(self.dataset, clip_model, feature_extractor, device=device, image_column=self.config.image_column, embedding_column=self.config.embeddings_column)
+            feature_extractor = feature_extractor or CLIPFeatureExtractor.from_pretrained(self.config.clip_name_or_path)
+            self.dataset = get_dataset_with_emb(self.dataset, clip_model, feature_extractor, device=device, image_column=self.config.image_column, index_name=self.config.index_name)
             self.init_index()
     def retrieve_imgs(self, vec, k:int=20):
         vec = np.array(vec).astype(np.float32)
@@ -96,6 +96,7 @@ class Retriever:
         return index
 
     def save_pretrained(self, save_directory):
+        os.makedirs(save_directory, exist_ok=True)
         if self.config.index_path  is None:
             index_path = os.path.join(save_directory, "hf_dataset_index.faiss")
             self.index.dataset.get_index(self.config.index_name).save(index_path)
@@ -181,5 +182,5 @@ def map_txt_to_clip_feature(clip, tokenizer, prompt, device="cuda"):
     text_embeddings = text_embeddings / torch.linalg.norm(text_embeddings, dim=-1, keepdim=True)
     text_embeddings = text_embeddings[:, None, :]
     return text_embeddings[0][0].cpu().detach().numpy()
-def get_dataset_with_emb(dataset, clip_model, feature_extractor, device="cuda", image_column="image", embedding_column="embeddings"):
-    return dataset.map(lambda example: {embedding_column: map_img_to_clip_feature(clip_model, feature_extractor, [example[image_column]], device).cpu().detach().numpy()[0][0]})
+def get_dataset_with_emb(dataset, clip_model, feature_extractor, device="cuda", image_column="image", index_name="embeddings"):
+    return dataset.map(lambda example: {index_name: map_img_to_clip_feature(clip_model, feature_extractor, [example[image_column]], device).cpu().detach().numpy()[0][0]})
