@@ -195,7 +195,6 @@ def get_down_block(
             resnet_act_fn=resnet_act_fn,
             cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attn_num_head_channels,
-            resnet_time_scale_shift=resnet_time_scale_shift,
             attn1_type="self" if not add_downsample else "cross",
             attn2_type="cross" if not add_downsample else None,
         )
@@ -1458,7 +1457,6 @@ class KDownBlock2D(nn.Module):
         resnet_act_fn: str = "gelu",
         resnet_group_size: int = 32,
         add_downsample=False,
-        resnet_time_scale_shift: str = "scale_shift",
     ):
         super().__init__()
         resnets = []
@@ -1478,8 +1476,7 @@ class KDownBlock2D(nn.Module):
                     groups_out=groups_out,
                     eps=resnet_eps,
                     non_linearity=resnet_act_fn,
-                    norm1_scale_shift=True,
-                    time_embedding_norm=resnet_time_scale_shift,
+                    time_embedding_norm="ada_group",
                     conv_shortcut_bias=False,
                 )
             )
@@ -1535,7 +1532,6 @@ class KCrossAttnDownBlock2D(nn.Module):
         attn2_type: Optional[str] = None,  # None, cross,
         resnet_eps: float = 1e-5,
         resnet_act_fn: str = "gelu",
-        resnet_time_scale_shift: str = "scale_shift",
     ):
         super().__init__()
         resnets = []
@@ -1558,8 +1554,7 @@ class KCrossAttnDownBlock2D(nn.Module):
                     groups_out=groups_out,
                     eps=resnet_eps,
                     non_linearity=resnet_act_fn,
-                    norm1_scale_shift=True,
-                    time_embedding_norm=resnet_time_scale_shift,
+                    time_embedding_norm="ada_group",
                     conv_shortcut_bias=False,
                 )
             )
@@ -2463,7 +2458,6 @@ class KUpBlock2D(nn.Module):
         resnet_act_fn: str = "gelu",
         resnet_group_size: Optional[int] = 32,
         add_upsample=True,
-        resnet_time_scale_shift: str = "scale_shift",
     ):
         super().__init__()
         resnets = []
@@ -2486,8 +2480,7 @@ class KUpBlock2D(nn.Module):
                     groups_out=groups_out,
                     dropout=dropout,
                     non_linearity=resnet_act_fn,
-                    norm1_scale_shift=True,
-                    time_embedding_norm=resnet_time_scale_shift,
+                    time_embedding_norm="ada_group",
                     conv_shortcut_bias=False,
                 )
             )
@@ -2544,7 +2537,6 @@ class KCrossAttnUpBlock2D(nn.Module):
         attn1_type: str = "cross",  # cross, self
         attn2_type: Optional[str] = None,  # None, cross, self
         is_first_block: bool = False,
-        resnet_time_scale_shift: str = "scale_shift",
     ):
         super().__init__()
         resnets = []
@@ -2574,8 +2566,7 @@ class KCrossAttnUpBlock2D(nn.Module):
                     groups_out=groups_out,
                     dropout=dropout,
                     non_linearity=resnet_act_fn,
-                    norm1_scale_shift=True,
-                    time_embedding_norm=resnet_time_scale_shift,
+                    time_embedding_norm="ada_group",
                     conv_shortcut_bias=False,
                 )
             )
