@@ -431,6 +431,7 @@ class LoRAXFormersCrossAttnProcessor(nn.Module):
         value = attn.head_to_batch_dim(value).contiguous()
 
         hidden_states = xformers.ops.memory_efficient_attention(query, key, value, attn_bias=attention_mask)
+        hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
         hidden_states = attn.to_out[0](hidden_states) + scale * self.to_out_lora(hidden_states)
