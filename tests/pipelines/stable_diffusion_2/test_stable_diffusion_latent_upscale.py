@@ -20,7 +20,6 @@ import unittest
 import numpy as np
 import torch
 
-# from diffusers import AutoencoderKL, DDIMScheduler, DiTPipeline, DPMSolverMultistepScheduler, Transformer2DModel
 from diffusers import StableDiffusionLatentUpscalePipeline, StableDiffusionPipeline, UNet2DConditionModel, AutoencoderKL, EulerDiscreteScheduler
 from diffusers.utils import load_numpy, slow, floats_tensor, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
@@ -155,13 +154,45 @@ class StableDiffusionLatentUpscalePipelineIntegrationTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
+    def test_latent_upscaler_fp16(self):
+        generator = torch.manual_seed(33)
+        
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4",
+            torch_dtype=torch.float16)
+        pipe.to("cuda")
+
+        upscaler = StableDiffusionLatentUpscalePipeline.from_pretrained(
+            "YiYiXu/latent-upscaler",
+            torch_dtype=torch.float16)
+        upscaler.to("cuda")
+        
+        prompt ="a photo of an astronaut high resolution, unreal engine, ultra realistic"
+
+        low_res_latents = pipe(prompt, generator=generator, output_type="latent").images
+
+        image = upscaler(
+            prompt=prompt,
+            image=low_res_latents,
+            num_inference_steps=20,
+            guidance_scale=0,
+            generator=generator,
+            output_type="np").images[0]
+
+        expected_image = load_numpy(
+                f"https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/latent-upscaler/image_upscaled_fp16.npy"
+            )
+        assert np.abs((expected_image - image).max()) < 1e-3
+
     def test_latent_upscaler(self):
         generator = torch.manual_seed(33)
         
-        pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4")
         pipe.to("cuda")
 
-        upscaler = StableDiffusionLatentUpscalePipeline.from_pretrained("YiYiXu/latent-upscaler")
+        upscaler = StableDiffusionLatentUpscalePipeline.from_pretrained(
+            "YiYiXu/latent-upscaler")
         upscaler.to("cuda")
         
         prompt ="a photo of an astronaut high resolution, unreal engine, ultra realistic"
