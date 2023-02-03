@@ -171,6 +171,7 @@ def get_down_block(
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif down_block_type == "KDownBlock2D":
+        print("down", resnet_groups)
         return KDownBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -179,12 +180,12 @@ def get_down_block(
             add_downsample=add_downsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
-            resnet_groups=resnet_groups,
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif down_block_type == "KCrossAttnDownBlock2D":
         if cross_attention_dim is None:
             raise ValueError("cross_attention_dim must be specified for KCrossAttnDownBlock2D")
+        print("cross down", resnet_groups)
         return KCrossAttnDownBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -193,7 +194,6 @@ def get_down_block(
             add_downsample=add_downsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
-            resnet_groups=resnet_groups,
             cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attn_num_head_channels,
             resnet_time_scale_shift=resnet_time_scale_shift,
@@ -358,7 +358,6 @@ def get_up_block(
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
-            resnet_groups=resnet_groups,
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif up_block_type == "KCrossAttnUpBlock2D":
@@ -373,7 +372,6 @@ def get_up_block(
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
-            resnet_groups=resnet_groups,
             cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attn_num_head_channels,
             attn1_type="self" if is_first_block else "cross",
@@ -1459,7 +1457,6 @@ class KDownBlock2D(nn.Module):
         num_layers: int = 4,
         resnet_eps: float = 1e-5,
         resnet_act_fn: str = "gelu",
-        resnet_groups: Optional[int] = None,
         resnet_group_size: int = 32,
         add_downsample=False,
         resnet_time_scale_shift: str = "scale_shift",
@@ -1469,14 +1466,17 @@ class KDownBlock2D(nn.Module):
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
+            groups = in_channels // resnet_group_size
+            groups_out = out_channels // resnet_group_size
+
             resnets.append(
                 ResnetBlock2D(
                     in_channels=in_channels,
                     out_channels=out_channels,
                     dropout=dropout,
                     temb_channels=temb_channels,
-                    groups=resnet_groups,
-                    group_size=resnet_group_size,
+                    groups=groups,
+                    groups_out=groups_out,
                     eps=resnet_eps,
                     non_linearity=resnet_act_fn,
                     norm1_scale_shift=True,
@@ -1529,7 +1529,6 @@ class KCrossAttnDownBlock2D(nn.Module):
         cross_attention_dim: int,
         dropout: float = 0.0,
         num_layers: int = 4,
-        resnet_groups: Optional[int] = None,
         resnet_group_size: int = 32,
         add_downsample=True,
         attn_num_head_channels: int = 64,
@@ -1547,18 +1546,21 @@ class KCrossAttnDownBlock2D(nn.Module):
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
+            groups = in_channels // resnet_group_size
+            groups_out = out_channels // resnet_group_size
+
             resnets.append(
                 ResnetBlock2D(
                     in_channels=in_channels,
                     out_channels=out_channels,
                     dropout=dropout,
                     temb_channels=temb_channels,
-                    groups=resnet_groups,
+                    groups=groups,
+                    groups_out=groups_out,
                     eps=resnet_eps,
                     non_linearity=resnet_act_fn,
                     norm1_scale_shift=True,
                     time_embedding_norm=resnet_time_scale_shift,
-                    group_size=resnet_group_size,
                     conv_shortcut_bias=False,
                 )
             )
@@ -2460,7 +2462,6 @@ class KUpBlock2D(nn.Module):
         num_layers: int = 5,
         resnet_eps: float = 1e-5,
         resnet_act_fn: str = "gelu",
-        resnet_groups: Optional[int] = None,
         resnet_group_size: Optional[int] = 32,
         add_upsample=True,
         resnet_time_scale_shift: str = "scale_shift",
@@ -2473,15 +2474,19 @@ class KUpBlock2D(nn.Module):
         num_layers = num_layers - 1
 
         for i in range(num_layers):
+            in_channels = k_in_channels if i == 0 else k_mid_channels
+            groups = in_channels // resnet_group_size
+            groups_out = k_mid_channels // resnet_group_size
+
             resnets.append(
                 ResnetBlock2D(
-                    in_channels=k_in_channels if i == 0 else k_mid_channels,
+                    in_channels=in_channels,
                     mid_channels=k_mid_channels,
                     out_channels=k_out_channels if (i == num_layers - 1) else k_mid_channels,
                     temb_channels=temb_channels,
                     eps=resnet_eps,
-                    groups=resnet_groups,
-                    group_size=resnet_group_size,
+                    groups=groups,
+                    groups_out=groups_out,
                     dropout=dropout,
                     non_linearity=resnet_act_fn,
                     norm1_scale_shift=True,
@@ -2534,7 +2539,6 @@ class KCrossAttnUpBlock2D(nn.Module):
         num_layers: int = 4,
         resnet_eps: float = 1e-5,
         resnet_act_fn: str = "gelu",
-        resnet_groups: Optional[int] = None,
         resnet_group_size: int = 32,
         attn_num_head_channels=1,  # attention dim_head
         cross_attention_dim: int = 768,
@@ -2560,15 +2564,18 @@ class KCrossAttnUpBlock2D(nn.Module):
         num_layers = num_layers - 1
 
         for i in range(num_layers):
+            in_channels = k_in_channels if i == 0 else k_mid_channels
+            groups = in_channels // resnet_group_size
+            groups_out = k_mid_channels // resnet_group_size
             resnets.append(
                 ResnetBlock2D(
-                    in_channels=k_in_channels if i == 0 else k_mid_channels,
+                    in_channels=in_channels,
                     mid_channels=k_mid_channels,
                     out_channels=k_out_channels if (i == num_layers - 1) else k_mid_channels,
                     temb_channels=temb_channels,
                     eps=resnet_eps,
-                    groups=resnet_groups,
-                    group_size=resnet_group_size,
+                    groups=groups,
+                    groups_out=groups_out,
                     dropout=dropout,
                     non_linearity=resnet_act_fn,
                     norm1_scale_shift=True,

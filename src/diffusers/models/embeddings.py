@@ -178,7 +178,7 @@ class TimestepEmbedding(nn.Module):
         elif act_fn == "gelu":
             self.act = nn.GELU()
         else:
-            raise ValueError(f"{self.act} does not exist. Make sure to define one of 'silu', 'mish', or 'gelu'")
+            raise ValueError(f"{act_fn} does not exist. Make sure to define one of 'silu', 'mish', or 'gelu'")
 
         if out_dim is not None:
             time_embed_dim_out = out_dim
@@ -195,7 +195,7 @@ class TimestepEmbedding(nn.Module):
         elif act_2_fn == "gelu":
             self.act_2 = nn.GELU()
         else:
-            raise ValueError(f"{self.act} does not exist. Make sure to define one of 'silu', 'mish', or 'gelu'")
+            raise ValueError(f"{act_2_fn} does not exist. Make sure to define one of 'silu', 'mish', or 'gelu'")
 
     def forward(self, sample, condition=None):
         if condition is not None:

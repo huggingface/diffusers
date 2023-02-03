@@ -442,27 +442,30 @@ class ResnetBlock2D(nn.Module):
             groups_out = groups
 
         if norm1_scale_shift and temb_channels is not None:
-            self.norm1 = AdaGroupNorm(groups, in_channels, groups, eps=eps)
+            num_groups_in = groups if groups is not None else max(1, in_channels // group_size)
+            self.norm1 = AdaGroupNorm(temb_channels, in_channels, num_groups_in, eps=eps)
         else:
             self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
 
         self.conv1 = torch.nn.Conv2d(in_channels, mid_channels, kernel_size=3, stride=1, padding=1)
 
+        num_groups_out = groups_out if groups_out is not None else max(1, mid_channels // group_size)
+
         if temb_channels is not None:
             if time_embedding_norm == "default":
                 self.time_emb_proj = torch.nn.Linear(temb_channels, mid_channels)
             elif self.time_embedding_norm == "scale_shift":
-                pass
-#                self.time_emb_proj = torch.nn.Linear(temb_channels, mid_channels)
+                self.time_emb_proj = None
+                self.norm2 = AdaGroupNorm(temb_channels, mid_channels, num_groups_out, eps=eps)
             else:
                 raise ValueError(f"unknown time_embedding_norm : {self.time_embedding_norm} ")
         else:
             self.time_emb_proj = None
 
         if self.time_embedding_norm == "scale_shift":
-            self.norm2 = AdaGroupNorm(temb_channels, mid_channels, groups_out, eps=eps)
+            self.norm2 = AdaGroupNorm(temb_channels, mid_channels, num_groups_out, eps=eps)
         else:
-            self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=mid_channels, eps=eps, affine=True)
+            self.norm2 = torch.nn.GroupNorm(num_groups=num_groups_out, num_channels=mid_channels, eps=eps, affine=True)
 
         self.dropout = torch.nn.Dropout(dropout)
         self.conv2 = torch.nn.Conv2d(mid_channels, out_channels, kernel_size=3, stride=1, padding=1)
