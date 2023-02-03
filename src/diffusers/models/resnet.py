@@ -532,6 +532,10 @@ class ResnetBlock2D(nn.Module):
         else:
             hidden_states = self.norm2(hidden_states)
 
+        if temb is not None and self.time_embedding_norm == "scale_shift":
+            scale, shift = torch.chunk(temb, 2, dim=1)
+            hidden_states = hidden_states * (1 + scale) + shift
+
         hidden_states = self.nonlinearity(hidden_states)
 
         hidden_states = self.dropout(hidden_states)
