@@ -373,7 +373,7 @@ class KDownsample2d(nn.Module):
         self.pad_mode = pad_mode
         kernel_1d = torch.tensor([[1 / 8, 3 / 8, 3 / 8, 1 / 8]])
         self.pad = kernel_1d.shape[1] // 2 - 1
-        self.register_buffer("kernel", kernel_1d.T @ kernel_1d)
+        self.register_buffer("kernel", kernel_1d.T @ kernel_1d, persistent=False)
 
     def forward(self, x):
         x = F.pad(x, (self.pad,) * 4, self.pad_mode)
@@ -389,7 +389,7 @@ class KUpsample2d(nn.Module):
         self.pad_mode = pad_mode
         kernel_1d = torch.tensor([[1 / 8, 3 / 8, 3 / 8, 1 / 8]]) * 2
         self.pad = kernel_1d.shape[1] // 2 - 1
-        self.register_buffer("kernel", kernel_1d.T @ kernel_1d)
+        self.register_buffer("kernel", kernel_1d.T @ kernel_1d, persistent=False)
 
     def forward(self, x):
         x = F.pad(x, ((self.pad + 1) // 2,) * 4, self.pad_mode)
