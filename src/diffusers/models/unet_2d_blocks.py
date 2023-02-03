@@ -171,7 +171,7 @@ def get_down_block(
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif down_block_type == "KDownBlock2D":
-        print("down", resnet_groups)
+        print("down", resnet_time_scale_shift)
         return KDownBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -180,12 +180,11 @@ def get_down_block(
             add_downsample=add_downsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
-            resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif down_block_type == "KCrossAttnDownBlock2D":
         if cross_attention_dim is None:
             raise ValueError("cross_attention_dim must be specified for KCrossAttnDownBlock2D")
-        print("cross down", resnet_groups)
+        print("cross down", None)
         return KCrossAttnDownBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -350,6 +349,7 @@ def get_up_block(
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif up_block_type == "KUpBlock2D":
+        print("k up", resnet_time_scale_shift)
         return KUpBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -358,12 +358,12 @@ def get_up_block(
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
-            resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif up_block_type == "KCrossAttnUpBlock2D":
         if cross_attention_dim is None:
             raise ValueError("cross_attention_dim must be specified for KCrossAttnUpBlock2D")
         is_first_block = in_channels == out_channels == temb_channels
+        print("k up cross", resnet_time_scale_shift)
         return KCrossAttnUpBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -377,7 +377,6 @@ def get_up_block(
             attn1_type="self" if is_first_block else "cross",
             attn2_type="cross" if is_first_block else None,
             is_first_block=is_first_block,
-            resnet_time_scale_shift=resnet_time_scale_shift,
         )
 
     raise ValueError(f"{up_block_type} does not exist.")
@@ -2469,20 +2468,18 @@ class KUpBlock2D(nn.Module):
         super().__init__()
         resnets = []
         k_in_channels = 2 * out_channels
-        k_mid_channels = out_channels
         k_out_channels = in_channels
         num_layers = num_layers - 1
 
         for i in range(num_layers):
-            in_channels = k_in_channels if i == 0 else k_mid_channels
+            in_channels = k_in_channels if i == 0 else out_channels
             groups = in_channels // resnet_group_size
-            groups_out = k_mid_channels // resnet_group_size
+            groups_out = out_channels // resnet_group_size
 
             resnets.append(
                 ResnetBlock2D(
                     in_channels=in_channels,
-                    mid_channels=k_mid_channels,
-                    out_channels=k_out_channels if (i == num_layers - 1) else k_mid_channels,
+                    out_channels=k_out_channels if (i == num_layers - 1) else out_channels,
                     temb_channels=temb_channels,
                     eps=resnet_eps,
                     groups=groups,
@@ -2556,22 +2553,21 @@ class KCrossAttnUpBlock2D(nn.Module):
         self.has_cross_attention = True
         self.attn_num_head_channels = attn_num_head_channels
 
-        # in_channels, mid_channels, and out_channels for the block (k-unet)
+        # in_channels, and out_channels for the block (k-unet)
         k_in_channels = out_channels if is_first_block else 2 * out_channels
-        k_mid_channels = out_channels
         k_out_channels = in_channels
 
         num_layers = num_layers - 1
 
         for i in range(num_layers):
-            in_channels = k_in_channels if i == 0 else k_mid_channels
+            in_channels = k_in_channels if i == 0 else out_channels
             groups = in_channels // resnet_group_size
-            groups_out = k_mid_channels // resnet_group_size
+            groups_out = out_channels // resnet_group_size
+
             resnets.append(
                 ResnetBlock2D(
                     in_channels=in_channels,
-                    mid_channels=k_mid_channels,
-                    out_channels=k_out_channels if (i == num_layers - 1) else k_mid_channels,
+                    out_channels=k_out_channels if (i == num_layers - 1) else out_channels,
                     temb_channels=temb_channels,
                     eps=resnet_eps,
                     groups=groups,
@@ -2585,10 +2581,10 @@ class KCrossAttnUpBlock2D(nn.Module):
             )
             attentions.append(
                 KAttentionBlock(
-                    k_out_channels if (i == num_layers - 1) else k_mid_channels,
+                    k_out_channels if (i == num_layers - 1) else out_channels,
                     k_out_channels // attn_num_head_channels
                     if (i == num_layers - 1)
-                    else k_mid_channels // attn_num_head_channels,
+                    else out_channels // attn_num_head_channels,
                     attn_num_head_channels,
                     cross_attention_dim=cross_attention_dim,
                     temb_channels=temb_channels,
