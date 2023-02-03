@@ -14,7 +14,7 @@
 
 import flax.linen as nn
 import jax.numpy as jnp
-from memory_efficient_attention_jax import memory_efficient_attention
+from .memory_efficient_attention_jax import memory_efficient_attention
 
 
 class FlaxAttentionBlock(nn.Module):
