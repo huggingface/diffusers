@@ -68,7 +68,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
             the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
         tokenizer (`CLIPTokenizer`):
             Tokenizer of class
-            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
+            [CLIPTokenizer](https://huggingface.co/docs/transformers/main/en/model_doc/clip#transformers.CLIPTokenizer).
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
