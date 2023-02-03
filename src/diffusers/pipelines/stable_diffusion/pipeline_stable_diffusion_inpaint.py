@@ -605,7 +605,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
-        nrompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -719,7 +719,15 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         width = width or self.unet.config.sample_size * self.vae_scale_factor
 
         # 1. Check inputs
-        self.check_inputs(prompt, height, width, callback_steps)
+        self.check_inputs(
+            prompt,
+            height,
+            width,
+            callback_steps,
+            negative_prompt,
+            prompt_embeds,
+            negative_prompt_embeds,
+        )
 
         if image is None:
             raise ValueError("`image` input cannot be undefined.")
@@ -728,7 +736,13 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             raise ValueError("`mask_image` input cannot be undefined.")
 
         # 2. Define call parameters
-        batch_size = 1 if isinstance(prompt, str) else len(prompt)
+        if prompt is not None and isinstance(prompt, str):
+            batch_size = 1
+        elif prompt is not None and isinstance(prompt, list):
+            batch_size = len(prompt)
+        else:
+            batch_size = prompt_embeds.shape[0]
+
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -737,7 +751,13 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
 
         # 3. Encode input prompt
         prompt_embeds = self._encode_prompt(
-            prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+            prompt,
+            device,
+            num_images_per_prompt,
+            do_classifier_free_guidance,
+            negative_prompt,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
         )
 
         # 4. Preprocess mask and image
