@@ -314,6 +314,14 @@ def parse_args():
         default=4,
         help="Number of images that should be generated during validation with `validation_prompt`.",
     )
+    parser.add_argument(
+        "--validation_steps",
+        type=int,
+        default=500,
+        help=(
+            "Sample a validation image every X updates."
+        ),
+    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -780,6 +788,8 @@ def main():
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
+                if global_step % args.validation_steps == 0:
+                    if accelerator.is_main_process:
                         if args.validation_prompt:
                             pipeline = StableDiffusionPipeline.from_pretrained(
                                 args.pretrained_model_name_or_path,
