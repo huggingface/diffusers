@@ -1,12 +1,19 @@
-import torch
-from diffusers.pipelines.stable_diffusion.convert_from_ckpt import renew_vae_resnet_paths, assign_to_checkpoint, renew_vae_attention_paths, conv_attn_to_linear, create_vae_diffusers_config
-import requests
-from diffusers import (
-    AutoencoderKL,
-)
-import io
-from omegaconf import OmegaConf
 import argparse
+import io
+
+import torch
+
+import requests
+from diffusers import AutoencoderKL
+from diffusers.pipelines.stable_diffusion.convert_from_ckpt import (
+    assign_to_checkpoint,
+    conv_attn_to_linear,
+    create_vae_diffusers_config,
+    renew_vae_attention_paths,
+    renew_vae_resnet_paths,
+)
+from omegaconf import OmegaConf
+
 
 def custom_convert_ldm_vae_checkpoint(checkpoint, config):
     vae_state_dict = checkpoint
@@ -108,15 +115,15 @@ def custom_convert_ldm_vae_checkpoint(checkpoint, config):
     conv_attn_to_linear(new_checkpoint)
     return new_checkpoint
 
+
 def vae_pt_to_vae_diffuser(
     checkpoint_path: str,
     output_path: str,
-    ):
-
-    #Only support V1
+):
+    # Only support V1
     r = requests.get(
-            " https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml"
-        )
+        " https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml"
+    )
     io_obj = io.BytesIO(r.content)
 
     original_config = OmegaConf.load(io_obj)
@@ -126,20 +133,17 @@ def vae_pt_to_vae_diffuser(
 
     # Convert the VAE model.
     vae_config = create_vae_diffusers_config(original_config, image_size=image_size)
-    converted_vae_checkpoint = custom_convert_ldm_vae_checkpoint(checkpoint['state_dict'], vae_config)
+    converted_vae_checkpoint = custom_convert_ldm_vae_checkpoint(checkpoint["state_dict"], vae_config)
 
     vae = AutoencoderKL(**vae_config)
     vae.load_state_dict(converted_vae_checkpoint)
     vae.save_pretrained(output_path)
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument(
-        "--vae_pt_path", default=None, type=str, required=True, help="Path to the VAE.pt to convert."
-    )
-    parser.add_argument(
-        "--dump_path", default=None, type=str, required=True, help="Path to the VAE.pt to convert."
-    )
-    
+    parser.add_argument("--vae_pt_path", default=None, type=str, required=True, help="Path to the VAE.pt to convert.")
+    parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the VAE.pt to convert.")
+
     vae_pt_to_vae_diffuser(args.vae_pt_path, args.dump_path)
