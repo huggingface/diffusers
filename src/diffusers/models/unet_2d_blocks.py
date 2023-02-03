@@ -1572,10 +1572,8 @@ class KCrossAttnDownBlock2D(nn.Module):
                     attention_bias=True,
                     attn1_type=attn1_type,
                     attn2_type=attn2_type,
-                    with_ff=False,
                     cross_attention_norm=True,
                     group_size=resnet_group_size,
-                    norm_type="ada_group",
                 )
             )
 
@@ -2590,10 +2588,8 @@ class KCrossAttnUpBlock2D(nn.Module):
                     attention_bias=True,
                     attn1_type=attn1_type,
                     attn2_type=attn2_type,
-                    with_ff=False,
                     cross_attention_norm=True,
                     upcast_attention=upcast_attention,
-                    norm_type="ada_group",
                 )
             )
 
@@ -2683,36 +2679,18 @@ class KAttentionBlock(nn.Module):
         attention_head_dim: int,
         dropout: float = 0.0,
         cross_attention_dim: Optional[int] = None,
-        activation_fn: str = "geglu",
-        num_embeds_ada_norm: Optional[int] = None,
         attention_bias: bool = False,
-        only_cross_attention: bool = False,
         upcast_attention: bool = False,
-        norm_elementwise_affine: bool = True,
-        norm_type: str = "layer_norm",
-        final_dropout: bool = False,
-        temb_channels: Optional[int] = None,  # for ada_group_norm
+        temb_channels: int = 768,  # for ada_group_norm
         attn1_type: str = "cross",  # cross, self
         attn2_type: Optional[str] = None,  # None, cross
-        with_ff: bool = True,
         cross_attention_norm: bool = False,
         group_size: int = 32,
     ):
         super().__init__()
 
-        self.only_cross_attention = only_cross_attention
         self.attn1_type = attn1_type
         self.attn2_type = attn2_type
-
-        self.use_ada_layer_norm_zero = (num_embeds_ada_norm is not None) and norm_type == "ada_norm_zero"
-        self.use_ada_layer_norm = (num_embeds_ada_norm is not None) and norm_type == "ada_norm"
-        self.use_ada_group_norm = (temb_channels is not None) and norm_type == "ada_group"
-
-        if norm_type in ("ada_norm", "ada_norm_zero") and num_embeds_ada_norm is None:
-            raise ValueError(
-                f"`norm_type` is set to {norm_type}, but `num_embeds_ada_norm` is not defined. Please make sure to"
-                f" define `num_embeds_ada_norm` if setting `norm_type` to {norm_type}."
-            )
 
         self.attn1 = CrossAttention(
             query_dim=dim,
@@ -2740,25 +2718,9 @@ class KAttentionBlock(nn.Module):
         else:
             self.attn2 = None
 
-        if self.use_ada_layer_norm:
-            self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm)
-        elif self.use_ada_layer_norm_zero:
-            self.norm1 = AdaLayerNormZero(dim, num_embeds_ada_norm)
-        elif self.use_ada_group_norm:
-            self.norm1 = AdaGroupNorm(temb_channels, dim, max(1, dim // group_size))
-        else:
-            self.norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
-
+        self.norm1 = AdaGroupNorm(temb_channels, dim, max(1, dim // group_size))
         if attn2_type == "cross":
-            # We currently only use AdaLayerNormZero for self attention where there will only be one attention block.
-            # I.e. the number of returned modulation chunks from AdaLayerZero would not make sense if returned during
-            # the second cross attention block.
-            if self.use_ada_layer_norm:
-                self.norm2 = AdaLayerNorm(dim, num_embeds_ada_norm)
-            elif self.use_ada_group_norm:
-                self.norm2 = AdaGroupNorm(temb_channels, dim, max(1, dim // group_size))
-            else:
-                self.norm2 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
+            self.norm2 = AdaGroupNorm(temb_channels, dim, max(1, dim // group_size))
         else:
             self.norm2 = None
 
@@ -2779,16 +2741,8 @@ class KAttentionBlock(nn.Module):
         cross_attention_kwargs=None,
     ):
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
-        if self.use_ada_layer_norm:
-            norm_hidden_states = self.norm1(hidden_states, timestep)
-        elif self.use_ada_layer_norm_zero:
-            norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(
-                hidden_states, timestep, class_labels, hidden_dtype=hidden_states.dtype
-            )
-        elif self.use_ada_group_norm:
-            norm_hidden_states = self.norm1(hidden_states, emb)
-        else:
-            norm_hidden_states = self.norm1(hidden_states)
+        
+        norm_hidden_states = self.norm1(hidden_states, emb)
 
         height, weight = norm_hidden_states.shape[2:]
         norm_hidden_states = self._to_3d(norm_hidden_states, height, weight)
@@ -2801,18 +2755,11 @@ class KAttentionBlock(nn.Module):
         )
         attn_output = self._to_4d(attn_output, height, weight)
 
-        if self.use_ada_layer_norm_zero:
-            attn_output = gate_msa.unsqueeze(1) * attn_output
         hidden_states = attn_output + hidden_states
 
         if self.attn2 is not None:
             # 2. Cross-Attention
-            if self.use_ada_layer_norm:
-                norm_hidden_states = self.norm2(hidden_states, timestep)
-            elif self.use_ada_group_norm:
-                norm_hidden_states = self.norm2(hidden_states, emb)
-            else:
-                norm_hidden_states = self.norm2(hidden_states)
+            norm_hidden_states = self.norm2(hidden_states, emb)
 
             height, weight = norm_hidden_states.shape[2:]
             norm_hidden_states = self._to_3d(norm_hidden_states, height, weight)
