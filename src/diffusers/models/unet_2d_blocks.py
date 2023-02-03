@@ -17,7 +17,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from .attention import AdaGroupNorm, AdaLayerNorm, AdaLayerNormZero, AttentionBlock
+from .attention import AdaGroupNorm, AttentionBlock
 from .cross_attention import CrossAttention, CrossAttnAddedKVProcessor
 from .dual_transformer_2d import DualTransformer2DModel
 from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, KDownsample2d, KUpsample2d, ResnetBlock2D, Upsample2D
@@ -171,7 +171,6 @@ def get_down_block(
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif down_block_type == "KDownBlock2D":
-        print("down", resnet_time_scale_shift)
         return KDownBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -184,7 +183,6 @@ def get_down_block(
     elif down_block_type == "KCrossAttnDownBlock2D":
         if cross_attention_dim is None:
             raise ValueError("cross_attention_dim must be specified for KCrossAttnDownBlock2D")
-        print("cross down", None)
         return KCrossAttnDownBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -348,7 +346,6 @@ def get_up_block(
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif up_block_type == "KUpBlock2D":
-        print("k up", resnet_time_scale_shift)
         return KUpBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -362,7 +359,6 @@ def get_up_block(
         if cross_attention_dim is None:
             raise ValueError("cross_attention_dim must be specified for KCrossAttnUpBlock2D")
         is_first_block = in_channels == out_channels == temb_channels
-        print("k up cross", resnet_time_scale_shift)
         return KCrossAttnUpBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
