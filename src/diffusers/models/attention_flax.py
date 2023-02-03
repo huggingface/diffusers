@@ -14,6 +14,7 @@
 
 import flax.linen as nn
 import jax.numpy as jnp
+from memory_efficient_attention_jax import memory_efficient_attention
 
 
 class FlaxAttentionBlock(nn.Module):
@@ -33,7 +34,6 @@ class FlaxAttentionBlock(nn.Module):
             Parameters `dtype`
         use_memory_efficient (`bool`, *optional*, defaults to `False`):
             enable memory efficient attention https://arxiv.org/abs/2112.05682
-            
 
     """
     query_dim: int
@@ -81,13 +81,45 @@ class FlaxAttentionBlock(nn.Module):
         key_states = self.reshape_heads_to_batch_dim(key_proj)
         value_states = self.reshape_heads_to_batch_dim(value_proj)
 
-        # compute attentions
-        attention_scores = jnp.einsum("b i d, b j d->b i j", query_states, key_states)
-        attention_scores = attention_scores * self.scale
-        attention_probs = nn.softmax(attention_scores, axis=2)
+        if self.use_memory_efficient:
+            
+            query_states = query_states.transpose(1,0,2)
+            key_states =key_states.transpose(1,0,2)
+            value_states =value_states.transpose(1,0,2)
+            
+            #this if statement create a chunk size for each layer of the unet
+            #the chunk size is equal to the query_length dimension of the deepest layer of the unet
+            
+            flatten_latent_dim = query_states.shape[-3]
+            if flatten_latent_dim % 64 == 0:
+                query_chunk_size = int(flatten_latent_dim/64)
+            elif flatten_latent_dim % 16 == 0:
+                query_chunk_size = int(flatten_latent_dim/16)
+            elif flatten_latent_dim % 4 == 0:
+                query_chunk_size = int(flatten_latent_dim/4)
+            else:
+                query_chunk_size = int(flatten_latent_dim)
+                
+            hidden_states=memory_efficient_attention(
+                query_states, 
+                key_states, 
+                value_states,
+                query_chunk_size=query_chunk_size,
+                key_chunk_size=4096*4
+            )
+            
+            hidden_states=hidden_states.transpose(1,0,2)
+            
+        else:
 
-        # attend to values
-        hidden_states = jnp.einsum("b i j, b j d -> b i d", attention_probs, value_states)
+            # compute attentions
+            attention_scores = jnp.einsum("b i d, b j d->b i j", query_states, key_states)
+            attention_scores = attention_scores * self.scale
+            attention_probs = nn.softmax(attention_scores, axis=2)
+
+            # attend to values
+            hidden_states = jnp.einsum("b i j, b j d -> b i d", attention_probs, value_states)
+
         hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
         hidden_states = self.proj_attn(hidden_states)
         return hidden_states
