@@ -54,7 +54,7 @@ def preprocess(image):
 
 class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-guided image super-resolution using Stable Diffusion 2.
+    Pipeline for upscale the resolution of Stable Diffusion output image from 512 x 512 to 1024 x 1024
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -70,9 +70,6 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
             Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
-        low_res_scheduler ([`SchedulerMixin`]):
-            A scheduler used to add initial noise to the low res conditioning image. It must be an instance of
-            [`DDPMScheduler`].
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
@@ -335,7 +332,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
 
         Args:
             prompt (`str` or `List[str]`):
-                The prompt or prompts to guide the image generation.
+                The prompt or prompts to guide the image upscaling.
             image (`PIL.Image.Image` or List[`PIL.Image.Image`] or `torch.FloatTensor`):
                 `Image`, or tensor representing an image batch which will be upscaled. *
             num_inference_steps (`int`, *optional*, defaults to 50):
@@ -377,28 +374,37 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
 
         Examples:
         ```py
-        >>> import requests
-        >>> from PIL import Image
-        >>> from io import BytesIO
-        >>> from diffusers import StableDiffusionUpscalePipeline
+        >>> from diffusers import StableDiffusionLatentUpscalePipeline, StableDiffusionPipeline
         >>> import torch
 
-        >>> # load model and scheduler
-        >>> model_id = "stabilityai/stable-diffusion-x4-upscaler"
-        >>> pipeline = StableDiffusionUpscalePipeline.from_pretrained(
-        ...     model_id, revision="fp16", torch_dtype=torch.float16
-        ... )
-        >>> pipeline = pipeline.to("cuda")
 
-        >>> # let's download an  image
-        >>> url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd2-upscale/low_res_cat.png"
-        >>> response = requests.get(url)
-        >>> low_res_img = Image.open(BytesIO(response.content)).convert("RGB")
-        >>> low_res_img = low_res_img.resize((128, 128))
-        >>> prompt = "a white cat"
+        >>> pipeline = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
+        >>> pipeline.to("cuda")
 
-        >>> upscaled_image = pipeline(prompt=prompt, image=low_res_img).images[0]
-        >>> upscaled_image.save("upsampled_cat.png")
+        >>> model_id = "YiYiXu/latent-upscaler"
+        >>> upscaler = StableDiffusionLatentUpscalePipeline.from_pretrained(model_id, torch_dtype=torch.float16)
+        >>> upscaler.to("cuda")
+
+        >>> prompt = "a photo of an astronaut high resolution, unreal engine, ultra realistic"
+        >>> generator = torch.manual_seed(33)
+
+        >>> low_res_latents = pipeline(prompt, generator=generator, output_type="latent").images
+
+        >>> with torch.no_grad():
+        >>>     image = pipeline.decode_latents(low_res_latents)
+        >>> image = pipeline.numpy_to_pil(image)[0]
+
+        >>> image.save("../images/a1.png")
+
+        >>> upscaled_image = upscaler(
+        ...     prompt=prompt,
+        ...     image=low_res_latents,
+        ...    num_inference_steps=20,
+        ...    guidance_scale=0,
+        ...    generator=generator,
+        ... ).images[0]
+
+        >>> upscaled_image.save("../images/a2.png")
         ```
 
         Returns:
@@ -440,8 +446,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         image = image[None, :] if image.ndim == 3 else image
         image = torch.cat([image] * batch_multiplier * num_images_per_prompt)
 
-        # 5. Add noise to image
-        # YiYi's notes: hardcode to be 0 for now
+        # 5. Add noise to image (set to be 0):
         # (see below notes from the author):
         # "the This step theoretically can make the model work better on out-of-distribution inputs, but mostly just seems to make it match the input less, so it's turned off by default."
         noise_level = torch.tensor([0.0], dtype=torch.float32, device=device)
@@ -450,10 +455,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
 
         image_cond = F.interpolate(image, scale_factor=2, mode="nearest") * inv_noise_level[:, None, None, None]
         image_cond = image_cond.to(text_embeddings.dtype)
-        # YiYi's notes:
-        # the original repo use a fourier feature layer here to project noise level to noise_level_embed
-        # and that's the only weights that I can't add to unet, so hardcode it for now
-        # can create a wrapper model if we want to support non-zero noise level
+
         noise_level_embed = torch.cat(
             [
                 torch.ones(text_pooler_out.shape[0], 64, dtype=text_pooler_out.dtype, device=device),
