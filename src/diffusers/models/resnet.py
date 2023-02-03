@@ -412,7 +412,7 @@ class ResnetBlock2D(nn.Module):
             else:
                 raise ValueError(f"unknown time_embedding_norm : {self.time_embedding_norm} ")
 
-            self.time_emb_proj = torch.nn.Linear(temb_channels, time_emb_proj_out_channels)
+            self.time_emb_proj = torch.nn.Linear(temb_channels * 2, time_emb_proj_out_channels)
         else:
             self.time_emb_proj = None
 
