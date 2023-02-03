@@ -247,7 +247,7 @@ def create_unet_diffusers_config(original_config, image_size: int):
         up_block_types=tuple(up_block_types),
         block_out_channels=tuple(block_out_channels),
         layers_per_block=unet_params.num_res_blocks,
-        # cross_attention_dim=unet_params.context_dim,
+        cross_attention_dim=True,
         # attention_head_dim=head_dim,
         use_linear_projection=use_linear_projection,
     )

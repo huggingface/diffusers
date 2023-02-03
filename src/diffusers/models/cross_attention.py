@@ -62,7 +62,7 @@ class CrossAttention(nn.Module):
     ):
         super().__init__()
         inner_dim = dim_head * heads
-        cross_attention_dim = query_dim
+        cross_attention_dim = cross_attention_dim if cross_attention_dim is not None else query_dim
         self.upcast_attention = upcast_attention
         self.upcast_softmax = upcast_softmax
 

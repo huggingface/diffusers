@@ -26,7 +26,7 @@ if __name__ == "__main__":
         "--checkpoint_path",
         default="/Users/sanchitgandhi/convert-audioldm/ldm_trimmed.ckpt",
         type=str,
-        required=False,
+        required=False, # TODO: revert to True
         help="Path to the checkpoint to convert.",
     )
     # !wget https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml
@@ -104,7 +104,7 @@ if __name__ == "__main__":
         "--dump_path",
         default="/Users/sanchitgandhi/convert-audioldm/diffusers_out",
         type=str,
-        required=False,
+        required=False,  # TODO: revert to True
         help="Path to the output model.",
     )
     parser.add_argument("--device", type=str, help="Device to use (e.g. cpu, cuda:0, cuda:1, etc.)")

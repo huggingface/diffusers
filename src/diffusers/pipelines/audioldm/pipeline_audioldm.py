@@ -18,7 +18,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import torch
 
 from packaging import version
-from transformers import CLAPTextModel, CLAPTokenizer
+from transformers import CLAPTextModel, CLAPTokenizer #, HifiGanVocoder
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
@@ -66,6 +66,8 @@ class AudioLDMPipeline(DiffusionPipeline):
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
+        vocoder (`HifiGanVocoder`):
+            Vocoder of class [HifiGanVocoder](https://huggingface.co/docs/transformers/v4.27.0/en/model_doc/speecht5#transformers.HifiGanVocoder).
     """
     _optional_components = ["safety_checker", "feature_extractor"]
 
@@ -76,6 +78,7 @@ class AudioLDMPipeline(DiffusionPipeline):
         tokenizer: CLAPTokenizer,
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
+        #vocoder: HifiGanVocoder,
     ):
         super().__init__()
 
@@ -133,6 +136,7 @@ class AudioLDMPipeline(DiffusionPipeline):
             tokenizer=tokenizer,
             unet=unet,
             scheduler=scheduler,
+            #vocoder=vocoder,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.register_to_config()
@@ -327,11 +331,15 @@ class AudioLDMPipeline(DiffusionPipeline):
 
     def decode_latents(self, latents):
         latents = 1 / self.vae.config.scaling_factor * latents
-        image = self.vae.decode(latents).sample
-        image = (image / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
-        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
-        return image
+        mel_spectrogram = self.vae.decode(latents).sample
+        return mel_spectrogram
+
+    def mel_spectrogram_to_waveform(self, mel_spectrogram):
+        mel_spectrogram = mel_spectrogram.permute(0, 2, 1)
+        waveform = self.vocoder(mel_spectrogram)
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
+        waveform = waveform.cpu().detach().numpy()
+        return waveform
 
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
@@ -589,7 +597,9 @@ class AudioLDMPipeline(DiffusionPipeline):
                         callback(i, t, latents)
 
         # 8. Post-processing
-        audio = self.decode_latents(latents)
+        mel_spectrogram = self.decode_latents(latents)
+
+        audio = self.mel_spectrogram_to_waveform(mel_spectrogram)
 
         if not return_dict:
             return (audio,)
