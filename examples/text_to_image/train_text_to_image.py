@@ -855,9 +855,9 @@ def main():
             # run inference
             prompt = [args.validation_prompt]
             images = []
-            for _ in range(args.num_validation_images):
-                with torch.autocast(str(accelerator.device), enabled=accelerator.mixed_precision == "fp16"):
-                    images.append(pipeline(prompt, num_images_per_prompt=args.num_validation_images).images[0])
+            with torch.autocast(str(accelerator.device), enabled=accelerator.mixed_precision == "fp16"):
+                for _ in range(args.num_validation_images):
+                    images.append(pipeline(prompt).images[0])
 
             for i, image in enumerate(images):
                 image.save(os.path.join(args.output_dir, f"test-{i}.jpg"))
