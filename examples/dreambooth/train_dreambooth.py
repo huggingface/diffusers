@@ -213,10 +213,16 @@ def parse_args(input_args=None):
         help="Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.",
     )
     parser.add_argument(
-        "--learning_rate",
+        "--learning_rate_unet",
         type=float,
         default=5e-6,
-        help="Initial learning rate (after the potential warmup period) to use.",
+        help="Initial learning rate (after the potential warmup period) to use for unet finetuning.",
+    )
+    parser.add_argument(
+        "--learning_rate_text_encoder",
+        type=float,
+        default=5e-6,
+        help="Initial learning rate (after the potential warmup period) to use for text encoder finetuning.",
     )
     parser.add_argument(
         "--scale_lr",
@@ -647,8 +653,13 @@ def main(args):
         torch.backends.cuda.matmul.allow_tf32 = True
 
     if args.scale_lr:
-        args.learning_rate = (
-            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+        args.learning_rate_unet = (
+            args.learning_rate_unet * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+        )
+    
+        if args.train_text_encoder:
+            args.learning_rate_text_encoder = (
+            args.learning_rate_text_encoder * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
     # Use 8-bit Adam for lower memory usage or to fine-tune the model in 16GB GPUs
@@ -665,12 +676,16 @@ def main(args):
         optimizer_class = torch.optim.AdamW
 
     # Optimizer creation
-    params_to_optimize = (
-        itertools.chain(unet.parameters(), text_encoder.parameters()) if args.train_text_encoder else unet.parameters()
-    )
+    params_to_optimize = [
+      {"params": unet.parameters(), "lr": args.learning_rate_unet}
+    ]
+
+    if args.train_text_encoder:
+        params_to_optimize.append({"params": text_encoder.parameters(), "lr": args.learning_rate_text_encoder})
+
     optimizer = optimizer_class(
         params_to_optimize,
-        lr=args.learning_rate,
+        lr=args.learning_rate_unet,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon,
