@@ -141,3 +141,5 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dump_path", default=None, type=str, required=True, help="Path to the VAE.pt to convert."
     )
+    
+    vae_pt_to_vae_diffuser(args.vae_pt_path, args.dump_path)
