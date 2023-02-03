@@ -18,6 +18,8 @@
       title: Configuring Pipelines, Models, and Schedulers
     - local: using-diffusers/custom_pipeline_overview
       title: Loading and Adding Custom Pipelines
+    - local: using-diffusers/kerascv
+      title: Using KerasCV Stable Diffusion Checkpoints in Diffusers
     title: Loading & Hub
   - sections:
     - local: using-diffusers/unconditional_image_generation
