@@ -168,7 +168,7 @@ class StableDiffusionLatentUpscalePipelineIntegrationTests(unittest.TestCase):
         pipe.to("cuda")
 
         upscaler = StableDiffusionLatentUpscalePipeline.from_pretrained(
-            "YiYiXu/latent-upscaler", torch_dtype=torch.float16
+            "stabilityai/sd-x2-latent-upscaler", torch_dtype=torch.float16
         )
         upscaler.to("cuda")
 
@@ -196,7 +196,7 @@ class StableDiffusionLatentUpscalePipelineIntegrationTests(unittest.TestCase):
         pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
         pipe.to("cuda")
 
-        upscaler = StableDiffusionLatentUpscalePipeline.from_pretrained("YiYiXu/latent-upscaler")
+        upscaler = StableDiffusionLatentUpscalePipeline.from_pretrained("stabilityai/sd-x2-latent-upscaler")
         upscaler.to("cuda")
 
         prompt = "a photo of an astronaut high resolution, unreal engine, ultra realistic"

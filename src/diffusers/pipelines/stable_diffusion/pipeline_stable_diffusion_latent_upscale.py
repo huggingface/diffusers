@@ -383,7 +383,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         ... )
         >>> pipeline.to("cuda")
 
-        >>> model_id = "YiYiXu/latent-upscaler"
+        >>> model_id = "stabilityai/sd-x2-latent-upscaler"
         >>> upscaler = StableDiffusionLatentUpscalePipeline.from_pretrained(model_id, torch_dtype=torch.float16)
         >>> upscaler.to("cuda")
 
