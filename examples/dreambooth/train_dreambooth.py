@@ -654,13 +654,19 @@ def main(args):
 
     if args.scale_lr:
         args.learning_rate_unet = (
-            args.learning_rate_unet * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+            args.learning_rate_unet
+            * args.gradient_accumulation_steps
+            * args.train_batch_size
+            * accelerator.num_processes
         )
-    
+
         if args.train_text_encoder:
             args.learning_rate_text_encoder = (
-            args.learning_rate_text_encoder * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
-        )
+                args.learning_rate_text_encoder
+                * args.gradient_accumulation_steps
+                * args.train_batch_size
+                * accelerator.num_processes
+            )
 
     # Use 8-bit Adam for lower memory usage or to fine-tune the model in 16GB GPUs
     if args.use_8bit_adam:
@@ -676,9 +682,7 @@ def main(args):
         optimizer_class = torch.optim.AdamW
 
     # Optimizer creation
-    params_to_optimize = [
-      {"params": unet.parameters(), "lr": args.learning_rate_unet}
-    ]
+    params_to_optimize = [{"params": unet.parameters(), "lr": args.learning_rate_unet}]
 
     if args.train_text_encoder:
         params_to_optimize.append({"params": text_encoder.parameters(), "lr": args.learning_rate_text_encoder})
