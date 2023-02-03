@@ -102,31 +102,6 @@ class CrossAttention(nn.Module):
         processor = processor if processor is not None else CrossAttnProcessor()
         self.set_processor(processor)
 
-    def set_weights(self):
-        if isinstance(self.to_q, nn.Conv2d):
-            state_dict_q = self.to_q.state_dict()
-            state_dict_q["weight"] = state_dict_q["weight"][:, :, 0, 0]
-
-            self.to_q_temp.load_state_dict(state_dict_q)
-            self.to_q = self.to_q_temp
-        if isinstance(self.to_k, nn.Conv2d):
-            state_dict_k = self.to_k.state_dict()
-            state_dict_k["weight"] = state_dict_k["weight"][:, :, 0, 0]
-            state_dict_v = self.to_v.state_dict()
-            state_dict_v["weight"] = state_dict_v["weight"][:, :, 0, 0]
-
-            self.to_k_temp.load_state_dict(state_dict_k)
-            self.to_v_temp.load_state_dict(state_dict_v)
-
-            self.to_k = self.to_k_temp
-            self.to_v = self.to_v_temp
-        if isinstance(self.to_out[0], nn.Conv2d):
-            state_dict = self.to_out[0].state_dict()
-            state_dict["weight"] = state_dict["weight"][:, :, 0, 0]
-            self.to_out_temp.load_state_dict(state_dict)
-
-            self.to_out[0] = self.to_out_temp
-
     def set_use_memory_efficient_attention_xformers(
         self, use_memory_efficient_attention_xformers: bool, attention_op: Optional[Callable] = None
     ):
