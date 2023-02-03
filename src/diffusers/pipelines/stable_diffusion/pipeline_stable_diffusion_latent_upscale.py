@@ -15,6 +15,7 @@
 import inspect
 from typing import Callable, List, Optional, Union
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 
@@ -28,6 +29,27 @@ from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+def preprocess(image):
+    if isinstance(image, torch.Tensor):
+        return image
+    elif isinstance(image, PIL.Image.Image):
+        image = [image]
+
+    if isinstance(image[0], PIL.Image.Image):
+        w, h = image[0].size
+        w, h = map(lambda x: x - x % 64, (w, h))  # resize to integer multiple of 64
+
+        image = [np.array(i.resize((w, h)))[None, :] for i in image]
+        image = np.concatenate(image, axis=0)
+        image = np.array(image).astype(np.float32) / 255.0
+        image = image.transpose(0, 3, 1, 2)
+        image = 2.0 * image - 1.0
+        image = torch.from_numpy(image)
+    elif isinstance(image[0], torch.Tensor):
+        image = torch.cat(image, dim=0)
+    return image
 
 
 class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
@@ -407,6 +429,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         )
 
         # 4. Preprocess image
+        image = preprocess(image)
         image = image.to(dtype=text_embeddings.dtype, device=device)
 
         # 5. set timesteps
@@ -421,7 +444,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         # YiYi's notes: hardcode to be 0 for now
         # (see below notes from the author):
         # "the This step theoretically can make the model work better on out-of-distribution inputs, but mostly just seems to make it match the input less, so it's turned off by default."
-        noise_level = torch.tensor([0.0], dtype=torch.long, device=device)
+        noise_level = torch.tensor([0.0], dtype=torch.float32, device=device)
         noise_level = torch.cat([noise_level] * image.shape[0])
         inv_noise_level = (noise_level**2 + 1) ** (-0.5)
 
