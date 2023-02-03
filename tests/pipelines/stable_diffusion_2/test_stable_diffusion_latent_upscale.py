@@ -20,7 +20,13 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import StableDiffusionLatentUpscalePipeline, StableDiffusionPipeline, UNet2DConditionModel, AutoencoderKL, EulerDiscreteScheduler
+from diffusers import (
+    StableDiffusionLatentUpscalePipeline,
+    StableDiffusionPipeline,
+    UNet2DConditionModel,
+    AutoencoderKL,
+    EulerDiscreteScheduler,
+)
 from diffusers.utils import load_numpy, slow, floats_tensor, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 
@@ -138,7 +144,8 @@ class StableDiffusionLatentUpscalePipelineFastTests(PipelineTesterMixin, unittes
 
         self.assertEqual(image.shape, (1, 256, 256, 3))
         expected_slice = np.array(
-           [0.5526507 , 0.61817056, 0.6035498 , 0.65823257, 0.61786944, 0.64031905, 0.7637722 , 0.63346744, 0.6339706 ])
+            [0.5526507, 0.61817056, 0.6035498, 0.65823257, 0.61786944, 0.64031905, 0.7637722, 0.63346744, 0.6339706]
+        )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
@@ -156,18 +163,16 @@ class StableDiffusionLatentUpscalePipelineIntegrationTests(unittest.TestCase):
 
     def test_latent_upscaler_fp16(self):
         generator = torch.manual_seed(33)
-        
-        pipe = StableDiffusionPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4",
-            torch_dtype=torch.float16)
+
+        pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
         pipe.to("cuda")
 
         upscaler = StableDiffusionLatentUpscalePipeline.from_pretrained(
-            "YiYiXu/latent-upscaler",
-            torch_dtype=torch.float16)
+            "YiYiXu/latent-upscaler", torch_dtype=torch.float16
+        )
         upscaler.to("cuda")
-        
-        prompt ="a photo of an astronaut high resolution, unreal engine, ultra realistic"
+
+        prompt = "a photo of an astronaut high resolution, unreal engine, ultra realistic"
 
         low_res_latents = pipe(prompt, generator=generator, output_type="latent").images
 
@@ -177,25 +182,24 @@ class StableDiffusionLatentUpscalePipelineIntegrationTests(unittest.TestCase):
             num_inference_steps=20,
             guidance_scale=0,
             generator=generator,
-            output_type="np").images[0]
+            output_type="np",
+        ).images[0]
 
         expected_image = load_numpy(
-                f"https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/latent-upscaler/image_upscaled_fp16.npy"
-            )
+            f"https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/latent-upscaler/image_upscaled_fp16.npy"
+        )
         assert np.abs((expected_image - image).max()) < 1e-3
 
     def test_latent_upscaler(self):
         generator = torch.manual_seed(33)
-        
-        pipe = StableDiffusionPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4")
+
+        pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
         pipe.to("cuda")
 
-        upscaler = StableDiffusionLatentUpscalePipeline.from_pretrained(
-            "YiYiXu/latent-upscaler")
+        upscaler = StableDiffusionLatentUpscalePipeline.from_pretrained("YiYiXu/latent-upscaler")
         upscaler.to("cuda")
-        
-        prompt ="a photo of an astronaut high resolution, unreal engine, ultra realistic"
+
+        prompt = "a photo of an astronaut high resolution, unreal engine, ultra realistic"
 
         low_res_latents = pipe(prompt, generator=generator, output_type="latent").images
 
@@ -205,9 +209,10 @@ class StableDiffusionLatentUpscalePipelineIntegrationTests(unittest.TestCase):
             num_inference_steps=20,
             guidance_scale=0,
             generator=generator,
-            output_type="np").images[0]
+            output_type="np",
+        ).images[0]
 
         expected_image = load_numpy(
-                f"https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/latent-upscaler/image_upscaled.npy"
-            )
+            f"https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/latent-upscaler/image_upscaled.npy"
+        )
         assert np.abs((expected_image - image).max()) < 1e-3

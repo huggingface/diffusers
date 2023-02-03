@@ -2741,7 +2741,7 @@ class KAttentionBlock(nn.Module):
         cross_attention_kwargs=None,
     ):
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
-        
+
         norm_hidden_states = self.norm1(hidden_states, emb)
 
         height, weight = norm_hidden_states.shape[2:]
