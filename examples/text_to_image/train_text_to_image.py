@@ -318,9 +318,7 @@ def parse_args():
         "--validation_steps",
         type=int,
         default=500,
-        help=(
-            "Sample a validation image every X updates."
-        ),
+        help="Sample a validation image every X updates.",
     )
 
     args = parser.parse_args()
@@ -805,7 +803,9 @@ def main():
                             prompt = [args.validation_prompt]
                             images = []
                             for _ in range(args.num_validation_images):
-                                with torch.autocast(str(accelerator.device), enabled=accelerator.mixed_precision == "fp16"):
+                                with torch.autocast(
+                                    str(accelerator.device), enabled=accelerator.mixed_precision == "fp16"
+                                ):
                                     images.append(pipeline(prompt).images[0])
 
                             for i, image in enumerate(images):
@@ -874,7 +874,6 @@ def main():
                             ]
                         }
                     )
-
 
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
