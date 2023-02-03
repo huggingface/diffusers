@@ -12,7 +12,7 @@ Idea for structure
  Test save_pretrained and from_pretrained methods on new dataset.
 """
 
-from transformers import CLIPModel, CLIPFeatureExtractor, CLIPTokenizer
+from transformers import CLIPModel, CLIPFeatureExtractor, CLIPTokenizer, PretrainedConfig
 from datasets import load_dataset, Image, load_dataset_builder, load_from_disk, Dataset
 import torch
 from typing import Callable, List, Optional, Union
@@ -23,9 +23,10 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 from diffusers.pipelines.rdm.pipeline_rdm import preprocess_images
 import os
 
-class IndexConfig:
+class IndexConfig(PretrainedConfig):
     def __init__(self, clip_name_or_path="openai/clip-vit-large-patch14", dataset_name="Isamu136/oxford_pets_with_l14_emb", \
-                 image_column="image", index_name="embeddings", index_path=None, passages_path=None, dataset_set="train"):
+                 image_column="image", index_name="embeddings", index_path=None, passages_path=None, dataset_set="train", **kwargs):
+        super().__init__(**kwargs)
         self.clip_name_or_path = clip_name_or_path
         self.dataset_name = dataset_name
         self.image_column = image_column
@@ -67,7 +68,7 @@ class Index:
     def retrieve_imgs(self, vec, k:int=20):
         vec = np.array(vec).astype(np.float32)
         return self.dataset.get_nearest_examples(self.index_name, vec, k=k)
-    def retrieve_embs(self, vec, k:int=20):
+    def retrieve_indices(self, vec, k:int=20):
         vec = np.array(vec).astype(np.float32)
         return self.dataset.search(self.index_name, vec, k=k)
 class Retriever:
@@ -132,9 +133,9 @@ class Retriever:
             - **doc_dicts** (`List[dict]`): The `retrieved_doc_embeds` examples per query.
         """
         return self.index.retrieve_imgs(embeddings, k)
-    def retrieve_embs(self, embeddings: np.ndarray, k: int):
+    def retrieve_indices(self, embeddings: np.ndarray, k: int):
         """
-        Retrieves images for specified `embeddings`.
+        Retrieves indices for specified `embeddings`.
         Args:
             embeddings (`np.ndarray` of shape `(vector_size)`):
                 A batch of query vectors to retrieve with.
@@ -146,13 +147,13 @@ class Retriever:
               of the retrieved docs per query.
             - **doc_dicts** (`List[dict]`): The `retrieved_doc_embeds` examples per query.
         """
-        return self.index.retrieve_embs(embeddings, k)
+        return self.index.retrieve_indices(embeddings, k)
     def __call__(
         self,
         embeddings,
-        k: int=None,
+        k: int=20,
     ):
-        return self.index.retrieve_embs(embeddings, k)
+        return self.index.retrieve_imgs(embeddings, k)
 def map_img_to_clip_feature(clip, feature_extractor, imgs, device="cuda"):
     for i, image in enumerate(imgs):
         if not image.mode == "RGB":
