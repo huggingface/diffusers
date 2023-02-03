@@ -21,18 +21,18 @@ import numpy as np
 import torch
 
 from diffusers import (
+    AutoencoderKL,
+    EulerDiscreteScheduler,
     StableDiffusionLatentUpscalePipeline,
     StableDiffusionPipeline,
     UNet2DConditionModel,
-    AutoencoderKL,
-    EulerDiscreteScheduler,
 )
-from diffusers.utils import load_numpy, slow, floats_tensor, torch_device
+from diffusers.utils import floats_tensor, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from ...test_pipelines_common import PipelineTesterMixin
 
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 torch.backends.cuda.matmul.allow_tf32 = False
 

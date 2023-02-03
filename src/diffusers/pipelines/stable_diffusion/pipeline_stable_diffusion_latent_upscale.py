@@ -378,7 +378,9 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         >>> import torch
 
 
-        >>> pipeline = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
+        >>> pipeline = StableDiffusionPipeline.from_pretrained(
+        ...     "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16
+        ... )
         >>> pipeline.to("cuda")
 
         >>> model_id = "YiYiXu/latent-upscaler"
@@ -391,7 +393,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         >>> low_res_latents = pipeline(prompt, generator=generator, output_type="latent").images
 
         >>> with torch.no_grad():
-        >>>     image = pipeline.decode_latents(low_res_latents)
+        ...     image = pipeline.decode_latents(low_res_latents)
         >>> image = pipeline.numpy_to_pil(image)[0]
 
         >>> image.save("../images/a1.png")
@@ -399,9 +401,9 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         >>> upscaled_image = upscaler(
         ...     prompt=prompt,
         ...     image=low_res_latents,
-        ...    num_inference_steps=20,
-        ...    guidance_scale=0,
-        ...    generator=generator,
+        ...     num_inference_steps=20,
+        ...     guidance_scale=0,
+        ...     generator=generator,
         ... ).images[0]
 
         >>> upscaled_image.save("../images/a2.png")

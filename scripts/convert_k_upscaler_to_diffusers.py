@@ -55,7 +55,9 @@ def self_attn_to_diffusers_checkpoint(checkpoint, *, diffusers_attention_prefix,
         f"{diffusers_attention_prefix}.attn1.to_v.weight": weight_v.squeeze(-1).squeeze(-1),
         f"{diffusers_attention_prefix}.attn1.to_v.bias": bias_v,
         # to_out
-        f"{diffusers_attention_prefix}.attn1.to_out.0.weight": checkpoint[f"{attention_prefix}.out_proj.weight"].squeeze(-1).squeeze(-1),
+        f"{diffusers_attention_prefix}.attn1.to_out.0.weight": checkpoint[f"{attention_prefix}.out_proj.weight"]
+        .squeeze(-1)
+        .squeeze(-1),
         f"{diffusers_attention_prefix}.attn1.to_out.0.bias": checkpoint[f"{attention_prefix}.out_proj.bias"],
     }
 
@@ -86,7 +88,9 @@ def cross_attn_to_diffusers_checkpoint(
         # to_q
         f"{diffusers_attention_prefix}.attn{diffusers_attention_index}.to_q.weight": checkpoint[
             f"{attention_prefix}.q_proj.weight"
-        ].squeeze(-1).squeeze(-1),
+        ]
+        .squeeze(-1)
+        .squeeze(-1),
         f"{diffusers_attention_prefix}.attn{diffusers_attention_index}.to_q.bias": checkpoint[
             f"{attention_prefix}.q_proj.bias"
         ],
@@ -99,10 +103,12 @@ def cross_attn_to_diffusers_checkpoint(
         # to_out
         f"{diffusers_attention_prefix}.attn{diffusers_attention_index}.to_out.0.weight": checkpoint[
             f"{attention_prefix}.out_proj.weight"
-        ].squeeze(-1).squeeze(-1),
+        ]
+        .squeeze(-1)
+        .squeeze(-1),
         f"{diffusers_attention_prefix}.attn{diffusers_attention_index}.to_out.0.bias": checkpoint[
             f"{attention_prefix}.out_proj.bias"
-        ]
+        ],
     }
 
     return rv
