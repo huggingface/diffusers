@@ -349,7 +349,8 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
             flagged_images = np.zeros((2, *image.shape[1:]))
             if any(has_nsfw_concept):
                 logger.warning(
-                    "Potential NSFW content was detected in one or more images. A black image will be returned instead."
+                    "Potential NSFW content was detected in one or more images. A black image will be returned"
+                    " instead."
                     f"{'You may look at this images in the `unsafe_images` variable of the output at your own discretion.' if enable_safety_guidance else 'Try again with a different prompt and/or seed.'}"
                 )
                 for idx, has_nsfw_concept in enumerate(has_nsfw_concept):
