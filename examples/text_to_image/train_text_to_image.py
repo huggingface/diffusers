@@ -799,7 +799,7 @@ def main():
                                     images.append(pipeline(prompt).images[0])
 
                             for i, image in enumerate(images):
-                                image.save(os.path.join(args.output_dir, f"sample-{global_step}-{i}.jpg"))
+                                image.save(os.path.join(args.output_dir, f"validation-{global_step}-{i}.jpg"))
                             for tracker in accelerator.trackers:
                                 if tracker.name == "tensorboard":
                                     np_images = np.stack([np.asarray(img) for img in images])
@@ -837,6 +837,34 @@ def main():
             revision=args.revision,
         )
         pipeline.save_pretrained(args.output_dir)
+
+        if args.validation_prompt:
+            pipeline = pipeline.to(accelerator.device)
+            pipeline.set_progress_bar_config(disable=True)
+
+            # run inference
+            prompt = [args.validation_prompt]
+            images = []
+            for _ in range(args.num_validation_images):
+                with torch.autocast(str(accelerator.device), enabled=accelerator.mixed_precision == "fp16"):
+                    images.append(pipeline(prompt, num_images_per_prompt=args.num_validation_images).images[0])
+
+            for i, image in enumerate(images):
+                image.save(os.path.join(args.output_dir, f"test-{i}.jpg"))
+            for tracker in accelerator.trackers:
+                if tracker.name == "tensorboard":
+                    np_images = np.stack([np.asarray(img) for img in images])
+                    tracker.writer.add_images("test", np_images, epoch, dataformats="NHWC")
+                if tracker.name == "wandb":
+                    tracker.log(
+                        {
+                            "test": [
+                                wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                for i, image in enumerate(images)
+                            ]
+                        }
+                    )
+
 
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
