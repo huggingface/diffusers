@@ -193,8 +193,7 @@ def get_down_block(
             resnet_act_fn=resnet_act_fn,
             cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attn_num_head_channels,
-            attn1_type="self" if not add_downsample else "cross",
-            attn2_type="cross" if not add_downsample else None,
+            add_self_attention = True if not add_downsample else False,
         )
     raise ValueError(f"{down_block_type} does not exist.")
 
@@ -369,8 +368,7 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
             cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attn_num_head_channels,
-            attn1_type="self" if is_first_block else "cross",
-            attn2_type="cross" if is_first_block else None,
+            add_self_attention = True if is_first_block else False,
             is_first_block=is_first_block,
         )
 
@@ -1524,8 +1522,7 @@ class KCrossAttnDownBlock2D(nn.Module):
         resnet_group_size: int = 32,
         add_downsample=True,
         attn_num_head_channels: int = 64,
-        attn1_type: str = "cross",  # cross, self
-        attn2_type: Optional[str] = None,  # None, cross,
+        add_self_attention: bool = False,
         resnet_eps: float = 1e-5,
         resnet_act_fn: str = "gelu",
     ):
@@ -1562,8 +1559,7 @@ class KCrossAttnDownBlock2D(nn.Module):
                     cross_attention_dim=cross_attention_dim,
                     temb_channels=temb_channels,
                     attention_bias=True,
-                    attn1_type=attn1_type,
-                    attn2_type=attn2_type,
+                    add_self_attention=add_self_attention,
                     cross_attention_norm=True,
                     group_size=resnet_group_size,
                 )
@@ -2528,10 +2524,9 @@ class KCrossAttnUpBlock2D(nn.Module):
         resnet_group_size: int = 32,
         attn_num_head_channels=1,  # attention dim_head
         cross_attention_dim: int = 768,
-        add_upsample=True,
-        upcast_attention=False,
-        attn1_type: str = "cross",  # cross, self
-        attn2_type: Optional[str] = None,  # None, cross, self
+        add_upsample: bool = True,
+        upcast_attention: bool = False,
+        add_self_attention: bool = False,
         is_first_block: bool = False,
     ):
         super().__init__()
@@ -2576,8 +2571,7 @@ class KCrossAttnUpBlock2D(nn.Module):
                     cross_attention_dim=cross_attention_dim,
                     temb_channels=temb_channels,
                     attention_bias=True,
-                    attn1_type=attn1_type,
-                    attn2_type=attn2_type,
+                    add_self_attention=add_self_attention,
                     cross_attention_norm=True,
                     upcast_attention=upcast_attention,
                 )
@@ -2672,15 +2666,12 @@ class KAttentionBlock(nn.Module):
         attention_bias: bool = False,
         upcast_attention: bool = False,
         temb_channels: int = 768,  # for ada_group_norm
-        attn1_type: str = "cross",  # cross, self
-        attn2_type: Optional[str] = None,  # None, cross
+        add_self_attention: bool = False,
         cross_attention_norm: bool = False,
         group_size: int = 32,
     ):
         super().__init__()
-
-        self.attn1_type = attn1_type
-        self.attn2_type = attn2_type
+        self.add_self_attention = add_self_attention
 
         self.attn1 = CrossAttention(
             query_dim=dim,
@@ -2688,13 +2679,13 @@ class KAttentionBlock(nn.Module):
             dim_head=attention_head_dim,
             dropout=dropout,
             bias=attention_bias,
-            cross_attention_dim=cross_attention_dim if attn1_type == "cross" else None,
+            cross_attention_dim=cross_attention_dim if not add_self_attention else None,
             upcast_attention=upcast_attention,
-            cross_attention_norm=cross_attention_norm if attn1_type == "cross" else None,
+            cross_attention_norm=cross_attention_norm if not add_self_attention else None,
         )
 
         # 2. Cross-Attn
-        if attn2_type == "cross":
+        if add_self_attention:
             self.attn2 = CrossAttention(
                 query_dim=dim,
                 cross_attention_dim=cross_attention_dim,
@@ -2709,7 +2700,7 @@ class KAttentionBlock(nn.Module):
             self.attn2 = None
 
         self.norm1 = AdaGroupNorm(temb_channels, dim, max(1, dim // group_size))
-        if attn2_type == "cross":
+        if add_self_attention:
             self.norm2 = AdaGroupNorm(temb_channels, dim, max(1, dim // group_size))
         else:
             self.norm2 = None
@@ -2724,10 +2715,8 @@ class KAttentionBlock(nn.Module):
         self,
         hidden_states,
         encoder_hidden_states=None,
-        timestep=None,
         emb=None,
         attention_mask=None,
-        class_labels=None,
         cross_attention_kwargs=None,
     ):
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
@@ -2737,25 +2726,25 @@ class KAttentionBlock(nn.Module):
         height, weight = norm_hidden_states.shape[2:]
         norm_hidden_states = self._to_3d(norm_hidden_states, height, weight)
 
-        # 1. Self-Attention
+        # 1. Self-Attention/Cross-Attention
         attn_output = self.attn1(
             norm_hidden_states,
-            encoder_hidden_states=encoder_hidden_states if self.attn1_type == "cross" else None,
+            encoder_hidden_states=encoder_hidden_states if not self.add_self_attention else None,
             **cross_attention_kwargs,
         )
         attn_output = self._to_4d(attn_output, height, weight)
 
         hidden_states = attn_output + hidden_states
 
-        if self.attn2 is not None:
-            # 2. Cross-Attention
+        if self.add_self_attention:
+            # 2. Cross-Attention/None
             norm_hidden_states = self.norm2(hidden_states, emb)
 
             height, weight = norm_hidden_states.shape[2:]
             norm_hidden_states = self._to_3d(norm_hidden_states, height, weight)
             attn_output = self.attn2(
                 norm_hidden_states,
-                encoder_hidden_states=encoder_hidden_states if self.attn2_type == "cross" else None,
+                encoder_hidden_states=encoder_hidden_states,
                 **cross_attention_kwargs,
             )
             attn_output = self._to_4d(attn_output, height, weight)
