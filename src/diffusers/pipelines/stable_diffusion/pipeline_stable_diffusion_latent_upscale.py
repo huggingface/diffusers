@@ -513,6 +513,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                 scaled_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 scaled_model_input = torch.cat([scaled_model_input, image_cond], dim=1)
+                # preconditioning parameter based on  Karras et al. (2022) (table 1)
                 timestep = torch.log(sigma) * 0.25
 
                 noise_pred = self.unet(
@@ -522,9 +523,10 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                     timestep_cond=timestep_condition,
                 ).sample
 
-                # YiYi's notes: in original repo, the output contains a variance channel that's not used
+                # in original repo, the output contains a variance channel that's not used
                 noise_pred = noise_pred[:, :-1]
-
+                
+                # apply preconditioning, based on table 1 in Karras et al. (2022) 
                 inv_sigma = 1 / (sigma**2 + 1)
                 noise_pred = inv_sigma * latent_model_input + self.scheduler.scale_model_input(sigma, t) * noise_pred
 
