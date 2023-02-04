@@ -31,6 +31,8 @@ from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+@property
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale.preprocess
 def preprocess(image):
     if isinstance(image, torch.Tensor):
         return image
@@ -251,7 +253,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
-        latents = 1 / 0.18215 * latents
+        latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
@@ -294,7 +296,8 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
             )
-
+    
+    # Copied from diffusers.pipeline.stable_diffusion.pipeline_stable_diffusion_upscale.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height, width)
         if latents is None:
