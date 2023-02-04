@@ -543,7 +543,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                         callback(i, t, latents)
 
         # 10. Post-processing
-        image = self.decode_latents(latents.float())
+        image = self.decode_latents(latents)
 
         # 11. Convert to PIL
         if output_type == "pil":
