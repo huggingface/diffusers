@@ -442,6 +442,9 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         # 4. Preprocess image
         image = preprocess(image)
         image = image.to(dtype=text_embeddings.dtype, device=device)
+        if image.shape[1] == 3:
+            # encode image if not in latent-space yet
+            image = self.vae.encode(image).latent_dist.sample() * self.vae.config.scaling_factor
 
         # 5. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device, interpolation_type="log_linear")
