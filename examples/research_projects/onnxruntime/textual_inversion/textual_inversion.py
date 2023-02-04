@@ -46,6 +46,7 @@ from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
+from onnxruntime.training.ortmodule import ORTModule
 
 # TODO: remove and import from diffusers.utils when the new version of diffusers is released
 from packaging import version
@@ -630,6 +631,8 @@ def main():
         text_encoder, optimizer, train_dataloader, lr_scheduler
     )
 
+    text_encoder = ORTModule(text_encoder)
+
     # For mixed precision training we cast the unet and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
@@ -783,7 +786,6 @@ def main():
             pipeline = DiffusionPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 text_encoder=accelerator.unwrap_model(text_encoder),
-                tokenizer=tokenizer,
                 revision=args.revision,
             )
             pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
