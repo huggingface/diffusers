@@ -596,7 +596,7 @@ class DiffusionPipeline(ConfigMixin):
         init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
 
         # Special case: safety_checker must be loaded separately when using `from_flax`
-        if from_flax and 'safety_checker' in init_dict and 'safety_checker' not in passed_class_obj:
+        if from_flax and "safety_checker" in init_dict and "safety_checker" not in passed_class_obj:
             raise NotImplementedError(
                 "The safety checker cannot be automatically loaded when loading weights `from_flax`."
                 " Please, pass `safety_checker=None` to `from_pretrained`, and load the safety checker"
