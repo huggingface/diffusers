@@ -21,6 +21,7 @@ import os
 import random
 from pathlib import Path
 from typing import Optional
+import itertools
 
 import numpy as np
 import torch
@@ -415,7 +416,18 @@ def main():
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
-
+    unet.requires_grad_(False)
+    vae.requires_grad_(False)
+    
+    params = itertools.chain(
+        text_encoder.text_model.encoder.parameters(),
+        text_encoder.text_model.final_layer_norm.parameters(),
+        text_encoder.text_model.embeddings.position_embedding.parameters(),
+    )
+    
+    for param in params:
+        param.requires_grad = False
+    
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
