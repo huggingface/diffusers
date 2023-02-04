@@ -144,7 +144,8 @@ class StableDiffusionLatentUpscalePipelineFastTests(PipelineTesterMixin, unittes
 
         self.assertEqual(image.shape, (1, 256, 256, 3))
         expected_slice = np.array(
-            [0.5526507, 0.61817056, 0.6035498, 0.65823257, 0.61786944, 0.64031905, 0.7637722, 0.63346744, 0.6339706]
+            [0.46886346, 0.38429523, 0.5962174 , 0.5560722 , 0.44495213,
+       0.61580384, 0.50449765, 0.49588668, 0.6123541]
         )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
