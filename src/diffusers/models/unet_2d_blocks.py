@@ -181,8 +181,6 @@ def get_down_block(
             resnet_act_fn=resnet_act_fn,
         )
     elif down_block_type == "KCrossAttnDownBlock2D":
-        if cross_attention_dim is None:
-            raise ValueError("cross_attention_dim must be specified for KCrossAttnDownBlock2D")
         return KCrossAttnDownBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -355,9 +353,6 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
         )
     elif up_block_type == "KCrossAttnUpBlock2D":
-        if cross_attention_dim is None:
-            raise ValueError("cross_attention_dim must be specified for KCrossAttnUpBlock2D")
-        is_first_block = in_channels == out_channels == temb_channels
         return KCrossAttnUpBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -368,8 +363,6 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
             cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attn_num_head_channels,
-            add_self_attention = True if is_first_block else False,
-            is_first_block=is_first_block,
         )
 
     raise ValueError(f"{up_block_type} does not exist.")
@@ -2526,12 +2519,13 @@ class KCrossAttnUpBlock2D(nn.Module):
         cross_attention_dim: int = 768,
         add_upsample: bool = True,
         upcast_attention: bool = False,
-        add_self_attention: bool = False,
-        is_first_block: bool = False,
     ):
         super().__init__()
         resnets = []
         attentions = []
+        
+        is_first_block = in_channels == out_channels == temb_channels
+        add_self_attention = True if is_first_block else False
 
         self.has_cross_attention = True
         self.attn_num_head_channels = attn_num_head_channels
