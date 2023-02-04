@@ -437,7 +437,7 @@ class ResnetBlock2D(nn.Module):
             groups_out = groups
 
         if self.time_embedding_norm == "ada_group":
-            self.norm1 = AdaGroupNorm(groups, in_channels, groups, eps=eps)
+            self.norm1 = AdaGroupNorm(temb_channels, in_channels, groups, eps=eps)
         else:
             self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
 
