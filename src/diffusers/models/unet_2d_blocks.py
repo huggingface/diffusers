@@ -191,7 +191,7 @@ def get_down_block(
             resnet_act_fn=resnet_act_fn,
             cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attn_num_head_channels,
-            add_self_attention = True if not add_downsample else False,
+            add_self_attention=True if not add_downsample else False,
         )
     raise ValueError(f"{down_block_type} does not exist.")
 
@@ -2523,7 +2523,7 @@ class KCrossAttnUpBlock2D(nn.Module):
         super().__init__()
         resnets = []
         attentions = []
-        
+
         is_first_block = in_channels == out_channels == temb_channels
         add_self_attention = True if is_first_block else False
 

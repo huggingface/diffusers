@@ -295,7 +295,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
             )
-    
+
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height, width)
         if latents is None:
@@ -523,8 +523,8 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
 
                 # in original repo, the output contains a variance channel that's not used
                 noise_pred = noise_pred[:, :-1]
-                
-                # apply preconditioning, based on table 1 in Karras et al. (2022) 
+
+                # apply preconditioning, based on table 1 in Karras et al. (2022)
                 inv_sigma = 1 / (sigma**2 + 1)
                 noise_pred = inv_sigma * latent_model_input + self.scheduler.scale_model_input(sigma, t) * noise_pred
 

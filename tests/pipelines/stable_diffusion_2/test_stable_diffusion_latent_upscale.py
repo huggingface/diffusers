@@ -144,8 +144,7 @@ class StableDiffusionLatentUpscalePipelineFastTests(PipelineTesterMixin, unittes
 
         self.assertEqual(image.shape, (1, 256, 256, 3))
         expected_slice = np.array(
-            [0.46886346, 0.38429523, 0.5962174 , 0.5560722 , 0.44495213,
-       0.61580384, 0.50449765, 0.49588668, 0.6123541]
+            [0.46886346, 0.38429523, 0.5962174, 0.5560722, 0.44495213, 0.61580384, 0.50449765, 0.49588668, 0.6123541]
         )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
@@ -194,10 +193,12 @@ class StableDiffusionLatentUpscalePipelineIntegrationTests(unittest.TestCase):
     def test_latent_upscaler_fp16_image(self):
         generator = torch.manual_seed(33)
 
-        upscaler = StableDiffusionLatentUpscalePipeline.from_pretrained("stabilityai/sd-x2-latent-upscaler", torch_dtype=torch.float16)
+        upscaler = StableDiffusionLatentUpscalePipeline.from_pretrained(
+            "stabilityai/sd-x2-latent-upscaler", torch_dtype=torch.float16
+        )
         upscaler.to("cuda")
 
-        prompt = "the temple of fire by Ross Tran and Gerardo Dottori, oil on canvas" 
+        prompt = "the temple of fire by Ross Tran and Gerardo Dottori, oil on canvas"
 
         low_res_img = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/latent-upscaler/fire_temple_512.png"
