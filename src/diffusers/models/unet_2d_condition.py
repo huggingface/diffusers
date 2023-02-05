@@ -70,11 +70,13 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
             The tuple of downsample blocks to use.
         mid_block_type (`str`, *optional*, defaults to `"UNetMidBlock2DCrossAttn"`):
-            The mid block type. Choose from `UNetMidBlock2DCrossAttn` or `UNetMidBlock2DSimpleCrossAttn`, will skip the mid block layer if `None`.
+            The mid block type. Choose from `UNetMidBlock2DCrossAttn` or `UNetMidBlock2DSimpleCrossAttn`, will skip the
+            mid block layer if `None`.
         up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D",)`):
             The tuple of upsample blocks to use.
         only_cross_attention(`bool` or `Tuple[bool]`, default to `False`):
-            Whether to include self-attention in the basic transformer blocks, see [`~models.attention.BasicTransformerBlock`].
+            Whether to include self-attention in the basic transformer blocks, see
+            [`~models.attention.BasicTransformerBlock`].
         block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each block.
         layers_per_block (`int`, *optional*, defaults to 2): The number of layers per block.
@@ -95,9 +97,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             class conditioning with `class_embed_type` equal to `None`.
         time_embedding_type (`str`,default to `positional`): The type of position embedding to use for timesteps.
             Choose from `positional` or `fourier`.
-        timestep_act_2 (`str, *optional*, default to `None`): The second activation function to use in timestep embedding.
-            Choose from `silu`, `mish` and `gelu`.
-        time_con_proj_dim (`int`, *optional*, default to `None`): The dimension of `cond_proj` layer in timestep embedding.
+        timestep_act_2 (`str, *optional*, default to `None`):
+            The second activation function to use in timestep embedding. Choose from `silu`, `mish` and `gelu`.
+        time_con_proj_dim (`int`, *optional*, default to `None`):
+            The dimension of `cond_proj` layer in timestep embedding.
         conv_in_kernel (`int`, default to `3`): The kernel size of `conv_in` layer.
         conv_out_kernel (`int`, default to `3`): the Kernel size of `conv_out` layer.
     """
