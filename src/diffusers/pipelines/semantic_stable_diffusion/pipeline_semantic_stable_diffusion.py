@@ -18,7 +18,31 @@ from . import SemanticStableDiffusionPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> import torch
+        >>> from diffusers import SemanticStableDiffusionPipeline
 
+        >>> pipe = SemanticStableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+        >>> pipe = pipe.to("cuda")
+
+        >>> out = pipe(prompt='a photo of the face of a woman', generator=gen, num_images_per_prompt=1, guidance_scale=7,
+        >>>            editing_prompt=['smiling, smile',       # Concepts to apply 
+                           'glasses, wearing glasses', 
+                           'curls, wavy hair, curly hair', 
+                           'beard, full beard, mustache'],
+        >>>            reverse_editing_direction=[False, False, False, False], # Direction of guidance i.e. increase all concepts
+        >>>            edit_warmup_steps=[10, 10, 10,10], # Warmup period for each concept
+        >>>            edit_guidance_scale=[4, 5, 5, 5.4], # Guidance scale for each concept
+        >>>            edit_threshold=[0.99, 0.975, 0.925, 0.96], # Threshold for each concept. Threshold equals the percentile of the latent space that will be discarded. I.e. threshold=0.99 uses 1% of the latent dimensions
+        >>>            edit_momentum_scale=0.3, # Momentum scale that will be added to the latent guidance
+        >>>            edit_beta1=0.6, # Momentum beta
+        >>>            edit_weights=[1,1,1,1,1] # Weights of the individual concepts against each other
+        >>>         )
+        >>> image = out.images[0]
+        ```
+"""
 
 class SemanticStableDiffusionPipeline(DiffusionPipeline):
     r"""
@@ -142,6 +166,7 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]],
@@ -159,12 +184,12 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
         editing_prompt: Optional[Union[str, List[str]]] = None,
-        editing_prompt_prompt_embeddings=None,
+        editing_prompt_embeddings: Optional[torch.FloatTensor]=None,
         reverse_editing_direction: Optional[Union[bool, List[bool]]] = False,
-        edit_guidance_scale: Optional[Union[float, List[float]]] = 500,
+        edit_guidance_scale: Optional[Union[float, List[float]]] = 5,
         edit_warmup_steps: Optional[Union[int, List[int]]] = 10,
         edit_cooldown_steps: Optional[Union[int, List[int]]] = None,
-        edit_threshold: Optional[Union[float, List[float]]] = None,
+        edit_threshold: Optional[Union[float, List[float]]] = 0.9,
         edit_momentum_scale: Optional[float] = 0.1,
         edit_mom_beta: Optional[float] = 0.4,
         edit_weights: Optional[List[float]] = None,
@@ -221,7 +246,10 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
                 The prompt or prompts to use for Semantic guidance. Semantic guidance is disabled by setting
                 `editing_prompt = None`. Guidance direction of prompt should be specified via
                 `reverse_editing_direction`.
-            reverse_editing_direction (`bool` or `List[bool]`, *optional*):
+            editing_prompt_embeddings (`torch.FloatTensor`, *optional*):
+                Pre-computed embeddings to use for semantic guidance. Guidance direction of embedding should be specified via
+                `reverse_editing_direction`.
+            reverse_editing_direction (`bool` or `List[bool]`, *optional*, defaults to `False`):
                 Whether the corresponding prompt in `editing_prompt` should be increased or decreased.
             edit_guidance_scale (`float` or `List[float]`, *optional*, defaults to 5):
                 Guidance scale for semantic guidance. If provided as list values should correspond to `editing_prompt`.
@@ -230,7 +258,7 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
                 will still be calculated for those steps and applied once all warmup periods are over.
             edit_cooldown_steps (`float` or `List[float]`, *optional*, defaults to `None`):
                 Number of diffusion steps (for each prompt) after which semantic guidance will no longer be applied.
-            edit_threshold (`float` or `List[float]`, *optional*, defaults to `None`):
+            edit_threshold (`float` or `List[float]`, *optional*, defaults to 0.9):
                 Threshold of semantic guidance.
             edit_momentum_scale (`float`, *optional*, defaults to 0.1):
                 Scale of the momentum to be added to the semantic guidance at each diffusion step. If set to 0.0
@@ -279,9 +307,9 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
             if isinstance(editing_prompt, str):
                 editing_prompt = [editing_prompt]
             enabled_editing_prompts = len(editing_prompt)
-        elif editing_prompt_prompt_embeddings is not None:
+        elif editing_prompt_embeddings is not None:
             enable_edit_guidance = True
-            enabled_editing_prompts = editing_prompt_prompt_embeddings.shape[0]
+            enabled_editing_prompts = editing_prompt_embeddings.shape[0]
         else:
             enabled_editing_prompts = 0
             enable_edit_guidance = False
@@ -311,7 +339,7 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
 
         if enable_edit_guidance:
             # get safety text embeddings
-            if editing_prompt_prompt_embeddings is None:
+            if editing_prompt_embeddings is None:
                 edit_concepts_input = self.tokenizer(
                     [x for item in editing_prompt for x in repeat(item, batch_size)],
                     padding="max_length",
@@ -332,7 +360,7 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
                     edit_concepts_input_ids = edit_concepts_input_ids[:, : self.tokenizer.model_max_length]
                 edit_concepts = self.text_encoder(edit_concepts_input_ids.to(self.device))[0]
             else:
-                edit_concepts = editing_prompt_prompt_embeddings.to(self.device).repeat(batch_size, 1, 1)
+                edit_concepts = editing_prompt_embeddings.to(self.device).repeat(batch_size, 1, 1)
 
             # duplicate text embeddings for each generation per prompt, using mps friendly method
             bs_embed_edit, seq_len_edit, _ = edit_concepts.shape
