@@ -186,7 +186,7 @@ class StableDiffusionLatentUpscalePipelineIntegrationTests(unittest.TestCase):
         ).images[0]
 
         expected_image = load_numpy(
-            f"https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/latent-upscaler/astronaut_1024.npy"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/latent-upscaler/astronaut_1024.npy"
         )
         assert np.abs((expected_image - image).max()) < 1e-3
 
@@ -214,6 +214,6 @@ class StableDiffusionLatentUpscalePipelineIntegrationTests(unittest.TestCase):
         ).images[0]
 
         expected_image = load_numpy(
-            f"https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/latent-upscaler/fire_temple_1024.npy"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/latent-upscaler/fire_temple_1024.npy"
         )
         assert np.abs((expected_image - image).max()) < 1e-3
