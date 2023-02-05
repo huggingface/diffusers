@@ -82,7 +82,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
+        scheduler: EulerDiscreteScheduler,
     ):
         super().__init__()
 
