@@ -296,7 +296,6 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                 f" {type(callback_steps)}."
             )
     
-    # Copied from diffusers.pipeline.stable_diffusion.pipeline_stable_diffusion_upscale.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height, width)
         if latents is None:
