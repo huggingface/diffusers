@@ -27,7 +27,7 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import floats_tensor, load_numpy, slow, torch_device
+from diffusers.utils import floats_tensor, load_numpy, load_image, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -39,7 +39,7 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 class StableDiffusionLatentUpscalePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionLatentUpscalePipeline
-    test_cpu_offload = False
+    test_cpu_offload = True
 
     @property
     def dummy_image(self):
@@ -151,7 +151,7 @@ class StableDiffusionLatentUpscalePipelineFastTests(PipelineTesterMixin, unittes
         self.assertLessEqual(max_diff, 1e-3)
 
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(relax_max_difference=True)
+        self._test_inference_batch_single_identical(relax_max_difference=False)
 
 
 @require_torch_gpu
@@ -187,26 +187,25 @@ class StableDiffusionLatentUpscalePipelineIntegrationTests(unittest.TestCase):
         ).images[0]
 
         expected_image = load_numpy(
-            f"https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/latent-upscaler/image_upscaled_fp16.npy"
+            f"https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/latent-upscaler/astronaut_1024.npy"
         )
         assert np.abs((expected_image - image).max()) < 1e-3
 
-    def test_latent_upscaler(self):
+    def test_latent_upscaler_fp16_image(self):
         generator = torch.manual_seed(33)
 
-        pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
-        pipe.to("cuda")
-
-        upscaler = StableDiffusionLatentUpscalePipeline.from_pretrained("stabilityai/sd-x2-latent-upscaler")
+        upscaler = StableDiffusionLatentUpscalePipeline.from_pretrained("stabilityai/sd-x2-latent-upscaler", torch_dtype=torch.float16)
         upscaler.to("cuda")
 
-        prompt = "a photo of an astronaut high resolution, unreal engine, ultra realistic"
+        prompt = "the temple of fire by Ross Tran and Gerardo Dottori, oil on canvas" 
 
-        low_res_latents = pipe(prompt, generator=generator, output_type="latent").images
+        low_res_img = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/latent-upscaler/fire_temple_512.png"
+        )
 
         image = upscaler(
             prompt=prompt,
-            image=low_res_latents,
+            image=low_res_img,
             num_inference_steps=20,
             guidance_scale=0,
             generator=generator,
@@ -214,6 +213,6 @@ class StableDiffusionLatentUpscalePipelineIntegrationTests(unittest.TestCase):
         ).images[0]
 
         expected_image = load_numpy(
-            f"https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/latent-upscaler/image_upscaled.npy"
+            f"https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/latent-upscaler/fire_temple_1024.npy"
         )
         assert np.abs((expected_image - image).max()) < 1e-3
