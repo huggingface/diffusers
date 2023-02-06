@@ -368,7 +368,7 @@ class FirDownsample2D(nn.Module):
 
 
 # downsample/upsample layer used in k-upscaler, might be able to use FirDownsample2D/DirUpsample2D instead
-class KDownsample2d(nn.Module):
+class KDownsample2D(nn.Module):
     def __init__(self, pad_mode="reflect"):
         super().__init__()
         self.pad_mode = pad_mode
@@ -384,7 +384,7 @@ class KDownsample2d(nn.Module):
         return F.conv2d(x, weight, stride=2)
 
 
-class KUpsample2d(nn.Module):
+class KUpsample2D(nn.Module):
     def __init__(self, pad_mode="reflect"):
         super().__init__()
         self.pad_mode = pad_mode
