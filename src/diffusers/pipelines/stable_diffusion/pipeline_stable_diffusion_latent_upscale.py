@@ -55,7 +55,7 @@ def preprocess(image):
 
 class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
     r"""
-    Pipeline for upscale the resolution of Stable Diffusion output image from 512 x 512 to 1024 x 1024
+    Pipeline to upscale the resolution of Stable Diffusion output images by a factor of 2.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
