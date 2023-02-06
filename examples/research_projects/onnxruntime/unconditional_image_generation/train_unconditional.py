@@ -20,15 +20,7 @@ from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from onnxruntime.training.ortmodule import ORTModule
-from torchvision.transforms import (
-    CenterCrop,
-    Compose,
-    InterpolationMode,
-    Normalize,
-    RandomHorizontalFlip,
-    Resize,
-    ToTensor,
-)
+from torchvision import transforms
 from tqdm.auto import tqdm
 
 
@@ -104,6 +96,21 @@ def parse_args():
             "The resolution for input images, all the images in the train/validation dataset will be resized to this"
             " resolution"
         ),
+    )
+    parser.add_argument(
+        "--center_crop",
+        default=False,
+        action="store_true",
+        help=(
+            "Whether to center crop the input images to the resolution. If not set, the images will be randomly"
+            " cropped. The images will be resized to the resolution first before cropping."
+        ),
+    )
+    parser.add_argument(
+        "--random_flip",
+        default=False,
+        action="store_true",
+        help="whether to randomly flip images horizontally",
     )
     parser.add_argument(
         "--train_batch_size", type=int, default=16, help="Batch size (per device) for the training dataloader."
@@ -369,13 +376,13 @@ def main(args):
         # https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder
 
     # Preprocessing the datasets and DataLoaders creation.
-    augmentations = Compose(
+    augmentations = transforms.Compose(
         [
-            Resize(args.resolution, interpolation=InterpolationMode.BILINEAR),
-            CenterCrop(args.resolution),
-            RandomHorizontalFlip(),
-            ToTensor(),
-            Normalize([0.5], [0.5]),
+            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
+            transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
+            transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x),
+            transforms.ToTensor(),
+            transforms.Normalize([0.5], [0.5]),
         ]
     )
 
