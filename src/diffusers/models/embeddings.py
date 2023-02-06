@@ -169,7 +169,7 @@ class TimestepEmbedding(nn.Module):
         if cond_proj_dim is not None:
             self.cond_proj = nn.Linear(cond_proj_dim, in_channels, bias=False)
         else:
-            self.class_proj = None
+            self.cond_proj = None
 
         if act_fn == "silu":
             self.act = nn.SiLU()
