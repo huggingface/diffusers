@@ -296,7 +296,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                 f" {type(callback_steps)}."
             )
     
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffuson_upscale.prepare_latents
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale.StableDiffusionUpscalePipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height, width)
         if latents is None:
@@ -304,8 +304,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         else:
             if latents.shape != shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
-
-        latents = latents.to(device=device, dtype=dtype)
+            latents = latents.to(device)
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
