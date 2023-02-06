@@ -1,19 +1,18 @@
 import inspect
-import warnings
 from itertools import repeat
 from typing import Callable, List, Optional, Union
-from packaging import version
 
 import torch
 
+from packaging import version
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
 from ...pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
-from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler, KarrasDiffusionSchedulers
-from ...utils import deprecate, logging, replace_example_docstring
+from ...schedulers import KarrasDiffusionSchedulers
+from ...utils import deprecate, logging
 from . import SemanticStableDiffusionPipelineOutput
 
 
@@ -24,25 +23,43 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import SemanticStableDiffusionPipeline
 
-        >>> pipe = SemanticStableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+        >>> pipe = SemanticStableDiffusionPipeline.from_pretrained(
+        ...     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
+        ... )
         >>> pipe = pipe.to("cuda")
 
-        >>> out = pipe(prompt='a photo of the face of a woman', num_images_per_prompt=1, guidance_scale=7,
-        >>>            editing_prompt=['smiling, smile',       # Concepts to apply 
-                           'glasses, wearing glasses', 
-                           'curls, wavy hair, curly hair', 
-                           'beard, full beard, mustache'],
-        >>>            reverse_editing_direction=[False, False, False, False], # Direction of guidance i.e. increase all concepts
-        >>>            edit_warmup_steps=[10, 10, 10,10], # Warmup period for each concept
-        >>>            edit_guidance_scale=[4, 5, 5, 5.4], # Guidance scale for each concept
-        >>>            edit_threshold=[0.99, 0.975, 0.925, 0.96], # Threshold for each concept. Threshold equals the percentile of the latent space that will be discarded. I.e. threshold=0.99 uses 1% of the latent dimensions
-        >>>            edit_momentum_scale=0.3, # Momentum scale that will be added to the latent guidance
-        >>>            edit_mom_beta=0.6, # Momentum beta
-        >>>            edit_weights=[1,1,1,1,1] # Weights of the individual concepts against each other
-        >>>         )
+        >>> out = pipe(
+        ...     prompt="a photo of the face of a woman",
+        ...     num_images_per_prompt=1,
+        ...     guidance_scale=7,
+        ...     editing_prompt=[
+        ...         "smiling, smile",  # Concepts to apply
+        ...         "glasses, wearing glasses",
+        ...         "curls, wavy hair, curly hair",
+        ...         "beard, full beard, mustache",
+        ...     ],
+        ...     reverse_editing_direction=[
+        ...         False,
+        ...         False,
+        ...         False,
+        ...         False,
+        ...     ],  # Direction of guidance i.e. increase all concepts
+        ...     edit_warmup_steps=[10, 10, 10, 10],  # Warmup period for each concept
+        ...     edit_guidance_scale=[4, 5, 5, 5.4],  # Guidance scale for each concept
+        ...     edit_threshold=[
+        ...         0.99,
+        ...         0.975,
+        ...         0.925,
+        ...         0.96,
+        ...     ],  # Threshold for each concept. Threshold equals the percentile of the latent space that will be discarded. I.e. threshold=0.99 uses 1% of the latent dimensions
+        ...     edit_momentum_scale=0.3,  # Momentum scale that will be added to the latent guidance
+        ...     edit_mom_beta=0.6,  # Momentum beta
+        ...     edit_weights=[1, 1, 1, 1, 1],  # Weights of the individual concepts against each other
+        ... )
         >>> image = out.images[0]
         ```
 """
+
 
 class SemanticStableDiffusionPipeline(DiffusionPipeline):
     r"""
@@ -77,15 +94,15 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
     _optional_components = ["safety_checker", "feature_extractor"]
 
     def __init__(
-            self,
-            vae: AutoencoderKL,
-            text_encoder: CLIPTextModel,
-            tokenizer: CLIPTokenizer,
-            unet: UNet2DConditionModel,
-            scheduler: KarrasDiffusionSchedulers,
-            safety_checker: StableDiffusionSafetyChecker,
-            feature_extractor: CLIPFeatureExtractor,
-            requires_safety_checker: bool = True,
+        self,
+        vae: AutoencoderKL,
+        text_encoder: CLIPTextModel,
+        tokenizer: CLIPTokenizer,
+        unet: UNet2DConditionModel,
+        scheduler: KarrasDiffusionSchedulers,
+        safety_checker: StableDiffusionSafetyChecker,
+        feature_extractor: CLIPFeatureExtractor,
+        requires_safety_checker: bool = True,
     ):
         super().__init__()
 
@@ -166,7 +183,6 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     @torch.no_grad()
-    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]],
@@ -184,7 +200,7 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
         editing_prompt: Optional[Union[str, List[str]]] = None,
-        editing_prompt_embeddings: Optional[torch.FloatTensor]=None,
+        editing_prompt_embeddings: Optional[torch.FloatTensor] = None,
         reverse_editing_direction: Optional[Union[bool, List[bool]]] = False,
         edit_guidance_scale: Optional[Union[float, List[float]]] = 5,
         edit_warmup_steps: Optional[Union[int, List[int]]] = 10,
@@ -247,8 +263,8 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
                 `editing_prompt = None`. Guidance direction of prompt should be specified via
                 `reverse_editing_direction`.
             editing_prompt_embeddings (`torch.FloatTensor`, *optional*):
-                Pre-computed embeddings to use for semantic guidance. Guidance direction of embedding should be specified via
-                `reverse_editing_direction`.
+                Pre-computed embeddings to use for semantic guidance. Guidance direction of embedding should be
+                specified via `reverse_editing_direction`.
             reverse_editing_direction (`bool` or `List[bool]`, *optional*, defaults to `False`):
                 Whether the corresponding prompt in `editing_prompt` should be increased or decreased.
             edit_guidance_scale (`float` or `List[float]`, *optional*, defaults to 5):
@@ -277,11 +293,11 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
                 correspond to `num_inference_steps`.
 
         Returns:
-            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
-            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
-            When returning a tuple, the first element is a list with the generated images, and the second element is a
-            list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
-            (nsfw) content, according to the `safety_checker`.
+            [`~pipelines.semantic_stable_diffusion.SemanticStableDiffusionPipelineOutput`] or `tuple`:
+            [`~pipelines.semantic_stable_diffusion.SemanticStableDiffusionPipelineOutput`] if `return_dict` is True,
+            otherwise a `tuple. When returning a tuple, the first element is a list with the generated images, and the
+            second element is a list of `bool`s denoting whether the corresponding generated image likely represents
+            "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
         """
 
         if isinstance(prompt, str):
