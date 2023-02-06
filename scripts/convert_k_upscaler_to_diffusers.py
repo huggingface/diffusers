@@ -13,8 +13,6 @@ UPSCALER_REPO = "pcuenq/k-upscaler"
 def resnet_to_diffusers_checkpoint(resnet, checkpoint, *, diffusers_resnet_prefix, resnet_prefix):
     rv = {
         # norm1
-        # TO_DO: remove the . to allow passing empty prefix; add the . back once finishing writing this script
-        # e.g f"{diffusers_resnet_prefix}.norm1.linear.weight": checkpoint[f"{resnet_prefix}.main.0.mapper.weight"],
         f"{diffusers_resnet_prefix}.norm1.linear.weight": checkpoint[f"{resnet_prefix}.main.0.mapper.weight"],
         f"{diffusers_resnet_prefix}.norm1.linear.bias": checkpoint[f"{resnet_prefix}.main.0.mapper.bias"],
         # conv1
@@ -228,7 +226,6 @@ def unet_model_from_original_config(original_config):
     layers_per_block = original_config["depths"][0]
 
     class_labels_dim = original_config["mapping_cond_dim"]
-    # time_embed_dim = original_config["mapping_out"]
     cross_attention_dim = original_config["cross_cond_dim"]
 
     attn1_types = []
