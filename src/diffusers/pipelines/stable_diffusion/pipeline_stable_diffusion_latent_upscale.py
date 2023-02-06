@@ -335,7 +335,11 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image upscaling.
             image (`PIL.Image.Image` or List[`PIL.Image.Image`] or `torch.FloatTensor`):
-                `Image`, or tensor representing an image batch which will be upscaled. *
+                `Image`, or tensor representing an image batch which will be upscaled.
+                If it's a tensor, it can be either a latent output from a stable diffusion model,
+                or an image tensor in the range `[-1, 1]`. It will be considered a `latent` if
+                `image.shape[1]` is `4`; otherwise, it will be considered to be an image
+                representation and encoded using this pipeline's `vae` encoder. 
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
