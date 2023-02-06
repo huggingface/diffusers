@@ -13,7 +13,7 @@ from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
 from ...pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler, KarrasDiffusionSchedulers
-from ...utils import deprecate, logging
+from ...utils import deprecate, logging, replace_example_docstring
 from . import SemanticStableDiffusionPipelineOutput
 
 
@@ -27,7 +27,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = SemanticStableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
 
-        >>> out = pipe(prompt='a photo of the face of a woman', generator=gen, num_images_per_prompt=1, guidance_scale=7,
+        >>> out = pipe(prompt='a photo of the face of a woman', num_images_per_prompt=1, guidance_scale=7,
         >>>            editing_prompt=['smiling, smile',       # Concepts to apply 
                            'glasses, wearing glasses', 
                            'curls, wavy hair, curly hair', 
@@ -37,7 +37,7 @@ EXAMPLE_DOC_STRING = """
         >>>            edit_guidance_scale=[4, 5, 5, 5.4], # Guidance scale for each concept
         >>>            edit_threshold=[0.99, 0.975, 0.925, 0.96], # Threshold for each concept. Threshold equals the percentile of the latent space that will be discarded. I.e. threshold=0.99 uses 1% of the latent dimensions
         >>>            edit_momentum_scale=0.3, # Momentum scale that will be added to the latent guidance
-        >>>            edit_beta1=0.6, # Momentum beta
+        >>>            edit_mom_beta=0.6, # Momentum beta
         >>>            edit_weights=[1,1,1,1,1] # Weights of the individual concepts against each other
         >>>         )
         >>> image = out.images[0]
