@@ -2667,37 +2667,31 @@ class KAttentionBlock(nn.Module):
         super().__init__()
         self.add_self_attention = add_self_attention
 
-        self.attn1 = CrossAttention(
-            query_dim=dim,
-            heads=num_attention_heads,
-            dim_head=attention_head_dim,
-            dropout=dropout,
-            bias=attention_bias,
-            cross_attention_dim=cross_attention_dim if not add_self_attention else None,
-            upcast_attention=upcast_attention,
-            cross_attention_norm=cross_attention_norm if not add_self_attention else None,
-        )
-
-        # 2. Cross-Attn
+        # 1. Self-Attn
         if add_self_attention:
-            self.attn2 = CrossAttention(
+            self.norm1 = AdaGroupNorm(temb_channels, dim, max(1, dim // group_size))
+            self.attn1 = CrossAttention(
                 query_dim=dim,
-                cross_attention_dim=cross_attention_dim,
                 heads=num_attention_heads,
                 dim_head=attention_head_dim,
                 dropout=dropout,
                 bias=attention_bias,
-                upcast_attention=upcast_attention,
-                cross_attention_norm=cross_attention_norm,
+                cross_attention_dim=None,
+                cross_attention_norm=None,
             )
-        else:
-            self.attn2 = None
 
-        self.norm1 = AdaGroupNorm(temb_channels, dim, max(1, dim // group_size))
-        if add_self_attention:
-            self.norm2 = AdaGroupNorm(temb_channels, dim, max(1, dim // group_size))
-        else:
-            self.norm2 = None
+        # 2. Cross-Attn
+        self.norm2 = AdaGroupNorm(temb_channels, dim, max(1, dim // group_size))
+        self.attn2 = CrossAttention(
+            query_dim=dim,
+            cross_attention_dim=cross_attention_dim,
+            heads=num_attention_heads,
+            dim_head=attention_head_dim,
+            dropout=dropout,
+            bias=attention_bias,
+            upcast_attention=upcast_attention,
+            cross_attention_norm=cross_attention_norm,
+        )
 
     def _to_3d(self, hidden_states, height, weight):
         return hidden_states.permute(0, 2, 3, 1).reshape(hidden_states.shape[0], height * weight, -1)
@@ -2715,34 +2709,34 @@ class KAttentionBlock(nn.Module):
     ):
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
 
-        norm_hidden_states = self.norm1(hidden_states, emb)
-
-        height, weight = norm_hidden_states.shape[2:]
-        norm_hidden_states = self._to_3d(norm_hidden_states, height, weight)
-
-        # 1. Self-Attention/Cross-Attention
-        attn_output = self.attn1(
-            norm_hidden_states,
-            encoder_hidden_states=encoder_hidden_states if not self.add_self_attention else None,
-            **cross_attention_kwargs,
-        )
-        attn_output = self._to_4d(attn_output, height, weight)
-
-        hidden_states = attn_output + hidden_states
-
+        # 1. Self-Attention
         if self.add_self_attention:
-            # 2. Cross-Attention/None
-            norm_hidden_states = self.norm2(hidden_states, emb)
+            norm_hidden_states = self.norm1(hidden_states, emb)
 
             height, weight = norm_hidden_states.shape[2:]
             norm_hidden_states = self._to_3d(norm_hidden_states, height, weight)
-            attn_output = self.attn2(
+
+            attn_output = self.attn1(
                 norm_hidden_states,
-                encoder_hidden_states=encoder_hidden_states,
+                encoder_hidden_states=None,
                 **cross_attention_kwargs,
             )
             attn_output = self._to_4d(attn_output, height, weight)
 
             hidden_states = attn_output + hidden_states
+
+        # 2. Cross-Attention/None
+        norm_hidden_states = self.norm2(hidden_states, emb)
+
+        height, weight = norm_hidden_states.shape[2:]
+        norm_hidden_states = self._to_3d(norm_hidden_states, height, weight)
+        attn_output = self.attn2(
+            norm_hidden_states,
+            encoder_hidden_states=encoder_hidden_states,
+            **cross_attention_kwargs,
+        )
+        attn_output = self._to_4d(attn_output, height, weight)
+
+        hidden_states = attn_output + hidden_states
 
         return hidden_states

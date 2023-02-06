@@ -122,7 +122,7 @@ def block_to_diffusers_checkpoint(block, checkpoint, block_idx, block_type):
 
     if not hasattr(block, "attentions"):
         n = 1  # resnet only
-    elif block.attentions[0].attn2_type is None:
+    elif not block.attentions[0].add_self_attention:
         n = 2  # resnet -> cross-attention
     else:
         n = 3  # resnet -> self-attention -> cross-attention)
@@ -141,11 +141,11 @@ def block_to_diffusers_checkpoint(block, checkpoint, block_idx, block_type):
 
     if hasattr(block, "attentions"):
         for attention_idx, attention in enumerate(block.attentions):
-            # diffusers_attention_prefix = f"{diffusers_down_block_prefix}.attentions.{attention_idx}"
             diffusers_attention_prefix = f"{block_type}_blocks.{block_idx}.attentions.{attention_idx}"
             idx = n * attention_idx + 1 if block_type == "up" else n * attention_idx + 2
             self_attention_prefix = f"{block_prefix}.{idx}"
-            cross_attention_index = 1 if attention.attn2_type is None else 2
+            cross_attention_prefix = f"{block_prefix}.{idx }"
+            cross_attention_index = 1 if not attention.add_self_attention else 2
             idx = (
                 n * attention_idx + cross_attention_index
                 if block_type == "up"
@@ -157,12 +157,12 @@ def block_to_diffusers_checkpoint(block, checkpoint, block_idx, block_type):
                 cross_attn_to_diffusers_checkpoint(
                     checkpoint,
                     diffusers_attention_prefix=diffusers_attention_prefix,
-                    diffusers_attention_index=cross_attention_index,
+                    diffusers_attention_index=2,
                     attention_prefix=cross_attention_prefix,
                 )
             )
 
-            if attention.attn2_type is not None:
+            if attention.add_self_attention is True:
                 diffusers_checkpoint.update(
                     self_attn_to_diffusers_checkpoint(
                         checkpoint,
@@ -261,7 +261,7 @@ def unet_model_from_original_config(original_config):
         time_cond_proj_dim=class_labels_dim,
         resnet_time_scale_shift="scale_shift",
         time_embedding_type="fourier",
-        timestep_act_2=True,
+        timestep_act_2="gelu",
         conv_in_kernel=1,
         conv_out_kernel=1,
     )
@@ -286,6 +286,7 @@ def main(args):
     orig_checkpoint = torch.load(orig_weights_path, map_location=device)["model_ema"]
     converted_checkpoint = unet_to_diffusers_checkpoint(model, orig_checkpoint)
 
+    import ipdb; ipdb.set_trace()
     model.load_state_dict(converted_checkpoint, strict=False)
     model.save_pretrained(args.dump_path)
     print(f"saving converted unet model in {args.dump_path}")
