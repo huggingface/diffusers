@@ -1,4 +1,5 @@
 from functools import partial
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -420,6 +421,7 @@ class ResnetBlock2D(nn.Module):
         up=False,
         down=False,
         conv_shortcut_bias: bool = True,
+        conv_2d_out_channels: Optional[int] = None,
     ):
         super().__init__()
         self.pre_norm = pre_norm
@@ -461,7 +463,8 @@ class ResnetBlock2D(nn.Module):
             self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
 
         self.dropout = torch.nn.Dropout(dropout)
-        self.conv2 = torch.nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        conv_2d_out_channels = conv_2d_out_channels or out_channels
+        self.conv2 = torch.nn.Conv2d(out_channels, conv_2d_out_channels, kernel_size=3, stride=1, padding=1)
 
         if non_linearity == "swish":
             self.nonlinearity = lambda x: F.silu(x)
@@ -490,12 +493,12 @@ class ResnetBlock2D(nn.Module):
             else:
                 self.downsample = Downsample2D(in_channels, use_conv=False, padding=1, name="op")
 
-        self.use_in_shortcut = self.in_channels != self.out_channels if use_in_shortcut is None else use_in_shortcut
+        self.use_in_shortcut = self.in_channels != conv_2d_out_channels if use_in_shortcut is None else use_in_shortcut
 
         self.conv_shortcut = None
         if self.use_in_shortcut:
             self.conv_shortcut = torch.nn.Conv2d(
-                in_channels, out_channels, kernel_size=1, stride=1, padding=0, bias=conv_shortcut_bias
+                in_channels, conv_2d_out_channels, kernel_size=1, stride=1, padding=0, bias=conv_shortcut_bias
             )
 
     def forward(self, input_tensor, temb):

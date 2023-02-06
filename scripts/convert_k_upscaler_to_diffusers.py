@@ -286,8 +286,7 @@ def main(args):
     orig_checkpoint = torch.load(orig_weights_path, map_location=device)["model_ema"]
     converted_checkpoint = unet_to_diffusers_checkpoint(model, orig_checkpoint)
 
-    import ipdb; ipdb.set_trace()
-    model.load_state_dict(converted_checkpoint, strict=False)
+    model.load_state_dict(converted_checkpoint, strict=True)
     model.save_pretrained(args.dump_path)
     print(f"saving converted unet model in {args.dump_path}")
 

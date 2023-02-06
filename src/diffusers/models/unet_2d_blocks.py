@@ -2525,6 +2525,7 @@ class KCrossAttnUpBlock2D(nn.Module):
         attentions = []
 
         is_first_block = in_channels == out_channels == temb_channels
+        is_middle_block = in_channels != out_channels
         add_self_attention = True if is_first_block else False
 
         self.has_cross_attention = True
@@ -2541,10 +2542,16 @@ class KCrossAttnUpBlock2D(nn.Module):
             groups = in_channels // resnet_group_size
             groups_out = out_channels // resnet_group_size
 
+            if is_middle_block and (i == num_layers - 1):
+                conv_2d_out_channels = k_out_channels
+            else:
+                conv_2d_out_channels = None
+
             resnets.append(
                 ResnetBlock2D(
                     in_channels=in_channels,
-                    out_channels=k_out_channels if (i == num_layers - 1) else out_channels,
+                    out_channels=out_channels,
+                    conv_2d_out_channels=conv_2d_out_channels,
                     temb_channels=temb_channels,
                     eps=resnet_eps,
                     groups=groups,
