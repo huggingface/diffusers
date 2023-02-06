@@ -130,7 +130,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
 
-    def _encode_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt):
+    def _encode_prompt(self, prompt, device, do_classifier_free_guidance, negative_prompt):
         r"""
         Encodes the prompt into text encoder hidden states.
 
@@ -139,8 +139,6 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
-            num_images_per_prompt (`int`):
-                number of images that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
             negative_prompt (`str` or `List[str]`):
@@ -174,11 +172,6 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         )
         text_embeddings = text_encoder_out.hidden_states[-1]
         text_pooler_out = text_encoder_out.pooler_output
-
-        # duplicate text embeddings for each generation per prompt, using mps friendly method
-        bs_embed, seq_len, _ = text_embeddings.shape
-        text_embeddings = text_embeddings.repeat(1, num_images_per_prompt, 1)
-        text_embeddings = text_embeddings.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
@@ -218,11 +211,6 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
 
             uncond_embeddings = uncond_encoder_out.hidden_states[-1]
             uncond_pooler_out = uncond_encoder_out.pooler_output
-
-            # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-            seq_len = uncond_embeddings.shape[1]
-            uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt, 1)
-            uncond_embeddings = uncond_embeddings.view(batch_size * num_images_per_prompt, seq_len, -1)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
@@ -301,7 +289,6 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         guidance_scale: float = 9.0,
         noise_level: int = 0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
@@ -333,8 +320,6 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
-            num_images_per_prompt (`int`, *optional*, defaults to 1):
-                The number of images to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
                 [`schedulers.DDIMScheduler`], will be ignored for others.
@@ -419,7 +404,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
 
         # 3. Encode input prompt
         text_embeddings, text_pooler_out = self._encode_prompt(
-            prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+            prompt, device, do_classifier_free_guidance, negative_prompt
         )
 
         # 4. Preprocess image
@@ -435,7 +420,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
 
         batch_multiplier = 2 if do_classifier_free_guidance else 1
         image = image[None, :] if image.ndim == 3 else image
-        image = torch.cat([image] * batch_multiplier * num_images_per_prompt)
+        image = torch.cat([image] * batch_multiplier)
 
         # 5. Add noise to image (set to be 0):
         # (see below notes from the author):
@@ -461,7 +446,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         height, width = image.shape[2:]
         num_channels_latents = self.vae.config.latent_channels
         latents = self.prepare_latents(
-            batch_size * num_images_per_prompt,
+            batch_size,
             num_channels_latents,
             height * 2,  # 2x upscale
             width * 2,
