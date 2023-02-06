@@ -367,7 +367,7 @@ class FirDownsample2D(nn.Module):
         return hidden_states
 
 
-# YiYi's notes: downsample/upsample layer used in k-upscaler, might be able to use FirDownsample2D/DirUpsample2D instead
+# downsample/upsample layer used in k-upscaler, might be able to use FirDownsample2D/DirUpsample2D instead
 class KDownsample2d(nn.Module):
     def __init__(self, pad_mode="reflect"):
         super().__init__()

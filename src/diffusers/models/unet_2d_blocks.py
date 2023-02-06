@@ -20,7 +20,7 @@ from torch import nn
 from .attention import AdaGroupNorm, AttentionBlock
 from .cross_attention import CrossAttention, CrossAttnAddedKVProcessor
 from .dual_transformer_2d import DualTransformer2DModel
-from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, KDownsample2d, KUpsample2d, ResnetBlock2D, Upsample2D
+from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, KDownsample2D, KUpsample2D, ResnetBlock2D, Upsample2D
 from .transformer_2d import Transformer2DModel
 
 
@@ -1472,7 +1472,7 @@ class KDownBlock2D(nn.Module):
 
         if add_downsample:
             # YiYi's comments- might be able to use FirDownsample2D, look into details later
-            self.downsamplers = nn.ModuleList([KDownsample2d()])
+            self.downsamplers = nn.ModuleList([KDownsample2D()])
         else:
             self.downsamplers = None
 
@@ -1562,7 +1562,7 @@ class KCrossAttnDownBlock2D(nn.Module):
         self.attentions = nn.ModuleList(attentions)
 
         if add_downsample:
-            self.downsamplers = nn.ModuleList([KDownsample2d()])
+            self.downsamplers = nn.ModuleList([KDownsample2D()])
         else:
             self.downsamplers = None
 
@@ -2473,7 +2473,7 @@ class KUpBlock2D(nn.Module):
         self.resnets = nn.ModuleList(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([KUpsample2d()])
+            self.upsamplers = nn.ModuleList([KUpsample2D()])
         else:
             self.upsamplers = None
 
@@ -2582,7 +2582,7 @@ class KCrossAttnUpBlock2D(nn.Module):
         self.attentions = nn.ModuleList(attentions)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([KUpsample2d()])
+            self.upsamplers = nn.ModuleList([KUpsample2D()])
         else:
             self.upsamplers = None
 
