@@ -23,7 +23,7 @@ import PIL
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from ...schedulers import EulerDiscreteScheduler
 from ...utils import is_accelerate_available, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
@@ -69,11 +69,11 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
             the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
         tokenizer (`CLIPTokenizer`):
             Tokenizer of class
-            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
+            [CLIPTokenizer](https://huggingface.co/docs/transformers/main/en/model_doc/clip#transformers.CLIPTokenizer).
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
-            [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
+            [`EulerDiscreteScheduler`].
     """
 
     def __init__(
@@ -82,7 +82,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
+        scheduler: EulerDiscreteScheduler,
     ):
         super().__init__()
 
@@ -295,7 +295,9 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
             )
+    
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffuson_upscale.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height, width)
         if latents is None:
@@ -440,6 +442,10 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         # 4. Preprocess image
         image = preprocess(image)
         image = image.to(dtype=text_embeddings.dtype, device=device)
+        if image.shape[1] == 3:
+            # encode image if not in latent-space yet
+            image = self.vae.encode(image).latent_dist.sample() * self.vae.config.scaling_factor
+
 
         # 5. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -508,6 +514,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                 scaled_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 scaled_model_input = torch.cat([scaled_model_input, image_cond], dim=1)
+                # preconditioning parameter based on  Karras et al. (2022) (table 1)
                 timestep = torch.log(sigma) * 0.25
 
                 noise_pred = self.unet(
@@ -517,9 +524,10 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                     timestep_cond=timestep_condition,
                 ).sample
 
-                # YiYi's notes: in original repo, the output contains a variance channel that's not used
+                # in original repo, the output contains a variance channel that's not used
                 noise_pred = noise_pred[:, :-1]
 
+                # apply preconditioning, based on table 1 in Karras et al. (2022)
                 inv_sigma = 1 / (sigma**2 + 1)
                 noise_pred = inv_sigma * latent_model_input + self.scheduler.scale_model_input(sigma, t) * noise_pred
 
@@ -538,9 +546,6 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                         callback(i, t, latents)
 
         # 10. Post-processing
-        # make sure the VAE is in float32 mode, as it overflows in float16
-        # self.vae.to(dtype=torch.float32)
-        # image = self.decode_latents(latents.float())
         image = self.decode_latents(latents)
 
         # 11. Convert to PIL
