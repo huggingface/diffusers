@@ -180,7 +180,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             Choose from `positional` or `fourier`.
         timestep_act_2 (`str, *optional*, default to `None`):
             The second activation function to use in timestep embedding. Choose from `silu`, `mish` and `gelu`.
-        time_con_proj_dim (`int`, *optional*, default to `None`):
+        time_cond_proj_dim (`int`, *optional*, default to `None`):
             The dimension of `cond_proj` layer in timestep embedding.
         conv_in_kernel (`int`, default to `3`): The kernel size of `conv_in` layer.
         conv_out_kernel (`int`, default to `3`): the Kernel size of `conv_out` layer.
