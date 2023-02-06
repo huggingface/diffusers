@@ -236,7 +236,7 @@ class CrossAttention(nn.Module):
                 "0.0.15",
                 message=(
                     "Not passing the `batch_size` parameter to `prepare_attention_mask` can lead to incorrect"
-                    " attention mask preparation and is deprecating behavior. Please make sure to pass `batch_size` to"
+                    " attention mask preparation and is deprecated behavior. Please make sure to pass `batch_size` to"
                     " `prepare_attention_mask` when preparing the attention_mask."
                 ),
             )
