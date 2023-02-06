@@ -296,7 +296,6 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
                 f" {type(callback_steps)}."
             )
     
-
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffuson_upscale.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height, width)
@@ -445,7 +444,6 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         if image.shape[1] == 3:
             # encode image if not in latent-space yet
             image = self.vae.encode(image).latent_dist.sample() * self.vae.config.scaling_factor
-
 
         # 5. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
