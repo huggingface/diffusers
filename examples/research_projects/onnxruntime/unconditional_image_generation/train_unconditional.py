@@ -552,6 +552,7 @@ def main(args):
                     generator=generator,
                     batch_size=args.eval_batch_size,
                     output_type="numpy",
+                    num_inference_steps=args.ddpm_num_steps,
                 ).images
 
                 # denormalize the images and save to tensorboard
