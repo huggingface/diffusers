@@ -65,11 +65,13 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             `linear` or `scaled_linear`.
         trained_betas (`np.ndarray`, optional):
             option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
-        prediction_type (`str`, default `epsilon`, optional):
+        prediction_type (`str`, default `"epsilon"`, optional):
             prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
             process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
             https://imagen.research.google/video/paper.pdf)
-
+        interpolation_type (`str`, default `"linear"`, optional):
+            interpolation type to compute intermediate sigmas for the scheduler denoising steps. Should be one of
+            [`"linear"`, `"log_linear"`].
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -84,6 +86,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         beta_schedule: str = "linear",
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
         prediction_type: str = "epsilon",
+        interpolation_type: str = "linear",
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -136,9 +139,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.is_scale_input_called = True
         return sample
 
-    def set_timesteps(
-        self, num_inference_steps: int, device: Union[str, torch.device] = None, interpolation_type: str = "linear"
-    ):
+    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
         Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -153,14 +154,14 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         timesteps = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=float)[::-1].copy()
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
 
-        if interpolation_type == "linear":
+        if self.config.interpolation_type == "linear":
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
-        elif interpolation_type == "log_linear":
+        elif self.config.interpolation_type == "log_linear":
             sigmas = torch.linspace(np.log(sigmas[-1]), np.log(sigmas[0]), num_inference_steps + 1).exp()
         else:
             raise ValueError(
-                f"{interpolation_type} is not implemented. Please specify interpolation_type to either 'linear' or"
-                " 'log_linear'"
+                f"{self.config.interpolation_type} is not implemented. Please specify interpolation_type to either"
+                " 'linear' or 'log_linear'"
             )
 
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
