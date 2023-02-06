@@ -1,5 +1,5 @@
 import inspect
-from typing import Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -17,6 +17,9 @@ from diffusers.pipelines.unclip import UnCLIPTextProjModel
 from diffusers.utils import is_accelerate_available, logging, randn_tensor
 from transformers import CLIPTextModelWithProjection, CLIPTokenizer
 from transformers.models.clip.modeling_clip import CLIPTextModelOutput
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
