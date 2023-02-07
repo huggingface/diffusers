@@ -155,7 +155,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             the mid block layer if `None`.
         up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlockFlat", "CrossAttnUpBlockFlat", "CrossAttnUpBlockFlat", "CrossAttnUpBlockFlat",)`):
             The tuple of upsample blocks to use.
-        only_cross_attention(`bool` or `Tuple[bool]`, default to `False`):
+        only_cross_attention(`bool` or `Tuple[bool]`, *optional*, default to `False`):
             Whether to include self-attention in the basic transformer blocks, see
             [`~models.attention.BasicTransformerBlock`].
         block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
@@ -176,14 +176,14 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         num_class_embeds (`int`, *optional*, defaults to None):
             Input dimension of the learnable embedding matrix to be projected to `time_embed_dim`, when performing
             class conditioning with `class_embed_type` equal to `None`.
-        time_embedding_type (`str`,default to `positional`): The type of position embedding to use for timesteps.
-            Choose from `positional` or `fourier`.
+        time_embedding_type (`str`, *optional*, default to `positional`):
+            The type of position embedding to use for timesteps. Choose from `positional` or `fourier`.
         timestep_act_2 (`str, *optional*, default to `None`):
             The second activation function to use in timestep embedding. Choose from `silu`, `mish` and `gelu`.
         time_cond_proj_dim (`int`, *optional*, default to `None`):
             The dimension of `cond_proj` layer in timestep embedding.
-        conv_in_kernel (`int`, default to `3`): The kernel size of `conv_in` layer.
-        conv_out_kernel (`int`, default to `3`): the Kernel size of `conv_out` layer.
+        conv_in_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_in` layer.
+        conv_out_kernel (`int`, *optional*, default to `3`): the Kernel size of `conv_out` layer.
     """
 
     _supports_gradient_checkpointing = True
