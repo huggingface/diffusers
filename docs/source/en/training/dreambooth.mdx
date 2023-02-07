@@ -150,7 +150,7 @@ pipeline.to("cuda")
 pipeline.save_pretrained("dreambooth-pipeline")
 ```
 
-If you have installed `"accelerate<0.15.0dev0"` you need to first convert it to an inference pipeline. This is how you could do it:
+If you have installed `"accelerate<0.16.0"` you need to first convert it to an inference pipeline. This is how you could do it:
 
 ```python
 from accelerate import Accelerator
