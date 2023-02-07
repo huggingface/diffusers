@@ -16,6 +16,8 @@ import inspect
 from typing import Callable, List, Optional, Union
 
 import torch
+from packaging import version
+from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from diffusers import DiffusionPipeline
 from diffusers.configuration_utils import FrozenDict
@@ -29,8 +31,6 @@ from diffusers.schedulers import (
     PNDMScheduler,
 )
 from diffusers.utils import is_accelerate_available
-from packaging import version
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...utils import deprecate, logging
 from . import StableDiffusionPipelineOutput

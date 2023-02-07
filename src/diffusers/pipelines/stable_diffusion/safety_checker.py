@@ -15,7 +15,6 @@
 import numpy as np
 import torch
 import torch.nn as nn
-
 from transformers import CLIPConfig, CLIPVisionModel, PreTrainedModel
 
 from ...utils import logging

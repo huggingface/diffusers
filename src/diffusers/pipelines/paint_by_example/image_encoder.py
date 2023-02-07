@@ -13,7 +13,6 @@
 # limitations under the License.
 import torch
 from torch import nn
-
 from transformers import CLIPPreTrainedModel, CLIPVisionModel
 
 from ...models.attention import BasicTransformerBlock

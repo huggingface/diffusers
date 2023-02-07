@@ -1,9 +1,9 @@
 import random
 
 import torch
+from huggingface_hub import HfApi
 
 from diffusers import UNet2DModel
-from huggingface_hub import HfApi
 
 
 api = HfApi()

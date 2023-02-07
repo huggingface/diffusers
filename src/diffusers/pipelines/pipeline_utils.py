@@ -22,14 +22,14 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
-import torch
-
-import diffusers
 import PIL
+import torch
 from huggingface_hub import model_info, snapshot_download
 from packaging import version
 from PIL import Image
 from tqdm.auto import tqdm
+
+import diffusers
 
 from ..configuration_utils import ConfigMixin
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
