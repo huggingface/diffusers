@@ -17,7 +17,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ..utils import logging
+from ..utils import deprecate, logging
 from ..utils.import_utils import is_xformers_available
 
 
@@ -56,6 +56,7 @@ class CrossAttention(nn.Module):
         bias=False,
         upcast_attention: bool = False,
         upcast_softmax: bool = False,
+        cross_attention_norm: bool = False,
         added_kv_proj_dim: Optional[int] = None,
         norm_num_groups: Optional[int] = None,
         processor: Optional["AttnProcessor"] = None,
@@ -65,6 +66,7 @@ class CrossAttention(nn.Module):
         cross_attention_dim = cross_attention_dim if cross_attention_dim is not None else query_dim
         self.upcast_attention = upcast_attention
         self.upcast_softmax = upcast_softmax
+        self.cross_attention_norm = cross_attention_norm
 
         self.scale = dim_head**-0.5
 
@@ -80,6 +82,9 @@ class CrossAttention(nn.Module):
             self.group_norm = nn.GroupNorm(num_channels=inner_dim, num_groups=norm_num_groups, eps=1e-5, affine=True)
         else:
             self.group_norm = None
+
+        if cross_attention_norm:
+            self.norm_cross = nn.LayerNorm(cross_attention_dim)
 
         self.to_q = nn.Linear(query_dim, inner_dim, bias=bias)
         self.to_k = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
@@ -224,7 +229,19 @@ class CrossAttention(nn.Module):
 
         return attention_probs
 
-    def prepare_attention_mask(self, attention_mask, target_length):
+    def prepare_attention_mask(self, attention_mask, target_length, batch_size=None):
+        if batch_size is None:
+            deprecate(
+                "batch_size=None",
+                "0.0.15",
+                message=(
+                    "Not passing the `batch_size` parameter to `prepare_attention_mask` can lead to incorrect"
+                    " attention mask preparation and is deprecated behavior. Please make sure to pass `batch_size` to"
+                    " `prepare_attention_mask` when preparing the attention_mask."
+                ),
+            )
+            batch_size = 1
+
         head_size = self.heads
         if attention_mask is None:
             return attention_mask
@@ -238,18 +255,29 @@ class CrossAttention(nn.Module):
                 attention_mask = torch.concat([attention_mask, padding], dim=2)
             else:
                 attention_mask = F.pad(attention_mask, (0, target_length), value=0.0)
+
+        if attention_mask.shape[0] < batch_size * head_size:
             attention_mask = attention_mask.repeat_interleave(head_size, dim=0)
         return attention_mask
 
 
 class CrossAttnProcessor:
-    def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None):
+    def __call__(
+        self,
+        attn: CrossAttention,
+        hidden_states,
+        encoder_hidden_states=None,
+        attention_mask=None,
+    ):
         batch_size, sequence_length, _ = hidden_states.shape
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
-
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
         query = attn.to_q(hidden_states)
 
-        encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.cross_attention_norm:
+            encoder_hidden_states = attn.norm_cross(encoder_hidden_states)
+
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
@@ -305,7 +333,7 @@ class LoRACrossAttnProcessor(nn.Module):
         self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0
     ):
         batch_size, sequence_length, _ = hidden_states.shape
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
         query = attn.to_q(hidden_states) + scale * self.to_q_lora(hidden_states)
         query = attn.head_to_batch_dim(query)
@@ -337,7 +365,7 @@ class CrossAttnAddedKVProcessor:
         batch_size, sequence_length, _ = hidden_states.shape
         encoder_hidden_states = encoder_hidden_states.transpose(1, 2)
 
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
         hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
@@ -379,11 +407,15 @@ class XFormersCrossAttnProcessor:
     def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None):
         batch_size, sequence_length, _ = hidden_states.shape
 
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
         query = attn.to_q(hidden_states)
 
-        encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.cross_attention_norm:
+            encoder_hidden_states = attn.norm_cross(encoder_hidden_states)
+
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
@@ -417,7 +449,7 @@ class LoRAXFormersCrossAttnProcessor(nn.Module):
         self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0
     ):
         batch_size, sequence_length, _ = hidden_states.shape
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
         query = attn.to_q(hidden_states) + scale * self.to_q_lora(hidden_states)
         query = attn.head_to_batch_dim(query).contiguous()
@@ -448,13 +480,17 @@ class SlicedAttnProcessor:
     def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None):
         batch_size, sequence_length, _ = hidden_states.shape
 
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
         query = attn.to_q(hidden_states)
         dim = query.shape[-1]
         query = attn.head_to_batch_dim(query)
 
-        encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.cross_attention_norm:
+            encoder_hidden_states = attn.norm_cross(encoder_hidden_states)
+
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
         key = attn.head_to_batch_dim(key)
@@ -500,7 +536,7 @@ class SlicedAttnAddedKVProcessor:
 
         batch_size, sequence_length, _ = hidden_states.shape
 
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
         hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
