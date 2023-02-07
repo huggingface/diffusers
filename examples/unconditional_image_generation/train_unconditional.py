@@ -9,6 +9,7 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 
+import accelerate
 import datasets
 import diffusers
 from accelerate import Accelerator
@@ -19,6 +20,7 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
+from packaging import version
 from torchvision import transforms
 from tqdm.auto import tqdm
 
@@ -271,6 +273,40 @@ def main(args):
         logging_dir=logging_dir,
     )
 
+    # `accelerate` 0.16.0 will have better support for customized saving
+    if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
+        # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
+        def save_model_hook(models, weights, output_dir):
+            if args.use_ema:
+                ema_model.save_pretrained(os.path.join(output_dir, "unet_ema"))
+
+            for i, model in enumerate(models):
+                model.save_pretrained(os.path.join(output_dir, "unet"))
+
+                # make sure to pop weight so that corresponding model is not saved again
+                weights.pop()
+
+        def load_model_hook(models, input_dir):
+            if args.use_ema:
+                load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), UNet2DModel)
+                ema_model.load_state_dict(load_model.state_dict())
+                ema_model.to(accelerator.device)
+                del load_model
+
+            for i in range(len(models)):
+                # pop models so that they are not loaded again
+                model = models.pop()
+
+                # load diffusers style into model
+                load_model = UNet2DModel.from_pretrained(input_dir, subfolder="unet")
+                model.register_to_config(**load_model.config)
+
+                model.load_state_dict(load_model.state_dict())
+                del load_model
+
+        accelerator.register_save_state_pre_hook(save_model_hook)
+        accelerator.register_load_state_pre_hook(load_model_hook)
+
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -336,6 +372,8 @@ def main(args):
             use_ema_warmup=True,
             inv_gamma=args.ema_inv_gamma,
             power=args.ema_power,
+            model_cls=UNet2DModel,
+            model_config=model.config,
         )
 
     # Initialize the scheduler
@@ -411,7 +449,6 @@ def main(args):
     )
 
     if args.use_ema:
-        accelerator.register_for_checkpointing(ema_model)
         ema_model.to(accelerator.device)
 
     # We need to initialize the trackers we use, and also store our configuration.
