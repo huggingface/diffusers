@@ -415,7 +415,7 @@ class XFormersCrossAttnProcessor:
             encoder_hidden_states = hidden_states
         elif attn.cross_attention_norm:
             encoder_hidden_states = attn.norm_cross(encoder_hidden_states)
-            
+
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
