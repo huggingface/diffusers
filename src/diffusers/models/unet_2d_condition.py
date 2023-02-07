@@ -95,8 +95,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         num_class_embeds (`int`, *optional*, defaults to None):
             Input dimension of the learnable embedding matrix to be projected to `time_embed_dim`, when performing
             class conditioning with `class_embed_type` equal to `None`.
-        time_embedding_type (`str`, *optional*, default to `positional`): The type of position embedding to use for timesteps.
-            Choose from `positional` or `fourier`.
+        time_embedding_type (`str`, *optional*, default to `positional`):
+            The type of position embedding to use for timesteps. Choose from `positional` or `fourier`.
         timestep_act_2 (`str, *optional*, default to `None`):
             The second activation function to use in timestep embedding. Choose from `silu`, `mish` and `gelu`.
         time_cond_proj_dim (`int`, *optional*, default to `None`):
