@@ -749,9 +749,9 @@ def main():
                 # Let's make sure we don't update any embedding weights besides the newly added token
                 index_no_updates = torch.arange(len(tokenizer)) != placeholder_token_id
                 with torch.no_grad():
-                    accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[index_no_updates] = (
-                        orig_embeds_params[index_no_updates]
-                    )
+                    accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[
+                        index_no_updates
+                    ] = orig_embeds_params[index_no_updates]
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
