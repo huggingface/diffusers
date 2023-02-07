@@ -267,10 +267,13 @@ def main(args):
         logging_dir=logging_dir,
     )
 
-    # `accelerate` 0.15.0 will have better support for customized saving
-    if version.parse(accelerate.__version__) >= version.parse("0.15.0.dev0"):
+    # `accelerate` 0.16.0 will have better support for customized saving
+    if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
         def save_model_hook(models, weights, output_dir):
+            if args.use_ema:
+                ema_model.save_pretrained(os.path.join(output_dir, "unet_ema"))
+
             for i, model in enumerate(models):
                 model.save_pretrained(os.path.join(output_dir, "unet"))
 
@@ -278,6 +281,11 @@ def main(args):
                 weights.pop()
 
         def load_model_hook(models, input_dir):
+            if args.use_ema:
+                load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), UNet2DModel)
+                ema_model.load_state_dict(load_model.state_dict())
+                del load_model
+
             for i in range(len(models)):
                 # pop models so that they are not loaded again
                 model = models.pop()
@@ -357,6 +365,8 @@ def main(args):
             use_ema_warmup=True,
             inv_gamma=args.ema_inv_gamma,
             power=args.ema_power,
+            model_cls=UNet2DModel,
+            model_config=model.config,
         )
 
     # Initialize the scheduler
@@ -430,10 +440,6 @@ def main(args):
     model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, lr_scheduler
     )
-
-    if args.use_ema:
-        accelerator.register_for_checkpointing(ema_model)
-        ema_model.to(accelerator.device)
 
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.

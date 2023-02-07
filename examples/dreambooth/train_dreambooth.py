@@ -611,8 +611,8 @@ def main(args):
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
 
-    # `accelerate` 0.15.0 will have better support for customized saving
-    if version.parse(accelerate.__version__) >= version.parse("0.15.0.dev0"):
+    # `accelerate` 0.16.0 will have better support for customized saving
+    if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
         def save_model_hook(models, weights, output_dir):
             for model in models:
