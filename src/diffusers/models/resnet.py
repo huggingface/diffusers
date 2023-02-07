@@ -401,6 +401,33 @@ class KUpsample2D(nn.Module):
 
 
 class ResnetBlock2D(nn.Module):
+    r"""
+    A Resnet block.
+
+    Parameters:
+        in_channels (`int`): The number of channels in the input.
+        out_channels (`int`, *optional*, default to be `None`): The number of output channels for the first conv2d layer.
+            If None, same as `in_channels`.
+        dropout (`float`, *optional*, defaults to `0.0`): The dropout probability to use.
+        temb_channels (`int`, *optional*, default to `512`): the number of channels in timestep embedding.
+        groups (`int`, *optional*, default to `32`): The number of groups to use for the first normalization layer.
+        groups_out (`int`, *optional*, default to None): The number of groups to use for the second normalization layer.
+            if set to None, same as `groups`.
+        eps (`float`, *optional*, defaults to `1e-6`): The epsilon to use for the normalization.
+        non_linearity (`str`, *optional*, default to `"swish"`): the activation function to use.
+        time_embedding_norm (`str`, *optional*, default to `"default"` ): Time scale shift config.
+        kernal (`torch.FloatTensor`, optional, default to None): FIR filter, see 
+            [`~models.resnet.FirUpsample2D`] and [`~models.resnet.FirDownsample2D`].
+        output_scale_factor (`float`, *optional*, default to be `1.0`): the scale factor to use for the output.
+        use_in_shortcut (`bool`, *optional*, default to `True`):  If `True`, add a 1x1 nn.conv2d layer for skip-connection.
+        up (`bool`, *optional*, default to `False`): If `True`, add an upsample layer.
+        down (`bool`, *optional*, default to `False`): If `True`, add a downsample layer.
+        conv_shortcut_bias (`bool`, *optional*, default to `True`):  If `True`, adds a learnable bias to the
+            `conv_shortcut` output.
+        conv_2d_out_channels (`int`, *optional*, default to `None`): the number of channels in the output.
+            If None, same as `out_channels`.
+    """
+
     def __init__(
         self,
         *,
