@@ -797,9 +797,11 @@ def main():
             generator = (
                 None if args.seed is None else torch.Generator(device=accelerator.device).manual_seed(args.seed)
             )
-            prompt = args.num_validation_images * [args.validation_prompt]
-            with torch.autocast("cuda"):
-                images = pipeline(prompt, num_inference_steps=25, generator=generator).images
+            images = []
+            for _ in range(args.num_validation_images):
+                with torch.autocast("cuda"):
+                    image = pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
+                images.append(image)
 
             for tracker in accelerator.trackers:
                 if tracker.name == "tensorboard":
@@ -809,7 +811,7 @@ def main():
                     tracker.log(
                         {
                             "validation": [
-                                wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                wandb.Image(np.array(image), caption=f"{i}: {args.validation_prompt}")
                                 for i, image in enumerate(images)
                             ]
                         }
