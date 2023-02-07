@@ -29,7 +29,6 @@ import torch.utils.checkpoint
 from torch.utils.data import Dataset
 
 import accelerate
-import datasets
 import diffusers
 import transformers
 from accelerate import Accelerator
@@ -511,11 +510,9 @@ def main(args):
     )
     logger.info(accelerator.state, main_process_only=False)
     if accelerator.is_local_main_process:
-        datasets.utils.logging.set_verbosity_warning()
         transformers.utils.logging.set_verbosity_warning()
         diffusers.utils.logging.set_verbosity_info()
     else:
-        datasets.utils.logging.set_verbosity_error()
         transformers.utils.logging.set_verbosity_error()
         diffusers.utils.logging.set_verbosity_error()
 

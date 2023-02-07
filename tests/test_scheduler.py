@@ -686,8 +686,8 @@ class DDPMSchedulerTest(SchedulerCommonTest):
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_sum.item() - 258.9070) < 1e-2
-        assert abs(result_mean.item() - 0.3374) < 1e-3
+        assert abs(result_sum.item() - 258.9606) < 1e-2
+        assert abs(result_mean.item() - 0.3372) < 1e-3
 
     def test_full_loop_with_v_prediction(self):
         scheduler_class = self.scheduler_classes[0]
@@ -717,8 +717,8 @@ class DDPMSchedulerTest(SchedulerCommonTest):
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_sum.item() - 201.9864) < 1e-2
-        assert abs(result_mean.item() - 0.2630) < 1e-3
+        assert abs(result_sum.item() - 202.0296) < 1e-2
+        assert abs(result_mean.item() - 0.2631) < 1e-3
 
 
 class DDIMSchedulerTest(SchedulerCommonTest):

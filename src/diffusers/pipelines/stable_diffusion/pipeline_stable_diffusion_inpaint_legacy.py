@@ -45,16 +45,34 @@ def preprocess_image(image):
 
 
 def preprocess_mask(mask, scale_factor=8):
-    mask = mask.convert("L")
-    w, h = mask.size
-    w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
-    mask = mask.resize((w // scale_factor, h // scale_factor), resample=PIL_INTERPOLATION["nearest"])
-    mask = np.array(mask).astype(np.float32) / 255.0
-    mask = np.tile(mask, (4, 1, 1))
-    mask = mask[None].transpose(0, 1, 2, 3)  # what does this step do?
-    mask = 1 - mask  # repaint white, keep black
-    mask = torch.from_numpy(mask)
-    return mask
+    if not isinstance(mask, torch.FloatTensor):
+        mask = mask.convert("L")
+        w, h = mask.size
+        w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
+        mask = mask.resize((w // scale_factor, h // scale_factor), resample=PIL_INTERPOLATION["nearest"])
+        mask = np.array(mask).astype(np.float32) / 255.0
+        mask = np.tile(mask, (4, 1, 1))
+        mask = mask[None].transpose(0, 1, 2, 3)  # what does this step do?
+        mask = 1 - mask  # repaint white, keep black
+        mask = torch.from_numpy(mask)
+        return mask
+
+    else:
+        valid_mask_channel_sizes = [1, 3]
+        # if mask channel is fourth tensor dimension, permute dimensions to pytorch standard (B, C, H, W)
+        if mask.shape[3] in valid_mask_channel_sizes:
+            mask = mask.permute(0, 3, 1, 2)
+        elif mask.shape[1] not in valid_mask_channel_sizes:
+            raise ValueError(
+                f"Mask channel dimension of size in {valid_mask_channel_sizes} should be second or fourth dimension,"
+                f" but received mask of shape {tuple(mask.shape)}"
+            )
+        # (potentially) reduce mask channel dimension from 3 to 1 for broadcasting to latent shape
+        mask = mask.mean(dim=1, keepdim=True)
+        h, w = mask.shape[-2:]
+        h, w = map(lambda x: x - x % 32, (h, w))  # resize to integer multiple of 32
+        mask = torch.nn.functional.interpolate(mask, (h // scale_factor, w // scale_factor))
+        return mask
 
 
 class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
@@ -238,7 +256,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
                 number of images that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
-            negative_ prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
                 Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
@@ -370,7 +388,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
@@ -396,9 +414,6 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
     def check_inputs(
         self, prompt, strength, callback_steps, negative_prompt=None, prompt_embeds=None, negative_prompt_embeds=None
     ):
-        if not isinstance(prompt, str) and not isinstance(prompt, list):
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
@@ -497,8 +512,8 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             mask_image (`torch.FloatTensor` or `PIL.Image.Image`):
                 `Image`, or tensor representing an image batch, to mask `image`. White pixels in the mask will be
                 replaced by noise and therefore repainted, while black pixels will be preserved. If `mask_image` is a
-                PIL image, it will be converted to a single channel (luminance) before use. If it's a tensor, it should
-                contain one color channel (L) instead of 3, so the expected shape would be `(B, H, W, 1)`.
+                PIL image, it will be converted to a single channel (luminance) before use. If mask is a tensor, the
+                expected shape should be either `(B, H, W, C)` or `(B, C, H, W)`, where C is 1 or 3.
             strength (`float`, *optional*, defaults to 0.8):
                 Conceptually, indicates how much to inpaint the masked area. Must be between 0 and 1. When `strength`
                 is 1, the denoising process will be run on the masked area for the full number of iterations specified
@@ -585,8 +600,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         if not isinstance(image, torch.FloatTensor):
             image = preprocess_image(image)
 
-        if not isinstance(mask_image, torch.FloatTensor):
-            mask_image = preprocess_mask(mask_image, self.vae_scale_factor)
+        mask_image = preprocess_mask(mask_image, self.vae_scale_factor)
 
         # 5. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -639,6 +653,9 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
+
+        # use original latents corresponding to unmasked portions of the image
+        latents = (init_latents_orig * mask) + (latents * (1 - mask))
 
         # 10. Post-processing
         image = self.decode_latents(latents)

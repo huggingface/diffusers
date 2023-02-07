@@ -150,6 +150,29 @@ This is especially useful when you don't want to hardcode the base model identif
 Inference for DreamBooth training remains the same. Check
 [this section](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth#inference-1) for more details. 
 
+### Merging LoRA with original model
+
+When performing inference, you can merge the trained LoRA weights with the frozen pre-trained model weights, to interpolate between the original model's inference result (as if no fine-tuning had occurred) and the fully fine-tuned version.
+
+You can adjust the merging ratio with a parameter called α (alpha) in the paper, or `scale` in our implementation. You can tweak it with the following code, that passes `scale` as `cross_attention_kwargs` in the pipeline call:
+
+```py 
+from diffusers import StableDiffusionPipeline
+import torch
+
+model_path = "sayakpaul/sd-model-finetuned-lora-t4"
+pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
+pipe.unet.load_attn_procs(model_path)
+pipe.to("cuda")
+
+prompt = "A pokemon with blue eyes."
+image = pipe(prompt, num_inference_steps=30, guidance_scale=7.5, cross_attention_kwargs={"scale": 0.5}).images[0]
+image.save("pokemon.png")
+```
+
+A value of `0` is the same as _not_ using the LoRA weights, whereas `1` means only the LoRA fine-tuned weights will be used. Values between 0 and 1 will interpolate between the two versions.
+
+
 ## Known limitations 
 
 * Currently, we only support LoRA for the attention layers of [`UNet2DConditionModel`](https://huggingface.co/docs/diffusers/main/en/api/models#diffusers.UNet2DConditionModel).
