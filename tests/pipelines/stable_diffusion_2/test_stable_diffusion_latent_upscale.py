@@ -73,7 +73,7 @@ class StableDiffusionLatentUpscalePipelineFastTests(PipelineTesterMixin, unittes
             out_channels=5,
             resnet_time_scale_shift="scale_shift",
             time_embedding_type="fourier",
-            timestep_act_2="gelu",
+            timestep_post_act="gelu",
             up_block_types=("KCrossAttnUpBlock2D", "KCrossAttnUpBlock2D", "KCrossAttnUpBlock2D", "KUpBlock2D"),
         )
         vae = AutoencoderKL(

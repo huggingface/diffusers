@@ -258,7 +258,7 @@ def unet_model_from_original_config(original_config):
         time_cond_proj_dim=class_labels_dim,
         resnet_time_scale_shift="scale_shift",
         time_embedding_type="fourier",
-        timestep_act_2="gelu",
+        timestep_post_act="gelu",
         conv_in_kernel=1,
         conv_out_kernel=1,
     )
