@@ -159,7 +159,7 @@ class TimestepEmbedding(nn.Module):
         time_embed_dim: int,
         act_fn: str = "silu",
         out_dim: int = None,
-        act_2_fn: Optional[str] = None,
+        post_act_fn: Optional[str] = None,
         cond_proj_dim=None,
     ):
         super().__init__()
@@ -186,16 +186,16 @@ class TimestepEmbedding(nn.Module):
             time_embed_dim_out = time_embed_dim
         self.linear_2 = nn.Linear(time_embed_dim, time_embed_dim_out)
 
-        if act_2_fn is None:
-            self.act_2 = None
-        elif act_2_fn == "silu":
-            self.act_2 = nn.SiLU()
-        elif act_2_fn == "mish":
-            self.act_2 = nn.Mish()
-        elif act_2_fn == "gelu":
-            self.act_2 = nn.GELU()
+        if post_act_fn is None:
+            self.post_act = None
+        elif post_act_fn == "silu":
+            self.post_act = nn.SiLU()
+        elif post_act_fn == "mish":
+            self.post_act = nn.Mish()
+        elif post_act_fn == "gelu":
+            self.post_act = nn.GELU()
         else:
-            raise ValueError(f"{act_2_fn} does not exist. Make sure to define one of 'silu', 'mish', or 'gelu'")
+            raise ValueError(f"{post_act_fn} does not exist. Make sure to define one of 'silu', 'mish', or 'gelu'")
 
     def forward(self, sample, condition=None):
         if condition is not None:
@@ -207,8 +207,8 @@ class TimestepEmbedding(nn.Module):
 
         sample = self.linear_2(sample)
 
-        if self.act_2 is not None:
-            sample = self.act_2(sample)
+        if self.post_act is not None:
+            sample = self.post_act(sample)
         return sample
 
 

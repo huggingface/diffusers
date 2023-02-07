@@ -97,7 +97,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             class conditioning with `class_embed_type` equal to `None`.
         time_embedding_type (`str`, *optional*, default to `positional`):
             The type of position embedding to use for timesteps. Choose from `positional` or `fourier`.
-        timestep_act_2 (`str, *optional*, default to `None`):
+        timestep_post_act (`str, *optional*, default to `None`):
             The second activation function to use in timestep embedding. Choose from `silu`, `mish` and `gelu`.
         time_cond_proj_dim (`int`, *optional*, default to `None`):
             The dimension of `cond_proj` layer in timestep embedding.
@@ -141,7 +141,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
         time_embedding_type: str = "positional",  # fourier, positional
-        timestep_act_2: Optional[str] = None,
+        timestep_post_act: Optional[str] = None,
         time_cond_proj_dim: Optional[int] = None,
         conv_in_kernel: int = 3,
         conv_out_kernel: int = 3,
@@ -179,7 +179,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             timestep_input_dim,
             time_embed_dim,
             act_fn=act_fn,
-            act_2_fn=timestep_act_2,
+            post_act_fn=timestep_post_act,
             cond_proj_dim=time_cond_proj_dim,
         )
 
