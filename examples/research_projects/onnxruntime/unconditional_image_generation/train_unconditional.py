@@ -6,22 +6,22 @@ import os
 from pathlib import Path
 from typing import Optional
 
+import datasets
 import torch
 import torch.nn.functional as F
-
-import datasets
-import diffusers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from datasets import load_dataset
-from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
-from diffusers.optimization import get_scheduler
-from diffusers.training_utils import EMAModel
-from diffusers.utils import check_min_version
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from onnxruntime.training.ortmodule import ORTModule
 from torchvision import transforms
 from tqdm.auto import tqdm
+
+import diffusers
+from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
+from diffusers.optimization import get_scheduler
+from diffusers.training_utils import EMAModel
+from diffusers.utils import check_min_version
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.

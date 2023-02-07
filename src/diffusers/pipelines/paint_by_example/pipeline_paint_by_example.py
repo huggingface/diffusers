@@ -16,11 +16,11 @@ import inspect
 from typing import Callable, List, Optional, Union
 
 import numpy as np
-import torch
-
 import PIL
-from diffusers.utils import is_accelerate_available
+import torch
 from transformers import CLIPFeatureExtractor
+
+from diffusers.utils import is_accelerate_available
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler

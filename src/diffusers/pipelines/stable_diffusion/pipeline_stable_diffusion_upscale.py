@@ -16,9 +16,8 @@ import inspect
 from typing import Callable, List, Optional, Union
 
 import numpy as np
-import torch
-
 import PIL
+import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel

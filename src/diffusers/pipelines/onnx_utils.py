@@ -21,7 +21,6 @@ from pathlib import Path
 from typing import Optional, Union
 
 import numpy as np
-
 from huggingface_hub import hf_hub_download
 
 from ..utils import ONNX_EXTERNAL_WEIGHTS_NAME, ONNX_WEIGHTS_NAME, is_onnx_available, logging
