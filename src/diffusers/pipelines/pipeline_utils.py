@@ -253,14 +253,15 @@ class DiffusionPipeline(ConfigMixin):
             else:
                 save_method(os.path.join(save_directory, pipeline_component_name))
 
-    def to(self, torch_device: Optional[Union[str, torch.device]] = None):
-        if torch_device is None:
+    def to(self, torch_device: Optional[Union[str, torch.device]] = None, dtype: Optional[Union[torch.dtype, str]] = None):
+        if torch_device is None and dtype is None:
             return self
 
         module_names, _, _ = self.extract_init_dict(dict(self.config))
         for name in module_names.keys():
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
+                module.to(torch_device, dtype=dtype)
                 if module.dtype == torch.float16 and str(torch_device) in ["cpu"]:
                     logger.warning(
                         "Pipelines loaded with `torch_dtype=torch.float16` cannot run with `cpu` device. It"
@@ -269,7 +270,6 @@ class DiffusionPipeline(ConfigMixin):
                         " support for`float16` operations on this device in PyTorch. Please, remove the"
                         " `torch_dtype=torch.float16` argument, or use another device for inference."
                     )
-                module.to(torch_device)
         return self
 
     @property

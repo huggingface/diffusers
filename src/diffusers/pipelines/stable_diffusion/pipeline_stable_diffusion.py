@@ -27,6 +27,7 @@ from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
+from .from_checkpoint import load_pipeline_from_original_stable_diffusion_ckpt
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -162,6 +163,13 @@ class StableDiffusionPipeline(DiffusionPipeline):
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
+
+    @classmethod
+    def from_checkpoint(cls, checkpoint_path, *args, **kwargs):
+        r"""
+        Load pipeline from original stable diffusion checkpoint format.
+        """
+        return load_pipeline_from_original_stable_diffusion_ckpt(cls, checkpoint_path, *args, **kwargs)
 
     def enable_vae_slicing(self):
         r"""
@@ -392,15 +400,11 @@ class StableDiffusionPipeline(DiffusionPipeline):
     def check_inputs(
         self,
         prompt,
-        height,
-        width,
         callback_steps,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
     ):
-        if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
@@ -549,9 +553,9 @@ class StableDiffusionPipeline(DiffusionPipeline):
         width = width or self.unet.config.sample_size * self.vae_scale_factor
 
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(
-            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
-        )
+        self.check_inputs(prompt, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
+        if height % 8 != 0 or width % 8 != 0:
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):

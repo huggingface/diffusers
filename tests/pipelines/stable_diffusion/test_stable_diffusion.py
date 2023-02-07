@@ -789,6 +789,18 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         # make sure that less than 2.8 GB is allocated
         assert mem_bytes < 2.8 * 10**9
 
+    def test_stable_diffusion_pipeline_from_checkpoint(self):
+        sd_pipe = StableDiffusionPipeline.from_checkpoint('runwayml/stable-diffusion-v1-5/v1-5-pruned-emaonly.ckpt', torch_dtype=torch.float16, requires_safety_checker=False)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device, dtype=torch.float16)
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1].flatten()
+
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.53613, 0.45166, 0.31250,  0.60059, 0.50830,  0.440670, 0.51709, 0.51221, 0.44385])
+        assert np.abs(image_slice - expected_slice).max() < 1e-4
 
 @nightly
 @require_torch_gpu
