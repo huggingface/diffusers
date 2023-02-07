@@ -19,7 +19,7 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers.pipelines.stable_diffusion import OnnxStableDiffusionUpscalePipeline
+from diffusers import OnnxStableDiffusionUpscalePipeline
 from diffusers.utils import floats_tensor
 from diffusers.utils.testing_utils import (
     is_onnx_available,
