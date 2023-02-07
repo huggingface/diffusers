@@ -61,7 +61,6 @@ class EMAModel:
         model_config: Dict[str, Any] = None,
         **kwargs,
     ):
-        super().__init__()
         """
         Args:
             parameters (Iterable[torch.nn.Parameter]): The parameters to track.

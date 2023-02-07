@@ -127,7 +127,7 @@ This would be a good opportunity to tweak some of your hyperparameters if you wi
 
 Saved checkpoints are stored in a format suitable for resuming training. They not only include the model weights, but also the state of the optimizer, data loaders and learning rate.
 
-**Note**: If you have installed `"accelerate>=0.15.0dev0"` you can use the following code to run 
+**Note**: If you have installed `"accelerate>=0.16.0"` you can use the following code to run 
 inference from an intermediate checkpoint.
 
 ```python
@@ -294,8 +294,8 @@ accelerate launch train_dreambooth.py \
 
 Once you have trained a model, inference can be done using the `StableDiffusionPipeline`, by simply indicating the path where the model was saved. Make sure that your prompts include the special `identifier` used during training (`sks` in the previous examples).
 
-**Note**: If you have installed `"accelerate>=0.15.0dev0"` you can use the following code to run 
-inference from an intermediat checkpoint.
+**Note**: If you have installed `"accelerate>=0.16.0"` you can use the following code to run 
+inference from an intermediate checkpoint.
 
 
 ```python

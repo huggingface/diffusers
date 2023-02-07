@@ -625,7 +625,7 @@ def main(args):
                 model = models.pop()
 
                 if type(model) == type(text_encoder):
-                    # load transformer style into model
+                    # load transformers style into model
                     load_model = text_encoder_cls.from_pretrained(input_dir, subfolder="text_encoder")
                     model.config = load_model.config
                 else:
