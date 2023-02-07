@@ -3,16 +3,16 @@ import re
 from typing import Callable, List, Optional, Union
 
 import numpy as np
+import PIL
 import torch
+from packaging import version
+from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 import diffusers
-import PIL
 from diffusers import SchedulerMixin, StableDiffusionPipeline
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
 from diffusers.utils import deprecate, logging
-from packaging import version
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 
 try:

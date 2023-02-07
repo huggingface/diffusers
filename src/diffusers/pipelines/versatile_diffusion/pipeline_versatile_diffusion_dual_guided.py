@@ -16,10 +16,9 @@ import inspect
 from typing import Callable, List, Optional, Tuple, Union
 
 import numpy as np
+import PIL
 import torch
 import torch.utils.checkpoint
-
-import PIL
 from transformers import (
     CLIPFeatureExtractor,
     CLIPTextModelWithProjection,

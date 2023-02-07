@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Union
 
 import torch
+from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from diffusers import DiffusionPipeline
 from diffusers.configuration_utils import FrozenDict
@@ -14,7 +15,6 @@ from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import Stabl
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from diffusers.utils import deprecate, logging
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

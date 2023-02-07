@@ -40,7 +40,7 @@ repo-consistency:
 # this target runs checks on all files
 
 quality:
-	black --check --preview $(check_dirs)
+	black --check $(check_dirs)
 	ruff $(check_dirs)
 	doc-builder style src/diffusers docs/source --max_len 119 --check_only --path_to_docs docs/source
 	python utils/check_doc_toc.py

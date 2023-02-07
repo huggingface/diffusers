@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Optional, Union
 
 import numpy as np
-
 import PIL.Image
 import PIL.ImageOps
 import requests

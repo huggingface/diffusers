@@ -5,12 +5,10 @@ import os
 from pathlib import Path
 from typing import Optional
 
+import colossalai
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-from torch.utils.data import Dataset
-
-import colossalai
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import disable_existing_loggers, get_dist_logger
@@ -18,13 +16,15 @@ from colossalai.nn.optimizer.gemini_optimizer import GeminiAdamOptimizer
 from colossalai.nn.parallel.utils import get_static_torch_model
 from colossalai.utils import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
-from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
-from diffusers.optimization import get_scheduler
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from PIL import Image
+from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
+
+from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
+from diffusers.optimization import get_scheduler
 
 
 disable_existing_loggers()

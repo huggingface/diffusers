@@ -19,6 +19,8 @@ import unittest
 
 import numpy as np
 import torch
+from PIL import Image
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
@@ -33,8 +35,6 @@ from diffusers import (
 )
 from diffusers.utils import floats_tensor, load_image, nightly, slow, torch_device
 from diffusers.utils.testing_utils import load_numpy, require_torch_gpu
-from PIL import Image
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
