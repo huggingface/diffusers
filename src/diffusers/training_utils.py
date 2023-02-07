@@ -199,9 +199,9 @@ class EMAModel:
 
         for s_param, param in zip(self.shadow_params, parameters):
             if param.requires_grad:
-                s_param.sub_(one_minus_decay * (s_param - param.cpu()))
+                s_param.sub_(one_minus_decay * (s_param - param))
             else:
-                s_param.copy_(param.cpu())
+                s_param.copy_(param)
 
         torch.cuda.empty_cache()
 

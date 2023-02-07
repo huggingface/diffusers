@@ -290,6 +290,7 @@ def main(args):
             if args.use_ema:
                 load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), UNet2DModel)
                 ema_model.load_state_dict(load_model.state_dict())
+                ema_model.to(accelerator.device)
                 del load_model
 
             for i in range(len(models)):
@@ -446,6 +447,9 @@ def main(args):
     model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, lr_scheduler
     )
+
+    if args.use_ema:
+        ema_model.to(accelerator.device)
 
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.

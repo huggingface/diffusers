@@ -412,6 +412,9 @@ def main():
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
         def save_model_hook(models, weights, output_dir):
+            if args.use_ema:
+                ema_unet.save_pretrained(os.path.join(output_dir, "unet_ema"))
+
             for i, model in enumerate(models):
                 model.save_pretrained(os.path.join(output_dir, "unet"))
 
@@ -419,6 +422,11 @@ def main():
                 weights.pop()
 
         def load_model_hook(models, input_dir):
+            if args.use_ema:
+                load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), UNet2DConditionModel)
+                ema_unet.load_state_dict(load_model.state_dict())
+                del load_model
+
             for i in range(len(models)):
                 # pop models so that they are not loaded again
                 model = models.pop()
@@ -591,7 +599,6 @@ def main():
     )
 
     if args.use_ema:
-        accelerator.register_for_checkpointing(ema_unet)
         ema_unet.to(accelerator.device)
 
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
