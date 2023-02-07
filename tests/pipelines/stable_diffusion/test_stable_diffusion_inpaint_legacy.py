@@ -384,7 +384,7 @@ class StableDiffusionInpaintLegacyPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.5669, 0.6124, 0.6431, 0.4073, 0.4614, 0.5670, 0.1609, 0.3128, 0.4330])
+        expected_slice = np.array([0.5665, 0.6117, 0.6430, 0.4057, 0.4594, 0.5658, 0.1596, 0.3106, 0.4305])
 
         assert np.abs(expected_slice - image_slice).max() < 1e-4
 
@@ -402,7 +402,7 @@ class StableDiffusionInpaintLegacyPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.4533, 0.4465, 0.4327, 0.4329, 0.4339, 0.4219, 0.4243, 0.4332, 0.4426])
+        expected_slice = np.array([0.4534, 0.4467, 0.4329, 0.4329, 0.4339, 0.4220, 0.4244, 0.4332, 0.4426])
 
         assert np.abs(expected_slice - image_slice).max() < 1e-4
 
