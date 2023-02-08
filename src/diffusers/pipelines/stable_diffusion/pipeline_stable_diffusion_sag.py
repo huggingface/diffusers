@@ -17,7 +17,6 @@ import math
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
-
 import torchvision.transforms as T
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
