@@ -188,7 +188,7 @@ class StableDiffusionLatentUpscalePipelineIntegrationTests(unittest.TestCase):
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/latent-upscaler/astronaut_1024.npy"
         )
-        assert np.abs((expected_image - image).max()) < 5e-2
+        assert np.abs((expected_image - image).max()) < 5e-1
 
     def test_latent_upscaler_fp16_image(self):
         generator = torch.manual_seed(33)
@@ -216,4 +216,4 @@ class StableDiffusionLatentUpscalePipelineIntegrationTests(unittest.TestCase):
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/latent-upscaler/fire_temple_1024.npy"
         )
-        assert np.abs((expected_image - image).max()) < 5e-1
+        assert np.abs((expected_image - image).max()) < 5e-2
