@@ -183,12 +183,3 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
             return (dec,)
 
         return DecoderOutput(sample=dec)
-
-
-class VAEDecoder(nn.Module):
-    def __init__(self, vae: AutoencoderKL):
-        super().__init__()
-        self.vae = vae
-
-    def forward(self, z: torch.FloatTensor, return_dict: bool = True):
-        return self.vae.decode(z, return_dict=return_dict)
