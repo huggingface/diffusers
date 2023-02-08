@@ -14,6 +14,7 @@
 
 from typing import Callable, List, Optional, Union
 
+import torch
 import numpy as np
 import PIL
 

@@ -15,6 +15,7 @@
 import contextlib
 from typing import Callable, List, Optional, Union
 
+import PIL
 import torch
 from packaging import version
 from transformers import CLIPTextModel, CLIPTokenizer, DPTFeatureExtractor, DPTForDepthEstimation
@@ -23,7 +24,7 @@ from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import deprecate, logging
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import ImagePipelineOutput
 
 from .pipeline_stable_diffusion_img2img import StableDiffusionImg2ImgPipeline, preprocess
 

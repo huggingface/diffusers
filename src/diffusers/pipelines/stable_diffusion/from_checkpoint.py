@@ -1044,7 +1044,11 @@ def load_pipeline_from_original_stable_diffusion_ckpt(
             feature_extractor=feature_extractor,
         )
 
-    elif "StableDiffusion" in pipeline_name and pipeline_name != "StableDiffusionInpaintPipeline":
+    elif pipeline_name in [
+        "StableDiffusionPipeline",
+        "StableDiffusionImg2ImgPipeline",
+        "StableDiffusionInpaintPipelineLegacy",
+    ]:
         if model_type == "FrozenOpenCLIPEmbedder":
             text_model = convert_open_clip_checkpoint(checkpoint)
             tokenizer = CLIPTokenizer.from_pretrained("stabilityai/stable-diffusion-2", subfolder="tokenizer")

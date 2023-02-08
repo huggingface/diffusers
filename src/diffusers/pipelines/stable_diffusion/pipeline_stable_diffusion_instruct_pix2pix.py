@@ -18,7 +18,7 @@ import torch
 
 import PIL
 
-from ...utils import deprecate, logging, randn_tensor
+from ...utils import deprecate, logging
 from . import StableDiffusionPipelineOutput
 
 from .pipeline_stable_diffusion import StableDiffusionPipeline

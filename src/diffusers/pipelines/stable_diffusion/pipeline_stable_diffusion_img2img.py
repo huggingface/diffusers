@@ -18,8 +18,6 @@ import numpy as np
 import PIL
 import torch
 
-import PIL
-
 from ...utils import (
     PIL_INTERPOLATION,
     deprecate,

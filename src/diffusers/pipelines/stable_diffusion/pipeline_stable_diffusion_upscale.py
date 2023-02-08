@@ -14,6 +14,7 @@
 
 from typing import Callable, List, Optional, Union
 
+import PIL
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
