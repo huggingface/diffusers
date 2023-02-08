@@ -226,7 +226,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         # We'll offload the last model manually.
         # Alternative: daisy-chain with the first one so a new inference will offload the last model,
         # but then we need access to `hook.hook.prev_module_hook`.
-        self.offload_hook = hook
+        self.final_offload_hook = hook
 
     @property
     def _execution_device(self):
@@ -678,8 +678,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
         # Offload last model to CPU
-        if hasattr(self, "offload_hook") and self.offload_hook is not None:
-            self.offload_hook.offload()
+        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
+            self.final_offload_hook.offload()
 
         if not return_dict:
             return (image, has_nsfw_concept)
