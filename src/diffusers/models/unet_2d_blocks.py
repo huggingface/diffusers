@@ -42,6 +42,7 @@ def get_down_block(
     only_cross_attention=False,
     upcast_attention=False,
     resnet_time_scale_shift="default",
+    transformer_num_layers=1,
 ):
     down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
     if down_block_type == "DownBlock2D":
@@ -103,6 +104,7 @@ def get_down_block(
             only_cross_attention=only_cross_attention,
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
+            transformer_num_layers=transformer_num_layers,
         )
     elif down_block_type == "SimpleCrossAttnDownBlock2D":
         if cross_attention_dim is None:
@@ -214,6 +216,7 @@ def get_up_block(
     only_cross_attention=False,
     upcast_attention=False,
     resnet_time_scale_shift="default",
+    transformer_num_layers=1,
 ):
     up_block_type = up_block_type[7:] if up_block_type.startswith("UNetRes") else up_block_type
     if up_block_type == "UpBlock2D":
@@ -262,6 +265,7 @@ def get_up_block(
             only_cross_attention=only_cross_attention,
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
+            transformer_num_layers=transformer_num_layers,
         )
     elif up_block_type == "SimpleCrossAttnUpBlock2D":
         if cross_attention_dim is None:
@@ -465,6 +469,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         dual_cross_attention=False,
         use_linear_projection=False,
         upcast_attention=False,
+        transformer_num_layers=1,
     ):
         super().__init__()
 
@@ -496,7 +501,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                         attn_num_head_channels,
                         in_channels // attn_num_head_channels,
                         in_channels=in_channels,
-                        num_layers=1,
+                        num_layers=transformer_num_layers,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
@@ -509,7 +514,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                         attn_num_head_channels,
                         in_channels // attn_num_head_channels,
                         in_channels=in_channels,
-                        num_layers=1,
+                        num_layers=transformer_num_layers,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
                     )
@@ -742,6 +747,7 @@ class CrossAttnDownBlock2D(nn.Module):
         use_linear_projection=False,
         only_cross_attention=False,
         upcast_attention=False,
+        transformer_num_layers=1,
     ):
         super().__init__()
         resnets = []
@@ -772,7 +778,7 @@ class CrossAttnDownBlock2D(nn.Module):
                         attn_num_head_channels,
                         out_channels // attn_num_head_channels,
                         in_channels=out_channels,
-                        num_layers=1,
+                        num_layers=transformer_num_layers,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
@@ -786,7 +792,7 @@ class CrossAttnDownBlock2D(nn.Module):
                         attn_num_head_channels,
                         out_channels // attn_num_head_channels,
                         in_channels=out_channels,
-                        num_layers=1,
+                        num_layers=transformer_num_layers,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
                     )
@@ -1712,6 +1718,7 @@ class CrossAttnUpBlock2D(nn.Module):
         use_linear_projection=False,
         only_cross_attention=False,
         upcast_attention=False,
+        transformer_num_layers=1,
     ):
         super().__init__()
         resnets = []
@@ -1744,7 +1751,7 @@ class CrossAttnUpBlock2D(nn.Module):
                         attn_num_head_channels,
                         out_channels // attn_num_head_channels,
                         in_channels=out_channels,
-                        num_layers=1,
+                        num_layers=transformer_num_layers,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
@@ -1758,7 +1765,7 @@ class CrossAttnUpBlock2D(nn.Module):
                         attn_num_head_channels,
                         out_channels // attn_num_head_channels,
                         in_channels=out_channels,
-                        num_layers=1,
+                        num_layers=transformer_num_layers,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
                     )
