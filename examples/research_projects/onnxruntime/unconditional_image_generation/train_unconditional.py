@@ -562,6 +562,12 @@ def main(args):
                     accelerator.get_tracker("tensorboard").add_images(
                         "test_samples", images_processed.transpose(0, 3, 1, 2), epoch
                     )
+                elif args.logger == "wandb":
+                    import wandb
+
+                    accelerator.get_tracker("wandb").log(
+                        {"test_samples": [wandb.Image(img) for img in images_processed]}, step=global_step
+                    )
 
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
                 # save the model
