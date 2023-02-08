@@ -3,8 +3,8 @@ from dataclasses import dataclass
 from typing import List, Union
 
 import numpy as np
-
 import PIL.Image
+
 from diffusers.utils.outputs import BaseOutput
 
 

@@ -182,7 +182,7 @@ class DiTPipeline(DiffusionPipeline):
         else:
             latents = latent_model_input
 
-        latents = 1 / 0.18215 * latents
+        latents = 1 / self.vae.config.scaling_factor * latents
         samples = self.vae.decode(latents).sample
 
         samples = (samples / 2 + 0.5).clamp(0, 1)

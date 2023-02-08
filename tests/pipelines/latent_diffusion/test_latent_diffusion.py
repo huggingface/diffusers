@@ -18,10 +18,10 @@ import unittest
 
 import numpy as np
 import torch
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DDIMScheduler, LDMTextToImagePipeline, UNet2DConditionModel
 from diffusers.utils.testing_utils import load_numpy, nightly, require_torch_gpu, slow, torch_device
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from ...test_pipelines_common import PipelineTesterMixin
 
@@ -126,7 +126,7 @@ class LDMTextToImagePipelineSlowTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def get_inputs(self, device, dtype=torch.float32, seed=0):
-        generator = torch.Generator(device=device).manual_seed(seed)
+        generator = torch.manual_seed(seed)
         latents = np.random.RandomState(seed).standard_normal((1, 4, 32, 32))
         latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
         inputs = {
@@ -162,7 +162,7 @@ class LDMTextToImagePipelineNightlyTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def get_inputs(self, device, dtype=torch.float32, seed=0):
-        generator = torch.Generator(device=device).manual_seed(seed)
+        generator = torch.manual_seed(seed)
         latents = np.random.RandomState(seed).standard_normal((1, 4, 32, 32))
         latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
         inputs = {
