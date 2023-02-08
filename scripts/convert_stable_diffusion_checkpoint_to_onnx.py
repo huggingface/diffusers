@@ -17,12 +17,12 @@ import os
 import shutil
 from pathlib import Path
 
+import onnx
 import torch
+from packaging import version
 from torch.onnx import export
 
-import onnx
 from diffusers import OnnxRuntimeModel, OnnxStableDiffusionPipeline, StableDiffusionPipeline
-from packaging import version
 
 
 is_torch_less_than_1_11 = version.parse(version.parse(torch.__version__).base_version) < version.parse("1.11")

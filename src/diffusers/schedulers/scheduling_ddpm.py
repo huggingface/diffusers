@@ -218,8 +218,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         elif variance_type == "learned":
             return predicted_variance
         elif variance_type == "learned_range":
-            min_log = variance
-            max_log = self.betas[t]
+            min_log = torch.log(variance)
+            max_log = torch.log(self.betas[t])
             frac = (predicted_variance + 1) / 2
             variance = frac * max_log + (1 - frac) * min_log
 
@@ -304,6 +304,9 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             )
             if self.variance_type == "fixed_small_log":
                 variance = self._get_variance(t, predicted_variance=predicted_variance) * variance_noise
+            elif self.variance_type == "learned_range":
+                variance = self._get_variance(t, predicted_variance=predicted_variance)
+                variance = torch.exp(0.5 * variance) * variance_noise
             else:
                 variance = (self._get_variance(t, predicted_variance=predicted_variance) ** 0.5) * variance_noise
 
