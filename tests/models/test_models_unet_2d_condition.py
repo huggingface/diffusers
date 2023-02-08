@@ -18,6 +18,7 @@ import tempfile
 import unittest
 
 import torch
+from parameterized import parameterized
 
 from diffusers import UNet2DConditionModel
 from diffusers.models.cross_attention import CrossAttnProcessor, LoRACrossAttnProcessor
@@ -31,7 +32,6 @@ from diffusers.utils import (
     torch_device,
 )
 from diffusers.utils.import_utils import is_xformers_available
-from parameterized import parameterized
 
 from ..test_modeling_common import ModelTesterMixin
 
@@ -252,7 +252,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
             def __call__(self, attn, hidden_states, encoder_hidden_states=None, attention_mask=None, number=None):
                 batch_size, sequence_length, _ = hidden_states.shape
-                attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
+                attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
                 query = attn.to_q(hidden_states)
 

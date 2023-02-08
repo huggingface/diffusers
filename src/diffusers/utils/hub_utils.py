@@ -112,9 +112,9 @@ def create_model_card(args, model_name):
         learning_rate=args.learning_rate,
         train_batch_size=args.train_batch_size,
         eval_batch_size=args.eval_batch_size,
-        gradient_accumulation_steps=args.gradient_accumulation_steps
-        if hasattr(args, "gradient_accumulation_steps")
-        else None,
+        gradient_accumulation_steps=(
+            args.gradient_accumulation_steps if hasattr(args, "gradient_accumulation_steps") else None
+        ),
         adam_beta1=args.adam_beta1 if hasattr(args, "adam_beta1") else None,
         adam_beta2=args.adam_beta2 if hasattr(args, "adam_beta2") else None,
         adam_weight_decay=args.adam_weight_decay if hasattr(args, "adam_weight_decay") else None,

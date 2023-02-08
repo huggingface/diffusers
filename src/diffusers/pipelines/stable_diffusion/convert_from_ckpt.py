@@ -18,9 +18,10 @@ import os
 import re
 import tempfile
 
-import torch
-
 import requests
+import torch
+from transformers import AutoFeatureExtractor, BertTokenizerFast, CLIPTextModel, CLIPTokenizer, CLIPVisionConfig
+
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
@@ -37,7 +38,6 @@ from diffusers import (
 from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
 from diffusers.pipelines.paint_by_example import PaintByExampleImageEncoder, PaintByExamplePipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
-from transformers import AutoFeatureExtractor, BertTokenizerFast, CLIPTextModel, CLIPTokenizer, CLIPVisionConfig
 
 from ...utils import is_omegaconf_available, is_safetensors_available
 from ...utils.import_utils import BACKENDS_MAPPING
