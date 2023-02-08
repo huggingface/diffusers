@@ -19,7 +19,6 @@ from typing import Optional, Tuple, Union
 import numpy as np
 import torch
 import torch.nn as nn
-
 from transformers.modeling_utils import ModuleUtilsMixin
 from transformers.models.t5.modeling_t5 import (
     T5Attention,
@@ -627,7 +626,6 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
                 # The first chunk has no previous context.
                 encoder_continuous_mask = torch.zeros((1, TARGET_FEATURE_LENGTH), dtype=np.bool, device=self.device)
             else:
-                encoder_continuous_inputs = mel[:1]
                 # The full song pipeline does not feed in a context feature, so the mask
                 # will be all 0s after the feature converter. Because we know we're
                 # feeding in a full context chunk from the previous prediction, set it
@@ -667,6 +665,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
                 x = self.scheduler.step(output, t, x, generator=generator).prev_sample
 
             mel = self.scale_to_features(x, input_range=[-1.0, 1.0])
+            encoder_continuous_inputs = mel[:1]
             pred_mel = mel.cpu().float().numpy()
 
             full_pred_mel = np.concatenate([full_pred_mel, pred_mel[:1]], axis=1)
