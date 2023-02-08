@@ -37,7 +37,7 @@ jobs:
             image: diffusers/diffusers-onnxruntime-cpu
             report: onnx_cpu
           - name: PyTorch Example CPU tests on Ubuntu
-            framework: pytorch
+            framework: pytorch_examples
             runner: docker-cpu
             image: diffusers/diffusers-pytorch-cpu
             report: torch_cpu
@@ -96,7 +96,7 @@ jobs:
           tests/
 
     - name: Run example PyTorch CPU tests
-      if: ${{ matrix.config.framework == 'pytorch' }}
+      if: ${{ matrix.config.framework == 'pytorch_examples' }}
       run: |
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           --make-reports=tests_${{ matrix.config.report }} \
@@ -165,3 +165,5 @@ jobs:
       with:
         name: pr_torch_mps_test_reports
         path: reports
+
+  run_example_tests:
