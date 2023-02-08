@@ -52,6 +52,7 @@ from .import_utils import (
     is_onnx_available,
     is_safetensors_available,
     is_scipy_available,
+    is_tensorboard_available,
     is_tf_available,
     is_torch_available,
     is_torch_version,
