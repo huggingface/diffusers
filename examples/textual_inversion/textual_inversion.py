@@ -784,12 +784,16 @@ def main():
 
                     # run inference
                     generator = (
-                        None if args.seed is None else torch.Generator(device=accelerator.device).manual_seed(args.seed)
+                        None
+                        if args.seed is None
+                        else torch.Generator(device=accelerator.device).manual_seed(args.seed)
                     )
                     images = []
                     for _ in range(args.num_validation_images):
                         with torch.autocast("cuda"):
-                            image = pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
+                            image = pipeline(
+                                args.validation_prompt, num_inference_steps=25, generator=generator
+                            ).images[0]
                         images.append(image)
 
                     for tracker in accelerator.trackers:
