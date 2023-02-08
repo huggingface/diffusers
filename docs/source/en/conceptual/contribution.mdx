@@ -177,7 +177,7 @@ Follow these steps to start contributing ([supported Python versions](https://gi
    $ make style
    ```
 
-   🧨 Diffusers also uses `flake8` and a few custom scripts to check for coding mistakes. Quality
+   🧨 Diffusers also uses `ruff` and a few custom scripts to check for coding mistakes. Quality
    control runs in CI, however you can also run the same checks with:
 
    ```bash

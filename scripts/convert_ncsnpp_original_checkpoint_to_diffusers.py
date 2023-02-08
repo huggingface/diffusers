@@ -181,5 +181,5 @@ if __name__ == "__main__":
 
         pipe = ScoreSdeVePipeline(unet=model, scheduler=scheduler)
         pipe.save_pretrained(args.dump_path)
-    except:
+    except:  # noqa: E722
         model.save_pretrained(args.dump_path)

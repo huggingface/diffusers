@@ -17,7 +17,6 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 from torch.nn import functional as F
-
 from transformers import CLIPTextModelWithProjection, CLIPTokenizer
 from transformers.models.clip.modeling_clip import CLIPTextModelOutput
 

@@ -23,10 +23,13 @@ import tempfile
 import unittest
 
 import numpy as np
-import torch
-
 import PIL
 import safetensors.torch
+import torch
+from parameterized import parameterized
+from PIL import Image
+from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
+
 from diffusers import (
     AutoencoderKL,
     DDIMPipeline,
@@ -49,9 +52,6 @@ from diffusers import (
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, is_flax_available, nightly, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir, require_torch_gpu
-from parameterized import parameterized
-from PIL import Image
-from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 
 torch.backends.cuda.matmul.allow_tf32 = False

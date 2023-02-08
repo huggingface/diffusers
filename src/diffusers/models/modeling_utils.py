@@ -20,11 +20,10 @@ from functools import partial
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
-from torch import Tensor, device
-
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
+from torch import Tensor, device
 
 from .. import __version__
 from ..utils import (
@@ -500,7 +499,7 @@ class ModelMixin(torch.nn.Module):
                         subfolder=subfolder,
                         user_agent=user_agent,
                     )
-                except:
+                except:  # noqa: E722
                     pass
             if model_file is None:
                 model_file = _get_model_file(
@@ -541,6 +540,15 @@ class ModelMixin(torch.nn.Module):
                     param_device = "cpu"
                     state_dict = load_state_dict(model_file)
                     # move the params from meta device to cpu
+                    missing_keys = set(model.state_dict().keys()) - set(state_dict.keys())
+                    if len(missing_keys) > 0:
+                        raise ValueError(
+                            f"Cannot load {cls} from {pretrained_model_name_or_path} because the following keys are"
+                            f" missing: \n {', '.join(missing_keys)}. \n Please make sure to pass"
+                            " `low_cpu_mem_usage=False` and `device_map=None` if you want to randomely initialize"
+                            " those weights or else make sure your checkpoint file is correct."
+                        )
+
                     for param_name, param in state_dict.items():
                         accepts_dtype = "dtype" in set(
                             inspect.signature(set_module_tensor_to_device).parameters.keys()

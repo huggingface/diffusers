@@ -15,7 +15,6 @@
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
-
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import ConfigMixin, register_to_config

@@ -21,6 +21,7 @@ import unittest
 
 import numpy as np
 import torch
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
@@ -36,7 +37,6 @@ from diffusers import (
 )
 from diffusers.utils import load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from ...models.test_models_unet_2d_condition import create_lora_layers
 from ...test_pipelines_common import PipelineTesterMixin

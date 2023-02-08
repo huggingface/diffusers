@@ -1,8 +1,8 @@
 import argparse
 
+import OmegaConf
 import torch
 
-import OmegaConf
 from diffusers import DDIMScheduler, LDMPipeline, UNetLDMModel, VQModel
 
 
