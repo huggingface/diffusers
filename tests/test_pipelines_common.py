@@ -36,7 +36,15 @@ class PipelineTesterMixin:
     equivalence of dict and tuple outputs, etc.
     """
 
-    allowed_required_args = ["source_prompt", "prompt", "image", "mask_image", "example_image", "class_labels"]
+    allowed_required_args = [
+        "source_prompt",
+        "prompt",
+        "image",
+        "mask_image",
+        "example_image",
+        "class_labels",
+        "indices",
+    ]
     required_optional_params = ["generator", "num_inference_steps", "return_dict"]
     num_inference_steps_args = ["num_inference_steps"]
 
@@ -192,7 +200,10 @@ class PipelineTesterMixin:
     def _test_inference_batch_single_identical(
         self, test_max_difference=None, test_mean_pixel_difference=None, relax_max_difference=False
     ):
-        if self.pipeline_class.__name__ in ["CycleDiffusionPipeline", "RePaintPipeline"]:
+        if self.pipeline_class.__name__ in [
+            "CycleDiffusionPipeline",
+            "RePaintPipeline",
+        ]:
             # RePaint can hardly be made deterministic since the scheduler is currently always
             # nondeterministic
             # CycleDiffusion is also slightly nondeterministic
