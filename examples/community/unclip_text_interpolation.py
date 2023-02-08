@@ -320,7 +320,7 @@ class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
         """
-        
+
         @torch.no_grad()
         # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.__call__
         def generate(
