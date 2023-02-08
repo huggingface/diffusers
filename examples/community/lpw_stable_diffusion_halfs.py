@@ -784,50 +784,50 @@ class StableDiffusionLongPromptWeightingPipelineHalfs(StableDiffusionPipeline):
 
         # 3. Encode input prompt
         if prompt_half1 or prompt_half2 or negative_prompt_half1 or negative_prompt_half2:
-			negative_prompt = negative_prompt or ""
+			print("[DBG] Half prompts recognized!")
+            negative_prompt = negative_prompt or ""
 
-			prompt_half1 = prompt_half1 or ""
-			prompt_half2 = prompt_half2 or ""
+            prompt_half1 = prompt_half1 or ""
+            prompt_half2 = prompt_half2 or ""
 
-			negative_prompt_half1 = negative_prompt_half1 or ""
-			negative_prompt_half2 = negative_prompt_half2 or ""
+            negative_prompt_half1 = negative_prompt_half1 or ""
+            negative_prompt_half2 = negative_prompt_half2 or ""
 
-			if not isinstance(prompt, str) or not isinstance(negative_prompt, str):
-				raise "Half-prompts cannot be used in a batch yet, please pass a single string (but your contribution are welcome)"
+            if not isinstance(prompt, str) or not isinstance(negative_prompt, str):
+                raise "Half-prompts cannot be used in a batch yet, please pass a single string (but your contribution are welcome)"
 
-			text_embeddings_1 = self._encode_prompt(
-				prompt + prompt_half1,
-				device,
-				num_images_per_prompt,
-				do_classifier_free_guidance,
-				negative_prompt + negative_prompt_half1,
-				max_embeddings_multiples,
-			)
+            text_embeddings_1 = self._encode_prompt(
+                prompt + prompt_half1,
+                device,
+                num_images_per_prompt,
+                do_classifier_free_guidance,
+                negative_prompt + negative_prompt_half1,
+                max_embeddings_multiples,
+            )
 
-			text_embeddings_2 = self._encode_prompt(
-				prompt + prompt_half2,
-				device,
-				num_images_per_prompt,
-				do_classifier_free_guidance,
-				negative_prompt + negative_prompt_half2,
-				max_embeddings_multiples,
-			)
+            text_embeddings_2 = self._encode_prompt(
+                prompt + prompt_half2,
+                device,
+                num_images_per_prompt,
+                do_classifier_free_guidance,
+                negative_prompt + negative_prompt_half2,
+                max_embeddings_multiples,
+            )
 
-			steps_for_first_half =  steps_for_first_half or num_inference_steps // 2
+        else:
+            #Just do usual workflow
+            text_embeddings_1 = text_embeddings_2 = self._encode_prompt(
+                prompt,
+                device,
+                num_images_per_prompt,
+                do_classifier_free_guidance,
+                negative_prompt,
+                max_embeddings_multiples,
+            )
 
+        steps_for_first_half = steps_for_first_half or (num_inference_steps // 2)
 
-		else:
-			#Just do usual workflow
-			text_embeddings_1 = text_embeddings_2 = self._encode_prompt(
-				prompt,
-				device,
-				num_images_per_prompt,
-				do_classifier_free_guidance,
-				negative_prompt,
-				max_embeddings_multiples,
-			)
-
-		dtype = text_embeddings_1.dtype
+        dtype = text_embeddings_1.dtype
 
         # 4. Preprocess image and mask
         if isinstance(image, PIL.Image.Image):
@@ -871,9 +871,9 @@ class StableDiffusionLongPromptWeightingPipelineHalfs(StableDiffusionPipeline):
 
             # predict the noise residual
             if i <= steps_for_first_half:
-				noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings_1).sample
-			else:
-				noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings_2).sample
+                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings_1).sample
+            else:
+                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings_2).sample
 
             # perform guidance
             if do_classifier_free_guidance:
