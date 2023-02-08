@@ -14,6 +14,7 @@ from diffusers import (
 )
 from diffusers.pipelines.unclip import UnCLIPTextProjModel
 from diffusers.utils import is_accelerate_available, logging, randn_tensor
+
 from transformers import CLIPTextModelWithProjection, CLIPTokenizer
 from transformers.models.clip.modeling_clip import CLIPTextModelOutput
 
