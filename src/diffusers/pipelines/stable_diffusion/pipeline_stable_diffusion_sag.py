@@ -17,20 +17,17 @@ import math
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
+
 import torchvision.transforms as T
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import (
-    is_accelerate_available,
-    logging,
-    randn_tensor,
-    replace_example_docstring,
-)
+from ...utils import is_accelerate_available, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
