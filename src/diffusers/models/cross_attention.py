@@ -105,6 +105,11 @@ class CrossAttention(nn.Module):
     def set_use_memory_efficient_attention_xformers(
         self, use_memory_efficient_attention_xformers: bool, attention_op: Optional[Callable] = None
     ):
+        is_lora = (
+            hasattr(self, "processor") and
+            isinstance(self.processor, (LoRACrossAttnProcessor, LoRAXFormersCrossAttnProcessor))
+        )
+
         if use_memory_efficient_attention_xformers:
             if self.added_kv_proj_dim is not None:
                 # TODO(Anton, Patrick, Suraj, William) - currently xformers doesn't work for UnCLIP
@@ -138,10 +143,7 @@ class CrossAttention(nn.Module):
                 except Exception as e:
                     raise e
 
-            if (
-                    hasattr(self, "processor") and
-                    isinstance(self.processor, (LoRACrossAttnProcessor, LoRAXFormersCrossAttnProcessor))
-            ):
+            if is_lora:
                 processor = LoRAXFormersCrossAttnProcessor(
                     hidden_size=self.processor.hidden_size,
                     cross_attention_dim=self.processor.cross_attention_dim,
@@ -152,7 +154,15 @@ class CrossAttention(nn.Module):
             else:
                 processor = XFormersCrossAttnProcessor(attention_op=attention_op)
         else:
-            processor = CrossAttnProcessor()
+            if is_lora:
+                processor = LoRACrossAttnProcessor(
+                    hidden_size=self.processor.hidden_size,
+                    cross_attention_dim=self.processor.cross_attention_dim,
+                    rank=self.processor.rank)
+                processor.load_state_dict(self.processor.state_dict())
+                processor.to(self.processor.to_q_lora.up.weight.device)
+            else:
+                processor = CrossAttnProcessor()
 
         self.set_processor(processor)
 
