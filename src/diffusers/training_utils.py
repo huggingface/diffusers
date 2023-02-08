@@ -124,6 +124,7 @@ class EMAModel:
         self.inv_gamma = inv_gamma
         self.power = power
         self.optimization_step = 0
+        self.cur_decay_value = None  # set in `step()`
 
         self.model_cls = model_cls
         self.model_config = model_config
@@ -194,6 +195,7 @@ class EMAModel:
 
         # Compute the decay factor for the exponential moving average.
         decay = self.get_decay(self.optimization_step)
+        self.cur_decay_value = decay
         one_minus_decay = 1 - decay
 
         for s_param, param in zip(self.shadow_params, parameters):
@@ -239,7 +241,7 @@ class EMAModel:
         # https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict
         return {
             "decay": self.decay,
-            "min_decay": self.decay,
+            "min_decay": self.min_decay,
             "optimization_step": self.optimization_step,
             "update_after_step": self.update_after_step,
             "use_ema_warmup": self.use_ema_warmup,
