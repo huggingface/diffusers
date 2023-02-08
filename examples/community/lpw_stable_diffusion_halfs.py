@@ -669,6 +669,7 @@ class StableDiffusionLongPromptWeightingPipelineHalfs(StableDiffusionPipeline):
         prompt_half2: Optional[str] = None,
         negative_prompt_half1: Optional[str] = None,
         negative_prompt_half2: Optional[str] = None,
+        steps_for_first_half: Optional[int] = None,
         image: Union[torch.FloatTensor, PIL.Image.Image] = None,
         mask_image: Union[torch.FloatTensor, PIL.Image.Image] = None,
         height: int = 512,
@@ -812,6 +813,9 @@ class StableDiffusionLongPromptWeightingPipelineHalfs(StableDiffusionPipeline):
 				max_embeddings_multiples,
 			)
 
+			steps_for_first_half =  steps_for_first_half or num_inference_steps // 2
+
+
 		else:
 			#Just do usual workflow
 			text_embeddings_1 = text_embeddings_2 = self._encode_prompt(
@@ -866,7 +870,7 @@ class StableDiffusionLongPromptWeightingPipelineHalfs(StableDiffusionPipeline):
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
             # predict the noise residual
-            if i <= num_inference_steps // 2:
+            if i <= steps_for_first_half:
 				noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings_1).sample
 			else:
 				noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings_2).sample
