@@ -165,5 +165,3 @@ jobs:
       with:
         name: pr_torch_mps_test_reports
         path: reports
-
-  run_example_tests:
