@@ -105,9 +105,8 @@ class CrossAttention(nn.Module):
     def set_use_memory_efficient_attention_xformers(
         self, use_memory_efficient_attention_xformers: bool, attention_op: Optional[Callable] = None
     ):
-        is_lora = (
-            hasattr(self, "processor") and
-            isinstance(self.processor, (LoRACrossAttnProcessor, LoRAXFormersCrossAttnProcessor))
+        is_lora = hasattr(self, "processor") and isinstance(
+            self.processor, (LoRACrossAttnProcessor, LoRAXFormersCrossAttnProcessor)
         )
 
         if use_memory_efficient_attention_xformers:
@@ -148,7 +147,8 @@ class CrossAttention(nn.Module):
                     hidden_size=self.processor.hidden_size,
                     cross_attention_dim=self.processor.cross_attention_dim,
                     rank=self.processor.rank,
-                    attention_op=attention_op)
+                    attention_op=attention_op,
+                )
                 processor.load_state_dict(self.processor.state_dict())
                 processor.to(self.processor.to_q_lora.up.weight.device)
             else:
@@ -158,7 +158,8 @@ class CrossAttention(nn.Module):
                 processor = LoRACrossAttnProcessor(
                     hidden_size=self.processor.hidden_size,
                     cross_attention_dim=self.processor.cross_attention_dim,
-                    rank=self.processor.rank)
+                    rank=self.processor.rank,
+                )
                 processor.load_state_dict(self.processor.state_dict())
                 processor.to(self.processor.to_q_lora.up.weight.device)
             else:
@@ -493,7 +494,9 @@ class LoRAXFormersCrossAttnProcessor(nn.Module):
         key = attn.head_to_batch_dim(key).contiguous()
         value = attn.head_to_batch_dim(value).contiguous()
 
-        hidden_states = xformers.ops.memory_efficient_attention(query, key, value, attn_bias=attention_mask, op=self.attention_op)
+        hidden_states = xformers.ops.memory_efficient_attention(
+            query, key, value, attn_bias=attention_mask, op=self.attention_op
+        )
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
