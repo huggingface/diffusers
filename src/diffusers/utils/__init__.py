@@ -43,6 +43,7 @@ from .import_utils import (
     DummyObject,
     OptionalDependencyNotAvailable,
     is_accelerate_available,
+    is_accelerate_version,
     is_flax_available,
     is_inflect_available,
     is_k_diffusion_available,

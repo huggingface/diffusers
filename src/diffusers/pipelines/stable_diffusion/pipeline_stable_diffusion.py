@@ -20,9 +20,9 @@ from packaging import version
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
-from ...models import AutoencoderKL, UNet2DConditionModel
+from ...models import AutoencoderKL, UNet2DConditionModel, VAEDecoder
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import deprecate, is_accelerate_available, logging, randn_tensor, replace_example_docstring
+from ...utils import deprecate, is_accelerate_available, is_accelerate_version, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
@@ -161,6 +161,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             feature_extractor=feature_extractor,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.decoder = VAEDecoder(self.vae)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     def enable_vae_slicing(self):
@@ -184,6 +185,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
         text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
         `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
+        Note that offloading happens on a submodule basis. Memory savings are higher than with `enable_model_offload`,
+        but performance is lower.
         """
         if is_accelerate_available():
             from accelerate import cpu_offload
@@ -192,11 +195,38 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
+        for cpu_offloaded_model in [self.unet, self.text_encoder, self.decoder]:
             cpu_offload(cpu_offloaded_model, device)
 
         if self.safety_checker is not None:
             cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
+
+    def enable_model_offload(self, gpu_id=0):
+        r"""
+        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on
+        performance. Compared to `enable_sequential_cpu_offload`, this method moves one model
+        at a time to the GPU when its `forward` method is called, and the model remains in GPU
+        until the next model runs. Memory savings are lower than with `enable_sequential_cpu_offload`,
+        but performance is much better due to the iterative execution of the `unet`.
+        """
+        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
+            from accelerate import cpu_offload_with_hook
+        else:
+            raise ImportError("`enable_model_offload` requires `accelerate v0.17.0` or higher.")
+
+        device = torch.device(f"cuda:{gpu_id}")
+
+        hook = None
+        for cpu_offloaded_model in [self.text_encoder, self.unet, self.decoder]:
+            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
+
+        if self.safety_checker is not None:
+            _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
+
+        # We'll offload the last model manually.
+        # Alternative: daisy-chain with the first one so a new inference will offload the last model,
+        # but then we need access to `hook.hook.prev_module_hook`.
+        self.offload_hook = hook
 
     @property
     def _execution_device(self):
@@ -205,7 +235,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
         hooks.
         """
-        if self.device != torch.device("meta") or not hasattr(self.unet, "_hf_hook"):
+        if not hasattr(self.unet, "_hf_hook"):
             return self.device
         for module in self.unet.modules():
             if (
@@ -366,7 +396,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
     def decode_latents(self, latents):
         latents = 1 / self.vae.config.scaling_factor * latents
-        image = self.vae.decode(latents).sample
+        image = self.decoder(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
@@ -646,6 +676,10 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
             # 9. Run safety checker
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+
+        # Offload last model to CPU
+        if hasattr(self, "offload_hook") and self.offload_hook is not None:
+            self.offload_hook.offload()
 
         if not return_dict:
             return (image, has_nsfw_concept)
