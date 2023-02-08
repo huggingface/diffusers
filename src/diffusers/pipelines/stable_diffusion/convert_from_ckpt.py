@@ -39,8 +39,11 @@ from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBe
 from diffusers.pipelines.paint_by_example import PaintByExampleImageEncoder, PaintByExamplePipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 
-from ...utils import is_omegaconf_available, is_safetensors_available
+from ...utils import is_omegaconf_available, is_safetensors_available, logging
 from ...utils.import_utils import BACKENDS_MAPPING
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 def shave_segments(path, n_shave_prefix_segments=1):
@@ -801,11 +804,11 @@ def load_pipeline_from_original_stable_diffusion_ckpt(
     corresponding to the original architecture. If `None`, will be
             automatically inferred by looking for a key that only exists in SD2.0 models.
     :param image_size: The image size that the model was trained on. Use 512 for Stable Diffusion v1.X and Stable
-    Siffusion v2
+    Diffusion v2
             Base. Use 768 for Stable Diffusion v2.
     :param prediction_type: The prediction type that the model was trained on. Use `'epsilon'` for Stable Diffusion
     v1.X and Stable
-            Siffusion v2 Base. Use `'v-prediction'` for Stable Diffusion v2.
+            Diffusion v2 Base. Use `'v_prediction'` for Stable Diffusion v2.
     :param num_in_channels: The number of input channels. If `None` number of input channels will be automatically
     inferred. :param scheduler_type: Type of scheduler to use. Should be one of `["pndm", "lms", "heun", "euler",
     "euler-ancestral", "dpm", "ddim"]`. :param model_type: The pipeline type. `None` to automatically infer, or one of
@@ -820,6 +823,8 @@ def load_pipeline_from_original_stable_diffusion_ckpt(
     `checkpoint_path` is in `safetensors` format, load checkpoint with safetensors instead of PyTorch. :return: A
     StableDiffusionPipeline object representing the passed-in `.ckpt`/`.safetensors` file.
     """
+    if prediction_type == "v-prediction":
+        prediction_type = "v_prediction"
 
     if not is_omegaconf_available():
         raise ValueError(BACKENDS_MAPPING["omegaconf"][1])
@@ -957,6 +962,7 @@ def load_pipeline_from_original_stable_diffusion_ckpt(
     # Convert the text model.
     if model_type is None:
         model_type = original_config.model.params.cond_stage_config.target.split(".")[-1]
+        logger.debug(f"no `model_type` given, `model_type` inferred as: {model_type}")
 
     if model_type == "FrozenOpenCLIPEmbedder":
         text_model = convert_open_clip_checkpoint(checkpoint)
