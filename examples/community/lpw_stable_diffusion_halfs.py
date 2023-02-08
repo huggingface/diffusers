@@ -784,7 +784,6 @@ class StableDiffusionLongPromptWeightingPipelineHalfs(StableDiffusionPipeline):
 
         # 3. Encode input prompt
         if prompt_half1 or prompt_half2 or negative_prompt_half1 or negative_prompt_half2:
-			print("[DBG] Half prompts recognized!")
             negative_prompt = negative_prompt or ""
 
             prompt_half1 = prompt_half1 or ""
