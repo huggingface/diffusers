@@ -4,6 +4,8 @@ from typing import List, Optional, Union
 import torch
 from torch import nn
 from torch.nn import functional as F
+from torchvision import transforms
+from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
@@ -14,8 +16,6 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipelineOutput
-from torchvision import transforms
-from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextModel, CLIPTokenizer
 
 
 class MakeCutouts(nn.Module):

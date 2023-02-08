@@ -27,3 +27,9 @@ The xFormers PIP package requires the latest version of PyTorch (1.13.1 as of xF
 </Tip>
 
 After xFormers is installed, you can use `enable_xformers_memory_efficient_attention()` for faster inference and reduced memory consumption, as discussed [here](fp16#memory-efficient-attention).
+
+<Tip warning={true}>
+
+According to [this issue](https://github.com/huggingface/diffusers/issues/2234#issuecomment-1416931212), xFormers `v0.0.16` cannot be used for training (fine-tune or Dreambooth) in some GPUs. If you observe that problem, please install a development version as indicated in that comment.
+
+</Tip>

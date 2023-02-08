@@ -11,11 +11,16 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-from torch.utils.data import Dataset
-
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
+from huggingface_hub import HfFolder, Repository, create_repo, whoami
+from PIL import Image, ImageDraw
+from torch.utils.data import Dataset
+from torchvision import transforms
+from tqdm.auto import tqdm
+from transformers import CLIPTextModel, CLIPTokenizer
+
 from diffusers import (
     AutoencoderKL,
     DDPMScheduler,
@@ -25,11 +30,6 @@ from diffusers import (
 )
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
-from huggingface_hub import HfFolder, Repository, create_repo, whoami
-from PIL import Image, ImageDraw
-from torchvision import transforms
-from tqdm.auto import tqdm
-from transformers import CLIPTextModel, CLIPTokenizer
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.

@@ -16,10 +16,9 @@
 
 from pickle import UnpicklingError
 
-import numpy as np
-
 import jax
 import jax.numpy as jnp
+import numpy as np
 from flax.serialization import from_bytes
 from flax.traverse_util import flatten_dict
 

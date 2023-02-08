@@ -20,11 +20,10 @@ from functools import partial
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
-from torch import Tensor, device
-
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
+from torch import Tensor, device
 
 from .. import __version__
 from ..utils import (
@@ -500,7 +499,7 @@ class ModelMixin(torch.nn.Module):
                         subfolder=subfolder,
                         user_agent=user_agent,
                     )
-                except:
+                except:  # noqa: E722
                     pass
             if model_file is None:
                 model_file = _get_model_file(

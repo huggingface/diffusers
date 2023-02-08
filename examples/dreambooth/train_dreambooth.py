@@ -23,26 +23,27 @@ import warnings
 from pathlib import Path
 from typing import Optional
 
+import accelerate
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-from torch.utils.data import Dataset
-
-import datasets
-import diffusers
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
+from huggingface_hub import HfFolder, Repository, create_repo, whoami
+from packaging import version
+from PIL import Image
+from torch.utils.data import Dataset
+from torchvision import transforms
+from tqdm.auto import tqdm
+from transformers import AutoTokenizer, PretrainedConfig
+
+import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
 from diffusers.utils.import_utils import is_xformers_available
-from huggingface_hub import HfFolder, Repository, create_repo, whoami
-from PIL import Image
-from torchvision import transforms
-from tqdm.auto import tqdm
-from transformers import AutoTokenizer, PretrainedConfig
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -509,11 +510,9 @@ def main(args):
     )
     logger.info(accelerator.state, main_process_only=False)
     if accelerator.is_local_main_process:
-        datasets.utils.logging.set_verbosity_warning()
         transformers.utils.logging.set_verbosity_warning()
         diffusers.utils.logging.set_verbosity_info()
     else:
-        datasets.utils.logging.set_verbosity_error()
         transformers.utils.logging.set_verbosity_error()
         diffusers.utils.logging.set_verbosity_error()
 
@@ -608,6 +607,37 @@ def main(args):
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
+
+    # `accelerate` 0.16.0 will have better support for customized saving
+    if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
+        # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
+        def save_model_hook(models, weights, output_dir):
+            for model in models:
+                sub_dir = "unet" if type(model) == type(unet) else "text_encoder"
+                model.save_pretrained(os.path.join(output_dir, sub_dir))
+
+                # make sure to pop weight so that corresponding model is not saved again
+                weights.pop()
+
+        def load_model_hook(models, input_dir):
+            while len(models) > 0:
+                # pop models so that they are not loaded again
+                model = models.pop()
+
+                if type(model) == type(text_encoder):
+                    # load transformers style into model
+                    load_model = text_encoder_cls.from_pretrained(input_dir, subfolder="text_encoder")
+                    model.config = load_model.config
+                else:
+                    # load diffusers style into model
+                    load_model = UNet2DConditionModel.from_pretrained(input_dir, subfolder="unet")
+                    model.register_to_config(**load_model.config)
+
+                model.load_state_dict(load_model.state_dict())
+                del load_model
+
+        accelerator.register_save_state_pre_hook(save_model_hook)
+        accelerator.register_load_state_pre_hook(load_model_hook)
 
     vae.requires_grad_(False)
     if not args.train_text_encoder:

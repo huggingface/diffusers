@@ -22,28 +22,28 @@ import random
 from pathlib import Path
 from typing import Optional
 
+import datasets
 import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-
-import datasets
-import diffusers
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
 from datasets import load_dataset
+from huggingface_hub import HfFolder, Repository, create_repo, whoami
+from torchvision import transforms
+from tqdm.auto import tqdm
+from transformers import CLIPTextModel, CLIPTokenizer
+
+import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
 from diffusers.loaders import AttnProcsLayers
 from diffusers.models.cross_attention import LoRACrossAttnProcessor
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
-from huggingface_hub import HfFolder, Repository, create_repo, whoami
-from torchvision import transforms
-from tqdm.auto import tqdm
-from transformers import CLIPTextModel, CLIPTokenizer
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.

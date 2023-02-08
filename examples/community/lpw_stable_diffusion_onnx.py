@@ -3,15 +3,15 @@ import re
 from typing import Callable, List, Optional, Union
 
 import numpy as np
+import PIL
 import torch
+from packaging import version
+from transformers import CLIPFeatureExtractor, CLIPTokenizer
 
 import diffusers
-import PIL
 from diffusers import OnnxRuntimeModel, OnnxStableDiffusionPipeline, SchedulerMixin
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.utils import deprecate, logging
-from packaging import version
-from transformers import CLIPFeatureExtractor, CLIPTokenizer
 
 
 try:
