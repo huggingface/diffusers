@@ -36,6 +36,11 @@ jobs:
             runner: docker-cpu
             image: diffusers/diffusers-onnxruntime-cpu
             report: onnx_cpu
+          - name: PyTorch Example CPU tests on Ubuntu
+            framework: pytorch
+            runner: docker-cpu
+            image: diffusers/diffusers-pytorch-cpu
+            report: torch_cpu
 
     name: ${{ matrix.config.name }}
 
