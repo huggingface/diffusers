@@ -19,6 +19,7 @@ if is_torch_available():
     from .autoencoder_kl import AutoencoderKL
     from .dual_transformer_2d import DualTransformer2DModel
     from .modeling_utils import ModelMixin
+    from .noise_augmentor import NoiseAugmentor
     from .prior_transformer import PriorTransformer
     from .transformer_2d import Transformer2DModel
     from .unet_1d import UNet1DModel

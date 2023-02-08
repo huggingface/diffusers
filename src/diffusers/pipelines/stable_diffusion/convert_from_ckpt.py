@@ -17,22 +17,38 @@
 import os
 import re
 import tempfile
+from typing import Optional
 
 import requests
 import torch
-from transformers import AutoFeatureExtractor, BertTokenizerFast, CLIPTextModel, CLIPTokenizer, CLIPVisionConfig
+from transformers import (
+    AutoFeatureExtractor,
+    BertTokenizerFast,
+    CLIPImageProcessor,
+    CLIPTextModel,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    CLIPVisionConfig,
+    CLIPVisionModelWithProjection,
+)
 
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
+    DDPMScheduler,
     DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
     HeunDiscreteScheduler,
     LDMTextToImagePipeline,
     LMSDiscreteScheduler,
+    NoiseAugmentor,
     PNDMScheduler,
+    PriorTransformer,
     StableDiffusionPipeline,
+    StableUnCLIPImg2ImgPipeline,
+    StableUnCLIPPipeline,
+    UnCLIPScheduler,
     UNet2DConditionModel,
 )
 from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
@@ -242,6 +258,17 @@ def create_unet_diffusers_config(original_config, image_size: int):
         if head_dim is None:
             head_dim = [5, 10, 20, 20]
 
+    class_embed_type = None
+    projection_class_embeddings_input_dim = None
+
+    if "num_classes" in unet_params:
+        if unet_params.num_classes == "sequential":
+            class_embed_type = "projection"
+            assert "adm_in_channels" in unet_params
+            projection_class_embeddings_input_dim = unet_params.adm_in_channels
+        else:
+            raise NotImplementedError(f"Unknown conditional unet num_classes config: {unet_params.num_classes}")
+
     config = dict(
         sample_size=image_size // vae_scale_factor,
         in_channels=unet_params.in_channels,
@@ -253,6 +280,8 @@ def create_unet_diffusers_config(original_config, image_size: int):
         cross_attention_dim=unet_params.context_dim,
         attention_head_dim=head_dim,
         use_linear_projection=use_linear_projection,
+        class_embed_type=class_embed_type,
+        projection_class_embeddings_input_dim=projection_class_embeddings_input_dim,
     )
 
     return config
@@ -340,6 +369,17 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
     new_checkpoint["time_embedding.linear_1.bias"] = unet_state_dict["time_embed.0.bias"]
     new_checkpoint["time_embedding.linear_2.weight"] = unet_state_dict["time_embed.2.weight"]
     new_checkpoint["time_embedding.linear_2.bias"] = unet_state_dict["time_embed.2.bias"]
+
+    if config["class_embed_type"] is None:
+        # No parameters to port
+        ...
+    elif config["class_embed_type"] == "timestep" or config["class_embed_type"] == "projection":
+        new_checkpoint["class_embedding.linear_1.weight"] = unet_state_dict["label_emb.0.0.weight"]
+        new_checkpoint["class_embedding.linear_1.bias"] = unet_state_dict["label_emb.0.0.bias"]
+        new_checkpoint["class_embedding.linear_2.weight"] = unet_state_dict["label_emb.0.2.weight"]
+        new_checkpoint["class_embedding.linear_2.bias"] = unet_state_dict["label_emb.0.2.bias"]
+    else:
+        raise NotImplementedError(f"Not implemented `class_embed_type`: {config['class_embed_type']}")
 
     new_checkpoint["conv_in.weight"] = unet_state_dict["input_blocks.0.0.weight"]
     new_checkpoint["conv_in.bias"] = unet_state_dict["input_blocks.0.0.bias"]
@@ -779,6 +819,81 @@ def convert_open_clip_checkpoint(checkpoint):
     return text_model
 
 
+def stable_unclip_image_encoder(original_config):
+    """
+    Returns the image processor and clip image encoder for the img2img unclip pipeline.
+
+    We currently know of two types of stable unclip models which separately use the clip and the openclip image
+    encoders.
+    """
+
+    image_embedder_config = original_config.model.params.embedder_config
+
+    sd_clip_image_embedder_class = image_embedder_config.target
+    sd_clip_image_embedder_class = sd_clip_image_embedder_class.split(".")[-1]
+
+    if sd_clip_image_embedder_class == "ClipImageEmbedder":
+        clip_model_name = image_embedder_config.params.model
+
+        if clip_model_name == "ViT-L/14":
+            feature_extractor = CLIPImageProcessor()
+            image_encoder = CLIPVisionModelWithProjection.from_pretrained("openai/clip-vit-large-patch14")
+        else:
+            raise NotImplementedError(f"Unknown CLIP checkpoint name in stable diffusion checkpoint {clip_model_name}")
+
+    elif sd_clip_image_embedder_class == "FrozenOpenCLIPImageEmbedder":
+        feature_extractor = CLIPImageProcessor()
+        image_encoder = CLIPVisionModelWithProjection.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
+    else:
+        raise NotImplementedError(
+            f"Unknown CLIP image embedder class in stable diffusion checkpoint {sd_clip_image_embedder_class}"
+        )
+
+    return feature_extractor, image_encoder
+
+
+def stable_unclip_noise_augmentor(
+    original_config, clip_stats_path: Optional[str] = None, device: Optional[str] = None
+):
+    """
+    Returns the noise augmentor for the img2img and txt2img unclip pipelines.
+
+    If the noise augmentor config specifies a clip stats path, the `clip_stats_path` must be provided.
+    """
+    noise_aug_config = original_config.model.params.noise_aug_config
+    noise_aug_class = noise_aug_config.target
+    noise_aug_class = noise_aug_class.split(".")[-1]
+
+    if noise_aug_class == "CLIPEmbeddingNoiseAugmentation":
+        noise_aug_config = noise_aug_config.params
+        embedding_dim = noise_aug_config.timestep_dim
+        max_noise_level = noise_aug_config.noise_schedule_config.timesteps
+        beta_schedule = noise_aug_config.noise_schedule_config.beta_schedule
+
+        noise_augmentor = NoiseAugmentor(
+            embedding_dim=embedding_dim, max_noise_level=max_noise_level, beta_schedule=beta_schedule
+        )
+
+        if "clip_stats_path" in noise_aug_config:
+            if clip_stats_path is None:
+                raise ValueError("This stable unclip config requires a `clip_stats_path`")
+
+            clip_mean, clip_std = torch.load(clip_stats_path, map_location=device)
+            clip_mean = clip_mean[None, :]
+            clip_std = clip_std[None, :]
+
+            clip_stats_state_dict = {
+                "mean": clip_mean,
+                "std": clip_std,
+            }
+
+            noise_augmentor.load_state_dict(clip_stats_state_dict)
+    else:
+        raise NotImplementedError(f"Unknown noise augmentor class: {noise_aug_class}")
+
+    return noise_augmentor
+
+
 def load_pipeline_from_original_stable_diffusion_ckpt(
     checkpoint_path: str,
     original_config_file: str = None,
@@ -791,6 +906,9 @@ def load_pipeline_from_original_stable_diffusion_ckpt(
     upcast_attention: bool = None,
     device: str = None,
     from_safetensors: bool = False,
+    stable_unclip: Optional[str] = None,
+    stable_unclip_prior: str = "karlo",
+    clip_stats_path: Optional[str] = None,
 ) -> StableDiffusionPipeline:
     """
     Load a Stable Diffusion pipeline object from a CompVis-style `.ckpt`/`.safetensors` file and (ideally) a `.yaml`
@@ -967,16 +1085,63 @@ def load_pipeline_from_original_stable_diffusion_ckpt(
     if model_type == "FrozenOpenCLIPEmbedder":
         text_model = convert_open_clip_checkpoint(checkpoint)
         tokenizer = CLIPTokenizer.from_pretrained("stabilityai/stable-diffusion-2", subfolder="tokenizer")
-        pipe = StableDiffusionPipeline(
-            vae=vae,
-            text_encoder=text_model,
-            tokenizer=tokenizer,
-            unet=unet,
-            scheduler=scheduler,
-            safety_checker=None,
-            feature_extractor=None,
-            requires_safety_checker=False,
-        )
+
+        if stable_unclip is None:
+            pipe = StableDiffusionPipeline(
+                vae=vae,
+                text_encoder=text_model,
+                tokenizer=tokenizer,
+                unet=unet,
+                scheduler=scheduler,
+                safety_checker=None,
+                feature_extractor=None,
+                requires_safety_checker=False,
+            )
+        else:
+            noise_augmentor = stable_unclip_noise_augmentor(
+                original_config, clip_stats_path=clip_stats_path, device=device
+            )
+
+            if stable_unclip == "img2img":
+                feature_extractor, image_encoder = stable_unclip_image_encoder(original_config)
+
+                pipe = StableUnCLIPImg2ImgPipeline(
+                    vae=vae,
+                    unet=unet,
+                    text_encoder=text_model,
+                    tokenizer=tokenizer,
+                    scheduler=scheduler,
+                    image_encoder=image_encoder,
+                    feature_extractor=feature_extractor,
+                    noise_augmentor=noise_augmentor,
+                )
+            elif stable_unclip == "txt2img":
+                if stable_unclip_prior == "karlo":
+                    karlo_model = "kakaobrain/karlo-v1-alpha"
+                    prior = PriorTransformer.from_pretrained(karlo_model, subfolder="prior")
+
+                    prior_tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
+                    prior_text_model = CLIPTextModelWithProjection.from_pretrained("openai/clip-vit-large-patch14")
+
+                    prior_scheduler = UnCLIPScheduler.from_pretrained(karlo_model, subfolder="prior_scheduler")
+                    prior_scheduler = DDPMScheduler.from_config(prior_scheduler.config)
+                else:
+                    raise NotImplementedError(f"unknown prior for stable unclip model: {stable_unclip_prior}")
+
+                pipe = StableUnCLIPPipeline(
+                    vae=vae,
+                    unet=unet,
+                    tokenizer=tokenizer,
+                    text_encoder=text_model,
+                    prior_tokenizer=prior_tokenizer,
+                    prior_text_encoder=prior_text_model,
+                    scheduler=scheduler,
+                    noise_augmentor=noise_augmentor,
+                    prior=prior,
+                    prior_scheduler=prior_scheduler,
+                )
+            else:
+                raise NotImplementedError(f"unknown `stable_unclip` type: {stable_unclip}")
     elif model_type == "PaintByExample":
         vision_model = convert_paint_by_example_checkpoint(checkpoint)
         tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")

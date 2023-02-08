@@ -35,6 +35,7 @@ else:
     from .models import (
         AutoencoderKL,
         ModelMixin,
+        NoiseAugmentor,
         PriorTransformer,
         Transformer2DModel,
         UNet1DModel,
@@ -119,6 +120,8 @@ else:
         StableDiffusionPipeline,
         StableDiffusionPipelineSafe,
         StableDiffusionUpscalePipeline,
+        StableUnCLIPImg2ImgPipeline,
+        StableUnCLIPPipeline,
         UnCLIPImageVariationPipeline,
         UnCLIPPipeline,
         VersatileDiffusionDualGuidedPipeline,
