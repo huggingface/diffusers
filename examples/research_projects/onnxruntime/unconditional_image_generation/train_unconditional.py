@@ -232,6 +232,14 @@ def parse_args():
             ' `--checkpointing_steps`, or `"latest"` to automatically select the last available checkpoint.'
         ),
     )
+    parser.add_argument(
+        "--generate_sample_images",
+        type=bool,
+        default=False,
+        help=(
+            "Whether sample images should be generated at the end of training"
+        ),
+    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -529,7 +537,7 @@ def main(args):
         accelerator.wait_for_everyone()
 
         # Generate sample images for visual inspection
-        if accelerator.is_main_process:
+        if args.generate_sample_images and accelerator.is_main_process:
             if epoch % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
                 unet = accelerator.unwrap_model(model)
                 if args.use_ema:
