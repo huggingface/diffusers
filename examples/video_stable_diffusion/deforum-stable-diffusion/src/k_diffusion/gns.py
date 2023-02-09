@@ -7,7 +7,7 @@ class DDPGradientStatsHook:
         try:
             ddp_module.register_comm_hook(self, self._hook_fn)
         except AttributeError:
-            raise ValueError('DDPGradientStatsHook does not support non-DDP wrapped modules')
+            raise ValueError("DDPGradientStatsHook does not support non-DDP wrapped modules")
         self._clear_state()
 
     def _clear_state(self):
@@ -19,10 +19,12 @@ class DDPGradientStatsHook:
         buf = bucket.buffer()
         self.bucket_sq_norms_small_batch.append(buf.pow(2).sum())
         fut = torch.distributed.all_reduce(buf, op=torch.distributed.ReduceOp.AVG, async_op=True).get_future()
+
         def callback(fut):
             buf = fut.value()[0]
             self.bucket_sq_norms_large_batch.append(buf.pow(2).sum())
             return buf
+
         return fut.then(callback)
 
     def get_stats(self):
@@ -50,10 +52,10 @@ class GradientNoiseScale:
     def __init__(self, beta=0.9998, eps=1e-8):
         self.beta = beta
         self.eps = eps
-        self.ema_sq_norm = 0.
-        self.ema_var = 0.
-        self.beta_cumprod = 1.
-        self.gradient_noise_scale = float('nan')
+        self.ema_sq_norm = 0.0
+        self.ema_var = 0.0
+        self.beta_cumprod = 1.0
+        self.gradient_noise_scale = float("nan")
 
     def state_dict(self):
         """Returns the state of the object as a :class:`dict`."""
@@ -81,7 +83,9 @@ class GradientNoiseScale:
             n_large_batch (int): The total batch size of the mean of the microbatch or
                 per sample gradients.
         """
-        est_sq_norm = (n_large_batch * sq_norm_large_batch - n_small_batch * sq_norm_small_batch) / (n_large_batch - n_small_batch)
+        est_sq_norm = (n_large_batch * sq_norm_large_batch - n_small_batch * sq_norm_small_batch) / (
+            n_large_batch - n_small_batch
+        )
         est_var = (sq_norm_small_batch - sq_norm_large_batch) / (1 / n_small_batch - 1 / n_large_batch)
         self.ema_sq_norm = self.beta * self.ema_sq_norm + (1 - self.beta) * est_sq_norm
         self.ema_var = self.beta * self.ema_var + (1 - self.beta) * est_var

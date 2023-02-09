@@ -3,14 +3,14 @@ from PIL.Image import Image as pil_image
 from torch import Tensor
 
 try:
-  from typing import Literal
+    from typing import Literal
 except ImportError:
-  from typing_extensions import Literal
+    from typing_extensions import Literal
 
 Image = Union[Tensor, pil_image]
 BoundingBox = Tuple[float, float, float, float]  # x0, y0, w, h
-CropMethodType = Literal['none', 'random', 'center', 'random-2d']
-SplitType = Literal['train', 'validation', 'test']
+CropMethodType = Literal["none", "random", "center", "random-2d"]
+SplitType = Literal["train", "validation", "test"]
 
 
 class ImageDescription(NamedTuple):

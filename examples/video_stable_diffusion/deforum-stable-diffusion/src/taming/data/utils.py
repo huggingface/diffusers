@@ -24,9 +24,7 @@ def unpack(path):
         with zipfile.ZipFile(path, "r") as f:
             f.extractall(path=os.path.split(path)[0])
     else:
-        raise NotImplementedError(
-            "Unknown file extension: {}".format(os.path.splitext(path)[1])
-        )
+        raise NotImplementedError("Unknown file extension: {}".format(os.path.splitext(path)[1]))
 
 
 def reporthook(bar):
@@ -58,19 +56,11 @@ def mark_prepared(root):
 def prompt_download(file_, source, target_dir, content_dir=None):
     targetpath = os.path.join(target_dir, file_)
     while not os.path.exists(targetpath):
-        if content_dir is not None and os.path.exists(
-            os.path.join(target_dir, content_dir)
-        ):
+        if content_dir is not None and os.path.exists(os.path.join(target_dir, content_dir)):
             break
-        print(
-            "Please download '{}' from '{}' to '{}'.".format(file_, source, targetpath)
-        )
+        print("Please download '{}' from '{}' to '{}'.".format(file_, source, targetpath))
         if content_dir is not None:
-            print(
-                "Or place its content into '{}'.".format(
-                    os.path.join(target_dir, content_dir)
-                )
-            )
+            print("Or place its content into '{}'.".format(os.path.join(target_dir, content_dir)))
         input("Press Enter when done...")
     return targetpath
 
@@ -78,9 +68,7 @@ def prompt_download(file_, source, target_dir, content_dir=None):
 def download_url(file_, url, target_dir):
     targetpath = os.path.join(target_dir, file_)
     os.makedirs(target_dir, exist_ok=True)
-    with tqdm(
-        unit="B", unit_scale=True, unit_divisor=1024, miniters=1, desc=file_
-    ) as bar:
+    with tqdm(unit="B", unit_scale=True, unit_divisor=1024, miniters=1, desc=file_) as bar:
         urllib.request.urlretrieve(url, targetpath, reporthook=reporthook(bar))
     return targetpath
 
@@ -104,9 +92,7 @@ def quadratic_crop(x, bbox, alpha=1.0):
     l = int(alpha * max(w, h))
     l = max(l, 2)
 
-    required_padding = -1 * min(
-        center[0] - l, center[1] - l, im_w - (center[0] + l), im_h - (center[1] + l)
-    )
+    required_padding = -1 * min(center[0] - l, center[1] - l, im_w - (center[0] + l), im_h - (center[1] + l))
     required_padding = int(np.ceil(required_padding))
     if required_padding > 0:
         padding = [
@@ -122,7 +108,7 @@ def quadratic_crop(x, bbox, alpha=1.0):
 
 
 def custom_collate(batch):
-    r"""source: pytorch 1.9.0, only one modification to original code """
+    r"""source: pytorch 1.9.0, only one modification to original code"""
 
     elem = batch[0]
     elem_type = type(elem)
@@ -135,9 +121,8 @@ def custom_collate(batch):
             storage = elem.storage()._new_shared(numel)
             out = elem.new(storage)
         return torch.stack(batch, 0, out=out)
-    elif elem_type.__module__ == 'numpy' and elem_type.__name__ != 'str_' \
-            and elem_type.__name__ != 'string_':
-        if elem_type.__name__ == 'ndarray' or elem_type.__name__ == 'memmap':
+    elif elem_type.__module__ == "numpy" and elem_type.__name__ != "str_" and elem_type.__name__ != "string_":
+        if elem_type.__name__ == "ndarray" or elem_type.__name__ == "memmap":
             # array of string classes and object
             if np_str_obj_array_pattern.search(elem.dtype.str) is not None:
                 raise TypeError(default_collate_err_msg_format.format(elem.dtype))
@@ -153,7 +138,7 @@ def custom_collate(batch):
         return batch
     elif isinstance(elem, collections.abc.Mapping):
         return {key: custom_collate([d[key] for d in batch]) for key in elem}
-    elif isinstance(elem, tuple) and hasattr(elem, '_fields'):  # namedtuple
+    elif isinstance(elem, tuple) and hasattr(elem, "_fields"):  # namedtuple
         return elem_type(*(custom_collate(samples) for samples in zip(*batch)))
     if isinstance(elem, collections.abc.Sequence) and isinstance(elem[0], Annotation):  # added
         return batch  # added
@@ -162,7 +147,7 @@ def custom_collate(batch):
         it = iter(batch)
         elem_size = len(next(it))
         if not all(len(elem) == elem_size for elem in it):
-            raise RuntimeError('each element in list of batch should be of equal size')
+            raise RuntimeError("each element in list of batch should be of equal size")
         transposed = zip(*batch)
         return [custom_collate(samples) for samples in transposed]
 

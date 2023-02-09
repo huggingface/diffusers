@@ -89,11 +89,11 @@ class CenterCropReturnCoordinates(CenterCrop):
             w = height / width
             h = 1.0
             x0 = 0.5 - w / 2
-            y0 = 0.
+            y0 = 0.0
         else:
             w = 1.0
             h = width / height
-            x0 = 0.
+            x0 = 0.0
             y0 = 0.5 - h / 2
         return x0, y0, w, h
 
@@ -110,7 +110,7 @@ class CenterCropReturnCoordinates(CenterCrop):
             torchvision.transforms.RandomHorizontalFlip (version 1.7.0)
         """
         width, height = get_image_size(img)
-        return self.get_bbox_of_center_crop(width, height),  F.center_crop(img, self.size)
+        return self.get_bbox_of_center_crop(width, height), F.center_crop(img, self.size)
 
 
 class RandomHorizontalFlipReturn(RandomHorizontalFlip):

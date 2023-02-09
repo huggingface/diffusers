@@ -5,26 +5,29 @@ import albumentations
 from PIL import Image
 from torch.utils.data import Dataset
 
-from taming.data.sflckr import SegmentationBase # for examples included in repo
+from taming.data.sflckr import SegmentationBase  # for examples included in repo
 
 
 class Examples(SegmentationBase):
     def __init__(self, size=256, random_crop=False, interpolation="bicubic"):
-        super().__init__(data_csv="data/ade20k_examples.txt",
-                         data_root="data/ade20k_images",
-                         segmentation_root="data/ade20k_segmentations",
-                         size=size, random_crop=random_crop,
-                         interpolation=interpolation,
-                         n_labels=151, shift_segmentation=False)
+        super().__init__(
+            data_csv="data/ade20k_examples.txt",
+            data_root="data/ade20k_images",
+            segmentation_root="data/ade20k_segmentations",
+            size=size,
+            random_crop=random_crop,
+            interpolation=interpolation,
+            n_labels=151,
+            shift_segmentation=False,
+        )
 
 
 # With semantic map and scene label
 class ADE20kBase(Dataset):
     def __init__(self, config=None, size=None, random_crop=False, interpolation="bicubic", crop_size=None):
         self.split = self.get_split()
-        self.n_labels = 151 # unknown + 150
-        self.data_csv = {"train": "data/ade20k_train.txt",
-                         "validation": "data/ade20k_test.txt"}[self.split]
+        self.n_labels = 151  # unknown + 150
+        self.data_csv = {"train": "data/ade20k_train.txt", "validation": "data/ade20k_test.txt"}[self.split]
         self.data_root = "data/ade20k_root"
         with open(os.path.join(self.data_root, "sceneCategories.txt"), "r") as f:
             self.scene_categories = f.read().splitlines()
@@ -34,18 +37,15 @@ class ADE20kBase(Dataset):
         self._length = len(self.image_paths)
         self.labels = {
             "relative_file_path_": [l for l in self.image_paths],
-            "file_path_": [os.path.join(self.data_root, "images", l)
-                           for l in self.image_paths],
-            "relative_segmentation_path_": [l.replace(".jpg", ".png")
-                                            for l in self.image_paths],
-            "segmentation_path_": [os.path.join(self.data_root, "annotations",
-                                                l.replace(".jpg", ".png"))
-                                   for l in self.image_paths],
-            "scene_category": [self.scene_categories[l.split("/")[1].replace(".jpg", "")]
-                               for l in self.image_paths],
+            "file_path_": [os.path.join(self.data_root, "images", l) for l in self.image_paths],
+            "relative_segmentation_path_": [l.replace(".jpg", ".png") for l in self.image_paths],
+            "segmentation_path_": [
+                os.path.join(self.data_root, "annotations", l.replace(".jpg", ".png")) for l in self.image_paths
+            ],
+            "scene_category": [self.scene_categories[l.split("/")[1].replace(".jpg", "")] for l in self.image_paths],
         }
 
-        size = None if size is not None and size<=0 else size
+        size = None if size is not None and size <= 0 else size
         self.size = size
         if crop_size is None:
             self.crop_size = size if size is not None else None
@@ -58,11 +58,12 @@ class ADE20kBase(Dataset):
                 "bilinear": cv2.INTER_LINEAR,
                 "bicubic": cv2.INTER_CUBIC,
                 "area": cv2.INTER_AREA,
-                "lanczos": cv2.INTER_LANCZOS4}[self.interpolation]
-            self.image_rescaler = albumentations.SmallestMaxSize(max_size=self.size,
-                                                                 interpolation=self.interpolation)
-            self.segmentation_rescaler = albumentations.SmallestMaxSize(max_size=self.size,
-                                                                        interpolation=cv2.INTER_NEAREST)
+                "lanczos": cv2.INTER_LANCZOS4,
+            }[self.interpolation]
+            self.image_rescaler = albumentations.SmallestMaxSize(max_size=self.size, interpolation=self.interpolation)
+            self.segmentation_rescaler = albumentations.SmallestMaxSize(
+                max_size=self.size, interpolation=cv2.INTER_NEAREST
+            )
 
         if crop_size is not None:
             self.center_crop = not random_crop
@@ -91,7 +92,7 @@ class ADE20kBase(Dataset):
             processed = self.preprocessor(image=image, mask=segmentation)
         else:
             processed = {"image": image, "mask": segmentation}
-        example["image"] = (processed["image"]/127.5 - 1.0).astype(np.float32)
+        example["image"] = (processed["image"] / 127.5 - 1.0).astype(np.float32)
         segmentation = processed["mask"]
         onehot = np.eye(self.n_labels)[segmentation]
         example["segmentation"] = onehot
@@ -101,8 +102,9 @@ class ADE20kBase(Dataset):
 class ADE20kTrain(ADE20kBase):
     # default to random_crop=True
     def __init__(self, config=None, size=None, random_crop=True, interpolation="bicubic", crop_size=None):
-        super().__init__(config=config, size=size, random_crop=random_crop,
-                          interpolation=interpolation, crop_size=crop_size)
+        super().__init__(
+            config=config, size=size, random_crop=random_crop, interpolation=interpolation, crop_size=crop_size
+        )
 
     def get_split(self):
         return "train"

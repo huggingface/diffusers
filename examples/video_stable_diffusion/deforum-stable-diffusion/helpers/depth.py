@@ -30,11 +30,11 @@ def wget(url, outputdir):
         raise ConnectionError(f"Some other error has ocurred - response code: {request_status}")
 
     # write to model path
-    with open(os.path.join(outputdir, filename), 'wb') as model_file:
+    with open(os.path.join(outputdir, filename), "wb") as model_file:
         model_file.write(ckpt_request.content)
 
 
-class DepthModel():
+class DepthModel:
     def __init__(self, device):
         self.adabins_helper = None
         self.depth_min = 1000
@@ -42,16 +42,19 @@ class DepthModel():
         self.device = device
         self.midas_model = None
         self.midas_transform = None
-    
+
     def load_adabins(self, models_path):
-        if not os.path.exists(os.path.join(models_path,'AdaBins_nyu.pt')):
+        if not os.path.exists(os.path.join(models_path, "AdaBins_nyu.pt")):
             print("Downloading AdaBins_nyu.pt...")
             os.makedirs(models_path, exist_ok=True)
-            wget("https://cloudflare-ipfs.com/ipfs/Qmd2mMnDLWePKmgfS8m6ntAg4nhV5VkUyAydYBp8cWWeB7/AdaBins_nyu.pt", models_path)
-        self.adabins_helper = InferenceHelper(models_path, dataset='nyu', device=self.device)
+            wget(
+                "https://cloudflare-ipfs.com/ipfs/Qmd2mMnDLWePKmgfS8m6ntAg4nhV5VkUyAydYBp8cWWeB7/AdaBins_nyu.pt",
+                models_path,
+            )
+        self.adabins_helper = InferenceHelper(models_path, dataset="nyu", device=self.device)
 
     def load_midas(self, models_path, half_precision=True):
-        if not os.path.exists(os.path.join(models_path, 'dpt_large-midas-2f21e586.pt')):
+        if not os.path.exists(os.path.join(models_path, "dpt_large-midas-2f21e586.pt")):
             print("Downloading dpt_large-midas-2f21e586.pt...")
             wget("https://github.com/intel-isl/DPT/releases/download/1_0/dpt_large-midas-2f21e586.pt", models_path)
 
@@ -62,20 +65,23 @@ class DepthModel():
         )
         normalization = NormalizeImage(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
 
-        self.midas_transform = T.Compose([
-            Resize(
-                384, 384,
-                resize_target=None,
-                keep_aspect_ratio=True,
-                ensure_multiple_of=32,
-                resize_method="minimal",
-                image_interpolation_method=cv2.INTER_CUBIC,
-            ),
-            normalization,
-            PrepareForNet()
-        ])
+        self.midas_transform = T.Compose(
+            [
+                Resize(
+                    384,
+                    384,
+                    resize_target=None,
+                    keep_aspect_ratio=True,
+                    ensure_multiple_of=32,
+                    resize_method="minimal",
+                    image_interpolation_method=cv2.INTER_CUBIC,
+                ),
+                normalization,
+                PrepareForNet(),
+            ]
+        )
 
-        self.midas_model.eval()    
+        self.midas_model.eval()
         if half_precision and self.device == torch.device("cuda"):
             self.midas_model = self.midas_model.to(memory_format=torch.channels_last)
             self.midas_model = self.midas_model.half()
@@ -84,23 +90,25 @@ class DepthModel():
     def predict(self, prev_img_cv2, anim_args) -> torch.Tensor:
         w, h = prev_img_cv2.shape[1], prev_img_cv2.shape[0]
 
-        # predict depth with AdaBins    
+        # predict depth with AdaBins
         use_adabins = anim_args.midas_weight < 1.0 and self.adabins_helper is not None
         if use_adabins:
             MAX_ADABINS_AREA = 500000
-            MIN_ADABINS_AREA = 448*448
+            MIN_ADABINS_AREA = 448 * 448
 
             # resize image if too large or too small
             img_pil = Image.fromarray(cv2.cvtColor(prev_img_cv2.astype(np.uint8), cv2.COLOR_RGB2BGR))
-            image_pil_area = w*h
+            image_pil_area = w * h
             resized = True
             if image_pil_area > MAX_ADABINS_AREA:
                 scale = math.sqrt(MAX_ADABINS_AREA) / math.sqrt(image_pil_area)
-                depth_input = img_pil.resize((int(w*scale), int(h*scale)), Image.LANCZOS) # LANCZOS is good for downsampling
+                depth_input = img_pil.resize(
+                    (int(w * scale), int(h * scale)), Image.LANCZOS
+                )  # LANCZOS is good for downsampling
                 print(f"  resized to {depth_input.width}x{depth_input.height}")
             elif image_pil_area < MIN_ADABINS_AREA:
                 scale = math.sqrt(MIN_ADABINS_AREA) / math.sqrt(image_pil_area)
-                depth_input = img_pil.resize((int(w*scale), int(h*scale)), Image.BICUBIC)
+                depth_input = img_pil.resize((int(w * scale), int(h * scale)), Image.BICUBIC)
                 print(f"  resized to {depth_input.width}x{depth_input.height}")
             else:
                 depth_input = img_pil
@@ -112,9 +120,7 @@ class DepthModel():
                     _, adabins_depth = self.adabins_helper.predict_pil(depth_input)
                 if resized:
                     adabins_depth = TF.resize(
-                        torch.from_numpy(adabins_depth), 
-                        torch.Size([h, w]),
-                        interpolation=TF.InterpolationMode.BICUBIC
+                        torch.from_numpy(adabins_depth), torch.Size([h, w]), interpolation=TF.InterpolationMode.BICUBIC
                     )
                     adabins_depth = adabins_depth.cpu().numpy()
                 adabins_depth = adabins_depth.squeeze()
@@ -131,9 +137,9 @@ class DepthModel():
             # MiDaS depth estimation implementation
             sample = torch.from_numpy(img_midas_input).float().to(self.device).unsqueeze(0)
             if self.device == torch.device("cuda"):
-                sample = sample.to(memory_format=torch.channels_last)  
+                sample = sample.to(memory_format=torch.channels_last)
                 sample = sample.half()
-            with torch.no_grad():            
+            with torch.no_grad():
                 midas_depth = self.midas_model.forward(sample)
             midas_depth = torch.nn.functional.interpolate(
                 midas_depth.unsqueeze(1),
@@ -150,7 +156,7 @@ class DepthModel():
 
             # blend between MiDaS and AdaBins predictions
             if use_adabins:
-                depth_map = midas_depth*anim_args.midas_weight + adabins_depth*(1.0-anim_args.midas_weight)
+                depth_map = midas_depth * anim_args.midas_weight + adabins_depth * (1.0 - anim_args.midas_weight)
             else:
                 depth_map = midas_depth
 
@@ -158,7 +164,7 @@ class DepthModel():
             depth_tensor = torch.from_numpy(depth_map).squeeze().to(self.device)
         else:
             depth_tensor = torch.ones((h, w), device=self.device)
-        
+
         return depth_tensor
 
     def save(self, filename: str, depth: torch.Tensor):
@@ -169,7 +175,6 @@ class DepthModel():
         self.depth_max = max(self.depth_max, depth.max())
         print(f"  depth min:{depth.min()} max:{depth.max()}")
         denom = max(1e-8, self.depth_max - self.depth_min)
-        temp = rearrange((depth - self.depth_min) / denom * 255, 'c h w -> h w c')
-        temp = repeat(temp, 'h w 1 -> h w c', c=3)
-        Image.fromarray(temp.astype(np.uint8)).save(filename)    
-
+        temp = rearrange((depth - self.depth_min) / denom * 255, "c h w -> h w c")
+        temp = repeat(temp, "h w 1 -> h w c", c=3)
+        Image.fromarray(temp.astype(np.uint8)).save(filename)

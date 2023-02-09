@@ -6,6 +6,7 @@ from torchvision.utils import make_grid
 from IPython import display
 from torchvision.transforms.functional import to_pil_image
 
+
 class CFGDenoiser(nn.Module):
     def __init__(self, model):
         super().__init__()
@@ -18,26 +19,30 @@ class CFGDenoiser(nn.Module):
         uncond, cond = self.inner_model(x_in, sigma_in, cond=cond_in).chunk(2)
         return uncond + (cond - uncond) * cond_scale
 
+
 class CFGDenoiserWithGrad(CompVisDenoiser):
-    def __init__(self, model, 
-                       loss_fns_scales, # List of [cond_function, scale] pairs
-                       clamp_func=None,  # Gradient clamping function, clamp_func(grad, sigma)
-                       gradient_wrt=None, # Calculate gradient with respect to ["x", "x0_pred", "both"]
-                       gradient_add_to=None, # Add gradient to ["cond", "uncond", "both"]
-                       cond_uncond_sync=True, # Calculates the cond and uncond simultaneously
-                       decode_method=None, # Function used to decode the latent during gradient calculation
-                       grad_inject_timing_fn=None, # Option to use grad in only a few of the steps
-                       grad_consolidate_fn=None, # Function to add grad to image fn(img, grad, sigma)
-                       verbose=False):
+    def __init__(
+        self,
+        model,
+        loss_fns_scales,  # List of [cond_function, scale] pairs
+        clamp_func=None,  # Gradient clamping function, clamp_func(grad, sigma)
+        gradient_wrt=None,  # Calculate gradient with respect to ["x", "x0_pred", "both"]
+        gradient_add_to=None,  # Add gradient to ["cond", "uncond", "both"]
+        cond_uncond_sync=True,  # Calculates the cond and uncond simultaneously
+        decode_method=None,  # Function used to decode the latent during gradient calculation
+        grad_inject_timing_fn=None,  # Option to use grad in only a few of the steps
+        grad_consolidate_fn=None,  # Function to add grad to image fn(img, grad, sigma)
+        verbose=False,
+    ):
         super().__init__(model.inner_model)
         self.inner_model = model
-        self.cond_uncond_sync = cond_uncond_sync 
+        self.cond_uncond_sync = cond_uncond_sync
 
         # Initialize gradient calculation variables
         self.clamp_func = clamp_func
         self.gradient_add_to = gradient_add_to
         if gradient_wrt is None:
-            self.gradient_wrt = 'x'
+            self.gradient_wrt = "x"
         self.gradient_wrt = gradient_wrt
         if decode_method is None:
             decode_fn = lambda x: x
@@ -49,7 +54,7 @@ class CFGDenoiserWithGrad(CompVisDenoiser):
 
         # Parse loss function-scale pairs
         cond_fns = []
-        for loss_fn,scale in loss_fns_scales:
+        for loss_fn, scale in loss_fns_scales:
             if scale != 0:
                 cond_fn = self.make_cond_fn(loss_fn, scale)
             else:
@@ -69,7 +74,6 @@ class CFGDenoiserWithGrad(CompVisDenoiser):
         self.verbose = verbose
         self.verbose_print = print if self.verbose else lambda *args, **kwargs: None
 
-
     # General denoising model with gradient conditioning
     def cond_model_fn_(self, x, sigma, inner_model=None, **kwargs):
 
@@ -79,40 +83,42 @@ class CFGDenoiserWithGrad(CompVisDenoiser):
 
         total_cond_grad = torch.zeros_like(x)
         for cond_fn in self.cond_fns:
-            if cond_fn is None: continue
+            if cond_fn is None:
+                continue
 
             # Gradient with respect to x
-            if self.gradient_wrt == 'x':
+            if self.gradient_wrt == "x":
                 with torch.enable_grad():
                     x = x.detach().requires_grad_()
                     denoised = inner_model(x, sigma, **kwargs)
                     cond_grad = cond_fn(x, sigma, denoised=denoised, **kwargs).detach()
 
             # Gradient wrt x0_pred, so save some compute: don't record grad until after denoised is calculated
-            elif self.gradient_wrt == 'x0_pred':
+            elif self.gradient_wrt == "x0_pred":
                 with torch.no_grad():
                     denoised = inner_model(x, sigma, **kwargs)
                 with torch.enable_grad():
                     cond_grad = cond_fn(x, sigma, denoised=denoised.detach().requires_grad_(), **kwargs).detach()
             total_cond_grad += cond_grad
 
-        total_cond_grad = torch.nan_to_num(total_cond_grad, nan=0.0, posinf=float('inf'), neginf=-float('inf'))
+        total_cond_grad = torch.nan_to_num(total_cond_grad, nan=0.0, posinf=float("inf"), neginf=-float("inf"))
 
         # Clamp the gradient
         total_cond_grad = self.clamp_grad_verbose(total_cond_grad, sigma)
 
         # Add gradient to the image
-        if self.gradient_wrt == 'x':
+        if self.gradient_wrt == "x":
             x.copy_(self.grad_consolidate_fn(x.detach(), total_cond_grad, k_utils.append_dims(sigma, x.ndim)))
             cond_denoised = inner_model(x, sigma, **kwargs)
-        elif self.gradient_wrt == 'x0_pred':
+        elif self.gradient_wrt == "x0_pred":
             x.copy_(self.grad_consolidate_fn(x.detach(), total_cond_grad, k_utils.append_dims(sigma, x.ndim)))
-            cond_denoised = self.grad_consolidate_fn(denoised.detach(), total_cond_grad, k_utils.append_dims(sigma, x.ndim))
+            cond_denoised = self.grad_consolidate_fn(
+                denoised.detach(), total_cond_grad, k_utils.append_dims(sigma, x.ndim)
+            )
 
         return cond_denoised
 
     def forward(self, x, sigma, uncond, cond, cond_scale):
-
         def _cfg_model(x, sigma, cond, **kwargs):
             # Wrapper to add denoised cond and uncond as in a cfg model
             # input "cond" is both cond and uncond weights: torch.cat([uncond, cond])
@@ -146,7 +152,7 @@ class CFGDenoiserWithGrad(CompVisDenoiser):
                     uncond = self.cond_model_fn_(x, sigma, cond=uncond)
                     cond = self.cond_model_fn_(x, sigma, cond=cond)
                     x0 = uncond + (cond - uncond) * cond_scale
-                else: 
+                else:
                     raise Exception(f"Unrecognised option for gradient_add_to: {self.gradient_add_to}")
 
         # No conditioning
@@ -173,7 +179,7 @@ class CFGDenoiserWithGrad(CompVisDenoiser):
                 denoised_sample = self.decode_fn(denoised).requires_grad_()
                 loss = loss_fn(denoised_sample, sigma, **kwargs) * scale
                 grad = -torch.autograd.grad(loss, x)[0]
-            self.verbose_print('Loss:', loss.item())
+            self.verbose_print("Loss:", loss.item())
             return grad
 
         # Cond function with respect to x0_pred
@@ -182,12 +188,12 @@ class CFGDenoiserWithGrad(CompVisDenoiser):
                 denoised_sample = self.decode_fn(denoised).requires_grad_()
                 loss = loss_fn(denoised_sample, sigma, **kwargs) * scale
                 grad = -torch.autograd.grad(loss, denoised)[0]
-            self.verbose_print('Loss:', loss.item())
+            self.verbose_print("Loss:", loss.item())
             return grad
 
-        if self.gradient_wrt == 'x':
+        if self.gradient_wrt == "x":
             return cond_fn
-        elif self.gradient_wrt == 'x0_pred':
+        elif self.gradient_wrt == "x0_pred":
             return cond_fn_pred
         else:
             raise Exception(f"Variable gradient_wrt == {self.gradient_wrt} not recognised.")
@@ -196,18 +202,17 @@ class CFGDenoiserWithGrad(CompVisDenoiser):
         if self.clamp_func is not None:
             if self.verbose:
                 print("Grad before clamping:")
-                self.display_samples(torch.abs(grad*2.0) - 1.0)
+                self.display_samples(torch.abs(grad * 2.0) - 1.0)
             grad = self.clamp_func(grad, sigma)
         if self.verbose:
             print("Conditioning gradient")
-            self.display_samples(torch.abs(grad*2.0) - 1.0)
+            self.display_samples(torch.abs(grad * 2.0) - 1.0)
         return grad
 
     def check_conditioning_schedule(self, sigma):
         is_conditioning_step = False
 
-        if (self.cond_fns is not None and 
-            any(cond_fn is not None for cond_fn in self.cond_fns)):
+        if self.cond_fns is not None and any(cond_fn is not None for cond_fn in self.cond_fns):
             # Conditioning strength != 0
             # Check if this is a conditioning step
             if self.grad_inject_timing_fn(sigma):

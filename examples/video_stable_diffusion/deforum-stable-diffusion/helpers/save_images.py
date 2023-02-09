@@ -7,16 +7,14 @@ import time
 
 
 def get_output_folder(output_path, batch_folder):
-    out_path = os.path.join(output_path,time.strftime('%Y-%m'))
+    out_path = os.path.join(output_path, time.strftime("%Y-%m"))
     if batch_folder != "":
         out_path = os.path.join(out_path, batch_folder)
     os.makedirs(out_path, exist_ok=True)
     return out_path
 
 
-def save_samples(
-    args, x_samples: torch.Tensor, seed: int, n_rows: int
-) -> Tuple[Image.Image, List[Image.Image]]:
+def save_samples(args, x_samples: torch.Tensor, seed: int, n_rows: int) -> Tuple[Image.Image, List[Image.Image]]:
     """Function to save samples to disk.
     Args:
         args: Stable deforum diffusion arguments.
@@ -36,11 +34,7 @@ def save_samples(
             x_sample = 255.0 * rearrange(x_sample.cpu().numpy(), "c h w -> h w c")
             images.append(Image.fromarray(x_sample.astype(np.uint8)))
             if args.save_samples:
-                images[-1].save(
-                    os.path.join(
-                        args.outdir, f"{args.timestring}_{index:02}_{seed}.png"
-                    )
-                )
+                images[-1].save(os.path.join(args.outdir, f"{args.timestring}_{index:02}_{seed}.png"))
 
     # save grid
     if args.display_grid or args.save_grid:
@@ -52,9 +46,7 @@ def save_samples(
         grid = 255.0 * rearrange(grid, "c h w -> h w c").cpu().numpy()
         grid_image = Image.fromarray(grid.astype(np.uint8))
         if args.save_grid:
-            grid_image.save(
-                os.path.join(args.outdir, f"{args.timestring}_{seed}_grid.png")
-            )
+            grid_image.save(os.path.join(args.outdir, f"{args.timestring}_{seed}_grid.png"))
 
     # return grid_image and individual sample images
     return grid_image, images

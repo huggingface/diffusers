@@ -7,6 +7,7 @@ from torch.utils.data import Dataset, ConcatDataset
 
 class ConcatDatasetWithIndex(ConcatDataset):
     """Modified from original pytorch code to return dataset idx"""
+
     def __getitem__(self, idx):
         if idx < 0:
             if -idx > len(self):
@@ -30,11 +31,11 @@ class ImagePaths(Dataset):
         self._length = len(paths)
 
         if self.size is not None and self.size > 0:
-            self.rescaler = albumentations.SmallestMaxSize(max_size = self.size)
+            self.rescaler = albumentations.SmallestMaxSize(max_size=self.size)
             if not self.random_crop:
-                self.cropper = albumentations.CenterCrop(height=self.size,width=self.size)
+                self.cropper = albumentations.CenterCrop(height=self.size, width=self.size)
             else:
-                self.cropper = albumentations.RandomCrop(height=self.size,width=self.size)
+                self.cropper = albumentations.RandomCrop(height=self.size, width=self.size)
             self.preprocessor = albumentations.Compose([self.rescaler, self.cropper])
         else:
             self.preprocessor = lambda **kwargs: kwargs
@@ -48,7 +49,7 @@ class ImagePaths(Dataset):
             image = image.convert("RGB")
         image = np.array(image).astype(np.uint8)
         image = self.preprocessor(image=image)["image"]
-        image = (image/127.5 - 1.0).astype(np.float32)
+        image = (image / 127.5 - 1.0).astype(np.float32)
         return image
 
     def __getitem__(self, i):
@@ -62,9 +63,9 @@ class ImagePaths(Dataset):
 class NumpyPaths(ImagePaths):
     def preprocess_image(self, image_path):
         image = np.load(image_path).squeeze(0)  # 3 x 1024 x 1024
-        image = np.transpose(image, (1,2,0))
+        image = np.transpose(image, (1, 2, 0))
         image = Image.fromarray(image, mode="RGB")
         image = np.array(image).astype(np.uint8)
         image = self.preprocessor(image=image)["image"]
-        image = (image/127.5 - 1.0).astype(np.float32)
+        image = (image / 127.5 - 1.0).astype(np.float32)
         return image

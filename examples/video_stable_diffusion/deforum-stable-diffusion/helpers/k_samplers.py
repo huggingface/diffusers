@@ -5,27 +5,22 @@ import torch
 
 
 def sampler_fn(
-        c: torch.Tensor,
-        uc: torch.Tensor,
-        args,
-        model_wrap: CompVisDenoiser,
-        init_latent: Optional[torch.Tensor] = None,
-        t_enc: Optional[torch.Tensor] = None,
-        device=torch.device("cpu")
-        if not torch.cuda.is_available()
-        else torch.device("cuda"),
-        cb: Callable[[Any], None] = None,
-        verbose: Optional[bool] = False,
+    c: torch.Tensor,
+    uc: torch.Tensor,
+    args,
+    model_wrap: CompVisDenoiser,
+    init_latent: Optional[torch.Tensor] = None,
+    t_enc: Optional[torch.Tensor] = None,
+    device=torch.device("cpu") if not torch.cuda.is_available() else torch.device("cuda"),
+    cb: Callable[[Any], None] = None,
+    verbose: Optional[bool] = False,
 ) -> torch.Tensor:
     shape = [args.C, args.H // args.f, args.W // args.f]
     sigmas: torch.Tensor = model_wrap.get_sigmas(args.steps)
     sigmas = sigmas[len(sigmas) - t_enc - 1 :]
     if args.use_init:
         if len(sigmas) > 0:
-            x = (
-                    init_latent
-                    + torch.randn([args.n_samples, *shape], device=device) * sigmas[0]
-            )
+            x = init_latent + torch.randn([args.n_samples, *shape], device=device) * sigmas[0]
         else:
             x = init_latent
     else:
@@ -55,7 +50,7 @@ def sampler_fn(
             "extra_args": {"cond": c, "uncond": uc, "cond_scale": args.scale},
             "disable": False,
             "callback": cb,
-            "n":args.steps,
+            "n": args.steps,
         }
     elif args.sampler in ["dpm_adaptive"]:
         sampler_args = {
@@ -104,21 +99,23 @@ def make_inject_timing_fn(inject_timing, model, steps):
 
     if inject_timing is None:
         timing_fn = lambda sigma: True
-    elif isinstance(inject_timing,int) and inject_timing <= steps and inject_timing > 0:
+    elif isinstance(inject_timing, int) and inject_timing <= steps and inject_timing > 0:
         # Compute every nth step
-        target_sigma_list = [sigma for i,sigma in enumerate(all_sigmas) if (i+1) % inject_timing == 0]
+        target_sigma_list = [sigma for i, sigma in enumerate(all_sigmas) if (i + 1) % inject_timing == 0]
         target_sigmas = torch.Tensor(target_sigma_list).to(all_sigmas.device)
-    elif all(isinstance(t,float) for t in inject_timing) and all(t>=0.0 and t<=1.0 for t in inject_timing):
+    elif all(isinstance(t, float) for t in inject_timing) and all(t >= 0.0 and t <= 1.0 for t in inject_timing):
         # Compute on these steps (expressed as a decimal fraction between 0.0 and 1.0)
-        target_indices = [int(frac_step*steps) if frac_step < 1.0 else steps-1 for frac_step in inject_timing]
-        target_sigma_list = [sigma for i,sigma in enumerate(all_sigmas) if i in target_indices]
+        target_indices = [int(frac_step * steps) if frac_step < 1.0 else steps - 1 for frac_step in inject_timing]
+        target_sigma_list = [sigma for i, sigma in enumerate(all_sigmas) if i in target_indices]
         target_sigmas = torch.Tensor(target_sigma_list).to(all_sigmas.device)
-    elif all(isinstance(t,int) for t in inject_timing) and all(t>0 and t<=steps for t in inject_timing):
+    elif all(isinstance(t, int) for t in inject_timing) and all(t > 0 and t <= steps for t in inject_timing):
         # Compute on these steps
-        target_sigma_list = [sigma for i,sigma in enumerate(all_sigmas) if i+1 in inject_timing]
+        target_sigma_list = [sigma for i, sigma in enumerate(all_sigmas) if i + 1 in inject_timing]
         target_sigmas = torch.Tensor(target_sigma_list).to(all_sigmas.device)
 
     else:
-        raise Exception(f"Not a valid input: inject_timing={inject_timing}\n" +
-                        f"Must be an int, list of all ints (between step 1 and {steps}), or list of all floats between 0.0 and 1.0")
+        raise Exception(
+            f"Not a valid input: inject_timing={inject_timing}\n"
+            + f"Must be an int, list of all ints (between step 1 and {steps}), or list of all floats between 0.0 and 1.0"
+        )
     return timing_fn

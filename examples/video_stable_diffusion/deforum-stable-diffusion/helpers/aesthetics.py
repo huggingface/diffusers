@@ -3,6 +3,7 @@ import torch
 from .simulacra_fit_linear_model import AestheticMeanPredictionLinearModel
 import requests
 
+
 def wget(url, outputdir):
     filename = url.split("/")[-1]
 
@@ -18,11 +19,11 @@ def wget(url, outputdir):
         raise ConnectionError(f"Some other error has ocurred - response code: {request_status}")
 
     # write to model path
-    with open(os.path.join(outputdir, filename), 'wb') as model_file:
+    with open(os.path.join(outputdir, filename), "wb") as model_file:
         model_file.write(ckpt_request.content)
 
 
-def load_aesthetics_model(args,root):
+def load_aesthetics_model(args, root):
 
     clip_size = {
         "ViT-B/32": 512,
@@ -36,13 +37,16 @@ def load_aesthetics_model(args,root):
         "ViT-B/16": "sac_public_2022_06_29_vit_b_16_linear.pth",
         "ViT-L/14": "sac_public_2022_06_29_vit_l_14_linear.pth",
     }
-    
-    if not os.path.exists(os.path.join(root.models_path,model_name[args.clip_name])):
-    	print("Downloading aesthetics model...")
-    	os.makedirs(root.models_path, exist_ok=True)
-    	wget("https://github.com/crowsonkb/simulacra-aesthetic-models/raw/master/models/"+model_name[args.clip_name], root.models_path)
-    
+
+    if not os.path.exists(os.path.join(root.models_path, model_name[args.clip_name])):
+        print("Downloading aesthetics model...")
+        os.makedirs(root.models_path, exist_ok=True)
+        wget(
+            "https://github.com/crowsonkb/simulacra-aesthetic-models/raw/master/models/" + model_name[args.clip_name],
+            root.models_path,
+        )
+
     aesthetics_model = AestheticMeanPredictionLinearModel(clip_size[args.clip_name])
-    aesthetics_model.load_state_dict(torch.load(os.path.join(root.models_path,model_name[args.clip_name])))
+    aesthetics_model.load_state_dict(torch.load(os.path.join(root.models_path, model_name[args.clip_name])))
 
     return aesthetics_model.to(root.device)

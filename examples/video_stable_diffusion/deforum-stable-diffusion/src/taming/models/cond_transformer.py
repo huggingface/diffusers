@@ -14,20 +14,21 @@ def disabled_train(self, mode=True):
 
 
 class Net2NetTransformer(pl.LightningModule):
-    def __init__(self,
-                 transformer_config,
-                 first_stage_config,
-                 cond_stage_config,
-                 permuter_config=None,
-                 ckpt_path=None,
-                 ignore_keys=[],
-                 first_stage_key="image",
-                 cond_stage_key="depth",
-                 downsample_cond_size=-1,
-                 pkeep=1.0,
-                 sos_token=0,
-                 unconditional=False,
-                 ):
+    def __init__(
+        self,
+        transformer_config,
+        first_stage_config,
+        cond_stage_config,
+        permuter_config=None,
+        ckpt_path=None,
+        ignore_keys=[],
+        first_stage_key="image",
+        cond_stage_key="depth",
+        downsample_cond_size=-1,
+        pkeep=1.0,
+        sos_token=0,
+        unconditional=False,
+    ):
         super().__init__()
         self.be_unconditional = unconditional
         self.sos_token = sos_token
@@ -66,8 +67,10 @@ class Net2NetTransformer(pl.LightningModule):
             print("Using first stage also as cond stage.")
             self.cond_stage_model = self.first_stage_model
         elif config == "__is_unconditional__" or self.be_unconditional:
-            print(f"Using no cond stage. Assuming the training is intended to be unconditional. "
-                  f"Prepending {self.sos_token} as a sos token.")
+            print(
+                f"Using no cond stage. Assuming the training is intended to be unconditional. "
+                f"Prepending {self.sos_token} as a sos token."
+            )
             self.be_unconditional = True
             self.cond_stage_key = self.first_stage_key
             self.cond_stage_model = SOSProvider(self.sos_token)
@@ -83,11 +86,10 @@ class Net2NetTransformer(pl.LightningModule):
         _, c_indices = self.encode_to_c(c)
 
         if self.training and self.pkeep < 1.0:
-            mask = torch.bernoulli(self.pkeep*torch.ones(z_indices.shape,
-                                                         device=z_indices.device))
+            mask = torch.bernoulli(self.pkeep * torch.ones(z_indices.shape, device=z_indices.device))
             mask = mask.round().to(dtype=torch.int64)
             r_indices = torch.randint_like(z_indices, self.transformer.config.vocab_size)
-            a_indices = mask*z_indices+(1-mask)*r_indices
+            a_indices = mask * z_indices + (1 - mask) * r_indices
         else:
             a_indices = z_indices
 
@@ -99,29 +101,28 @@ class Net2NetTransformer(pl.LightningModule):
         # make the prediction
         logits, _ = self.transformer(cz_indices[:, :-1])
         # cut off conditioning outputs - output i corresponds to p(z_i | z_{<i}, c)
-        logits = logits[:, c_indices.shape[1]-1:]
+        logits = logits[:, c_indices.shape[1] - 1 :]
 
         return logits, target
 
     def top_k_logits(self, logits, k):
         v, ix = torch.topk(logits, k)
         out = logits.clone()
-        out[out < v[..., [-1]]] = -float('Inf')
+        out[out < v[..., [-1]]] = -float("Inf")
         return out
 
     @torch.no_grad()
-    def sample(self, x, c, steps, temperature=1.0, sample=False, top_k=None,
-               callback=lambda k: None):
-        x = torch.cat((c,x),dim=1)
+    def sample(self, x, c, steps, temperature=1.0, sample=False, top_k=None, callback=lambda k: None):
+        x = torch.cat((c, x), dim=1)
         block_size = self.transformer.get_block_size()
         assert not self.transformer.training
         if self.pkeep <= 0.0:
             # one pass suffices since input is pure noise anyway
-            assert len(x.shape)==2
-            noise_shape = (x.shape[0], steps-1)
-            #noise = torch.randint(self.transformer.config.vocab_size, noise_shape).to(x)
-            noise = c.clone()[:,x.shape[1]-c.shape[1]:-1]
-            x = torch.cat((x,noise),dim=1)
+            assert len(x.shape) == 2
+            noise_shape = (x.shape[0], steps - 1)
+            # noise = torch.randint(self.transformer.config.vocab_size, noise_shape).to(x)
+            noise = c.clone()[:, x.shape[1] - c.shape[1] : -1]
+            x = torch.cat((x, noise), dim=1)
             logits, _ = self.transformer(x)
             # take all logits for now and scale by temp
             logits = logits / temperature
@@ -133,18 +134,18 @@ class Net2NetTransformer(pl.LightningModule):
             # sample from the distribution or take the most likely
             if sample:
                 shape = probs.shape
-                probs = probs.reshape(shape[0]*shape[1],shape[2])
+                probs = probs.reshape(shape[0] * shape[1], shape[2])
                 ix = torch.multinomial(probs, num_samples=1)
-                probs = probs.reshape(shape[0],shape[1],shape[2])
-                ix = ix.reshape(shape[0],shape[1])
+                probs = probs.reshape(shape[0], shape[1], shape[2])
+                ix = ix.reshape(shape[0], shape[1])
             else:
                 _, ix = torch.topk(probs, k=1, dim=-1)
             # cut off conditioning
-            x = ix[:, c.shape[1]-1:]
+            x = ix[:, c.shape[1] - 1 :]
         else:
             for k in range(steps):
                 callback(k)
-                assert x.size(1) <= block_size # make sure model can see conditioning
+                assert x.size(1) <= block_size  # make sure model can see conditioning
                 x_cond = x if x.size(1) <= block_size else x[:, -block_size:]  # crop context if needed
                 logits, _ = self.transformer(x_cond)
                 # pluck the logits at the final step and scale by temperature
@@ -162,7 +163,7 @@ class Net2NetTransformer(pl.LightningModule):
                 # append to the sequence and continue
                 x = torch.cat((x, ix), dim=1)
             # cut off conditioning
-            x = x[:, c.shape[1]:]
+            x = x[:, c.shape[1] :]
         return x
 
     @torch.no_grad()
@@ -176,7 +177,7 @@ class Net2NetTransformer(pl.LightningModule):
     def encode_to_c(self, c):
         if self.downsample_cond_size > -1:
             c = F.interpolate(c, size=(self.downsample_cond_size, self.downsample_cond_size))
-        quant_c, _, [_,_,indices] = self.cond_stage_model.encode(c)
+        quant_c, _, [_, _, indices] = self.cond_stage_model.encode(c)
         if len(indices.shape) > 2:
             indices = indices.view(c.shape[0], -1)
         return quant_c, indices
@@ -184,9 +185,8 @@ class Net2NetTransformer(pl.LightningModule):
     @torch.no_grad()
     def decode_to_img(self, index, zshape):
         index = self.permuter(index, reverse=True)
-        bhwc = (zshape[0],zshape[2],zshape[3],zshape[1])
-        quant_z = self.first_stage_model.quantize.get_codebook_entry(
-            index.reshape(-1), shape=bhwc)
+        bhwc = (zshape[0], zshape[2], zshape[3], zshape[1])
+        quant_z = self.first_stage_model.quantize.get_codebook_entry(index.reshape(-1), shape=bhwc)
         x = self.first_stage_model.decode(quant_z)
         return x
 
@@ -206,31 +206,40 @@ class Net2NetTransformer(pl.LightningModule):
         quant_c, c_indices = self.encode_to_c(c)
 
         # create a "half"" sample
-        z_start_indices = z_indices[:,:z_indices.shape[1]//2]
-        index_sample = self.sample(z_start_indices, c_indices,
-                                   steps=z_indices.shape[1]-z_start_indices.shape[1],
-                                   temperature=temperature if temperature is not None else 1.0,
-                                   sample=True,
-                                   top_k=top_k if top_k is not None else 100,
-                                   callback=callback if callback is not None else lambda k: None)
+        z_start_indices = z_indices[:, : z_indices.shape[1] // 2]
+        index_sample = self.sample(
+            z_start_indices,
+            c_indices,
+            steps=z_indices.shape[1] - z_start_indices.shape[1],
+            temperature=temperature if temperature is not None else 1.0,
+            sample=True,
+            top_k=top_k if top_k is not None else 100,
+            callback=callback if callback is not None else lambda k: None,
+        )
         x_sample = self.decode_to_img(index_sample, quant_z.shape)
 
         # sample
         z_start_indices = z_indices[:, :0]
-        index_sample = self.sample(z_start_indices, c_indices,
-                                   steps=z_indices.shape[1],
-                                   temperature=temperature if temperature is not None else 1.0,
-                                   sample=True,
-                                   top_k=top_k if top_k is not None else 100,
-                                   callback=callback if callback is not None else lambda k: None)
+        index_sample = self.sample(
+            z_start_indices,
+            c_indices,
+            steps=z_indices.shape[1],
+            temperature=temperature if temperature is not None else 1.0,
+            sample=True,
+            top_k=top_k if top_k is not None else 100,
+            callback=callback if callback is not None else lambda k: None,
+        )
         x_sample_nopix = self.decode_to_img(index_sample, quant_z.shape)
 
         # det sample
         z_start_indices = z_indices[:, :0]
-        index_sample = self.sample(z_start_indices, c_indices,
-                                   steps=z_indices.shape[1],
-                                   sample=False,
-                                   callback=callback if callback is not None else lambda k: None)
+        index_sample = self.sample(
+            z_start_indices,
+            c_indices,
+            steps=z_indices.shape[1],
+            sample=False,
+            callback=callback if callback is not None else lambda k: None,
+        )
         x_sample_det = self.decode_to_img(index_sample, quant_z.shape)
 
         # reconstruction
@@ -316,32 +325,35 @@ class Net2NetTransformer(pl.LightningModule):
         # separate out all parameters to those that will and won't experience regularizing weight decay
         decay = set()
         no_decay = set()
-        whitelist_weight_modules = (torch.nn.Linear, )
+        whitelist_weight_modules = (torch.nn.Linear,)
         blacklist_weight_modules = (torch.nn.LayerNorm, torch.nn.Embedding)
         for mn, m in self.transformer.named_modules():
             for pn, p in m.named_parameters():
-                fpn = '%s.%s' % (mn, pn) if mn else pn # full param name
+                fpn = "%s.%s" % (mn, pn) if mn else pn  # full param name
 
-                if pn.endswith('bias'):
+                if pn.endswith("bias"):
                     # all biases will not be decayed
                     no_decay.add(fpn)
-                elif pn.endswith('weight') and isinstance(m, whitelist_weight_modules):
+                elif pn.endswith("weight") and isinstance(m, whitelist_weight_modules):
                     # weights of whitelist modules will be weight decayed
                     decay.add(fpn)
-                elif pn.endswith('weight') and isinstance(m, blacklist_weight_modules):
+                elif pn.endswith("weight") and isinstance(m, blacklist_weight_modules):
                     # weights of blacklist modules will NOT be weight decayed
                     no_decay.add(fpn)
 
         # special case the position embedding parameter in the root GPT module as not decayed
-        no_decay.add('pos_emb')
+        no_decay.add("pos_emb")
 
         # validate that we considered every parameter
         param_dict = {pn: p for pn, p in self.transformer.named_parameters()}
         inter_params = decay & no_decay
         union_params = decay | no_decay
-        assert len(inter_params) == 0, "parameters %s made it into both decay/no_decay sets!" % (str(inter_params), )
-        assert len(param_dict.keys() - union_params) == 0, "parameters %s were not separated into either decay/no_decay set!" \
-                                                    % (str(param_dict.keys() - union_params), )
+        assert len(inter_params) == 0, "parameters %s made it into both decay/no_decay sets!" % (str(inter_params),)
+        assert (
+            len(param_dict.keys() - union_params) == 0
+        ), "parameters %s were not separated into either decay/no_decay set!" % (
+            str(param_dict.keys() - union_params),
+        )
 
         # create the pytorch optimizer object
         optim_groups = [

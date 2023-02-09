@@ -33,24 +33,23 @@ class ToTensor(object):
 
     def to_tensor(self, pic):
         if not (_is_pil_image(pic) or _is_numpy_image(pic)):
-            raise TypeError(
-                'pic should be PIL Image or ndarray. Got {}'.format(type(pic)))
+            raise TypeError("pic should be PIL Image or ndarray. Got {}".format(type(pic)))
 
         if isinstance(pic, np.ndarray):
             img = torch.from_numpy(pic.transpose((2, 0, 1)))
             return img
 
         # handle PIL Image
-        if pic.mode == 'I':
+        if pic.mode == "I":
             img = torch.from_numpy(np.array(pic, np.int32, copy=False))
-        elif pic.mode == 'I;16':
+        elif pic.mode == "I;16":
             img = torch.from_numpy(np.array(pic, np.int16, copy=False))
         else:
             img = torch.ByteTensor(torch.ByteStorage.from_buffer(pic.tobytes()))
         # PIL image mode: 1, L, P, I, F, RGB, YCbCr, RGBA, CMYK
-        if pic.mode == 'YCbCr':
+        if pic.mode == "YCbCr":
             nchannel = 3
-        elif pic.mode == 'I;16':
+        elif pic.mode == "I;16":
             nchannel = 1
         else:
             nchannel = len(pic.mode)
@@ -64,16 +63,16 @@ class ToTensor(object):
 
 
 class InferenceHelper:
-    def __init__(self, models_path, dataset='nyu', device='cuda:0'):
+    def __init__(self, models_path, dataset="nyu", device="cuda:0"):
         self.toTensor = ToTensor()
         self.device = device
-        if dataset == 'nyu':
+        if dataset == "nyu":
             self.min_depth = 1e-3
             self.max_depth = 10
             self.saving_factor = 1000  # used to save in 16 bit
             model = UnetAdaptiveBins.build(n_bins=256, min_val=self.min_depth, max_val=self.max_depth)
-            pretrained_path = os.path.join(models_path,'AdaBins_nyu.pt')
-        elif dataset == 'kitti':
+            pretrained_path = os.path.join(models_path, "AdaBins_nyu.pt")
+        elif dataset == "kitti":
             self.min_depth = 1e-3
             self.max_depth = 80
             self.saving_factor = 256
@@ -89,13 +88,13 @@ class InferenceHelper:
     @torch.no_grad()
     def predict_pil(self, pil_image, visualized=False):
         # pil_image = pil_image.resize((640, 480))
-        img = np.asarray(pil_image) / 255.
+        img = np.asarray(pil_image) / 255.0
 
         img = self.toTensor(img).unsqueeze(0).float().to(self.device)
         bin_centers, pred = self.predict(img)
 
         if visualized:
-            viz = utils.colorize(torch.from_numpy(pred).unsqueeze(0), vmin=None, vmax=None, cmap='magma')
+            viz = utils.colorize(torch.from_numpy(pred).unsqueeze(0), vmin=None, vmax=None, cmap="magma")
             # pred = np.asarray(pred*1000, dtype='uint16')
             viz = Image.fromarray(viz)
             return bin_centers, pred, viz
@@ -113,8 +112,11 @@ class InferenceHelper:
 
         # Take average of original and mirror
         final = 0.5 * (pred + pred_lr)
-        final = nn.functional.interpolate(torch.Tensor(final), image.shape[-2:],
-                                          mode='bilinear', align_corners=True).cpu().numpy()
+        final = (
+            nn.functional.interpolate(torch.Tensor(final), image.shape[-2:], mode="bilinear", align_corners=True)
+            .cpu()
+            .numpy()
+        )
 
         final[final < self.min_depth] = self.min_depth
         final[final > self.max_depth] = self.max_depth
@@ -135,20 +137,20 @@ class InferenceHelper:
         all_files = glob.glob(os.path.join(test_dir, "*"))
         self.model.eval()
         for f in tqdm(all_files):
-            image = np.asarray(Image.open(f), dtype='float32') / 255.
+            image = np.asarray(Image.open(f), dtype="float32") / 255.0
             image = transform(image).unsqueeze(0).to(self.device)
 
             centers, final = self.predict(image)
             # final = final.squeeze().cpu().numpy()
 
-            final = (final * self.saving_factor).astype('uint16')
-            basename = os.path.basename(f).split('.')[0]
+            final = (final * self.saving_factor).astype("uint16")
+            basename = os.path.basename(f).split(".")[0]
             save_path = os.path.join(out_dir, basename + ".png")
 
             Image.fromarray(final.squeeze()).save(save_path)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import matplotlib.pyplot as plt
     from time import time
 
@@ -157,5 +159,5 @@ if __name__ == '__main__':
     inferHelper = InferenceHelper()
     centers, pred = inferHelper.predict_pil(img)
     print(f"took :{time() - start}s")
-    plt.imshow(pred.squeeze(), cmap='magma_r')
+    plt.imshow(pred.squeeze(), cmap="magma_r")
     plt.show()

@@ -56,9 +56,7 @@ def validate_image(v, throw=True):
                 return v
             except Exception as err:
                 if throw:
-                    raise ValueError(
-                        "Invalid remote url, failed to parse image"
-                    ) from err
+                    raise ValueError("Invalid remote url, failed to parse image") from err
                 else:
                     return False
         elif os.path.isfile(v):
@@ -67,9 +65,7 @@ def validate_image(v, throw=True):
                     return fd.convert("RGB")
             except Exception as err:
                 if throw:
-                    raise ValueError(
-                        "Invalid path, failed to parse image from local path"
-                    ) from err
+                    raise ValueError("Invalid path, failed to parse image from local path") from err
                 else:
                     return False
         else:
@@ -79,9 +75,7 @@ def validate_image(v, throw=True):
                 return False
     else:
         if throw:
-            raise ValueError(
-                f"Bad image type. Expected: bytes, Image, or Image url. Got: {debug.format(v)}"
-            )
+            raise ValueError(f"Bad image type. Expected: bytes, Image, or Image url. Got: {debug.format(v)}")
         else:
             return False
 
@@ -155,9 +149,7 @@ class DeforumArgs(BaseModel):
     ] = "https://www.saasdesign.io/wp-content/uploads/2021/02/palette-3-min-980x588.png"
     colormatch_n_colors: Optional[int] = 4
     ignore_sat_scale: Optional[float] = 0
-    clip_name: Optional[
-        Literal["ViT-L/14", "ViT-L/14@336px", "ViT-B/16", "ViT-B/32"]
-    ] = "ViT-L/14"
+    clip_name: Optional[Literal["ViT-L/14", "ViT-L/14@336px", "ViT-B/16", "ViT-B/32"]] = "ViT-L/14"
     clip_loss_scale: Optional[float] = 0
     aesthetics_loss_scale: Optional[float] = 0
     cutn: Optional[int] = 1
@@ -167,9 +159,7 @@ class DeforumArgs(BaseModel):
     gradient_wrt: Optional[Literal["x", "x0_pred"]] = "x0_pred"
     gradient_add_to: Optional[Literal["cond", "uncond", "both"]] = "both"
     decode_method: Optional[Literal["autoencoder", "linear"]] = "linear"
-    grad_threshold_type: Optional[
-        Literal["dynamic", "static", "mean", "schedule"]
-    ] = "dynamic"
+    grad_threshold_type: Optional[Literal["dynamic", "static", "mean", "schedule"]] = "dynamic"
     clamp_grad_threshold: Optional[float] = 0.2
     clamp_start: Optional[float] = 0.2
     clamp_stop: Optional[float] = 0.01
@@ -179,9 +169,7 @@ class DeforumArgs(BaseModel):
     C: Optional[int] = 4
     f: Optional[int] = 8
     prompt: Optional[str] = ""
-    timestring: Optional[str] = Field(
-        default_factory=lambda: time.strftime("%Y%m%d%H%M%S")
-    )
+    timestring: Optional[str] = Field(default_factory=lambda: time.strftime("%Y%m%d%H%M%S"))
     init_latent: Optional[Union[float, torch.Tensor, np.ndarray]] = None
     init_sample: Optional[Union[float, torch.Tensor, np.ndarray]] = None
     init_c: Optional[Union[float, torch.Tensor, np.ndarray]] = None
@@ -203,9 +191,7 @@ class DeforumArgs(BaseModel):
 
 
 class DeforumAnimArgs(BaseModel):
-    animation_mode: Optional[
-        Literal["None", "2D", "3D", "Video Input", "Interpolation"]
-    ] = "None"
+    animation_mode: Optional[Literal["None", "2D", "3D", "Video Input", "Interpolation"]] = "None"
     max_frames: Optional[int] = 1000
     border: Optional[Literal["wrap", "replicate"]] = "replicate"
     angle: Optional[str] = "0:(0)"
