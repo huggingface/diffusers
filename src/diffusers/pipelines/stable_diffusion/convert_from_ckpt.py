@@ -813,7 +813,7 @@ def load_pipeline_from_original_stable_diffusion_ckpt(
             The prediction type that the model was trained on. Use `'epsilon'` for Stable Diffusion v1.X and Stable
             Diffusion v2 Base. Use `'v_prediction'` for Stable Diffusion v2.
         num_in_channels (`int`, *optional*, defaults to None):
-            The number of input channels. If `None` number of input channels will be automatically inferred.
+            The number of input channels. If `None`, it will be automatically inferred.
         scheduler_type (`str`, *optional*, defaults to 'pndm'):
             Type of scheduler to use. Should be one of `["pndm", "lms", "heun", "euler", "euler-ancestral", "dpm",
             "ddim"]`.
