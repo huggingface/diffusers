@@ -14,7 +14,6 @@
 
 import numpy as np
 import torch
-
 import tqdm
 
 from ...models.unet_1d import UNet1DModel
@@ -57,13 +56,13 @@ class ValueGuidedRLPipeline(DiffusionPipeline):
         for key in self.data.keys():
             try:
                 self.means[key] = self.data[key].mean()
-            except:
+            except:  # noqa: E722
                 pass
         self.stds = dict()
         for key in self.data.keys():
             try:
                 self.stds[key] = self.data[key].std()
-            except:
+            except:  # noqa: E722
                 pass
         self.state_dim = env.observation_space.shape[0]
         self.action_dim = env.action_space.shape[0]

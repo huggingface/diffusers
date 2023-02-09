@@ -19,9 +19,9 @@ import json
 import os
 
 import torch
+from transformers.file_utils import has_file
 
 from diffusers import UNet2DConditionModel, UNet2DModel
-from transformers.file_utils import has_file
 
 
 do_only_config = False

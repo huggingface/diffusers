@@ -16,9 +16,8 @@ import inspect
 from typing import Callable, List, Optional, Union
 
 import numpy as np
-import torch
-
 import PIL
+import torch
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel
@@ -148,7 +147,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
         Function invoked when calling the pipeline for generation.
 
         Args:
-             prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
             image (`PIL.Image.Image`):

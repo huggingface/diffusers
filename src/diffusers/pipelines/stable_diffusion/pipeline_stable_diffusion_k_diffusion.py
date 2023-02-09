@@ -16,7 +16,6 @@ import importlib
 from typing import Callable, List, Optional, Union
 
 import torch
-
 from k_diffusion.external import CompVisDenoiser, CompVisVDenoiser
 
 from ...pipelines import DiffusionPipeline
