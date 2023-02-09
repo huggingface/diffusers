@@ -251,6 +251,32 @@ class EMAModel:
             "collected_params": self.collected_params,
         }
 
+    def store(self, parameters: Iterable[torch.nn.Parameter]) -> None:
+        r"""
+        Args:
+        Save the current parameters for restoring later.
+            parameters: Iterable of `torch.nn.Parameter`; the parameters to be
+                temporarily stored.
+        """
+        parameters = list(parameters)
+        self.collected_params = [param.clone() for param in parameters]
+
+    def restore(self, parameters: Iterable[torch.nn.Parameter]) -> None:
+        r"""
+        Args:
+        Restore the parameters stored with the `store` method. Useful to validate the model with EMA parameters without
+        affecting the original optimization process. Store the parameters before the `copy_to()` method. After
+        validation (or model saving), use this to restore the former parameters.
+            parameters: Iterable of `torch.nn.Parameter`; the parameters to be
+                updated with the stored parameters. If `None`, the parameters with which this
+                `ExponentialMovingAverage` was initialized will be used.
+        """
+        if self.collected_params is None:
+            raise RuntimeError("This ExponentialMovingAverage has no `store()`ed weights " "to `restore()`")
+        parameters = list(parameters)
+        for c_param, param in zip(self.collected_params, parameters):
+            param.data.copy_(c_param.data)
+
     def load_state_dict(self, state_dict: dict) -> None:
         r"""
         Args:
