@@ -99,7 +99,7 @@ class CrossAttention(nn.Module):
         self.to_out.append(nn.Dropout(dropout))
 
         # set attention processor
-        processor = processor if processor is not None else CrossAttnProcessor
+        processor = processor if processor is not None else CrossAttnProcessor()
         self.set_processor(processor)
 
     def set_use_memory_efficient_attention_xformers(
