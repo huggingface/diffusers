@@ -154,6 +154,9 @@ def variant_compatible_siblings(info, variant=None) -> Union[List[os.PathLike], 
         if variant_filename not in usable_filenames:
             usable_filenames.add(f)
 
+    if len(variant_filenames) > 0 and usable_filenames != variant_filenames:
+        logger.warn(f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(usable_filenames - variant_filenames)} from repository files: {', '.join(filenames)}]\nIf this behavior is not expected, please check your folder structure.")
+
     return usable_filenames
 
 
@@ -500,7 +503,7 @@ class DiffusionPipeline(ConfigMixin):
             )
 
             # retrieve all folder_names that contain relevant files
-            folder_names = [k for k in config_dict.keys() if not k.startswith("_")]
+            folder_names = [k for k, v in config_dict.items() if isinstance(v, list)]
 
             if not local_files_only:
                 info = model_info(
@@ -509,11 +512,14 @@ class DiffusionPipeline(ConfigMixin):
                     revision=revision,
                 )
                 model_filenames = variant_compatible_siblings(info, variant=variant)
-                model_folder_names = set([os.path.split(f) for f in model_filenames])
+                model_folder_names = set([os.path.split(f)[0] for f in model_filenames])
+
+                # all filenames compatible with variant will be added
+                allow_patterns = list(model_filenames)
 
                 # allow all patterns from non-model folders
                 # this enables downloading schedulers, tokenizers, ...
-                allow_patterns = [os.path.join(k, "*") for k in folder_names if k not in model_folder_names]
+                allow_patterns += [os.path.join(k, "*") for k in folder_names if k not in model_folder_names]
                 # also allow downloading config.jsons with the model
                 allow_patterns += [os.path.join(k, "*.json") for k in model_folder_names]
 
@@ -548,8 +554,6 @@ class DiffusionPipeline(ConfigMixin):
                     CUSTOM_PIPELINE_FILE_NAME,
                 ]
 
-            import ipdb; ipdb.set_trace()
-
             if cls != DiffusionPipeline:
                 requested_pipeline_class = cls.__name__
             else:
@@ -576,6 +580,18 @@ class DiffusionPipeline(ConfigMixin):
         else:
             cached_folder = pretrained_model_name_or_path
             config_dict = cls.load_config(cached_folder)
+
+        # retrieve which subfolders should load variants
+        model_variants = {}
+        if variant is not None:
+            for folder in os.listdir(cached_folder):
+                folder_path = os.path.join(cached_folder, folder)
+                variant_exists = os.path.isdir(folder_path) and any(path.split(".")[1] == variant for path in os.listdir(folder_path))
+                if variant_exists:
+                    model_variants[folder] = variant
+
+        # TODO(PVP) - delete if not needed anymore
+        print(os.system(f"cd {cached_folder} && tree"))
 
         # 2. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
@@ -772,7 +788,7 @@ class DiffusionPipeline(ConfigMixin):
                 # This makes sure that the weights won't be initialized which significantly speeds up loading.
                 if is_diffusers_model or is_transformers_model:
                     loading_kwargs["device_map"] = device_map
-                    loading_kwargs["variant"] = variant
+                    loading_kwargs["variant"] = model_variants.pop(name, None)
                     if from_flax:
                         loading_kwargs["from_flax"] = True
 
