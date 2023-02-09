@@ -99,11 +99,7 @@ class CrossAttention(nn.Module):
         self.to_out.append(nn.Dropout(dropout))
 
         # set attention processor
-        if hasattr(F, "scaled_dot_product_attention"):
-            defulti_processor = TorchAttentionProcessor()
-        else:
-            defulti_processor = CrossAttnProcessor()
-        processor = processor if processor is not None else defulti_processor
+        processor = processor if processor is not None else CrossAttnProcessor
         self.set_processor(processor)
 
     def set_use_memory_efficient_attention_xformers(
@@ -441,6 +437,11 @@ class XFormersCrossAttnProcessor:
 
 
 class TorchAttentionProcessor:
+    def __init__(self):
+        # throw an error if scaled dot product attention is not available
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError("TorchAttentionProcessor requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+    
     def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None):
         batch_size, sequence_length, _ = hidden_states.shape
 
