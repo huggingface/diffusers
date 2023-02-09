@@ -24,8 +24,6 @@ from configuration import Root, DeforumAnimArgs, DeforumArgs
 
 REPO_ID = "feizhengcong/video-stable-diffusion"
 SD_REPO_ID = "runwayml/stable-diffusion-v1-5"
-# DPT_MODEL = "dpt_large-midas-2f21e586.pt"
-# ADABIN_MODEL = "AdaBins_nyu.pt"
 
 
 class VideoStableDiffusionPipeline(DiffusionPipeline):
@@ -38,9 +36,6 @@ class VideoStableDiffusionPipeline(DiffusionPipeline):
         root.output_path = os.path.join(sys.path[0], root.output_path)
         root.configs_path = os.path.join(sys.path[0], "deforum-stable-diffusion", root.configs_path)
         root.models_path, root.output_path = get_model_output_paths(root)
-
-        # download stable diffusion v1.5 checkpoint to ./models
-        hf_hub_download(repo_id=SD_REPO_ID, filename=root.model_checkpoint, cache_dir=root.models_path)
 
         root.model, root.device = load_model(root, load_on_run_all=True, check_sha256=False)
 
