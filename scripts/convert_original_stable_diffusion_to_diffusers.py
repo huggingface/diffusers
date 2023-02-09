@@ -117,7 +117,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--clip_stats_path",
         type=str,
-        help="Path to the clip stats file. Only required with certain stable unclip models.",
+        help="Path to the clip stats file. Only required if the stable unclip model's config specifies `model.params.noise_aug_config.params.clip_stats_path`.",
         required=False,
     )
     args = parser.parse_args()
