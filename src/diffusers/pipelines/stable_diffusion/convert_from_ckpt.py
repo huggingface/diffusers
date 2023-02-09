@@ -42,7 +42,6 @@ from diffusers import (
     HeunDiscreteScheduler,
     LDMTextToImagePipeline,
     LMSDiscreteScheduler,
-    NoiseAugmentor,
     PNDMScheduler,
     PriorTransformer,
     StableDiffusionPipeline,
@@ -54,6 +53,7 @@ from diffusers import (
 from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
 from diffusers.pipelines.paint_by_example import PaintByExampleImageEncoder, PaintByExamplePipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
 from ...utils import is_omegaconf_available, is_safetensors_available, logging
 from ...utils.import_utils import BACKENDS_MAPPING
@@ -852,11 +852,15 @@ def stable_unclip_image_encoder(original_config):
     return feature_extractor, image_encoder
 
 
-def stable_unclip_noise_augmentor(
+def stable_unclip_image_noising_components(
     original_config, clip_stats_path: Optional[str] = None, device: Optional[str] = None
 ):
     """
-    Returns the noise augmentor for the img2img and txt2img unclip pipelines.
+    Returns the noising components for the img2img and txt2img unclip pipelines.
+
+    Converts the stability noise augmentor into
+    1. a `StableUnCLIPImageNormalizer` for holding the CLIP stats
+    2. a `DDPMScheduler` for holding the noise schedule
 
     If the noise augmentor config specifies a clip stats path, the `clip_stats_path` must be provided.
     """
@@ -870,9 +874,8 @@ def stable_unclip_noise_augmentor(
         max_noise_level = noise_aug_config.noise_schedule_config.timesteps
         beta_schedule = noise_aug_config.noise_schedule_config.beta_schedule
 
-        noise_augmentor = NoiseAugmentor(
-            embedding_dim=embedding_dim, max_noise_level=max_noise_level, beta_schedule=beta_schedule
-        )
+        image_normalizer = StableUnCLIPImageNormalizer(embedding_dim=embedding_dim)
+        image_noising_scheduler = DDPMScheduler(num_train_timesteps=max_noise_level, beta_schedule=beta_schedule)
 
         if "clip_stats_path" in noise_aug_config:
             if clip_stats_path is None:
@@ -887,11 +890,11 @@ def stable_unclip_noise_augmentor(
                 "std": clip_std,
             }
 
-            noise_augmentor.load_state_dict(clip_stats_state_dict)
+            image_normalizer.load_state_dict(clip_stats_state_dict)
     else:
         raise NotImplementedError(f"Unknown noise augmentor class: {noise_aug_class}")
 
-    return noise_augmentor
+    return image_normalizer, image_noising_scheduler
 
 
 def load_pipeline_from_original_stable_diffusion_ckpt(
@@ -1098,7 +1101,7 @@ def load_pipeline_from_original_stable_diffusion_ckpt(
                 requires_safety_checker=False,
             )
         else:
-            noise_augmentor = stable_unclip_noise_augmentor(
+            image_normalizer, image_noising_scheduler = stable_unclip_image_noising_components(
                 original_config, clip_stats_path=clip_stats_path, device=device
             )
 
@@ -1106,14 +1109,19 @@ def load_pipeline_from_original_stable_diffusion_ckpt(
                 feature_extractor, image_encoder = stable_unclip_image_encoder(original_config)
 
                 pipe = StableUnCLIPImg2ImgPipeline(
-                    vae=vae,
-                    unet=unet,
-                    text_encoder=text_model,
-                    tokenizer=tokenizer,
-                    scheduler=scheduler,
-                    image_encoder=image_encoder,
+                    # image encoding components
                     feature_extractor=feature_extractor,
-                    noise_augmentor=noise_augmentor,
+                    image_encoder=image_encoder,
+                    # image noising components
+                    image_normalizer=image_normalizer,
+                    image_noising_scheduler=image_noising_scheduler,
+                    # regular denoising components
+                    tokenizer=tokenizer,
+                    text_encoder=text_model,
+                    unet=unet,
+                    scheduler=scheduler,
+                    # vae
+                    vae=vae,
                 )
             elif stable_unclip == "txt2img":
                 if stable_unclip_prior == "karlo":
@@ -1129,16 +1137,21 @@ def load_pipeline_from_original_stable_diffusion_ckpt(
                     raise NotImplementedError(f"unknown prior for stable unclip model: {stable_unclip_prior}")
 
                 pipe = StableUnCLIPPipeline(
-                    vae=vae,
-                    unet=unet,
-                    tokenizer=tokenizer,
-                    text_encoder=text_model,
+                    # prior components
                     prior_tokenizer=prior_tokenizer,
                     prior_text_encoder=prior_text_model,
-                    scheduler=scheduler,
-                    noise_augmentor=noise_augmentor,
                     prior=prior,
                     prior_scheduler=prior_scheduler,
+                    # image noising components
+                    image_normalizer=image_normalizer,
+                    image_noising_scheduler=image_noising_scheduler,
+                    # regular denoising components
+                    tokenizer=tokenizer,
+                    text_encoder=text_model,
+                    unet=unet,
+                    scheduler=scheduler,
+                    # vae
+                    vae=vae,
                 )
             else:
                 raise NotImplementedError(f"unknown `stable_unclip` type: {stable_unclip}")

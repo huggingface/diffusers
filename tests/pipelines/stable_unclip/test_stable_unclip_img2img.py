@@ -12,8 +12,9 @@ from transformers import (
     CLIPVisionModelWithProjection,
 )
 
-from diffusers import AutoencoderKL, DDIMScheduler, NoiseAugmentor, StableUnCLIPImg2ImgPipeline, UNet2DConditionModel
+from diffusers import AutoencoderKL, DDIMScheduler, DDPMScheduler, StableUnCLIPImg2ImgPipeline, UNet2DConditionModel
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import floats_tensor, load_image, load_numpy, require_torch_gpu, slow, torch_device
 
@@ -46,7 +47,8 @@ class StableUnCLIPImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         # regular denoising components
 
         torch.manual_seed(0)
-        noise_augmentor = NoiseAugmentor(embedding_dim=embedder_hidden_size, beta_schedule="squaredcos_cap_v2")
+        image_normalizer = StableUnCLIPImageNormalizer(embedding_dim=embedder_hidden_size)
+        image_noising_scheduler = DDPMScheduler(beta_schedule="squaredcos_cap_v2")
 
         torch.manual_seed(0)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
@@ -103,8 +105,10 @@ class StableUnCLIPImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
             # image encoding components
             "feature_extractor": feature_extractor,
             "image_encoder": image_encoder,
+            # image noising components
+            "image_normalizer": image_normalizer,
+            "image_noising_scheduler": image_noising_scheduler,
             # regular denoising components
-            "noise_augmentor": noise_augmentor,
             "tokenizer": tokenizer,
             "text_encoder": text_encoder,
             "unet": unet,

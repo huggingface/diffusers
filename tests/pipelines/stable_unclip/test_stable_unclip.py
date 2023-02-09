@@ -8,11 +8,11 @@ from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
     DDPMScheduler,
-    NoiseAugmentor,
     PriorTransformer,
     StableUnCLIPPipeline,
     UNet2DConditionModel,
 )
+from diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 from diffusers.utils.testing_utils import load_numpy, require_torch_gpu, slow, torch_device
 
 from ...test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
@@ -70,7 +70,8 @@ class StableUnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # regular denoising components
 
         torch.manual_seed(0)
-        noise_augmentor = NoiseAugmentor(embedding_dim=embedder_hidden_size, beta_schedule="squaredcos_cap_v2")
+        image_normalizer = StableUnCLIPImageNormalizer(embedding_dim=embedder_hidden_size)
+        image_noising_scheduler = DDPMScheduler(beta_schedule="squaredcos_cap_v2")
 
         torch.manual_seed(0)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
@@ -129,8 +130,10 @@ class StableUnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "prior_text_encoder": prior_text_encoder,
             "prior": prior,
             "prior_scheduler": prior_scheduler,
+            # image noising components
+            "image_normalizer": image_normalizer,
+            "image_noising_scheduler": image_noising_scheduler,
             # regular denoising components
-            "noise_augmentor": noise_augmentor,
             "tokenizer": tokenizer,
             "text_encoder": text_encoder,
             "unet": unet,

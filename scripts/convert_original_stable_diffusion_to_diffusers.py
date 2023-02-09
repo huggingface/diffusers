@@ -135,7 +135,7 @@ if __name__ == "__main__":
         from_safetensors=args.from_safetensors,
         device=args.device,
         stable_unclip=args.stable_unclip,
-        stable_unclip_prior=args.stabe_unclip_prior,
+        stable_unclip_prior=args.stable_unclip_prior,
         clip_stats_path=args.clip_stats_path,
     )
     pipe.save_pretrained(args.dump_path, safe_serialization=args.to_safetensors)

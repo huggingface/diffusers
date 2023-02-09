@@ -48,6 +48,7 @@ if is_transformers_available() and is_torch_available():
     from .pipeline_stable_unclip import StableUnCLIPPipeline
     from .pipeline_stable_unclip_img2img import StableUnCLIPImg2ImgPipeline
     from .safety_checker import StableDiffusionSafetyChecker
+    from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
 try:
     if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.25.0")):

@@ -35,7 +35,6 @@ else:
     from .models import (
         AutoencoderKL,
         ModelMixin,
-        NoiseAugmentor,
         PriorTransformer,
         Transformer2DModel,
         UNet1DModel,

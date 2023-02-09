@@ -19,10 +19,12 @@ import torch
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 from transformers.models.clip.modeling_clip import CLIPTextModelOutput
 
-from ...models import AutoencoderKL, NoiseAugmentor, PriorTransformer, UNet2DConditionModel
+from ...models import AutoencoderKL, PriorTransformer, UNet2DConditionModel
+from ...models.embeddings import get_timestep_embedding
 from ...schedulers import DDIMScheduler, DDPMScheduler
 from ...utils import is_accelerate_available, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -62,10 +64,12 @@ class StableUnCLIPPipeline(DiffusionPipeline):
             The canonincal unCLIP prior to approximate the image embedding from the text embedding.
         prior_scheduler ([`DDPMScheduler`]):
             Scheduler used in the prior denoising process.
-        noise_augmentor ([`NoiseAugmentor`]):
-            Layer for adding noise to the predicted image embeddings. The amount of noise to add is determined by
-            `noise_level` in `StableUnCLIPPipeline.__call__`. See `NoiseAugmentor` for more details on how noise is
-            added.
+        image_normalizer ([`StableUnCLIPImageNormalizer`]):
+            Used to normalize the predicted image embeddings before the noise is applied and un-normalize the image
+            embeddings after the noise has been applied.
+        image_noising_scheduler ([`DDPMScheduler`]):
+            Noise schedule for adding noise to the predicted image embeddings. The amount of noise to add is determined
+            by `noise_level` in `StableUnCLIPPipeline.__call__`.
         tokenizer (`CLIPTokenizer`):
             Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
@@ -84,8 +88,11 @@ class StableUnCLIPPipeline(DiffusionPipeline):
     prior: PriorTransformer
     prior_scheduler: DDPMScheduler
 
+    # image noising components
+    image_normalizer: StableUnCLIPImageNormalizer
+    image_noising_scheduler: DDPMScheduler
+
     # regular denoising components
-    noise_augmentor: NoiseAugmentor
     tokenizer: CLIPTokenizer
     text_encoder: CLIPTextModel
     unet: UNet2DConditionModel
@@ -100,8 +107,10 @@ class StableUnCLIPPipeline(DiffusionPipeline):
         prior_text_encoder: CLIPTextModelWithProjection,
         prior: PriorTransformer,
         prior_scheduler: DDPMScheduler,
+        # image noising components
+        image_normalizer: StableUnCLIPImageNormalizer,
+        image_noising_scheduler: DDPMScheduler,
         # regular denoising components
-        noise_augmentor: NoiseAugmentor,
         tokenizer: CLIPTokenizer,
         text_encoder: CLIPTextModelWithProjection,
         unet: UNet2DConditionModel,
@@ -116,7 +125,8 @@ class StableUnCLIPPipeline(DiffusionPipeline):
             prior_text_encoder=prior_text_encoder,
             prior=prior,
             prior_scheduler=prior_scheduler,
-            noise_augmentor=noise_augmentor,
+            image_normalizer=image_normalizer,
+            image_noising_scheduler=image_noising_scheduler,
             tokenizer=tokenizer,
             text_encoder=text_encoder,
             unet=unet,
@@ -157,10 +167,9 @@ class StableUnCLIPPipeline(DiffusionPipeline):
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        # TODO: self.prior.post_process_latents is not covered by the offload hooks, so it fails if added to the list
+        # TODO: self.prior.post_process_latents and self.image_noiser.{scale,unscale} are not covered by the offload hooks, so they fails if added to the list
         models = [
             self.prior_text_encoder,
-            self.noise_augmentor,
             self.text_encoder,
             self.unet,
             self.vae,
@@ -511,9 +520,9 @@ class StableUnCLIPPipeline(DiffusionPipeline):
                     f" {negative_prompt_embeds.shape}."
                 )
 
-        if noise_level < 0 or noise_level >= self.noise_augmentor.max_noise_level:
+        if noise_level < 0 or noise_level >= self.image_noising_scheduler.config.num_train_timesteps:
             raise ValueError(
-                f"`noise_level` must be between 0 and {self.noise_augmentor.max_noise_level - 1}, inclusive."
+                f"`noise_level` must be between 0 and {self.image_noising_scheduler.config.num_train_timesteps - 1}, inclusive."
             )
 
     # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
@@ -527,6 +536,51 @@ class StableUnCLIPPipeline(DiffusionPipeline):
 
         latents = latents * scheduler.init_noise_sigma
         return latents
+
+    def noise_image_embeddings(
+        self,
+        image_embeds: torch.Tensor,
+        noise_level: int,
+        noise: Optional[torch.FloatTensor] = None,
+        generator: Optional[torch.Generator] = None,
+    ):
+        """
+        Add noise to the image embeddings. The amount of noise is controlled by a `noise_level` input. A higher
+        `noise_level` increases the variance in the final un-noised images.
+
+        The noise is applied in two ways
+        1. A noise schedule is applied directly to the embeddings
+        2. A vector of sinusoidal time embeddings are appended to the output.
+
+        In both cases, the amount of noise is controlled by the same `noise_level`.
+
+        The embeddings are normalized before the noise is applied and un-normalized after the noise is applied.
+        """
+        if noise is None:
+            noise = randn_tensor(
+                image_embeds.shape, generator=generator, device=image_embeds.device, dtype=image_embeds.dtype
+            )
+
+        noise_level = torch.tensor([noise_level] * image_embeds.shape[0], device=image_embeds.device)
+
+        image_embeds = self.image_normalizer.scale(image_embeds)
+
+        image_embeds = self.image_noising_scheduler.add_noise(image_embeds, timesteps=noise_level, noise=noise)
+
+        image_embeds = self.image_normalizer.unscale(image_embeds)
+
+        noise_level = get_timestep_embedding(
+            timesteps=noise_level, embedding_dim=image_embeds.shape[-1], flip_sin_to_cos=True, downscale_freq_shift=0
+        )
+
+        # `get_timestep_embeddings` does not contain any weights and will always return f32 tensors,
+        # but we might actually be running in fp16. so we need to cast here.
+        # there might be better ways to encapsulate this.
+        noise_level = noise_level.to(image_embeds.dtype)
+
+        image_embeds = torch.cat((image_embeds, noise_level), 1)
+
+        return image_embeds
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -617,7 +671,7 @@ class StableUnCLIPPipeline(DiffusionPipeline):
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
             noise_level (`int`, *optional*, defaults to `0`):
                 The amount of noise to add to the image embeddings. A higher `noise_level` increases the variance in
-                the final un-noised images. See `NoiseAugmentor` for how the noise is added.
+                the final un-noised images. See `StableUnCLIPPipeline.noise_image_embeddings` for details.
             prior_num_inference_steps (`int`, *optional*, defaults to 25):
                 The number of denoising steps in the prior denoising process. More denoising steps usually lead to a
                 higher quality image at the expense of slower inference.
@@ -747,7 +801,11 @@ class StableUnCLIPPipeline(DiffusionPipeline):
         )
 
         # 8. Prepare image embeddings
-        image_embeds = self.noise_augmentor(image_embeds, noise_level=noise_level, generator=generator)
+        image_embeds = self.noise_image_embeddings(
+            image_embeds=image_embeds,
+            noise_level=noise_level,
+            generator=generator,
+        )
 
         if do_classifier_free_guidance:
             negative_prompt_embeds = torch.zeros_like(image_embeds)
