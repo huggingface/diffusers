@@ -48,7 +48,10 @@ if __name__ == "__main__":
         "--pipeline_type",
         default=None,
         type=str,
-        help="The pipeline type. If `None` pipeline will be automatically inferred.",
+        help=(
+            "The pipeline type. One of 'FrozenOpenCLIPEmbedder', 'FrozenCLIPEmbedder', 'PaintByExample'"
+            ". If `None` pipeline will be automatically inferred."
+        ),
     )
     parser.add_argument(
         "--image_size",
@@ -65,7 +68,7 @@ if __name__ == "__main__":
         type=str,
         help=(
             "The prediction type that the model was trained on. Use 'epsilon' for Stable Diffusion v1.X and Stable"
-            " Siffusion v2 Base. Use 'v-prediction' for Stable Diffusion v2."
+            " Diffusion v2 Base. Use 'v_prediction' for Stable Diffusion v2."
         ),
     )
     parser.add_argument(
@@ -79,8 +82,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--upcast_attention",
-        default=False,
-        type=bool,
+        action="store_true",
         help=(
             "Whether the attention computation should always be upcasted. This is necessary when running stable"
             " diffusion 2.1."
@@ -111,5 +113,6 @@ if __name__ == "__main__":
         num_in_channels=args.num_in_channels,
         upcast_attention=args.upcast_attention,
         from_safetensors=args.from_safetensors,
+        device=args.device,
     )
     pipe.save_pretrained(args.dump_path, safe_serialization=args.to_safetensors)
