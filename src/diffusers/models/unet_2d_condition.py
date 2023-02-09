@@ -152,10 +152,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         else:
             self.class_embedding = None
 
-        # TODO: add as an arg
-        if True:
-            time_embed_dim = time_embed_dim * 2
-
         self.down_blocks = nn.ModuleList([])
         self.mid_block = None
         self.up_blocks = nn.ModuleList([])

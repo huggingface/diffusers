@@ -36,8 +36,8 @@ from diffusers import (
 )
 from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
 from diffusers.pipelines.paint_by_example import PaintByExampleImageEncoder, PaintByExamplePipeline
-from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
-from transformers import AutoFeatureExtractor, BertTokenizerFast, CLAPAudioConfig, CLAPTextModel, CLAPTokenizer
+from transformers import AutoFeatureExtractor, CLAPAudioConfig, CLAPTextModel, AutoTokenizer, SpeechT5HifiGan, \
+    CLAPTextConfig
 
 from ...utils import is_omegaconf_available, is_safetensors_available
 from ...utils.import_utils import BACKENDS_MAPPING
@@ -628,23 +628,6 @@ def convert_ldm_bert_checkpoint(checkpoint, config):
 
     return hf_model
 
-
-def convert_ldm_clip_checkpoint(checkpoint):
-    text_model = CLAPTextModel.from_pretrained("openai/clip-vit-large-patch14")
-
-    keys = list(checkpoint.keys())
-
-    text_model_dict = {}
-
-    for key in keys:
-        if key.startswith("cond_stage_model.transformer"):
-            text_model_dict[key[len("cond_stage_model.transformer.") :]] = checkpoint[key]
-
-    text_model.load_state_dict(text_model_dict)
-
-    return text_model
-
-
 textenc_conversion_lst = [
     ("cond_stage_model.model.positional_embedding", "text_model.embeddings.position_embedding.weight"),
     ("cond_stage_model.model.token_embedding.weight", "text_model.embeddings.token_embedding.weight"),
@@ -667,73 +650,6 @@ textenc_transformer_conversion_lst = [
 ]
 protected = {re.escape(x[0]): x[1] for x in textenc_transformer_conversion_lst}
 textenc_pattern = re.compile("|".join(protected.keys()))
-
-
-def convert_paint_by_example_checkpoint(checkpoint):
-    config = CLAPVisionConfig.from_pretrained("openai/clip-vit-large-patch14")
-    model = PaintByExampleImageEncoder(config)
-
-    keys = list(checkpoint.keys())
-
-    text_model_dict = {}
-
-    for key in keys:
-        if key.startswith("cond_stage_model.transformer"):
-            text_model_dict[key[len("cond_stage_model.transformer.") :]] = checkpoint[key]
-
-    # load clip vision
-    model.model.load_state_dict(text_model_dict)
-
-    # load mapper
-    keys_mapper = {
-        k[len("cond_stage_model.mapper.res") :]: v
-        for k, v in checkpoint.items()
-        if k.startswith("cond_stage_model.mapper")
-    }
-
-    MAPPING = {
-        "attn.c_qkv": ["attn1.to_q", "attn1.to_k", "attn1.to_v"],
-        "attn.c_proj": ["attn1.to_out.0"],
-        "ln_1": ["norm1"],
-        "ln_2": ["norm3"],
-        "mlp.c_fc": ["ff.net.0.proj"],
-        "mlp.c_proj": ["ff.net.2"],
-    }
-
-    mapped_weights = {}
-    for key, value in keys_mapper.items():
-        prefix = key[: len("blocks.i")]
-        suffix = key.split(prefix)[-1].split(".")[-1]
-        name = key.split(prefix)[-1].split(suffix)[0][1:-1]
-        mapped_names = MAPPING[name]
-
-        num_splits = len(mapped_names)
-        for i, mapped_name in enumerate(mapped_names):
-            new_name = ".".join([prefix, mapped_name, suffix])
-            shape = value.shape[0] // num_splits
-            mapped_weights[new_name] = value[i * shape : (i + 1) * shape]
-
-    model.mapper.load_state_dict(mapped_weights)
-
-    # load final layer norm
-    model.final_layer_norm.load_state_dict(
-        {
-            "bias": checkpoint["cond_stage_model.final_ln.bias"],
-            "weight": checkpoint["cond_stage_model.final_ln.weight"],
-        }
-    )
-
-    # load final proj
-    model.proj_out.load_state_dict(
-        {
-            "bias": checkpoint["proj_out.bias"],
-            "weight": checkpoint["proj_out.weight"],
-        }
-    )
-
-    # load uncond vector
-    model.uncond_vector.data = torch.nn.Parameter(checkpoint["learnable_vector"])
-    return model
 
 
 def convert_laion_clap_checkpoint(checkpoint):
@@ -779,7 +695,7 @@ def convert_laion_clap_checkpoint(checkpoint):
 def load_pipeline_from_original_audioldm_ckpt(
     checkpoint_path: str,
     original_config_file: str = None,
-    image_size: int = 512,
+    image_size: int = 1024,
     prediction_type: str = None,
     model_type: str = None,
     extract_ema: bool = False,
@@ -1024,9 +940,16 @@ def load_pipeline_from_original_audioldm_ckpt(
 
     if model_type == "CLAPAudioEmbeddingClassifierFreev2":
         # TODO: Load CLAP tokenizer + model
-        """text_model = convert_laion_clap_checkpoint(checkpoint)
-        tokenizer = CLAPTokenizer.from_pretrained() pipe = AudioLDMPipeline(
-            vae=vae, text_encoder=text_model, tokenizer=tokenizer, unet=unet, scheduler=scheduler,
-        )
+        #text_model = CLAPTextModel.from_pretrained("laion-ai/clap-htsat-unfused")
+        #tokenizer = AutoTokenizer.from_pretrained("laion-ai/clap-htsat-unfused")
 
-    return pipe"""
+        config = CLAPTextConfig()
+        text_model = CLAPTextModel(config)
+        tokenizer = AutoTokenizer.from_pretrained("roberta-base")
+
+        vocoder = SpeechT5HifiGan.from_pretrained("microsoft/speecht5_hifigan")
+        pipe = AudioLDMPipeline(
+                vae=vae, text_encoder=text_model, tokenizer=tokenizer, unet=unet, scheduler=scheduler, vocoder=vocoder,
+            )
+
+    return pipe

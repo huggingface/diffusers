@@ -18,7 +18,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import torch
 
 from packaging import version
-from transformers import CLAPTextModel, CLAPTokenizer #, HifiGanVocoder
+from transformers import CLAPTextModel, RobertaTokenizer, RobertaTokenizerFast, SpeechT5HifiGan
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
@@ -56,18 +56,18 @@ class AudioLDMPipeline(DiffusionPipeline):
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
         text_encoder ([`CLAPTextModel`]):
-            Frozen text-encoder. Stable Diffusion uses the text portion of
+            Frozen text-encoder. AudioLDM uses the text portion of
             [CLAP](https://huggingface.co/docs/transformers/model_doc/clap#transformers.CLAPTextModel), specifically
             the (TODO) variant.
-        tokenizer (`CLAPTokenizer`):
+        tokenizer ([`PreTrainedTokenizer`]):
             Tokenizer of class
-            [CLAPTokenizer](https://huggingface.co/docs/transformers/v4.27.0/en/model_doc/clap#transformers.CLAPTokenizer).
+            [RobertaTokenizer](https://huggingface.co/docs/transformers/v4.27.0/en/model_doc/clap#transformers.RobertaTokenizer).
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
-        vocoder (`HifiGanVocoder`):
-            Vocoder of class [HifiGanVocoder](https://huggingface.co/docs/transformers/v4.27.0/en/model_doc/speecht5#transformers.HifiGanVocoder).
+        vocoder (`SpeechT5HifiGan`):
+            Vocoder of class [SpeechT5HifiGan](https://huggingface.co/docs/transformers/v4.27.0/en/model_doc/speecht5#transformers.SpeechT5HifiGan).
     """
     _optional_components = ["safety_checker", "feature_extractor"]
 
@@ -75,10 +75,10 @@ class AudioLDMPipeline(DiffusionPipeline):
         self,
         vae: AutoencoderKL,
         text_encoder: CLAPTextModel,
-        tokenizer: CLAPTokenizer,
+        tokenizer: Union[RobertaTokenizer, RobertaTokenizerFast],
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
-        #vocoder: HifiGanVocoder,
+        vocoder: SpeechT5HifiGan,
     ):
         super().__init__()
 
@@ -136,7 +136,7 @@ class AudioLDMPipeline(DiffusionPipeline):
             tokenizer=tokenizer,
             unet=unet,
             scheduler=scheduler,
-            #vocoder=vocoder,
+            vocoder=vocoder,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.register_to_config()
@@ -552,6 +552,7 @@ class AudioLDMPipeline(DiffusionPipeline):
 
         # 5. Prepare latent variables
         num_channels_latents = self.unet.in_channels
+        import ipdb; ipdb.set_trace()
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
