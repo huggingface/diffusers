@@ -18,6 +18,7 @@ import logging
 import math
 import os
 import random
+import warnings
 from pathlib import Path
 from typing import Optional
 
@@ -835,9 +836,11 @@ def main():
             and args.validation_epochs is not None
             and epoch % args.validation_epochs == 0
         ):
-            logger.warning(
-                f"You are doing logging with validation_epochs={args.validation_epochs}."
-                " validation_epochs is being deprecated in favor of validation_steps."
+            warnings.warn(
+                f"Future Warning: You are doing logging with validation_epochs={args.validation_epochs}."
+                " validation_epochs is being deprecated in favor of validation_steps.",
+                FutureWarning,
+                stacklevel=2,
             )
             log_progress(text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch)
     # Create the pipeline using using the trained modules and save it.
