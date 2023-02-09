@@ -438,14 +438,16 @@ class XFormersCrossAttnProcessor:
 
 class TorchAttentionProcessor:
     def __init__(self):
-        # throw an error if scaled dot product attention is not available
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("TorchAttentionProcessor requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
-    
-    def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None):
-        batch_size, sequence_length, _ = hidden_states.shape
+            raise ImportError(
+                "TorchAttentionProcessor requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+            )
 
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+    def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None):
+        batch_size, _, inner_dim = hidden_states.shape
+
+        if attention_mask is not None:
+            raise NotImplementedError("Attention mask is not supported yet.")
 
         query = attn.to_q(hidden_states)
 
@@ -457,7 +459,6 @@ class TorchAttentionProcessor:
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
-        batch_size, sequence_length, inner_dim = query.shape
         head_dim = inner_dim // attn.heads
         query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
@@ -465,12 +466,7 @@ class TorchAttentionProcessor:
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         hidden_states = F.scaled_dot_product_attention(
-            query,
-            key,
-            value,
-            attn_mask=None,
-            dropout_p=0.0,
-            is_causal=False,
+            query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False
         )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
