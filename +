@@ -143,7 +143,7 @@ def variant_compatible_siblings(info, variant=None) -> Union[List[os.PathLike], 
     variant = variant or ""
 
     filenames = set(sibling.rfilename for sibling in info.siblings)
-    save_formats = ["bin", "safetensors", "msgpack", "onnx"]
+    save_formats = ["bin", "safetensors", "flax"]
 
     variant_filenames = set(f for f in filenames if any(f.endswith(f"{variant}.{s}") for s in save_formats))
     non_variant_filenames = set(f for f in filenames if (len(f.split(".")) == 2 and any(f.endswith(f".{s}") for s in save_formats)))
@@ -508,33 +508,24 @@ class DiffusionPipeline(ConfigMixin):
                     use_auth_token=use_auth_token,
                     revision=revision,
                 )
-                model_filenames = variant_compatible_siblings(info, variant=variant)
-                model_folder_names = set([os.path.split(f) for f in model_filenames])
-
-                # allow all patterns from non-model folders
-                # this enables downloading schedulers, tokenizers, ...
-                allow_patterns = [os.path.join(k, "*") for k in folder_names if k not in model_folder_names]
-                # also allow downloading config.jsons with the model
-                allow_patterns += [os.path.join(k, "*.json") for k in model_folder_names]
-
-                allow_patterns += [
-                    SCHEDULER_CONFIG_NAME,
-                    CONFIG_NAME,
-                    cls.config_name,
-                    CUSTOM_PIPELINE_FILE_NAME,
-                ]
+                loadable_filenames = variant_compatible_siblings(info, variant=variant)
 
                 if from_flax:
                     ignore_patterns = ["*.bin", "*.safetensors"]
-                elif is_safetensors_available() and is_safetensors_compatible(model_filenames):
-                    ignore_patterns = ["*.bin", "*.msgpack"]
-                else:
-                    ignore_patterns = ["*.safetensors", "*.msgpack"]
 
+                if is_safetensors_available() and is_safetensors_compatible(loadable_filenames):
+                    ignore_patterns = ["*.bin", "*.msgpack"]
+
+                allow_patterns = create_allow_patterns(from_flax, variant, info, allow_patterns)
+                ignore_patterns = create_ignore_patterns(from_flax, variant, info, allow_patterns)
             else:
                 # allow everything since it has to be downloaded anyways
+                # create allow patterns
+                # first we allow everything
+                # i. add all files from subfolders
                 allow_patterns = [os.path.join(k, "*") for k in folder_names]
 
+                # ii. add all files that can be loaded from root
                 allow_patterns += [
                     WEIGHTS_NAME,
                     _add_variant(WEIGHTS_NAME),
@@ -548,7 +539,52 @@ class DiffusionPipeline(ConfigMixin):
                     CUSTOM_PIPELINE_FILE_NAME,
                 ]
 
-            import ipdb; ipdb.set_trace()
+            def create_allow_patterns(from_flax, variant, info, allow_patterns):
+                # from flax
+                if from_flax:
+                    for pattern in [WEIGHTS_NAME, ONNX_WEIGHTS_NAME, _add_variant(WEIGHTS_NAME)]:
+                        allow_patterns.remove(pattern)
+                else:
+                    allow_patterns.remove(FLAX_WEIGHTS_NAME)
+
+                allow_pa
+
+                # variant
+
+
+                # safetensors
+#                if is_safetensors_available() and is_safetensors_compatible(info):
+                    # if safetensors is available we can assume that info is defined
+#                    allow_patterns.remove(WEIGHTS_NAME)
+#                else:
+#                    allow_patterns.remove(SAFETENSORS_WEIGHTS_NAME)
+
+
+            if from_flax:
+                allow_patterns += [
+                    FLAX_WEIGHTS_NAME,
+                ]
+                allow_patterns.remove(WEIGHTS_NAME)
+                allow_patterns.remove(ONNX_WEIGHTS_NAME)
+                allow_patterns.remove(_add_variant(WEIGHTS_NAME))
+
+            # make sure we don't download flax weights
+
+            if is_safetensors_available() and not local_files_only:
+                if is_safetensors_compatible(info):
+                    ignore_patterns.append("*.bin")
+                else:
+                    # as a safety mechanism we also don't download safetensors if
+                    # not all safetensors files are there
+                    ignore_patterns.append("*.safetensors")
+            else:
+                ignore_patterns.append("*.safetensors")
+
+            if from_flax:
+                ignore_patterns = ["*.bin", "*.safetensors"]
+            else:
+                ignore_patterns = ["*.msgpack"]
+
 
             if cls != DiffusionPipeline:
                 requested_pipeline_class = cls.__name__
