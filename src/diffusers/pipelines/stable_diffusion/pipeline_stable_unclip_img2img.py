@@ -608,7 +608,7 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
 
         Returns:
             [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~ pipeline_utils.ImagePipelineOutput`] if `return_dict`
-            is True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
+            is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
