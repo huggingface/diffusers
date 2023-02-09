@@ -636,7 +636,7 @@ class StableUnCLIPPipeline(DiffusionPipeline):
         Examples:
 
         Returns:
-            [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~ pipeline_utils.ImagePipelineOutput `] if `return_dict`
+            [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~ pipeline_utils.ImagePipelineOutput`] if `return_dict`
             is True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
         """
         # 0. Default height and width to unet
