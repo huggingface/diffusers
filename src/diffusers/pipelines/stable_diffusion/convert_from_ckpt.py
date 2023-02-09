@@ -806,7 +806,7 @@ def load_pipeline_from_original_stable_diffusion_ckpt(
         original_config_file (`str`):
             Path to `.yaml` config file corresponding to the original architecture. If `None`, will be automatically
             inferred by looking for a key that only exists in SD2.0 models.
-        image_size (`int`, optional*, defaults to 512):
+        image_size (`int`, *optional*, defaults to 512):
             The image size that the model was trained on. Use 512 for Stable Diffusion v1.X and Stable Diffusion v2
             Base. Use 768 for Stable Diffusion v2.
         prediction_type (`str`, *optional*):
