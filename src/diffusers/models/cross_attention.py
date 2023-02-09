@@ -99,7 +99,11 @@ class CrossAttention(nn.Module):
         self.to_out.append(nn.Dropout(dropout))
 
         # set attention processor
-        processor = processor if processor is not None else CrossAttnProcessor()
+        if hasattr(F, "scaled_dot_product_attention"):
+            defulti_processor = TorchAttentionProcessor()
+        else:
+            defulti_processor = CrossAttnProcessor()
+        processor = processor if processor is not None else defulti_processor
         self.set_processor(processor)
 
     def set_use_memory_efficient_attention_xformers(
@@ -428,6 +432,48 @@ class XFormersCrossAttnProcessor:
         )
         hidden_states = hidden_states.to(query.dtype)
         hidden_states = attn.batch_to_head_dim(hidden_states)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+        return hidden_states
+
+
+class TorchAttentionProcessor:
+    def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None):
+        batch_size, sequence_length, _ = hidden_states.shape
+
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+
+        query = attn.to_q(hidden_states)
+
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.cross_attention_norm:
+            encoder_hidden_states = attn.norm_cross(encoder_hidden_states)
+
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        batch_size, sequence_length, inner_dim = query.shape
+        head_dim = inner_dim // attn.heads
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        # the output of sdp = (batch, num_heads, seq_len, head_dim)
+        hidden_states = F.scaled_dot_product_attention(
+            query,
+            key,
+            value,
+            attn_mask=None,
+            dropout_p=0.0,
+            is_causal=False,
+        )
+
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
 
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)
