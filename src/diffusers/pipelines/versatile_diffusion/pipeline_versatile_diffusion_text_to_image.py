@@ -17,7 +17,6 @@ from typing import Callable, List, Optional, Union
 
 import torch
 import torch.utils.checkpoint
-
 from transformers import CLIPFeatureExtractor, CLIPTextModelWithProjection, CLIPTokenizer
 
 from ...models import AutoencoderKL, Transformer2DModel, UNet2DConditionModel

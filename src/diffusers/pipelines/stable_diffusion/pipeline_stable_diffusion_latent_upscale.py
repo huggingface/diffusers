@@ -15,10 +15,9 @@
 from typing import Callable, List, Optional, Union
 
 import numpy as np
+import PIL
 import torch
 import torch.nn.functional as F
-
-import PIL
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel

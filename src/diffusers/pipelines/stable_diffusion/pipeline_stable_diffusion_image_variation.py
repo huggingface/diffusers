@@ -15,9 +15,8 @@
 import inspect
 from typing import Callable, List, Optional, Union
 
-import torch
-
 import PIL
+import torch
 from packaging import version
 from transformers import CLIPFeatureExtractor, CLIPVisionModelWithProjection
 

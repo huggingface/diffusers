@@ -19,13 +19,13 @@ import unittest
 
 import numpy as np
 import torch
+from PIL import Image
+from transformers import CLIPImageProcessor, CLIPVisionConfig
 
 from diffusers import AutoencoderKL, PaintByExamplePipeline, PNDMScheduler, UNet2DConditionModel
 from diffusers.pipelines.paint_by_example import PaintByExampleImageEncoder
 from diffusers.utils import floats_tensor, load_image, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
-from PIL import Image
-from transformers import CLIPImageProcessor, CLIPVisionConfig
 
 from ...test_pipelines_common import PipelineTesterMixin
 

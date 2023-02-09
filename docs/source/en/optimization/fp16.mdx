@@ -210,6 +210,7 @@ torch.set_grad_enabled(False)
 n_experiments = 2
 unet_runs_per_experiment = 50
 
+
 # load inputs
 def generate_inputs():
     sample = torch.randn(2, 4, 64, 64).half().cuda()
@@ -288,6 +289,8 @@ pipe = StableDiffusionPipeline.from_pretrained(
 
 # use jitted unet
 unet_traced = torch.jit.load("unet_traced.pt")
+
+
 # del pipe.unet
 class TracedUNet(torch.nn.Module):
     def __init__(self):

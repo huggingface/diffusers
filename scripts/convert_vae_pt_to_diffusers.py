@@ -1,9 +1,10 @@
 import argparse
 import io
 
-import torch
-
 import requests
+import torch
+from omegaconf import OmegaConf
+
 from diffusers import AutoencoderKL
 from diffusers.pipelines.stable_diffusion.convert_from_ckpt import (
     assign_to_checkpoint,
@@ -12,7 +13,6 @@ from diffusers.pipelines.stable_diffusion.convert_from_ckpt import (
     renew_vae_attention_paths,
     renew_vae_resnet_paths,
 )
-from omegaconf import OmegaConf
 
 
 def custom_convert_ldm_vae_checkpoint(checkpoint, config):

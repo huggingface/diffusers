@@ -19,6 +19,7 @@ import unittest
 
 import numpy as np
 import torch
+from transformers import XLMRobertaTokenizer
 
 from diffusers import AltDiffusionImg2ImgPipeline, AutoencoderKL, PNDMScheduler, UNet2DConditionModel
 from diffusers.pipelines.alt_diffusion.modeling_roberta_series import (
@@ -27,7 +28,6 @@ from diffusers.pipelines.alt_diffusion.modeling_roberta_series import (
 )
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
-from transformers import XLMRobertaTokenizer
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
