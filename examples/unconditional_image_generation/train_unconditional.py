@@ -22,7 +22,7 @@ import diffusers
 from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
-from diffusers.utils import check_min_version, is_tensorboard_available
+from diffusers.utils import check_min_version, is_tensorboard_available, is_wandb_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -279,6 +279,11 @@ def main(args):
         log_with=args.logger,
         logging_dir=logging_dir,
     )
+
+    if args.logger == "wandb":
+        if not is_wandb_available():
+            raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
+        import wandb
 
     # `accelerate` 0.16.0 will have better support for customized saving
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
@@ -599,7 +604,6 @@ def main(args):
                     batch_size=args.eval_batch_size,
                     num_inference_steps=args.ddpm_num_inference_steps,
                     output_type="numpy",
-                    num_inference_steps=args.ddpm_num_steps,
                 ).images
 
                 # denormalize the images and save to tensorboard
@@ -610,8 +614,6 @@ def main(args):
                         "test_samples", images_processed.transpose(0, 3, 1, 2), epoch
                     )
                 elif args.logger == "wandb":
-                    import wandb
-
                     accelerator.get_tracker("wandb").log(
                         {"test_samples": [wandb.Image(img) for img in images_processed]}, step=global_step
                     )
