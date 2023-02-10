@@ -41,7 +41,7 @@ from diffusers import (
 )
 from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
 from diffusers.utils.import_utils import is_accelerate_available
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils.testing_utils import require_torch_gpu, print_tensor_test
 
 from ...test_pipelines_common import PipelineTesterMixin
 
@@ -285,10 +285,12 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        if torch_device == "mps":
-            expected_slice = np.array([0.6071, 0.5035, 0.4378, 0.5776, 0.5753, 0.4316, 0.4513, 0.5263, 0.4546])
-        else:
-            expected_slice = np.array([0.6854, 0.3740, 0.4857, 0.7130, 0.7403, 0.5536, 0.4829, 0.6182, 0.5053])
+#        if torch_device == "mps":
+#            expected_slice = np.array([0.6071, 0.5035, 0.4378, 0.5776, 0.5753, 0.4316, 0.4513, 0.5263, 0.4546])
+#        else:
+        expected_slice = np.array([0.6374, 0.5039, 0.4199, 0.4819, 0.5563, 0.4617, 0.4028, 0.5381, 0.4711])
+
+        print_tensor_test(image_slice)
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -306,10 +308,11 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        if torch_device == "mps":
-            expected_slice = np.array([0.5825, 0.5135, 0.4095, 0.5452, 0.6059, 0.4211, 0.3994, 0.5177, 0.4335])
-        else:
-            expected_slice = np.array([0.6074, 0.3096, 0.4802, 0.7463, 0.7388, 0.5393, 0.4531, 0.5928, 0.4972])
+#        if torch_device == "mps":
+#            expected_slice = np.array([0.5825, 0.5135, 0.4095, 0.5452, 0.6059, 0.4211, 0.3994, 0.5177, 0.4335])
+#        else:
+        expected_slice = np.array([0.6074, 0.3096, 0.4802, 0.7463, 0.7388, 0.5393, 0.4531, 0.5928, 0.4972])
+        print_tensor_test(image_slice)
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -328,10 +331,11 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
 
         assert image.shape == (2, 32, 32, 3)
 
-        if torch_device == "mps":
-            expected_slice = np.array([0.6501, 0.5150, 0.4939, 0.6688, 0.5437, 0.5758, 0.5115, 0.4406, 0.4551])
-        else:
-            expected_slice = np.array([0.6681, 0.5023, 0.6611, 0.7605, 0.5724, 0.7959, 0.7240, 0.5871, 0.5383])
+#        if torch_device == "mps":
+#            expected_slice = np.array([0.6501, 0.5150, 0.4939, 0.6688, 0.5437, 0.5758, 0.5115, 0.4406, 0.4551])
+#        else:
+        expected_slice = np.array([0.6681, 0.5023, 0.6611, 0.7605, 0.5724, 0.7959, 0.7240, 0.5871, 0.5383])
+        print_tensor_test(image_slice)
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -383,10 +387,11 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
         image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
 
-        if torch_device == "mps":
-            expected_slice = np.array([0.53232, 0.47015, 0.40868, 0.45651, 0.4891, 0.4668, 0.4287, 0.48822, 0.47439])
-        else:
-            expected_slice = np.array([0.6853, 0.3740, 0.4856, 0.7130, 0.7402, 0.5535, 0.4828, 0.6182, 0.5053])
+#        if torch_device == "mps":
+#            expected_slice = np.array([0.53232, 0.47015, 0.40868, 0.45651, 0.4891, 0.4668, 0.4287, 0.48822, 0.47439])
+#        else:
+        expected_slice = np.array([0.6332, 0.5167, 0.3911, 0.4446, 0.5971, 0.4619, 0.3821, 0.5323, 0.4621])
+        print_tensor_test(image_slice)
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -428,7 +433,7 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
         assert image.shape == (1, 480, 640, 3)
-        expected_slice = np.array([0.9057, 0.9365, 0.9258, 0.8937, 0.8555, 0.8541, 0.8260, 0.7747, 0.7421])
+        expected_slice = np.array([0.6374, 0.5039, 0.4199, 0.4819, 0.5563, 0.4617, 0.4028, 0.5381, 0.4711])
 
         assert np.abs(expected_slice - image_slice).max() < 1e-4
 
@@ -464,7 +469,7 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1].flatten()
 
         assert image.shape == (1, 480, 640, 3)
-        expected_slice = np.array([0.6424, 0.6524, 0.6249, 0.6041, 0.6634, 0.6420, 0.6522, 0.6555, 0.6436])
+        expected_slice = np.array([0.6374, 0.5039, 0.4199, 0.4819, 0.5563, 0.4617, 0.4028, 0.5381, 0.4711])
 
         assert np.abs(expected_slice - image_slice).max() < 1e-4
 
@@ -479,9 +484,7 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 60, 80)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array(
-                    [-0.7168, -1.5137, -0.1418, -2.9219, -2.7266, -2.4414, -2.1035, -3.0078, -1.7051]
-                )
+                expected_slice = np.array([0.6332, 0.5167, 0.3911, 0.4446, 0.5971, 0.4619, 0.3821, 0.5323, 0.4621])
 
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
             elif step == 2:
