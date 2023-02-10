@@ -154,3 +154,153 @@ jobs:
       with:
         name: examples_test_reports
         path: reports
+
+  run_fast_tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: Fast PyTorch CPU tests on Ubuntu
+            framework: pytorch
+            runner: docker-cpu
+            image: diffusers/diffusers-pytorch-cpu
+            report: torch_cpu
+          - name: Fast Flax CPU tests on Ubuntu
+            framework: flax
+            runner: docker-cpu
+            image: diffusers/diffusers-flax-cpu
+            report: flax_cpu
+          - name: Fast ONNXRuntime CPU tests on Ubuntu
+            framework: onnxruntime
+            runner: docker-cpu
+            image: diffusers/diffusers-onnxruntime-cpu
+            report: onnx_cpu
+          - name: PyTorch Example CPU tests on Ubuntu
+            framework: pytorch_examples
+            runner: docker-cpu
+            image: diffusers/diffusers-pytorch-cpu
+            report: torch_cpu
+
+    name: ${{ matrix.config.name }}
+
+    runs-on: ${{ matrix.config.runner }}
+
+    container:
+      image: ${{ matrix.config.image }}
+      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+
+    - name: Install dependencies
+      run: |
+        apt-get update && apt-get install libsndfile1-dev -y
+        python -m pip install -e .[quality,test]
+        python -m pip install -U git+https://github.com/huggingface/transformers
+        python -m pip install git+https://github.com/huggingface/accelerate
+
+    - name: Environment
+      run: |
+        python utils/print_env.py
+
+    - name: Run fast PyTorch CPU tests
+      if: ${{ matrix.config.framework == 'pytorch' }}
+      run: |
+        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+          -s -v -k "not Flax and not Onnx" \
+          --make-reports=tests_${{ matrix.config.report }} \
+          tests/
+
+    - name: Run fast Flax TPU tests
+      if: ${{ matrix.config.framework == 'flax' }}
+      run: |
+        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+          -s -v -k "Flax" \
+          --make-reports=tests_${{ matrix.config.report }} \
+          tests/
+
+    - name: Run fast ONNXRuntime CPU tests
+      if: ${{ matrix.config.framework == 'onnxruntime' }}
+      run: |
+        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+          -s -v -k "Onnx" \
+          --make-reports=tests_${{ matrix.config.report }} \
+          tests/
+
+    - name: Run example PyTorch CPU tests
+      if: ${{ matrix.config.framework == 'pytorch_examples' }}
+      run: |
+        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+          --make-reports=tests_${{ matrix.config.report }} \
+          examples/test_examples.py 
+
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: cat reports/tests_${{ matrix.config.report }}_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: pr_${{ matrix.config.report }}_test_reports
+        path: reports
+
+  run_fast_tests_apple_m1:
+    name: Fast PyTorch MPS tests on MacOS
+    runs-on: [ self-hosted, apple-m1 ]
+
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+
+    - name: Clean checkout
+      shell: arch -arch arm64 bash {0}
+      run: |
+        git clean -fxd
+
+    - name: Setup miniconda
+      uses: ./.github/actions/setup-miniconda
+      with:
+        python-version: 3.9
+
+    - name: Install dependencies
+      shell: arch -arch arm64 bash {0}
+      run: |
+        ${CONDA_RUN} python -m pip install --upgrade pip
+        ${CONDA_RUN} python -m pip install -e .[quality,test]
+        ${CONDA_RUN} python -m pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu
+        ${CONDA_RUN} python -m pip install git+https://github.com/huggingface/accelerate
+        ${CONDA_RUN} python -m pip install -U git+https://github.com/huggingface/transformers
+
+    - name: Environment
+      shell: arch -arch arm64 bash {0}
+      run: |
+        ${CONDA_RUN} python utils/print_env.py
+
+    - name: Run fast PyTorch tests on M1 (MPS)
+      shell: arch -arch arm64 bash {0}
+      env:
+        HF_HOME: /System/Volumes/Data/mnt/cache
+        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      run: |
+        ${CONDA_RUN} python -m pytest -n 0 -s -v --make-reports=tests_torch_mps tests/
+
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: cat reports/tests_torch_mps_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: pr_torch_mps_test_reports
+        path: reports
