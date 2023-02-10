@@ -120,13 +120,13 @@ class AudioPipelineOutput(BaseOutput):
 def is_safetensors_compatible(filenames, variant=None) -> bool:
     pt_filenames = set(filename for filename in filenames if filename.endswith(".bin"))
     is_safetensors_compatible = any(file.endswith(".safetensors") for file in filenames)
-    variant = f".{variant}" if variant is not None else ""
 
     for pt_filename in pt_filenames:
+        _variant = f".{variant}" if (variant is not None and variant in pt_filename) else ""
         prefix, raw = os.path.split(pt_filename)
-        if raw == f"pytorch_model{variant}.bin":
+        if raw == f"pytorch_model{_variant}.bin":
             # transformers specific
-            sf_filename = os.path.join(prefix, f"model{variant}.safetensors")
+            sf_filename = os.path.join(prefix, f"model{_variant}.safetensors")
         else:
             sf_filename = pt_filename[: -len(".bin")] + ".safetensors"
         if is_safetensors_compatible and sf_filename not in filenames:
@@ -136,12 +136,14 @@ def is_safetensors_compatible(filenames, variant=None) -> bool:
 
 
 def variant_compatible_siblings(info, variant=None) -> Union[List[os.PathLike], str]:
-    variant = variant or ""
-
     filenames = set(sibling.rfilename for sibling in info.siblings)
     save_formats = ["bin", "safetensors", "msgpack", "onnx"]
 
-    variant_filenames = set(f for f in filenames if any(f.endswith(f"{variant}.{s}") for s in save_formats))
+    if variant is not None:
+        variant_filenames = set(f for f in filenames if any(f.endswith(f"{variant}.{s}") for s in save_formats))
+    else:
+        variant_filenames = set()
+
     non_variant_filenames = set(
         f for f in filenames if (len(f.split(".")) == 2 and any(f.endswith(f".{s}") for s in save_formats))
     )
@@ -532,7 +534,7 @@ class DiffusionPipeline(ConfigMixin):
 
                 if from_flax:
                     ignore_patterns = ["*.bin", "*.safetensors", ".onnx"]
-                elif is_safetensors_available() and is_safetensors_compatible(model_filenames):
+                elif is_safetensors_available() and is_safetensors_compatible(model_filenames, variant=variant):
                     ignore_patterns = ["*.bin", "*.msgpack"]
                 else:
                     ignore_patterns = ["*.safetensors", "*.msgpack"]
