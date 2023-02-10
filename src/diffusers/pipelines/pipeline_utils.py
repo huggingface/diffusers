@@ -531,7 +531,7 @@ class DiffusionPipeline(ConfigMixin):
                 ]
 
                 if from_flax:
-                    ignore_patterns = ["*.bin", "*.safetensors"]
+                    ignore_patterns = ["*.bin", "*.safetensors", ".onnx"]
                 elif is_safetensors_available() and is_safetensors_compatible(model_filenames):
                     ignore_patterns = ["*.bin", "*.msgpack"]
                 else:
@@ -586,7 +586,8 @@ class DiffusionPipeline(ConfigMixin):
         if variant is not None:
             for folder in os.listdir(cached_folder):
                 folder_path = os.path.join(cached_folder, folder)
-                variant_exists = os.path.isdir(folder_path) and any(path.split(".")[1] == variant for path in os.listdir(folder_path))
+                is_folder = os.path.isdir(folder_path) and folder in config_dict
+                variant_exists = is_folder and any(path.split(".")[1] == variant for path in os.listdir(folder_path))
                 if variant_exists:
                     model_variants[folder] = variant
 
