@@ -66,6 +66,43 @@ class ModelTesterMixin:
         max_diff = (image - new_image).abs().sum().item()
         self.assertLessEqual(max_diff, 5e-5, "Models give different forward passes")
 
+    def test_from_save_pretrained_variant(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            model.save_pretrained(tmpdirname, variant="fp16")
+            new_model = self.model_class.from_pretrained(tmpdirname, variant="fp16")
+
+            with self.assertRaises(OSError) as error_context:
+                self.model_class.from_pretrained(tmpdirname)
+
+            # make sure that error message states what keys are missing
+            assert "Error no file named diffusion_pytorch_model.bin found in directory" in str(error_context.exception)
+
+            new_model.to(torch_device)
+
+        with torch.no_grad():
+            # Warmup pass when using mps (see #372)
+            if torch_device == "mps" and isinstance(model, ModelMixin):
+                _ = model(**self.dummy_input)
+                _ = new_model(**self.dummy_input)
+
+            image = model(**inputs_dict)
+            if isinstance(image, dict):
+                image = image.sample
+
+            new_image = new_model(**inputs_dict)
+
+            if isinstance(new_image, dict):
+                new_image = new_image.sample
+
+        max_diff = (image - new_image).abs().sum().item()
+        self.assertLessEqual(max_diff, 5e-5, "Models give different forward passes")
+
     def test_from_save_pretrained_dtype(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
