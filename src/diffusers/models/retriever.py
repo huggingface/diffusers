@@ -20,7 +20,7 @@ import numpy as np
 from ..utils import deprecate, logging
 from transformers.models.rag.retrieval_rag import LegacyIndex, CustomHFIndex, CanonicalHFIndex
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-from diffusers.pipelines.rdm.pipeline_rdm import preprocess_images
+from diffusers.pipelines.rdm.pipeline_rdm import preprocess_images, normalize_images
 import os
 
 class IndexConfig(PretrainedConfig):
@@ -158,6 +158,7 @@ def map_img_to_clip_feature(clip, feature_extractor, imgs, device="cuda"):
     for i, image in enumerate(imgs):
         if not image.mode == "RGB":
             imgs[i] = image.convert("RGB")
+    imgs = normalize_images(imgs)
     retrieved_images = preprocess_images(imgs, feature_extractor).to(device)
     image_embeddings = clip.get_image_features(retrieved_images)
     image_embeddings = image_embeddings / torch.linalg.norm(image_embeddings, dim=-1, keepdim=True)
