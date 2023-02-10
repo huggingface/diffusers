@@ -32,16 +32,12 @@ from tqdm.auto import tqdm
 import diffusers
 
 from ..configuration_utils import ConfigMixin
-from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, _add_variant
+from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
 from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
     CONFIG_NAME,
     DIFFUSERS_CACHE,
-    FLAX_WEIGHTS_NAME,
     HF_HUB_OFFLINE,
-    ONNX_WEIGHTS_NAME,
-    WEIGHTS_NAME,
-    SAFETENSORS_WEIGHTS_NAME,
     BaseOutput,
     deprecate,
     get_class_from_dynamic_module,
@@ -146,7 +142,9 @@ def variant_compatible_siblings(info, variant=None) -> Union[List[os.PathLike], 
     save_formats = ["bin", "safetensors", "msgpack", "onnx"]
 
     variant_filenames = set(f for f in filenames if any(f.endswith(f"{variant}.{s}") for s in save_formats))
-    non_variant_filenames = set(f for f in filenames if (len(f.split(".")) == 2 and any(f.endswith(f".{s}") for s in save_formats)))
+    non_variant_filenames = set(
+        f for f in filenames if (len(f.split(".")) == 2 and any(f.endswith(f".{s}") for s in save_formats))
+    )
 
     usable_filenames = set(variant_filenames)
     for f in non_variant_filenames:
@@ -155,7 +153,9 @@ def variant_compatible_siblings(info, variant=None) -> Union[List[os.PathLike], 
             usable_filenames.add(f)
 
     if len(variant_filenames) > 0 and usable_filenames != variant_filenames:
-        logger.warn(f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(usable_filenames - variant_filenames)} from repository files: {', '.join(filenames)}]\nIf this behavior is not expected, please check your folder structure.")
+        logger.warn(
+            f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(usable_filenames - variant_filenames)} from repository files: {', '.join(filenames)}]\nIf this behavior is not expected, please check your folder structure."
+        )
 
     return usable_filenames
 
@@ -539,20 +539,7 @@ class DiffusionPipeline(ConfigMixin):
 
             else:
                 # allow everything since it has to be downloaded anyways
-                allow_patterns = [os.path.join(k, "*") for k in folder_names]
-
-                allow_patterns += [
-                    WEIGHTS_NAME,
-                    _add_variant(WEIGHTS_NAME),
-                    SAFETENSORS_WEIGHTS_NAME,
-                    _add_variant(SAFETENSORS_WEIGHTS_NAME),
-                    SCHEDULER_CONFIG_NAME,
-                    CONFIG_NAME,
-                    ONNX_WEIGHTS_NAME,
-                    FLAX_WEIGHTS_NAME,
-                    cls.config_name,
-                    CUSTOM_PIPELINE_FILE_NAME,
-                ]
+                ignore_patterns = allow_patterns = None
 
             if cls != DiffusionPipeline:
                 requested_pipeline_class = cls.__name__

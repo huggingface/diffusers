@@ -21,6 +21,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+import unittest.mock as mock
 
 import numpy as np
 import PIL
@@ -28,6 +29,7 @@ import safetensors.torch
 import torch
 from parameterized import parameterized
 from PIL import Image
+from requests.exceptions import HTTPError
 from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
@@ -165,6 +167,33 @@ class DownloadTests(unittest.TestCase):
             out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         assert np.max(np.abs(out - out_2)) < 1e-3
+
+    def test_cached_files_are_used_when_no_internet(self):
+        # A mock response for an HTTP head request to emulate server down
+        response_mock = mock.Mock()
+        response_mock.status_code = 500
+        response_mock.headers = {}
+        response_mock.raise_for_status.side_effect = HTTPError
+        response_mock.json.return_value = {}
+
+        # Download this model to make sure it's in the cache.
+        orig_pipe = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+        orig_comps = {k: v for k, v in orig_pipe.components.items() if hasattr(v, "parameters")}
+
+        # Under the mock environment we get a 500 error when trying to reach the model.
+        with mock.patch("requests.request", return_value=response_mock):
+            # Download this model to make sure it's in the cache.
+            pipe = StableDiffusionPipeline.from_pretrained(
+                "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None, local_files_only=True
+            )
+            comps = {k: v for k, v in pipe.components.items() if hasattr(v, "parameters")}
+
+        for m1, m2 in zip(orig_comps.values(), comps.values()):
+            for p1, p2 in zip(m1.parameters(), m2.parameters()):
+                if p1.data.ne(p2.data).sum() > 0:
+                    assert False, "Parameters not the same!"
 
 
 class CustomPipelineTests(unittest.TestCase):

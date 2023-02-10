@@ -16,10 +16,12 @@
 import inspect
 import tempfile
 import unittest
+import unittest.mock as mock
 from typing import Dict, List, Tuple
 
 import numpy as np
 import torch
+from requests.exceptions import HTTPError
 
 from diffusers.models import ModelMixin, UNet2DConditionModel
 from diffusers.training_utils import EMAModel
@@ -33,6 +35,30 @@ class ModelUtilsTest(unittest.TestCase):
 
         # make sure that error message states what keys are missing
         assert "conv_out.bias" in str(error_context.exception)
+
+    def test_cached_files_are_used_when_no_internet(self):
+        # A mock response for an HTTP head request to emulate server down
+        response_mock = mock.Mock()
+        response_mock.status_code = 500
+        response_mock.headers = {}
+        response_mock.raise_for_status.side_effect = HTTPError
+        response_mock.json.return_value = {}
+
+        # Download this model to make sure it's in the cache.
+        orig_model = UNet2DConditionModel.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="unet"
+        )
+
+        # Under the mock environment we get a 500 error when trying to reach the model.
+        with mock.patch("requests.request", return_value=response_mock):
+            # Download this model to make sure it's in the cache.
+            model = UNet2DConditionModel.from_pretrained(
+                "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="unet", local_files_only=True
+            )
+
+        for p1, p2 in zip(orig_model.parameters(), model.parameters()):
+            if p1.data.ne(p2.data).sum() > 0:
+                assert False, "Parameters not the same!"
 
 
 class ModelTesterMixin:
@@ -77,6 +103,7 @@ class ModelTesterMixin:
             model.save_pretrained(tmpdirname, variant="fp16")
             new_model = self.model_class.from_pretrained(tmpdirname, variant="fp16")
 
+            # non-variant cannot be loaded
             with self.assertRaises(OSError) as error_context:
                 self.model_class.from_pretrained(tmpdirname)
 
