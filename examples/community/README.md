@@ -970,8 +970,8 @@ pipe = DiffusionPipeline.from_pretrained(
 )
 pipe.to(device)
 
-start_prompt = "A photograph of a frog"
-end_prompt = "A painting of a horse"
+start_prompt = "A photograph of an adult lion"
+end_prompt = "A photograph of a lion cub"
 #For best results keep the prompts close in length to each other. Of course, feel free to try out with differing lengths.
 generator = torch.Generator(device=device).manual_seed(42)
 
@@ -983,9 +983,9 @@ for i,image in enumerate(output.images):
 
 The resulting images in order:-
 
-![result_0](https://huggingface.co/datasets/NagaSaiAbhinay/UnCLIPTextInterpolationSamples/resolve/main/frog_horse_0.png)
-![result_1](https://huggingface.co/datasets/NagaSaiAbhinay/UnCLIPTextInterpolationSamples/resolve/main/frog_horse_1.png)
-![result_2](https://huggingface.co/datasets/NagaSaiAbhinay/UnCLIPTextInterpolationSamples/resolve/main/frog_horse_2.png)
-![result_3](https://huggingface.co/datasets/NagaSaiAbhinay/UnCLIPTextInterpolationSamples/resolve/main/frog_horse_3.png)
-![result_4](https://huggingface.co/datasets/NagaSaiAbhinay/UnCLIPTextInterpolationSamples/resolve/main/frog_horse_4.png)
-![result_5](https://huggingface.co/datasets/NagaSaiAbhinay/UnCLIPTextInterpolationSamples/resolve/main/frog_horse_5.png)
+![result_0](https://huggingface.co/datasets/NagaSaiAbhinay/UnCLIPTextInterpolationSamples/resolve/main/lion_to_cub_0.png)
+![result_1](https://huggingface.co/datasets/NagaSaiAbhinay/UnCLIPTextInterpolationSamples/resolve/main/lion_to_cub_1.png)
+![result_2](https://huggingface.co/datasets/NagaSaiAbhinay/UnCLIPTextInterpolationSamples/resolve/main/lion_to_cub_2.png)
+![result_3](https://huggingface.co/datasets/NagaSaiAbhinay/UnCLIPTextInterpolationSamples/resolve/main/lion_to_cub_3.png)
+![result_4](https://huggingface.co/datasets/NagaSaiAbhinay/UnCLIPTextInterpolationSamples/resolve/main/lion_to_cub_4.png)
+![result_5](https://huggingface.co/datasets/NagaSaiAbhinay/UnCLIPTextInterpolationSamples/resolve/main/lion_to_cub_5.png)
