@@ -10,14 +10,7 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...schedulers import (
-    DDIMScheduler,
-    DPMSolverMultistepScheduler,
-    EulerAncestralDiscreteScheduler,
-    EulerDiscreteScheduler,
-    LMSDiscreteScheduler,
-    PNDMScheduler,
-)
+from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import deprecate, is_accelerate_available, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionSafePipelineOutput
@@ -65,14 +58,7 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: Union[
-            DDIMScheduler,
-            DPMSolverMultistepScheduler,
-            EulerAncestralDiscreteScheduler,
-            EulerDiscreteScheduler,
-            LMSDiscreteScheduler,
-            PNDMScheduler,
-        ],
+        scheduler: KarrasDiffusionSchedulers,
         safety_checker: SafeStableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
         requires_safety_checker: bool = True,

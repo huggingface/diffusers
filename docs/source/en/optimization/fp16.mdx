@@ -20,7 +20,6 @@ We'll discuss how the following settings impact performance and memory.
 | ---------------- | ------- | ------- |
 | original         | 9.50s   | x1      |
 | cuDNN auto-tuner | 9.37s   | x1.01   |
-| autocast (fp16)  | 5.47s   | x1.74   |
 | fp16             | 3.61s   | x2.63   |
 | channels last    | 3.30s   | x2.88   |
 | traced UNet      | 3.21s   | x2.96   |
@@ -54,27 +53,9 @@ import torch
 torch.backends.cuda.matmul.allow_tf32 = True
 ```
 
-## Automatic mixed precision (AMP)
-
-If you use a CUDA GPU, you can take advantage of `torch.autocast` to perform inference roughly twice as fast at the cost of slightly lower precision. All you need to do is put your inference call inside an `autocast` context manager. The following example shows how to do it using Stable Diffusion text-to-image generation as an example:
-
-```Python
-from torch import autocast
-from diffusers import StableDiffusionPipeline
-
-pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
-pipe = pipe.to("cuda")
-
-prompt = "a photo of an astronaut riding a horse on mars"
-with autocast("cuda"):
-    image = pipe(prompt).images[0]
-```
-
-Despite the precision loss, in our experience the final image results look the same as the `float32` versions. Feel free to experiment and report back!
-
 ## Half precision weights
 
-To save more GPU memory and get even more speed, you can load and run the model weights directly in half precision. This involves loading the float16 version of the weights, which was saved to a branch named `fp16`, and telling PyTorch to use the `float16` type when loading them:
+To save more GPU memory and get more speed, you can load and run the model weights directly in half precision. This involves loading the float16 version of the weights, which was saved to a branch named `fp16`, and telling PyTorch to use the `float16` type when loading them:
 
 ```Python
 pipe = StableDiffusionPipeline.from_pretrained(
@@ -87,6 +68,11 @@ pipe = pipe.to("cuda")
 prompt = "a photo of an astronaut riding a horse on mars"
 image = pipe(prompt).images[0]
 ```
+
+<Tip warning={true}>
+  It is strongly discouraged to make use of [`torch.autocast`](https://pytorch.org/docs/stable/amp.html#torch.autocast) in any of the pipelines as it can lead to black images and is always slower than using pure 
+  float16 precision.
+</Tip>
 
 ## Sliced attention for additional memory savings
 
