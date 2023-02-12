@@ -16,11 +16,11 @@ import inspect
 from typing import Callable, List, Optional, Union
 
 import numpy as np
-import torch
-
 import PIL
-from diffusers.utils import is_accelerate_available
+import torch
 from transformers import CLIPFeatureExtractor
+
+from diffusers.utils import is_accelerate_available
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
@@ -201,14 +201,11 @@ class PaintByExamplePipeline(DiffusionPipeline):
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        for cpu_offloaded_model in [self.unet, self.vae]:
-            if cpu_offloaded_model is not None:
-                cpu_offload(cpu_offloaded_model, device)
+        for cpu_offloaded_model in [self.unet, self.vae, self.image_encoder]:
+            cpu_offload(cpu_offloaded_model, execution_device=device)
 
         if self.safety_checker is not None:
-            # TODO(Patrick) - there is currently a bug with cpu offload of nn.Parameter in accelerate
-            # fix by only offloading self.safety_checker for now
-            cpu_offload(self.safety_checker.vision_model, device)
+            cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
 
     @property
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
@@ -260,10 +257,10 @@ class PaintByExamplePipeline(DiffusionPipeline):
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
-        latents = 1 / 0.18215 * latents
+        latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
@@ -331,7 +328,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
             masked_image_latents = torch.cat(masked_image_latents, dim=0)
         else:
             masked_image_latents = self.vae.encode(masked_image).latent_dist.sample(generator=generator)
-        masked_image_latents = 0.18215 * masked_image_latents
+        masked_image_latents = self.vae.config.scaling_factor * masked_image_latents
 
         # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
         if mask.shape[0] < batch_size:
@@ -367,7 +364,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
             image = self.feature_extractor(images=image, return_tensors="pt").pixel_values
 
         image = image.to(device=device, dtype=dtype)
-        image_embeddings = self.image_encoder(image)
+        image_embeddings, negative_prompt_embeds = self.image_encoder(image, return_uncond_vector=True)
 
         # duplicate image embeddings for each generation per prompt, using mps friendly method
         bs_embed, seq_len, _ = image_embeddings.shape
@@ -375,14 +372,13 @@ class PaintByExamplePipeline(DiffusionPipeline):
         image_embeddings = image_embeddings.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
         if do_classifier_free_guidance:
-            uncond_embeddings = self.image_encoder.uncond_vector
-            uncond_embeddings = uncond_embeddings.repeat(1, image_embeddings.shape[0], 1)
-            uncond_embeddings = uncond_embeddings.view(bs_embed * num_images_per_prompt, 1, -1)
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, image_embeddings.shape[0], 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(bs_embed * num_images_per_prompt, 1, -1)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
-            image_embeddings = torch.cat([uncond_embeddings, image_embeddings])
+            image_embeddings = torch.cat([negative_prompt_embeds, image_embeddings])
 
         return image_embeddings
 

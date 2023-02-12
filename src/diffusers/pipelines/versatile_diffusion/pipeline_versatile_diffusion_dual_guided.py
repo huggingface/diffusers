@@ -16,10 +16,9 @@ import inspect
 from typing import Callable, List, Optional, Tuple, Union
 
 import numpy as np
+import PIL
 import torch
 import torch.utils.checkpoint
-
-import PIL
 from transformers import (
     CLIPFeatureExtractor,
     CLIPTextModelWithProjection,
@@ -187,7 +186,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `list(int)`):
+            prompt (`str` or `List[str]`):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
@@ -227,16 +226,16 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         else:
             attention_mask = None
 
-        text_embeddings = self.text_encoder(
+        prompt_embeds = self.text_encoder(
             text_input_ids.to(device),
             attention_mask=attention_mask,
         )
-        text_embeddings = normalize_embeddings(text_embeddings)
+        prompt_embeds = normalize_embeddings(prompt_embeds)
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
-        bs_embed, seq_len, _ = text_embeddings.shape
-        text_embeddings = text_embeddings.repeat(1, num_images_per_prompt, 1)
-        text_embeddings = text_embeddings.view(bs_embed * num_images_per_prompt, seq_len, -1)
+        bs_embed, seq_len, _ = prompt_embeds.shape
+        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
@@ -255,30 +254,30 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
             else:
                 attention_mask = None
 
-            uncond_embeddings = self.text_encoder(
+            negative_prompt_embeds = self.text_encoder(
                 uncond_input.input_ids.to(device),
                 attention_mask=attention_mask,
             )
-            uncond_embeddings = normalize_embeddings(uncond_embeddings)
+            negative_prompt_embeds = normalize_embeddings(negative_prompt_embeds)
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-            seq_len = uncond_embeddings.shape[1]
-            uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt, 1)
-            uncond_embeddings = uncond_embeddings.view(batch_size * num_images_per_prompt, seq_len, -1)
+            seq_len = negative_prompt_embeds.shape[1]
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
-            text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
-        return text_embeddings
+        return prompt_embeds
 
     def _encode_image_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance):
         r"""
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `list(int)`):
+            prompt (`str` or `List[str]`):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
@@ -313,27 +312,27 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
             uncond_images = [np.zeros((512, 512, 3)) + 0.5] * batch_size
             uncond_images = self.image_feature_extractor(images=uncond_images, return_tensors="pt")
             pixel_values = uncond_images.pixel_values.to(device).to(self.image_encoder.dtype)
-            uncond_embeddings = self.image_encoder(pixel_values)
-            uncond_embeddings = normalize_embeddings(uncond_embeddings)
+            negative_prompt_embeds = self.image_encoder(pixel_values)
+            negative_prompt_embeds = normalize_embeddings(negative_prompt_embeds)
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-            seq_len = uncond_embeddings.shape[1]
-            uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt, 1)
-            uncond_embeddings = uncond_embeddings.view(batch_size * num_images_per_prompt, seq_len, -1)
+            seq_len = negative_prompt_embeds.shape[1]
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and conditional embeddings into a single batch
             # to avoid doing two forward passes
-            image_embeddings = torch.cat([uncond_embeddings, image_embeddings])
+            image_embeddings = torch.cat([negative_prompt_embeds, image_embeddings])
 
         return image_embeddings
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
-        latents = 1 / 0.18215 * latents
+        latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
@@ -524,9 +523,9 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompts
-        text_embeddings = self._encode_text_prompt(prompt, device, num_images_per_prompt, do_classifier_free_guidance)
+        prompt_embeds = self._encode_text_prompt(prompt, device, num_images_per_prompt, do_classifier_free_guidance)
         image_embeddings = self._encode_image_prompt(image, device, num_images_per_prompt, do_classifier_free_guidance)
-        dual_prompt_embeddings = torch.cat([text_embeddings, image_embeddings], dim=1)
+        dual_prompt_embeddings = torch.cat([prompt_embeds, image_embeddings], dim=1)
         prompt_types = ("text", "image")
 
         # 4. Prepare timesteps

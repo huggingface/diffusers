@@ -5,6 +5,7 @@ from typing import Callable, List, Optional, Union
 
 import numpy as np
 import torch
+from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from diffusers import DiffusionPipeline
 from diffusers.configuration_utils import FrozenDict
@@ -13,7 +14,6 @@ from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from diffusers.utils import deprecate, logging
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -379,7 +379,7 @@ class StableDiffusionWalkPipeline(DiffusionPipeline):
 
         image = (image / 2 + 0.5).clamp(0, 1)
 
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
 
         if self.safety_checker is not None:

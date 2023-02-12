@@ -80,10 +80,9 @@ from setuptools import find_packages, setup
 _deps = [
     "Pillow",  # keep the PIL.Image.Resampling deprecation away
     "accelerate>=0.11.0",
-    "black==22.12",
+    "black~=23.1",
     "datasets",
     "filelock",
-    "flake8>=3.8.3",
     "flax>=0.4.1",
     "hf-doc-builder>=0.3.0",
     "huggingface-hub>=0.10.0",
@@ -91,14 +90,15 @@ _deps = [
     "isort>=5.5.4",
     "jax>=0.2.8,!=0.3.2",
     "jaxlib>=0.1.65",
+    "Jinja2",
     "k-diffusion>=0.0.12",
     "librosa",
-    "modelcards>=0.1.4",
     "numpy",
     "parameterized",
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
+    "ruff>=0.0.241",
     "safetensors",
     "sentencepiece>=0.1.91,!=0.1.92",
     "scipy",
@@ -178,11 +178,12 @@ extras = {}
 
 
 extras = {}
-extras["quality"] = deps_list("black", "isort", "flake8", "hf-doc-builder")
+extras["quality"] = deps_list("black", "isort", "ruff", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
-extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "modelcards")
+extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "Jinja2")
 extras["test"] = deps_list(
     "datasets",
+    "Jinja2",
     "k-diffusion",
     "librosa",
     "parameterized",
@@ -218,7 +219,7 @@ install_requires = [
 
 setup(
     name="diffusers",
-    version="0.12.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.13.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="Diffusers",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

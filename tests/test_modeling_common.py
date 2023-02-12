@@ -21,9 +21,18 @@ from typing import Dict, List, Tuple
 import numpy as np
 import torch
 
-from diffusers.models import ModelMixin
+from diffusers.models import ModelMixin, UNet2DConditionModel
 from diffusers.training_utils import EMAModel
 from diffusers.utils import torch_device
+
+
+class ModelUtilsTest(unittest.TestCase):
+    def test_accelerate_loading_error_message(self):
+        with self.assertRaises(ValueError) as error_context:
+            UNet2DConditionModel.from_pretrained("hf-internal-testing/stable-diffusion-broken", subfolder="unet")
+
+        # make sure that error message states what keys are missing
+        assert "conv_out.bias" in str(error_context.exception)
 
 
 class ModelTesterMixin:
@@ -205,7 +214,7 @@ class ModelTesterMixin:
         model = self.model_class(**init_dict)
         model.to(torch_device)
         model.train()
-        ema_model = EMAModel(model, device=torch_device)
+        ema_model = EMAModel(model.parameters())
 
         output = model(**inputs_dict)
 
@@ -215,7 +224,7 @@ class ModelTesterMixin:
         noise = torch.randn((inputs_dict["sample"].shape[0],) + self.output_shape).to(torch_device)
         loss = torch.nn.functional.mse_loss(output, noise)
         loss.backward()
-        ema_model.step(model)
+        ema_model.step(model.parameters())
 
     def test_outputs_equivalence(self):
         def set_nan_tensor_to_zero(t):

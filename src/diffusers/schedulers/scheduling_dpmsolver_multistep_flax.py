@@ -22,7 +22,6 @@ import jax
 import jax.numpy as jnp
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import deprecate
 from .scheduling_utils_flax import (
     CommonSchedulerState,
     FlaxKarrasDiffusionSchedulers,
@@ -141,7 +140,6 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
     """
 
     _compatibles = [e.name for e in FlaxKarrasDiffusionSchedulers]
-    _deprecated_kwargs = ["predict_epsilon"]
 
     dtype: jnp.dtype
 
@@ -166,16 +164,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         solver_type: str = "midpoint",
         lower_order_final: bool = True,
         dtype: jnp.dtype = jnp.float32,
-        **kwargs,
     ):
-        message = (
-            "Please make sure to instantiate your scheduler with `prediction_type` instead. E.g. `scheduler ="
-            f" {self.__class__.__name__}.from_pretrained(<model_id>, prediction_type='epsilon')`."
-        )
-        predict_epsilon = deprecate("predict_epsilon", "0.13.0", message, take_from=kwargs)
-        if predict_epsilon is not None:
-            self.register_to_config(prediction_type="epsilon" if predict_epsilon else "sample")
-
         self.dtype = dtype
 
     def create_state(self, common: Optional[CommonSchedulerState] = None) -> DPMSolverMultistepSchedulerState:

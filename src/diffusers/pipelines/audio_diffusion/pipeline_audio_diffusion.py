@@ -18,7 +18,6 @@ from typing import List, Tuple, Union
 
 import numpy as np
 import torch
-
 from PIL import Image
 
 from ...models import AutoencoderKL, UNet2DConditionModel
@@ -153,7 +152,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
                 input_images = self.vqvae.encode(torch.unsqueeze(input_images, 0)).latent_dist.sample(
                     generator=generator
                 )[0]
-                input_images = 0.18215 * input_images
+                input_images = self.vqvae.config.scaling_factor * input_images
 
             if start_step > 0:
                 images[0, 0] = self.scheduler.add_noise(input_images, noise, self.scheduler.timesteps[start_step - 1])
@@ -195,7 +194,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
 
         if self.vqvae is not None:
             # 0.18215 was scaling factor used in training to ensure unit variance
-            images = 1 / 0.18215 * images
+            images = 1 / self.vqvae.config.scaling_factor * images
             images = self.vqvae.decode(images)["sample"]
 
         images = (images / 2 + 0.5).clamp(0, 1)

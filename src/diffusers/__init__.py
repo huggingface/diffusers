@@ -1,4 +1,4 @@
-__version__ = "0.12.0.dev0"
+__version__ = "0.13.0.dev0"
 
 from .configuration_utils import ConfigMixin
 from .utils import (
@@ -114,6 +114,8 @@ else:
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
         StableDiffusionInpaintPipelineLegacy,
+        StableDiffusionInstructPix2PixPipeline,
+        StableDiffusionLatentUpscalePipeline,
         StableDiffusionPipeline,
         StableDiffusionPipelineSafe,
         StableDiffusionUpscalePipeline,

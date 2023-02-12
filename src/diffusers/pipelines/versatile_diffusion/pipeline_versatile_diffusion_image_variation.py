@@ -16,10 +16,9 @@ import inspect
 from typing import Callable, List, Optional, Union
 
 import numpy as np
+import PIL
 import torch
 import torch.utils.checkpoint
-
-import PIL
 from transformers import CLIPFeatureExtractor, CLIPVisionModelWithProjection
 
 from ...models import AutoencoderKL, UNet2DConditionModel
@@ -114,7 +113,7 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `list(int)`):
+            prompt (`str` or `List[str]`):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
@@ -173,27 +172,27 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
 
             uncond_images = self.image_feature_extractor(images=uncond_images, return_tensors="pt")
             pixel_values = uncond_images.pixel_values.to(device).to(self.image_encoder.dtype)
-            uncond_embeddings = self.image_encoder(pixel_values)
-            uncond_embeddings = normalize_embeddings(uncond_embeddings)
+            negative_prompt_embeds = self.image_encoder(pixel_values)
+            negative_prompt_embeds = normalize_embeddings(negative_prompt_embeds)
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-            seq_len = uncond_embeddings.shape[1]
-            uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt, 1)
-            uncond_embeddings = uncond_embeddings.view(batch_size * num_images_per_prompt, seq_len, -1)
+            seq_len = negative_prompt_embeds.shape[1]
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and conditional embeddings into a single batch
             # to avoid doing two forward passes
-            image_embeddings = torch.cat([uncond_embeddings, image_embeddings])
+            image_embeddings = torch.cat([negative_prompt_embeds, image_embeddings])
 
         return image_embeddings
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
-        latents = 1 / 0.18215 * latents
+        latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 

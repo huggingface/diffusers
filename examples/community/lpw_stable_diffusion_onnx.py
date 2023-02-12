@@ -3,15 +3,15 @@ import re
 from typing import Callable, List, Optional, Union
 
 import numpy as np
+import PIL
 import torch
+from packaging import version
+from transformers import CLIPFeatureExtractor, CLIPTokenizer
 
 import diffusers
-import PIL
 from diffusers import OnnxRuntimeModel, OnnxStableDiffusionPipeline, SchedulerMixin
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.utils import deprecate, logging
-from packaging import version
-from transformers import CLIPFeatureExtractor, CLIPTokenizer
 
 
 try:
@@ -745,7 +745,7 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(OnnxStableDiffusionPipeline
             (nsfw) content, according to the `safety_checker`.
         """
         message = "Please use `image` instead of `init_image`."
-        init_image = deprecate("init_image", "0.13.0", message, take_from=kwargs)
+        init_image = deprecate("init_image", "0.14.0", message, take_from=kwargs)
         image = init_image or image
 
         # 0. Default height and width to unet

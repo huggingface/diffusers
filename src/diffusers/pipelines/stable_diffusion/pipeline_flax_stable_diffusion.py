@@ -16,10 +16,9 @@ import warnings
 from functools import partial
 from typing import Dict, List, Optional, Union
 
-import numpy as np
-
 import jax
 import jax.numpy as jnp
+import numpy as np
 from flax.core.frozen_dict import FrozenDict
 from flax.jax_utils import unreplicate
 from flax.training.common_utils import shard
@@ -196,7 +195,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         # get prompt text embeddings
-        text_embeddings = self.text_encoder(prompt_ids, params=params["text_encoder"])[0]
+        prompt_embeds = self.text_encoder(prompt_ids, params=params["text_encoder"])[0]
 
         # TODO: currently it is assumed `do_classifier_free_guidance = guidance_scale > 1.0`
         # implement this conditional `do_classifier_free_guidance = guidance_scale > 1.0`
@@ -210,8 +209,8 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
             ).input_ids
         else:
             uncond_input = neg_prompt_ids
-        uncond_embeddings = self.text_encoder(uncond_input, params=params["text_encoder"])[0]
-        context = jnp.concatenate([uncond_embeddings, text_embeddings])
+        negative_prompt_embeds = self.text_encoder(uncond_input, params=params["text_encoder"])[0]
+        context = jnp.concatenate([negative_prompt_embeds, prompt_embeds])
 
         latents_shape = (
             batch_size,
@@ -267,7 +266,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
             latents, _ = jax.lax.fori_loop(0, num_inference_steps, loop_body, (latents, scheduler_state))
 
         # scale and decode the image latents with vae
-        latents = 1 / 0.18215 * latents
+        latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.apply({"params": params["vae"]}, latents, method=self.vae.decode).sample
 
         image = (image / 2 + 0.5).clip(0, 1).transpose(0, 2, 3, 1)

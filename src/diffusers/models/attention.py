@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
-from typing import Optional
+from typing import Callable, Optional
 
 import torch
 import torch.nn.functional as F
@@ -72,6 +72,7 @@ class AttentionBlock(nn.Module):
         self.proj_attn = nn.Linear(channels, channels, 1)
 
         self._use_memory_efficient_attention_xformers = False
+        self._attention_op = None
 
     def reshape_heads_to_batch_dim(self, tensor):
         batch_size, seq_len, dim = tensor.shape
@@ -87,7 +88,9 @@ class AttentionBlock(nn.Module):
         tensor = tensor.permute(0, 2, 1, 3).reshape(batch_size // head_size, seq_len, dim * head_size)
         return tensor
 
-    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
+    def set_use_memory_efficient_attention_xformers(
+        self, use_memory_efficient_attention_xformers: bool, attention_op: Optional[Callable] = None
+    ):
         if use_memory_efficient_attention_xformers:
             if not is_xformers_available():
                 raise ModuleNotFoundError(
@@ -113,6 +116,7 @@ class AttentionBlock(nn.Module):
                 except Exception as e:
                     raise e
         self._use_memory_efficient_attention_xformers = use_memory_efficient_attention_xformers
+        self._attention_op = attention_op
 
     def forward(self, hidden_states):
         residual = hidden_states
@@ -136,7 +140,9 @@ class AttentionBlock(nn.Module):
 
         if self._use_memory_efficient_attention_xformers:
             # Memory efficient attention
-            hidden_states = xformers.ops.memory_efficient_attention(query_proj, key_proj, value_proj, attn_bias=None)
+            hidden_states = xformers.ops.memory_efficient_attention(
+                query_proj, key_proj, value_proj, attn_bias=None, op=self._attention_op
+            )
             hidden_states = hidden_states.to(query_proj.dtype)
         else:
             attention_scores = torch.baddbmm(
@@ -474,3 +480,38 @@ class AdaLayerNormZero(nn.Module):
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.chunk(6, dim=1)
         x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
         return x, gate_msa, shift_mlp, scale_mlp, gate_mlp
+
+
+class AdaGroupNorm(nn.Module):
+    """
+    GroupNorm layer modified to incorporate timestep embeddings.
+    """
+
+    def __init__(
+        self, embedding_dim: int, out_dim: int, num_groups: int, act_fn: Optional[str] = None, eps: float = 1e-5
+    ):
+        super().__init__()
+        self.num_groups = num_groups
+        self.eps = eps
+        self.act = None
+        if act_fn == "swish":
+            self.act = lambda x: F.silu(x)
+        elif act_fn == "mish":
+            self.act = nn.Mish()
+        elif act_fn == "silu":
+            self.act = nn.SiLU()
+        elif act_fn == "gelu":
+            self.act = nn.GELU()
+
+        self.linear = nn.Linear(embedding_dim, out_dim * 2)
+
+    def forward(self, x, emb):
+        if self.act:
+            emb = self.act(emb)
+        emb = self.linear(emb)
+        emb = emb[:, :, None, None]
+        scale, shift = emb.chunk(2, dim=1)
+
+        x = F.group_norm(x, self.num_groups, eps=self.eps)
+        x = x * (1 + scale) + shift
+        return x

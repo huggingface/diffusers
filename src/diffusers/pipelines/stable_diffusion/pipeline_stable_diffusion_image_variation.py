@@ -15,9 +15,8 @@
 import inspect
 from typing import Callable, List, Optional, Union
 
-import torch
-
 import PIL
+import torch
 from packaging import version
 from transformers import CLIPFeatureExtractor, CLIPVisionModelWithProjection
 
@@ -173,12 +172,12 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
         image_embeddings = image_embeddings.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
         if do_classifier_free_guidance:
-            uncond_embeddings = torch.zeros_like(image_embeddings)
+            negative_prompt_embeds = torch.zeros_like(image_embeddings)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
-            image_embeddings = torch.cat([uncond_embeddings, image_embeddings])
+            image_embeddings = torch.cat([negative_prompt_embeds, image_embeddings])
 
         return image_embeddings
 
@@ -195,10 +194,10 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
-        latents = 1 / 0.18215 * latents
+        latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 

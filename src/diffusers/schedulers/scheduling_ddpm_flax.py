@@ -22,7 +22,6 @@ import jax
 import jax.numpy as jnp
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import deprecate
 from .scheduling_utils_flax import (
     CommonSchedulerState,
     FlaxKarrasDiffusionSchedulers,
@@ -86,7 +85,6 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
     """
 
     _compatibles = [e.name for e in FlaxKarrasDiffusionSchedulers]
-    _deprecated_kwargs = ["predict_epsilon"]
 
     dtype: jnp.dtype
 
@@ -106,16 +104,7 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         clip_sample: bool = True,
         prediction_type: str = "epsilon",
         dtype: jnp.dtype = jnp.float32,
-        **kwargs,
     ):
-        message = (
-            "Please make sure to instantiate your scheduler with `prediction_type` instead. E.g. `scheduler ="
-            f" {self.__class__.__name__}.from_pretrained(<model_id>, prediction_type='epsilon')`."
-        )
-        predict_epsilon = deprecate("predict_epsilon", "0.13.0", message, take_from=kwargs)
-        if predict_epsilon is not None:
-            self.register_to_config(prediction_type="epsilon" if predict_epsilon else "sample")
-
         self.dtype = dtype
 
     def create_state(self, common: Optional[CommonSchedulerState] = None) -> DDPMSchedulerState:
@@ -209,7 +198,7 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         model_output: jnp.ndarray,
         timestep: int,
         sample: jnp.ndarray,
-        key: jax.random.KeyArray,
+        key: Optional[jax.random.KeyArray] = None,
         return_dict: bool = True,
     ) -> Union[FlaxDDPMSchedulerOutput, Tuple]:
         """
@@ -231,6 +220,9 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
 
         """
         t = timestep
+
+        if key is None:
+            key = jax.random.PRNGKey(0)
 
         if model_output.shape[1] == sample.shape[1] * 2 and self.config.variance_type in ["learned", "learned_range"]:
             model_output, predicted_variance = jnp.split(model_output, sample.shape[1], axis=1)
