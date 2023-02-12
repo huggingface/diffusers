@@ -549,7 +549,9 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    def prepare_image_based_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator):
+    def prepare_image_based_latents(
+        self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator
+    ):
         image = preprocess_image(image)
         image = image.to(device=self.device, dtype=dtype)
         init_latent_dist = self.vae.encode(image).latent_dist
@@ -823,7 +825,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                 generator,
                 latents,
             )
-            
+
         # 7. Prepare mask latent variables
         mask, masked_image_latents = self.prepare_mask_latents(
             mask,
