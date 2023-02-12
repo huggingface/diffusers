@@ -811,7 +811,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, image_guidance, device)
             latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
             latents, init_latents_orig, noise = self.prepare_image_based_latents(
-                image, latent_timestep, batch_size, num_images_per_prompt, text_embeddings.dtype, device, generator
+                image, latent_timestep, batch_size, num_images_per_prompt, prompt_embeds.dtype, device, generator
             )
         else:
             timesteps = self.scheduler.timesteps
@@ -820,7 +820,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                 num_channels_latents,
                 height,
                 width,
-                text_embeddings.dtype,
+                prompt_embeds.dtype,
                 device,
                 generator,
                 latents,
