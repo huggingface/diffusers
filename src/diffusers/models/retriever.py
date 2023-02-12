@@ -186,3 +186,15 @@ def map_txt_to_clip_feature(clip, tokenizer, prompt, device="cuda"):
     return text_embeddings[0][0].cpu().detach().numpy()
 def get_dataset_with_emb(dataset, clip_model, feature_extractor, device="cuda", image_column="image", index_name="embeddings"):
     return dataset.map(lambda example: {index_name: map_img_to_clip_feature(clip_model, feature_extractor, [example[image_column]], device).cpu().detach().numpy()[0][0]})
+def map_img_to_model_feature(model, feature_extractor, imgs, device="cuda"):
+    for i, image in enumerate(imgs):
+        if not image.mode == "RGB":
+            imgs[i] = image.convert("RGB")
+    imgs = normalize_images(imgs)
+    retrieved_images = preprocess_images(imgs, feature_extractor).to(device)
+    image_embeddings = model(retrieved_images)
+    image_embeddings = image_embeddings / torch.linalg.norm(image_embeddings, dim=-1, keepdim=True)
+    image_embeddings = image_embeddings[None, ...]
+    return image_embeddings
+def get_dataset_with_emb_from_model(dataset, model, feature_extractor, device="cuda", image_column="image", index_name="embeddings"):
+    return dataset.map(lambda example: {index_name: map_img_to_model_feature(model, feature_extractor, [example[image_column]], device).cpu().detach().numpy()[0][0]})
