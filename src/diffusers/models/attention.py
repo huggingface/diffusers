@@ -480,3 +480,38 @@ class AdaLayerNormZero(nn.Module):
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.chunk(6, dim=1)
         x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
         return x, gate_msa, shift_mlp, scale_mlp, gate_mlp
+
+
+class AdaGroupNorm(nn.Module):
+    """
+    GroupNorm layer modified to incorporate timestep embeddings.
+    """
+
+    def __init__(
+        self, embedding_dim: int, out_dim: int, num_groups: int, act_fn: Optional[str] = None, eps: float = 1e-5
+    ):
+        super().__init__()
+        self.num_groups = num_groups
+        self.eps = eps
+        self.act = None
+        if act_fn == "swish":
+            self.act = lambda x: F.silu(x)
+        elif act_fn == "mish":
+            self.act = nn.Mish()
+        elif act_fn == "silu":
+            self.act = nn.SiLU()
+        elif act_fn == "gelu":
+            self.act = nn.GELU()
+
+        self.linear = nn.Linear(embedding_dim, out_dim * 2)
+
+    def forward(self, x, emb):
+        if self.act:
+            emb = self.act(emb)
+        emb = self.linear(emb)
+        emb = emb[:, :, None, None]
+        scale, shift = emb.chunk(2, dim=1)
+
+        x = F.group_norm(x, self.num_groups, eps=self.eps)
+        x = x * (1 + scale) + shift
+        return x

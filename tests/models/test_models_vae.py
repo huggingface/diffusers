@@ -17,11 +17,11 @@ import gc
 import unittest
 
 import torch
+from parameterized import parameterized
 
 from diffusers import AutoencoderKL
 from diffusers.models import ModelMixin
 from diffusers.utils import floats_tensor, load_hf_numpy, require_torch_gpu, slow, torch_all_close, torch_device
-from parameterized import parameterized
 
 from ..test_modeling_common import ModelTesterMixin
 

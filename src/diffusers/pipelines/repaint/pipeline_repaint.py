@@ -16,9 +16,8 @@
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
-import torch
-
 import PIL
+import torch
 
 from ...models import UNet2DModel
 from ...schedulers import RePaintScheduler

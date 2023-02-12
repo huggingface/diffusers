@@ -13,15 +13,10 @@
 # limitations under the License.
 
 
-import warnings
+import numpy as np  # noqa: E402
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...schedulers.scheduling_utils import SchedulerMixin
-
-
-warnings.filterwarnings("ignore")
-
-import numpy as np  # noqa: E402
 
 
 try:

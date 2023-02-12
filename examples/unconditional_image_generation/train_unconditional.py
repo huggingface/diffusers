@@ -6,29 +6,23 @@ import os
 from pathlib import Path
 from typing import Optional
 
+import accelerate
+import datasets
 import torch
 import torch.nn.functional as F
-
-import datasets
-import diffusers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from datasets import load_dataset
+from huggingface_hub import HfFolder, Repository, create_repo, whoami
+from packaging import version
+from torchvision import transforms
+from tqdm.auto import tqdm
+
+import diffusers
 from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
-from diffusers.utils import check_min_version
-from huggingface_hub import HfFolder, Repository, create_repo, whoami
-from torchvision.transforms import (
-    CenterCrop,
-    Compose,
-    InterpolationMode,
-    Normalize,
-    RandomHorizontalFlip,
-    Resize,
-    ToTensor,
-)
-from tqdm.auto import tqdm
+from diffusers.utils import check_min_version, is_tensorboard_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -74,6 +68,12 @@ def parse_args():
         help="The config of the Dataset, leave as None if there's only one config.",
     )
     parser.add_argument(
+        "--model_config_name_or_path",
+        type=str,
+        default=None,
+        help="The config of the UNet model to train, leave as None to use standard DDPM configuration.",
+    )
+    parser.add_argument(
         "--train_data_dir",
         type=str,
         default=None,
@@ -104,6 +104,21 @@ def parse_args():
             "The resolution for input images, all the images in the train/validation dataset will be resized to this"
             " resolution"
         ),
+    )
+    parser.add_argument(
+        "--center_crop",
+        default=False,
+        action="store_true",
+        help=(
+            "Whether to center crop the input images to the resolution. If not set, the images will be randomly"
+            " cropped. The images will be resized to the resolution first before cropping."
+        ),
+    )
+    parser.add_argument(
+        "--random_flip",
+        default=False,
+        action="store_true",
+        help="whether to randomly flip images horizontally",
     )
     parser.add_argument(
         "--train_batch_size", type=int, default=16, help="Batch size (per device) for the training dataloader."
@@ -213,6 +228,7 @@ def parse_args():
         help="Whether the model should predict the 'epsilon'/noise error or directly the reconstructed image 'x0'.",
     )
     parser.add_argument("--ddpm_num_steps", type=int, default=1000)
+    parser.add_argument("--ddpm_num_inference_steps", type=int, default=1000)
     parser.add_argument("--ddpm_beta_schedule", type=str, default="linear")
     parser.add_argument(
         "--checkpointing_steps",
@@ -264,6 +280,40 @@ def main(args):
         logging_dir=logging_dir,
     )
 
+    # `accelerate` 0.16.0 will have better support for customized saving
+    if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
+        # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
+        def save_model_hook(models, weights, output_dir):
+            if args.use_ema:
+                ema_model.save_pretrained(os.path.join(output_dir, "unet_ema"))
+
+            for i, model in enumerate(models):
+                model.save_pretrained(os.path.join(output_dir, "unet"))
+
+                # make sure to pop weight so that corresponding model is not saved again
+                weights.pop()
+
+        def load_model_hook(models, input_dir):
+            if args.use_ema:
+                load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), UNet2DModel)
+                ema_model.load_state_dict(load_model.state_dict())
+                ema_model.to(accelerator.device)
+                del load_model
+
+            for i in range(len(models)):
+                # pop models so that they are not loaded again
+                model = models.pop()
+
+                # load diffusers style into model
+                load_model = UNet2DModel.from_pretrained(input_dir, subfolder="unet")
+                model.register_to_config(**load_model.config)
+
+                model.load_state_dict(load_model.state_dict())
+                del load_model
+
+        accelerator.register_save_state_pre_hook(save_model_hook)
+        accelerator.register_load_state_pre_hook(load_model_hook)
+
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -297,29 +347,33 @@ def main(args):
             os.makedirs(args.output_dir, exist_ok=True)
 
     # Initialize the model
-    model = UNet2DModel(
-        sample_size=args.resolution,
-        in_channels=3,
-        out_channels=3,
-        layers_per_block=2,
-        block_out_channels=(128, 128, 256, 256, 512, 512),
-        down_block_types=(
-            "DownBlock2D",
-            "DownBlock2D",
-            "DownBlock2D",
-            "DownBlock2D",
-            "AttnDownBlock2D",
-            "DownBlock2D",
-        ),
-        up_block_types=(
-            "UpBlock2D",
-            "AttnUpBlock2D",
-            "UpBlock2D",
-            "UpBlock2D",
-            "UpBlock2D",
-            "UpBlock2D",
-        ),
-    )
+    if args.model_config_name_or_path is None:
+        model = UNet2DModel(
+            sample_size=args.resolution,
+            in_channels=3,
+            out_channels=3,
+            layers_per_block=2,
+            block_out_channels=(128, 128, 256, 256, 512, 512),
+            down_block_types=(
+                "DownBlock2D",
+                "DownBlock2D",
+                "DownBlock2D",
+                "DownBlock2D",
+                "AttnDownBlock2D",
+                "DownBlock2D",
+            ),
+            up_block_types=(
+                "UpBlock2D",
+                "AttnUpBlock2D",
+                "UpBlock2D",
+                "UpBlock2D",
+                "UpBlock2D",
+                "UpBlock2D",
+            ),
+        )
+    else:
+        config = UNet2DModel.load_config(args.model_config_name_or_path)
+        model = UNet2DModel.from_config(config)
 
     # Create EMA for the model.
     if args.use_ema:
@@ -329,6 +383,8 @@ def main(args):
             use_ema_warmup=True,
             inv_gamma=args.ema_inv_gamma,
             power=args.ema_power,
+            model_cls=UNet2DModel,
+            model_config=model.config,
         )
 
     # Initialize the scheduler
@@ -369,23 +425,23 @@ def main(args):
         # https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder
 
     # Preprocessing the datasets and DataLoaders creation.
-    augmentations = Compose(
+    augmentations = transforms.Compose(
         [
-            Resize(args.resolution, interpolation=InterpolationMode.BILINEAR),
-            CenterCrop(args.resolution),
-            RandomHorizontalFlip(),
-            ToTensor(),
-            Normalize([0.5], [0.5]),
+            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
+            transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
+            transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x),
+            transforms.ToTensor(),
+            transforms.Normalize([0.5], [0.5]),
         ]
     )
 
-    def transforms(examples):
+    def transform_images(examples):
         images = [augmentations(image.convert("RGB")) for image in examples["image"]]
         return {"input": images}
 
     logger.info(f"Dataset size: {len(dataset)}")
 
-    dataset.set_transform(transforms)
+    dataset.set_transform(transform_images)
     train_dataloader = torch.utils.data.DataLoader(
         dataset, batch_size=args.train_batch_size, shuffle=True, num_workers=args.dataloader_num_workers
     )
@@ -404,7 +460,6 @@ def main(args):
     )
 
     if args.use_ema:
-        accelerator.register_for_checkpointing(ema_model)
         ema_model.to(accelerator.device)
 
     # We need to initialize the trackers we use, and also store our configuration.
@@ -519,7 +574,7 @@ def main(args):
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
             if args.use_ema:
-                logs["ema_decay"] = ema_model.decay
+                logs["ema_decay"] = ema_model.cur_decay_value
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
         progress_bar.close()
@@ -542,13 +597,14 @@ def main(args):
                 images = pipeline(
                     generator=generator,
                     batch_size=args.eval_batch_size,
+                    num_inference_steps=args.ddpm_num_inference_steps,
                     output_type="numpy",
                 ).images
 
                 # denormalize the images and save to tensorboard
                 images_processed = (images * 255).round().astype("uint8")
 
-                if args.logger == "tensorboard":
+                if args.logger == "tensorboard" and is_tensorboard_available():
                     accelerator.get_tracker("tensorboard").add_images(
                         "test_samples", images_processed.transpose(0, 3, 1, 2), epoch
                     )
