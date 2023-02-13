@@ -29,6 +29,7 @@ from transformers.utils import check_min_version
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
+from ...models.attention import CrossAttention
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import deprecate, is_accelerate_available, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
@@ -39,9 +40,6 @@ from .safety_checker import StableDiffusionSafetyChecker
 check_min_version("4.26.0")
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-# def preprocess_image(processor, image):
-#     return processor(images=image, return_tensors="pt")["pixel_values"]
 
 
 def generate_caption(image, captioner, processor, return_image=True):
@@ -54,9 +52,62 @@ def generate_caption(image, captioner, processor, return_image=True):
         return caption
 
 
+def prepare_unet(unet: UNet2DConditionModel):
+    # set the gradients for cross-attention maps to be true
+    for name, params in unet.named_parameters():
+        if "attn2" in name:
+            params.requires_grad = True
+        else:
+            params.requires_grad = False
+    # replace the forward function
+    for name, module in unet.named_modules():
+        module_name = type(module).__name__
+        if module_name == "CrossAttention":
+            module.set_processor(Pix2PixZeroCrossAttnProcessor())
+    return unet
+
+
+def costruct_direction(source_embedding_path: str, target_embedding_path: str):
+    embs_source = torch.load(source_embedding_path)
+    embs_target = torch.load(target_embedding_path)
+    return (embs_target.mean(0) - embs_source.mean(0)).unsqueeze(0)
+
+
+class Pix2PixZeroCrossAttnProcessor:
+    def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None):
+        _, sequence_length, _ = hidden_states.shape
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
+        query = attn.to_q(hidden_states)
+
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.cross_attention_norm:
+            encoder_hidden_states = attn.norm_cross(encoder_hidden_states)
+
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        query = attn.head_to_batch_dim(query)
+        key = attn.head_to_batch_dim(key)
+        value = attn.head_to_batch_dim(value)
+
+        attention_probs = attn.get_attention_scores(query, key, attention_mask)
+        # new bookkeeping to save the attention weights.
+        attn.attn_probs = attention_probs
+        hidden_states = torch.bmm(attention_probs, value)
+        hidden_states = attn.batch_to_head_dim(hidden_states)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        return hidden_states
+
+
 class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-to-image generation using Stable Diffusion.
+    Pipeline for pixel-levl image editing using Pix2Pix Zero. Based on Stable Diffusion.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -495,8 +546,8 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         self,
         prompt: Optional[Union[str, List[str]]] = None,
         image: Union[torch.FloatTensor, PIL.Image.Image] = None,
-        # height: Optional[int] = None,
-        # width: Optional[int] = None,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -506,6 +557,9 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        guidance_amount: float = 0.1,
+        source_embedding_path: str = None,
+        target_embedding_path: str = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
@@ -581,9 +635,9 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
-        # # 0. Default height and width to unet
-        # height = height or self.unet.config.sample_size * self.vae_scale_factor
-        # width = width or self.unet.config.sample_size * self.vae_scale_factor
+        # 0. Define the spatial resolutions.
+        height = height or self.unet.config.sample_size * self.vae_scale_factor
+        width = width or self.unet.config.sample_size * self.vae_scale_factor
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
@@ -607,17 +661,18 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             caption, preprocessed_image = generate_caption(image, self.captioner, self.captioner_processor)
             height, width = preprocessed_image.shape[-2:]
             prompt = caption
+            logger.info(f"Generated caption for the input image: {caption}.")
         else:
-            height = height or self.unet.config.sample_size * self.vae_scale_factor
-            width = width or self.unet.config.sample_size * self.vae_scale_factor
+            pass
 
-        # 2. Define call parameters
+        # 3. Define call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
+        ref_xa_maps = {}  # reference cross attention maps
 
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
@@ -640,23 +695,34 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
-        # 5. Prepare latent variables
-        num_channels_latents = self.unet.in_channels
-        latents = self.prepare_latents(
-            batch_size * num_images_per_prompt,
-            num_channels_latents,
-            height,
-            width,
-            prompt_embeds.dtype,
-            device,
-            generator,
-            latents,
-        )
+        # 5. Generate the inverted noise from the input image or any other image
+        # generated from the input prompt.
+        if self.conditions_input_image:
+            # TODO (sayakpaul): Generate this using DDIM inversion.
+            latents = 1
+            # latents = self.prepare_inverted_noise()
+        else:
+            num_channels_latents = self.unet.in_channels
+            latents = self.prepare_latents(
+                batch_size * num_images_per_prompt,
+                num_channels_latents,
+                height,
+                width,
+                prompt_embeds.dtype,
+                device,
+                generator,
+                latents,
+            )
+        latents_init = latents.clone()
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 7. Denoising loop
+        # 8. Rejig the UNet so that we can obtain the cross-attenion maps and
+        # use them for guiding the subsequent image generation.
+        self.unet = prepare_unet(self.unet)
+
+        # 7. Denoising loop where we obtain the cross-attention maps.
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -672,6 +738,14 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                     cross_attention_kwargs=cross_attention_kwargs,
                 ).sample
 
+                # add the cross attention map to the dictionary
+                ref_xa_maps[t.item()] = {}
+                for name, module in self.unet.named_modules():
+                    module_name = type(module).__name__
+                    if module_name == "CrossAttention" and "attn2" in name:
+                        attn_mask = module.attn_probs  # size is (num_channels, s*s, max_prompt_length)
+                        ref_xa_maps[t.item()][name] = attn_mask.detach().cpu()
+
                 # perform guidance
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
@@ -686,26 +760,89 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
-        if output_type == "latent":
-            image = latents
-            has_nsfw_concept = None
-        elif output_type == "pil":
-            # 8. Post-processing
-            image = self.decode_latents(latents)
+        # # 8. Post-process the reconstructed image.
+        # reconstructed_image = self.decode_latents(latents)
+        # reconstructed_image, recon_has_nsfw_concept = self.run_safety_checker(
+        #     reconstructed_image, device, prompt_embeds.dtype
+        # )
+        # if output_type == "pil":
+        #     reconstructed_image = self.numpy_to_pil(reconstructed_image)
 
-            # 9. Run safety checker
-            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+        # 8. Compute the edit directions.
+        edit_direction = costruct_direction(
+            source_embedding_path, target_embedding_path
+        )  # TODO (sayakpaul): compute the edit directions
 
-            # 10. Convert to PIL
-            image = self.numpy_to_pil(image)
-        else:
-            # 8. Post-processing
-            image = self.decode_latents(latents)
+        # 9. Edit the prompt embeddings as per the edit directions discovered.
+        prompt_embeds_edit = prompt_embeds.clone()
+        prompt_embeds_edit[1:2] += edit_direction
 
-            # 9. Run safety checker
-            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+        # 10. Second denoising loop to generate the edited image.
+        latents = latents_init
+        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for i, t in enumerate(timesteps):
+                # expand the latents if we are doing classifier free guidance
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+
+                x_in = latent_model_input.detach().clone()
+                x_in.requires_grad = True
+
+                opt = torch.optim.SGD([x_in], lr=guidance_amount)
+
+                # predict the noise residual
+                noise_pred = self.unet(
+                    x_in,
+                    t,
+                    encoder_hidden_states=prompt_embeds_edit.detach(),
+                    cross_attention_kwargs=cross_attention_kwargs,
+                ).sample
+
+                loss = 0.0
+                for name, module in self.unet.named_modules():
+                    module_name = type(module).__name__
+                    if module_name == "CrossAttention" and "attn2" in name:
+                        curr = module.attn_probs  # size is num_channel,s*s,77
+                        ref = ref_xa_maps[t.item()][name].detach().cuda()
+                        loss += ((curr - ref) ** 2).sum((1, 2)).mean(0)
+                loss.backward(retain_graph=False)
+                opt.step()
+
+                # recompute the noise
+                with torch.no_grad():
+                    noise_pred = self.unet(
+                        x_in.detach(),
+                        t,
+                        encoder_hidden_states=prompt_embeds_edit,
+                        cross_attention_kwargs=cross_attention_kwargs,
+                    ).sample
+
+                latents = x_in.detach().chunk(2)[0]
+
+                # perform guidance
+                if do_classifier_free_guidance:
+                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+
+                # compute the previous noisy sample x_t -> x_t-1
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+
+                # call the callback, if provided
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    progress_bar.update()
+
+        # 11. Post-process the latents.
+        edited_image = self.decode_latents(latents)
+
+        # 12. Run the safety checker.
+        edited_image, has_nsfw_concept = self.run_safety_checker(edited_image, device, prompt_embeds.dtype)
+
+        # 13. Convert to PIL.
+        if output_type == "pil":
+            edited_image = self.numpy_to_pil(edited_image)
 
         if not return_dict:
-            return (image, has_nsfw_concept)
+            return (edited_image, has_nsfw_concept)
 
-        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+        return StableDiffusionPipelineOutput(images=edited_image, nsfw_content_detected=has_nsfw_concept)
