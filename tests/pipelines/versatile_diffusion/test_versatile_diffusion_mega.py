@@ -46,7 +46,7 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         prompt_image = load_image(
-            "https://raw.githubusercontent.com/SHI-Labs/Versatile-Diffusion/master/assets/benz.jpg"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/blob/main/versatile_diffusion/benz.jpg"
         )
 
         generator = torch.manual_seed(0)
@@ -86,7 +86,7 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
 
         prompt = "cyberpunk 2077"
         init_image = load_image(
-            "https://raw.githubusercontent.com/SHI-Labs/Versatile-Diffusion/master/assets/benz.jpg"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/blob/main/versatile_diffusion/benz.jpg"
         )
         generator = torch.manual_seed(0)
         image = pipe.dual_guided(
