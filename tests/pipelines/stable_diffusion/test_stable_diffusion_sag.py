@@ -98,7 +98,7 @@ class StableDiffusionSAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
-            "prompt": "A painting of a squirrel eating a burger",
+            "prompt": ".",
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 1.0,
