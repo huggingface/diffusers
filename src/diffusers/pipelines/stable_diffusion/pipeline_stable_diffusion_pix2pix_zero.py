@@ -143,7 +143,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
-        conditions_input_image: bool = True,
+        conditions_input_image: bool = False,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
