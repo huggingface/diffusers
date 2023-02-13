@@ -525,7 +525,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    @torch.no_grad()
     # @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
@@ -776,11 +775,8 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 for name, module in self.unet.named_modules():
                     module_name = type(module).__name__
                     if module_name == "CrossAttention" and "attn2" in name:
-                        # for _, param in module.named_parameters():
-                        #     print(f"{module_name}: {param.requires_grad}")
                         curr = module.attn_probs 
                         ref = ref_xa_maps[t.item()][name].detach().to(device)
-                        print(curr.requires_grad, ref.requires_grad)
                         loss += ((curr - ref) ** 2).sum((1, 2)).mean(0)
                 loss.backward(retain_graph=False)
                 opt.step()
