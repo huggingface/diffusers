@@ -778,7 +778,9 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 for name, module in self.unet.named_modules():
                     module_name = type(module).__name__
                     if module_name == "CrossAttention" and "attn2" in name:
-                        curr = module.attn_probs  # size is num_channel,s*s,77
+                        for _, param in module.named_parameters():
+                            print(f"{module_name}: {param.requires_grad}")
+                        curr = module.attn_probs 
                         ref = ref_xa_maps[t.item()][name].detach().cuda()
                         loss += ((curr - ref) ** 2).sum((1, 2)).mean(0)
                 loss.backward(retain_graph=False)
