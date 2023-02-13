@@ -543,7 +543,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        guidance_amount: float = 0.1,
+        cross_attention_guidance_amount: float = 0.1,
         source_embedding_path: str = None,
         target_embedding_path: str = None,
         output_type: Optional[str] = "pil",
@@ -767,7 +767,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 x_in = latent_model_input.detach().clone()
                 x_in.requires_grad = True
 
-                opt = torch.optim.SGD([x_in], lr=guidance_amount)
+                opt = torch.optim.SGD([x_in], lr=cross_attention_guidance_amount)
 
                 # predict the noise residual
                 noise_pred = self.unet(
