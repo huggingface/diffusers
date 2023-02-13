@@ -732,17 +732,9 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
         return pred_original_sample
 
     def pred_epsilon(self, sample, model_output, timestep):
-        # 1. get previous step value (=t-1)
-        # prev_timestep = timestep - self.scheduler.config.num_train_timesteps // self.scheduler.num_inference_steps
-
-        # 2. compute alphas, betas
         alpha_prod_t = self.scheduler.alphas_cumprod[timestep]
-        # alpha_prod_t_prev = (
-        #     self.scheduler.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.scheduler.final_alpha_cumprod
-        # )
 
         beta_prod_t = 1 - alpha_prod_t
-        # 3. compute predicted eps from model output
         if self.scheduler.config.prediction_type == "epsilon":
             pred_eps = model_output
         elif self.scheduler.config.prediction_type == "sample":
