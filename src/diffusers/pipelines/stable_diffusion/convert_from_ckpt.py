@@ -498,23 +498,6 @@ def convert_controlnet_checkpoint(checkpoint, config):
     keys = list(checkpoint.keys())
 
     unet_key = "control_model."
-    # at least a 100 parameters have to start with `model_ema` in order for the checkpoint to be EMA
-    # if sum(k.startswith("model_ema") for k in keys) > 100 and extract_ema:
-    #     print(f"Checkpoint {path} has both EMA and non-EMA weights.")
-    #     print(
-    #         "In this conversion only the EMA weights are extracted. If you want to instead extract the non-EMA"
-    #         " weights (useful to continue fine-tuning), please make sure to remove the `--extract_ema` flag."
-    #     )
-    #     for key in keys:
-    #         if key.startswith("control_model"):
-    #             flat_ema_key = "model_ema." + "".join(key.split(".")[1:])
-    #             unet_state_dict[key.replace(unet_key, "")] = checkpoint.pop(flat_ema_key)
-    # else:
-    #     if sum(k.startswith("model_ema") for k in keys) > 100:
-    #         print(
-    #             "In this conversion only the non-EMA weights are extracted. If you want to instead extract the EMA"
-    #             " weights (usually better for inference), please make sure to add the `--extract_ema` flag."
-    #         )
 
     for key in keys:
         if key.startswith(unet_key):
@@ -530,11 +513,6 @@ def convert_controlnet_checkpoint(checkpoint, config):
     new_checkpoint["conv_in.weight"] = unet_state_dict["input_blocks.0.0.weight"]
     new_checkpoint["conv_in.bias"] = unet_state_dict["input_blocks.0.0.bias"]
 
-    # new_checkpoint["conv_norm_out.weight"] = unet_state_dict["out.0.weight"]
-    # new_checkpoint["conv_norm_out.bias"] = unet_state_dict["out.0.bias"]
-    # new_checkpoint["conv_out.weight"] = unet_state_dict["out.2.weight"]
-    # new_checkpoint["conv_out.bias"] = unet_state_dict["out.2.bias"]
-
     # Retrieves the keys for the input blocks only
     num_input_blocks = len({".".join(layer.split(".")[:2]) for layer in unet_state_dict if "input_blocks" in layer})
     input_blocks = {
@@ -548,13 +526,6 @@ def convert_controlnet_checkpoint(checkpoint, config):
         layer_id: [key for key in unet_state_dict if f"middle_block.{layer_id}" in key]
         for layer_id in range(num_middle_blocks)
     }
-
-    # Retrieves the keys for the output blocks only
-    # num_output_blocks = len({".".join(layer.split(".")[:2]) for layer in unet_state_dict if "output_blocks" in layer})
-    # output_blocks = {
-    #     layer_id: [key for key in unet_state_dict if f"output_blocks.{layer_id}" in key]
-    #     for layer_id in range(num_output_blocks)
-    # }
 
     for i in range(1, num_input_blocks):
         block_id = (i - 1) // (config["layers_per_block"] + 1)
@@ -605,62 +576,6 @@ def convert_controlnet_checkpoint(checkpoint, config):
     # #################################################
     # TODO: add to load input_hint_block and zero_convs
     # #################################################
-
-    # for i in range(num_output_blocks):
-    #     block_id = i // (config["layers_per_block"] + 1)
-    #     layer_in_block_id = i % (config["layers_per_block"] + 1)
-    #     output_block_layers = [shave_segments(name, 2) for name in output_blocks[i]]
-    #     output_block_list = {}
-
-    #     for layer in output_block_layers:
-    #         layer_id, layer_name = layer.split(".")[0], shave_segments(layer, 1)
-    #         if layer_id in output_block_list:
-    #             output_block_list[layer_id].append(layer_name)
-    #         else:
-    #             output_block_list[layer_id] = [layer_name]
-
-    #     if len(output_block_list) > 1:
-    #         resnets = [key for key in output_blocks[i] if f"output_blocks.{i}.0" in key]
-    #         attentions = [key for key in output_blocks[i] if f"output_blocks.{i}.1" in key]
-
-    #         resnet_0_paths = renew_resnet_paths(resnets)
-    #         paths = renew_resnet_paths(resnets)
-
-    #         meta_path = {"old": f"output_blocks.{i}.0", "new": f"up_blocks.{block_id}.resnets.{layer_in_block_id}"}
-    #         assign_to_checkpoint(
-    #             paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config
-    #         )
-
-    #         output_block_list = {k: sorted(v) for k, v in output_block_list.items()}
-    #         if ["conv.bias", "conv.weight"] in output_block_list.values():
-    #             index = list(output_block_list.values()).index(["conv.bias", "conv.weight"])
-    #             new_checkpoint[f"up_blocks.{block_id}.upsamplers.0.conv.weight"] = unet_state_dict[
-    #                 f"output_blocks.{i}.{index}.conv.weight"
-    #             ]
-    #             new_checkpoint[f"up_blocks.{block_id}.upsamplers.0.conv.bias"] = unet_state_dict[
-    #                 f"output_blocks.{i}.{index}.conv.bias"
-    #             ]
-
-    #             # Clear attentions as they have been attributed above.
-    #             if len(attentions) == 2:
-    #                 attentions = []
-
-    #         if len(attentions):
-    #             paths = renew_attention_paths(attentions)
-    #             meta_path = {
-    #                 "old": f"output_blocks.{i}.1",
-    #                 "new": f"up_blocks.{block_id}.attentions.{layer_in_block_id}",
-    #             }
-    #             assign_to_checkpoint(
-    #                 paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config
-    #             )
-    #     else:
-    #         resnet_0_paths = renew_resnet_paths(output_block_layers, n_shave_prefix_segments=1)
-    #         for path in resnet_0_paths:
-    #             old_path = ".".join(["output_blocks", str(i), path["old"]])
-    #             new_path = ".".join(["up_blocks", str(block_id), "resnets", str(layer_in_block_id), path["new"]])
-
-    #             new_checkpoint[new_path] = unet_state_dict[old_path]
 
     return new_checkpoint
 

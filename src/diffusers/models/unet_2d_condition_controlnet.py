@@ -194,65 +194,6 @@ class ControlNetModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # count how many layers upsample the images
         self.num_upsamplers = 0
 
-
         # #################################################
         # TODO: add input_hint_block and zero_convs modules
         # #################################################
-
-
-        # # up
-        # reversed_block_out_channels = list(reversed(block_out_channels))
-        # reversed_attention_head_dim = list(reversed(attention_head_dim))
-        # only_cross_attention = list(reversed(only_cross_attention))
-
-        # output_channel = reversed_block_out_channels[0]
-        # for i, up_block_type in enumerate(up_block_types):
-        #     is_final_block = i == len(block_out_channels) - 1
-
-        #     prev_output_channel = output_channel
-        #     output_channel = reversed_block_out_channels[i]
-        #     input_channel = reversed_block_out_channels[min(i + 1, len(block_out_channels) - 1)]
-
-        #     # add upsample block for all BUT final layer
-        #     if not is_final_block:
-        #         add_upsample = True
-        #         self.num_upsamplers += 1
-        #     else:
-        #         add_upsample = False
-
-        #     up_block = get_up_block(
-        #         up_block_type,
-        #         num_layers=layers_per_block + 1,
-        #         in_channels=input_channel,
-        #         out_channels=output_channel,
-        #         prev_output_channel=prev_output_channel,
-        #         temb_channels=time_embed_dim,
-        #         add_upsample=add_upsample,
-        #         resnet_eps=norm_eps,
-        #         resnet_act_fn=act_fn,
-        #         resnet_groups=norm_num_groups,
-        #         cross_attention_dim=cross_attention_dim,
-        #         attn_num_head_channels=reversed_attention_head_dim[i],
-        #         dual_cross_attention=dual_cross_attention,
-        #         use_linear_projection=use_linear_projection,
-        #         only_cross_attention=only_cross_attention[i],
-        #         upcast_attention=upcast_attention,
-        #         resnet_time_scale_shift=resnet_time_scale_shift,
-        #     )
-        #     self.up_blocks.append(up_block)
-        #     prev_output_channel = output_channel
-
-        # out
-        # if norm_num_groups is not None:
-        #     self.conv_norm_out = nn.GroupNorm(
-        #         num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=norm_eps
-        #     )
-        #     self.conv_act = nn.SiLU()
-        # else:
-        #     self.conv_norm_out = None
-        #     self.conv_act = None
-
-        # conv_out_padding = (conv_out_kernel - 1) // 2
-        # self.conv_out = nn.Conv2d(
-        #     block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
-        # )
