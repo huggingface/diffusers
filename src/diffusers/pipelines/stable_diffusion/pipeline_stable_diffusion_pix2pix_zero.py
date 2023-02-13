@@ -631,9 +631,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             self.conditions_input_image,
             image,
             callback_steps,
-            negative_prompt,
             prompt_embeds,
-            negative_prompt_embeds,
         )
         if self.conditions_image_input and prompt_embeds:
             logger.warning(
