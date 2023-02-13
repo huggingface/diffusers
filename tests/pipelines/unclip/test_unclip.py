@@ -30,6 +30,7 @@ from ...test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_diff
 
 class UnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = UnCLIPPipeline
+    test_xformers_attention = False
 
     required_optional_params = [
         "generator",

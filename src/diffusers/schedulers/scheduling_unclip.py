@@ -106,8 +106,11 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         clip_sample: bool = True,
         clip_sample_range: Optional[float] = 1.0,
         prediction_type: str = "epsilon",
+        beta_schedule: str = "squaredcos_cap_v2",
     ):
-        # beta scheduler is "squaredcos_cap_v2"
+        if beta_schedule != "squaredcos_cap_v2":
+            raise ValueError("UnCLIPScheduler only supports `beta_schedule`: 'squaredcos_cap_v2'")
+
         self.betas = betas_for_alpha_bar(num_train_timesteps)
 
         self.alphas = 1.0 - self.betas
