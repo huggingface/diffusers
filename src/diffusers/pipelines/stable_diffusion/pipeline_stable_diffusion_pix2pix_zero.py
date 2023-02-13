@@ -234,9 +234,8 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             feature_extractor=feature_extractor,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.register_to_config(
-            conditions_input_image=conditions_input_image, requires_safety_checker=requires_safety_checker
-        )
+        self.conditions_input_image = conditions_input_image
+        self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     def enable_vae_slicing(self):
         r"""
@@ -633,15 +632,15 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             callback_steps,
             prompt_embeds,
         )
-        if self.conditions_image_input and prompt_embeds:
+        if self.conditions_input_image and prompt_embeds:
             logger.warning(
-                f"You have set `conditions_image_input` to {self.conditions_image_input} and"
+                f"You have set `conditions_input_image` to {self.conditions_input_image} and"
                 " passed `prompt_embeds`. `prompt_embeds` will be ignored. "
             )
 
         # 2. Generate a caption for the input image if we are conditioning the
         # pipeline based on some input image.
-        if self.conditions_image_input:
+        if self.conditions_input_image:
             caption, preprocessed_image = generate_caption(image, self.captioner, self.captioner_processor)
             height, width = preprocessed_image.shape[-2:]
             prompt = caption
