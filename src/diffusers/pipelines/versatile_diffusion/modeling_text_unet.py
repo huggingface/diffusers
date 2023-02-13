@@ -236,6 +236,31 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
         self.sample_size = sample_size
 
+        # Check inputs
+        if len(down_block_types) != len(up_block_types):
+            raise ValueError(
+                "Must provide the same number of `down_block_types` as `up_block_types`. `down_block_types`:"
+                f" {down_block_types}. `up_block_types`: {up_block_types}."
+            )
+
+        if len(block_out_channels) != len(down_block_types):
+            raise ValueError(
+                "Must provide the same number of `block_out_channels` as `down_block_types`. `block_out_channels`:"
+                f" {block_out_channels}. `down_block_types`: {down_block_types}."
+            )
+
+        if not isinstance(only_cross_attention, bool) and len(only_cross_attention) != len(down_block_types):
+            raise ValueError(
+                "Must provide the same number of `only_cross_attention` as `down_block_types`."
+                f" `only_cross_attention`: {only_cross_attention}. `down_block_types`: {down_block_types}."
+            )
+
+        if not isinstance(attention_head_dim, int) and len(attention_head_dim) != len(down_block_types):
+            raise ValueError(
+                "Must provide the same number of `attention_head_dim` as `down_block_types`. `attention_head_dim`:"
+                f" {attention_head_dim}. `down_block_types`: {down_block_types}."
+            )
+
         # input
         conv_in_padding = (conv_in_kernel - 1) // 2
         self.conv_in = LinearMultiDim(
