@@ -17,7 +17,8 @@ from collections import defaultdict
 
 
 def overwrite_file(file, class_name, test_name, correct_line, done_test):
-    done_test[file] += 1
+    _id = f"{file}_{class_name}_{test_name}"
+    done_test[_id] += 1
 
     with open(file, "r") as f:
         lines = f.readlines()
@@ -43,7 +44,7 @@ def overwrite_file(file, class_name, test_name, correct_line, done_test):
             spaces = len(line.split(correct_line.split()[0])[0])
             count += 1
 
-            if count == done_test[file]:
+            if count == done_test[_id]:
                 in_line = True
 
         if in_class and in_func and in_line:

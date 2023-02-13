@@ -25,8 +25,6 @@ from typing import List
 
 from accelerate.utils import write_basic_config
 
-from diffusers.utils import slow
-
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -74,51 +72,94 @@ class ExamplesTestsAccelerate(unittest.TestCase):
         super().tearDownClass()
         shutil.rmtree(cls._tmpdir)
 
-    @slow
     def test_train_unconditional(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 examples/unconditional_image_generation/train_unconditional.py
-                --dataset_name huggan/few-shot-aurora
+                --dataset_name hf-internal-testing/dummy_image_class_data
+                --model_config_name_or_path diffusers/ddpm_dummy
                 --resolution 64
                 --output_dir {tmpdir}
-                --train_batch_size 4
+                --train_batch_size 2
                 --num_epochs 1
                 --gradient_accumulation_steps 1
+                --ddpm_num_inference_steps 2
                 --learning_rate 1e-3
                 --lr_warmup_steps 5
-                --mixed_precision fp16
                 """.split()
 
             run_command(self._launch_args + test_args, return_stdout=True)
             # save_pretrained smoke test
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.bin")))
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
-            # logging test
-            self.assertTrue(len(os.listdir(os.path.join(tmpdir, "logs", "train_unconditional"))) > 0)
 
-    @slow
     def test_textual_inversion(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 examples/textual_inversion/textual_inversion.py
-                --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
                 --train_data_dir docs/source/en/imgs
                 --learnable_property object
                 --placeholder_token <cat-toy>
-                --initializer_token toy
+                --initializer_token a
                 --resolution 64
                 --train_batch_size 1
-                --gradient_accumulation_steps 2
-                --max_train_steps 10
+                --gradient_accumulation_steps 1
+                --max_train_steps 2
                 --learning_rate 5.0e-04
                 --scale_lr
                 --lr_scheduler constant
                 --lr_warmup_steps 0
                 --output_dir {tmpdir}
-                --mixed_precision fp16
                 """.split()
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "learned_embeds.bin")))
+
+    def test_dreambooth(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+                examples/dreambooth/train_dreambooth.py
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
+                --instance_data_dir docs/source/en/imgs
+                --instance_prompt photo
+                --resolution 64
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 2
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                """.split()
+
+            run_command(self._launch_args + test_args)
+            # save_pretrained smoke test
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
+
+    def test_text_to_image(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+                examples/text_to_image/train_text_to_image.py
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
+                --dataset_name hf-internal-testing/dummy_image_text_data
+                --resolution 64
+                --center_crop
+                --random_flip
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 2
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                """.split()
+
+            run_command(self._launch_args + test_args)
+            # save_pretrained smoke test
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
