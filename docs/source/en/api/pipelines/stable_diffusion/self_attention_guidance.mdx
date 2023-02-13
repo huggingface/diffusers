@@ -38,7 +38,7 @@ Resources:
 
 ```python
 import torch
-from pipeline_stable_diffusion_sag import StableDiffusionSAGPipeline
+from diffusers import StableDiffusionSAGPipeline
 from accelerate.utils import set_seed
 
 pipe = StableDiffusionSAGPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
