@@ -82,7 +82,7 @@ check_min_version("0.13.0.dev0")
 logger = get_logger(__name__)
 
 
-def log_progress(text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch):
+def log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch):
     logger.info(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
         f" {args.validation_prompt}."
@@ -828,7 +828,7 @@ def main():
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
                 if args.validation_prompt is not None and global_step % args.validation_steps == 0:
-                    log_progress(text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch)
+                    log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch)
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
