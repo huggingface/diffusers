@@ -746,6 +746,10 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         # 8. Compute the edit directions.
         edit_direction = construct_direction(source_embedding_path, target_embedding_path) 
 
+        # make the reference image (reconstruction)
+        image_rec = self.numpy_to_pil(self.decode_latents(latents.detach()))
+        image_rec[0].save("reconstructed_image.png")
+
         # 9. Edit the prompt embeddings as per the edit directions discovered.
         prompt_embeds_edit = prompt_embeds.clone()
         prompt_embeds_edit[1:2] += edit_direction
