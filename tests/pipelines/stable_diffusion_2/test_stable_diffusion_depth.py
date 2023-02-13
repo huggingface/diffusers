@@ -266,10 +266,6 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
         self.assertLess(max_diff, 1e-4)
 
     @unittest.skipIf(torch_device == "mps", reason="The depth model does not support MPS yet")
-    def test_num_inference_steps_consistent(self):
-        super().test_num_inference_steps_consistent()
-
-    @unittest.skipIf(torch_device == "mps", reason="The depth model does not support MPS yet")
     def test_progress_bar(self):
         super().test_progress_bar()
 
