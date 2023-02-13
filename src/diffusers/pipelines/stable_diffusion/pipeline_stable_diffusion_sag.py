@@ -18,7 +18,6 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 import torch.nn.functional as F
-import torchvision.transforms as T
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel
@@ -693,8 +692,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
         attn_mask = F.interpolate(attn_mask, (latent_h, latent_w))
 
         # Blur according to the self-attention mask
-        transform = T.GaussianBlur(kernel_size=9, sigma=1.0)
-        degraded_latents = transform(original_latents)
+        degraded_latents = gaussian_blur_2d(original_latents, kernel_size=9, sigma=1.0)
         degraded_latents = degraded_latents * attn_mask + original_latents * (1 - attn_mask)
 
         # Noise it again to match the noise level
@@ -761,3 +759,26 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
             )
 
         return pred_eps
+
+
+# Gaussian blur
+def gaussian_blur_2d(img, kernel_size, sigma):
+
+    ksize_half = (kernel_size - 1) * 0.5
+
+    x = torch.linspace(-ksize_half, ksize_half, steps=kernel_size)
+
+    pdf = torch.exp(-0.5 * (x / sigma).pow(2))
+
+    x_kernel = pdf / pdf.sum()
+    x_kernel = x_kernel.to(device=img.device, dtype=img.dtype)
+
+    kernel2d = torch.mm(x_kernel[:, None], x_kernel[None, :])
+    kernel2d = kernel2d.expand(img.shape[-3], 1, kernel2d.shape[0], kernel2d.shape[1])
+
+    padding = [kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2]
+
+    img = F.pad(img, padding, mode="reflect")
+    img = F.conv2d(img, kernel2d, groups=img.shape[-3])
+
+    return img
