@@ -663,6 +663,15 @@ def main():
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.train_batch_size, shuffle=True, num_workers=args.dataloader_num_workers
     )
+    if args.validation_epochs is not None:
+        warnings.warn(
+            f"FutureWarning: You are doing logging with validation_epochs={args.validation_epochs}."
+            " Deprecated validation_epochs in favor of `validation_steps`"
+            f"Setting `args.validation_steps` to {args.validation_epochs * len(train_dataset)}",
+            FutureWarning,
+            stacklevel=2,
+        )
+        args.validation_steps = args.validation_epochs * len(train_dataset)
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -818,11 +827,7 @@ def main():
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
-                if (
-                    args.validation_prompt is not None
-                    and args.validation_epochs is None
-                    and global_step % args.validation_steps == 0
-                ):
+                if args.validation_prompt is not None and global_step % args.validation_steps == 0:
                     log_progress(text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch)
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
@@ -831,18 +836,6 @@ def main():
 
             if global_step >= args.max_train_steps:
                 break
-        if (
-            args.validation_prompt is not None
-            and args.validation_epochs is not None
-            and epoch % args.validation_epochs == 0
-        ):
-            warnings.warn(
-                f"Future Warning: You are doing logging with validation_epochs={args.validation_epochs}."
-                " validation_epochs is being deprecated in favor of validation_steps.",
-                FutureWarning,
-                stacklevel=2,
-            )
-            log_progress(text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch)
     # Create the pipeline using using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
