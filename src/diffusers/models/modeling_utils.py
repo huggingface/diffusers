@@ -15,7 +15,9 @@
 # limitations under the License.
 
 import inspect
+import warnings
 import os
+import version
 from functools import partial
 from typing import Callable, List, Optional, Tuple, Union
 
@@ -33,6 +35,7 @@ from ..utils import (
     HF_HUB_OFFLINE,
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
     SAFETENSORS_WEIGHTS_NAME,
+    DEPRECATED_REVISION_ARGS,
     WEIGHTS_NAME,
     is_accelerate_available,
     is_safetensors_available,
@@ -818,20 +821,42 @@ def _get_model_file(
             )
     else:
         try:
-            # Load from URL or cache if already cached
-            model_file = hf_hub_download(
-                pretrained_model_name_or_path,
-                filename=weights_name,
-                cache_dir=cache_dir,
-                force_download=force_download,
-                proxies=proxies,
-                resume_download=resume_download,
-                local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
-                user_agent=user_agent,
-                subfolder=subfolder,
-                revision=revision,
-            )
+            if revision in DEPRECATED_REVISION_ARGS and version.parse(version.parse(__version__).base_version) >= version.parse("0.16.0"):
+                variant = _add_variant(weights_name, revision)
+
+                try:
+                    model_file = hf_hub_download(
+                        pretrained_model_name_or_path,
+                        filename=weights_name,
+                        cache_dir=cache_dir,
+                        force_download=force_download,
+                        proxies=proxies,
+                        resume_download=resume_download,
+                        local_files_only=local_files_only,
+                        use_auth_token=use_auth_token,
+                        user_agent=user_agent,
+                        subfolder=subfolder,
+                        revision=revision,
+                    )
+                    warnings.warn(f"You are loading the variant {variant} from {pretrained_model_name_or_path} via `revision='{variant}'` even though you can load it via `variant=`{variant}`. Loading model variants via `revision='{variant}'` is deprecated and will be removed in diffusers v1. Please use `variant='{variant}'` instead. For more information, please have a look at: ", FutureWarning)
+                except:
+                    warnings.warn(f"You are loading the variant {variant} from {pretrained_model_name_or_path} via `revision='{variant}'`. This behavior is deprecated and will be removed in diffusers v1. Instead one should use `variant='{variant}'` instead, but it appears that {pretrained_model_name_or_path} currently does not have a {_add_variant(weights_name)} file, which is a in {pretrained_model_name_or_path}. \n\n The Diffusers team and community would be very grateful if you could open an issue: https://github.com/huggingface/diffusers/issues/new with the title {pretrained_model_name_or_path} is missing {_add_variant(weights_name)} so that the correct variant file can be added.")
+                    model_file = None
+            else:
+                # Load from URL or cache if already cached
+                model_file = hf_hub_download(
+                    pretrained_model_name_or_path,
+                    filename=weights_name,
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    proxies=proxies,
+                    resume_download=resume_download,
+                    local_files_only=local_files_only,
+                    use_auth_token=use_auth_token,
+                    user_agent=user_agent,
+                    subfolder=subfolder,
+                    revision=revision,
+                )
             return model_file
 
         except RepositoryNotFoundError:

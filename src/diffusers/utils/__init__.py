@@ -29,6 +29,7 @@ from .constants import (
     ONNX_WEIGHTS_NAME,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
+    DEPRECATED_REVISION_ARGS,
 )
 from .deprecation_utils import deprecate
 from .doc_utils import replace_example_docstring
