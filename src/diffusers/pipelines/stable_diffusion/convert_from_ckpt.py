@@ -255,7 +255,7 @@ def create_unet_diffusers_config(original_config, image_size: int, control_net=F
         in_channels=unet_params.in_channels,
         # out_channels=unet_params.out_channels,
         down_block_types=tuple(down_block_types),
-        up_block_types=tuple(up_block_types),
+        # up_block_types=tuple(up_block_types),
         block_out_channels=tuple(block_out_channels),
         layers_per_block=unet_params.num_res_blocks,
         cross_attention_dim=unet_params.context_dim,
@@ -263,9 +263,10 @@ def create_unet_diffusers_config(original_config, image_size: int, control_net=F
         use_linear_projection=use_linear_projection,
     )
 
-    # ControlNet donesn't have out_channels
+    # ControlNet donesn't have output channels
     if not control_net:
         config["out_channels"] = unet_params.out_channels
+        config["up_block_types"] = tuple(up_block_types)
 
     return config
 
@@ -1411,9 +1412,11 @@ def load_pipeline_from_control_net_ckpt(
         model_type = original_config.model.params.cond_stage_config.target.split(".")[-1]
         logger.debug(f"no `model_type` given, `model_type` inferred as: {model_type}")
 
-    if model_type == "FrozenOpenCLIPEmbedder":
-        text_model = convert_open_clip_checkpoint(checkpoint)
-        tokenizer = CLIPTokenizer.from_pretrained("stabilityai/stable-diffusion-2", subfolder="tokenizer")
+    if model_type == "FrozenCLIPEmbedder":
+        text_model = convert_ldm_clip_checkpoint(checkpoint)
+        tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
+        safety_checker = StableDiffusionSafetyChecker.from_pretrained("CompVis/stable-diffusion-safety-checker")
+        feature_extractor = AutoFeatureExtractor.from_pretrained("CompVis/stable-diffusion-safety-checker")
         pipe = StableDiffusionControlNetPipeline(
             vae=vae,
             text_encoder=text_model,
@@ -1421,11 +1424,10 @@ def load_pipeline_from_control_net_ckpt(
             unet=unet,
             controlnet=controlnet,
             scheduler=scheduler,
-            safety_checker=None,
-            feature_extractor=None,
-            requires_safety_checker=False,
+            safety_checker=safety_checker,
+            feature_extractor=feature_extractor,
         )
     else:
-        raise NotImplementedError()
+        raise NotImplementedError("Currently supported only for FrozenCLIPEmbedder.")
 
     return pipe
