@@ -806,7 +806,8 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                     progress_bar.update()
 
         # 11. Post-process the latents.
-        edited_image = self.decode_latents(latents.detach())
+        with torch.no_grad():
+            edited_image = self.decode_latents(latents)
 
         # 12. Run the safety checker.
         edited_image, has_nsfw_concept = self.run_safety_checker(edited_image, device, prompt_embeds.dtype)
