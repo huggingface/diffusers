@@ -37,7 +37,7 @@ from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
 
-check_min_version("4.26.0")
+check_min_version("4.26.1")
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
