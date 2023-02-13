@@ -1,4 +1,5 @@
 from . import StableDiffusionPipeline
 
-class StableDiffusionPipelineControlNet(StableDiffusionPipeline):
+
+class StableDiffusionControlNetPipeline(StableDiffusionPipeline):
     pass

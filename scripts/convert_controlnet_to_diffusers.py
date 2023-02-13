@@ -16,7 +16,7 @@
 
 import argparse
 
-from diffusers.pipelines.stable_diffusion.convert_from_ckpt import load_pipeline_from_original_stable_diffusion_ckpt
+from diffusers.pipelines.stable_diffusion.convert_from_ckpt import load_pipeline_from_control_net_ckpt
 
 
 if __name__ == "__main__":
@@ -40,7 +40,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--scheduler_type",
-        default="pndm",
+        default="ddim",
         type=str,
         help="Type of scheduler to use. Should be one of ['pndm', 'lms', 'ddim', 'euler', 'euler-ancestral', 'dpm']",
     )
@@ -102,7 +102,7 @@ if __name__ == "__main__":
     parser.add_argument("--device", type=str, help="Device to use (e.g. cpu, cuda:0, cuda:1, etc.)")
     args = parser.parse_args()
 
-    pipe = load_pipeline_from_original_stable_diffusion_ckpt(
+    pipe = load_pipeline_from_control_net_ckpt(
         checkpoint_path=args.checkpoint_path,
         original_config_file=args.original_config_file,
         image_size=args.image_size,
