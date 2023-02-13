@@ -85,6 +85,8 @@
     title: Philosophy
   - local: conceptual/contribution
     title: How to contribute?
+  - local: conceptual/ethical_guidelines
+    title: Diffusers' Ethical Guidelines
   title: Conceptual Guides
 - sections:
   - sections:
