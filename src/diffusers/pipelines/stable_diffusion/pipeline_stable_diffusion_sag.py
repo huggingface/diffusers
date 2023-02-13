@@ -728,9 +728,6 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
                 f"prediction_type given as {self.scheduler.config.prediction_type} must be one of `epsilon`, `sample`,"
                 " or `v_prediction`"
             )
-        # # 4. Clip "predicted x_0"
-        # if self.scheduler.config.clip_sample:
-        #     pred_original_sample = torch.clamp(pred_original_sample, -1, 1)
 
         return pred_original_sample
 
