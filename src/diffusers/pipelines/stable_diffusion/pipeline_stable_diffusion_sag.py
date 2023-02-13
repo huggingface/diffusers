@@ -17,6 +17,7 @@ import math
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
+import torch.nn.functional as F
 import torchvision.transforms as T
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
@@ -616,12 +617,12 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
                     # in https://arxiv.org/pdf/2210.00939.pdf
                     if do_classifier_free_guidance:
                         # DDIM-like prediction of x0
-                        pred_x0 = self.pred_x0_from_eps(latents, noise_pred_uncond, t)
+                        pred_x0 = self.pred_x0(latents, noise_pred_uncond, t)
                         # get the stored attention maps
                         uncond_attn, cond_attn = store_processor.attention_probs.chunk(2)
                         # self-attention-based degrading of latents
                         degraded_latents = self.sag_masking(
-                            pred_x0, uncond_attn, t, self.pred_eps_from_noise(latents, noise_pred_uncond, t)
+                            pred_x0, uncond_attn, t, self.pred_epsilon(latents, noise_pred_uncond, t)
                         )
                         uncond_emb, _ = prompt_embeds.chunk(2)
                         # forward and give guidance
@@ -629,12 +630,12 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
                         noise_pred += sag_scale * (noise_pred_uncond - degraded_pred)
                     else:
                         # DDIM-like prediction of x0
-                        pred_x0 = self.pred_x0_from_eps(latents, noise_pred, t)
+                        pred_x0 = self.pred_x0(latents, noise_pred, t)
                         # get the stored attention maps
                         cond_attn = store_processor.attention_probs
                         # self-attention-based degrading of latents
                         degraded_latents = self.sag_masking(
-                            pred_x0, cond_attn, t, self.pred_eps_from_noise(latents, noise_pred, t)
+                            pred_x0, cond_attn, t, self.pred_epsilon(latents, noise_pred, t)
                         )
                         # forward and give guidance
                         degraded_pred = self.unet(degraded_latents, t, encoder_hidden_states=prompt_embeds).sample
@@ -679,7 +680,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
         attn_mask = (
             attn_mask.reshape(b, map_size, map_size).unsqueeze(1).repeat(1, latent_channel, 1, 1).type(attn_map.dtype)
         )
-        attn_mask = torch.nn.functional.interpolate(attn_mask, (latent_h, latent_w))
+        attn_mask = F.interpolate(attn_mask, (latent_h, latent_w))
 
         # Blur according to the self-attention mask
         transform = T.GaussianBlur(kernel_size=9, sigma=1.0)
@@ -692,7 +693,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
         return degraded_latents
 
     # Modified from diffusers.schedulers.scheduling_ddim.DDIMScheduler.step
-    def pred_x0_from_eps(self, sample, model_output, timestep):
+    def pred_x0(self, sample, model_output, timestep):
         # 1. get previous step value (=t-1)
         # prev_timestep = timestep - self.scheduler.config.num_train_timesteps // self.scheduler.num_inference_steps
 
@@ -724,7 +725,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
 
         return pred_original_sample
 
-    def pred_eps_from_noise(self, sample, model_output, timestep):
+    def pred_epsilon(self, sample, model_output, timestep):
         # 1. get previous step value (=t-1)
         # prev_timestep = timestep - self.scheduler.config.num_train_timesteps // self.scheduler.num_inference_steps
 
