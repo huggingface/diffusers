@@ -15,10 +15,9 @@
 import inspect
 from typing import List, Optional, Union
 
+import PIL
 import torch
 from torch.nn import functional as F
-
-import PIL
 from transformers import (
     CLIPFeatureExtractor,
     CLIPTextModelWithProjection,

@@ -127,7 +127,30 @@ This would be a good opportunity to tweak some of your hyperparameters if you wi
 
 Saved checkpoints are stored in a format suitable for resuming training. They not only include the model weights, but also the state of the optimizer, data loaders and learning rate.
 
-You can use a checkpoint for inference, but first you need to convert it to an inference pipeline. This is how you could do it:
+**Note**: If you have installed `"accelerate>=0.16.0"` you can use the following code to run 
+inference from an intermediate checkpoint.
+
+```python
+from diffusers import DiffusionPipeline, UNet2DConditionModel
+from transformers import CLIPTextModel
+import torch
+
+# Load the pipeline with the same arguments (model, revision) that were used for training
+model_id = "CompVis/stable-diffusion-v1-4"
+
+unet = UNet2DConditionModel.from_pretrained("/sddata/dreambooth/daruma-v2-1/checkpoint-100/unet")
+
+# if you have trained with `--args.train_text_encoder` make sure to also load the text encoder
+text_encoder = CLIPTextModel.from_pretrained("/sddata/dreambooth/daruma-v2-1/checkpoint-100/text_encoder")
+
+pipeline = DiffusionPipeline.from_pretrained(model_id, unet=unet, text_encoder=text_encoder, dtype=torch.float16)
+pipeline.to("cuda")
+
+# Perform inference, or save, or push to the hub
+pipeline.save_pretrained("dreambooth-pipeline")
+```
+
+If you have installed `"accelerate<0.16.0"` you need to first convert it to an inference pipeline. This is how you could do it:
 
 ```python
 from accelerate import Accelerator
@@ -270,6 +293,10 @@ accelerate launch train_dreambooth.py \
 ## Inference
 
 Once you have trained a model, inference can be done using the `StableDiffusionPipeline`, by simply indicating the path where the model was saved. Make sure that your prompts include the special `identifier` used during training (`sks` in the previous examples).
+
+**Note**: If you have installed `"accelerate>=0.16.0"` you can use the following code to run 
+inference from an intermediate checkpoint.
+
 
 ```python
 from diffusers import StableDiffusionPipeline

@@ -305,7 +305,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
 
         if eta > 0:
-            # randn_like does not support generator https://github.com/pytorch/pytorch/issues/27072
             device = model_output.device
             if variance_noise is not None and generator is not None:
                 raise ValueError(

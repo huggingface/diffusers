@@ -17,11 +17,11 @@ import warnings
 from typing import Callable, List, Optional, Union
 
 import torch
+from k_diffusion.external import CompVisDenoiser, CompVisVDenoiser
 
 from diffusers import DiffusionPipeline, LMSDiscreteScheduler
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.utils import is_accelerate_available, logging
-from k_diffusion.external import CompVisDenoiser, CompVisVDenoiser
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -300,7 +300,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         latents = 1 / 0.18215 * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 

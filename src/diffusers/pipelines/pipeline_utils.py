@@ -22,14 +22,14 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
-import torch
-
-import diffusers
 import PIL
+import torch
 from huggingface_hub import model_info, snapshot_download
 from packaging import version
 from PIL import Image
 from tqdm.auto import tqdm
+
+import diffusers
 
 from ..configuration_utils import ConfigMixin
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
@@ -594,6 +594,14 @@ class DiffusionPipeline(ConfigMixin):
             return True
 
         init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
+
+        # Special case: safety_checker must be loaded separately when using `from_flax`
+        if from_flax and "safety_checker" in init_dict and "safety_checker" not in passed_class_obj:
+            raise NotImplementedError(
+                "The safety checker cannot be automatically loaded when loading weights `from_flax`."
+                " Please, pass `safety_checker=None` to `from_pretrained`, and load the safety checker"
+                " separately if you need it."
+            )
 
         if len(unused_kwargs) > 0:
             logger.warning(
