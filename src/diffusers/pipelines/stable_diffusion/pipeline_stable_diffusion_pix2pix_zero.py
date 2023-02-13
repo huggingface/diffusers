@@ -235,24 +235,13 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.conditions_input_image = conditions_input_image
-        self.register_to_config(requires_safety_checker=requires_safety_checker)
+        self.register_to_config(
+            captioner=captioner,
+            captioner_processor=captioner_processor,
+            requires_safety_checker=requires_safety_checker,
+        )
 
-    def enable_vae_slicing(self):
-        r"""
-        Enable sliced VAE decoding.
-
-        When this option is enabled, the VAE will split the input tensor in slices to compute decoding in several
-        steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.vae.enable_slicing()
-
-    def disable_vae_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously invoked, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_slicing()
-
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
@@ -273,6 +262,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
 
     @property
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
     def _execution_device(self):
         r"""
         Returns the device on which the pipeline's models will be executed. After calling
@@ -290,6 +280,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(
         self,
         prompt,
@@ -428,6 +419,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
         return prompt_embeds
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is not None:
             safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
@@ -438,6 +430,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             has_nsfw_concept = None
         return image, has_nsfw_concept
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
@@ -446,6 +439,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
@@ -471,9 +465,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         callback_steps,
         prompt_embeds=None,
     ):
-        # if height % 8 != 0 or width % 8 != 0:
-        #     raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
-
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):
@@ -508,6 +499,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             elif isinstance(image, (torch.FloatTensor, PIL.Image.Image)):
                 raise ValueError("Invalid image provided. Supported formats: torch.FloatTensor, PIL.Image.Image.}")
 
+    #  Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if isinstance(generator, list) and len(generator) != batch_size:
@@ -744,12 +736,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                             callback(i, t, latents)
 
         # 8. Compute the edit directions.
-        edit_direction = construct_direction(source_embedding_path, target_embedding_path) 
-
-        # make the reference image (reconstruction)
-        with torch.no_grad():
-            image_rec = self.numpy_to_pil(self.decode_latents(latents))
-        image_rec[0].save("reconstructed_image.png")
+        edit_direction = construct_direction(source_embedding_path, target_embedding_path)
 
         # 9. Edit the prompt embeddings as per the edit directions discovered.
         prompt_embeds_edit = prompt_embeds.clone()
@@ -781,7 +768,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 for name, module in self.unet.named_modules():
                     module_name = type(module).__name__
                     if module_name == "CrossAttention" and "attn2" in name:
-                        curr = module.attn_probs 
+                        curr = module.attn_probs
                         ref = ref_xa_maps[t.item()][name].detach().to(device)
                         loss += ((curr - ref) ** 2).sum((1, 2)).mean(0)
                 loss.backward(retain_graph=False)
