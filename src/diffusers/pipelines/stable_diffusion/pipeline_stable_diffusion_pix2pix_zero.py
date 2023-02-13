@@ -67,7 +67,7 @@ def prepare_unet(unet: UNet2DConditionModel):
     return unet
 
 
-def costruct_direction(source_embedding_path: str, target_embedding_path: str):
+def construct_direction(source_embedding_path: str, target_embedding_path: str):
     embs_source = torch.load(source_embedding_path)
     embs_target = torch.load(target_embedding_path)
     return (embs_target.mean(0) - embs_source.mean(0)).unsqueeze(0)
@@ -744,9 +744,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                         callback(i, t, latents)
 
         # 8. Compute the edit directions.
-        edit_direction = costruct_direction(
-            source_embedding_path, target_embedding_path
-        )  # TODO (sayakpaul): compute the edit directions
+        edit_direction = construct_direction(source_embedding_path, target_embedding_path) 
 
         # 9. Edit the prompt embeddings as per the edit directions discovered.
         prompt_embeds_edit = prompt_embeds.clone()
@@ -778,10 +776,11 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 for name, module in self.unet.named_modules():
                     module_name = type(module).__name__
                     if module_name == "CrossAttention" and "attn2" in name:
-                        for _, param in module.named_parameters():
-                            print(f"{module_name}: {param.requires_grad}")
+                        # for _, param in module.named_parameters():
+                        #     print(f"{module_name}: {param.requires_grad}")
                         curr = module.attn_probs 
-                        ref = ref_xa_maps[t.item()][name].detach().cuda()
+                        ref = ref_xa_maps[t.item()][name].detach().to(device)
+                        print(curr.requires_grad, ref.requires_grad)
                         loss += ((curr - ref) ** 2).sum((1, 2)).mean(0)
                 loss.backward(retain_graph=False)
                 opt.step()
