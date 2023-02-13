@@ -161,16 +161,16 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = self.sigmas.max()
 
-        timesteps = torch.from_numpy(timesteps).to(device)
-        timesteps_interpol = self.sigma_to_t(sigmas_interpol).to(device)
-        interleaved_timesteps = torch.stack((timesteps_interpol[:-2, None], timesteps[1:, None]), dim=-1).flatten()
-        timesteps = torch.cat([timesteps[:1], interleaved_timesteps])
-
         if str(device).startswith("mps"):
             # mps does not support float64
-            self.timesteps = timesteps.to(device, dtype=torch.float32)
+            timesteps = torch.from_numpy(timesteps).to(device, dtype=torch.float32)
         else:
-            self.timesteps = timesteps
+            timesteps = torch.from_numpy(timesteps).to(device)
+
+        timesteps_interpol = self.sigma_to_t(sigmas_interpol).to(device)
+        interleaved_timesteps = torch.stack((timesteps_interpol[:-2, None], timesteps[1:, None]), dim=-1).flatten()
+
+        self.timesteps = torch.cat([timesteps[:1], interleaved_timesteps])
 
         self.sample = None
 

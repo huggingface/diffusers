@@ -1,9 +1,8 @@
 import inspect
 from typing import Callable, List, Optional, Union
 
-import torch
-
 import PIL.Image
+import torch
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer, CLIPVisionModel
 
 from ...models import AutoencoderKL, UNet2DConditionModel

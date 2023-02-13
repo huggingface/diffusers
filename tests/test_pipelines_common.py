@@ -259,6 +259,7 @@ class PipelineTesterMixin:
                 # Taking the median of the largest <n> differences
                 # is resilient to outliers
                 diff = np.abs(output_batch[0][0] - output[0][0])
+                diff = diff.flatten()
                 diff.sort()
                 max_diff = np.median(diff[-5:])
             else:

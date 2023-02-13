@@ -85,6 +85,8 @@
     title: Philosophy
   - local: conceptual/contribution
     title: How to contribute?
+  - local: conceptual/ethical_guidelines
+    title: Diffusers' Ethical Guidelines
   title: Conceptual Guides
 - sections:
   - sections:
@@ -145,6 +147,8 @@
         title: Image-Variation
       - local: api/pipelines/stable_diffusion/upscale
         title: Super-Resolution
+      - local: api/pipelines/stable_diffusion/latent_upscale
+        title: Stable-Diffusion-Latent-Upscaler  
       - local: api/pipelines/stable_diffusion/pix2pix
         title: InstructPix2Pix
       title: Stable Diffusion

@@ -18,6 +18,7 @@ import tempfile
 import unittest
 
 import torch
+from parameterized import parameterized
 
 from diffusers import UNet2DConditionModel
 from diffusers.models.cross_attention import CrossAttnProcessor, LoRACrossAttnProcessor
@@ -31,7 +32,6 @@ from diffusers.utils import (
     torch_device,
 )
 from diffusers.utils.import_utils import is_xformers_available
-from parameterized import parameterized
 
 from ..test_modeling_common import ModelTesterMixin
 
@@ -252,7 +252,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
             def __call__(self, attn, hidden_states, encoder_hidden_states=None, attention_mask=None, number=None):
                 batch_size, sequence_length, _ = hidden_states.shape
-                attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
+                attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
                 query = attn.to_q(hidden_states)
 
@@ -411,6 +411,35 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
         assert (sample - new_sample).abs().max() < 1e-4
         assert (sample - old_sample).abs().max() < 1e-4
+
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_lora_xformers_on_off(self):
+        # enable deterministic behavior for gradient checkpointing
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        init_dict["attention_head_dim"] = (8, 16)
+
+        torch.manual_seed(0)
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        lora_attn_procs = create_lora_layers(model)
+        model.set_attn_processor(lora_attn_procs)
+
+        # default
+        with torch.no_grad():
+            sample = model(**inputs_dict).sample
+
+            model.enable_xformers_memory_efficient_attention()
+            on_sample = model(**inputs_dict).sample
+
+            model.disable_xformers_memory_efficient_attention()
+            off_sample = model(**inputs_dict).sample
+
+        assert (sample - on_sample).abs().max() < 1e-4
+        assert (sample - off_sample).abs().max() < 1e-4
 
 
 @slow
