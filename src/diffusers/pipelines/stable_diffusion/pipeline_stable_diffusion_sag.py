@@ -763,7 +763,6 @@ class StableDiffusionSAGPipeline(DiffusionPipeline):
 
 # Gaussian blur
 def gaussian_blur_2d(img, kernel_size, sigma):
-
     ksize_half = (kernel_size - 1) * 0.5
 
     x = torch.linspace(-ksize_half, ksize_half, steps=kernel_size)
