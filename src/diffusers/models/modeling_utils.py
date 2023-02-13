@@ -15,27 +15,27 @@
 # limitations under the License.
 
 import inspect
-import warnings
 import os
-import version
+import warnings
 from functools import partial
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
+from packaging import version
 from requests import HTTPError
 from torch import Tensor, device
 
 from .. import __version__
 from ..utils import (
     CONFIG_NAME,
+    DEPRECATED_REVISION_ARGS,
     DIFFUSERS_CACHE,
     FLAX_WEIGHTS_NAME,
     HF_HUB_OFFLINE,
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
     SAFETENSORS_WEIGHTS_NAME,
-    DEPRECATED_REVISION_ARGS,
     WEIGHTS_NAME,
     is_accelerate_available,
     is_safetensors_available,
@@ -146,7 +146,7 @@ def _load_state_dict_into_model(model_to_load, state_dict):
 
 def _add_variant(weights_name: str, variant: Optional[str] = None) -> str:
     if variant is not None:
-        splits = os.path.splittext(weights_name)
+        splits = os.path.splitext(weights_name)
         splits = splits[:-1] + [variant] + splits[-1:]
         weights_name = ".".join(splits)
 
@@ -821,7 +821,9 @@ def _get_model_file(
             )
     else:
         try:
-            if revision in DEPRECATED_REVISION_ARGS and version.parse(version.parse(__version__).base_version) >= version.parse("0.16.0"):
+            if revision in DEPRECATED_REVISION_ARGS and version.parse(
+                version.parse(__version__).base_version
+            ) >= version.parse("0.16.0"):
                 variant = _add_variant(weights_name, revision)
 
                 try:
@@ -838,9 +840,15 @@ def _get_model_file(
                         subfolder=subfolder,
                         revision=revision,
                     )
-                    warnings.warn(f"You are loading the variant {variant} from {pretrained_model_name_or_path} via `revision='{variant}'` even though you can load it via `variant=`{variant}`. Loading model variants via `revision='{variant}'` is deprecated and will be removed in diffusers v1. Please use `variant='{variant}'` instead. For more information, please have a look at: ", FutureWarning)
-                except:
-                    warnings.warn(f"You are loading the variant {variant} from {pretrained_model_name_or_path} via `revision='{variant}'`. This behavior is deprecated and will be removed in diffusers v1. Instead one should use `variant='{variant}'` instead, but it appears that {pretrained_model_name_or_path} currently does not have a {_add_variant(weights_name)} file, which is a in {pretrained_model_name_or_path}. \n\n The Diffusers team and community would be very grateful if you could open an issue: https://github.com/huggingface/diffusers/issues/new with the title {pretrained_model_name_or_path} is missing {_add_variant(weights_name)} so that the correct variant file can be added.")
+                    warnings.warn(
+                        f"You are loading the variant {variant} from {pretrained_model_name_or_path} via `revision='{variant}'` even though you can load it via `variant=`{variant}`. Loading model variants via `revision='{variant}'` is deprecated and will be removed in diffusers v1. Please use `variant='{variant}'` instead. For more information, please have a look at: ",
+                        FutureWarning,
+                    )
+                except:  # noqa: E722
+                    warnings.warn(
+                        f"You are loading the variant {variant} from {pretrained_model_name_or_path} via `revision='{variant}'`. This behavior is deprecated and will be removed in diffusers v1. One should use `variant='{variant}'` instead. However, it appears that {pretrained_model_name_or_path} currently does not have a {_add_variant(weights_name)} file in the 'main' branch of {pretrained_model_name_or_path}. \n The Diffusers team and community would be very grateful if you could open an issue: https://github.com/huggingface/diffusers/issues/new with the title '{pretrained_model_name_or_path} is missing {_add_variant(weights_name)}' so that the correct variant file can be added.",
+                        FutureWarning,
+                    )
                     model_file = None
             else:
                 # Load from URL or cache if already cached

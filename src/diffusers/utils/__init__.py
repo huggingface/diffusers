@@ -20,6 +20,7 @@ from packaging import version
 from .. import __version__
 from .constants import (
     CONFIG_NAME,
+    DEPRECATED_REVISION_ARGS,
     DIFFUSERS_CACHE,
     DIFFUSERS_DYNAMIC_MODULE_NAME,
     FLAX_WEIGHTS_NAME,
@@ -29,7 +30,6 @@ from .constants import (
     ONNX_WEIGHTS_NAME,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
-    DEPRECATED_REVISION_ARGS,
 )
 from .deprecation_utils import deprecate
 from .doc_utils import replace_example_docstring
