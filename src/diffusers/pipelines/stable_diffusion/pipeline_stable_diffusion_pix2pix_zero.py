@@ -509,20 +509,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             elif isinstance(image, (torch.FloatTensor, PIL.Image.Image)):
                 raise ValueError("Invalid image provided. Supported formats: torch.FloatTensor, PIL.Image.Image.}")
 
-        # if negative_prompt is not None and negative_prompt_embeds is not None:
-        #     raise ValueError(
-        #         f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
-        #         f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
-        #     )
-
-        # if prompt_embeds is not None and negative_prompt_embeds is not None:
-        #     if prompt_embeds.shape != negative_prompt_embeds.shape:
-        #         raise ValueError(
-        #             "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
-        #             f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
-        #             f" {negative_prompt_embeds.shape}."
-        #         )
-
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if isinstance(generator, list) and len(generator) != batch_size:
@@ -759,14 +745,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
-
-        # # 8. Post-process the reconstructed image.
-        # reconstructed_image = self.decode_latents(latents)
-        # reconstructed_image, recon_has_nsfw_concept = self.run_safety_checker(
-        #     reconstructed_image, device, prompt_embeds.dtype
-        # )
-        # if output_type == "pil":
-        #     reconstructed_image = self.numpy_to_pil(reconstructed_image)
 
         # 8. Compute the edit directions.
         edit_direction = costruct_direction(
