@@ -37,7 +37,6 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 class StableDiffusionSAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionSAGPipeline
-    test_cpu_offload = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)
