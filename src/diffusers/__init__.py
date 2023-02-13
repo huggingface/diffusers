@@ -118,6 +118,7 @@ else:
         StableDiffusionLatentUpscalePipeline,
         StableDiffusionPipeline,
         StableDiffusionPipelineSafe,
+        StableDiffusionPix2PixZeroPipeline,
         StableDiffusionUpscalePipeline,
         UnCLIPImageVariationPipeline,
         UnCLIPPipeline,
