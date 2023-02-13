@@ -57,7 +57,6 @@ from diffusers.utils.import_utils import is_xformers_available
 
 if is_wandb_available():
     import wandb
-    
 
 if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
     PIL_INTERPOLATION = {
