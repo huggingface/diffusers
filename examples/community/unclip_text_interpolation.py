@@ -3,6 +3,8 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 from torch.nn import functional as F
+from transformers import CLIPTextModelWithProjection, CLIPTokenizer
+from transformers.models.clip.modeling_clip import CLIPTextModelOutput
 
 from diffusers import (
     DiffusionPipeline,
@@ -14,8 +16,6 @@ from diffusers import (
 )
 from diffusers.pipelines.unclip import UnCLIPTextProjModel
 from diffusers.utils import is_accelerate_available, logging, randn_tensor
-from transformers import CLIPTextModelWithProjection, CLIPTokenizer
-from transformers.models.clip.modeling_clip import CLIPTextModelOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
