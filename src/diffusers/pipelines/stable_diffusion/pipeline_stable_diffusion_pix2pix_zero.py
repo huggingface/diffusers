@@ -185,7 +185,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
             )
 
-        if conditions_input_image is None:
+        if conditions_input_image:
             logger.info("Loading caption generator since `conditions_input_image` is True.")
             checkpoint = "Salesforce/blip-image-captioning-base"
             captioner_processor = AutoProcessor.from_pretrained(checkpoint)
