@@ -14,13 +14,10 @@
 # limitations under the License.
 """ Conversion script for the Stable Diffusion checkpoints."""
 
-import os
 import re
-import tempfile
 
 import torch
 
-import requests
 from diffusers import (
     AudioLDMPipeline,
     AutoencoderKL,
@@ -29,15 +26,17 @@ from diffusers import (
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
     HeunDiscreteScheduler,
-    LDMTextToImagePipeline,
     LMSDiscreteScheduler,
     PNDMScheduler,
     UNet2DConditionModel,
 )
 from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
-from diffusers.pipelines.paint_by_example import PaintByExampleImageEncoder, PaintByExamplePipeline
-from transformers import AutoFeatureExtractor, CLAPAudioConfig, CLAPTextModel, AutoTokenizer, SpeechT5HifiGan, \
-    CLAPTextConfig
+from transformers import (
+    AutoTokenizer,
+    ClapTextConfig,
+    ClapTextModelWithProjection,
+    SpeechT5HifiGan,
+)
 
 from ...utils import is_omegaconf_available, is_safetensors_available
 from ...utils.import_utils import BACKENDS_MAPPING
@@ -230,14 +229,10 @@ def create_unet_diffusers_config(original_config, image_size: int):
 
     vae_scale_factor = 2 ** (len(vae_params.ch_mult) - 1)
 
-    head_dim = unet_params.num_heads if "num_heads" in unet_params else None
-    use_linear_projection = (
-        unet_params.use_linear_in_transformer if "use_linear_in_transformer" in unet_params else False
+    extra_film_condition_dim = (
+        unet_params.extra_film_condition_dim if "extra_film_condition_dim" in unet_params else None
     )
-    if use_linear_projection:
-        # stable diffusion 2-base-512 and 2-768
-        if head_dim is None:
-            head_dim = [5, 10, 20, 20]
+    extra_film_use_concat = unet_params.extra_film_use_concat if "extra_film_use_concat" in unet_params else None
 
     config = dict(
         sample_size=image_size // vae_scale_factor,
@@ -248,8 +243,8 @@ def create_unet_diffusers_config(original_config, image_size: int):
         block_out_channels=tuple(block_out_channels),
         layers_per_block=unet_params.num_res_blocks,
         cross_attention_dim=True,
-        # attention_head_dim=head_dim,
-        use_linear_projection=use_linear_projection,
+        extra_film_condition_dim=extra_film_condition_dim,
+        extra_film_use_concat=extra_film_use_concat,
     )
 
     return config
@@ -337,6 +332,9 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
     new_checkpoint["time_embedding.linear_1.bias"] = unet_state_dict["time_embed.0.bias"]
     new_checkpoint["time_embedding.linear_2.weight"] = unet_state_dict["time_embed.2.weight"]
     new_checkpoint["time_embedding.linear_2.bias"] = unet_state_dict["time_embed.2.bias"]
+
+    new_checkpoint["film_embedding.weight"] = unet_state_dict["film_emb.weight"]
+    new_checkpoint["film_embedding.bias"] = unet_state_dict["film_emb.bias"]
 
     new_checkpoint["conv_in.weight"] = unet_state_dict["input_blocks.0.0.weight"]
     new_checkpoint["conv_in.bias"] = unet_state_dict["input_blocks.0.0.bias"]
@@ -628,6 +626,7 @@ def convert_ldm_bert_checkpoint(checkpoint, config):
 
     return hf_model
 
+
 textenc_conversion_lst = [
     ("cond_stage_model.model.positional_embedding", "text_model.embeddings.position_embedding.weight"),
     ("cond_stage_model.model.token_embedding.weight", "text_model.embeddings.token_embedding.weight"),
@@ -653,7 +652,7 @@ textenc_pattern = re.compile("|".join(protected.keys()))
 
 
 def convert_laion_clap_checkpoint(checkpoint):
-    text_model = CLAPTextModel.from_pretrained("stabilityai/stable-diffusion-2", subfolder="text_encoder")
+    text_model = ClapTextModelWithProjection.from_pretrained("stabilityai/stable-diffusion-2", subfolder="text_encoder")
 
     keys = list(checkpoint.keys())
 
@@ -725,7 +724,7 @@ def load_pipeline_from_original_audioldm_ckpt(
     :param num_in_channels: The number of input channels. If `None` number of input channels will be automatically
     inferred. :param scheduler_type: Type of scheduler to use. Should be one of `["pndm", "lms", "heun", "euler",
     "euler-ancestral", "dpm", "ddim"]`. :param model_type: The pipeline type. `None` to automatically infer, or one of
-    `["FrozenOpenCLAPEmbedder", "FrozenCLAPEmbedder", "PaintByExample"]`. :param extract_ema: Only relevant for
+    `["FrozenOpenClapEmbedder", "FrozenCLAPEmbedder", "PaintByExample"]`. :param extract_ema: Only relevant for
     checkpoints that have both EMA and non-EMA weights. Whether to extract the EMA weights
             or not. Defaults to `False`. Pass `True` to extract the EMA weights. EMA weights usually yield higher
             quality images for inference. Non-EMA weights are usually better to continue fine-tuning.
@@ -867,18 +866,14 @@ def load_pipeline_from_original_audioldm_ckpt(
         and original_config["model"]["params"]["parameterization"] == "v"
     ):
         if prediction_type is None:
-            # NOTE: For stable diffusion 2 base it is recommended to pass `prediction_type=="epsilon"`
-            # as it relies on a brittle global step parameter here
-            prediction_type = "epsilon" if global_step == 875000 else "v_prediction"
+            prediction_type = "v_prediction"
         if image_size is None:
-            # NOTE: For stable diffusion 2 base one has to pass `image_size==512`
-            # as it relies on a brittle global step parameter here
-            image_size = 512 if global_step == 875000 else 768
+            image_size = 1024
     else:
         if prediction_type is None:
             prediction_type = "epsilon"
         if image_size is None:
-            image_size = 512
+            image_size = 1024
 
     num_train_timesteps = original_config.model.params.timesteps
     beta_start = original_config.model.params.linear_start
@@ -940,16 +935,21 @@ def load_pipeline_from_original_audioldm_ckpt(
 
     if model_type == "CLAPAudioEmbeddingClassifierFreev2":
         # TODO: Load CLAP tokenizer + model
-        #text_model = CLAPTextModel.from_pretrained("laion-ai/clap-htsat-unfused")
-        #tokenizer = AutoTokenizer.from_pretrained("laion-ai/clap-htsat-unfused")
+        # text_model = ClapTextModelWithProjection.from_pretrained("laion-ai/clap-htsat-unfused")
+        # tokenizer = AutoTokenizer.from_pretrained("laion-ai/clap-htsat-unfused")
 
-        config = CLAPTextConfig()
-        text_model = CLAPTextModel(config)
+        config = ClapTextConfig(projection_dim=512, projection_hidden_act="relu")
+        text_model = ClapTextModelWithProjection(config)
         tokenizer = AutoTokenizer.from_pretrained("roberta-base")
 
         vocoder = SpeechT5HifiGan.from_pretrained("microsoft/speecht5_hifigan")
         pipe = AudioLDMPipeline(
-                vae=vae, text_encoder=text_model, tokenizer=tokenizer, unet=unet, scheduler=scheduler, vocoder=vocoder,
-            )
+            vae=vae,
+            text_encoder=text_model,
+            tokenizer=tokenizer,
+            unet=unet,
+            scheduler=scheduler,
+            vocoder=vocoder,
+        )
 
     return pipe

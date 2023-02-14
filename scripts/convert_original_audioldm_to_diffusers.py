@@ -26,7 +26,7 @@ if __name__ == "__main__":
         "--checkpoint_path",
         default="/Users/sanchitgandhi/convert-audioldm/ldm_trimmed.ckpt",
         type=str,
-        required=False, # TODO: revert to True
+        required=False,  # TODO: revert to True
         help="Path to the checkpoint to convert.",
     )
     # !wget https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml

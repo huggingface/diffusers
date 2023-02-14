@@ -18,7 +18,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import torch
 
 from packaging import version
-from transformers import CLAPTextModel, RobertaTokenizer, RobertaTokenizerFast, SpeechT5HifiGan
+from transformers import ClapTextModelWithProjection, RobertaTokenizer, RobertaTokenizerFast, SpeechT5HifiGan
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
@@ -55,10 +55,10 @@ class AudioLDMPipeline(DiffusionPipeline):
     Args:
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
-        text_encoder ([`CLAPTextModel`]):
+        text_encoder ([`ClapTextModelWithProjection`]):
             Frozen text-encoder. AudioLDM uses the text portion of
-            [CLAP](https://huggingface.co/docs/transformers/model_doc/clap#transformers.CLAPTextModel), specifically
-            the (TODO) variant.
+            [CLAP](https://huggingface.co/docs/transformers/model_doc/clap#transformers.ClapTextModelWithProjection),
+            specifically the (TODO) variant.
         tokenizer ([`PreTrainedTokenizer`]):
             Tokenizer of class
             [RobertaTokenizer](https://huggingface.co/docs/transformers/v4.27.0/en/model_doc/clap#transformers.RobertaTokenizer).
@@ -67,14 +67,15 @@ class AudioLDMPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         vocoder (`SpeechT5HifiGan`):
-            Vocoder of class [SpeechT5HifiGan](https://huggingface.co/docs/transformers/v4.27.0/en/model_doc/speecht5#transformers.SpeechT5HifiGan).
+            Vocoder of class
+            [SpeechT5HifiGan](https://huggingface.co/docs/transformers/v4.27.0/en/model_doc/speecht5#transformers.SpeechT5HifiGan).
     """
     _optional_components = ["safety_checker", "feature_extractor"]
 
     def __init__(
         self,
         vae: AutoencoderKL,
-        text_encoder: CLAPTextModel,
+        text_encoder: ClapTextModelWithProjection,
         tokenizer: Union[RobertaTokenizer, RobertaTokenizerFast],
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
@@ -250,7 +251,7 @@ class AudioLDMPipeline(DiffusionPipeline):
                     untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
                 )
                 logger.warning(
-                    "The following part of your input was truncated because CLIP can only handle sequences up to"
+                    "The following part of your input was truncated because CLAP can only handle sequences up to"
                     f" {self.tokenizer.model_max_length} tokens: {removed_text}"
                 )
 
@@ -263,7 +264,8 @@ class AudioLDMPipeline(DiffusionPipeline):
                 text_input_ids.to(device),
                 attention_mask=attention_mask,
             )
-            prompt_embeds = prompt_embeds[0]
+            text_embeds = prompt_embeds.text_embeds
+            prompt_embeds = prompt_embeds.last_hidden_state
 
         prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
 
@@ -311,7 +313,7 @@ class AudioLDMPipeline(DiffusionPipeline):
                 uncond_input.input_ids.to(device),
                 attention_mask=attention_mask,
             )
-            negative_prompt_embeds = negative_prompt_embeds[0]
+            negative_prompt_embeds = negative_prompt_embeds.last_hidden_state
 
         if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
@@ -327,7 +329,7 @@ class AudioLDMPipeline(DiffusionPipeline):
             # to avoid doing two forward passes
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
-        return prompt_embeds
+        return prompt_embeds, text_embeds
 
     def decode_latents(self, latents):
         latents = 1 / self.vae.config.scaling_factor * latents
@@ -429,8 +431,8 @@ class AudioLDMPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        num_inference_steps: int = 50,
-        guidance_scale: float = 7.5,
+        num_inference_steps: int = 200,
+        guidance_scale: float = 2.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
@@ -454,10 +456,10 @@ class AudioLDMPipeline(DiffusionPipeline):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image.
-            num_inference_steps (`int`, *optional*, defaults to 50):
+            num_inference_steps (`int`, *optional*, defaults to 200):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            guidance_scale (`float`, *optional*, defaults to 7.5):
+            guidance_scale (`float`, *optional*, defaults to 2.5):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
@@ -536,7 +538,7 @@ class AudioLDMPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        prompt_embeds = self._encode_prompt(
+        prompt_embeds, text_embeds = self._encode_prompt(
             prompt,
             device,
             num_images_per_prompt,
@@ -552,7 +554,6 @@ class AudioLDMPipeline(DiffusionPipeline):
 
         # 5. Prepare latent variables
         num_channels_latents = self.unet.in_channels
-        import ipdb; ipdb.set_trace()
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
@@ -575,11 +576,14 @@ class AudioLDMPipeline(DiffusionPipeline):
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
+                text_embeds_input = torch.cat([text_embeds] * 2) if do_classifier_free_guidance else latents
+
                 # predict the noise residual
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
                     encoder_hidden_states=prompt_embeds,
+                    class_labels=text_embeds_input,
                     cross_attention_kwargs=cross_attention_kwargs,
                 ).sample
 
