@@ -397,7 +397,7 @@ As a class method, [`DiffusionPipeline.from_pretrained`] is responsible for two 
 - Load the cached weights into the _correct_ pipeline class – one of the [officially supported pipeline classes](./api/overview#diffusers-summary) - and return an instance of the class. The _correct_ pipeline class is thereby retrieved from the `model_index.json` file.
 
 The underlying folder structure of diffusion pipelines correspond 1-to-1 to their corresponding class instances, *e.g.* [`StableDiffusionPipeline`] for [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5)
-This can be understood better by looking at an example. Let's print out pipeline class instance `pipeline` we just defined:
+This can be better understood by looking at an example. Let's load a pipeline class instance `pipe` and print it:
 
 ```python
 from diffusers import DiffusionPipeline
@@ -442,10 +442,10 @@ StableDiffusionPipeline {
 ```
 
 First, we see that the official pipeline is the [`StableDiffusionPipeline`], and second we see that the `StableDiffusionPipeline` consists of 7 components:
-- `"feature_extractor"` of class `CLIPFeatureExtractor` as defined [in `transformes`](https://huggingface.co/docs/transformers/main/en/model_doc/clip#transformers.CLIPFeatureExtractor).
+- `"feature_extractor"` of class `CLIPFeatureExtractor` as defined [in `transformers`](https://huggingface.co/docs/transformers/main/en/model_doc/clip#transformers.CLIPFeatureExtractor).
 - `"safety_checker"` as defined [here](https://github.com/huggingface/diffusers/blob/e55687e1e15407f60f32242027b7bb8170e58266/src/diffusers/pipelines/stable_diffusion/safety_checker.py#L32).
 - `"scheduler"` of class [`PNDMScheduler`].
-- `"text_encoder"` of class `CLIPTextModel` as defined [in `transformes`](https://huggingface.co/docs/transformers/main/en/model_doc/clip#transformers.CLIPTextModel).
+- `"text_encoder"` of class `CLIPTextModel` as defined [in `transformers`](https://huggingface.co/docs/transformers/main/en/model_doc/clip#transformers.CLIPTextModel).
 - `"tokenizer"` of class `CLIPTokenizer` as defined [in `transformers`](https://huggingface.co/docs/transformers/main/en/model_doc/clip#transformers.CLIPTokenizer).
 - `"unet"` of class [`UNet2DConditionModel`].
 - `"vae"` of class [`AutoencoderKL`].
