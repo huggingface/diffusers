@@ -691,7 +691,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                     latent_model_input,
                     t,
                     encoder_hidden_states=prompt_embeds,
-                    cross_attention_kwargs=cross_attention_kwargs,
+                    cross_attention_kwargs={"timestep": t},
                 ).sample
 
                 # # add the cross attention map to the dictionary
