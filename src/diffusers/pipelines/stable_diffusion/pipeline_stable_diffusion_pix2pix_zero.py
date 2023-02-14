@@ -26,7 +26,7 @@ from transformers import (
 )
 
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...models.cross_attention import CrossAttention, CrossAttnProcessor
+from ...models.cross_attention import CrossAttention
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import is_accelerate_available, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
@@ -55,10 +55,10 @@ def prepare_unet(unet: UNet2DConditionModel):
         module_name = name.replace(".processor", "")
         module = unet.get_submodule(module_name)
         if "attn2" in name:
-            pix2pix_zero_attn_procs[name] = Pix2PixZeroCrossAttnProcessor()
+            pix2pix_zero_attn_procs[name] = Pix2PixZeroCrossAttnProcessor(is_pix2pix_zero=True)
             module.requires_grad_(True)
         else:
-            pix2pix_zero_attn_procs[name] = CrossAttnProcessor()
+            pix2pix_zero_attn_procs[name] = Pix2PixZeroCrossAttnProcessor(is_pix2pix_zero=False)
             module.requires_grad_(False)
 
     unet.set_attn_processor(pix2pix_zero_attn_procs)
@@ -72,16 +72,34 @@ def construct_direction(source_embedding_path: str, target_embedding_path: str):
     return (embs_target.mean(0) - embs_source.mean(0)).unsqueeze(0)
 
 
+class Pix2PixZeroL2Loss:
+    def __init__(self):
+        self.loss = 0.0
+
+    def compute_loss(self, predictions, targets):
+        self.loss += ((predictions - targets) ** 2).sum((1, 2)).mean(0)
+
+
 class Pix2PixZeroCrossAttnProcessor:
-    def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None):
+    def __init__(self, is_pix2pix_zero=False):
+        self.is_pix2pix_zero = is_pix2pix_zero
+        if self.is_pix2pix_zero:
+            self.xa_map = {}
+
+    def __call__(
+        self,
+        attn: CrossAttention,
+        hidden_states,
+        encoder_hidden_states=None,
+        attention_mask=None,
+        timestep=None,
+        loss=None,
+    ):
         batch_size, sequence_length, _ = hidden_states.shape
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
         query = attn.to_q(hidden_states)
 
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-        elif attn.cross_attention_norm:
-            encoder_hidden_states = attn.norm_cross(encoder_hidden_states)
+        encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
@@ -91,8 +109,15 @@ class Pix2PixZeroCrossAttnProcessor:
         value = attn.head_to_batch_dim(value)
 
         attention_probs = attn.get_attention_scores(query, key, attention_mask)
-        # new bookkeeping to save the attention weights.
-        attn.attn_probs = attention_probs
+        if self.is_pix2pix_zero:
+            # new bookkeeping to save the attention weights.
+            if loss is None:
+                self.xa_map[timestep] = attention_probs
+            # compute loss
+            elif loss is not None:
+                prev_attn_probs = self.xa_map.pop(timestep)
+                loss.compute_loss(attention_probs, prev_attn_probs)
+
         hidden_states = torch.bmm(attention_probs, value)
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
@@ -716,6 +741,9 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 opt = torch.optim.SGD([x_in], lr=cross_attention_guidance_amount)
 
                 with torch.enable_grad():
+                    # initialize loss
+                    loss = Pix2PixZeroL2Loss()
+
                     # predict the noise residual
                     noise_pred = self.unet(
                         x_in,
@@ -726,14 +754,14 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
                     # obtain the cross-attention maps with the current latents,
                     # compute loss, backpropagate
-                    loss = 0.0
-                    for name, module in self.unet.named_modules():
-                        module_name = type(module).__name__
-                        if module_name == "CrossAttention" and "attn2" in name:
-                            curr = module.attn_probs
-                            ref = ref_xa_maps[t.item()][name].detach().to(device)
-                            loss += ((curr - ref) ** 2).sum((1, 2)).mean(0)
-                    loss.backward(retain_graph=False)
+                    # loss = 0.0
+                    # for name, module in self.unet.named_modules():
+                    #     module_name = type(module).__name__
+                    #     if module_name == "CrossAttention" and "attn2" in name:
+                    #         curr = module.attn_probs
+                    #         ref = ref_xa_maps[t.item()][name].detach().to(device)
+                    #         loss += ((curr - ref) ** 2).sum((1, 2)).mean(0)
+                    loss.loss.backward(retain_graph=False)
                     opt.step()
 
                 # recompute the noise
