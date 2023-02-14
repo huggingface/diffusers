@@ -21,7 +21,7 @@ from transformers.models.clip.modeling_clip import CLIPTextModelOutput
 
 from ...models import AutoencoderKL, PriorTransformer, UNet2DConditionModel
 from ...models.embeddings import get_timestep_embedding
-from ...schedulers import DDIMScheduler, DDPMScheduler
+from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import is_accelerate_available, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
@@ -62,12 +62,12 @@ class StableUnCLIPPipeline(DiffusionPipeline):
             Frozen text-encoder.
         prior ([`PriorTransformer`]):
             The canonincal unCLIP prior to approximate the image embedding from the text embedding.
-        prior_scheduler ([`DDPMScheduler`]):
+        prior_scheduler ([`KarrasDiffusionSchedulers`]):
             Scheduler used in the prior denoising process.
         image_normalizer ([`StableUnCLIPImageNormalizer`]):
             Used to normalize the predicted image embeddings before the noise is applied and un-normalize the image
             embeddings after the noise has been applied.
-        image_noising_scheduler ([`DDPMScheduler`]):
+        image_noising_scheduler ([`KarrasDiffusionSchedulers`]):
             Noise schedule for adding noise to the predicted image embeddings. The amount of noise to add is determined
             by `noise_level` in `StableUnCLIPPipeline.__call__`.
         tokenizer (`CLIPTokenizer`):
@@ -76,7 +76,7 @@ class StableUnCLIPPipeline(DiffusionPipeline):
         text_encoder ([`CLIPTextModel`]):
             Frozen text-encoder.
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
-        scheduler ([`DDIMScheduler`]):
+        scheduler ([`KarrasDiffusionSchedulers`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents.
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
@@ -86,17 +86,17 @@ class StableUnCLIPPipeline(DiffusionPipeline):
     prior_tokenizer: CLIPTokenizer
     prior_text_encoder: CLIPTextModelWithProjection
     prior: PriorTransformer
-    prior_scheduler: DDPMScheduler
+    prior_scheduler: KarrasDiffusionSchedulers
 
     # image noising components
     image_normalizer: StableUnCLIPImageNormalizer
-    image_noising_scheduler: DDPMScheduler
+    image_noising_scheduler: KarrasDiffusionSchedulers
 
     # regular denoising components
     tokenizer: CLIPTokenizer
     text_encoder: CLIPTextModel
     unet: UNet2DConditionModel
-    scheduler: DDIMScheduler
+    scheduler: KarrasDiffusionSchedulers
 
     vae: AutoencoderKL
 
@@ -106,15 +106,15 @@ class StableUnCLIPPipeline(DiffusionPipeline):
         prior_tokenizer: CLIPTokenizer,
         prior_text_encoder: CLIPTextModelWithProjection,
         prior: PriorTransformer,
-        prior_scheduler: DDPMScheduler,
+        prior_scheduler: KarrasDiffusionSchedulers,
         # image noising components
         image_normalizer: StableUnCLIPImageNormalizer,
-        image_noising_scheduler: DDPMScheduler,
+        image_noising_scheduler: KarrasDiffusionSchedulers,
         # regular denoising components
         tokenizer: CLIPTokenizer,
         text_encoder: CLIPTextModelWithProjection,
         unet: UNet2DConditionModel,
-        scheduler: DDIMScheduler,
+        scheduler: KarrasDiffusionSchedulers,
         # vae
         vae: AutoencoderKL,
     ):

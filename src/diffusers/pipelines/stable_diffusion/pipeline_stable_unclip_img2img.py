@@ -23,7 +23,7 @@ from diffusers.utils.import_utils import is_accelerate_available
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.embeddings import get_timestep_embedding
-from ...schedulers import DDIMScheduler, DDPMScheduler
+from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
@@ -75,7 +75,7 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
         image_normalizer ([`StableUnCLIPImageNormalizer`]):
             Used to normalize the predicted image embeddings before the noise is applied and un-normalize the image
             embeddings after the noise has been applied.
-        image_noising_scheduler ([`DDPMScheduler`]):
+        image_noising_scheduler ([`KarrasDiffusionSchedulers`]):
             Noise schedule for adding noise to the predicted image embeddings. The amount of noise to add is determined
             by `noise_level` in `StableUnCLIPPipeline.__call__`.
         tokenizer (`CLIPTokenizer`):
@@ -84,7 +84,7 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
         text_encoder ([`CLIPTextModel`]):
             Frozen text-encoder.
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
-        scheduler ([`DDIMScheduler`]):
+        scheduler ([`KarrasDiffusionSchedulers`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents.
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
@@ -96,13 +96,13 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
 
     # image noising components
     image_normalizer: StableUnCLIPImageNormalizer
-    image_noising_scheduler: DDPMScheduler
+    image_noising_scheduler: KarrasDiffusionSchedulers
 
     # regular denoising components
     tokenizer: CLIPTokenizer
     text_encoder: CLIPTextModel
     unet: UNet2DConditionModel
-    scheduler: DDIMScheduler
+    scheduler: KarrasDiffusionSchedulers
 
     vae: AutoencoderKL
 
@@ -113,12 +113,12 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
         image_encoder: CLIPVisionModelWithProjection,
         # image noising components
         image_normalizer: StableUnCLIPImageNormalizer,
-        image_noising_scheduler: DDPMScheduler,
+        image_noising_scheduler: KarrasDiffusionSchedulers,
         # regular denoising components
         tokenizer: CLIPTokenizer,
         text_encoder: CLIPTextModel,
         unet: UNet2DConditionModel,
-        scheduler: DDIMScheduler,
+        scheduler: KarrasDiffusionSchedulers,
         # vae
         vae: AutoencoderKL,
     ):
