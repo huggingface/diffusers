@@ -447,6 +447,24 @@ class StableUnCLIPPipeline(DiffusionPipeline):
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs with prepare_extra_step_kwargs->prepare_prior_extra_step_kwargs, scheduler->prior_scheduler
+    def prepare_prior_extra_step_kwargs(self, generator, eta):
+        # prepare extra kwargs for the prior_scheduler step, since not all prior_schedulers have the same signature
+        # eta (η) is only used with the DDIMScheduler, it will be ignored for other prior_schedulers.
+        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
+        # and should be between [0, 1]
+
+        accepts_eta = "eta" in set(inspect.signature(self.prior_scheduler.step).parameters.keys())
+        extra_step_kwargs = {}
+        if accepts_eta:
+            extra_step_kwargs["eta"] = eta
+
+        # check if the prior_scheduler accepts generator
+        accepts_generator = "generator" in set(inspect.signature(self.prior_scheduler.step).parameters.keys())
+        if accepts_generator:
+            extra_step_kwargs["generator"] = generator
+        return extra_step_kwargs
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
@@ -749,7 +767,10 @@ class StableUnCLIPPipeline(DiffusionPipeline):
             self.prior_scheduler,
         )
 
-        # 6. Prior denoising loop
+        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        prior_extra_step_kwargs = self.prepare_prior_extra_step_kwargs(generator, eta)
+
+        # 7. Prior denoising loop
         for i, t in enumerate(self.progress_bar(prior_timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([prior_latents] * 2) if prior_do_classifier_free_guidance else prior_latents
@@ -772,7 +793,7 @@ class StableUnCLIPPipeline(DiffusionPipeline):
                 predicted_image_embedding,
                 timestep=t,
                 sample=prior_latents,
-                generator=generator,
+                **prior_extra_step_kwargs,
             ).prev_sample
 
             if callback is not None and i % callback_steps == 0:
@@ -789,7 +810,7 @@ class StableUnCLIPPipeline(DiffusionPipeline):
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        # 7. Encode input prompt
+        # 8. Encode input prompt
         prompt_embeds = self._encode_prompt(
             prompt=prompt,
             device=device,
@@ -800,7 +821,7 @@ class StableUnCLIPPipeline(DiffusionPipeline):
             negative_prompt_embeds=negative_prompt_embeds,
         )
 
-        # 8. Prepare image embeddings
+        # 9. Prepare image embeddings
         image_embeds = self.noise_image_embeddings(
             image_embeds=image_embeds,
             noise_level=noise_level,
@@ -815,11 +836,11 @@ class StableUnCLIPPipeline(DiffusionPipeline):
             # to avoid doing two forward passes
             image_embeds = torch.cat([negative_prompt_embeds, image_embeds])
 
-        # 9. Prepare timesteps
+        # 10. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
-        # 10. Prepare latent variables
+        # 11. Prepare latent variables
         num_channels_latents = self.unet.in_channels
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         latents = self.prepare_latents(
@@ -831,10 +852,10 @@ class StableUnCLIPPipeline(DiffusionPipeline):
             scheduler=self.scheduler,
         )
 
-        # 11. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        # 12. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 12. Denoising loop
+        # 13. Denoising loop
         for i, t in enumerate(self.progress_bar(timesteps)):
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
@@ -859,10 +880,10 @@ class StableUnCLIPPipeline(DiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 callback(i, t, latents)
 
-        # 13. Post-processing
+        # 14. Post-processing
         image = self.decode_latents(latents)
 
-        # 14. Convert to PIL
+        # 15. Convert to PIL
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
