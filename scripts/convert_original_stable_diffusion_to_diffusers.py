@@ -110,9 +110,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--stable_unclip_prior",
         type=str,
-        default="karlo",
+        default=None,
         required=False,
-        help="Set if this is a stable unCLIP txt2img model. Selects which prior to use. Defaults to 'karlo'.",
+        help="Set if this is a stable unCLIP txt2img model. Selects which prior to use. If `--stable_unclip` is set to `txt2img`, the karlo prior (https://huggingface.co/kakaobrain/karlo-v1-alpha/tree/main/prior) is selected by default.",
     )
     parser.add_argument(
         "--clip_stats_path",

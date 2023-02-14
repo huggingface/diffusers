@@ -910,7 +910,7 @@ def load_pipeline_from_original_stable_diffusion_ckpt(
     device: str = None,
     from_safetensors: bool = False,
     stable_unclip: Optional[str] = None,
-    stable_unclip_prior: str = "karlo",
+    stable_unclip_prior: Optional[str] = None,
     clip_stats_path: Optional[str] = None,
 ) -> StableDiffusionPipeline:
     """
@@ -1132,7 +1132,7 @@ def load_pipeline_from_original_stable_diffusion_ckpt(
                     vae=vae,
                 )
             elif stable_unclip == "txt2img":
-                if stable_unclip_prior == "karlo":
+                if stable_unclip_prior is None or stable_unclip_prior == "karlo":
                     karlo_model = "kakaobrain/karlo-v1-alpha"
                     prior = PriorTransformer.from_pretrained(karlo_model, subfolder="prior")
 
