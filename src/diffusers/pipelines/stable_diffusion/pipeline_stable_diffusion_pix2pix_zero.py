@@ -38,6 +38,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 def generate_caption(image, captioner, processor, return_image=True):
+    """Generates caption for a given image."""
     inputs = processor(images=image, return_tensors="pt")
     outputs = captioner.generate(inputs)
     caption = processor.batch_deocde(outputs, skip_special_tokens=True)[0]
@@ -48,6 +49,7 @@ def generate_caption(image, captioner, processor, return_image=True):
 
 
 def prepare_unet(unet: UNet2DConditionModel):
+    """Modifies the UNet (`unet`) to perform Pix2Pix Zero optimizations."""
     pix2pix_zero_attn_procs = {}
     for name in unet.attn_processors.keys():
         module_name = name.replace(".processor", "")
@@ -64,6 +66,7 @@ def prepare_unet(unet: UNet2DConditionModel):
 
 
 def construct_direction(source_embedding_path: str, target_embedding_path: str):
+    """Constructs the edit direction to steer the image generation process semantically."""
     embs_source = torch.load(source_embedding_path)
     embs_target = torch.load(target_embedding_path)
     return (embs_target.mean(0) - embs_source.mean(0)).unsqueeze(0)
