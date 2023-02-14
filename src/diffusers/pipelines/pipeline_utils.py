@@ -580,22 +580,23 @@ class DiffusionPipeline(ConfigMixin):
                 elif is_safetensors_available() and is_safetensors_compatible(model_filenames, variant=variant):
                     ignore_patterns = ["*.bin", "*.msgpack"]
 
-                    bin_variant_filenames = [f for f in variant_filenames if f.endswith(".bin")]
-                    bin_model_filenames = [f for f in model_filenames if f.endswith(".bin")]
-                    if len(bin_variant_filenames) > 0 and bin_model_filenames != bin_variant_filenames:
+                    onnx_variant_filenames = set([f for f in variant_filenames if f.endswith(".onnx")])
+                    onnx_model_filenames = set([f for f in model_filenames if f.endswith(".onnx")])
+                    if len(onnx_variant_filenames) > 0 and onnx_model_filenames != onnx_variant_filenames:
                         logger.warn(
-                            f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(bin_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(bin_model_filenames - bin_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
+                            f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(onnx_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(onnx_model_filenames - onnx_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
                         )
 
                 else:
                     ignore_patterns = ["*.safetensors", "*.msgpack"]
 
-                    onnx_variant_filenames = [f for f in variant_filenames if f.endswith(".onnx")]
-                    onnx_model_filenames = [f for f in model_filenames if f.endswith(".onnx")]
-                    if len(onnx_variant_filenames) > 0 and onnx_model_filenames != onnx_variant_filenames:
+                    bin_variant_filenames = set([f for f in variant_filenames if f.endswith(".bin")])
+                    bin_model_filenames = set([f for f in model_filenames if f.endswith(".bin")])
+                    if len(bin_variant_filenames) > 0 and bin_model_filenames != bin_variant_filenames:
                         logger.warn(
-                            f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(onnx_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(onnx_model_filenames - onnx_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
+                            f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(bin_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(bin_model_filenames - bin_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
                         )
+
             else:
                 # allow everything since it has to be downloaded anyways
                 ignore_patterns = allow_patterns = None
