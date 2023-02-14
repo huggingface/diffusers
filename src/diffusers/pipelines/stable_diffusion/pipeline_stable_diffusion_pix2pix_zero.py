@@ -696,13 +696,13 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                     cross_attention_kwargs=cross_attention_kwargs,
                 ).sample
 
-                # add the cross attention map to the dictionary
-                ref_xa_maps[t.item()] = {}
-                for name, module in self.unet.named_modules():
-                    module_name = type(module).__name__
-                    if module_name == "CrossAttention" and "attn2" in name:
-                        attn_mask = module.attn_probs  # size is (num_channels, s*s, max_prompt_length)
-                        ref_xa_maps[t.item()][name] = attn_mask.detach().cpu()
+                # # add the cross attention map to the dictionary
+                # ref_xa_maps[t.item()] = {}
+                # for name, module in self.unet.named_modules():
+                #     module_name = type(module).__name__
+                #     if module_name == "CrossAttention" and "attn2" in name:
+                #         attn_mask = module.attn_probs  # size is (num_channels, s*s, max_prompt_length)
+                #         ref_xa_maps[t.item()][name] = attn_mask.detach().cpu()
 
                 # perform guidance
                 if do_classifier_free_guidance:
