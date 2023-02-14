@@ -28,6 +28,17 @@ from .unet_2d_blocks import (
 )
 
 
+def set_zero_parameters(module):
+    for p in module.parameters():
+        p.detach().zero_()
+    return module
+
+
+# ControlNet: Zero Convolution
+def zero_conv(channels):
+    return set_zero_parameters(nn.Conv2d(channels, channels, 1, padding=0))
+
+
 class ControlledUNet2DConditionModel(UNet2DConditionModel):
     pass
 
@@ -40,8 +51,6 @@ class ControlNetModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         self,
         sample_size: Optional[int] = None,
         in_channels: int = 4,
-        # out_channels: int = 4,
-        # center_input_sample: bool = False,
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
         down_block_types: Tuple[str] = (
@@ -51,7 +60,6 @@ class ControlNetModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             "DownBlock2D",
         ),
         mid_block_type: Optional[str] = "UNetMidBlock2DCrossAttn",
-        # up_block_types: Tuple[str] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
         only_cross_attention: Union[bool, Tuple[bool]] = False,
         block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
         layers_per_block: int = 2,
@@ -73,11 +81,30 @@ class ControlNetModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         time_cond_proj_dim: Optional[int] = None,
         conv_in_kernel: int = 3,
         hint_channels: int = 3,
-        # conv_out_kernel: int = 3,
     ):
         super().__init__()
 
         self.sample_size = sample_size
+
+        # ControlNet specific blocks: Layer configurations are from reference implementation.
+        self.input_hint_block = nn.Sequential(
+            nn.Conv2d(hint_channels, 16, 3, padding=1),
+            nn.SiLU(),
+            nn.Conv2d(16, 16, 3, padding=1),
+            nn.SiLU(),
+            nn.Conv2d(16, 32, 3, padding=1, stride=2),
+            nn.SiLU(),
+            nn.Conv2d(32, 32, 3, padding=1),
+            nn.SiLU(),
+            nn.Conv2d(32, 96, 3, padding=1, stride=2),
+            nn.SiLU(),
+            nn.Conv2d(96, 96, 3, padding=1),
+            nn.SiLU(),
+            nn.Conv2d(96, 256, 3, padding=1, stride=2),
+            nn.SiLU(),
+            set_zero_parameters(nn.Conv2d(256, block_out_channels[0], 3, padding=1)),
+        )
+        self.input_zero_conv = zero_conv(block_out_channels[0])
 
         # input
         conv_in_padding = (conv_in_kernel - 1) // 2
@@ -195,6 +222,5 @@ class ControlNetModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # count how many layers upsample the images
         self.num_upsamplers = 0
 
-        # #################################################
-        # TODO: add input_hint_block and zero_convs modules
-        # #################################################
+        # ControlNet specific block
+        self.middle_block_out = zero_conv(block_out_channels[-1])
