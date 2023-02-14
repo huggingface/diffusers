@@ -20,7 +20,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, logging, randn_tensor
-from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
+from .scheduling_utils import SchedulerMixin, karras_diffusion_scheduler_compatibles
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -71,7 +71,7 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     """
 
-    _compatibles = [e.name for e in KarrasDiffusionSchedulers]
+    _compatibles = karras_diffusion_scheduler_compatibles
     order = 1
 
     @register_to_config

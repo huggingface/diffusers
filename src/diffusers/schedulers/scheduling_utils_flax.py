@@ -15,7 +15,6 @@ import importlib
 import math
 import os
 from dataclasses import dataclass
-from enum import Enum
 from typing import Any, Dict, Optional, Tuple, Union
 
 import flax
@@ -27,12 +26,14 @@ from ..utils import BaseOutput
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
 
 
-class FlaxKarrasDiffusionSchedulers(Enum):
-    FlaxDDIMScheduler = 1
-    FlaxDDPMScheduler = 2
-    FlaxPNDMScheduler = 3
-    FlaxLMSDiscreteScheduler = 4
-    FlaxDPMSolverMultistepScheduler = 5
+# NOTE keep in sync with ./__init__.py `FlaxKarrasDiffusionSchedulers`
+flax_karras_diffusion_scheduler_compatibles = [
+    "FlaxDDIMScheduler",
+    "FlaxDDPMScheduler",
+    "FlaxPNDMScheduler",
+    "FlaxLMSDiscreteScheduler",
+    "FlaxDPMSolverMultistepScheduler",
+]
 
 
 @dataclass

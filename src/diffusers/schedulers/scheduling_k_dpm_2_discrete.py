@@ -18,7 +18,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SchedulerOutput
+from .scheduling_utils import SchedulerMixin, SchedulerOutput, karras_diffusion_scheduler_compatibles
 
 
 class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
@@ -48,7 +48,7 @@ class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
             https://imagen.research.google/video/paper.pdf)
     """
 
-    _compatibles = [e.name for e in KarrasDiffusionSchedulers]
+    _compatibles = karras_diffusion_scheduler_compatibles
     order = 2
 
     @register_to_config

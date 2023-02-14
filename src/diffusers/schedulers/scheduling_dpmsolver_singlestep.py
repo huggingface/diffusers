@@ -21,7 +21,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SchedulerOutput
+from .scheduling_utils import SchedulerMixin, SchedulerOutput, karras_diffusion_scheduler_compatibles
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
@@ -115,7 +115,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
 
     """
 
-    _compatibles = [e.name for e in KarrasDiffusionSchedulers]
+    _compatibles = karras_diffusion_scheduler_compatibles
     order = 1
 
     @register_to_config

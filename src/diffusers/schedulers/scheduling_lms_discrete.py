@@ -21,7 +21,7 @@ from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
+from .scheduling_utils import SchedulerMixin, karras_diffusion_scheduler_compatibles
 
 
 @dataclass
@@ -69,7 +69,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             https://imagen.research.google/video/paper.pdf)
     """
 
-    _compatibles = [e.name for e in KarrasDiffusionSchedulers]
+    _compatibles = karras_diffusion_scheduler_compatibles
     order = 1
 
     @register_to_config
