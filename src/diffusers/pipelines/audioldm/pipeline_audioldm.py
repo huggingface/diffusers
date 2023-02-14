@@ -196,7 +196,7 @@ class AudioLDMPipeline(DiffusionPipeline):
         self,
         prompt,
         device,
-        num_images_per_prompt,
+        num_waveforms_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -210,8 +210,8 @@ class AudioLDMPipeline(DiffusionPipeline):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
-            num_images_per_prompt (`int`):
-                number of images that should be generated per prompt
+            num_waveforms_per_prompt (`int`):
+                number of waveforms that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
             negative_ prompt (`str` or `List[str]`, *optional*):
@@ -264,15 +264,14 @@ class AudioLDMPipeline(DiffusionPipeline):
                 text_input_ids.to(device),
                 attention_mask=attention_mask,
             )
-            text_embeds = prompt_embeds.text_embeds
-            prompt_embeds = prompt_embeds.last_hidden_state
+            prompt_embeds = prompt_embeds.text_embeds
 
         prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
 
-        bs_embed, seq_len, _ = prompt_embeds.shape
+        bs_embed, seq_len, = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
+        prompt_embeds = prompt_embeds.repeat(1, num_waveforms_per_prompt)
+        prompt_embeds = prompt_embeds.view(bs_embed * num_waveforms_per_prompt, seq_len)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -313,7 +312,7 @@ class AudioLDMPipeline(DiffusionPipeline):
                 uncond_input.input_ids.to(device),
                 attention_mask=attention_mask,
             )
-            negative_prompt_embeds = negative_prompt_embeds.last_hidden_state
+            negative_prompt_embeds = negative_prompt_embeds.text_embeds
 
         if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
@@ -321,15 +320,15 @@ class AudioLDMPipeline(DiffusionPipeline):
 
             negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
 
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_waveforms_per_prompt)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_waveforms_per_prompt, seq_len)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
-        return prompt_embeds, text_embeds
+        return prompt_embeds
 
     def decode_latents(self, latents):
         latents = 1 / self.vae.config.scaling_factor * latents
@@ -434,7 +433,7 @@ class AudioLDMPipeline(DiffusionPipeline):
         num_inference_steps: int = 200,
         guidance_scale: float = 2.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        num_images_per_prompt: Optional[int] = 1,
+        num_waveforms_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -443,7 +442,6 @@ class AudioLDMPipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -469,8 +467,8 @@ class AudioLDMPipeline(DiffusionPipeline):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
                 Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
-            num_images_per_prompt (`int`, *optional*, defaults to 1):
-                The number of images to generate per prompt.
+            num_waveforms_per_prompt (`int`, *optional*, defaults to 1):
+                The number of waveforms to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
                 [`schedulers.DDIMScheduler`], will be ignored for others.
@@ -500,10 +498,6 @@ class AudioLDMPipeline(DiffusionPipeline):
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
-            cross_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttnProcessor` as defined under
-                `self.processor` in
-                [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
 
         Examples:
 
@@ -538,10 +532,10 @@ class AudioLDMPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        prompt_embeds, text_embeds = self._encode_prompt(
+        prompt_embeds = self._encode_prompt(
             prompt,
             device,
-            num_images_per_prompt,
+            num_waveforms_per_prompt,
             do_classifier_free_guidance,
             negative_prompt,
             prompt_embeds=prompt_embeds,
@@ -555,7 +549,7 @@ class AudioLDMPipeline(DiffusionPipeline):
         # 5. Prepare latent variables
         num_channels_latents = self.unet.in_channels
         latents = self.prepare_latents(
-            batch_size * num_images_per_prompt,
+            batch_size * num_waveforms_per_prompt,
             num_channels_latents,
             height,
             width,
@@ -576,15 +570,11 @@ class AudioLDMPipeline(DiffusionPipeline):
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                text_embeds_input = torch.cat([text_embeds] * 2) if do_classifier_free_guidance else latents
-
                 # predict the noise residual
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
-                    encoder_hidden_states=prompt_embeds,
-                    class_labels=text_embeds_input,
-                    cross_attention_kwargs=cross_attention_kwargs,
+                    class_labels=prompt_embeds,
                 ).sample
 
                 # perform guidance

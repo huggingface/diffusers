@@ -21,7 +21,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
 from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
-from .unet_2d_blocks import UNetMidBlock2D, get_down_block, get_up_block
+from .unet_2d_blocks import UNetMidBlock2D, get_down_block, get_up_block, UNetMidBlock2DCrossAttn
 
 
 @dataclass
@@ -101,6 +101,9 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         add_attention: bool = True,
         class_embed_type: Optional[str] = None,
         num_class_embeds: Optional[int] = None,
+        extra_film_condition_dim: int = None,
+        extra_film_use_concat: bool = False,
+        cross_attention_dim: int = None,
     ):
         super().__init__()
 
@@ -130,6 +133,18 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         else:
             self.class_embedding = None
 
+        # film condition
+        if self.class_embedding is not None and extra_film_condition_dim is not None:
+            raise ValueError("You cannot set both `class_embed_type` and `extra_film_use_concat`.")
+        self.use_extra_film_by_concat = extra_film_condition_dim is not None and extra_film_use_concat
+        self.use_extra_film_by_addition = extra_film_condition_dim is not None and not extra_film_use_concat
+
+        if extra_film_condition_dim is not None:
+            self.film_embedding = nn.Linear(extra_film_condition_dim, time_embed_dim)
+
+        if self.use_extra_film_by_concat:
+            time_embed_dim = time_embed_dim * 2
+
         self.down_blocks = nn.ModuleList([])
         self.mid_block = None
         self.up_blocks = nn.ModuleList([])
@@ -154,21 +169,36 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 attn_num_head_channels=attention_head_dim,
                 downsample_padding=downsample_padding,
                 resnet_time_scale_shift=resnet_time_scale_shift,
+                cross_attention_dim=cross_attention_dim,
             )
             self.down_blocks.append(down_block)
 
         # mid
-        self.mid_block = UNetMidBlock2D(
-            in_channels=block_out_channels[-1],
-            temb_channels=time_embed_dim,
-            resnet_eps=norm_eps,
-            resnet_act_fn=act_fn,
-            output_scale_factor=mid_block_scale_factor,
-            resnet_time_scale_shift=resnet_time_scale_shift,
-            attn_num_head_channels=attention_head_dim,
-            resnet_groups=norm_num_groups,
-            add_attention=add_attention,
-        )
+        if cross_attention_dim is not None:
+            self.mid_block = UNetMidBlock2DCrossAttn(
+                in_channels=block_out_channels[-1],
+                temb_channels=time_embed_dim,
+                resnet_eps=norm_eps,
+                resnet_act_fn=act_fn,
+                output_scale_factor=mid_block_scale_factor,
+                resnet_time_scale_shift=resnet_time_scale_shift,
+                cross_attention_dim=cross_attention_dim,
+                attn_num_head_channels=attention_head_dim,
+                resnet_groups=norm_num_groups,
+            )
+        else:
+            self.mid_block = UNetMidBlock2D(
+                in_channels=block_out_channels[-1],
+                temb_channels=time_embed_dim,
+                resnet_eps=norm_eps,
+                resnet_act_fn=act_fn,
+                output_scale_factor=mid_block_scale_factor,
+                resnet_time_scale_shift=resnet_time_scale_shift,
+                attn_num_head_channels=attention_head_dim,
+                resnet_groups=norm_num_groups,
+                add_attention=add_attention,
+            )
+
 
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
@@ -193,6 +223,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 resnet_groups=norm_num_groups,
                 attn_num_head_channels=attention_head_dim,
                 resnet_time_scale_shift=resnet_time_scale_shift,
+                cross_attention_dim=cross_attention_dim,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -254,6 +285,11 @@ class UNet2DModel(ModelMixin, ConfigMixin):
 
             class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
             emb = emb + class_emb
+
+        if self.use_extra_film_by_addition:
+            emb = emb + self.film_embedding(class_labels)
+        elif self.use_extra_film_by_concat:
+            emb = torch.cat([emb, self.film_embedding(class_labels)], dim=-1)
 
         # 2. pre-process
         skip_sample = sample

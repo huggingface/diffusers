@@ -28,7 +28,7 @@ from diffusers import (
     HeunDiscreteScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
-    UNet2DConditionModel,
+    UNet2DModel,
 )
 from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
 from transformers import (
@@ -90,22 +90,13 @@ def renew_vae_resnet_paths(old_list, n_shave_prefix_segments=0):
     return mapping
 
 
-def renew_attention_paths(old_list, n_shave_prefix_segments=0):
+def renew_attention_paths(old_list):
     """
     Updates paths inside attentions to the new naming scheme (local renaming)
     """
     mapping = []
     for old_item in old_list:
         new_item = old_item
-
-        #         new_item = new_item.replace('norm.weight', 'group_norm.weight')
-        #         new_item = new_item.replace('norm.bias', 'group_norm.bias')
-
-        #         new_item = new_item.replace('proj_out.weight', 'proj_attn.weight')
-        #         new_item = new_item.replace('proj_out.bias', 'proj_attn.bias')
-
-        #         new_item = shave_segments(new_item, n_shave_prefix_segments=n_shave_prefix_segments)
-
         mapping.append({"old": old_item, "new": new_item})
 
     return mapping
@@ -700,7 +691,6 @@ def load_pipeline_from_original_audioldm_ckpt(
     extract_ema: bool = False,
     scheduler_type: str = "pndm",
     num_in_channels: int = None,
-    upcast_attention: bool = None,
     device: str = None,
     from_safetensors: bool = False,
 ) -> AudioLDMPipeline:
@@ -728,9 +718,6 @@ def load_pipeline_from_original_audioldm_ckpt(
     checkpoints that have both EMA and non-EMA weights. Whether to extract the EMA weights
             or not. Defaults to `False`. Pass `True` to extract the EMA weights. EMA weights usually yield higher
             quality images for inference. Non-EMA weights are usually better to continue fine-tuning.
-    :param upcast_attention: Whether the attention computation should always be upcasted. This is necessary when
-    running
-                    stable diffusion 2.1.
     :param device: The device to use. Pass `None` to determine automatically. :param from_safetensors: If
     `checkpoint_path` is in `safetensors` format, load checkpoint with safetensors instead of PyTorch. :return: A
     StableDiffusionPipeline object representing the passed-in `.ckpt`/`.safetensors` file.
@@ -843,13 +830,6 @@ def load_pipeline_from_original_audioldm_ckpt(
         else:
             checkpoint = torch.load(checkpoint_path, map_location=device)
 
-    # Sometimes models don't have the global_step item
-    if "global_step" in checkpoint:
-        global_step = checkpoint["global_step"]
-    else:
-        print("global_step key not found in model")
-        global_step = None
-
     if "state_dict" in checkpoint:
         checkpoint = checkpoint["state_dict"]
 
@@ -911,10 +891,9 @@ def load_pipeline_from_original_audioldm_ckpt(
     else:
         raise ValueError(f"Scheduler of type {scheduler_type} doesn't exist!")
 
-    # Convert the UNet2DConditionModel model.
+    # Convert the UNet2DModel
     unet_config = create_unet_diffusers_config(original_config, image_size=image_size)
-    unet_config["upcast_attention"] = upcast_attention
-    unet = UNet2DConditionModel(**unet_config)
+    unet = UNet2DModel(**unet_config)
 
     converted_unet_checkpoint = convert_ldm_unet_checkpoint(
         checkpoint, unet_config, path=checkpoint_path, extract_ema=extract_ema
@@ -934,13 +913,8 @@ def load_pipeline_from_original_audioldm_ckpt(
         model_type = original_config.model.params.cond_stage_config.target.split(".")[-1]
 
     if model_type == "CLAPAudioEmbeddingClassifierFreev2":
-        # TODO: Load CLAP tokenizer + model
-        # text_model = ClapTextModelWithProjection.from_pretrained("laion-ai/clap-htsat-unfused")
-        # tokenizer = AutoTokenizer.from_pretrained("laion-ai/clap-htsat-unfused")
-
-        config = ClapTextConfig(projection_dim=512, projection_hidden_act="relu")
-        text_model = ClapTextModelWithProjection(config)
-        tokenizer = AutoTokenizer.from_pretrained("roberta-base")
+        text_model = ClapTextModelWithProjection.from_pretrained("laion/clap-htsat-unfused")
+        tokenizer = AutoTokenizer.from_pretrained("laion/clap-htsat-unfused")
 
         vocoder = SpeechT5HifiGan.from_pretrained("microsoft/speecht5_hifigan")
         pipe = AudioLDMPipeline(

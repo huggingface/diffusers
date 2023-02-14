@@ -127,8 +127,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         num_class_embeds: Optional[int] = None,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
-        extra_film_condition_dim: int = None,
-        extra_film_use_concat: bool = False,
     ):
         super().__init__()
 
@@ -153,18 +151,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             self.class_embedding = nn.Identity(time_embed_dim, time_embed_dim)
         else:
             self.class_embedding = None
-
-        # film condition
-        if self.class_embedding is not None and extra_film_condition_dim is not None:
-            raise ValueError("You cannot set both `class_embed_type` and `extra_film_use_concat`.")
-        self.use_extra_film_by_concat = extra_film_condition_dim is not None and extra_film_use_concat
-        self.use_extra_film_by_addition = extra_film_condition_dim is not None and not extra_film_use_concat
-
-        if extra_film_condition_dim is not None:
-            self.film_embedding = nn.Linear(extra_film_condition_dim, time_embed_dim)
-
-        if self.use_extra_film_by_concat:
-            time_embed_dim = time_embed_dim * 2
 
         self.down_blocks = nn.ModuleList([])
         self.mid_block = None
@@ -491,11 +477,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
             class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
             emb = emb + class_emb
-
-        if self.use_extra_film_by_addition:
-            emb = emb + self.film_embedding(class_labels)
-        elif self.use_extra_film_by_concat:
-            emb = torch.cat([emb, self.film_embedding(class_labels)], dim=-1)
 
         # 2. pre-process
         sample = self.conv_in(sample)

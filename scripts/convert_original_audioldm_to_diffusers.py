@@ -82,15 +82,6 @@ if __name__ == "__main__":
         ),
     )
     parser.add_argument(
-        "--upcast_attention",
-        default=False,
-        type=bool,
-        help=(
-            "Whether the attention computation should always be upcasted. This is necessary when running stable"
-            " diffusion 2.1."
-        ),
-    )
-    parser.add_argument(
         "--from_safetensors",
         action="store_true",
         help="If `--checkpoint_path` is in `safetensors` format, load checkpoint with safetensors instead of PyTorch.",
@@ -119,7 +110,7 @@ if __name__ == "__main__":
         extract_ema=args.extract_ema,
         scheduler_type=args.scheduler_type,
         num_in_channels=args.num_in_channels,
-        upcast_attention=args.upcast_attention,
         from_safetensors=args.from_safetensors,
+        device=args.device,
     )
     pipe.save_pretrained(args.dump_path, safe_serialization=args.to_safetensors)
