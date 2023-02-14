@@ -128,7 +128,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
         conditions_input_image (bool):
-            Whether to execute the pipeline with an input image.
+            Whether to condition the pipeline with an input image to compute an inverted noise latent.
         requires_safety_checker (bool):
             Whether the pipeline requires a safety checker. We recommend setting it to True if you're using the
             pipeline publicly.
