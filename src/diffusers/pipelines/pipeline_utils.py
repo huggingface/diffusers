@@ -529,7 +529,7 @@ class DiffusionPipeline(ConfigMixin):
                     )
                     comp_model_filenames = variant_compatible_siblings(info, variant=revision)
                     comp_model_filenames = [
-                        ".".join(os.path.splitext(f)[:1] + os.path.splitext(f)[2:]) for f in comp_model_filenames
+                        ".".join(f.split(".")[:1] + f.split(".")[2:]) for f in comp_model_filenames
                     ]
 
                     if set(comp_model_filenames) == set(model_filenames):
