@@ -83,4 +83,24 @@ The class [`SchedulerOutput`] contains the outputs from any schedulers `step(...
 
 ### KarrasDiffusionSchedulers
 
+`KarrasDiffusionSchedulers` encompasses the main generalization of schedulers in Diffusers. The schedulers in this class are distinguished at a hight level by their noise sampling strategy; the type of network and scaling; and finally the training strategy or how the loss is weighed.
+
+The different schedulers, depending on the type of ODE solver, fall into the above taxonomy and provides a good abstraction for the design of the different schedulers. The main schedulers in this class are give by the following `Enum`:
+
+```python
+class KarrasDiffusionSchedulers(Enum):
+    DDIMScheduler = 1
+    DDPMScheduler = 2
+    PNDMScheduler = 3
+    LMSDiscreteScheduler = 4
+    EulerDiscreteScheduler = 5
+    HeunDiscreteScheduler = 6
+    EulerAncestralDiscreteScheduler = 7
+    DPMSolverMultistepScheduler = 8
+    DPMSolverSinglestepScheduler = 9
+    KDPM2DiscreteScheduler = 10
+    KDPM2AncestralDiscreteScheduler = 11
+    DEISMultistepScheduler = 12
+```
+
 [[autodoc]] schedulers.scheduling_utils.KarrasDiffusionSchedulers
