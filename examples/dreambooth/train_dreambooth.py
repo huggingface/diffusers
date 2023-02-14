@@ -188,9 +188,11 @@ def parse_args(input_args=None):
         type=int,
         default=500,
         help=(
-            "Save a checkpoint of the training state every X updates. These checkpoints can be used both as final"
-            " checkpoints in case they are better than the last checkpoint, and are also suitable for resuming"
-            " training using `--resume_from_checkpoint`."
+            "Save a checkpoint of the training state every X updates. Checkpoints can be used for resuming training via `--resume_from_checkpoint`. "
+            "In the case that the checkpoint is better than the final trained model, the checkpoint can also be used for inference."
+            "Using a checkpoint for inference requires separate loading of the original pipeline and the individual checkpointed model components."
+            "See https://huggingface.co/docs/diffusers/main/en/training/dreambooth#performing-inference-using-a-saved-checkpoint for step by step"
+            "instructions."
         ),
     )
     parser.add_argument(
