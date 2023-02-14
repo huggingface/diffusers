@@ -26,7 +26,7 @@ from transformers import (
 )
 
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...models.attention import CrossAttention
+from ...models.cross_attention import CrossAttention, CrossAttnProcessor
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import is_accelerate_available, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
@@ -48,17 +48,18 @@ def generate_caption(image, captioner, processor, return_image=True):
 
 
 def prepare_unet(unet: UNet2DConditionModel):
-    # set the gradients for cross-attention maps to be true
-    for name, params in unet.named_parameters():
+    pix2pix_zero_attn_procs = {}
+    for name in unet.attn_processors.keys():
+        module_name = name.replace(".processor", "")
+        module = unet.get_submodule(module_name)
         if "attn2" in name:
-            params.requires_grad = True
+            pix2pix_zero_attn_procs[name] = Pix2PixZeroCrossAttnProcessor()
+            module.requires_grad_(True)
         else:
-            params.requires_grad = False
-    # replace the forward function
-    for name, module in unet.named_modules():
-        module_name = type(module).__name__
-        if module_name == "CrossAttention":
-            module.set_processor(Pix2PixZeroCrossAttnProcessor())
+            pix2pix_zero_attn_procs[name] = CrossAttnProcessor()
+            module.requires_grad_(False)
+
+    unet.set_attn_processor(pix2pix_zero_attn_procs)
     return unet
 
 
