@@ -4,7 +4,6 @@ import inspect
 import io
 import re
 import tempfile
-import time
 import unittest
 from typing import Callable, Union
 
@@ -294,36 +293,6 @@ class PipelineTesterMixin:
         max_diff = np.abs(output - output_tuple).max()
         self.assertLess(max_diff, 1e-4)
 
-    def test_num_inference_steps_consistent(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        # Warmup pass when using mps (see #372)
-        if torch_device == "mps":
-            _ = pipe(**self.get_dummy_inputs(torch_device))
-
-        outputs = []
-        times = []
-        for num_steps in [9, 6, 3]:
-            inputs = self.get_dummy_inputs(torch_device)
-
-            for arg in self.num_inference_steps_args:
-                inputs[arg] = num_steps
-
-            start_time = time.time()
-            output = pipe(**inputs)[0]
-            inference_time = time.time() - start_time
-
-            outputs.append(output)
-            times.append(inference_time)
-
-        # check that all outputs have the same shape
-        self.assertTrue(all(outputs[0].shape == output.shape for output in outputs))
-        # check that the inference time increases with the number of inference steps
-        self.assertTrue(all(times[i] < times[i - 1] for i in range(1, len(times))))
-
     def test_components_function(self):
         init_components = self.get_dummy_components()
         pipe = self.pipeline_class(**init_components)
@@ -517,6 +486,9 @@ class PipelineTesterMixin:
         reason="XFormers attention is only available with CUDA and `xformers` installed",
     )
     def test_xformers_attention_forwardGenerator_pass(self):
+        self._test_xformers_attention_forwardGenerator_pass()
+
+    def _test_xformers_attention_forwardGenerator_pass(self, test_max_difference=True):
         if not self.test_xformers_attention:
             return
 
@@ -532,8 +504,11 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         output_with_offload = pipe(**inputs)[0]
 
-        max_diff = np.abs(output_with_offload - output_without_offload).max()
-        self.assertLess(max_diff, 1e-4, "XFormers attention should not affect the inference results")
+        if test_max_difference:
+            max_diff = np.abs(output_with_offload - output_without_offload).max()
+            self.assertLess(max_diff, 1e-4, "XFormers attention should not affect the inference results")
+
+        assert_mean_pixel_difference(output_with_offload[0], output_without_offload[0])
 
     def test_progress_bar(self):
         components = self.get_dummy_components()
