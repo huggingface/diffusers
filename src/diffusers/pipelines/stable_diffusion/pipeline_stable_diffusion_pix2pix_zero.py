@@ -469,6 +469,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    @torch.no_grad()
     # @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
@@ -650,42 +651,41 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
         # 7. Denoising loop where we obtain the cross-attention maps.
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-        with torch.no_grad():
-            with self.progress_bar(total=num_inference_steps) as progress_bar:
-                for i, t in enumerate(timesteps):
-                    # expand the latents if we are doing classifier free guidance
-                    latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                    latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for i, t in enumerate(timesteps):
+                # expand the latents if we are doing classifier free guidance
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                    # predict the noise residual
-                    noise_pred = self.unet(
-                        latent_model_input,
-                        t,
-                        encoder_hidden_states=prompt_embeds,
-                        cross_attention_kwargs=cross_attention_kwargs,
-                    ).sample
+                # predict the noise residual
+                noise_pred = self.unet(
+                    latent_model_input,
+                    t,
+                    encoder_hidden_states=prompt_embeds,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                ).sample
 
-                    # add the cross attention map to the dictionary
-                    ref_xa_maps[t.item()] = {}
-                    for name, module in self.unet.named_modules():
-                        module_name = type(module).__name__
-                        if module_name == "CrossAttention" and "attn2" in name:
-                            attn_mask = module.attn_probs  # size is (num_channels, s*s, max_prompt_length)
-                            ref_xa_maps[t.item()][name] = attn_mask.detach().cpu()
+                # add the cross attention map to the dictionary
+                ref_xa_maps[t.item()] = {}
+                for name, module in self.unet.named_modules():
+                    module_name = type(module).__name__
+                    if module_name == "CrossAttention" and "attn2" in name:
+                        attn_mask = module.attn_probs  # size is (num_channels, s*s, max_prompt_length)
+                        ref_xa_maps[t.item()][name] = attn_mask.detach().cpu()
 
-                    # perform guidance
-                    if do_classifier_free_guidance:
-                        noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                        noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                # perform guidance
+                if do_classifier_free_guidance:
+                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
-                    # compute the previous noisy sample x_t -> x_t-1
-                    latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+                # compute the previous noisy sample x_t -> x_t-1
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
-                    # call the callback, if provided
-                    if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                        progress_bar.update()
-                        if callback is not None and i % callback_steps == 0:
-                            callback(i, t, latents)
+                # call the callback, if provided
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    progress_bar.update()
+                    if callback is not None and i % callback_steps == 0:
+                        callback(i, t, latents)
 
         # 8. Compute the edit directions.
         edit_direction = construct_direction(source_embedding_path, target_embedding_path)
@@ -703,37 +703,43 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
+                # we want to learn the latent such that it steers the generation
+                # process towards the edited direction, so make the make initial
+                # noise learnable
                 x_in = latent_model_input.detach().clone()
                 x_in.requires_grad = True
 
+                # optimizer
                 opt = torch.optim.SGD([x_in], lr=cross_attention_guidance_amount)
 
-                # predict the noise residual
-                noise_pred = self.unet(
-                    x_in,
-                    t,
-                    encoder_hidden_states=prompt_embeds_edit.detach(),
-                    cross_attention_kwargs=cross_attention_kwargs,
-                ).sample
-
-                loss = 0.0
-                for name, module in self.unet.named_modules():
-                    module_name = type(module).__name__
-                    if module_name == "CrossAttention" and "attn2" in name:
-                        curr = module.attn_probs
-                        ref = ref_xa_maps[t.item()][name].detach().to(device)
-                        loss += ((curr - ref) ** 2).sum((1, 2)).mean(0)
-                loss.backward(retain_graph=False)
-                opt.step()
-
-                # recompute the noise
-                with torch.no_grad():
+                with torch.enable_grad():
+                    # predict the noise residual
                     noise_pred = self.unet(
-                        x_in.detach(),
+                        x_in,
                         t,
-                        encoder_hidden_states=prompt_embeds_edit,
+                        encoder_hidden_states=prompt_embeds_edit.detach(),
                         cross_attention_kwargs=cross_attention_kwargs,
                     ).sample
+
+                    # obtain the cross-attention maps with the current latents,
+                    # compute loss, backpropagate
+                    loss = 0.0
+                    for name, module in self.unet.named_modules():
+                        module_name = type(module).__name__
+                        if module_name == "CrossAttention" and "attn2" in name:
+                            curr = module.attn_probs
+                            ref = ref_xa_maps[t.item()][name].detach().to(device)
+                            loss += ((curr - ref) ** 2).sum((1, 2)).mean(0)
+                    loss.backward(retain_graph=False)
+                    opt.step()
+
+                # recompute the noise
+                noise_pred = self.unet(
+                    x_in.detach(),
+                    t,
+                    encoder_hidden_states=prompt_embeds_edit,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                ).sample
 
                 latents = x_in.detach().chunk(2)[0]
 
@@ -750,8 +756,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                     progress_bar.update()
 
         # 11. Post-process the latents.
-        with torch.no_grad():
-            edited_image = self.decode_latents(latents)
+        edited_image = self.decode_latents(latents)
 
         # 12. Run the safety checker.
         edited_image, has_nsfw_concept = self.run_safety_checker(edited_image, device, prompt_embeds.dtype)
