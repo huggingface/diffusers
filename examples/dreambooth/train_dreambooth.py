@@ -41,6 +41,7 @@ from transformers import AutoTokenizer, PretrainedConfig
 
 import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
+from diffusers.models.cross_attention import TorchAttentionProcessor
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
 from diffusers.utils.import_utils import is_xformers_available
@@ -322,6 +323,11 @@ def parse_args(input_args=None):
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
     parser.add_argument(
+        "--enable_torch_sdpa",
+        action="store_true",
+        help="Whether or not to use PyTorch's efficient SDPA implementation.",
+    )
+    parser.add_argument(
         "--set_grads_to_none",
         action="store_true",
         help=(
@@ -339,6 +345,12 @@ def parse_args(input_args=None):
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
+
+    # assert only one of enable_xformers_memory_efficient_attention and enable_torch_sdpa is set
+    if args.enable_xformers_memory_efficient_attention and args.enable_torch_sdpa:
+        raise ValueError(
+            "You can only use one of --enable_xformers_memory_efficient_attention and --enable_torch_sdpa at the same time."
+        )
 
     if args.with_prior_preservation:
         if args.class_data_dir is None:
@@ -650,6 +662,8 @@ def main(args):
             unet.enable_xformers_memory_efficient_attention()
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
+    elif args.enable_torch_sdpa:
+        unet.set_attn_processor(TorchAttentionProcessor())
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
