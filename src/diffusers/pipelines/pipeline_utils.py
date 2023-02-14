@@ -159,7 +159,7 @@ def variant_compatible_siblings(info, variant=None) -> Union[List[os.PathLike], 
     weight_suffixs = [w.split(".")[-1] for w in weight_names]
 
     variant_file_regex = (
-        re.compile(f"({'|'.join(weight_prefixes)})({variant})({'|'.join(weight_suffixs)})")
+        re.compile(f"({'|'.join(weight_prefixes)})(.{variant}.)({'|'.join(weight_suffixs)})")
         if variant is not None
         else None
     )
