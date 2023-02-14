@@ -774,6 +774,7 @@ class StableUnCLIPPipeline(DiffusionPipeline):
         for i, t in enumerate(self.progress_bar(prior_timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([prior_latents] * 2) if prior_do_classifier_free_guidance else prior_latents
+            latent_model_input = self.prior_scheduler.scale_model_input(latent_model_input, t)
 
             predicted_image_embedding = self.prior(
                 latent_model_input,
