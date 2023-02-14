@@ -620,8 +620,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             height, width = preprocessed_image.shape[-2:]
             prompt = caption
             logger.info(f"Generated caption for the input image: {caption}.")
-        else:
-            pass
 
         # 3. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -630,7 +628,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
-        ref_xa_maps = {}  # reference cross attention maps
+        # ref_xa_maps = {}  # reference cross attention maps
 
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
@@ -752,7 +750,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                         x_in,
                         t,
                         encoder_hidden_states=prompt_embeds_edit.detach(),
-                        cross_attention_kwargs=cross_attention_kwargs,
+                        cross_attention_kwargs={"timestep": t, "loss": loss},
                     ).sample
 
                     # obtain the cross-attention maps with the current latents,
