@@ -242,9 +242,153 @@ pipeline under a `"fp16"` variant as follows:
 pipe.save_pretrained("./stable-diffusion-v1-5", variant="fp16")
 ```
 
+If we don't save into an existing `stable-diffusion-v1-5` folder the new folder would look as follows:
+
+```
+stable-diffusion-v1-5
+├── feature_extractor
+│   └── preprocessor_config.json
+├── model_index.json
+├── safety_checker
+│   ├── config.json
+│   └── pytorch_model.fp16.bin
+├── scheduler
+│   └── scheduler_config.json
+├── text_encoder
+│   ├── config.json
+│   └── pytorch_model.fp16.bin
+├── tokenizer
+│   ├── merges.txt
+│   ├── special_tokens_map.json
+│   ├── tokenizer_config.json
+│   └── vocab.json
+├── unet
+│   ├── config.json
+│   └── diffusion_pytorch_model.fp16.bin
+└── vae
+    ├── config.json
+    └── diffusion_pytorch_model.fp16.bin
+```
+
+As one can see, all model files now have a `.fp16.bin` extension instead of just `.bin`.
+The variant now has to be loaded by also passing a `variant="fp16"` to [`DiffusionPipeline.from_pretrained`], e.g.:
 
 
+```py
+DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5", variant="fp16", dtype=torch.float16)
+```
 
+works just fine, while:
+
+```py
+DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5", dtype=torch.float16)
+```
+
+throws an Exception:
+```
+OSError: Error no file named diffusion_pytorch_model.bin found in directory ./stable-diffusion-v1-45/vae since we **only** stored the model 
+```
+
+This is expected as we don't have any "non-variant" checkpoint files saved locally.
+However, the whole idea of pipeline variants is that they can co-exist with the "main" variant, 
+so one would typically also save the "main" variant in the same folder. Let's do this:
+
+```py
+pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+pipe.save_pretrained("./stable-diffusion-v1-5")
+```
+
+and upload the pipeline to the Hub under [diffusers/stable-diffusion-variants](https://huggingface.co/diffusers/stable-diffusion-variants).
+The file structure [on the Hub](https://huggingface.co/diffusers/stable-diffusion-variants/tree/main) now looks as follows:
+
+```py
+├── feature_extractor
+│   └── preprocessor_config.json
+├── model_index.json
+├── safety_checker
+│   ├── config.json
+│   ├── pytorch_model.bin
+│   └── pytorch_model.fp16.bin
+├── scheduler
+│   └── scheduler_config.json
+├── text_encoder
+│   ├── config.json
+│   ├── pytorch_model.bin
+│   └── pytorch_model.fp16.bin
+├── tokenizer
+│   ├── merges.txt
+│   ├── special_tokens_map.json
+│   ├── tokenizer_config.json
+│   └── vocab.json
+├── unet
+│   ├── config.json
+│   ├── diffusion_pytorch_model.bin
+│   ├── diffusion_pytorch_model.fp16.bin
+└── vae
+    ├── config.json
+    ├── diffusion_pytorch_model.bin
+    └── diffusion_pytorch_model.fp16.bin
+```
+
+We can now both download the "main" and the "fp16" variant from the Hub. Both:
+
+```py
+pipe = DiffusionPipeline.from_pretrained("diffusers/stable-diffusion-variants")
+```
+
+and 
+
+```py
+pipe = DiffusionPipeline.from_pretrained("diffusers/stable-diffusion-variants", variant="fp16")
+```
+
+works.
+
+<Tip>
+
+Note that Diffusers never downloads more checkpoints that needed. E.g. when downloading 
+the "main" variant, none of the "fp16.bin" files are downloaded and cached.
+Only when the user specificies `variant="fp16"` are those files downloaded and cached.
+
+</Tip>
+
+Finally, there are cases where only some of the checkpoint files of the pipeline are of a certain 
+variation. E.g. it's usually only the UNet checkpoint that has both a *exponential-mean-averaged* (EMA) and a *non-exponential-mean-averaged* (non-EMA) version. All other model components, e.g. the text encoder, safety checker or variational auto-encoder usually don't have such a variation.
+In such a case, one would upload just the UNet's checkpoint file with a `non_ema` version format (as done [here](https://huggingface.co/diffusers/stable-diffusion-variants/blob/main/unet/diffusion_pytorch_model.non_ema.bin)) and upon calling:
+
+```python
+pipe = DiffusionPipeline.from_pretrained("diffusers/stable-diffusion-variants", variant="non_ema")
+```
+
+the model will use only the "non_ema" checkpoint variant if it is available - otherwise it'll load the 
+"main" variation. In the above example, `variant="non_ema"` would therefore download the following file structure:
+
+```
+├── feature_extractor
+│   └── preprocessor_config.json
+├── model_index.json
+├── safety_checker
+│   ├── config.json
+│   ├── pytorch_model.bin
+├── scheduler
+│   └── scheduler_config.json
+├── text_encoder
+│   ├── config.json
+│   ├── pytorch_model.bin
+├── tokenizer
+│   ├── merges.txt
+│   ├── special_tokens_map.json
+│   ├── tokenizer_config.json
+│   └── vocab.json
+├── unet
+│   ├── config.json
+│   └── diffusion_pytorch_model.non_ema.bin
+└── vae
+    ├── config.json
+    ├── diffusion_pytorch_model.bin
+```
+
+In a nutshell, using `variant="{variant}"` will download all files that match the `{variant}` and if for a model component such a file variant is not present it will download the "main" variant. If neither a "main" or `{variant}` variant is available, an error will the thrown.
 
 ### How does loading work?
 
@@ -388,6 +532,32 @@ In the case of `runwayml/stable-diffusion-v1-5` the `model_index.json` is theref
 	- The `"library"` field corresponds to the name of the library, *e.g.* `diffusers` or `transformers` from which the `"class"` should be loaded
 	- The `"class"` field corresponds to the name of the class, *e.g.* [`CLIPTokenizer`](https://huggingface.co/docs/transformers/main/en/model_doc/clip#transformers.CLIPTokenizer) or [`UNet2DConditionModel`]
 
+<!--
+TODO(Patrick) - Make sure to uncomment this part as soon as things are deprecated.
+
+#### Using `revision` to load pipeline variants is deprecated
+
+Previously the `revision` argument of [`DiffusionPipeline.from_pretrained`] was heavily used to 
+load model variants, e.g.:
+
+```python
+from diffusers import DiffusionPipeline
+
+pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", revision="fp16")
+```
+
+However, this behavior is now deprecated since the "revision" argument should (just as it's done in GitHub) better be used to load model checkpoints from a specific commit or branch in development.
+
+The above example is therefore deprecated and won't be supported anymore for `diffusers >= 1.0.0`.
+
+<Tip warning={true}>
+
+If you load diffusers pipelines or models with `revision="fp16"` or `revision="non_ema"`, 
+please make sure to update to code and use `variant="fp16"` or `variation="non_ema"` respectively
+instead.
+
+</Tip>
+-->
 
 ## Loading models
 
@@ -425,6 +595,18 @@ from diffusers import UNet2DModel
 
 repo_id = "google/ddpm-cifar10-32"
 model = UNet2DModel.from_pretrained(repo_id)
+```
+
+As motivated in [How to save and load variants?](#how-to-save-and-load-variants), models can load and 
+save variants. To load a model variant, one should pass the `variant` function argument to [`ModelMixin.from_pretrained`]. Analogeous, to save a model variant, one should psas the `variant` function argument to [`ModelMixin.save_pretrained`]:
+
+```python
+from diffusers import UNet2DConditionModel
+
+model = UNet2DConditionModel.from_pretrained(
+    "diffusers/stable-diffusion-variants", subfolder="unet", variant="non_ema"
+)
+model.save_pretrained("./local-unet", variant="non_ema")
 ```
 
 ## Loading schedulers

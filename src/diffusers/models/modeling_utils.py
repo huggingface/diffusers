@@ -823,7 +823,7 @@ def _get_model_file(
         try:
             if revision in DEPRECATED_REVISION_ARGS and version.parse(
                 version.parse(__version__).base_version
-            ) >= version.parse("0.16.0"):
+            ) >= version.parse("0.15.0"):
                 variant = _add_variant(weights_name, revision)
 
                 try:
