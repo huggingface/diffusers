@@ -164,7 +164,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             checkpoint = "Salesforce/blip-image-captioning-base"
             captioner_processor = AutoProcessor.from_pretrained(checkpoint)
             captioner = BlipForConditionalGeneration.from_pretrained(checkpoint)
-
         else:
             captioner_processor = None
             captioner = None
