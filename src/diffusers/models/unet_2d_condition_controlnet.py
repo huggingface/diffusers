@@ -72,6 +72,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         timestep_post_act: Optional[str] = None,
         time_cond_proj_dim: Optional[int] = None,
         conv_in_kernel: int = 3,
+        hint_channels: int = 3,
         # conv_out_kernel: int = 3,
     ):
         super().__init__()
