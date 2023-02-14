@@ -681,7 +681,7 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         is_cancelled_callback: Optional[Callable[[], bool]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
         **kwargs,
     ):
         r"""
@@ -883,7 +883,7 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         is_cancelled_callback: Optional[Callable[[], bool]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
         **kwargs,
     ):
         r"""
@@ -979,7 +979,7 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         is_cancelled_callback: Optional[Callable[[], bool]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
         **kwargs,
     ):
         r"""
@@ -1076,7 +1076,7 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         is_cancelled_callback: Optional[Callable[[], bool]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
         **kwargs,
     ):
         r"""
