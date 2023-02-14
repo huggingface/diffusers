@@ -409,7 +409,7 @@ def main():
             raise ValueError("xformers is not available. Make sure it is installed correctly")
 
     # `accelerate` 0.16.0 will have better support for customized saving
-    if version.parse(accelerate.__version__) >= version.parse("0.15.0"):
+    if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
         def save_model_hook(models, weights, output_dir):
             if args.use_ema:
