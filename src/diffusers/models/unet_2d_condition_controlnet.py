@@ -24,19 +24,12 @@ from .modeling_utils import ModelMixin
 from .unet_2d_blocks import (
     UNetMidBlock2DCrossAttn,
     UNetMidBlock2DSimpleCrossAttn,
-    get_down_block,
 )
-
-
-def set_zero_parameters(module):
-    for p in module.parameters():
-        p.detach().zero_()
-    return module
-
-
-# ControlNet: Zero Convolution
-def zero_conv(channels):
-    return set_zero_parameters(nn.Conv2d(channels, channels, 1, padding=0))
+from .unet_2d_blocks_controlnet import (
+    get_down_block_with_zero_conv,
+    set_zero_parameters,
+    zero_conv,
+)
 
 
 class ControlledUNet2DConditionModel(UNet2DConditionModel):
@@ -165,7 +158,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             output_channel = block_out_channels[i]
             is_final_block = i == len(block_out_channels) - 1
 
-            down_block = get_down_block(
+            down_block = get_down_block_with_zero_conv(
                 down_block_type,
                 num_layers=layers_per_block,
                 in_channels=input_channel,
