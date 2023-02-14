@@ -112,7 +112,7 @@ class Pix2PixZeroCrossAttnProcessor:
         value = attn.head_to_batch_dim(value)
 
         attention_probs = attn.get_attention_scores(query, key, attention_mask)
-        if self.is_pix2pix_zero:
+        if self.is_pix2pix_zero and timestep is not None:
             # new bookkeeping to save the attention weights.
             if loss is None:
                 self.xa_map[timestep.item()] = attention_probs
@@ -770,7 +770,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                     x_in.detach(),
                     t,
                     encoder_hidden_states=prompt_embeds_edit,
-                    cross_attention_kwargs=cross_attention_kwargs,
+                    cross_attention_kwargs={"timestep": None},
                 ).sample
 
                 latents = x_in.detach().chunk(2)[0]
