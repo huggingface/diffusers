@@ -17,6 +17,7 @@
 import importlib
 import inspect
 import os
+import re
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -41,6 +42,8 @@ from ..utils import (
     DEPRECATED_REVISION_ARGS,
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
+    SAFETENSORS_WEIGHTS_NAME,
+    WEIGHTS_NAME,
     BaseOutput,
     deprecate,
     get_class_from_dynamic_module,
@@ -56,6 +59,11 @@ from ..utils import (
 if is_transformers_available():
     import transformers
     from transformers import PreTrainedModel
+    from transformers.utils import FLAX_WEIGHTS_NAME as TRANSFORMERS_FLAX_WEIGHTS_NAME
+    from transformers.utils import SAFE_WEIGHTS_NAME as TRANSFORMERS_SAFE_WEIGHTS_NAME
+    from transformers.utils import WEIGHTS_NAME as TRANSFORMERS_WEIGHTS_NAME
+
+from ..utils import FLAX_WEIGHTS_NAME, ONNX_WEIGHTS_NAME
 
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
@@ -140,16 +148,29 @@ def is_safetensors_compatible(filenames, variant=None) -> bool:
 
 def variant_compatible_siblings(info, variant=None) -> Union[List[os.PathLike], str]:
     filenames = set(sibling.rfilename for sibling in info.siblings)
-    save_formats = ["bin", "safetensors", "msgpack", "onnx"]
+    weight_names = [WEIGHTS_NAME, SAFETENSORS_WEIGHTS_NAME, FLAX_WEIGHTS_NAME, ONNX_WEIGHTS_NAME]
+
+    if is_transformers_available():
+        weight_names += [TRANSFORMERS_WEIGHTS_NAME, TRANSFORMERS_SAFE_WEIGHTS_NAME, TRANSFORMERS_FLAX_WEIGHTS_NAME]
+
+    # model_pytorch, diffusion_model_pytorch, ...
+    weight_prefixes = [w.split(".")[0] for w in weight_names]
+    # .bin, .safetensors, ...
+    weight_suffixs = [w.split(".")[-1] for w in weight_names]
+
+    variant_file_regex = (
+        re.compile(f"({'|'.join(weight_prefixes)})({variant})({'|'.join(weight_suffixs)})")
+        if variant is not None
+        else None
+    )
+    non_variant_file_regex = re.compile(f"{'|'.join(weight_names)}")
 
     if variant is not None:
-        variant_filenames = set(f for f in filenames if any(f.endswith(f"{variant}.{s}") for s in save_formats))
+        variant_filenames = set(f for f in filenames if variant_file_regex.match(f.split("/")[-1]) is not None)
     else:
         variant_filenames = set()
 
-    non_variant_filenames = set(
-        f for f in filenames if (len(f.split(".")) == 2 and any(f.endswith(f".{s}") for s in save_formats))
-    )
+    non_variant_filenames = set(f for f in filenames if non_variant_file_regex.match(f.split("/")[-1]) is not None)
 
     usable_filenames = set(variant_filenames)
     for f in non_variant_filenames:
@@ -529,7 +550,7 @@ class DiffusionPipeline(ConfigMixin):
                     )
                     comp_model_filenames = variant_compatible_siblings(info, variant=revision)
                     comp_model_filenames = [
-                        ".".join(os.path.splitext(f)[:1] + os.path.splitext(f)[2:]) for f in comp_model_filenames
+                        ".".join(f.split(".")[:1] + f.split(".")[2:]) for f in comp_model_filenames
                     ]
 
                     if set(comp_model_filenames) == set(model_filenames):
