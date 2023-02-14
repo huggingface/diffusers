@@ -280,7 +280,11 @@ def main(args):
         logging_dir=logging_dir,
     )
 
-    if args.logger == "wandb":
+    if args.logger == "tensorboard":
+        if not is_tensorboard_available():
+            raise ImportError("Make sure to install tensorboard if you want to use it for logging during training.")
+
+    elif args.logger == "wandb":
         if not is_wandb_available():
             raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
         import wandb
@@ -609,7 +613,7 @@ def main(args):
                 # denormalize the images and save to tensorboard
                 images_processed = (images * 255).round().astype("uint8")
 
-                if args.logger == "tensorboard" and is_tensorboard_available():
+                if args.logger == "tensorboard":
                     accelerator.get_tracker("tensorboard").add_images(
                         "test_samples", images_processed.transpose(0, 3, 1, 2), epoch
                     )
