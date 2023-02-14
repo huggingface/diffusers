@@ -717,12 +717,12 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
                 with torch.enable_grad():
                     # predict the noise residual
-                    noise_pred = self.unet(
-                        x_in,
-                        t,
-                        encoder_hidden_states=prompt_embeds_edit.detach(),
-                        cross_attention_kwargs=cross_attention_kwargs,
-                    ).sample
+                    # noise_pred = self.unet(
+                    #     x_in,
+                    #     t,
+                    #     encoder_hidden_states=prompt_embeds_edit.detach(),
+                    #     cross_attention_kwargs=cross_attention_kwargs,
+                    # ).sample
 
                     # obtain the cross-attention maps with the current latents,
                     # compute loss, backpropagate
