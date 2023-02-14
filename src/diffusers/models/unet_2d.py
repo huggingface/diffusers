@@ -94,7 +94,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         mid_block_scale_factor: float = 1,
         downsample_padding: int = 1,
         act_fn: str = "silu",
-        attention_head_dim: int = 8,
+        attention_head_dim: Optional[int] = 8,
         norm_num_groups: int = 32,
         norm_eps: float = 1e-5,
         resnet_time_scale_shift: str = "default",
@@ -106,6 +106,17 @@ class UNet2DModel(ModelMixin, ConfigMixin):
 
         self.sample_size = sample_size
         time_embed_dim = block_out_channels[0] * 4
+
+        # Check inputs
+        if len(down_block_types) != len(up_block_types):
+            raise ValueError(
+                f"Must provide the same number of `down_block_types` as `up_block_types`. `down_block_types`: {down_block_types}. `up_block_types`: {up_block_types}."
+            )
+
+        if len(block_out_channels) != len(down_block_types):
+            raise ValueError(
+                f"Must provide the same number of `block_out_channels` as `down_block_types`. `block_out_channels`: {block_out_channels}. `down_block_types`: {down_block_types}."
+            )
 
         # input
         self.conv_in = nn.Conv2d(in_channels, block_out_channels[0], kernel_size=3, padding=(1, 1))
