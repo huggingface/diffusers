@@ -527,7 +527,7 @@ class UnCLIPImageVariationPipelineIntegrationTests(unittest.TestCase):
         )
 
         pipeline = UnCLIPImageVariationPipeline.from_pretrained(
-            "fusing/karlo-image-variations-diffusers", torch_dtype=torch.float16
+            "kakaobrain/karlo-v1-alpha-image-variations", torch_dtype=torch.float16
         )
         pipeline = pipeline.to(torch_device)
         pipeline.set_progress_bar_config(disable=None)
