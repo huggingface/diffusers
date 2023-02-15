@@ -515,20 +515,3 @@ class AdaGroupNorm(nn.Module):
         x = F.group_norm(x, self.num_groups, eps=self.eps)
         x = x * (1 + scale) + shift
         return x
-
-
-class FiLMLayer(nn.Module):
-    """
-    FiLM Layer
-    """
-
-    def __init__(self, in_features, out_features):
-        super().__init__()
-        # TOOD(PVP) - rename scale_bias layer
-        self.scale_bias = nn.Linear(in_features, out_features * 2, bias=False)
-
-    def forward(self, x, conditioning_emb):
-        emb = self.scale_bias(conditioning_emb)
-        scale, shift = torch.chunk(emb, 2, -1)
-        x = x * (1 + scale) + shift
-        return x

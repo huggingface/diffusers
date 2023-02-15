@@ -17,55 +17,7 @@ import math
 from ..configuration_utils import ConfigMixin, register_to_config
 from .modeling_utils import ModelMixin
 from .embeddings import get_timestep_embedding
-from .attention import FiLMLayer
 from .cross_attention import CrossAttention
-
-
-class NewGELUActivation(nn.Module):
-    """
-    Implementation of the GELU activation function currently in Google BERT repo (identical to OpenAI GPT). Also see
-    the Gaussian Error Linear Units paper: https://arxiv.org/abs/1606.08415
-    """
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return 0.5 * input * (1.0 + torch.tanh(math.sqrt(2.0 / math.pi) * (input + 0.044715 * torch.pow(input, 3.0))))
-
-
-class T5LayerCrossAttention(nn.Module):
-    def __init__(self, d_model, d_kv, num_heads, dropout_rate, layer_norm_epsilon):
-        super().__init__()
-        # self.EncDecAttention = T5Attention(d_model=d_model, d_kv=d_kv, num_heads=num_heads, dropout_rate=dropout_rate)
-        self.attention = CrossAttention(query_dim=d_model, heads=num_heads, dim_head=d_kv, out_bias=False, scale_qk=False)
-        self.layer_norm = T5LayerNorm(d_model, eps=layer_norm_epsilon)
-        self.dropout = nn.Dropout(dropout_rate)
-
-    def set_weights(self):
-        self.attention.to_q.weight = nn.Parameter(self.EncDecAttention.q.weight.data)
-        self.attention.to_k.weight = nn.Parameter(self.EncDecAttention.k.weight.data)
-        self.attention.to_v.weight = nn.Parameter(self.EncDecAttention.v.weight.data)
-        self.attention.to_out[0].weight = nn.Parameter(self.EncDecAttention.o.weight.data)
-
-    def forward(
-        self,
-        hidden_states,
-        key_value_states=None,
-        attention_mask=None,
-    ):
-        # self.set_weights()
-        normed_hidden_states = self.layer_norm(hidden_states)
-#        attention_output = self.EncDecAttention(
-#            normed_hidden_states,
-#            mask=attention_mask,
-#            key_value_states=key_value_states,
-#        )
-        attention_output_comp = self.attention(
-            normed_hidden_states,
-            encoder_hidden_states=key_value_states,
-            attention_mask=attention_mask.squeeze(),
-        )
-        layer_output = hidden_states + self.dropout(attention_output_comp)
-        outputs = (layer_output,)
-        return outputs
 
 
 class T5Attention(nn.Module):
@@ -142,175 +94,7 @@ class T5Attention(nn.Module):
         attn_output = unshape(torch.matmul(attn_weights, value_states))  # (batch_size, seq_length, dim)
         attn_output = self.o(attn_output)
 
-        return (attn_output,)
-
-
-class T5LayerNorm(nn.Module):
-    def __init__(self, hidden_size, eps=1e-6):
-        """
-        Construct a layernorm module in the T5 style. No bias and no subtraction of mean.
-        """
-        super().__init__()
-        self.weight = nn.Parameter(torch.ones(hidden_size))
-        self.variance_epsilon = eps
-
-    def forward(self, hidden_states):
-        # T5 uses a layer_norm which only scales and doesn't shift, which is also known as Root Mean
-        # Square Layer Normalization https://arxiv.org/abs/1910.07467 thus varience is calculated
-        # w/o mean and there is no bias. Additionally we want to make sure that the accumulation for
-        # half-precision inputs is done in fp32
-
-        variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
-        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
-
-        # convert into half-precision if necessary
-        if self.weight.dtype in [torch.float16, torch.bfloat16]:
-            hidden_states = hidden_states.to(self.weight.dtype)
-
-        return self.weight * hidden_states
-
-
-class T5DenseGatedActDense(nn.Module):
-    def __init__(self, d_model, d_ff, dropout_rate):
-        super().__init__()
-        self.wi_0 = nn.Linear(d_model, d_ff, bias=False)
-        self.wi_1 = nn.Linear(d_model, d_ff, bias=False)
-        self.wo = nn.Linear(d_ff, d_model, bias=False)
-        self.dropout = nn.Dropout(dropout_rate)
-        self.act = NewGELUActivation()
-
-    def forward(self, hidden_states):
-        hidden_gelu = self.act(self.wi_0(hidden_states))
-        hidden_linear = self.wi_1(hidden_states)
-        hidden_states = hidden_gelu * hidden_linear
-        hidden_states = self.dropout(hidden_states)
-
-        # To make 8bit quantization work for google/flan-t5-xxl, self.wo is kept in float32.
-        # See https://github.com/huggingface/transformers/issues/20287
-        # we also make sure the weights are not in `int8` in case users will force `_keep_in_fp32_modules` to be `None``
-        if hidden_states.dtype != self.wo.weight.dtype and self.wo.weight.dtype != torch.int8:
-            hidden_states = hidden_states.to(self.wo.weight.dtype)
-
-        hidden_states = self.wo(hidden_states)
-        return hidden_states
-
-
-class T5LayerFFCond(nn.Module):
-    def __init__(self, d_model, d_ff, dropout_rate, layer_norm_epsilon):
-        super().__init__()
-        self.DenseReluDense = T5DenseGatedActDense(d_model=d_model, d_ff=d_ff, dropout_rate=dropout_rate)
-        self.film = FiLMLayer(in_features=d_model * 4, out_features=d_model)
-        self.layer_norm = T5LayerNorm(d_model, eps=layer_norm_epsilon)
-        self.dropout = nn.Dropout(dropout_rate)
-
-    def forward(self, hidden_states, conditioning_emb=None):
-        forwarded_states = self.layer_norm(hidden_states)
-        if conditioning_emb is not None:
-            forwarded_states = self.film(forwarded_states, conditioning_emb)
-
-        forwarded_states = self.DenseReluDense(forwarded_states)
-        hidden_states = hidden_states + self.dropout(forwarded_states)
-        return hidden_states
-
-
-class T5LayerSelfAttentionCond(nn.Module):
-    def __init__(self, d_model, d_kv, num_heads, dropout_rate):
-        super().__init__()
-        self.layer_norm = T5LayerNorm(d_model)
-        self.FiLMLayer = FiLMLayer(in_features=d_model * 4, out_features=d_model)
-        # self.SelfAttention = T5Attention(d_model=d_model, d_kv=d_kv, num_heads=num_heads, dropout_rate=dropout_rate)
-        self.attention = CrossAttention(query_dim=d_model, heads=num_heads, dim_head=d_kv, out_bias=False, scale_qk=False)
-        self.dropout = nn.Dropout(dropout_rate)
-
-    def set_weights(self):
-        self.attention.to_q.weight = nn.Parameter(self.SelfAttention.q.weight.data)
-        self.attention.to_k.weight = nn.Parameter(self.SelfAttention.k.weight.data)
-        self.attention.to_v.weight = nn.Parameter(self.SelfAttention.v.weight.data)
-        self.attention.to_out[0].weight = nn.Parameter(self.SelfAttention.o.weight.data)
-
-    def forward(
-        self,
-        hidden_states,
-        conditioning_emb=None,
-        attention_mask=None,
-    ):
-        # self.set_weights()
-        # pre_self_attention_layer_norm
-        normed_hidden_states = self.layer_norm(hidden_states)
-
-        if conditioning_emb is not None:
-            normed_hidden_states = self.FiLMLayer(normed_hidden_states, conditioning_emb)
-
-        # Self-attention block
-        # attention_output = self.SelfAttention(normed_hidden_states)
-        # print("comp", (attention_output[0] - attention_output_comp).abs().sum())
-        attention_output = self.attention(normed_hidden_states)
-        hidden_states = hidden_states + self.dropout(attention_output[0])
-        outputs = (hidden_states,)
-        return outputs
-
-
-class DecoderLayer(nn.Module):
-    def __init__(self, d_model, d_kv, num_heads, d_ff, dropout_rate, layer_norm_epsilon=1e-6):
-        super().__init__()
-        self.layer = nn.ModuleList()
-
-        # cond self attention: layer 0
-        self.layer.append(T5LayerSelfAttentionCond(d_model=d_model, d_kv=d_kv, num_heads=num_heads, dropout_rate=dropout_rate))
-
-        # cross attention: layer 1
-        self.layer.append(T5LayerCrossAttention(d_model=d_model, d_kv=d_kv, num_heads=num_heads, dropout_rate=dropout_rate, layer_norm_epsilon=layer_norm_epsilon))
-
-        # Film Cond MLP + dropout: last layer
-        self.layer.append(T5LayerFFCond(d_model=d_model, d_ff=d_ff, dropout_rate=dropout_rate, layer_norm_epsilon=layer_norm_epsilon))
-
-    def forward(
-        self,
-        hidden_states,
-        conditioning_emb=None,
-        attention_mask=None,
-        encoder_hidden_states=None,
-        encoder_attention_mask=None,
-        encoder_decoder_position_bias=None,
-    ):
-        self_attention_outputs = self.layer[0](
-            hidden_states,
-            conditioning_emb=conditioning_emb,
-            attention_mask=attention_mask,
-        )
-        hidden_states = self_attention_outputs[0]
-
-        # clamp inf values to enable fp16 training
-        if hidden_states.dtype == torch.float16 and torch.isinf(hidden_states).any():
-            clamp_value = torch.finfo(hidden_states.dtype).max - 1000
-            hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
-
-        if encoder_hidden_states is not None:
-            # the actual query length is unknown for cross attention
-            # if using past key value states. Need to inject it here
-            encoder_extended_attention_mask = torch.where(encoder_attention_mask > 0, 0, -1e10)
-
-            cross_attention_outputs = self.layer[1](
-                hidden_states,
-                key_value_states=encoder_hidden_states,
-                attention_mask=encoder_extended_attention_mask,
-            )
-            hidden_states = cross_attention_outputs[0]
-
-            # clamp inf values to enable fp16 training
-            if hidden_states.dtype == torch.float16 and torch.isinf(hidden_states).any():
-                clamp_value = torch.finfo(hidden_states.dtype).max - 1000
-                hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
-
-        # Apply Film Conditional Feed Forward layer
-        hidden_states = self.layer[-1](hidden_states, conditioning_emb)
-
-        # clamp inf values to enable fp16 training
-        if hidden_states.dtype == torch.float16 and torch.isinf(hidden_states).any():
-            clamp_value = torch.finfo(hidden_states.dtype).max - 1000
-            hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
-
-        return (hidden_states,)
+        return attn_output
 
 
 class T5FilmDecoder(ModelMixin, ConfigMixin):
@@ -326,7 +110,6 @@ class T5FilmDecoder(ModelMixin, ConfigMixin):
         d_kv: int = 64,
         d_ff: int = 2048,
         dropout_rate: float = 0.1,
-        feed_forward_proj: str = "gated-gelu",
     ):
         super().__init__()
 
@@ -355,8 +138,8 @@ class T5FilmDecoder(ModelMixin, ConfigMixin):
         self.post_dropout = nn.Dropout(p=dropout_rate)
         self.spec_out = nn.Linear(d_model, input_dims, bias=False)
 
-    def encoder_decoder_mask(self, query_input, key_input, pairwise_fn=torch.mul):
-        mask = pairwise_fn(query_input.unsqueeze(-1), key_input.unsqueeze(-2))
+    def encoder_decoder_mask(self, query_input, key_input):
+        mask = torch.mul(query_input.unsqueeze(-1), key_input.unsqueeze(-2))
         return mask.unsqueeze(-3)
 
     def forward(self, encodings_and_masks, decoder_input_tokens, decoder_noise_time):
@@ -390,7 +173,7 @@ class T5FilmDecoder(ModelMixin, ConfigMixin):
         y = self.dropout(inputs)
 
         # decoder: No padding present.
-        decoder_mask = torch.ones(decoder_input_tokens.shape[:2], device=decoder_input_tokens.device)
+        decoder_mask = torch.ones(decoder_input_tokens.shape[:2], device=decoder_input_tokens.device, dtype=inputs.dtype)
 
         # Translate encoding masks to encoder-decoder masks.
         encodings_and_encdec_masks = [(x, self.encoder_decoder_mask(decoder_mask, y)) for x, y in encodings_and_masks]
@@ -412,3 +195,215 @@ class T5FilmDecoder(ModelMixin, ConfigMixin):
 
         spec_out = self.spec_out(y)
         return spec_out
+
+
+class DecoderLayer(nn.Module):
+    def __init__(self, d_model, d_kv, num_heads, d_ff, dropout_rate, layer_norm_epsilon=1e-6):
+        super().__init__()
+        self.layer = nn.ModuleList()
+
+        # cond self attention: layer 0
+        self.layer.append(T5LayerSelfAttentionCond(d_model=d_model, d_kv=d_kv, num_heads=num_heads, dropout_rate=dropout_rate))
+
+        # cross attention: layer 1
+        self.layer.append(T5LayerCrossAttention(d_model=d_model, d_kv=d_kv, num_heads=num_heads, dropout_rate=dropout_rate, layer_norm_epsilon=layer_norm_epsilon))
+
+        # Film Cond MLP + dropout: last layer
+        self.layer.append(T5LayerFFCond(d_model=d_model, d_ff=d_ff, dropout_rate=dropout_rate, layer_norm_epsilon=layer_norm_epsilon))
+
+    def forward(
+        self,
+        hidden_states,
+        conditioning_emb=None,
+        attention_mask=None,
+        encoder_hidden_states=None,
+        encoder_attention_mask=None,
+        encoder_decoder_position_bias=None,
+    ):
+        hidden_states = self.layer[0](
+            hidden_states,
+            conditioning_emb=conditioning_emb,
+            attention_mask=attention_mask,
+        )
+
+        if encoder_hidden_states is not None:
+            encoder_extended_attention_mask = torch.where(encoder_attention_mask > 0, 0, -1e10).to(encoder_hidden_states.dtype)
+
+            hidden_states = self.layer[1](
+                hidden_states,
+                key_value_states=encoder_hidden_states,
+                attention_mask=encoder_extended_attention_mask,
+            )
+
+        # Apply Film Conditional Feed Forward layer
+        hidden_states = self.layer[-1](hidden_states, conditioning_emb)
+
+        return (hidden_states,)
+
+
+class T5LayerSelfAttentionCond(nn.Module):
+    def __init__(self, d_model, d_kv, num_heads, dropout_rate):
+        super().__init__()
+        self.layer_norm = T5LayerNorm(d_model)
+        self.FiLMLayer = T5FiLMLayer(in_features=d_model * 4, out_features=d_model)
+        # self.SelfAttention = T5Attention(d_model=d_model, d_kv=d_kv, num_heads=num_heads, dropout_rate=dropout_rate)
+        self.attention = CrossAttention(query_dim=d_model, heads=num_heads, dim_head=d_kv, out_bias=False, scale_qk=False)
+        self.dropout = nn.Dropout(dropout_rate)
+
+    def set_weights(self):
+        self.attention.to_q.weight = nn.Parameter(self.SelfAttention.q.weight.data)
+        self.attention.to_k.weight = nn.Parameter(self.SelfAttention.k.weight.data)
+        self.attention.to_v.weight = nn.Parameter(self.SelfAttention.v.weight.data)
+        self.attention.to_out[0].weight = nn.Parameter(self.SelfAttention.o.weight.data)
+
+    def forward(
+        self,
+        hidden_states,
+        conditioning_emb=None,
+        attention_mask=None,
+    ):
+        # self.set_weights()
+        # pre_self_attention_layer_norm
+        normed_hidden_states = self.layer_norm(hidden_states)
+
+        if conditioning_emb is not None:
+            normed_hidden_states = self.FiLMLayer(normed_hidden_states, conditioning_emb)
+
+        # Self-attention block
+        # attention_output = self.SelfAttention(normed_hidden_states)
+        # print("comp", (attention_output[0] - attention_output_comp).abs().sum())
+        attention_output = self.attention(normed_hidden_states)
+        hidden_states = hidden_states + self.dropout(attention_output)
+
+        return hidden_states
+
+
+class T5LayerCrossAttention(nn.Module):
+    def __init__(self, d_model, d_kv, num_heads, dropout_rate, layer_norm_epsilon):
+        super().__init__()
+        # self.EncDecAttention = T5Attention(d_model=d_model, d_kv=d_kv, num_heads=num_heads, dropout_rate=dropout_rate)
+        self.attention = CrossAttention(query_dim=d_model, heads=num_heads, dim_head=d_kv, out_bias=False, scale_qk=False)
+        self.layer_norm = T5LayerNorm(d_model, eps=layer_norm_epsilon)
+        self.dropout = nn.Dropout(dropout_rate)
+
+    def set_weights(self):
+        self.attention.to_q.weight = nn.Parameter(self.EncDecAttention.q.weight.data)
+        self.attention.to_k.weight = nn.Parameter(self.EncDecAttention.k.weight.data)
+        self.attention.to_v.weight = nn.Parameter(self.EncDecAttention.v.weight.data)
+        self.attention.to_out[0].weight = nn.Parameter(self.EncDecAttention.o.weight.data)
+
+    def forward(
+        self,
+        hidden_states,
+        key_value_states=None,
+        attention_mask=None,
+    ):
+        # self.set_weights()
+        normed_hidden_states = self.layer_norm(hidden_states)
+#        attention_output = self.EncDecAttention(
+#            normed_hidden_states,
+#            mask=attention_mask,
+#            key_value_states=key_value_states,
+#        )
+        attention_output = self.attention(
+            normed_hidden_states,
+            encoder_hidden_states=key_value_states,
+            attention_mask=attention_mask.squeeze(),
+        )
+        layer_output = hidden_states + self.dropout(attention_output)
+        return layer_output
+
+
+class T5LayerFFCond(nn.Module):
+    def __init__(self, d_model, d_ff, dropout_rate, layer_norm_epsilon):
+        super().__init__()
+        self.DenseReluDense = T5DenseGatedActDense(d_model=d_model, d_ff=d_ff, dropout_rate=dropout_rate)
+        self.film = T5FiLMLayer(in_features=d_model * 4, out_features=d_model)
+        self.layer_norm = T5LayerNorm(d_model, eps=layer_norm_epsilon)
+        self.dropout = nn.Dropout(dropout_rate)
+
+    def forward(self, hidden_states, conditioning_emb=None):
+        forwarded_states = self.layer_norm(hidden_states)
+        if conditioning_emb is not None:
+            forwarded_states = self.film(forwarded_states, conditioning_emb)
+
+        forwarded_states = self.DenseReluDense(forwarded_states)
+        hidden_states = hidden_states + self.dropout(forwarded_states)
+        return hidden_states
+
+
+class T5DenseGatedActDense(nn.Module):
+    def __init__(self, d_model, d_ff, dropout_rate):
+        super().__init__()
+        self.wi_0 = nn.Linear(d_model, d_ff, bias=False)
+        self.wi_1 = nn.Linear(d_model, d_ff, bias=False)
+        self.wo = nn.Linear(d_ff, d_model, bias=False)
+        self.dropout = nn.Dropout(dropout_rate)
+        self.act = NewGELUActivation()
+
+    def forward(self, hidden_states):
+        hidden_gelu = self.act(self.wi_0(hidden_states))
+        hidden_linear = self.wi_1(hidden_states)
+        hidden_states = hidden_gelu * hidden_linear
+        hidden_states = self.dropout(hidden_states)
+
+        # To make 8bit quantization work for google/flan-t5-xxl, self.wo is kept in float32.
+        # See https://github.com/huggingface/transformers/issues/20287
+        # we also make sure the weights are not in `int8` in case users will force `_keep_in_fp32_modules` to be `None``
+        if hidden_states.dtype != self.wo.weight.dtype and self.wo.weight.dtype != torch.int8:
+            hidden_states = hidden_states.to(self.wo.weight.dtype)
+
+        hidden_states = self.wo(hidden_states)
+        return hidden_states
+
+
+class T5LayerNorm(nn.Module):
+    def __init__(self, hidden_size, eps=1e-6):
+        """
+        Construct a layernorm module in the T5 style. No bias and no subtraction of mean.
+        """
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(hidden_size))
+        self.variance_epsilon = eps
+
+    def forward(self, hidden_states):
+        # T5 uses a layer_norm which only scales and doesn't shift, which is also known as Root Mean
+        # Square Layer Normalization https://arxiv.org/abs/1910.07467 thus varience is calculated
+        # w/o mean and there is no bias. Additionally we want to make sure that the accumulation for
+        # half-precision inputs is done in fp32
+
+        variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
+        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+
+        # convert into half-precision if necessary
+        if self.weight.dtype in [torch.float16, torch.bfloat16]:
+            hidden_states = hidden_states.to(self.weight.dtype)
+
+        return self.weight * hidden_states
+
+
+class NewGELUActivation(nn.Module):
+    """
+    Implementation of the GELU activation function currently in Google BERT repo (identical to OpenAI GPT). Also see
+    the Gaussian Error Linear Units paper: https://arxiv.org/abs/1606.08415
+    """
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return 0.5 * input * (1.0 + torch.tanh(math.sqrt(2.0 / math.pi) * (input + 0.044715 * torch.pow(input, 3.0))))
+
+
+class T5FiLMLayer(nn.Module):
+    """
+    FiLM Layer
+    """
+
+    def __init__(self, in_features, out_features):
+        super().__init__()
+        # TOOD(PVP) - rename scale_bias layer
+        self.scale_bias = nn.Linear(in_features, out_features * 2, bias=False)
+
+    def forward(self, x, conditioning_emb):
+        emb = self.scale_bias(conditioning_emb)
+        scale, shift = torch.chunk(emb, 2, -1)
+        x = x * (1 + scale) + shift
+        return x
