@@ -13,27 +13,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
-import random
 import unittest
-import requests
 
 import numpy as np
+import requests
 import torch
-from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
     EulerAncestralDiscreteScheduler,
-    LMSDiscreteScheduler,
-    PNDMScheduler,
     StableDiffusionPix2PixZeroPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import floats_tensor, load_image, slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu
 
 from ...test_pipelines_common import PipelineTesterMixin
 
@@ -50,7 +43,7 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
             block_out_channels=(32, 64),
             layers_per_block=2,
             sample_size=32,
-            in_channels=8,
+            in_channels=4,
             out_channels=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
@@ -97,15 +90,15 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
         with open(local_filepath, "wb") as f:
             f.write(r.content)
 
-    def get_dummy_inputs(self, device, seed=0):
-        src_emb_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/embeddings_sd_1.4/cat.pt"
-        tgt_emb_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/embeddings_sd_1.4/dog.pt"
+    def get_dummy_inputs(self, seed=0):
+        src_emb_url = "https://hf.co/datasets/sayakpaul/sample-datasets/resolve/main/src_emb_0.pt"
+        tgt_emb_url = "https://hf.co/datasets/sayakpaul/sample-datasets/resolve/main/tgt_emb_0.pt"
 
         for url in [src_emb_url, tgt_emb_url]:
             self.download_from_url(url, url.split("/")[-1])
-        
+
         generator = torch.manual_seed(seed)
-        
+
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
             "generator": generator,
@@ -125,113 +118,78 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
+        assert image.shape == (1, 64, 64, 3)
+        expected_slice = np.array([0.5184, 0.503, 0.4917, 0.4022, 0.3455, 0.464, 0.5324, 0.5323, 0.4894])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    def test_stable_diffusion_pix2pix_zero_negative_prompt(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionPix2PixZeroPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs()
+        negative_prompt = "french fries"
+        output = sd_pipe(**inputs, negative_prompt=negative_prompt)
+        image = output.images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 64, 64, 3)
+        expected_slice = np.array([0.5464, 0.5072, 0.5012, 0.4124, 0.3624, 0.466, 0.5413, 0.5468, 0.4927])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    def test_stable_diffusion_pix2pix_zero_euler(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        components["scheduler"] = EulerAncestralDiscreteScheduler(
+            beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
+        )
+        sd_pipe = StableDiffusionPix2PixZeroPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs()
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
         assert image.shape == (1, 32, 32, 3)
-        print(image_slice.flatten())
-        # expected_slice = np.array([0.7318, 0.3723, 0.4662, 0.623, 0.5770, 0.5014, 0.4281, 0.5550, 0.4813])
+        expected_slice = np.array([0.5114, 0.5051, 0.5222, 0.5279, 0.5037, 0.5156, 0.4604, 0.4966, 0.504])
 
-        # assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
-#     def test_stable_diffusion_pix2pix_negative_prompt(self):
-#         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-#         components = self.get_dummy_components()
-#         sd_pipe = StableDiffusionInstructPix2PixPipeline(**components)
-#         sd_pipe = sd_pipe.to(device)
-#         sd_pipe.set_progress_bar_config(disable=None)
+    def test_stable_diffusion_pix2pix_zero_num_images_per_prompt(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionPix2PixZeroPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
 
-#         inputs = self.get_dummy_inputs(device)
-#         negative_prompt = "french fries"
-#         output = sd_pipe(**inputs, negative_prompt=negative_prompt)
-#         image = output.images
-#         image_slice = image[0, -3:, -3:, -1]
+        # test num_images_per_prompt=1 (default)
+        inputs = self.get_dummy_inputs()
+        images = sd_pipe(**inputs).images
 
-#         assert image.shape == (1, 32, 32, 3)
-#         expected_slice = np.array([0.7323, 0.3688, 0.4611, 0.6255, 0.5746, 0.5017, 0.433, 0.5553, 0.4827])
+        assert images.shape == (1, 64, 64, 3)
 
-#         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        # test num_images_per_prompt=2 for a single prompt
+        num_images_per_prompt = 2
+        inputs = self.get_dummy_inputs()
+        images = sd_pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
 
-#     def test_stable_diffusion_pix2pix_multiple_init_images(self):
-#         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-#         components = self.get_dummy_components()
-#         sd_pipe = StableDiffusionInstructPix2PixPipeline(**components)
-#         sd_pipe = sd_pipe.to(device)
-#         sd_pipe.set_progress_bar_config(disable=None)
+        assert images.shape == (num_images_per_prompt, 32, 32, 3)
 
-#         inputs = self.get_dummy_inputs(device)
-#         inputs["prompt"] = [inputs["prompt"]] * 2
+        # test num_images_per_prompt for batch of prompts
+        batch_size = 2
+        inputs = self.get_dummy_inputs()
+        inputs["prompt"] = [inputs["prompt"]] * batch_size
+        images = sd_pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
 
-#         image = np.array(inputs["image"]).astype(np.float32) / 255.0
-#         image = torch.from_numpy(image).unsqueeze(0).to(device)
-#         image = image.permute(0, 3, 1, 2)
-#         inputs["image"] = image.repeat(2, 1, 1, 1)
-
-#         image = sd_pipe(**inputs).images
-#         image_slice = image[-1, -3:, -3:, -1]
-
-#         assert image.shape == (2, 32, 32, 3)
-#         expected_slice = np.array([0.606, 0.5712, 0.5099, 0.598, 0.5805, 0.7205, 0.6793, 0.554, 0.5607])
-
-#         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-
-#     def test_stable_diffusion_pix2pix_euler(self):
-#         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-#         components = self.get_dummy_components()
-#         components["scheduler"] = EulerAncestralDiscreteScheduler(
-#             beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
-#         )
-#         sd_pipe = StableDiffusionInstructPix2PixPipeline(**components)
-#         sd_pipe = sd_pipe.to(device)
-#         sd_pipe.set_progress_bar_config(disable=None)
-
-#         inputs = self.get_dummy_inputs(device)
-#         image = sd_pipe(**inputs).images
-#         image_slice = image[0, -3:, -3:, -1]
-
-#         slice = [round(x, 4) for x in image_slice.flatten().tolist()]
-#         print(",".join([str(x) for x in slice]))
-
-#         assert image.shape == (1, 32, 32, 3)
-#         expected_slice = np.array([0.726, 0.3902, 0.4868, 0.585, 0.5672, 0.511, 0.3906, 0.551, 0.4846])
-
-#         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-
-#     def test_stable_diffusion_pix2pix_num_images_per_prompt(self):
-#         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-#         components = self.get_dummy_components()
-#         sd_pipe = StableDiffusionInstructPix2PixPipeline(**components)
-#         sd_pipe = sd_pipe.to(device)
-#         sd_pipe.set_progress_bar_config(disable=None)
-
-#         # test num_images_per_prompt=1 (default)
-#         inputs = self.get_dummy_inputs(device)
-#         images = sd_pipe(**inputs).images
-
-#         assert images.shape == (1, 32, 32, 3)
-
-#         # test num_images_per_prompt=1 (default) for batch of prompts
-#         batch_size = 2
-#         inputs = self.get_dummy_inputs(device)
-#         inputs["prompt"] = [inputs["prompt"]] * batch_size
-#         images = sd_pipe(**inputs).images
-
-#         assert images.shape == (batch_size, 32, 32, 3)
-
-#         # test num_images_per_prompt for single prompt
-#         num_images_per_prompt = 2
-#         inputs = self.get_dummy_inputs(device)
-#         images = sd_pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
-
-#         assert images.shape == (num_images_per_prompt, 32, 32, 3)
-
-#         # test num_images_per_prompt for batch of prompts
-#         batch_size = 2
-#         inputs = self.get_dummy_inputs(device)
-#         inputs["prompt"] = [inputs["prompt"]] * batch_size
-#         images = sd_pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
-
-#         assert images.shape == (batch_size * num_images_per_prompt, 32, 32, 3)
+        assert images.shape == (batch_size * num_images_per_prompt, 32, 32, 3)
 
 
 # @slow
