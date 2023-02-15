@@ -20,83 +20,6 @@ from .embeddings import get_timestep_embedding
 from .cross_attention import CrossAttention
 
 
-class T5Attention(nn.Module):
-    def __init__(self, d_model, d_kv, num_heads, dropout_rate):
-        super().__init__()
-        self.d_model = d_model
-        self.key_value_proj_dim = d_kv
-        self.n_heads = num_heads
-        self.dropout = dropout_rate
-        self.inner_dim = self.n_heads * self.key_value_proj_dim
-
-        # Mesh TensorFlow initialization to avoid scaling before softmax
-        self.q = nn.Linear(self.d_model, self.inner_dim, bias=False)
-        self.k = nn.Linear(self.d_model, self.inner_dim, bias=False)
-        self.v = nn.Linear(self.d_model, self.inner_dim, bias=False)
-        self.o = nn.Linear(self.inner_dim, self.d_model, bias=False)
-
-        self.gradient_checkpointing = False
-
-    def forward(
-        self,
-        hidden_states,
-        mask=None,
-        key_value_states=None,
-    ):
-        """
-        Self-attention (if key_value_states is None) or attention over source sentence (provided by key_value_states).
-        """
-        # Input is (batch_size, seq_length, dim)
-        # Mask is (batch_size, key_length) (non-causal) or (batch_size, key_length, key_length)
-        # past_key_value[0] is (batch_size, n_heads, q_len - 1, dim_per_head)
-        batch_size, seq_length = hidden_states.shape[:2]
-
-        def shape(states):
-            """projection"""
-            return states.view(batch_size, -1, self.n_heads, self.key_value_proj_dim).transpose(1, 2)
-
-        def unshape(states):
-            """reshape"""
-            return states.transpose(1, 2).contiguous().view(batch_size, -1, self.inner_dim)
-
-        def project(hidden_states, proj_layer, key_value_states):
-            """projects hidden states correctly to key/query states"""
-            if key_value_states is None:
-                # self-attn
-                # (batch_size, n_heads, seq_length, dim_per_head)
-                hidden_states = shape(proj_layer(hidden_states))
-            else:
-                # cross-attn
-                # (batch_size, n_heads, seq_length, dim_per_head)
-                hidden_states = shape(proj_layer(key_value_states))
-
-            return hidden_states
-        # get query states
-        query_states = shape(self.q(hidden_states))  # (batch_size, n_heads, seq_length, dim_per_head)
-
-        # get key/value states
-        key_states = project(hidden_states, self.k, key_value_states)
-        value_states = project(hidden_states, self.v, key_value_states)
-
-        # compute scores
-        scores = torch.matmul(
-            query_states, key_states.transpose(3, 2)
-        )  # equivalent of torch.einsum("bnqd,bnkd->bnqk", query_states, key_states), compatible with onnx op>9
-        if mask is not None:
-            scores += mask
-        attn_weights = nn.functional.softmax(scores.float(), dim=-1).type_as(
-            scores
-        )  # (batch_size, n_heads, seq_length, key_length)
-        attn_weights = nn.functional.dropout(
-            attn_weights, p=self.dropout, training=self.training
-        )  # (batch_size, n_heads, seq_length, key_length)
-
-        attn_output = unshape(torch.matmul(attn_weights, value_states))  # (batch_size, seq_length, dim)
-        attn_output = self.o(attn_output)
-
-        return attn_output
-
-
 class T5FilmDecoder(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
@@ -246,15 +169,8 @@ class T5LayerSelfAttentionCond(nn.Module):
         super().__init__()
         self.layer_norm = T5LayerNorm(d_model)
         self.FiLMLayer = T5FiLMLayer(in_features=d_model * 4, out_features=d_model)
-        # self.SelfAttention = T5Attention(d_model=d_model, d_kv=d_kv, num_heads=num_heads, dropout_rate=dropout_rate)
         self.attention = CrossAttention(query_dim=d_model, heads=num_heads, dim_head=d_kv, out_bias=False, scale_qk=False)
         self.dropout = nn.Dropout(dropout_rate)
-
-    def set_weights(self):
-        self.attention.to_q.weight = nn.Parameter(self.SelfAttention.q.weight.data)
-        self.attention.to_k.weight = nn.Parameter(self.SelfAttention.k.weight.data)
-        self.attention.to_v.weight = nn.Parameter(self.SelfAttention.v.weight.data)
-        self.attention.to_out[0].weight = nn.Parameter(self.SelfAttention.o.weight.data)
 
     def forward(
         self,
@@ -262,7 +178,6 @@ class T5LayerSelfAttentionCond(nn.Module):
         conditioning_emb=None,
         attention_mask=None,
     ):
-        # self.set_weights()
         # pre_self_attention_layer_norm
         normed_hidden_states = self.layer_norm(hidden_states)
 
@@ -270,9 +185,8 @@ class T5LayerSelfAttentionCond(nn.Module):
             normed_hidden_states = self.FiLMLayer(normed_hidden_states, conditioning_emb)
 
         # Self-attention block
-        # attention_output = self.SelfAttention(normed_hidden_states)
-        # print("comp", (attention_output[0] - attention_output_comp).abs().sum())
         attention_output = self.attention(normed_hidden_states)
+
         hidden_states = hidden_states + self.dropout(attention_output)
 
         return hidden_states
@@ -281,16 +195,9 @@ class T5LayerSelfAttentionCond(nn.Module):
 class T5LayerCrossAttention(nn.Module):
     def __init__(self, d_model, d_kv, num_heads, dropout_rate, layer_norm_epsilon):
         super().__init__()
-        # self.EncDecAttention = T5Attention(d_model=d_model, d_kv=d_kv, num_heads=num_heads, dropout_rate=dropout_rate)
         self.attention = CrossAttention(query_dim=d_model, heads=num_heads, dim_head=d_kv, out_bias=False, scale_qk=False)
         self.layer_norm = T5LayerNorm(d_model, eps=layer_norm_epsilon)
         self.dropout = nn.Dropout(dropout_rate)
-
-    def set_weights(self):
-        self.attention.to_q.weight = nn.Parameter(self.EncDecAttention.q.weight.data)
-        self.attention.to_k.weight = nn.Parameter(self.EncDecAttention.k.weight.data)
-        self.attention.to_v.weight = nn.Parameter(self.EncDecAttention.v.weight.data)
-        self.attention.to_out[0].weight = nn.Parameter(self.EncDecAttention.o.weight.data)
 
     def forward(
         self,
@@ -298,13 +205,7 @@ class T5LayerCrossAttention(nn.Module):
         key_value_states=None,
         attention_mask=None,
     ):
-        # self.set_weights()
         normed_hidden_states = self.layer_norm(hidden_states)
-#        attention_output = self.EncDecAttention(
-#            normed_hidden_states,
-#            mask=attention_mask,
-#            key_value_states=key_value_states,
-#        )
         attention_output = self.attention(
             normed_hidden_states,
             encoder_hidden_states=key_value_states,
@@ -346,12 +247,6 @@ class T5DenseGatedActDense(nn.Module):
         hidden_linear = self.wi_1(hidden_states)
         hidden_states = hidden_gelu * hidden_linear
         hidden_states = self.dropout(hidden_states)
-
-        # To make 8bit quantization work for google/flan-t5-xxl, self.wo is kept in float32.
-        # See https://github.com/huggingface/transformers/issues/20287
-        # we also make sure the weights are not in `int8` in case users will force `_keep_in_fp32_modules` to be `None``
-        if hidden_states.dtype != self.wo.weight.dtype and self.wo.weight.dtype != torch.int8:
-            hidden_states = hidden_states.to(self.wo.weight.dtype)
 
         hidden_states = self.wo(hidden_states)
         return hidden_states
@@ -399,7 +294,6 @@ class T5FiLMLayer(nn.Module):
 
     def __init__(self, in_features, out_features):
         super().__init__()
-        # TOOD(PVP) - rename scale_bias layer
         self.scale_bias = nn.Linear(in_features, out_features * 2, bias=False)
 
     def forward(self, x, conditioning_emb):
