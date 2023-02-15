@@ -21,7 +21,7 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.cross_attention import CrossAttention
-from ...schedulers import DDPMScheduler, DDIMScheduler, EulerAncestralDiscreteScheduler, LMSDiscreteScheduler
+from ...schedulers import DDIMScheduler, DDPMScheduler, EulerAncestralDiscreteScheduler, LMSDiscreteScheduler
 from ...utils import is_accelerate_available, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
