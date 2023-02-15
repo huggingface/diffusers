@@ -28,15 +28,15 @@ Resources:
 
 ## Tips 
 
-* The pipeline exposes two arguments namely `source_embedding_path` and `target_embedding_path`
+* The pipeline exposes two arguments namely `source_embeds` and `target_embeds`
 that let you control the direction of the semantic edits in the final image to be generated. Let's say,
 you wanted to translate from "cat" to "dog". In this case, the edit direction will be "cat -> dog". To reflect
 this in the pipeline, you simply have to set the embeddings related to the phrases including "cat" to
-`source_embedding_path` and "dog" to `target_embedding_path`.
+`source_embeds` and "dog" to `target_embeds`. Refer to the code example below for more details.
 * When you're using this pipeline from a prompt, specify the _source_ concept in the prompt. Taking
 the above example, a valid input prompt would be: "a high resolution painting of a **cat** in the style of van gough".
-* If you wanted to reverse the direction i.e., "dog -> cat", then it's recommended to:
-    * Swap the `source_embedding_path` and `target_embedding_path`.
+* If you wanted to reverse the direction in the example above, i.e., "dog -> cat", then it's recommended to:
+    * Swap the `source_embeds` and `target_embeds`.
     * Change the input prompt to include "dog".  
 
 ## Available Pipelines:
@@ -48,6 +48,8 @@ the above example, a valid input prompt would be: "a high resolution painting of
 <!-- TODO: add Colab -->
 
 ## Usage example
+
+**Based on an image generated with the input prompt**
 
 ```python
 import requests
@@ -70,21 +72,28 @@ pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
 pipeline.to("cuda")
 
 prompt = "a high resolution painting of a cat in the style of van gough"
-source_embedding_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/embeddings_sd_1.4/cat.pt"
-target_embedding_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/embeddings_sd_1.4/dog.pt"
+src_embs_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/embeddings_sd_1.4/cat.pt"
+target_embs_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/embeddings_sd_1.4/dog.pt"
 
-for url in [source_embedding_url, target_embedding_url]:
+for url in [src_embs_url, target_embs_url]:
     download(url, url.split("/")[-1])
+
+src_embeds = torch.load(src_embs_url.split("/")[-1])
+target_embeds = torch.load(target_embs_url.split("/")[-1])
 
 images = pipeline(
     prompt,
-    source_embedding_path=source_embedding_url.split("/")[-1],
-    target_embedding_path=target_embedding_url.split("/")[-1],
+    source_embeds=src_embeds,
+    target_embeds=target_embeds,
     num_inference_steps=50,
     cross_attention_guidance_amount=0.15,
 ).images
 images[0].save("edited_image_dog.png")
 ```
+
+**Based on an input image**
+
+_Coming soon_
 
 ## StableDiffusionPix2PixZeroPipeline
 [[autodoc]] StableDiffusionPix2PixZeroPipeline
