@@ -18,7 +18,7 @@ NUM_LATENT_CHANNELS = 4
 NUM_UNET_INPUT_CHANNELS = 7
 
 # TODO: should this be a lookup? it needs to match the conversion script
-class_labels_dtype = np.long
+class_labels_dtype = np.int64
 
 # TODO: should this be a lookup or converted? can it vary on ONNX?
 text_embeddings_dtype = torch.float32
