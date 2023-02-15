@@ -59,8 +59,8 @@ EXAMPLE_DOC_STRING = """
         >>> pipeline.to("cuda")
 
         >>> prompt = "a high resolution painting of a cat in the style of van gough"
-        >>> source_emb_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/embeddings_sd_1.4/cat.pt"
-        >>> target_emb_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/embeddings_sd_1.4/dog.pt"
+        >>> source_emb_url = "https://hf.co/datasets/sayakpaul/sample-datasets/resolve/main/cat.pt"
+        >>> target_emb_url = "https://hf.co/datasets/sayakpaul/sample-datasets/resolve/main/dog.pt"
 
         >>> for url in [source_emb_url, target_emb_url]:
         ...     download(url, url.split("/")[-1])

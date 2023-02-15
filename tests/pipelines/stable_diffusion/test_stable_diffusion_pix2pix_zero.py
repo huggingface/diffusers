@@ -24,6 +24,7 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
+    DDPMScheduler,
     EulerAncestralDiscreteScheduler,
     LMSDiscreteScheduler,
     StableDiffusionPix2PixZeroPipeline,
@@ -171,6 +172,23 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
+    def test_stable_diffusion_pix2pix_zero_ddpm(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        components["scheduler"] = DDPMScheduler()
+        sd_pipe = StableDiffusionPix2PixZeroPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 64, 64, 3)
+        expected_slice = np.array([0.5106, 0.5788, 0.5447, 0.5566, 0.5276, 0.5851, 0.4967, 0.4903, 0.5216])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
     def test_stable_diffusion_pix2pix_zero_num_images_per_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -211,8 +229,8 @@ class StableDiffusionPix2PixZeroPipelineSlowTests(unittest.TestCase):
     def get_inputs(self, seed=0):
         generator = torch.manual_seed(seed)
 
-        src_emb_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/embeddings_sd_1.4/cat.pt"
-        tgt_emb_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/embeddings_sd_1.4/dog.pt"
+        src_emb_url = "https://hf.co/datasets/sayakpaul/sample-datasets/resolve/main/cat.pt"
+        tgt_emb_url = "https://hf.co/datasets/sayakpaul/sample-datasets/resolve/main/dog.pt"
 
         for url in [src_emb_url, tgt_emb_url]:
             download_from_url(url, url.split("/")[-1])
