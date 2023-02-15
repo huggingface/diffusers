@@ -486,6 +486,9 @@ class PipelineTesterMixin:
         reason="XFormers attention is only available with CUDA and `xformers` installed",
     )
     def test_xformers_attention_forwardGenerator_pass(self):
+        self._test_xformers_attention_forwardGenerator_pass()
+
+    def _test_xformers_attention_forwardGenerator_pass(self, test_max_difference=True):
         if not self.test_xformers_attention:
             return
 
@@ -501,8 +504,11 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         output_with_offload = pipe(**inputs)[0]
 
-        max_diff = np.abs(output_with_offload - output_without_offload).max()
-        self.assertLess(max_diff, 1e-4, "XFormers attention should not affect the inference results")
+        if test_max_difference:
+            max_diff = np.abs(output_with_offload - output_without_offload).max()
+            self.assertLess(max_diff, 1e-4, "XFormers attention should not affect the inference results")
+
+        assert_mean_pixel_difference(output_with_offload[0], output_without_offload[0])
 
     def test_progress_bar(self):
         components = self.get_dummy_components()
