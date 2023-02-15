@@ -117,8 +117,8 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
             "cross_attention_guidance_amount": 0.15,
-            "source_embedding_file": src_emb_url.split("/")[-1],
-            "target_embedding_file": tgt_emb_url.split("/")[-1],
+            "source_embedding_path": src_emb_url.split("/")[-1],
+            "target_embedding_path": tgt_emb_url.split("/")[-1],
             "output_type": "numpy",
         }
         return inputs
