@@ -157,11 +157,11 @@ class Pix2PixZeroCrossAttnProcessor:
         if self.is_pix2pix_zero and timestep is not None:
             # new bookkeeping to save the attention weights.
             if loss is None:
-                self.xa_map[timestep.item()] = attention_probs
+                self.xa_map[timestep.item()] = attention_probs.detach().cpu()
             # compute loss
             elif loss is not None:
                 prev_attn_probs = self.xa_map.pop(timestep.item())
-                loss.compute_loss(attention_probs, prev_attn_probs.detach())
+                loss.compute_loss(attention_probs, prev_attn_probs.to(attention_probs.device))
 
         hidden_states = torch.bmm(attention_probs, value)
         hidden_states = attn.batch_to_head_dim(hidden_states)
