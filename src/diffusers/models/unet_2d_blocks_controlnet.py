@@ -166,7 +166,6 @@ class CrossAttnDownBlock2DWithZeroConv(nn.Module):
                 )
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
-        self.zero_convs = nn.ModuleList(zero_convs)
 
         if add_downsample:
             self.downsamplers = nn.ModuleList(
@@ -176,9 +175,11 @@ class CrossAttnDownBlock2DWithZeroConv(nn.Module):
                     )
                 ]
             )
+            zero_convs.append(zero_conv(out_channels))
         else:
             self.downsamplers = None
 
+        self.zero_convs = nn.ModuleList(zero_convs)
         self.gradient_checkpointing = False
 
     def forward(
@@ -269,7 +270,6 @@ class DownBlock2DWithZeroConv(nn.Module):
             zero_convs.append(zero_conv(out_channels))
 
         self.resnets = nn.ModuleList(resnets)
-        self.zero_convs = nn.ModuleList(zero_convs)
 
         if add_downsample:
             self.downsamplers = nn.ModuleList(
@@ -279,9 +279,11 @@ class DownBlock2DWithZeroConv(nn.Module):
                     )
                 ]
             )
+            zero_convs.append(zero_conv(out_channels))
         else:
             self.downsamplers = None
 
+        self.zero_convs = nn.ModuleList(zero_convs)
         self.gradient_checkpointing = False
 
     def forward(self, hidden_states, temb=None):

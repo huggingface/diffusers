@@ -612,9 +612,30 @@ def convert_controlnet_checkpoint(checkpoint, config):
         attentions_paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config
     )
 
-    # #################################################
-    # TODO: add to load input_hint_block and zero_convs
-    # #################################################
+    # ControlNet Specific Weight & Biases
+
+    # input_hint_block
+    for i in range(8):
+        key = f"input_hint_block.{i*2}."
+        new_checkpoint[key + "weight"] = unet_state_dict.pop(key + "weight")
+        new_checkpoint[key + "bias"] = unet_state_dict.pop(key + "bias")
+
+    # zero_convs
+    new_checkpoint["input_zero_conv.weight"] = unet_state_dict.pop("zero_convs.0.0.weight")
+    new_checkpoint["input_zero_conv.bias"] = unet_state_dict.pop("zero_convs.0.0.bias")
+    for i in range(1, num_input_blocks):
+        block_id = (i - 1) // (config["layers_per_block"] + 1)
+        layer_in_block_id = (i - 1) % (config["layers_per_block"] + 1)
+        key_dst = f"down_blocks.{block_id}.zero_convs.{layer_in_block_id}."
+        key_src = f"zero_convs.{i}.0."
+        new_checkpoint[key_dst + "weight"] = unet_state_dict.pop(key_src + "weight")
+        new_checkpoint[key_dst + "bias"] = unet_state_dict.pop(key_src + "bias")
+
+    # middle block out
+    key_dst = "middle_block_out."
+    key_src = "middle_block_out.0."
+    new_checkpoint[key_dst + "weight"] = unet_state_dict.pop(key_src + "weight")
+    new_checkpoint[key_dst + "bias"] = unet_state_dict.pop(key_src + "bias")
 
     return new_checkpoint
 
