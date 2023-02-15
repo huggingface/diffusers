@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import unittest
 
 import numpy as np
@@ -24,14 +25,23 @@ from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
     EulerAncestralDiscreteScheduler,
+    LMSDiscreteScheduler,
     StableDiffusionPix2PixZeroPipeline,
     UNet2DConditionModel,
 )
+from diffusers.utils import slow, torch_device
+from diffusers.utils.testing_utils import require_torch_gpu
 
 from ...test_pipelines_common import PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
+
+
+def download_from_url(embedding_url, local_filepath):
+    r = requests.get(embedding_url)
+    with open(local_filepath, "wb") as f:
+        f.write(r.content)
 
 
 class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -85,17 +95,12 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
         }
         return components
 
-    def download_from_url(self, embedding_url, local_filepath):
-        r = requests.get(embedding_url)
-        with open(local_filepath, "wb") as f:
-            f.write(r.content)
-
     def get_dummy_inputs(self, seed=0):
         src_emb_url = "https://hf.co/datasets/sayakpaul/sample-datasets/resolve/main/src_emb_0.pt"
         tgt_emb_url = "https://hf.co/datasets/sayakpaul/sample-datasets/resolve/main/tgt_emb_0.pt"
 
         for url in [src_emb_url, tgt_emb_url]:
-            self.download_from_url(url, url.split("/")[-1])
+            download_from_url(url, url.split("/")[-1])
 
         generator = torch.manual_seed(seed)
 
@@ -192,159 +197,129 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
         assert images.shape == (batch_size * num_images_per_prompt, 32, 32, 3)
 
 
-# @slow
-# @require_torch_gpu
-# class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
-#     def tearDown(self):
-#         super().tearDown()
-#         gc.collect()
-#         torch.cuda.empty_cache()
+@slow
+@require_torch_gpu
+class StableDiffusionPix2PixZeroPipelineSlowTests(unittest.TestCase):
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
 
-#     def get_inputs(self, seed=0):
-#         generator = torch.manual_seed(seed)
-#         image = load_image(
-#             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main/stable_diffusion_pix2pix/example.jpg"
-#         )
-#         inputs = {
-#             "prompt": "turn him into a cyborg",
-#             "image": image,
-#             "generator": generator,
-#             "num_inference_steps": 3,
-#             "guidance_scale": 7.5,
-#             "image_guidance_scale": 1.0,
-#             "output_type": "numpy",
-#         }
-#         return inputs
+    def get_inputs(self, seed=0):
+        generator = torch.manual_seed(seed)
 
-#     def test_stable_diffusion_pix2pix_default(self):
-#         pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-#             "timbrooks/instruct-pix2pix", safety_checker=None
-#         )
-#         pipe.to(torch_device)
-#         pipe.set_progress_bar_config(disable=None)
-#         pipe.enable_attention_slicing()
+        src_emb_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/embeddings_sd_1.4/cat.pt"
+        tgt_emb_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/embeddings_sd_1.4/dog.pt"
 
-#         inputs = self.get_inputs()
-#         image = pipe(**inputs).images
-#         image_slice = image[0, -3:, -3:, -1].flatten()
+        for url in [src_emb_url, tgt_emb_url]:
+            download_from_url(url, url.split("/")[-1])
 
-#         assert image.shape == (1, 512, 512, 3)
-#         expected_slice = np.array([0.5902, 0.6015, 0.6027, 0.5983, 0.6092, 0.6061, 0.5765, 0.5785, 0.5555])
+        inputs = {
+            "prompt": "turn him into a cyborg",
+            "generator": generator,
+            "num_inference_steps": 3,
+            "guidance_scale": 7.5,
+            "cross_attention_guidance_amount": 0.15,
+            "source_embedding_path": src_emb_url.split("/")[-1],
+            "target_embedding_path": tgt_emb_url.split("/")[-1],
+            "output_type": "numpy",
+        }
+        return inputs
 
-#         assert np.abs(expected_slice - image_slice).max() < 1e-3
+    def test_stable_diffusion_pix2pix_zero_default(self):
+        pipe = StableDiffusionPix2PixZeroPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", safety_checker=None, torch_dtype=torch.float16
+        )
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
 
-#     def test_stable_diffusion_pix2pix_k_lms(self):
-#         pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-#             "timbrooks/instruct-pix2pix", safety_checker=None
-#         )
-#         pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
-#         pipe.to(torch_device)
-#         pipe.set_progress_bar_config(disable=None)
-#         pipe.enable_attention_slicing()
+        inputs = self.get_inputs()
+        image = pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1].flatten()
 
-#         inputs = self.get_inputs()
-#         image = pipe(**inputs).images
-#         image_slice = image[0, -3:, -3:, -1].flatten()
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.4705, 0.4771, 0.4832, 0.4783, 0.4495, 0.447, 0.4658, 0.4568, 0.438])
 
-#         assert image.shape == (1, 512, 512, 3)
-#         expected_slice = np.array([0.6578, 0.6817, 0.6972, 0.6761, 0.6856, 0.6916, 0.6428, 0.6516, 0.6301])
+        assert np.abs(expected_slice - image_slice).max() < 1e-3
 
-#         assert np.abs(expected_slice - image_slice).max() < 1e-3
+    def test_stable_diffusion_pix2pix_zero_k_lms(self):
+        pipe = StableDiffusionPix2PixZeroPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", safety_checker=None, torch_dtype=torch.float16
+        )
+        pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
 
-#     def test_stable_diffusion_pix2pix_ddim(self):
-#         pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-#             "timbrooks/instruct-pix2pix", safety_checker=None
-#         )
-#         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-#         pipe.to(torch_device)
-#         pipe.set_progress_bar_config(disable=None)
-#         pipe.enable_attention_slicing()
+        inputs = self.get_inputs()
+        image = pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1].flatten()
 
-#         inputs = self.get_inputs()
-#         image = pipe(**inputs).images
-#         image_slice = image[0, -3:, -3:, -1].flatten()
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.6514, 0.5571, 0.5244, 0.5591, 0.4998, 0.4834, 0.502, 0.468, 0.4663])
 
-#         assert image.shape == (1, 512, 512, 3)
-#         expected_slice = np.array([0.3828, 0.3834, 0.3818, 0.3792, 0.3865, 0.3752, 0.3792, 0.3847, 0.3753])
+        assert np.abs(expected_slice - image_slice).max() < 1e-3
 
-#         assert np.abs(expected_slice - image_slice).max() < 1e-3
+    def test_stable_diffusion_pix2pix_zero_intermediate_state(self):
+        number_of_steps = 0
 
-#     def test_stable_diffusion_pix2pix_intermediate_state(self):
-#         number_of_steps = 0
+        def callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
+            callback_fn.has_been_called = True
+            nonlocal number_of_steps
+            number_of_steps += 1
+            if step == 1:
+                latents = latents.detach().cpu().numpy()
+                assert latents.shape == (1, 4, 64, 64)
+                latents_slice = latents[0, -3:, -3:, -1]
+                expected_slice = np.array(
+                    [-0.5176, 0.0669, -0.1963, -0.1653, -0.7856, -0.2871, -0.5562, -0.0096, -0.012]
+                )
 
-#         def callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
-#             callback_fn.has_been_called = True
-#             nonlocal number_of_steps
-#             number_of_steps += 1
-#             if step == 1:
-#                 latents = latents.detach().cpu().numpy()
-#                 assert latents.shape == (1, 4, 64, 64)
-#                 latents_slice = latents[0, -3:, -3:, -1]
-#                 expected_slice = np.array([-0.2463, -0.4644, -0.9756, 1.5176, 1.4414, 0.7866, 0.9897, 0.8521, 0.7983])
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
+            elif step == 2:
+                latents = latents.detach().cpu().numpy()
+                assert latents.shape == (1, 4, 64, 64)
+                latents_slice = latents[0, -3:, -3:, -1]
+                expected_slice = np.array(
+                    [-0.5127, 0.0613, -0.1937, -0.1622, -0.7856, -0.2849, -0.5601, -0.0111, -0.0137]
+                )
 
-#                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
-#             elif step == 2:
-#                 latents = latents.detach().cpu().numpy()
-#                 assert latents.shape == (1, 4, 64, 64)
-#                 latents_slice = latents[0, -3:, -3:, -1]
-#                 expected_slice = np.array([-0.2644, -0.4626, -0.9653, 1.5176, 1.4551, 0.7686, 0.9805, 0.8452, 0.8115])
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
 
-#                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
+        callback_fn.has_been_called = False
 
-#         callback_fn.has_been_called = False
+        pipe = StableDiffusionPix2PixZeroPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", safety_checker=None, torch_dtype=torch.float16
+        )
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
 
-#         pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-#             "timbrooks/instruct-pix2pix", safety_checker=None, torch_dtype=torch.float16
-#         )
-#         pipe = pipe.to(torch_device)
-#         pipe.set_progress_bar_config(disable=None)
-#         pipe.enable_attention_slicing()
+        inputs = self.get_inputs()
+        pipe(**inputs, callback=callback_fn, callback_steps=1)
+        assert callback_fn.has_been_called
+        assert number_of_steps == 3
 
-#         inputs = self.get_inputs()
-#         pipe(**inputs, callback=callback_fn, callback_steps=1)
-#         assert callback_fn.has_been_called
-#         assert number_of_steps == 3
+    def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
+        torch.cuda.empty_cache()
+        torch.cuda.reset_max_memory_allocated()
+        torch.cuda.reset_peak_memory_stats()
 
-#     def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
-#         torch.cuda.empty_cache()
-#         torch.cuda.reset_max_memory_allocated()
-#         torch.cuda.reset_peak_memory_stats()
+        pipe = StableDiffusionPix2PixZeroPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", safety_checker=None, torch_dtype=torch.float16
+        )
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing(1)
+        pipe.enable_sequential_cpu_offload()
 
-#         pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-#             "timbrooks/instruct-pix2pix", safety_checker=None, torch_dtype=torch.float16
-#         )
-#         pipe = pipe.to(torch_device)
-#         pipe.set_progress_bar_config(disable=None)
-#         pipe.enable_attention_slicing(1)
-#         pipe.enable_sequential_cpu_offload()
+        inputs = self.get_inputs()
+        _ = pipe(**inputs)
 
-#         inputs = self.get_inputs()
-#         _ = pipe(**inputs)
-
-#         mem_bytes = torch.cuda.max_memory_allocated()
-#         # make sure that less than 2.2 GB is allocated
-#         assert mem_bytes < 2.2 * 10**9
-
-#     def test_stable_diffusion_pix2pix_pipeline_multiple_of_8(self):
-#         inputs = self.get_inputs()
-#         # resize to resolution that is divisible by 8 but not 16 or 32
-#         inputs["image"] = inputs["image"].resize((504, 504))
-
-#         model_id = "timbrooks/instruct-pix2pix"
-#         pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-#             model_id,
-#             safety_checker=None,
-#         )
-#         pipe.to(torch_device)
-#         pipe.set_progress_bar_config(disable=None)
-#         pipe.enable_attention_slicing()
-
-#         output = pipe(**inputs)
-#         image = output.images[0]
-
-#         image_slice = image[255:258, 383:386, -1]
-
-#         assert image.shape == (504, 504, 3)
-#         expected_slice = np.array([0.2726, 0.2529, 0.2664, 0.2655, 0.2641, 0.2642, 0.2591, 0.2649, 0.2590])
-
-#         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
+        mem_bytes = torch.cuda.max_memory_allocated()
+        # make sure that less than 8.2 GB is allocated
+        assert mem_bytes < 8.2 * 10**9
