@@ -412,6 +412,35 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         assert (sample - new_sample).abs().max() < 1e-4
         assert (sample - old_sample).abs().max() < 1e-4
 
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_lora_xformers_on_off(self):
+        # enable deterministic behavior for gradient checkpointing
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        init_dict["attention_head_dim"] = (8, 16)
+
+        torch.manual_seed(0)
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        lora_attn_procs = create_lora_layers(model)
+        model.set_attn_processor(lora_attn_procs)
+
+        # default
+        with torch.no_grad():
+            sample = model(**inputs_dict).sample
+
+            model.enable_xformers_memory_efficient_attention()
+            on_sample = model(**inputs_dict).sample
+
+            model.disable_xformers_memory_efficient_attention()
+            off_sample = model(**inputs_dict).sample
+
+        assert (sample - on_sample).abs().max() < 1e-4
+        assert (sample - off_sample).abs().max() < 1e-4
+
 
 @slow
 class UNet2DConditionModelIntegrationTests(unittest.TestCase):
