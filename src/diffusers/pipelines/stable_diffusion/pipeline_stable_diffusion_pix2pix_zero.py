@@ -752,7 +752,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                     latent_model_input,
                     t,
                     encoder_hidden_states=prompt_embeds,
-                    cross_attention_kwargs=cross_attention_kwargs.update({"timestep": t}),
+                    cross_attention_kwargs={"timestep": t},
                 ).sample
 
                 # perform guidance
@@ -803,7 +803,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                         x_in,
                         t,
                         encoder_hidden_states=prompt_embeds_edit.detach(),
-                        cross_attention_kwargs=cross_attention_kwargs.update({"timestep": t, "loss": loss}),
+                        cross_attention_kwargs={"timestep": t, "loss": loss},
                     ).sample
 
                     loss.loss.backward(retain_graph=False)
@@ -814,7 +814,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                     x_in.detach(),
                     t,
                     encoder_hidden_states=prompt_embeds_edit,
-                    cross_attention_kwargs=cross_attention_kwargs.update({"timestep": None}),
+                    cross_attention_kwargs={"timestep": None},
                 ).sample
 
                 latents = x_in.detach().chunk(2)[0]
