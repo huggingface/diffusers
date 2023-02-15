@@ -101,7 +101,7 @@ class CrossAttention(nn.Module):
         # set attention processor
         # We use the TorchAttentionProcessor by default when torch2.x is used which uses
         # torch.nn.functional.scaled_dot_product_attention for native Flash/memory_efficient_attention
-        processor = TorchAttentionProcessor if hasattr(F, "scaled_dot_product_attention") else CrossAttnProcessor
+        processor = TorchAttentionProcessor() if hasattr(F, "scaled_dot_product_attention") else CrossAttnProcessor()
         self.set_processor(processor)
 
     def set_use_memory_efficient_attention_xformers(
