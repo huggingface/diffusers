@@ -55,6 +55,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         self,
         sample_size: Optional[int] = None,
         in_channels: int = 4,
+        center_input_sample: bool = False,
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
         down_block_types: Tuple[str] = (
@@ -467,38 +468,6 @@ class ControlNetModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 attention_mask=attention_mask,
                 cross_attention_kwargs=cross_attention_kwargs,
             )
-
-        # 5. up
-        for i, upsample_block in enumerate(self.up_blocks):
-            is_final_block = i == len(self.up_blocks) - 1
-
-            res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
-            down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
-
-            # if we have not reached the final block and need to forward the
-            # upsample size, we do it here
-            if not is_final_block and forward_upsample_size:
-                upsample_size = down_block_res_samples[-1].shape[2:]
-
-            if hasattr(upsample_block, "has_cross_attention") and upsample_block.has_cross_attention:
-                sample = upsample_block(
-                    hidden_states=sample,
-                    temb=emb,
-                    res_hidden_states_tuple=res_samples,
-                    encoder_hidden_states=encoder_hidden_states,
-                    cross_attention_kwargs=cross_attention_kwargs,
-                    upsample_size=upsample_size,
-                    attention_mask=attention_mask,
-                )
-            else:
-                sample = upsample_block(
-                    hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size
-                )
-        # 6. post-process
-        if self.conv_norm_out:
-            sample = self.conv_norm_out(sample)
-            sample = self.conv_act(sample)
-        sample = self.conv_out(sample)
 
         if not return_dict:
             return (sample,)
