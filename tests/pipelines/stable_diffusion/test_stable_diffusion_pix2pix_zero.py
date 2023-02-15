@@ -98,10 +98,6 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
             f.write(r.content)
 
     def get_dummy_inputs(self, device, seed=0):
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
-        image = image.cpu().permute(0, 2, 3, 1)[0]
-        image = Image.fromarray(np.uint8(image)).convert("RGB")
-
         src_emb_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/embeddings_sd_1.4/cat.pt"
         tgt_emb_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/embeddings_sd_1.4/dog.pt"
 
@@ -112,7 +108,6 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
         
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
-            "image": image,
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
