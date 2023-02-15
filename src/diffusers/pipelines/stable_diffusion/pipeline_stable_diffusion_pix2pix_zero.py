@@ -17,13 +17,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import PIL
 import torch
-from transformers import (
-    AutoProcessor,
-    BlipForConditionalGeneration,
-    CLIPFeatureExtractor,
-    CLIPTextModel,
-    CLIPTokenizer,
-)
+from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.cross_attention import CrossAttention
@@ -79,17 +73,6 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-def generate_caption(image, captioner, processor, return_image=True):
-    """Generates caption for a given image."""
-    inputs = processor(images=image, return_tensors="pt")
-    outputs = captioner.generate(inputs)
-    caption = processor.batch_deocde(outputs, skip_special_tokens=True)[0]
-    if return_image:
-        return caption, inputs["pixel_values"]
-    else:
-        return caption
-
-
 def prepare_unet(unet: UNet2DConditionModel):
     """Modifies the UNet (`unet`) to perform Pix2Pix Zero optimizations."""
     pix2pix_zero_attn_procs = {}
@@ -105,11 +88,6 @@ def prepare_unet(unet: UNet2DConditionModel):
 
     unet.set_attn_processor(pix2pix_zero_attn_procs)
     return unet
-
-
-def construct_direction(embs_source: torch.Tensor, embs_target: torch.Tensor):
-    """Constructs the edit direction to steer the image generation process semantically."""
-    return (embs_target.mean(0) - embs_source.mean(0)).unsqueeze(0)
 
 
 class Pix2PixZeroL2Loss:
@@ -234,10 +212,11 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             )
 
         if conditions_input_image:
-            logger.info("Loading caption generator since `conditions_input_image` is True.")
-            checkpoint = "Salesforce/blip-image-captioning-base"
-            captioner_processor = AutoProcessor.from_pretrained(checkpoint)
-            captioner = BlipForConditionalGeneration.from_pretrained(checkpoint)
+            raise NotImplementedError
+            # logger.info("Loading caption generator since `conditions_input_image` is True.")
+            # checkpoint = "Salesforce/blip-image-captioning-base"
+            # captioner_processor = AutoProcessor.from_pretrained(checkpoint)
+            # captioner = BlipForConditionalGeneration.from_pretrained(checkpoint, dtype=unet.dtype)
         else:
             captioner_processor = None
             captioner = None
@@ -547,6 +526,20 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    def generate_caption(self, image, return_image=True):
+        """Generates caption for a given image."""
+        inputs = self._captioner_processor(images=image, return_tensors="pt")
+        outputs = self._captioner.generate(inputs)
+        caption = self._captioner_processor.batch_deocde(outputs, skip_special_tokens=True)[0]
+        if return_image:
+            return caption, inputs["pixel_values"]
+        else:
+            return caption
+
+    def construct_direction(self, embs_source: torch.Tensor, embs_target: torch.Tensor):
+        """Constructs the edit direction to steer the image generation process semantically."""
+        return (embs_target.mean(0) - embs_source.mean(0)).unsqueeze(0)
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -671,10 +664,9 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         # 2. Generate a caption for the input image if we are conditioning the
         # pipeline based on some input image.
         if self.conditions_input_image:
-            caption, preprocessed_image = generate_caption(image, self._captioner, self._captioner_processor)
+            prompt, preprocessed_image = self.generate_caption(image)
             height, width = preprocessed_image.shape[-2:]
-            prompt = caption
-            logger.info(f"Generated caption for the input image: {caption}.")
+            logger.info(f"Generated prompt for the input image: {prompt}.")
 
         # 3. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -714,7 +706,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             # We need to get the inverted noise from the input image and this requires
             # us to do a sort of `inverse_step()` in DDIM and then regularize the
             # noise to enforce the statistical properties of Gaussian.
-            raise NotImplementedError
+            pass
         else:
             num_channels_latents = self.unet.in_channels
             latents = self.prepare_latents(
@@ -767,7 +759,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                         callback(i, t, latents)
 
         # 8. Compute the edit directions.
-        edit_direction = construct_direction(source_embeds, target_embeds).to(prompt_embeds.device)
+        edit_direction = self.construct_direction(source_embeds, target_embeds).to(prompt_embeds.device)
 
         # 9. Edit the prompt embeddings as per the edit directions discovered.
         prompt_embeds_edit = prompt_embeds.clone()
