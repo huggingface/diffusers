@@ -766,7 +766,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                         callback(i, t, latents)
 
         # 8. Compute the edit directions.
-        edit_direction = construct_direction(source_embedding_path, target_embedding_path)
+        edit_direction = construct_direction(source_embedding_path, target_embedding_path).to(prompt_embeds.device)
 
         # 9. Edit the prompt embeddings as per the edit directions discovered.
         prompt_embeds_edit = prompt_embeds.clone()
