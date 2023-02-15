@@ -172,7 +172,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         resnet_time_scale_shift (`str`, *optional*, defaults to `"default"`): Time scale shift config
             for resnet blocks, see [`~models.resnet.ResnetBlockFlat`]. Choose from `default` or `scale_shift`.
         class_embed_type (`str`, *optional*, defaults to None): The type of class embedding to use which is ultimately
-            summed with the time embeddings. Choose from `None`, `"timestep"`, or `"identity"`.
+            summed with the time embeddings. Choose from `None`, `"timestep"`, `"identity"`, or `"projection"`.
         num_class_embeds (`int`, *optional*, defaults to None):
             Input dimension of the learnable embedding matrix to be projected to `time_embed_dim`, when performing
             class conditioning with `class_embed_type` equal to `None`.
@@ -183,7 +183,9 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         time_cond_proj_dim (`int`, *optional*, default to `None`):
             The dimension of `cond_proj` layer in timestep embedding.
         conv_in_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_in` layer.
-        conv_out_kernel (`int`, *optional*, default to `3`): the Kernel size of `conv_out` layer.
+        conv_out_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_out` layer.
+        projection_class_embeddings_input_dim (`int`, *optional*): The dimension of the `class_labels` input when
+            using the "projection" `class_embed_type`. Required when using the "projection" `class_embed_type`.
     """
 
     _supports_gradient_checkpointing = True
@@ -231,6 +233,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         time_cond_proj_dim: Optional[int] = None,
         conv_in_kernel: int = 3,
         conv_out_kernel: int = 3,
+        projection_class_embeddings_input_dim: Optional[int] = None,
     ):
         super().__init__()
 
@@ -301,6 +304,19 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             self.class_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim)
         elif class_embed_type == "identity":
             self.class_embedding = nn.Identity(time_embed_dim, time_embed_dim)
+        elif class_embed_type == "projection":
+            if projection_class_embeddings_input_dim is None:
+                raise ValueError(
+                    "`class_embed_type`: 'projection' requires `projection_class_embeddings_input_dim` be set"
+                )
+            # The projection `class_embed_type` is the same as the timestep `class_embed_type` except
+            # 1. the `class_labels` inputs are not first converted to sinusoidal embeddings
+            # 2. it projects from an arbitrary input dimension.
+            #
+            # Note that `TimestepEmbedding` is quite general, being mainly linear layers and activations.
+            # When used for embedding actual timesteps, the timesteps are first converted to sinusoidal embeddings.
+            # As a result, `TimestepEmbedding` can be passed arbitrary vectors.
+            self.class_embedding = TimestepEmbedding(projection_class_embeddings_input_dim, time_embed_dim)
         else:
             self.class_embedding = None
 
