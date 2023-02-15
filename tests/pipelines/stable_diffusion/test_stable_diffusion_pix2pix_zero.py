@@ -95,7 +95,7 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
         }
         return components
 
-    def get_dummy_inputs(self, seed=0):
+    def get_dummy_inputs(self, device, seed=0):
         src_emb_url = "https://hf.co/datasets/sayakpaul/sample-datasets/resolve/main/src_emb_0.pt"
         tgt_emb_url = "https://hf.co/datasets/sayakpaul/sample-datasets/resolve/main/tgt_emb_0.pt"
 
@@ -123,7 +123,7 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs()
+        inputs = self.get_dummy_inputs(device)
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
         assert image.shape == (1, 64, 64, 3)
@@ -138,7 +138,7 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs()
+        inputs = self.get_dummy_inputs(device)
         negative_prompt = "french fries"
         output = sd_pipe(**inputs, negative_prompt=negative_prompt)
         image = output.images
@@ -159,11 +159,11 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs()
+        inputs = self.get_dummy_inputs(device)
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 32, 32, 3)
+        assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5114, 0.5051, 0.5222, 0.5279, 0.5037, 0.5156, 0.4604, 0.4966, 0.504])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
@@ -176,25 +176,25 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
         sd_pipe.set_progress_bar_config(disable=None)
 
         # test num_images_per_prompt=1 (default)
-        inputs = self.get_dummy_inputs()
+        inputs = self.get_dummy_inputs(device)
         images = sd_pipe(**inputs).images
 
         assert images.shape == (1, 64, 64, 3)
 
         # test num_images_per_prompt=2 for a single prompt
         num_images_per_prompt = 2
-        inputs = self.get_dummy_inputs()
+        inputs = self.get_dummy_inputs(device)
         images = sd_pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
 
-        assert images.shape == (num_images_per_prompt, 32, 32, 3)
+        assert images.shape == (num_images_per_prompt, 64, 64, 3)
 
         # test num_images_per_prompt for batch of prompts
         batch_size = 2
-        inputs = self.get_dummy_inputs()
+        inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"]] * batch_size
         images = sd_pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
 
-        assert images.shape == (batch_size * num_images_per_prompt, 32, 32, 3)
+        assert images.shape == (batch_size * num_images_per_prompt, 64, 64, 3)
 
 
 @slow
