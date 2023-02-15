@@ -106,7 +106,7 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
         tgt_emb_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/embeddings_sd_1.4/dog.pt"
 
         for url in [src_emb_url, tgt_emb_url]:
-            self.download_from_url(url, url.split["/"][-1])
+            self.download_from_url(url, url.split("/")[-1])
         
         generator = torch.manual_seed(seed)
         
