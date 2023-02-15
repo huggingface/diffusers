@@ -814,7 +814,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                     x_in.detach(),
                     t,
                     encoder_hidden_states=prompt_embeds_edit,
-                    cross_attention_kwargs={"timestep": None},
+                    cross_attention_kwargs=cross_attention_kwargs.update({"timestep": None}),
                 ).sample
 
                 latents = x_in.detach().chunk(2)[0]
