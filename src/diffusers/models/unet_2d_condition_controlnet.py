@@ -47,6 +47,7 @@ class ControlledUNet2DConditionModel(UNet2DConditionModel):
     def forward(
         self,
         sample: torch.FloatTensor,
+        control: List[torch.Tensor],
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
         class_labels: Optional[torch.Tensor] = None,
@@ -55,6 +56,8 @@ class ControlledUNet2DConditionModel(UNet2DConditionModel):
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[UNet2DConditionOutput, Tuple]:
+        # TODO: Fix Docstrings
+
         r"""
         Args:
             sample (`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
@@ -160,12 +163,20 @@ class ControlledUNet2DConditionModel(UNet2DConditionModel):
                 cross_attention_kwargs=cross_attention_kwargs,
             )
 
-        # 5. up
+        # 5. apply middle_block_out output
+        sample += control.pop()
+
+        # 6. up
         for i, upsample_block in enumerate(self.up_blocks):
             is_final_block = i == len(self.up_blocks) - 1
 
             res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
             down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
+
+            # apply controlnet downblock output
+            control_samples = control[-len(upsample_block.resnets) :]
+            control = control[: -len(upsample_block.resnets)]
+            res_samples = [r + c for r, c in zip(res_samples, control_samples)]
 
             # if we have not reached the final block and need to forward the
             # upsample size, we do it here
@@ -186,7 +197,10 @@ class ControlledUNet2DConditionModel(UNet2DConditionModel):
                 sample = upsample_block(
                     hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size
                 )
-        # 6. post-process
+
+        assert len(control) == 0, f"must consume all control array ({len(control)})"
+
+        # 7. post-process
         if self.conv_norm_out:
             sample = self.conv_norm_out(sample)
             sample = self.conv_act(sample)

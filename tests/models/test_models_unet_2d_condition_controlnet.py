@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from diffusers import ControlNetModel, UNet2DConditionModel
+from diffusers import ControlledUNet2DConditionModel, ControlNetModel, UNet2DConditionModel
 
 
 # config from ControlNet_SD1.5
@@ -33,8 +33,8 @@ ctrlnet_config = {
 }
 
 ################################################################################
-# Scaffold for WIP
-# ##############################################################################
+# WIP
+################################################################################
 
 
 @pytest.mark.skip
@@ -43,15 +43,40 @@ def test_unet_inference_without_exception():
     timestep = 0
     encoder_hidden_states = torch.randn((1, 77, 768)).cuda()
     model = UNet2DConditionModel(**unet_config).cuda()
-    print(model(sample=sample, timestep=timestep, encoder_hidden_states=encoder_hidden_states))
+    model.eval()
+    with torch.no_grad():
+        out = model(sample=sample, timestep=timestep, encoder_hidden_states=encoder_hidden_states)
+    assert out.sample.shape == (1, 4, 64, 64)
+    print(out.sample)
 
 
-def test_inference_without_exception():
+def controlnet_inference():
     sample = torch.randn((1, 4, 64, 64)).cuda()
     hint = torch.randn((1, 3, 512, 512)).cuda()
     timestep = 0
     encoder_hidden_states = torch.randn((1, 77, 768)).cuda()
     model = ControlNetModel(**ctrlnet_config).cuda()
-    outputs = model(sample=sample, hint=hint, timestep=timestep, encoder_hidden_states=encoder_hidden_states)
-    assert len(outputs) == 12 + 1  # 12layer down and one middle
+    model.eval()
+    with torch.no_grad():
+        outputs = model(sample=sample, hint=hint, timestep=timestep, encoder_hidden_states=encoder_hidden_states)
+    return outputs
+
+
+@pytest.mark.skip
+def test_controlnet_inference():
+    outputs = controlnet_inference()
+    assert len(outputs) == 12 + 1  # 12 layer down and one middle
     print(outputs)
+
+
+def test_controlled_unet_inference():
+    sample = torch.randn((1, 4, 64, 64)).cuda()
+    control = controlnet_inference()
+    timestep = 0
+    encoder_hidden_states = torch.randn((1, 77, 768)).cuda()
+    model = ControlledUNet2DConditionModel(**unet_config).cuda()
+    model.eval()
+    with torch.no_grad():
+        out = model(sample=sample, control=control, timestep=timestep, encoder_hidden_states=encoder_hidden_states)
+    assert out.sample.shape == (1, 4, 64, 64)
+    print(out.sample)
