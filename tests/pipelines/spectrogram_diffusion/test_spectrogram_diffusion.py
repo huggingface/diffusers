@@ -42,15 +42,13 @@ class PipelineIntegrationTests(unittest.TestCase):
     def test_spectrogram_fast(self):
         device = torch_device
 
-        # pipe = SpectrogramDiffusionPipeline.from_pretrained("/home/patrick/t5_note", low_cpu_mem_usage=False)
-        pipe = SpectrogramDiffusionPipeline.from_pretrained("/home/patrick/t5_note")
+        pipe = SpectrogramDiffusionPipeline.from_pretrained("/home/patrick_huggingface_co/music-spectrogram-diffusion")
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
         output = pipe(MIDI_FILE, num_inference_steps=2, generator=generator)
 
-        # pipe.save_pretrained("/home/patrick/t5_note")
         audio = output.audios[0]
 
         assert abs(np.abs(audio).sum() - 3612.841) < 1e-3
@@ -60,11 +58,11 @@ class PipelineIntegrationTests(unittest.TestCase):
     def test_spectrogram(self):
         device = torch_device
 
-        pipe = SpectrogramDiffusionPipeline.from_pretrained("/home/patrick/t5_note", torch_dtype=torch.float16)
+        pipe = SpectrogramDiffusionPipeline.from_pretrained("/home/patrick_huggingface_co/music-spectrogram-diffusion", torch_dtype=torch.float16)
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
         output = pipe(MIDI_FILE, num_inference_steps=100)
         audio = output.audios[0]
         rate = 16_000
-        scipy.io.wavfile.write("/home/patrick/audios/beet.wav", rate, audio[0])
+        scipy.io.wavfile.write("/home/patrick_huggingface_co/audios/beet.wav", rate, audio[0])
