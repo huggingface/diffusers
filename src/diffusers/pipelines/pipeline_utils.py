@@ -802,6 +802,9 @@ class DiffusionPipeline(ConfigMixin):
         components = {
             k: getattr(self, k) for k in self.config.keys() if not k.startswith("_") and k not in optional_parameters
         }
+        print(f"Components: {components.keys()}")
+        print(f"Optional parameters: {optional_parameters}")
+        print(f"Expected modules: {expected_modules}")
 
         if set(components.keys()) != expected_modules:
             raise ValueError(
