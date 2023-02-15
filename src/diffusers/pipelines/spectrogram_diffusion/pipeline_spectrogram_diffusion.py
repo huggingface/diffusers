@@ -572,7 +572,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
         self,
         midi_file,
         generator: Optional[torch.Generator] = None,
-        num_inference_steps: int = 1000,
+        num_inference_steps: int = 100,
         return_dict: bool = True,
     ) -> Union[AudioPipelineOutput, Tuple]:
         ns = note_seq.midi_file_to_note_sequence(midi_file)
@@ -618,7 +618,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
         full_pred_mel = np.zeros([1, 0, self.n_dims], np.float32)
         ones = torch.ones((1, TARGET_FEATURE_LENGTH), dtype=np.bool, device=self.device)
 
-        for i, encoder_input_tokens in enumerate(input_tokens):
+        for i, encoder_input_tokens in enumerate(input_tokens[:2]):
             if i == 0:
                 encoder_continuous_inputs = torch.from_numpy(pred_mel[:1].copy()).to(
                     device=self.device, dtype=self.decoder.dtype
@@ -658,7 +658,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
                 output = self.decode(
                     encodings_and_masks=encodings_and_masks,
                     input_tokens=x,
-                    noise_time=t / num_inference_steps,  # rescale to [0, 1)
+                    noise_time=t / self.scheduler.config.num_train_timesteps,  # rescale to [0, 1)
                 )
 
                 # Compute previous output: x_t -> x_t-1
