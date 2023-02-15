@@ -174,6 +174,7 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
         max_diff = np.abs(output - output_loaded).max()
         self.assertLess(max_diff, 1e-4)
 
+    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
     def test_save_load_float16(self):
         components = self.get_dummy_components()
         for name, module in components.items():
@@ -205,6 +206,7 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
         max_diff = np.abs(output - output_loaded).max()
         self.assertLess(max_diff, 2e-2, "The output of the fp16 pipeline changed after saving and loading.")
 
+     @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
     def test_float16_inference(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -224,6 +226,10 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
         max_diff = np.abs(output - output_fp16).max()
         self.assertLess(max_diff, 1.3e-2, "The outputs of the fp16 and fp32 pipelines are too different.")
 
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_accelerate_available(),
+        reason="CPU offload is only available with CUDA and `accelerate` installed",
+    )
     def test_cpu_offload_forward_pass(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
