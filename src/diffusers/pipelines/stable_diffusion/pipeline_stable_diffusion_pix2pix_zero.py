@@ -551,7 +551,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Optional[Union[str, List[str]]] = None,
-        image: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        image: Optional[Union[torch.FloatTensor, PIL.Image.Image]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -579,7 +579,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            image (`PIL.Image.Image`):
+            image (`PIL.Image.Image`, *optional*):
                 `Image`, or tensor representing an image batch which will be used for conditioning.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
