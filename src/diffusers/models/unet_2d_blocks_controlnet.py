@@ -187,12 +187,9 @@ class CrossAttnDownBlock2DWithZeroConv(nn.Module):
     ):
         # TODO(Patrick, William) - attention mask is not used
         output_states = ()
+        zero_conved_states = ()
 
-        #########################
-        # TODO: support zero_conv
-        #########################
-
-        for resnet, attn in zip(self.resnets, self.attentions):
+        for resnet, attn, zero_conv in zip(self.resnets, self.attentions, self.zero_convs):
             if self.training and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
@@ -220,14 +217,16 @@ class CrossAttnDownBlock2DWithZeroConv(nn.Module):
                 ).sample
 
             output_states += (hidden_states,)
+            zero_conved_states += (zero_conv(hidden_states),)
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
                 hidden_states = downsampler(hidden_states)
 
             output_states += (hidden_states,)
+            zero_conved_states += (self.zero_convs[-1](hidden_states),)
 
-        return hidden_states, output_states
+        return hidden_states, output_states, zero_conved_states
 
 
 class DownBlock2DWithZeroConv(nn.Module):
@@ -288,12 +287,9 @@ class DownBlock2DWithZeroConv(nn.Module):
 
     def forward(self, hidden_states, temb=None):
         output_states = ()
+        zero_conved_states = ()
 
-        #########################
-        # TODO: support zero_conv
-        #########################
-
-        for resnet in self.resnets:
+        for resnet, zero_conv in zip(self.resnets, self.zero_convs):
             if self.training and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
@@ -307,11 +303,13 @@ class DownBlock2DWithZeroConv(nn.Module):
                 hidden_states = resnet(hidden_states, temb)
 
             output_states += (hidden_states,)
+            zero_conved_states += (zero_conv(hidden_states),)
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
                 hidden_states = downsampler(hidden_states)
 
             output_states += (hidden_states,)
+            zero_conved_states += (self.zero_convs[-1](hidden_states),)
 
-        return hidden_states, output_states
+        return hidden_states, output_states, zero_conved_states

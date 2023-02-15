@@ -1,5 +1,5 @@
-import torch
 import pytest
+import torch
 
 from diffusers import ControlNetModel, UNet2DConditionModel
 
@@ -36,6 +36,7 @@ ctrlnet_config = {
 # Scaffold for WIP
 # ##############################################################################
 
+
 @pytest.mark.skip
 def test_unet_inference_without_exception():
     sample = torch.randn((1, 4, 64, 64)).cuda()
@@ -47,7 +48,10 @@ def test_unet_inference_without_exception():
 
 def test_inference_without_exception():
     sample = torch.randn((1, 4, 64, 64)).cuda()
+    hint = torch.randn((1, 3, 512, 512)).cuda()
     timestep = 0
     encoder_hidden_states = torch.randn((1, 77, 768)).cuda()
     model = ControlNetModel(**ctrlnet_config).cuda()
-    print(model(sample=sample, timestep=timestep, encoder_hidden_states=encoder_hidden_states))
+    outputs = model(sample=sample, hint=hint, timestep=timestep, encoder_hidden_states=encoder_hidden_states)
+    assert len(outputs) == 12 + 1  # 12layer down and one middle
+    print(outputs)

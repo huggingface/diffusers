@@ -356,14 +356,16 @@ class ControlNetModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     def forward(
         self,
         sample: torch.FloatTensor,
+        hint: torch.Tensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
         class_labels: Optional[torch.Tensor] = None,
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        return_dict: bool = True,
     ) -> Union[UNet2DConditionOutput, Tuple]:
+        # TODO: fix docstring
+
         r"""
         Args:
             sample (`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
@@ -381,19 +383,9 @@ class ControlNetModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             [`~models.unet_2d_condition.UNet2DConditionOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is the sample tensor.
         """
-        # By default samples have to be AT least a multiple of the overall upsampling factor.
-        # The overall upsampling factor is equal to 2 ** (# num of upsampling layears).
-        # However, the upsampling interpolation output size can be forced to fit any upsampling size
-        # on the fly if necessary.
-        default_overall_up_factor = 2**self.num_upsamplers
 
-        # upsample size should be forwarded when sample is not a multiple of `default_overall_up_factor`
-        forward_upsample_size = False
-        upsample_size = None
-
-        if any(s % default_overall_up_factor != 0 for s in sample.shape[-2:]):
-            logger.info("Forward upsample size to force interpolation output size.")
-            forward_upsample_size = True
+        # prepare output
+        outputs = []
 
         # prepare attention_mask
         if attention_mask is not None:
@@ -440,14 +432,19 @@ class ControlNetModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
             emb = emb + class_emb
 
-        # 2. pre-process
-        sample = self.conv_in(sample)
+        # 2. input_hint (ControlNet specific)
+        guided_hint = self.input_hint_block(hint)
 
-        # 3. down
+        # 3. pre-process
+        sample = self.conv_in(sample)
+        sample += guided_hint
+        outputs.append(self.input_zero_conv(sample))
+
+        # 4. down
         down_block_res_samples = (sample,)
         for downsample_block in self.down_blocks:
             if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
-                sample, res_samples = downsample_block(
+                sample, res_samples, zero_conved_samples = downsample_block(
                     hidden_states=sample,
                     temb=emb,
                     encoder_hidden_states=encoder_hidden_states,
@@ -455,21 +452,20 @@ class ControlNetModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                     cross_attention_kwargs=cross_attention_kwargs,
                 )
             else:
-                sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
+                sample, res_samples, zero_conved_samples = downsample_block(hidden_states=sample, temb=emb)
 
             down_block_res_samples += res_samples
+            outputs += zero_conved_samples
 
-        # 4. mid
-        if self.mid_block is not None:
-            sample = self.mid_block(
-                sample,
-                emb,
-                encoder_hidden_states=encoder_hidden_states,
-                attention_mask=attention_mask,
-                cross_attention_kwargs=cross_attention_kwargs,
-            )
+        # 5. mid
+        assert self.mid_block is not None
+        sample = self.mid_block(
+            sample,
+            emb,
+            encoder_hidden_states=encoder_hidden_states,
+            attention_mask=attention_mask,
+            cross_attention_kwargs=cross_attention_kwargs,
+        )
+        outputs.append(self.middle_block_out(sample))
 
-        if not return_dict:
-            return (sample,)
-
-        return UNet2DConditionOutput(sample=sample)
+        return outputs
