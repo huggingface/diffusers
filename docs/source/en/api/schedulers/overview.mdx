@@ -83,4 +83,8 @@ The class [`SchedulerOutput`] contains the outputs from any schedulers `step(...
 
 ### KarrasDiffusionSchedulers
 
+`KarrasDiffusionSchedulers` encompasses the main generalization of schedulers in Diffusers. The schedulers in this class are distinguished, at a high level, by their noise sampling strategy; the type of network and scaling; and finally the training strategy or how the loss is weighed.
+
+The different schedulers, depending on the type of ODE solver, fall into the above taxonomy and provide a good abstraction for the design of the main schedulers implemented in Diffusers. The schedulers in this class are given below:
+
 [[autodoc]] schedulers.scheduling_utils.KarrasDiffusionSchedulers
