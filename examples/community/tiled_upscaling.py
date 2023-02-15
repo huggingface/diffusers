@@ -195,7 +195,7 @@ class StableDiffusionTiledUpscalePipeline(StableDiffusionUpscalePipeline):
         generator: Optional[torch.Generator] = None,
         latents: Optional[torch.FloatTensor] = None,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
         tile_size: int = 128,
         tile_border: int = 32,
         original_image_slice: int = 32,
