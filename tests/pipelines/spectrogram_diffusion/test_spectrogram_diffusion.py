@@ -28,6 +28,9 @@ import scipy
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
+MIDI_FILE = "./tests/fixtures/elise_format0.mid"
+
+
 @slow
 @require_torch_gpu
 class PipelineIntegrationTests(unittest.TestCase):
@@ -37,20 +40,29 @@ class PipelineIntegrationTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_spectrogram(self):
+    def test_spectrogram_fast(self):
         device = torch_device
-
-        url = "http://www.piano-midi.de/midis/beethoven/elise_format0.mid"
-
-        os.system(f"wget {url}")
 
         pipe = SpectrogramDiffusionPipeline.from_pretrained("kashif/music-spectrogram-diffusion")
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
-        output = pipe(url.split("/")[-1], num_inference_steps=100)
+        generator = torch.manual_seed(0)
+        output = pipe(MIDI_FILE, num_inference_steps=2, generator=generator)
         audio = output.audios[0]
-        rate = 16_000
-        scipy.io.wavfile.write("/home/patrick_huggingface_co/audios/beet.wav", rate, audio[0])
+
+        assert abs(np.abs(audio).sum() - 3612.841) < 1e-3
 
         print("Finished")
+
+    def test_spectrogram(self):
+        device = torch_device
+
+        pipe = SpectrogramDiffusionPipeline.from_pretrained("kashif/music-spectrogram-diffusion")
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        output = pipe(MIDI_FILE, num_inference_steps=100)
+        audio = output.audios[0]
+        rate = 16_000
+        scipy.io.wavfile.write("/home/patrick/audios/beet.wav", rate, audio[0])

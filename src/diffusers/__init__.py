@@ -38,6 +38,7 @@ else:
         ModelMixin,
         PriorTransformer,
         Transformer2DModel,
+        T5FilmDecoder,
         UNet1DModel,
         UNet2DConditionModel,
         UNet2DModel,
