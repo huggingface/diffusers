@@ -245,7 +245,7 @@ class PipelineTesterMixin:
 
         if self.pipeline_class.__name__ != "DanceDiffusionPipeline":
             batched_inputs["output_type"] = "np"
-
+        print(f"From common tests: {batched_inputs}")
         output_batch = pipe(**batched_inputs)
         assert output_batch[0].shape[0] == batch_size
 
