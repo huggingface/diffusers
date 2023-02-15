@@ -475,7 +475,7 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
         return noisy_samples
-    
+
     def get_velocity(
         self, sample: torch.FloatTensor, noise: torch.FloatTensor, timesteps: torch.IntTensor
     ) -> torch.FloatTensor:
