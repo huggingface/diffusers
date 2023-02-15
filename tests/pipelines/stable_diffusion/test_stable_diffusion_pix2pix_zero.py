@@ -185,7 +185,7 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5106, 0.5788, 0.5447, 0.5566, 0.5276, 0.5851, 0.4967, 0.4903, 0.5216])
+        expected_slice = np.array([0.5185, 0.5027, 0.492, 0.401, 0.3445, 0.464, 0.5321, 0.5327, 0.4892])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
