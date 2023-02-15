@@ -39,7 +39,7 @@ from diffusers import (
     StableDiffusionDepth2ImgPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
+from diffusers.utils import floats_tensor, is_accelerate_available, load_image, load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
 
 from ...test_pipelines_common import PipelineTesterMixin
@@ -206,7 +206,7 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
         max_diff = np.abs(output - output_loaded).max()
         self.assertLess(max_diff, 2e-2, "The output of the fp16 pipeline changed after saving and loading.")
 
-     @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
+    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
     def test_float16_inference(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
