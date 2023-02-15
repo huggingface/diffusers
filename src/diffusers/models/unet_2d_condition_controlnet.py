@@ -57,6 +57,7 @@ class ControlledUNet2DConditionModel(UNet2DConditionModel):
         return_dict: bool = True,
     ) -> Union[UNet2DConditionOutput, Tuple]:
         # TODO: Fix Docstrings
+        # TODO: add only_mid_control option
 
         r"""
         Args:
@@ -98,70 +99,72 @@ class ControlledUNet2DConditionModel(UNet2DConditionModel):
         if self.config.center_input_sample:
             sample = 2 * sample - 1.0
 
-        # 1. time
-        timesteps = timestep
-        if not torch.is_tensor(timesteps):
-            # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
-            # This would be a good case for the `match` statement (Python 3.10+)
-            is_mps = sample.device.type == "mps"
-            if isinstance(timestep, float):
-                dtype = torch.float32 if is_mps else torch.float64
-            else:
-                dtype = torch.int32 if is_mps else torch.int64
-            timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
-        elif len(timesteps.shape) == 0:
-            timesteps = timesteps[None].to(sample.device)
+        # Frozen weight & biases from 1 to 4 for training
+        with torch.no_grad():
+            # 1. time
+            timesteps = timestep
+            if not torch.is_tensor(timesteps):
+                # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
+                # This would be a good case for the `match` statement (Python 3.10+)
+                is_mps = sample.device.type == "mps"
+                if isinstance(timestep, float):
+                    dtype = torch.float32 if is_mps else torch.float64
+                else:
+                    dtype = torch.int32 if is_mps else torch.int64
+                timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
+            elif len(timesteps.shape) == 0:
+                timesteps = timesteps[None].to(sample.device)
 
-        # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-        timesteps = timesteps.expand(sample.shape[0])
+            # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+            timesteps = timesteps.expand(sample.shape[0])
 
-        t_emb = self.time_proj(timesteps)
+            t_emb = self.time_proj(timesteps)
 
-        # timesteps does not contain any weights and will always return f32 tensors
-        # but time_embedding might actually be running in fp16. so we need to cast here.
-        # there might be better ways to encapsulate this.
-        t_emb = t_emb.to(dtype=self.dtype)
+            # timesteps does not contain any weights and will always return f32 tensors
+            # but time_embedding might actually be running in fp16. so we need to cast here.
+            # there might be better ways to encapsulate this.
+            t_emb = t_emb.to(dtype=self.dtype)
 
-        emb = self.time_embedding(t_emb, timestep_cond)
+            emb = self.time_embedding(t_emb, timestep_cond)
 
-        if self.class_embedding is not None:
-            if class_labels is None:
-                raise ValueError("class_labels should be provided when num_class_embeds > 0")
+            if self.class_embedding is not None:
+                if class_labels is None:
+                    raise ValueError("class_labels should be provided when num_class_embeds > 0")
 
-            if self.config.class_embed_type == "timestep":
-                class_labels = self.time_proj(class_labels)
+                if self.config.class_embed_type == "timestep":
+                    class_labels = self.time_proj(class_labels)
 
-            class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
-            emb = emb + class_emb
+                class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
+                emb = emb + class_emb
 
-        # 2. pre-process
-        sample = self.conv_in(sample)
+            # 2. pre-process
+            sample = self.conv_in(sample)
 
-        # 3. down
-        down_block_res_samples = (sample,)
-        for downsample_block in self.down_blocks:
-            if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
-                sample, res_samples = downsample_block(
-                    hidden_states=sample,
-                    temb=emb,
+            # 3. down
+            down_block_res_samples = (sample,)
+            for downsample_block in self.down_blocks:
+                if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
+                    sample, res_samples = downsample_block(
+                        hidden_states=sample,
+                        temb=emb,
+                        encoder_hidden_states=encoder_hidden_states,
+                        attention_mask=attention_mask,
+                        cross_attention_kwargs=cross_attention_kwargs,
+                    )
+                else:
+                    sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
+
+                down_block_res_samples += res_samples
+
+            # 4. mid
+            if self.mid_block is not None:
+                sample = self.mid_block(
+                    sample,
+                    emb,
                     encoder_hidden_states=encoder_hidden_states,
                     attention_mask=attention_mask,
                     cross_attention_kwargs=cross_attention_kwargs,
                 )
-            else:
-                sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
-
-            down_block_res_samples += res_samples
-
-        # 4. mid
-        if self.mid_block is not None:
-            sample = self.mid_block(
-                sample,
-                emb,
-                encoder_hidden_states=encoder_hidden_states,
-                attention_mask=attention_mask,
-                cross_attention_kwargs=cross_attention_kwargs,
-            )
 
         # 5. apply middle_block_out output
         sample += control.pop()
