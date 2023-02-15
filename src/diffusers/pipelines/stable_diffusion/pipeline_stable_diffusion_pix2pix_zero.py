@@ -28,13 +28,52 @@ from transformers import (
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.cross_attention import CrossAttention
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import is_accelerate_available, logging, randn_tensor
+from ...utils import is_accelerate_available, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> import requests
+        >>> import torch
+
+        >>> from diffusers import DDIMScheduler, StableDiffusionPix2PixZeroPipeline
+
+
+        >>> def download(embedding_url, local_filepath):
+        ...     r = requests.get(embedding_url)
+        ...     with open(local_filepath, "wb") as f:
+        ...         f.write(r.content)
+
+
+        >>> model_ckpt = "CompVis/stable-diffusion-v1-4"
+        >>> pipeline = StableDiffusionPix2PixZeroPipeline.from_pretrained(
+        ...     model_ckpt, conditions_input_image=False, torch_dtype=torch.float16
+        ... )
+        >>> pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
+        >>> pipeline.to("cuda")
+
+        >>> prompt = "a high resolution painting of a cat in the style of van gough"
+        >>> source_emb_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/embeddings_sd_1.4/cat.pt"
+        >>> target_emb_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/embeddings_sd_1.4/dog.pt"
+
+        >>> for url in [source_emb_url, target_emb_url]:
+        ...     download(url, url.split("/")[-1])
+        >>> images = pipeline(
+        ...     prompt,
+        ...     source_embedding_path=source_emb_url.split("/")[-1],
+        ...     target_embedding_path=target_emb_url.split("/")[-1],
+        ...     num_inference_steps=50,
+        ...     cross_attention_guidance_amount=0.15,
+        ... ).images
+        >>> images[0].save("edited_image_dog.png")
+        ```
+"""
 
 
 def generate_caption(image, captioner, processor, return_image=True):
@@ -81,6 +120,9 @@ class Pix2PixZeroL2Loss:
 
 
 class Pix2PixZeroCrossAttnProcessor:
+    """An attention processor class to store the attention weights.
+    In Pix2Pix Zero, it happens during computations in the cross-attention blocks."""
+
     def __init__(self, is_pix2pix_zero=False):
         self.is_pix2pix_zero = is_pix2pix_zero
         if self.is_pix2pix_zero:
@@ -445,6 +487,8 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         prompt,
         conditions_input_image,
         image,
+        source_embedding_path,
+        target_embedding_path,
         callback_steps,
         prompt_embeds=None,
     ):
@@ -455,6 +499,8 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
             )
+        if source_embedding_path is None and target_embedding_path is None:
+            raise ValueError("`source_embedding_path` and `target_embedding_path` cannot be undefined.")
 
         if prompt is None and not conditions_input_image:
             raise ValueError(f"`prompt` cannot be None when `conditions_input_image` is {conditions_input_image}")
@@ -501,7 +547,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         return latents
 
     @torch.no_grad()
-    # @replace_example_docstring(EXAMPLE_DOC_STRING)
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Optional[Union[str, List[str]]] = None,
@@ -533,6 +579,8 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
+            image (`PIL.Image.Image`):
+                `Image`, or tensor representing an image batch which will be used for conditioning.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
@@ -569,6 +617,14 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            cross_attention_guidance_amount (`float`, defaults to 0.1):
+                Amount of guidance needed from the reference cross-attention maps.
+            source_embedding_path (`str`, defaults to None):
+                Local filepath to the embeddings of the source concept. Generation of the embeddings as per the
+                [original paper](https://arxiv.org/abs/2302.03027). Used in discovering the edit direction.
+            target_embedding_path (`str`, defaults to None):
+                Local filepath to the embeddings of the target concept. Generation of the embeddings as per the
+                [original paper](https://arxiv.org/abs/2302.03027). Used in discovering the edit direction.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -604,6 +660,8 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             prompt,
             self.conditions_input_image,
             image,
+            source_embedding_path,
+            target_embedding_path,
             callback_steps,
             prompt_embeds,
         )
@@ -628,7 +686,8 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
-        # ref_xa_maps = {}  # reference cross attention maps
+        if cross_attention_kwargs is None:
+            cross_attention_kwargs = {}
 
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
@@ -655,8 +714,10 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         # generated from the input prompt.
         if self.conditions_input_image:
             # TODO (sayakpaul): Generate this using DDIM inversion.
-            latents = 1
-            # latents = self.prepare_inverted_noise()
+            # We need to get the inverted noise from the input image and this requires
+            # us to do a sort of `inverse_step()` in DDIM and then regularize the
+            # noise to enforce the statistical properties of Gaussian.
+            raise NotImplementedError
         else:
             num_channels_latents = self.unet.in_channels
             latents = self.prepare_latents(
@@ -691,16 +752,8 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                     latent_model_input,
                     t,
                     encoder_hidden_states=prompt_embeds,
-                    cross_attention_kwargs={"timestep": t},
+                    cross_attention_kwargs=cross_attention_kwargs.update({"timestep": t}),
                 ).sample
-
-                # # add the cross attention map to the dictionary
-                # ref_xa_maps[t.item()] = {}
-                # for name, module in self.unet.named_modules():
-                #     module_name = type(module).__name__
-                #     if module_name == "CrossAttention" and "attn2" in name:
-                #         attn_mask = module.attn_probs  # size is (num_channels, s*s, max_prompt_length)
-                #         ref_xa_maps[t.item()][name] = attn_mask.detach().cpu()
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -750,18 +803,9 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                         x_in,
                         t,
                         encoder_hidden_states=prompt_embeds_edit.detach(),
-                        cross_attention_kwargs={"timestep": t, "loss": loss},
+                        cross_attention_kwargs=cross_attention_kwargs.update({"timestep": t, "loss": loss}),
                     ).sample
 
-                    # obtain the cross-attention maps with the current latents,
-                    # compute loss, backpropagate
-                    # loss = 0.0
-                    # for name, module in self.unet.named_modules():
-                    #     module_name = type(module).__name__
-                    #     if module_name == "CrossAttention" and "attn2" in name:
-                    #         curr = module.attn_probs
-                    #         ref = ref_xa_maps[t.item()][name].detach().to(device)
-                    #         loss += ((curr - ref) ** 2).sum((1, 2)).mean(0)
                     loss.loss.backward(retain_graph=False)
                     opt.step()
 
