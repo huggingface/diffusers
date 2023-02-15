@@ -39,9 +39,8 @@ from diffusers import (
     StableDiffusionDepth2ImgPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
-from diffusers.utils.import_utils import is_accelerate_available
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils import floats_tensor, is_accelerate_available, load_image, load_numpy, nightly, slow, torch_device
+from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
 
 from ...test_pipelines_common import PipelineTesterMixin
 
@@ -49,7 +48,7 @@ from ...test_pipelines_common import PipelineTesterMixin
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-@unittest.skipIf(torch_device == "mps", reason="The depth model does not support MPS yet")
+@skip_mps
 class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionDepth2ImgPipeline
     test_save_load_optional_components = False
@@ -154,7 +153,6 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
         }
         return inputs
 
-    @unittest.skipIf(torch_device == "mps", reason="The depth model does not support MPS yet")
     def test_save_load_local(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -248,7 +246,6 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
         max_diff = np.abs(output_with_offload - output_without_offload).max()
         self.assertLess(max_diff, 1e-4, "CPU offloading should not affect the inference results")
 
-    @unittest.skipIf(torch_device == "mps", reason="The depth model does not support MPS yet")
     def test_dict_tuple_outputs_equivalent(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -265,7 +262,6 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
         max_diff = np.abs(output - output_tuple).max()
         self.assertLess(max_diff, 1e-4)
 
-    @unittest.skipIf(torch_device == "mps", reason="The depth model does not support MPS yet")
     def test_progress_bar(self):
         super().test_progress_bar()
 
