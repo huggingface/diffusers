@@ -34,16 +34,9 @@ class NewGELUActivation(nn.Module):
 class T5LayerCrossAttention(nn.Module):
     def __init__(self, d_model, d_kv, num_heads, dropout_rate, layer_norm_epsilon):
         super().__init__()
-        # self.EncDecAttention = T5Attention(d_model=d_model, d_kv=d_kv, num_heads=num_heads, dropout_rate=dropout_rate)
-        self.attention = CrossAttention(query_dim=d_model, heads=num_heads, dim_head=d_kv, out_bias=False, scale_qk=False)
+        self.EncDecAttention = T5Attention(d_model=d_model, d_kv=d_kv, num_heads=num_heads, dropout_rate=dropout_rate)
         self.layer_norm = T5LayerNorm(d_model, eps=layer_norm_epsilon)
         self.dropout = nn.Dropout(dropout_rate)
-
-    def set_weights(self):
-        self.attention.to_q.weight = nn.Parameter(self.EncDecAttention.q.weight.data)
-        self.attention.to_k.weight = nn.Parameter(self.EncDecAttention.k.weight.data)
-        self.attention.to_v.weight = nn.Parameter(self.EncDecAttention.v.weight.data)
-        self.attention.to_out[0].weight = nn.Parameter(self.EncDecAttention.o.weight.data)
 
     def forward(
         self,
@@ -51,19 +44,13 @@ class T5LayerCrossAttention(nn.Module):
         key_value_states=None,
         attention_mask=None,
     ):
-        # self.set_weights()
         normed_hidden_states = self.layer_norm(hidden_states)
-#        attention_output = self.EncDecAttention(
-#            normed_hidden_states,
-#            mask=attention_mask,
-#            key_value_states=key_value_states,
-#        )
-        attention_output_comp = self.attention(
+        attention_output = self.EncDecAttention(
             normed_hidden_states,
-            encoder_hidden_states=key_value_states,
-            attention_mask=attention_mask.squeeze(),
+            mask=attention_mask,
+            key_value_states=key_value_states,
         )
-        layer_output = hidden_states + self.dropout(attention_output_comp)
+        layer_output = hidden_states + self.dropout(attention_output[0])
         outputs = (layer_output,)
         return outputs
 
@@ -218,8 +205,8 @@ class T5LayerSelfAttentionCond(nn.Module):
         super().__init__()
         self.layer_norm = T5LayerNorm(d_model)
         self.FiLMLayer = FiLMLayer(in_features=d_model * 4, out_features=d_model)
-        # self.SelfAttention = T5Attention(d_model=d_model, d_kv=d_kv, num_heads=num_heads, dropout_rate=dropout_rate)
-        self.attention = CrossAttention(query_dim=d_model, heads=num_heads, dim_head=d_kv, out_bias=False, scale_qk=False)
+        self.SelfAttention = T5Attention(d_model=d_model, d_kv=d_kv, num_heads=num_heads, dropout_rate=dropout_rate)
+        self.attention = CrossAttention(query_dim=d_model, heads=num_heads, dim_head=d_kv, out_bias=False)
         self.dropout = nn.Dropout(dropout_rate)
 
     def set_weights(self):
@@ -234,7 +221,7 @@ class T5LayerSelfAttentionCond(nn.Module):
         conditioning_emb=None,
         attention_mask=None,
     ):
-        # self.set_weights()
+        self.set_weights()
         # pre_self_attention_layer_norm
         normed_hidden_states = self.layer_norm(hidden_states)
 
@@ -242,9 +229,7 @@ class T5LayerSelfAttentionCond(nn.Module):
             normed_hidden_states = self.FiLMLayer(normed_hidden_states, conditioning_emb)
 
         # Self-attention block
-        # attention_output = self.SelfAttention(normed_hidden_states)
-        # print("comp", (attention_output[0] - attention_output_comp).abs().sum())
-        attention_output = self.attention(normed_hidden_states)
+        attention_output = self.SelfAttention(normed_hidden_states)
         hidden_states = hidden_states + self.dropout(attention_output[0])
         outputs = (hidden_states,)
         return outputs

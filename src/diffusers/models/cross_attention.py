@@ -59,6 +59,8 @@ class CrossAttention(nn.Module):
         cross_attention_norm: bool = False,
         added_kv_proj_dim: Optional[int] = None,
         norm_num_groups: Optional[int] = None,
+        out_bias: bool = True,
+        scale_qk: bool = True,
         processor: Optional["AttnProcessor"] = None,
     ):
         super().__init__()
@@ -68,7 +70,7 @@ class CrossAttention(nn.Module):
         self.upcast_softmax = upcast_softmax
         self.cross_attention_norm = cross_attention_norm
 
-        self.scale = dim_head**-0.5
+        self.scale = dim_head**-0.5 if scale_qk else 1
 
         self.heads = heads
         # for slice_size > 0 the attention score computation
@@ -95,7 +97,7 @@ class CrossAttention(nn.Module):
             self.add_v_proj = nn.Linear(added_kv_proj_dim, cross_attention_dim)
 
         self.to_out = nn.ModuleList([])
-        self.to_out.append(nn.Linear(inner_dim, query_dim))
+        self.to_out.append(nn.Linear(inner_dim, query_dim, bias=out_bias))
         self.to_out.append(nn.Dropout(dropout))
 
         # set attention processor
@@ -292,7 +294,7 @@ class CrossAttnProcessor:
         encoder_hidden_states=None,
         attention_mask=None,
     ):
-        batch_size, sequence_length, _ = hidden_states.shape
+        batch_size, sequence_length, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
         query = attn.to_q(hidden_states)
 

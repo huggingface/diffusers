@@ -43,12 +43,15 @@ class PipelineIntegrationTests(unittest.TestCase):
     def test_spectrogram_fast(self):
         device = torch_device
 
-        pipe = SpectrogramDiffusionPipeline.from_pretrained("kashif/music-spectrogram-diffusion")
+        # pipe = SpectrogramDiffusionPipeline.from_pretrained("/home/patrick/t5_note", low_cpu_mem_usage=False)
+        pipe = SpectrogramDiffusionPipeline.from_pretrained("/home/patrick/t5_note")
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
         output = pipe(MIDI_FILE, num_inference_steps=2, generator=generator)
+
+        # pipe.save_pretrained("/home/patrick/t5_note")
         audio = output.audios[0]
 
         assert abs(np.abs(audio).sum() - 3612.841) < 1e-3
@@ -58,7 +61,7 @@ class PipelineIntegrationTests(unittest.TestCase):
     def test_spectrogram(self):
         device = torch_device
 
-        pipe = SpectrogramDiffusionPipeline.from_pretrained("kashif/music-spectrogram-diffusion")
+        pipe = SpectrogramDiffusionPipeline.from_pretrained("/home/patrick/t5_note")
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
