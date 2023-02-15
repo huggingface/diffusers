@@ -408,9 +408,9 @@ def requires_backends(obj, backends):
             " --upgrade transformers \n```"
         )
 
-    if name in [
-        "StableDiffusionDepth2ImgPipeline",
-    ] and is_transformers_version("<", "4.26.0"):
+    if name in ["StableDiffusionDepth2ImgPipeline", "StableDiffusionPix2PixZeroPipeline"] and is_transformers_version(
+        "<", "4.26.0"
+    ):
         raise ImportError(
             f"You need to install `transformers>=4.26` in order to use {name}: \n```\n pip install"
             " --upgrade transformers \n```"

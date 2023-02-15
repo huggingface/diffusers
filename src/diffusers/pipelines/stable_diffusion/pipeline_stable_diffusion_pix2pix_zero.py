@@ -64,10 +64,13 @@ EXAMPLE_DOC_STRING = """
 
         >>> for url in [source_emb_url, target_emb_url]:
         ...     download(url, url.split("/")[-1])
+
+        >>> src_embeds = torch.load(source_emb_url.split("/")[-1])
+        >>> target_embeds = torch.load(target_emb_url.split("/")[-1])
         >>> images = pipeline(
         ...     prompt,
-        ...     source_embedding_path=source_emb_url.split("/")[-1],
-        ...     target_embedding_path=target_emb_url.split("/")[-1],
+        ...     source_embeds=src_embeds,
+        ...     target_embeds=target_embeds,
         ...     num_inference_steps=50,
         ...     cross_attention_guidance_amount=0.15,
         ... ).images
@@ -104,10 +107,8 @@ def prepare_unet(unet: UNet2DConditionModel):
     return unet
 
 
-def construct_direction(source_embedding_path: str, target_embedding_path: str):
+def construct_direction(embs_source: torch.Tensor, embs_target: torch.Tensor):
     """Constructs the edit direction to steer the image generation process semantically."""
-    embs_source = torch.load(source_embedding_path)
-    embs_target = torch.load(target_embedding_path)
     return (embs_target.mean(0) - embs_source.mean(0)).unsqueeze(0)
 
 
@@ -126,7 +127,7 @@ class Pix2PixZeroCrossAttnProcessor:
     def __init__(self, is_pix2pix_zero=False):
         self.is_pix2pix_zero = is_pix2pix_zero
         if self.is_pix2pix_zero:
-            self.xa_map = {}
+            self.reference_cross_attn_map = {}
 
     def __call__(
         self,
@@ -157,10 +158,10 @@ class Pix2PixZeroCrossAttnProcessor:
         if self.is_pix2pix_zero and timestep is not None:
             # new bookkeeping to save the attention weights.
             if loss is None:
-                self.xa_map[timestep.item()] = attention_probs.detach().cpu()
+                self.reference_cross_attn_map[timestep.item()] = attention_probs.detach().cpu()
             # compute loss
             elif loss is not None:
-                prev_attn_probs = self.xa_map.pop(timestep.item())
+                prev_attn_probs = self.reference_cross_attn_map.pop(timestep.item())
                 loss.compute_loss(attention_probs, prev_attn_probs.to(attention_probs.device))
 
         hidden_states = torch.bmm(attention_probs, value)
@@ -487,8 +488,8 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         prompt,
         conditions_input_image,
         image,
-        source_embedding_path,
-        target_embedding_path,
+        source_embeds,
+        target_embeds,
         callback_steps,
         prompt_embeds=None,
     ):
@@ -499,8 +500,8 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
             )
-        if source_embedding_path is None and target_embedding_path is None:
-            raise ValueError("`source_embedding_path` and `target_embedding_path` cannot be undefined.")
+        if source_embeds is None and target_embeds is None:
+            raise ValueError("`source_embeds` and `target_embeds` cannot be undefined.")
 
         if prompt is None and not conditions_input_image:
             raise ValueError(f"`prompt` cannot be None when `conditions_input_image` is {conditions_input_image}")
@@ -552,6 +553,8 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         self,
         prompt: Optional[Union[str, List[str]]] = None,
         image: Optional[Union[torch.FloatTensor, PIL.Image.Image]] = None,
+        source_embeds: torch.Tensor = None,
+        target_embeds: torch.Tensor = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -564,8 +567,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         cross_attention_guidance_amount: float = 0.1,
-        source_embedding_path: str = None,
-        target_embedding_path: str = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
@@ -581,6 +582,12 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 instead.
             image (`PIL.Image.Image`, *optional*):
                 `Image`, or tensor representing an image batch which will be used for conditioning.
+            source_embeds (`torch.Tensor`):
+                Source concept embeddings. Generation of the embeddings as per the [original
+                paper](https://arxiv.org/abs/2302.03027). Used in discovering the edit direction.
+            target_embeds (`torch.Tensor`):
+                Target concept embeddings. Generation of the embeddings as per the [original
+                paper](https://arxiv.org/abs/2302.03027). Used in discovering the edit direction.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
@@ -619,12 +626,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 argument.
             cross_attention_guidance_amount (`float`, defaults to 0.1):
                 Amount of guidance needed from the reference cross-attention maps.
-            source_embedding_path (`str`, defaults to None):
-                Local filepath to the embeddings of the source concept. Generation of the embeddings as per the
-                [original paper](https://arxiv.org/abs/2302.03027). Used in discovering the edit direction.
-            target_embedding_path (`str`, defaults to None):
-                Local filepath to the embeddings of the target concept. Generation of the embeddings as per the
-                [original paper](https://arxiv.org/abs/2302.03027). Used in discovering the edit direction.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -656,8 +657,8 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             prompt,
             self.conditions_input_image,
             image,
-            source_embedding_path,
-            target_embedding_path,
+            source_embeds,
+            target_embeds,
             callback_steps,
             prompt_embeds,
         )
@@ -766,7 +767,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                         callback(i, t, latents)
 
         # 8. Compute the edit directions.
-        edit_direction = construct_direction(source_embedding_path, target_embedding_path).to(prompt_embeds.device)
+        edit_direction = construct_direction(source_embeds, target_embeds).to(prompt_embeds.device)
 
         # 9. Edit the prompt embeddings as per the edit directions discovered.
         prompt_embeds_edit = prompt_embeds.clone()

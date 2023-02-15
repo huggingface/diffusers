@@ -102,6 +102,9 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
         for url in [src_emb_url, tgt_emb_url]:
             download_from_url(url, url.split("/")[-1])
 
+        src_embeds = torch.load(src_emb_url.split("/")[-1])
+        target_embeds = torch.load(tgt_emb_url.split("/")[-1])
+
         generator = torch.manual_seed(seed)
 
         inputs = {
@@ -110,8 +113,8 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
             "cross_attention_guidance_amount": 0.15,
-            "source_embedding_path": src_emb_url.split("/")[-1],
-            "target_embedding_path": tgt_emb_url.split("/")[-1],
+            "source_embeds": src_embeds,
+            "target_embeds": target_embeds,
             "output_type": "numpy",
         }
         return inputs
@@ -214,14 +217,17 @@ class StableDiffusionPix2PixZeroPipelineSlowTests(unittest.TestCase):
         for url in [src_emb_url, tgt_emb_url]:
             download_from_url(url, url.split("/")[-1])
 
+        src_embeds = torch.load(src_emb_url.split("/1")[-1])
+        target_embeds = torch.load(tgt_emb_url.split("/1")[-1])
+
         inputs = {
             "prompt": "turn him into a cyborg",
             "generator": generator,
             "num_inference_steps": 3,
             "guidance_scale": 7.5,
             "cross_attention_guidance_amount": 0.15,
-            "source_embedding_path": src_emb_url.split("/")[-1],
-            "target_embedding_path": tgt_emb_url.split("/")[-1],
+            "source_embeds": src_embeds,
+            "target_embeds": target_embeds,
             "output_type": "numpy",
         }
         return inputs
