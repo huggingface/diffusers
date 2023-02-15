@@ -1,19 +1,17 @@
-name: Fast tests for PRs
+name: Slow tests on main
 
 on:
-  pull_request:
+  push:
     branches:
       - main
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
-  cancel-in-progress: true
-
 env:
   DIFFUSERS_IS_CI: yes
-  OMP_NUM_THREADS: 4
-  MKL_NUM_THREADS: 4
-  PYTEST_TIMEOUT: 60
+  HF_HOME: /mnt/cache
+  OMP_NUM_THREADS: 8
+  MKL_NUM_THREADS: 8
+  PYTEST_TIMEOUT: 600
+  RUN_SLOW: no
 
 jobs:
   run_fast_tests:

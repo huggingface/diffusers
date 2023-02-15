@@ -38,7 +38,7 @@ class VersatileDiffusionImageVariationPipelineIntegrationTests(unittest.TestCase
         pipe.set_progress_bar_config(disable=None)
 
         image_prompt = load_image(
-            "https://raw.githubusercontent.com/SHI-Labs/Versatile-Diffusion/master/assets/benz.jpg"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/versatile_diffusion/benz.jpg"
         )
         generator = torch.manual_seed(0)
         image = pipe(

@@ -231,6 +231,13 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _omegaconf_available = False
 
+_tensorboard_available = importlib.util.find_spec("tensorboard")
+try:
+    _tensorboard_version = importlib_metadata.version("tensorboard")
+    logger.debug(f"Successfully imported tensorboard version {_tensorboard_version}")
+except importlib_metadata.PackageNotFoundError:
+    _tensorboard_available = False
+
 
 def is_torch_available():
     return _torch_available
@@ -294,6 +301,10 @@ def is_wandb_available():
 
 def is_omegaconf_available():
     return _omegaconf_available
+
+
+def is_tensorboard_available():
+    return _tensorboard_available
 
 
 # docstyle-ignore
@@ -368,6 +379,12 @@ OMEGACONF_IMPORT_ERROR = """
 install omegaconf`
 """
 
+# docstyle-ignore
+TENSORBOARD_IMPORT_ERROR = """
+{0} requires the tensorboard library but it was not found in your environment. You can install it with pip: `pip
+install tensorboard`
+"""
+
 BACKENDS_MAPPING = OrderedDict(
     [
         ("flax", (is_flax_available, FLAX_IMPORT_ERROR)),
@@ -382,6 +399,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("note_seq", (is_note_seq_available, NOTE_SEQ_IMPORT_ERROR)),
         ("wandb", (is_wandb_available, WANDB_IMPORT_ERROR)),
         ("omegaconf", (is_omegaconf_available, OMEGACONF_IMPORT_ERROR)),
+        ("tensorboard", (_tensorboard_available, TENSORBOARD_IMPORT_ERROR)),
     ]
 )
 

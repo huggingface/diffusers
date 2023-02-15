@@ -120,6 +120,8 @@ else:
         StableDiffusionPipeline,
         StableDiffusionPipelineSafe,
         StableDiffusionUpscalePipeline,
+        StableUnCLIPImg2ImgPipeline,
+        StableUnCLIPPipeline,
         UnCLIPImageVariationPipeline,
         UnCLIPPipeline,
         VersatileDiffusionDualGuidedPipeline,

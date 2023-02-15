@@ -17,23 +17,36 @@ import requests
 from packaging import version
 
 from .import_utils import is_flax_available, is_onnx_available, is_torch_available
+from .logging import get_logger
 
 
 global_rng = random.Random()
 
+logger = get_logger(__name__)
 
 if is_torch_available():
     import torch
 
-    torch_device = "cuda" if torch.cuda.is_available() else "cpu"
-    is_torch_higher_equal_than_1_12 = version.parse(version.parse(torch.__version__).base_version) >= version.parse(
-        "1.12"
-    )
+    if "DIFFUSERS_TEST_DEVICE" in os.environ:
+        torch_device = os.environ["DIFFUSERS_TEST_DEVICE"]
 
-    if is_torch_higher_equal_than_1_12:
-        # Some builds of torch 1.12 don't have the mps backend registered. See #892 for more details
-        mps_backend_registered = hasattr(torch.backends, "mps")
-        torch_device = "mps" if (mps_backend_registered and torch.backends.mps.is_available()) else torch_device
+        available_backends = ["cuda", "cpu", "mps"]
+        if torch_device not in available_backends:
+            raise ValueError(
+                f"unknown torch backend for diffusers tests: {torch_device}. Available backends are:"
+                f" {available_backends}"
+            )
+        logger.info(f"torch_device overrode to {torch_device}")
+    else:
+        torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+        is_torch_higher_equal_than_1_12 = version.parse(
+            version.parse(torch.__version__).base_version
+        ) >= version.parse("1.12")
+
+        if is_torch_higher_equal_than_1_12:
+            # Some builds of torch 1.12 don't have the mps backend registered. See #892 for more details
+            mps_backend_registered = hasattr(torch.backends, "mps")
+            torch_device = "mps" if (mps_backend_registered and torch.backends.mps.is_available()) else torch_device
 
 
 def torch_all_close(a, b, *args, **kwargs):

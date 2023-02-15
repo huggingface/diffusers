@@ -22,7 +22,7 @@ import diffusers
 from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
-from diffusers.utils import check_min_version
+from diffusers.utils import check_min_version, is_tensorboard_available, is_wandb_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -66,6 +66,12 @@ def parse_args():
         type=str,
         default=None,
         help="The config of the Dataset, leave as None if there's only one config.",
+    )
+    parser.add_argument(
+        "--model_config_name_or_path",
+        type=str,
+        default=None,
+        help="The config of the UNet model to train, leave as None to use standard DDPM configuration.",
     )
     parser.add_argument(
         "--train_data_dir",
@@ -222,6 +228,7 @@ def parse_args():
         help="Whether the model should predict the 'epsilon'/noise error or directly the reconstructed image 'x0'.",
     )
     parser.add_argument("--ddpm_num_steps", type=int, default=1000)
+    parser.add_argument("--ddpm_num_inference_steps", type=int, default=1000)
     parser.add_argument("--ddpm_beta_schedule", type=str, default="linear")
     parser.add_argument(
         "--checkpointing_steps",
@@ -272,6 +279,15 @@ def main(args):
         log_with=args.logger,
         logging_dir=logging_dir,
     )
+
+    if args.logger == "tensorboard":
+        if not is_tensorboard_available():
+            raise ImportError("Make sure to install tensorboard if you want to use it for logging during training.")
+
+    elif args.logger == "wandb":
+        if not is_wandb_available():
+            raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
+        import wandb
 
     # `accelerate` 0.16.0 will have better support for customized saving
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
@@ -340,29 +356,33 @@ def main(args):
             os.makedirs(args.output_dir, exist_ok=True)
 
     # Initialize the model
-    model = UNet2DModel(
-        sample_size=args.resolution,
-        in_channels=3,
-        out_channels=3,
-        layers_per_block=2,
-        block_out_channels=(128, 128, 256, 256, 512, 512),
-        down_block_types=(
-            "DownBlock2D",
-            "DownBlock2D",
-            "DownBlock2D",
-            "DownBlock2D",
-            "AttnDownBlock2D",
-            "DownBlock2D",
-        ),
-        up_block_types=(
-            "UpBlock2D",
-            "AttnUpBlock2D",
-            "UpBlock2D",
-            "UpBlock2D",
-            "UpBlock2D",
-            "UpBlock2D",
-        ),
-    )
+    if args.model_config_name_or_path is None:
+        model = UNet2DModel(
+            sample_size=args.resolution,
+            in_channels=3,
+            out_channels=3,
+            layers_per_block=2,
+            block_out_channels=(128, 128, 256, 256, 512, 512),
+            down_block_types=(
+                "DownBlock2D",
+                "DownBlock2D",
+                "DownBlock2D",
+                "DownBlock2D",
+                "AttnDownBlock2D",
+                "DownBlock2D",
+            ),
+            up_block_types=(
+                "UpBlock2D",
+                "AttnUpBlock2D",
+                "UpBlock2D",
+                "UpBlock2D",
+                "UpBlock2D",
+                "UpBlock2D",
+            ),
+        )
+    else:
+        config = UNet2DModel.load_config(args.model_config_name_or_path)
+        model = UNet2DModel.from_config(config)
 
     # Create EMA for the model.
     if args.use_ema:
@@ -563,7 +583,7 @@ def main(args):
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
             if args.use_ema:
-                logs["ema_decay"] = ema_model.decay
+                logs["ema_decay"] = ema_model.cur_decay_value
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
         progress_bar.close()
@@ -586,6 +606,7 @@ def main(args):
                 images = pipeline(
                     generator=generator,
                     batch_size=args.eval_batch_size,
+                    num_inference_steps=args.ddpm_num_inference_steps,
                     output_type="numpy",
                 ).images
 
@@ -595,6 +616,11 @@ def main(args):
                 if args.logger == "tensorboard":
                     accelerator.get_tracker("tensorboard").add_images(
                         "test_samples", images_processed.transpose(0, 3, 1, 2), epoch
+                    )
+                elif args.logger == "wandb":
+                    accelerator.get_tracker("wandb").log(
+                        {"test_samples": [wandb.Image(img) for img in images_processed], "epoch": epoch},
+                        step=global_step,
                     )
 
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
