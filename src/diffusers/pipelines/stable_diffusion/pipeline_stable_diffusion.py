@@ -191,7 +191,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
         text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
         `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
-        Note that offloading happens on a submodule basis. Memory savings are higher than with `enable_model_offload`,
+        Note that offloading happens on a submodule basis. Memory savings are higher than with `enable_model_cpu_offload`,
         but performance is lower.
         """
         if is_accelerate_available():
@@ -207,10 +207,10 @@ class StableDiffusionPipeline(DiffusionPipeline):
         if self.safety_checker is not None:
             cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
 
-    def enable_model_offload(self, gpu_id=0):
+    def enable_model_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one model at a time to the GPU when its `forward` method
+        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward` method
         is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
         `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
         """
