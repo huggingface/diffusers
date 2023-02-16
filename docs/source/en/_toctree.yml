@@ -151,6 +151,8 @@
         title: Stable-Diffusion-Latent-Upscaler
       - local: api/pipelines/stable_diffusion/pix2pix
         title: InstructPix2Pix
+      - local: api/pipelines/stable_diffusion/attend_and_excite
+        title: Attend and Excite
       - local: api/pipelines/stable_diffusion/pix2pix_zero
         title: Pix2Pix Zero
       - local: api/pipelines/stable_diffusion/self_attention_guidance

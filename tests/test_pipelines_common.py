@@ -35,7 +35,15 @@ class PipelineTesterMixin:
     equivalence of dict and tuple outputs, etc.
     """
 
-    allowed_required_args = ["source_prompt", "prompt", "image", "mask_image", "example_image", "class_labels"]
+    allowed_required_args = [
+        "source_prompt",
+        "prompt",
+        "image",
+        "mask_image",
+        "example_image",
+        "class_labels",
+        "token_indices",
+    ]
     required_optional_params = ["generator", "num_inference_steps", "return_dict"]
     num_inference_steps_args = ["num_inference_steps"]
 
