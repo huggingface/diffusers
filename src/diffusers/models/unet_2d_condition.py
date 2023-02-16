@@ -583,11 +583,11 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             return self.controlnet_zero_conv_block(
                 down_block_res_samples=down_block_res_samples, mid_block_sample=sample
             )
-        
+
         if control is not None:
             # ControlledUnet: apply mid_zero_conv output
             sample += control.pop()
-        
+
         # 5. up
         for i, upsample_block in enumerate(self.up_blocks):
             is_final_block = i == len(self.up_blocks) - 1
@@ -624,7 +624,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         # TODO: remove this block
         if control is not None:
             assert len(control) == 0, f"must consume all control array ({len(control)})"
-                
+
         # 6. post-process
         if self.conv_norm_out:
             sample = self.conv_norm_out(sample)
