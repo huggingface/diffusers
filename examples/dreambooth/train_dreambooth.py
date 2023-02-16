@@ -202,7 +202,7 @@ def parse_args(input_args=None):
         help=(
             "Max number of checkpoints to store. Passed as `total_limit` to the `Accelerator` `ProjectConfiguration`."
             " See Accelerator::save_state https://huggingface.co/docs/accelerate/package_reference/accelerator#accelerate.Accelerator.save_state"
-            " for more docs"
+            " for more details"
         ),
     )
     parser.add_argument(
