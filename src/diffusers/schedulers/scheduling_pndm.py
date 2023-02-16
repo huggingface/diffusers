@@ -187,6 +187,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 
         self.ets = []
         self.counter = 0
+        self.cur_model_output = 0
 
     def step(
         self,
