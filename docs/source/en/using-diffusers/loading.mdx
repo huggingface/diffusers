@@ -209,14 +209,14 @@ A variation of a checkpoint has to have **exactly** the same serialization forma
 Checkpoint variants do **not** include different serialization formats (such as [safetensors](https://huggingface.co/docs/diffusers/main/en/using-diffusers/using_safetensors)) as weights in different serialization formats are 
 identical to the weights of the "main" checkpoint, just loaded with a different code.
 
-Also variants do not correspond to different checkpoint layouts, *e.g.* [stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) is not a variant of [stable-diffusion-2-0](https://huggingface.co/stabilityai/stable-diffusion-2) since the checkpoint layout is different (Stable Diffusion 1-5 uses a different `CLIPTextModel` compared to Stable Diffusion 2.0).
+Also variants do not correspond to different model structures, *e.g.* [stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) is not a variant of [stable-diffusion-2-0](https://huggingface.co/stabilityai/stable-diffusion-2) since the model structure is different (Stable Diffusion 1-5 uses a different `CLIPTextModel` compared to Stable Diffusion 2.0).
 
-Pipeline checkpoints that are identical in checkpoint layout, but have been trained on different datasets, trained with vastly different training setups and thus correspond to different official releases (such as [Stable Diffusion v1-4](https://huggingface.co/CompVis/stable-diffusion-v1-4) and [Stable Diffusion v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5)) should probably also not be stored as variations of each other, but rather as individual model repositories.
+Pipeline checkpoints that are identical in checkpoint layout, but have been trained on different datasets, trained with vastly different training setups and thus correspond to different official releases (such as [Stable Diffusion v1-4](https://huggingface.co/CompVis/stable-diffusion-v1-4) and [Stable Diffusion v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5)) should probably be stored in individual repositories instead of as variations of eachother.
 
 #### So what are checkpoint variants then? 
 
 Checkpoint variants usually consist of the checkpoint stored in "*low-precision, low-storage*" dtype so that less bandwith is required to download them, or of *non-exponential-averaged* weights that shall be used when continuing fine-tuning from the checkpoint.
-Both use cases have clear advantages when their weights are considered variants: they share the same serialization format as the reference weights, and they correspond to an specialization of the "main" checkpoint which does not warrant a new model repository. 
+Both use cases have clear advantages when their weights are considered variants: they share the same serialization format as the reference weights, and they correspond to a specialization of the "main" checkpoint which does not warrant a new model repository. 
 A checkpoint stored in [torch's half-precision / float16 format](https://pytorch.org/blog/accelerating-training-on-nvidia-gpus-with-pytorch-automatic-mixed-precision/) requires only half the bandwith and storage when downloading the checkpoint,
 **but** cannot be used when continuing training or when running the checkpoint on CPU.
 Similarly the *non-exponential-averaged* (or non-EMA) version of the checkpoint should be used when continuing fine-tuning of the model checkpoint, **but** should not be used when using the checkpoint for inference. 
@@ -227,7 +227,7 @@ Saving a diffusion pipeline as a variant can be done by providing [`DiffusionPip
 The `variant` extends the weight name by the provided variation, by changing the default weight name from `diffusion_pytorch_model.bin` to `diffusion_pytorch_model.{variant}.bin` or from `diffusion_pytorch_model.safetensors` to `diffusion_pytorch_model.{variant}.safetensors`. By doing so, one creates a variant of the pipeline checkpoint that can be loaded **instead** of the "main" pipeline checkpoint.
 
 Let's have a look at how we could create a float16 variant of a pipeline. First, we load 
-the "main" variant of a checkpoint (stored in `float32` precision) into mixed precision format, using `dtype=torch.float16`.
+the "main" variant of a checkpoint (stored in `float32` precision) into mixed precision format, using `torch_dtype=torch.float16`.
 
 ```py
 from diffusers import DiffusionPipeline
