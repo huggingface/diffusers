@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -42,18 +42,17 @@ EXAMPLE_DOC_STRING = """
         ...     "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16
         ... ).to("cuda")
 
-        >>> pipe = pipe.to("cuda")
 
         >>> prompt = "a cat and a frog"
         >>> indices = [2, 5]
         >>> seed = 6141
-        >>> g = torch.Generator("cuda").manual_seed(seed)
+        >>> generator = torch.Generator("cuda").manual_seed(seed)
 
         >>> images = pipe(
-        ...     prompt=[prompt],
+        ...     prompt=prompt,
         ...     indices=indices,
         ...     guidance_scale=7.5,
-        ...     generator=g,
+        ...     generator=generator,
         ...     num_inference_steps=50,
         ...     max_iter_to_alter=25,
         ... ).images
@@ -653,6 +652,12 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
 
         self.unet.set_attn_processor(attn_procs)
         self.attention_store.num_att_layers = cross_att_count
+        
+    def get_indices(prompt: str) -> Dict[str, int]:
+        ids = self.tokenizer(prompt).input_ids
+        
+        indices = {tok: i for tok, i in zip(self.tokenizer.convert_ids_to_tokens(ids), ids)}
+        return indices
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)

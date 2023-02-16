@@ -52,7 +52,7 @@ seed = 6141
 generator = torch.Generator("cuda").manual_seed(seed)
 
 images = pipe(
-    prompt=[prompt],
+    prompt=prompt,
     indices=indices,
     guidance_scale=7.5,
     generator=generator,
