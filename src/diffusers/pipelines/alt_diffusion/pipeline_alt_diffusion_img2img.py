@@ -21,7 +21,7 @@ import torch
 from packaging import version
 from transformers import CLIPFeatureExtractor, XLMRobertaTokenizer
 
-from diffusers.utils import is_accelerate_available
+from diffusers.utils import is_accelerate_available, is_accelerate_version
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
