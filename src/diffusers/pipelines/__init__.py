@@ -54,6 +54,7 @@ else:
         StableDiffusionInstructPix2PixPipeline,
         StableDiffusionLatentUpscalePipeline,
         StableDiffusionPipeline,
+        StableDiffusionPix2PixZeroPipeline,
         StableDiffusionUpscalePipeline,
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
