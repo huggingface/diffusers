@@ -258,7 +258,6 @@ class EMAModel:
             parameters: Iterable of `torch.nn.Parameter`; the parameters to be
                 temporarily stored.
         """
-        parameters = list(parameters)
         self.collected_params = [param.detach().cpu().clone() for param in parameters]
 
     def restore(self, parameters: Iterable[torch.nn.Parameter]) -> None:
@@ -273,7 +272,6 @@ class EMAModel:
         """
         if self.collected_params is None:
             raise RuntimeError("This ExponentialMovingAverage has no `store()`ed weights " "to `restore()`")
-        parameters = list(parameters)
         for c_param, param in zip(self.collected_params, parameters):
             param.data.copy_(c_param.data)
 
