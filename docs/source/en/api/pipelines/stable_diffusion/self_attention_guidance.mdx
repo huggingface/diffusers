@@ -1,0 +1,64 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+# Self-Attention Guidance (SAG)
+
+## Overview
+
+[Self-Attention Guidance](https://arxiv.org/abs/2210.00939) by Susung Hong et al.
+
+The abstract of the paper is the following:
+
+*Denoising diffusion models (DDMs) have been drawing much attention for their appreciable sample quality and diversity. Despite their remarkable performance, DDMs remain black boxes on which further study is necessary to take a profound step. Motivated by this, we delve into the design of conventional U-shaped diffusion models. More specifically, we investigate the self-attention modules within these models through carefully designed experiments and explore their characteristics. In addition, inspired by the studies that substantiate the effectiveness of the guidance schemes, we present plug-and-play diffusion guidance, namely Self-Attention Guidance (SAG), that can drastically boost the performance of existing diffusion models. Our method, SAG, extracts the intermediate attention map from a diffusion model at every iteration and selects tokens above a certain attention score for masking and blurring to obtain a partially blurred input. Subsequently, we measure the dissimilarity between the predicted noises obtained from feeding the blurred and original input to the diffusion model and leverage it as guidance. With this guidance, we observe apparent improvements in a wide range of diffusion models, e.g., ADM, IDDPM, and Stable Diffusion, and show that the results further improve by combining our method with the conventional guidance scheme. We provide extensive ablation studies to verify our choices.*
+
+Resources:
+
+* [Project Page](https://ku-cvlab.github.io/Self-Attention-Guidance).
+* [Paper](https://arxiv.org/abs/2210.00939).
+* [Original Code](https://github.com/KU-CVLAB/Self-Attention-Guidance).
+* [Demo](https://colab.research.google.com/github/SusungHong/Self-Attention-Guidance/blob/main/SAG_Stable.ipynb).
+
+
+## Available Pipelines:
+
+| Pipeline | Tasks | Demo
+|---|---|:---:|
+| [StableDiffusionSAGPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_sag.py) | *Text-to-Image Generation* | [Colab](https://colab.research.google.com/github/SusungHong/Self-Attention-Guidance/blob/main/SAG_Stable.ipynb) |
+
+## Usage example
+
+```python
+import torch
+from diffusers import StableDiffusionSAGPipeline
+from accelerate.utils import set_seed
+
+pipe = StableDiffusionSAGPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
+pipe = pipe.to("cuda")
+
+seed = 8978
+prompt = "."
+guidance_scale = 7.5
+num_images_per_prompt = 1
+
+sag_scale = 1.0
+
+set_seed(seed)
+images = pipe(
+    prompt, num_images_per_prompt=num_images_per_prompt, guidance_scale=guidance_scale, sag_scale=sag_scale
+).images
+images[0].save("example.png")
+```
+
+## StableDiffusionSAGPipeline
+[[autodoc]] StableDiffusionSAGPipeline
+	- __call__
+	- all
