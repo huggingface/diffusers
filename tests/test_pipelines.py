@@ -21,6 +21,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+import unittest.mock as mock
 
 import numpy as np
 import PIL
@@ -28,6 +29,7 @@ import safetensors.torch
 import torch
 from parameterized import parameterized
 from PIL import Image
+from requests.exceptions import HTTPError
 from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
@@ -165,6 +167,155 @@ class DownloadTests(unittest.TestCase):
             out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         assert np.max(np.abs(out - out_2)) < 1e-3
+
+    def test_cached_files_are_used_when_no_internet(self):
+        # A mock response for an HTTP head request to emulate server down
+        response_mock = mock.Mock()
+        response_mock.status_code = 500
+        response_mock.headers = {}
+        response_mock.raise_for_status.side_effect = HTTPError
+        response_mock.json.return_value = {}
+
+        # Download this model to make sure it's in the cache.
+        orig_pipe = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+        orig_comps = {k: v for k, v in orig_pipe.components.items() if hasattr(v, "parameters")}
+
+        # Under the mock environment we get a 500 error when trying to reach the model.
+        with mock.patch("requests.request", return_value=response_mock):
+            # Download this model to make sure it's in the cache.
+            pipe = StableDiffusionPipeline.from_pretrained(
+                "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None, local_files_only=True
+            )
+            comps = {k: v for k, v in pipe.components.items() if hasattr(v, "parameters")}
+
+        for m1, m2 in zip(orig_comps.values(), comps.values()):
+            for p1, p2 in zip(m1.parameters(), m2.parameters()):
+                if p1.data.ne(p2.data).sum() > 0:
+                    assert False, "Parameters not the same!"
+
+    def test_download_from_variant_folder(self):
+        for safe_avail in [False, True]:
+            import diffusers
+
+            diffusers.utils.import_utils._safetensors_available = safe_avail
+
+            other_format = ".bin" if safe_avail else ".safetensors"
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                StableDiffusionPipeline.from_pretrained(
+                    "hf-internal-testing/stable-diffusion-all-variants", cache_dir=tmpdirname
+                )
+                all_root_files = [
+                    t[-1] for t in os.walk(os.path.join(tmpdirname, os.listdir(tmpdirname)[0], "snapshots"))
+                ]
+                files = [item for sublist in all_root_files for item in sublist]
+
+                # None of the downloaded files should be a variant file even if we have some here:
+                # https://huggingface.co/hf-internal-testing/stable-diffusion-all-variants/tree/main/unet
+                assert len(files) == 15, f"We should only download 15 files, not {len(files)}"
+                assert not any(f.endswith(other_format) for f in files)
+                # no variants
+                assert not any(len(f.split(".")) == 3 for f in files)
+
+        diffusers.utils.import_utils._safetensors_available = True
+
+    def test_download_variant_all(self):
+        for safe_avail in [False, True]:
+            import diffusers
+
+            diffusers.utils.import_utils._safetensors_available = safe_avail
+
+            other_format = ".bin" if safe_avail else ".safetensors"
+            this_format = ".safetensors" if safe_avail else ".bin"
+            variant = "fp16"
+
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                StableDiffusionPipeline.from_pretrained(
+                    "hf-internal-testing/stable-diffusion-all-variants", cache_dir=tmpdirname, variant=variant
+                )
+                all_root_files = [
+                    t[-1] for t in os.walk(os.path.join(tmpdirname, os.listdir(tmpdirname)[0], "snapshots"))
+                ]
+                files = [item for sublist in all_root_files for item in sublist]
+
+                # None of the downloaded files should be a non-variant file even if we have some here:
+                # https://huggingface.co/hf-internal-testing/stable-diffusion-all-variants/tree/main/unet
+                assert len(files) == 15, f"We should only download 15 files, not {len(files)}"
+                # unet, vae, text_encoder, safety_checker
+                assert len([f for f in files if f.endswith(f"{variant}{this_format}")]) == 4
+                # all checkpoints should have variant ending
+                assert not any(f.endswith(this_format) and not f.endswith(f"{variant}{this_format}") for f in files)
+                assert not any(f.endswith(other_format) for f in files)
+
+        diffusers.utils.import_utils._safetensors_available = True
+
+    def test_download_variant_partly(self):
+        for safe_avail in [False, True]:
+            import diffusers
+
+            diffusers.utils.import_utils._safetensors_available = safe_avail
+
+            other_format = ".bin" if safe_avail else ".safetensors"
+            this_format = ".safetensors" if safe_avail else ".bin"
+            variant = "no_ema"
+
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                StableDiffusionPipeline.from_pretrained(
+                    "hf-internal-testing/stable-diffusion-all-variants", cache_dir=tmpdirname, variant=variant
+                )
+                snapshots = os.path.join(tmpdirname, os.listdir(tmpdirname)[0], "snapshots")
+                all_root_files = [t[-1] for t in os.walk(snapshots)]
+                files = [item for sublist in all_root_files for item in sublist]
+
+                unet_files = os.listdir(os.path.join(snapshots, os.listdir(snapshots)[0], "unet"))
+
+                # Some of the downloaded files should be a non-variant file, check:
+                # https://huggingface.co/hf-internal-testing/stable-diffusion-all-variants/tree/main/unet
+                assert len(files) == 15, f"We should only download 15 files, not {len(files)}"
+                # only unet has "no_ema" variant
+                assert f"diffusion_pytorch_model.{variant}{this_format}" in unet_files
+                assert len([f for f in files if f.endswith(f"{variant}{this_format}")]) == 1
+                # vae, safety_checker and text_encoder should have no variant
+                assert sum(f.endswith(this_format) and not f.endswith(f"{variant}{this_format}") for f in files) == 3
+                assert not any(f.endswith(other_format) for f in files)
+
+        diffusers.utils.import_utils._safetensors_available = True
+
+    def test_download_broken_variant(self):
+        for safe_avail in [False, True]:
+            import diffusers
+
+            diffusers.utils.import_utils._safetensors_available = safe_avail
+            # text encoder is missing no variant and "no_ema" variant weights, so the following can't work
+            for variant in [None, "no_ema"]:
+                with self.assertRaises(OSError) as error_context:
+                    with tempfile.TemporaryDirectory() as tmpdirname:
+                        StableDiffusionPipeline.from_pretrained(
+                            "hf-internal-testing/stable-diffusion-broken-variants",
+                            cache_dir=tmpdirname,
+                            variant=variant,
+                        )
+
+                assert "Error no file name" in str(error_context.exception)
+
+            # text encoder has fp16 variants so we can load it
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                pipe = StableDiffusionPipeline.from_pretrained(
+                    "hf-internal-testing/stable-diffusion-broken-variants", cache_dir=tmpdirname, variant="fp16"
+                )
+                assert pipe is not None
+
+                snapshots = os.path.join(tmpdirname, os.listdir(tmpdirname)[0], "snapshots")
+                all_root_files = [t[-1] for t in os.walk(snapshots)]
+                files = [item for sublist in all_root_files for item in sublist]
+
+                # None of the downloaded files should be a non-variant file even if we have some here:
+                # https://huggingface.co/hf-internal-testing/stable-diffusion-broken-variants/tree/main/unet
+                assert len(files) == 15, f"We should only download 15 files, not {len(files)}"
+                # only unet has "no_ema" variant
+
+        diffusers.utils.import_utils._safetensors_available = True
 
 
 class CustomPipelineTests(unittest.TestCase):

@@ -25,6 +25,8 @@ from typing import List
 
 from accelerate.utils import write_basic_config
 
+from diffusers import DiffusionPipeline, UNet2DConditionModel
+
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -139,6 +141,85 @@ class ExamplesTestsAccelerate(unittest.TestCase):
             # save_pretrained smoke test
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.bin")))
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
+
+    def test_dreambooth_checkpointing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            instance_prompt = "photo"
+            pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-pipe"
+
+            # Run training script with checkpointing
+            # max_train_steps == 5, checkpointing_steps == 2
+            # Should create checkpoints at steps 2, 4
+
+            initial_run_args = f"""
+                examples/dreambooth/train_dreambooth.py
+                --pretrained_model_name_or_path {pretrained_model_name_or_path}
+                --instance_data_dir docs/source/en/imgs
+                --instance_prompt {instance_prompt}
+                --resolution 64
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 5
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                --checkpointing_steps=2
+                --seed=0
+                """.split()
+
+            run_command(self._launch_args + initial_run_args)
+
+            # check can run the original fully trained output pipeline
+            pipe = DiffusionPipeline.from_pretrained(tmpdir, safety_checker=None)
+            pipe(instance_prompt, num_inference_steps=2)
+
+            # check checkpoint directories exist
+            self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-2")))
+            self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-4")))
+
+            # check can run an intermediate checkpoint
+            unet = UNet2DConditionModel.from_pretrained(tmpdir, subfolder="checkpoint-2/unet")
+            pipe = DiffusionPipeline.from_pretrained(pretrained_model_name_or_path, unet=unet, safety_checker=None)
+            pipe(instance_prompt, num_inference_steps=2)
+
+            # Remove checkpoint 2 so that we can check only later checkpoints exist after resuming
+            shutil.rmtree(os.path.join(tmpdir, "checkpoint-2"))
+
+            # Run training script for 7 total steps resuming from checkpoint 4
+
+            resume_run_args = f"""
+                examples/dreambooth/train_dreambooth.py
+                --pretrained_model_name_or_path {pretrained_model_name_or_path}
+                --instance_data_dir docs/source/en/imgs
+                --instance_prompt {instance_prompt}
+                --resolution 64
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 7
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                --checkpointing_steps=2
+                --resume_from_checkpoint=checkpoint-4
+                --seed=0
+                """.split()
+
+            run_command(self._launch_args + resume_run_args)
+
+            # check can run new fully trained pipeline
+            pipe = DiffusionPipeline.from_pretrained(tmpdir, safety_checker=None)
+            pipe(instance_prompt, num_inference_steps=2)
+
+            # check old checkpoints do not exist
+            self.assertFalse(os.path.isdir(os.path.join(tmpdir, "checkpoint-2")))
+
+            # check new checkpoints exist
+            self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-4")))
+            self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-6")))
 
     def test_text_to_image(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -56,7 +56,7 @@ class StableDiffusion2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=32,
             # SD2-specific config below
-            attention_head_dim=(2, 4, 8, 8),
+            attention_head_dim=(2, 4),
             use_linear_projection=True,
         )
         scheduler = DDIMScheduler(

@@ -141,7 +141,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
