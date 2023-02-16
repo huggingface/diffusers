@@ -303,7 +303,6 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
         edit_mom_beta: Optional[float] = 0.4,
         edit_weights: Optional[List[float]] = None,
         sem_guidance: Optional[List[torch.FloatTensor]] = None,
-        **kwargs,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
