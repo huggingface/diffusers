@@ -291,7 +291,7 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
         editing_prompt: Optional[Union[str, List[str]]] = None,
         editing_prompt_embeddings: Optional[torch.FloatTensor] = None,
         reverse_editing_direction: Optional[Union[bool, List[bool]]] = False,
