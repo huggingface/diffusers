@@ -25,8 +25,6 @@ from transformers import AutoFeatureExtractor, BertTokenizerFast, CLIPTextModel,
 
 from diffusers import (
     AutoencoderKL,
-    ControlledUNet2DConditionModel,
-    ControlNetModel,
     DDIMScheduler,
     DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
@@ -304,7 +302,7 @@ def create_controlnet_diffusers_config(original_config, image_size: int):
         cross_attention_dim=controlnet_params.context_dim,
         attention_head_dim=head_dim,
         use_linear_projection=use_linear_projection,
-        hint_channels=controlnet_params.hint_channels,
+        controlnet_hint_channels=controlnet_params.hint_channels,
     )
 
     return config
@@ -612,27 +610,26 @@ def convert_controlnet_checkpoint(checkpoint, config):
         attentions_paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config
     )
 
-    # ControlNet Specific Weight & Biases
+    # ControlNet Specific Weights & Biases
 
     # input_hint_block
     for i in range(8):
-        key = f"input_hint_block.{i*2}."
-        new_checkpoint[key + "weight"] = unet_state_dict.pop(key + "weight")
-        new_checkpoint[key + "bias"] = unet_state_dict.pop(key + "bias")
+        key_dst = f"controlnet_input_hint_block.input_hint_block.{i*2}."
+        key_src = f"input_hint_block.{i*2}."
+        new_checkpoint[key_dst + "weight"] = unet_state_dict.pop(key_src + "weight")
+        new_checkpoint[key_dst + "bias"] = unet_state_dict.pop(key_src + "bias")
 
     # zero_convs
-    new_checkpoint["input_zero_conv.weight"] = unet_state_dict.pop("zero_convs.0.0.weight")
-    new_checkpoint["input_zero_conv.bias"] = unet_state_dict.pop("zero_convs.0.0.bias")
+    new_checkpoint["controlnet_zero_conv_block.input_zero_conv.weight"] = unet_state_dict.pop("zero_convs.0.0.weight")
+    new_checkpoint["controlnet_zero_conv_block.input_zero_conv.bias"] = unet_state_dict.pop("zero_convs.0.0.bias")
     for i in range(1, num_input_blocks):
-        block_id = (i - 1) // (config["layers_per_block"] + 1)
-        layer_in_block_id = (i - 1) % (config["layers_per_block"] + 1)
-        key_dst = f"down_blocks.{block_id}.zero_convs.{layer_in_block_id}."
+        key_dst = f"controlnet_zero_conv_block.zero_convs.{i-1}."
         key_src = f"zero_convs.{i}.0."
         new_checkpoint[key_dst + "weight"] = unet_state_dict.pop(key_src + "weight")
         new_checkpoint[key_dst + "bias"] = unet_state_dict.pop(key_src + "bias")
 
-    # middle block out
-    key_dst = "middle_block_out."
+    # mid_zero_conv
+    key_dst = "controlnet_zero_conv_block.mid_zero_conv."
     key_src = "middle_block_out.0."
     new_checkpoint[key_dst + "weight"] = unet_state_dict.pop(key_src + "weight")
     new_checkpoint[key_dst + "bias"] = unet_state_dict.pop(key_src + "bias")
@@ -1358,7 +1355,7 @@ def load_pipeline_from_control_net_ckpt(
     # Convert the ControlledUNet2DConditionModel model.
     unet_config = create_unet_diffusers_config(original_config, image_size=image_size)
     unet_config["upcast_attention"] = upcast_attention
-    unet = ControlledUNet2DConditionModel(**unet_config)
+    unet = UNet2DConditionModel(**unet_config)
 
     converted_unet_checkpoint = convert_ldm_unet_checkpoint(
         checkpoint, unet_config, path=checkpoint_path, extract_ema=extract_ema
@@ -1369,7 +1366,7 @@ def load_pipeline_from_control_net_ckpt(
     # Convert the ControlNetModel model.
     ctrlnet_config = create_controlnet_diffusers_config(original_config, image_size=image_size)
     ctrlnet_config["upcast_attention"] = upcast_attention
-    controlnet = ControlNetModel(**ctrlnet_config)
+    controlnet = UNet2DConditionModel(**ctrlnet_config)
 
     converted_ctrl_checkpoint = convert_controlnet_checkpoint(checkpoint, unet_config)
 

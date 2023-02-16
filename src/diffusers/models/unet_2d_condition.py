@@ -268,6 +268,18 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         # count how many layers upsample the images
         self.num_upsamplers = 0
 
+        if controlnet_hint_channels is not None:
+            # ControlNet: add input_hint_block, zero_conv_block
+            self.controlnet_input_hint_block = ControlNetInputHintBlock(
+                hint_channels=controlnet_hint_channels, channels=block_out_channels[0]
+            )
+            self.controlnet_zero_conv_block = ControlNetZeroConvBlock(
+                block_out_channels=block_out_channels,
+                down_block_types=down_block_types,
+                layers_per_block=layers_per_block,
+            )
+            return  # Modules from the following lines are not defined in ControlNet
+
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
         reversed_attention_head_dim = list(reversed(attention_head_dim))
@@ -324,16 +336,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         self.conv_out = nn.Conv2d(
             block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
         )
-
-        if controlnet_hint_channels is not None:
-            self.controlnet_input_hint_block = ControlNetInputHintBlock(
-                hint_channels=controlnet_hint_channels, channels=block_out_channels[0]
-            )
-            self.controlnet_zero_conv_block = ControlNetZeroConvBlock(
-                block_out_channels=block_out_channels,
-                down_block_types=down_block_types,
-                layers_per_block=layers_per_block,
-            )
 
     @property
     def attn_processors(self) -> Dict[str, AttnProcessor]:
