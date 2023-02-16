@@ -153,6 +153,8 @@
         title: InstructPix2Pix
       - local: api/pipelines/stable_diffusion/pix2pix_zero
         title: Pix2Pix Zero
+      - local: api/pipelines/stable_diffusion/self_attention_guidance
+        title: Self-Attention Guidance
       title: Stable Diffusion
     - local: api/pipelines/stable_diffusion_2
       title: Stable Diffusion 2
