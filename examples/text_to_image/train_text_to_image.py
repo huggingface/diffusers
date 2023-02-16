@@ -414,7 +414,6 @@ def main():
             args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
         )
         ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config)
-        ema_unet.to(accelerator.device)
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -439,6 +438,7 @@ def main():
             if args.use_ema:
                 load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), UNet2DConditionModel)
                 ema_unet.load_state_dict(load_model.state_dict())
+                ema_unet.to(accelerator.device)
                 del load_model
 
             for i in range(len(models)):
