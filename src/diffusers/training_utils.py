@@ -115,7 +115,7 @@ class EMAModel:
             deprecate("device", "1.0.0", deprecation_message, standard_warn=False)
             self.to(device=kwargs["device"])
 
-        self.collected_params = None
+        self.temp_stored_params = None
 
         self.decay = decay
         self.min_decay = min_decay
@@ -149,7 +149,7 @@ class EMAModel:
         model = self.model_cls.from_config(self.model_config)
         state_dict = self.state_dict()
         state_dict.pop("shadow_params", None)
-        state_dict.pop("collected_params", None)
+        state_dict.pop("temp_stored_params", None)
 
         model.register_to_config(**state_dict)
         self.copy_to(model.parameters())
@@ -248,19 +248,19 @@ class EMAModel:
             "inv_gamma": self.inv_gamma,
             "power": self.power,
             "shadow_params": self.shadow_params,
-            "collected_params": self.collected_params,
+            "temp_stored_params": self.temp_stored_params,
         }
 
-    def store_non_ema(self, parameters: Iterable[torch.nn.Parameter]) -> None:
+    def store(self, parameters: Iterable[torch.nn.Parameter]) -> None:
         r"""
         Args:
         Save the current parameters for restoring later.
             parameters: Iterable of `torch.nn.Parameter`; the parameters to be
                 temporarily stored.
         """
-        self.collected_params = [param.detach().cpu().clone() for param in parameters]
+        self.temp_stored_params = [param.detach().cpu().clone() for param in parameters]
 
-    def restore_non_ema(self, parameters: Iterable[torch.nn.Parameter]) -> None:
+    def restore(self, parameters: Iterable[torch.nn.Parameter]) -> None:
         r"""
         Args:
         Restore the parameters stored with the `store` method. Useful to validate the model with EMA parameters without:
@@ -270,9 +270,9 @@ class EMAModel:
                 updated with the stored parameters. If `None`, the parameters with which this
                 `ExponentialMovingAverage` was initialized will be used.
         """
-        if self.collected_params is None:
+        if self.temp_stored_params is None:
             raise RuntimeError("This ExponentialMovingAverage has no `store()`ed weights " "to `restore()`")
-        for c_param, param in zip(self.collected_params, parameters):
+        for c_param, param in zip(self.temp_stored_params, parameters):
             param.data.copy_(c_param.data)
 
     def load_state_dict(self, state_dict: dict) -> None:
@@ -322,11 +322,11 @@ class EMAModel:
             if not all(isinstance(p, torch.Tensor) for p in self.shadow_params):
                 raise ValueError("shadow_params must all be Tensors")
 
-        self.collected_params = state_dict.get("collected_params", None)
-        if self.collected_params is not None:
-            if not isinstance(self.collected_params, list):
-                raise ValueError("collected_params must be a list")
-            if not all(isinstance(p, torch.Tensor) for p in self.collected_params):
-                raise ValueError("collected_params must all be Tensors")
-            if len(self.collected_params) != len(self.shadow_params):
-                raise ValueError("collected_params and shadow_params must have the same length")
+        self.temp_stored_params = state_dict.get("temp_stored_params", None)
+        if self.temp_stored_params is not None:
+            if not isinstance(self.temp_stored_params, list):
+                raise ValueError("temp_stored_params must be a list")
+            if not all(isinstance(p, torch.Tensor) for p in self.temp_stored_params):
+                raise ValueError("temp_stored_params must all be Tensors")
+            if len(self.temp_stored_params) != len(self.shadow_params):
+                raise ValueError("temp_stored_params and shadow_params must have the same length")
