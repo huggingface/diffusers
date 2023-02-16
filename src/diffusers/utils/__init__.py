@@ -21,6 +21,7 @@ from .. import __version__
 from .accelerate_utils import apply_forward_hook
 from .constants import (
     CONFIG_NAME,
+    DEPRECATED_REVISION_ARGS,
     DIFFUSERS_CACHE,
     DIFFUSERS_DYNAMIC_MODULE_NAME,
     FLAX_WEIGHTS_NAME,
@@ -54,6 +55,7 @@ from .import_utils import (
     is_onnx_available,
     is_safetensors_available,
     is_scipy_available,
+    is_tensorboard_available,
     is_tf_available,
     is_torch_available,
     is_torch_version,
@@ -80,6 +82,7 @@ if is_torch_available():
         parse_flag_from_env,
         print_tensor_test,
         require_torch_gpu,
+        skip_mps,
         slow,
         torch_all_close,
         torch_device,

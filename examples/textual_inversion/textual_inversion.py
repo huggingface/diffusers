@@ -29,7 +29,7 @@ import torch.utils.checkpoint
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
-from accelerate.utils import set_seed
+from accelerate.utils import ProjectConfiguration, set_seed
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
 
 # TODO: remove and import from diffusers.utils when the new version of diffusers is released
@@ -289,6 +289,16 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--checkpoints_total_limit",
+        type=int,
+        default=None,
+        help=(
+            "Max number of checkpoints to store. Passed as `total_limit` to the `Accelerator` `ProjectConfiguration`."
+            " See Accelerator::save_state https://huggingface.co/docs/accelerate/package_reference/accelerator#accelerate.Accelerator.save_state"
+            " for more docs"
+        ),
+    )
+    parser.add_argument(
         "--resume_from_checkpoint",
         type=str,
         default=None,
@@ -465,11 +475,14 @@ def main():
     args = parse_args()
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
 
+    accelerator_project_config = ProjectConfiguration(total_limit=args.checkpoints_total_limit)
+
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
         logging_dir=logging_dir,
+        project_config=accelerator_project_config,
     )
 
     if args.report_to == "wandb":
@@ -781,7 +794,10 @@ def main():
                 args.pretrained_model_name_or_path,
                 text_encoder=accelerator.unwrap_model(text_encoder),
                 tokenizer=tokenizer,
+                unet=unet,
+                vae=vae,
                 revision=args.revision,
+                torch_dtype=weight_dtype,
             )
             pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
             pipeline = pipeline.to(accelerator.device)
@@ -791,8 +807,11 @@ def main():
             generator = (
                 None if args.seed is None else torch.Generator(device=accelerator.device).manual_seed(args.seed)
             )
-            prompt = args.num_validation_images * [args.validation_prompt]
-            images = pipeline(prompt, num_inference_steps=25, generator=generator).images
+            images = []
+            for _ in range(args.num_validation_images):
+                with torch.autocast("cuda"):
+                    image = pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
+                images.append(image)
 
             for tracker in accelerator.trackers:
                 if tracker.name == "tensorboard":

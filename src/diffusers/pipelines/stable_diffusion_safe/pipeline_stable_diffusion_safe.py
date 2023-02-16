@@ -512,7 +512,7 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
         sld_guidance_scale: Optional[float] = 1000,
         sld_warmup_steps: Optional[int] = 10,
         sld_threshold: Optional[float] = 0.01,

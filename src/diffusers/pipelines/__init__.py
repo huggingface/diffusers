@@ -54,7 +54,10 @@ else:
         StableDiffusionInstructPix2PixPipeline,
         StableDiffusionLatentUpscalePipeline,
         StableDiffusionPipeline,
+        StableDiffusionPix2PixZeroPipeline,
         StableDiffusionUpscalePipeline,
+        StableUnCLIPImg2ImgPipeline,
+        StableUnCLIPPipeline,
     )
     from .stable_diffusion_safe import StableDiffusionPipelineSafe
     from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline
