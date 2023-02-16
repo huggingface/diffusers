@@ -105,7 +105,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             the threshold value for dynamic thresholding. Valid only when `thresholding=True` and `predict_x0=True`.
         predict_x0 (`bool`, default `True`):
             whether to use the updating algrithm on the predicted x0. See https://arxiv.org/abs/2211.01095 for details
-        solver_type (`str`, default `bh1`):
+        solver_type (`str`, default `bh2`):
             the solver type of UniPC. We recommend use `bh1` for unconditional sampling when steps < 10, and use `bh2`
             otherwise.
         lower_order_final (`bool`, default `True`):
@@ -136,7 +136,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         dynamic_thresholding_ratio: float = 0.995,
         sample_max_value: float = 1.0,
         predict_x0: bool = True,
-        solver_type: str = "bh",
+        solver_type: str = "bh1",
         lower_order_final: bool = True,
         disable_corrector: List[int] = [],
         solver_p: SchedulerMixin = None,
@@ -167,7 +167,10 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         self.init_noise_sigma = 1.0
 
         if solver_type not in ["bh1", "bh2"]:
-            raise NotImplementedError(f"{solver_type} does is not implemented for {self.__class__}")
+            if solver_type in ["midpoint", "heun", "logrho"]:
+                solver_type = "bh1"
+            else:
+                raise NotImplementedError(f"{solver_type} does is not implemented for {self.__class__}")
 
         self.predict_x0 = predict_x0
         # setable values
@@ -179,6 +182,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         self.lower_order_nums = 0
         self.disable_corrector = disable_corrector
         self.solver_p = solver_p
+        self.last_sample = None
 
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
@@ -202,6 +206,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             None,
         ] * self.config.solver_order
         self.lower_order_nums = 0
+        self.last_sample = None
         if self.solver_p:
             self.solver_p.set_timesteps(num_inference_steps, device=device)
 
@@ -514,7 +519,9 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         else:
             step_index = step_index.item()
 
-        use_corrector = step_index > 0 and step_index - 1 not in self.disable_corrector
+        use_corrector = (
+            step_index > 0 and step_index - 1 not in self.disable_corrector and self.last_sample is not None
+        )
 
         model_output_convert = self.convert_model_output(model_output, timestep, sample)
         if use_corrector:
