@@ -212,7 +212,7 @@ class StableDiffusionPipelineSafe(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class StableDiffusionSAGPipeline(metaclass=DummyObject):
+class StableDiffusionPix2PixZeroPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -227,7 +227,7 @@ class StableDiffusionSAGPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class StableDiffusionPix2PixZeroPipeline(metaclass=DummyObject):
+class StableDiffusionSAGPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
