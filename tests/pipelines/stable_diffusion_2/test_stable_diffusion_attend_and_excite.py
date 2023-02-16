@@ -106,7 +106,7 @@ class StableDiffusionAttendAndExcitePipelineFastTests(PipelineTesterMixin, unitt
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = inputs = {
             "prompt": "a cat and a frog",
-            "indices": [2, 5],
+            "token_indices": [2, 5],
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
@@ -156,11 +156,11 @@ class StableDiffusionAttendAndExcitePipelineIntegrationTests(unittest.TestCase):
         pipe.to("cuda")
 
         prompt = "a painting of an elephant with glasses"
-        indices = [5, 7]
+        token_indices = [5, 7]
 
         image = pipe(
             prompt=prompt,
-            indices=indices,
+            token_indices=token_indices,
             guidance_scale=7.5,
             generator=generator,
             num_inference_steps=50,

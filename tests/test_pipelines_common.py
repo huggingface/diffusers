@@ -42,7 +42,7 @@ class PipelineTesterMixin:
         "mask_image",
         "example_image",
         "class_labels",
-        "indices",
+        "token_indices",
     ]
     required_optional_params = ["generator", "num_inference_steps", "return_dict"]
     num_inference_steps_args = ["num_inference_steps"]

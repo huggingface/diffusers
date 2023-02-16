@@ -44,13 +44,17 @@ EXAMPLE_DOC_STRING = """
 
 
         >>> prompt = "a cat and a frog"
-        >>> indices = [2, 5]
+        
+        >>> # use get_indices function to find out indices of the tokens you want to alter
+        >>> pipe.get_indices(prompt)
+
+        >>> token_indices = [2, 5]
         >>> seed = 6141
         >>> generator = torch.Generator("cuda").manual_seed(seed)
 
         >>> images = pipe(
         ...     prompt=prompt,
-        ...     indices=indices,
+        ...     token_indices=token_indices,
         ...     guidance_scale=7.5,
         ...     generator=generator,
         ...     num_inference_steps=50,
@@ -653,10 +657,10 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
         self.unet.set_attn_processor(attn_procs)
         self.attention_store.num_att_layers = cross_att_count
         
-    def get_indices(prompt: str) -> Dict[str, int]:
+    def get_indices(self, prompt: str) -> Dict[str, int]:
+        """Utility function to list the indices of the tokens you wish to alte"""
         ids = self.tokenizer(prompt).input_ids
-        
-        indices = {tok: i for tok, i in zip(self.tokenizer.convert_ids_to_tokens(ids), ids)}
+        indices = {tok: i for tok, i in zip(self.tokenizer.convert_ids_to_tokens(ids), range(len(ids)))}
         return indices
 
     @torch.no_grad()
@@ -664,7 +668,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        indices: List[int],
+        token_indices: List[int],
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -692,7 +696,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            indices (`List[int]`):
+            token_indices (`List[int]`):
                 The token indices to alter with attend-and-excite.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
@@ -772,7 +776,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            prompt, indices, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
+            prompt, token_indices, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
         )
 
         # 2. Define call parameters
@@ -831,11 +835,11 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
             prompt_embeds[batch_size * num_images_per_prompt :] if do_classifier_free_guidance else prompt_embeds
         )
 
-        if isinstance(indices[0], int):
-            indices = [indices]
-        token_indices = []
-        for ind in indices:
-            token_indices = token_indices + [ind] * num_images_per_prompt
+        if isinstance(token_indices[0], int):
+            token_indices = [token_indices]
+        indices = []
+        for ind in token_indices:
+            indices = indices + [ind] * num_images_per_prompt
 
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -845,7 +849,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
                 with torch.enable_grad():
                     latents = latents.clone().detach().requires_grad_(True)
                     updated_latents = []
-                    for latent, index, text_embedding in zip(latents, token_indices, text_embeddings):
+                    for latent, index, text_embedding in zip(latents, indices, text_embeddings):
                         # Forward pass of denoising with text conditioning
                         latent = latent.unsqueeze(0)
                         text_embedding = text_embedding.unsqueeze(0)
