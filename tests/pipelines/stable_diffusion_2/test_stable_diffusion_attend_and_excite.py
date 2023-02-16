@@ -26,12 +26,12 @@ from diffusers import (
     StableDiffusionAttendAndExcitePipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import load_numpy, slow
+from diffusers.utils import load_numpy, slow, skip_mps
 from diffusers.utils.testing_utils import require_torch_gpu
 
 from ...test_pipelines_common import PipelineTesterMixin
 
-
+@skip_mps
 class StableDiffusionAttendAndExcitePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionAttendAndExcitePipeline
     test_attention_slicing = False
