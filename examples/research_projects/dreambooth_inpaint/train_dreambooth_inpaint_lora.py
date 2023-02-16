@@ -255,7 +255,7 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--checkpointing_steps_total_limit",
+        "--checkpoints_total_limit",
         type=int,
         default=None,
         help=(
@@ -415,7 +415,7 @@ def main():
     args = parse_args()
     logging_dir = Path(args.output_dir, args.logging_dir)
 
-    accelerator_project_config = ProjectConfiguration(total_limit=args.checkpointing_steps_total_limit)
+    accelerator_project_config = ProjectConfiguration(total_limit=args.checkpoints_total_limit)
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,

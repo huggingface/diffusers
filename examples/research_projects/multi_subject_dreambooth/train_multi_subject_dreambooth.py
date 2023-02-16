@@ -171,7 +171,7 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--checkpointing_steps_total_limit",
+        "--checkpoints_total_limit",
         type=int,
         default=None,
         help=(
@@ -476,7 +476,7 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
 
-    accelerator_project_config = ProjectConfiguration(total_limit=args.checkpointing_steps_total_limit)
+    accelerator_project_config = ProjectConfiguration(total_limit=args.checkpoints_total_limit)
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
