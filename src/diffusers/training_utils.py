@@ -251,7 +251,7 @@ class EMAModel:
             "collected_params": self.collected_params,
         }
 
-    def store(self, parameters: Iterable[torch.nn.Parameter]) -> None:
+    def store_non_ema(self, parameters: Iterable[torch.nn.Parameter]) -> None:
         r"""
         Args:
         Save the current parameters for restoring later.
@@ -260,7 +260,7 @@ class EMAModel:
         """
         self.collected_params = [param.detach().cpu().clone() for param in parameters]
 
-    def restore(self, parameters: Iterable[torch.nn.Parameter]) -> None:
+    def restore_non_ema(self, parameters: Iterable[torch.nn.Parameter]) -> None:
         r"""
         Args:
         Restore the parameters stored with the `store` method. Useful to validate the model with EMA parameters without:
