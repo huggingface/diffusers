@@ -55,16 +55,16 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
 
 class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
     """
-    UniPC is a training-free framework designed for the fast sampling of diffusion models, which consists of 
-    a corrector (UniC) and a predictor (UniP) that share a unified analytical form and support arbitrary orders.
-    UniPC is by desinged model-agnostic, supporting pixel-space/latent-space DPMs on unconditional/conditional 
-    sampling. It can also be applied to both noise prediction model and data prediction model. The corrector
-    UniC can be also applied after any off-the-shelf solvers to increase the order of accuracy.
+    UniPC is a training-free framework designed for the fast sampling of diffusion models, which consists of a
+    corrector (UniC) and a predictor (UniP) that share a unified analytical form and support arbitrary orders. UniPC is
+    by desinged model-agnostic, supporting pixel-space/latent-space DPMs on unconditional/conditional sampling. It can
+    also be applied to both noise prediction model and data prediction model. The corrector UniC can be also applied
+    after any off-the-shelf solvers to increase the order of accuracy.
 
     For more details, see the original paper: https://arxiv.org/abs/2302.04867
 
-    Currently, we support the multistep UniPC for both noise prediction models and data prediction models. We
-    recommend to use `solver_order=2` for guided sampling, and `solver_order=3` for unconditional sampling.
+    Currently, we support the multistep UniPC for both noise prediction models and data prediction models. We recommend
+    to use `solver_order=2` for guided sampling, and `solver_order=3` for unconditional sampling.
 
     We also support the "dynamic thresholding" method in Imagen (https://arxiv.org/abs/2205.11487). For pixel-space
     diffusion models, you can set both `algorithm_type="dpmsolver++"` and `thresholding=True` to use the dynamic
@@ -87,8 +87,8 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
         solver_order (`int`, default `2`):
             the order of UniPC, also the p in UniPC-p; can be any positive integer. Note that the effective order of
-            accuracy is `solver_order + 1` due to the UniC. We recommend to use `solver_order=2` for guided
-            sampling, and `solver_order=3` for unconditional sampling.
+            accuracy is `solver_order + 1` due to the UniC. We recommend to use `solver_order=2` for guided sampling,
+            and `solver_order=3` for unconditional sampling.
         prediction_type (`str`, default `epsilon`, optional):
             prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
             process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
@@ -102,21 +102,20 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             the ratio for the dynamic thresholding method. Default is `0.995`, the same as Imagen
             (https://arxiv.org/abs/2205.11487).
         sample_max_value (`float`, default `1.0`):
-            the threshold value for dynamic thresholding. Valid only when `thresholding=True` and
-            `predict_x0=True`.
+            the threshold value for dynamic thresholding. Valid only when `thresholding=True` and `predict_x0=True`.
         predict_x0 (`bool`, default `True`):
             whether to use the updating algrithm on the predicted x0. See https://arxiv.org/abs/2211.01095 for details
         solver_type (`str`, default `bh1`):
-            the solver type of UniPC. We recommend use `bh1` for unconditional sampling when steps < 10, and use
-            `bh2` otherwise.
+            the solver type of UniPC. We recommend use `bh1` for unconditional sampling when steps < 10, and use `bh2`
+            otherwise.
         lower_order_final (`bool`, default `True`):
             whether to use lower-order solvers in the final steps. Only valid for < 15 inference steps. We empirically
             find this trick can stabilize the sampling of DPM-Solver for steps < 15, especially for steps <= 10.
         disable_corrector (`list`, default `[]`):
             decide which step to disable the corrector. For large guidance scale, the misalignment between the
-            `epsilon_theta(x_t, c)`and `epsilon_theta(x_t^c, c)` might influence the convergence. This can be 
-            mitigated by disable the corrector at the first few steps (e.g., disable_corrector=[0])
-        solver_p (`SchedulerMixin`):
+            `epsilon_theta(x_t, c)`and `epsilon_theta(x_t^c, c)` might influence the convergence. This can be mitigated
+            by disable the corrector at the first few steps (e.g., disable_corrector=[0])
+        solver_p (`SchedulerMixin`, default `None`):
             can be any other scheduler. If specified, the algorithm will become solver_p + UniC.
     """
 
@@ -166,7 +165,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0
-            
+
         if solver_type not in ["bh1", "bh2"]:
             raise NotImplementedError(f"{solver_type} does is not implemented for {self.__class__}")
 
@@ -268,7 +267,6 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
                     " `v_prediction` for the DPMSolverMultistepScheduler."
                 )
 
-    
     def multistep_uni_p_bh_update(
         self,
         model_output: torch.FloatTensor,
@@ -300,54 +298,54 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         if self.solver_p:
             x_t = self.solver_p.step(model_output, s0, x).prev_sample
             return x_t
-        
+
         lambda_t, lambda_s0 = self.lambda_t[t], self.lambda_t[s0]
         alpha_t, alpha_s0 = self.alpha_t[t], self.alpha_t[s0]
         sigma_t, sigma_s0 = self.sigma_t[t], self.sigma_t[s0]
-        
+
         h = lambda_t - lambda_s0
         device = sample.device
-        
+
         rks = []
         D1s = []
         for i in range(1, order):
             si = timestep_list[-(i + 1)]
             mi = model_output_list[-(i + 1)]
             lambda_si = self.lambda_t[si]
-            rk = ((lambda_si - lambda_s0) / h)
+            rk = (lambda_si - lambda_s0) / h
             rks.append(rk)
             D1s.append((mi - m0) / rk)
-            
-        rks.append(1.)
+
+        rks.append(1.0)
         rks = torch.tensor(rks, device=device)
-        
+
         R = []
         b = []
-        
+
         hh = -h if self.predict_x0 else h
-        h_phi_1 = torch.expm1(hh) # h\phi_1(h) = e^h - 1
+        h_phi_1 = torch.expm1(hh)  # h\phi_1(h) = e^h - 1
         h_phi_k = h_phi_1 / hh - 1
 
         factorial_i = 1
 
-        if self.config.solver_type == 'bh1':
+        if self.config.solver_type == "bh1":
             B_h = hh
-        elif self.config.solver_type == 'bh2':
+        elif self.config.solver_type == "bh2":
             B_h = torch.expm1(hh)
         else:
             raise NotImplementedError()
-            
+
         for i in range(1, order + 1):
             R.append(torch.pow(rks, i - 1))
             b.append(h_phi_k * factorial_i / B_h)
-            factorial_i *= (i + 1)
-            h_phi_k = h_phi_k / hh - 1 / factorial_i 
+            factorial_i *= i + 1
+            h_phi_k = h_phi_k / hh - 1 / factorial_i
 
         R = torch.stack(R)
         b = torch.tensor(b, device=device)
-        
+
         if len(D1s) > 0:
-            D1s = torch.stack(D1s, dim=1) # (B, K)
+            D1s = torch.stack(D1s, dim=1)  # (B, K)
             # for order 2, we use a simplified version
             if order == 2:
                 rhos_p = torch.tensor([0.5], dtype=x.dtype, device=device)
@@ -355,31 +353,24 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
                 rhos_p = torch.linalg.solve(R[:-1, :-1], b[:-1])
         else:
             D1s = None
-    
+
         if self.predict_x0:
-            x_t_ = (
-                sigma_t / sigma_s0 * x
-                - alpha_t * h_phi_1 * m0
-            )
+            x_t_ = sigma_t / sigma_s0 * x - alpha_t * h_phi_1 * m0
             if D1s is not None:
-                pred_res = torch.einsum('k,bkchw->bchw', rhos_p, D1s)
+                pred_res = torch.einsum("k,bkchw->bchw", rhos_p, D1s)
             else:
                 pred_res = 0
             x_t = x_t_ - alpha_t * B_h * pred_res
         else:
-            x_t_ = (
-                alpha_t / alpha_s0 * x
-                - sigma_t * h_phi_1 * m0
-            )
+            x_t_ = alpha_t / alpha_s0 * x - sigma_t * h_phi_1 * m0
             if D1s is not None:
-                pred_res = torch.einsum('k,bkchw->bchw', rhos_p, D1s)
+                pred_res = torch.einsum("k,bkchw->bchw", rhos_p, D1s)
             else:
                 pred_res = 0
             x_t = x_t_ - sigma_t * B_h * pred_res
 
         x_t = x_t.to(x.dtype)
         return x_t
-
 
     def multistep_uni_c_bh_update(
         self,
@@ -390,14 +381,14 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         order: int,
     ) -> torch.FloatTensor:
         """
-        One step for the UniC (B(h) version). 
+        One step for the UniC (B(h) version).
 
         Args:
             this_model_output (`torch.FloatTensor`): the model outputs at `x_t`
             this_timestep (`int`): the current timestep `t`
             last_sample (`torch.FloatTensor`): the generated sample before the last predictor: `x_{t-1}`
             this_sample (`torch.FloatTensor`): the generated sample after the last predictor: `x_{t}`
-            order (`int`): the `p` of UniC-p at this step. Note that the effective order of accuracy 
+            order (`int`): the `p` of UniC-p at this step. Note that the effective order of accuracy
                 should be order + 1
 
         Returns:
@@ -411,88 +402,81 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         x = last_sample
         x_t = this_sample
         model_t = this_model_output
-        
+
         lambda_t, lambda_s0 = self.lambda_t[t], self.lambda_t[s0]
         alpha_t, alpha_s0 = self.alpha_t[t], self.alpha_t[s0]
         sigma_t, sigma_s0 = self.sigma_t[t], self.sigma_t[s0]
-        
+
         h = lambda_t - lambda_s0
         device = this_sample.device
-        
+
         rks = []
         D1s = []
         for i in range(1, order):
             si = timestep_list[-(i + 1)]
             mi = model_output_list[-(i + 1)]
             lambda_si = self.lambda_t[si]
-            rk = ((lambda_si - lambda_s0) / h)
+            rk = (lambda_si - lambda_s0) / h
             rks.append(rk)
             D1s.append((mi - m0) / rk)
-            
-        rks.append(1.)
+
+        rks.append(1.0)
         rks = torch.tensor(rks, device=device)
-        
+
         R = []
         b = []
-        
+
         hh = -h if self.predict_x0 else h
-        h_phi_1 = torch.expm1(hh) # h\phi_1(h) = e^h - 1
+        h_phi_1 = torch.expm1(hh)  # h\phi_1(h) = e^h - 1
         h_phi_k = h_phi_1 / hh - 1
 
         factorial_i = 1
 
-        if self.config.solver_type == 'bh1':
+        if self.config.solver_type == "bh1":
             B_h = hh
-        elif self.config.solver_type == 'bh2':
+        elif self.config.solver_type == "bh2":
             B_h = torch.expm1(hh)
         else:
             raise NotImplementedError()
-            
+
         for i in range(1, order + 1):
             R.append(torch.pow(rks, i - 1))
             b.append(h_phi_k * factorial_i / B_h)
-            factorial_i *= (i + 1)
-            h_phi_k = h_phi_k / hh - 1 / factorial_i 
+            factorial_i *= i + 1
+            h_phi_k = h_phi_k / hh - 1 / factorial_i
 
         R = torch.stack(R)
         b = torch.tensor(b, device=device)
-        
+
         if len(D1s) > 0:
             D1s = torch.stack(D1s, dim=1)
         else:
             D1s = None
-            
+
         # for order 1, we use a simplified version
         if order == 1:
             rhos_c = torch.tensor([0.5], dtype=x.dtype, device=device)
         else:
             rhos_c = torch.linalg.solve(R, b)
-        
+
         if self.predict_x0:
-            x_t_ = (
-                sigma_t / sigma_s0 * x
-                - alpha_t * h_phi_1 * m0
-            )
+            x_t_ = sigma_t / sigma_s0 * x - alpha_t * h_phi_1 * m0
             if D1s is not None:
-                corr_res = torch.einsum('k,bkchw->bchw', rhos_c[:-1], D1s)
+                corr_res = torch.einsum("k,bkchw->bchw", rhos_c[:-1], D1s)
             else:
                 corr_res = 0
-            D1_t = (model_t - m0)
+            D1_t = model_t - m0
             x_t = x_t_ - alpha_t * B_h * (corr_res + rhos_c[-1] * D1_t)
         else:
-            x_t_ = (
-                alpha_t / alpha_s0 * x
-                - sigma_t * h_phi_1 * m0
-            )
+            x_t_ = alpha_t / alpha_s0 * x - sigma_t * h_phi_1 * m0
             if D1s is not None:
-                corr_res = torch.einsum('k,bkchw->bchw', rhos_c[:-1], D1s)
+                corr_res = torch.einsum("k,bkchw->bchw", rhos_c[:-1], D1s)
             else:
                 corr_res = 0
-            D1_t = (model_t - m0)
+            D1_t = model_t - m0
             x_t = x_t_ - sigma_t * B_h * (corr_res + rhos_c[-1] * D1_t)
         x_t = x_t.to(x.dtype)
         return x_t
-
 
     def step(
         self,
@@ -539,17 +523,16 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
                 this_timestep=timestep,
                 last_sample=self.last_sample,
                 this_sample=sample,
-                order=self.this_order,   
+                order=self.this_order,
             )
 
         # now prepare to run the predictor
         prev_timestep = 0 if step_index == len(self.timesteps) - 1 else self.timesteps[step_index + 1]
 
-        
         for i in range(self.config.solver_order - 1):
             self.model_outputs[i] = self.model_outputs[i + 1]
             self.timestep_list[i] = self.timestep_list[i + 1]
-            
+
         self.model_outputs[-1] = model_output_convert
         self.timestep_list[-1] = timestep
 
@@ -558,17 +541,16 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         else:
             this_order = self.config.solver_order
 
-        self.this_order = min(this_order, self.lower_order_nums + 1) # warmup for multistep
+        self.this_order = min(this_order, self.lower_order_nums + 1)  # warmup for multistep
         assert self.this_order > 0
 
         self.last_sample = sample
         prev_sample = self.multistep_uni_p_bh_update(
-            model_output=model_output, # pass the original non-converted model output, in case solver-p is used
+            model_output=model_output,  # pass the original non-converted model output, in case solver-p is used
             prev_timestep=prev_timestep,
             sample=sample,
             order=self.this_order,
         )
-
 
         if self.lower_order_nums < self.config.solver_order:
             self.lower_order_nums += 1
