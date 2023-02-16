@@ -34,8 +34,6 @@ except OptionalDependencyNotAvailable:
 else:
     from .models import (
         AutoencoderKL,
-        ControlledUNet2DConditionModel,
-        ControlNetModel,
         ModelMixin,
         PriorTransformer,
         Transformer2DModel,

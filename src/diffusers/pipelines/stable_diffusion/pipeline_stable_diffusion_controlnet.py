@@ -15,7 +15,7 @@
 
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
-from ...models import AutoencoderKL, ControlledUNet2DConditionModel, ControlNetModel
+from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import logging
 from ..pipeline_utils import DiffusionPipeline
@@ -31,8 +31,8 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
-        unet: ControlledUNet2DConditionModel,
-        controlnet: ControlNetModel,
+        unet: UNet2DConditionModel,
+        controlnet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
