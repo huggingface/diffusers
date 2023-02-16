@@ -293,7 +293,7 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         editing_prompt: Optional[Union[str, List[str]]] = None,
-        editing_prompt_embeddings: Optional[torch.FloatTensor] = None,
+        editing_prompt_embeddings: Optional[torch.Tensor] = None,
         reverse_editing_direction: Optional[Union[bool, List[bool]]] = False,
         edit_guidance_scale: Optional[Union[float, List[float]]] = 5,
         edit_warmup_steps: Optional[Union[int, List[int]]] = 10,
@@ -302,7 +302,7 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
         edit_momentum_scale: Optional[float] = 0.1,
         edit_mom_beta: Optional[float] = 0.4,
         edit_weights: Optional[List[float]] = None,
-        sem_guidance: Optional[List[torch.FloatTensor]] = None,
+        sem_guidance: Optional[List[torch.Tensor]] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -354,7 +354,7 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
                 The prompt or prompts to use for Semantic guidance. Semantic guidance is disabled by setting
                 `editing_prompt = None`. Guidance direction of prompt should be specified via
                 `reverse_editing_direction`.
-            editing_prompt_embeddings (`torch.FloatTensor`, *optional*):
+            editing_prompt_embeddings (`torch.Tensor>`, *optional*):
                 Pre-computed embeddings to use for semantic guidance. Guidance direction of embedding should be
                 specified via `reverse_editing_direction`.
             reverse_editing_direction (`bool` or `List[bool]`, *optional*, defaults to `False`):
@@ -386,7 +386,7 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
                 Indicates how much each individual concept should influence the overall guidance. If no weights are
                 provided all concepts are applied equally. `edit_mom_beta` is defined as `g_i` of equation 9 of [SEGA
                 Paper](https://arxiv.org/pdf/2301.12247.pdf).
-            sem_guidance (`List[torch.FloatTensor]`, *optional*):
+            sem_guidance (`List[torch.Tensor]`, *optional*):
                 List of pre-generated guidance vectors to be applied at generation. Length of the list has to
                 correspond to `num_inference_steps`.
 
@@ -591,10 +591,14 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
 
                 if enable_edit_guidance:
                     concept_weights = torch.zeros(
-                        (len(noise_pred_edit_concepts), noise_guidance.shape[0]), device=self.device
+                        (len(noise_pred_edit_concepts), noise_guidance.shape[0]),
+                        device=self.device,
+                        dtype=noise_guidance.dtype,
                     )
                     noise_guidance_edit = torch.zeros(
-                        (len(noise_pred_edit_concepts), *noise_guidance.shape), device=self.device
+                        (len(noise_pred_edit_concepts), *noise_guidance.shape),
+                        device=self.device,
+                        dtype=noise_guidance.dtype,
                     )
                     # noise_guidance_edit = torch.zeros_like(noise_guidance)
                     warmup_inds = []
@@ -644,12 +648,23 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
                         concept_weights[c, :] = tmp_weights
 
                         noise_guidance_edit_tmp = noise_guidance_edit_tmp * edit_guidance_scale_c
-                        tmp = torch.quantile(
-                            torch.abs(noise_guidance_edit_tmp).flatten(start_dim=2),
-                            edit_threshold_c,
-                            dim=2,
-                            keepdim=False,
-                        )
+
+                        # torch.quantile function expects float32
+                        if noise_guidance_edit_tmp.dtype == torch.float32:
+                            tmp = torch.quantile(
+                                torch.abs(noise_guidance_edit_tmp).flatten(start_dim=2),
+                                edit_threshold_c,
+                                dim=2,
+                                keepdim=False,
+                            )
+                        else:
+                            tmp = torch.quantile(
+                                torch.abs(noise_guidance_edit_tmp).flatten(start_dim=2).to(torch.float32),
+                                edit_threshold_c,
+                                dim=2,
+                                keepdim=False,
+                            ).to(noise_guidance_edit_tmp.dtype)
+
                         noise_guidance_edit_tmp = torch.where(
                             torch.abs(noise_guidance_edit_tmp) >= tmp[:, :, None, None],
                             noise_guidance_edit_tmp,
@@ -692,6 +707,7 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
                     )
 
                     concept_weights = torch.nan_to_num(concept_weights)
+
                     noise_guidance_edit = torch.einsum("cb,cbijk->bijk", concept_weights, noise_guidance_edit)
 
                     noise_guidance_edit = noise_guidance_edit + edit_momentum_scale * edit_momentum
