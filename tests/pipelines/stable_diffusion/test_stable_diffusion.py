@@ -799,7 +799,8 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         # Normal inference
 
         pipe = StableDiffusionPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16,
+            "CompVis/stable-diffusion-v1-4",
+            torch_dtype=torch.float16,
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -810,7 +811,8 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 
         # Reload but don't move to cuda
         pipe = StableDiffusionPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16,
+            "CompVis/stable-diffusion-v1-4",
+            torch_dtype=torch.float16,
         )
 
         torch.cuda.empty_cache()
@@ -836,7 +838,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         pipe.enable_attention_slicing()
         _ = pipe(**inputs)
         mem_bytes_slicing = torch.cuda.max_memory_allocated()
-        
+
         assert mem_bytes_slicing < mem_bytes_offloaded
         assert mem_bytes_slicing < 3 * 10**9
 

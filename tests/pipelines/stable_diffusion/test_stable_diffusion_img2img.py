@@ -352,18 +352,22 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
         # Normal inference
 
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", safety_checker=None, torch_dtype=torch.float16,
+            "CompVis/stable-diffusion-v1-4",
+            safety_checker=None,
+            torch_dtype=torch.float16,
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-        outputs = pipe(**inputs)
+        pipe(**inputs)
         mem_bytes = torch.cuda.max_memory_allocated()
 
         # With model offloading
 
         # Reload but don't move to cuda
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", safety_checker=None, torch_dtype=torch.float16,
+            "CompVis/stable-diffusion-v1-4",
+            safety_checker=None,
+            torch_dtype=torch.float16,
         )
 
         torch.cuda.empty_cache()

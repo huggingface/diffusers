@@ -403,7 +403,8 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         # Normal inference
 
         pipe = StableDiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-2-base", torch_dtype=torch.float16,
+            "stabilityai/stable-diffusion-2-base",
+            torch_dtype=torch.float16,
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -414,7 +415,8 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
 
         # Reload but don't move to cuda
         pipe = StableDiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-2-base", torch_dtype=torch.float16,
+            "stabilityai/stable-diffusion-2-base",
+            torch_dtype=torch.float16,
         )
 
         torch.cuda.empty_cache()
