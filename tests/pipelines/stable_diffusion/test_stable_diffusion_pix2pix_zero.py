@@ -31,7 +31,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils import slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
 
 from ...test_pipelines_common import PipelineTesterMixin
 
@@ -45,6 +45,7 @@ def download_from_url(embedding_url, local_filepath):
         f.write(r.content)
 
 
+@skip_mps
 class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionPix2PixZeroPipeline
 
