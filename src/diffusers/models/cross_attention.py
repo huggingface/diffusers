@@ -275,7 +275,7 @@ class CrossAttention(nn.Module):
                 # Instead, we can manually construct the padding tensor.
                 padding_shape = (attention_mask.shape[0], attention_mask.shape[1], target_length)
                 padding = torch.zeros(padding_shape, dtype=attention_mask.dtype, device=attention_mask.device)
-                attention_mask = torch.concat([attention_mask, padding], dim=2)
+                attention_mask = torch.cat([attention_mask, padding], dim=2)
             else:
                 attention_mask = F.pad(attention_mask, (0, target_length), value=0.0)
 
@@ -409,8 +409,8 @@ class CrossAttnAddedKVProcessor:
         encoder_hidden_states_key_proj = attn.head_to_batch_dim(encoder_hidden_states_key_proj)
         encoder_hidden_states_value_proj = attn.head_to_batch_dim(encoder_hidden_states_value_proj)
 
-        key = torch.concat([encoder_hidden_states_key_proj, key], dim=1)
-        value = torch.concat([encoder_hidden_states_value_proj, value], dim=1)
+        key = torch.cat([encoder_hidden_states_key_proj, key], dim=1)
+        value = torch.cat([encoder_hidden_states_value_proj, value], dim=1)
 
         attention_probs = attn.get_attention_scores(query, key, attention_mask)
         hidden_states = torch.bmm(attention_probs, value)
@@ -588,8 +588,8 @@ class SlicedAttnAddedKVProcessor:
         encoder_hidden_states_key_proj = attn.head_to_batch_dim(encoder_hidden_states_key_proj)
         encoder_hidden_states_value_proj = attn.head_to_batch_dim(encoder_hidden_states_value_proj)
 
-        key = torch.concat([encoder_hidden_states_key_proj, key], dim=1)
-        value = torch.concat([encoder_hidden_states_value_proj, value], dim=1)
+        key = torch.cat([encoder_hidden_states_key_proj, key], dim=1)
+        value = torch.cat([encoder_hidden_states_value_proj, value], dim=1)
 
         batch_size_attention = query.shape[0]
         hidden_states = torch.zeros(
