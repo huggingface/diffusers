@@ -206,8 +206,8 @@ A variation of a checkpoint has to have **exactly** the same serialization forma
 
 #### Let's first talk about whats **not** checkpoint variant,
 
-Checkpoint variants do **not** include different serialization formats (such as [safetensors](https://huggingface.co/docs/diffusers/main/en/using-diffusers/using_safetensors)) as different serialization formats are 
-identical to the "main" serialization format, just loaded with different code.
+Checkpoint variants do **not** include different serialization formats (such as [safetensors](https://huggingface.co/docs/diffusers/main/en/using-diffusers/using_safetensors)) as weights in different serialization formats are 
+identical to the weights of the "main" checkpoint, just loaded with a different code.
 
 Also variants do not correspond to different checkpoint layouts, *e.g.* [stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) is not a variant of [stable-diffusion-2-0](https://huggingface.co/stabilityai/stable-diffusion-2) since the checkpoint layout is different (Stable Diffusion 1-5 uses a different `CLIPTextModel` compared to Stable Diffusion 2.0).
 
