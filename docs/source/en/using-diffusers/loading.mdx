@@ -201,9 +201,10 @@ Note how the above code snippet makes use of [`DiffusionPipeline.components`].
 ### Loading variants
 
 Diffusion Pipeline checkpoints can offer variants of the "main" diffusion pipeline checkpoint.
-Such checkpoint variants are usually variations of the checkpoint that have advantages for specific use-cases and that are so similar to the "main" checkpoint that they **should not** be put in a new checkpoint. A variation of a checkpoint has to have **exactly** the same checkpoint layout including all weights having the same tensor shapes.
+Such checkpoint variants are usually variations of the checkpoint that have advantages for specific use-cases and that are so similar to the "main" checkpoint that they **should not** be put in a new checkpoint.
+A variation of a checkpoint has to have **exactly** the same serialization format and **exactly** the same checkpoint layout, including all weights having the same tensor shapes.
 
-#### Let's first talk about what checkpoint variants are **not**.
+#### Let's first talk about whats **not** checkpoint variant,
 
 Checkpoint variants do **not** include different serialization formats (such as [safetensors](https://huggingface.co/docs/diffusers/main/en/using-diffusers/using_safetensors)) as different serialization formats are 
 identical to the "main" serialization format, just loaded with different code.
