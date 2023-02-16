@@ -393,6 +393,57 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         # make sure that less than 2.8 GB is allocated
         assert mem_bytes < 2.8 * 10**9
 
+    def test_stable_diffusion_pipeline_with_model_offloading(self):
+        torch.cuda.empty_cache()
+        torch.cuda.reset_max_memory_allocated()
+        torch.cuda.reset_peak_memory_stats()
+
+        inputs = self.get_inputs(torch_device, dtype=torch.float16)
+
+        # Normal inference
+
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-2-base",
+            torch_dtype=torch.float16,
+        )
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        outputs = pipe(**inputs)
+        mem_bytes = torch.cuda.max_memory_allocated()
+
+        # With model offloading
+
+        # Reload but don't move to cuda
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-2-base",
+            torch_dtype=torch.float16,
+        )
+
+        torch.cuda.empty_cache()
+        torch.cuda.reset_max_memory_allocated()
+        torch.cuda.reset_peak_memory_stats()
+
+        pipe.enable_model_cpu_offload()
+        pipe.set_progress_bar_config(disable=None)
+        outputs_offloaded = pipe(**inputs)
+        mem_bytes_offloaded = torch.cuda.max_memory_allocated()
+
+        assert np.abs(outputs.images - outputs_offloaded.images).max() < 1e-3
+        assert mem_bytes_offloaded < mem_bytes
+        assert mem_bytes_offloaded < 3 * 10**9
+        for module in pipe.text_encoder, pipe.unet, pipe.vae:
+            assert module.device == torch.device("cpu")
+
+        # With attention slicing
+        torch.cuda.empty_cache()
+        torch.cuda.reset_max_memory_allocated()
+        torch.cuda.reset_peak_memory_stats()
+
+        pipe.enable_attention_slicing()
+        _ = pipe(**inputs)
+        mem_bytes_slicing = torch.cuda.max_memory_allocated()
+        assert mem_bytes_slicing < mem_bytes_offloaded
+
 
 @nightly
 @require_torch_gpu
