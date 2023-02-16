@@ -21,6 +21,7 @@ import torch.utils.checkpoint
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import UNet2DConditionLoadersMixin
 from ..utils import BaseOutput, logging
+from .controlnet_blocks import ControlNetInputHintBlock, ControlNetZeroConvBlock
 from .cross_attention import AttnProcessor
 from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
@@ -145,6 +146,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         time_cond_proj_dim: Optional[int] = None,
         conv_in_kernel: int = 3,
         conv_out_kernel: int = 3,
+        controlnet_hint_channels: Optional[int] = None,
     ):
         super().__init__()
 
@@ -323,6 +325,16 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
         )
 
+        if controlnet_hint_channels is not None:
+            self.controlnet_input_hint_block = ControlNetInputHintBlock(
+                hint_channels=controlnet_hint_channels, channels=block_out_channels[0]
+            )
+            self.controlnet_zero_conv_block = ControlNetZeroConvBlock(
+                block_out_channels=block_out_channels,
+                down_block_types=down_block_types,
+                layers_per_block=layers_per_block,
+            )
+
     @property
     def attn_processors(self) -> Dict[str, AttnProcessor]:
         r"""
@@ -455,8 +467,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        controlnet_hint: Optional[torch.Tensor] = None,
+        control: Optional[List[torch.Tensor]] = None,
         return_dict: bool = True,
-    ) -> Union[UNet2DConditionOutput, Tuple]:
+    ) -> Union[UNet2DConditionOutput, Tuple, List[torch.Tensor]]:
         r"""
         Args:
             sample (`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
@@ -535,6 +549,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         # 2. pre-process
         sample = self.conv_in(sample)
+        if controlnet_hint is not None:
+            sample += self.controlnet_input_hint_block(controlnet_hint)
 
         # 3. down
         down_block_res_samples = (sample,)
@@ -562,12 +578,28 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 cross_attention_kwargs=cross_attention_kwargs,
             )
 
+        if controlnet_hint is not None:
+            # ControlNet: zero convs
+            return self.controlnet_zero_conv_block(
+                down_block_res_samples=down_block_res_samples, mid_block_sample=sample
+            )
+        
+        if control is not None:
+            # ControlledUnet: apply mid_zero_conv output
+            sample += control.pop()
+        
         # 5. up
         for i, upsample_block in enumerate(self.up_blocks):
             is_final_block = i == len(self.up_blocks) - 1
 
             res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
             down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
+
+            if control is not None:
+                # ControlledUnet: apply ControlNet downblock zero_convs output
+                control_samples = control[-len(upsample_block.resnets) :]
+                control = control[: -len(upsample_block.resnets)]
+                res_samples = [r + c for r, c in zip(res_samples, control_samples)]
 
             # if we have not reached the final block and need to forward the
             # upsample size, we do it here
@@ -588,6 +620,11 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 sample = upsample_block(
                     hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size
                 )
+
+        # TODO: remove this block
+        if control is not None:
+            assert len(control) == 0, f"must consume all control array ({len(control)})"
+                
         # 6. post-process
         if self.conv_norm_out:
             sample = self.conv_norm_out(sample)
