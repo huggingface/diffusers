@@ -168,7 +168,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
             else:
                 raise NotImplementedError(f"{algorithm_type} does is not implemented for {self.__class__}")
         if solver_type not in ["midpoint", "heun"]:
-            if solver_type == "logrho":
+            if solver_type in ["logrho", "bh1", "bh2"]:
                 solver_type = "midpoint"
             else:
                 raise NotImplementedError(f"{solver_type} does is not implemented for {self.__class__}")
