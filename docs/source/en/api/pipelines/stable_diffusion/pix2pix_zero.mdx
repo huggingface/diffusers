@@ -1,0 +1,103 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+# Zero-shot Image-to-Image Translation
+
+## Overview
+
+[Zero-shot Image-to-Image Translation](https://arxiv.org/abs/2302.03027) by Gaurav Parmar, Krishna Kumar Singh, Richard Zhang, Yijun Li, Jingwan Lu, and Jun-Yan Zhu.
+
+The abstract of the paper is the following:
+
+*Large-scale text-to-image generative models have shown their remarkable ability to synthesize diverse and high-quality images. However, it is still challenging to directly apply these models for editing real images for two reasons. First, it is hard for users to come up with a perfect text prompt that accurately describes every visual detail in the input image. Second, while existing models can introduce desirable changes in certain regions, they often dramatically alter the input content and introduce unexpected changes in unwanted regions. In this work, we propose pix2pix-zero, an image-to-image translation method that can preserve the content of the original image without manual prompting. We first automatically discover editing directions that reflect desired edits in the text embedding space. To preserve the general content structure after editing, we further propose cross-attention guidance, which aims to retain the cross-attention maps of the input image throughout the diffusion process. In addition, our method does not need additional training for these edits and can directly use the existing pre-trained text-to-image diffusion model. We conduct extensive experiments and show that our method outperforms existing and concurrent works for both real and synthetic image editing.*
+
+Resources:
+
+* [Project Page](https://pix2pixzero.github.io/).
+* [Paper](https://arxiv.org/abs/2302.03027).
+* [Original Code](https://github.com/pix2pixzero/pix2pix-zero).
+
+## Tips 
+
+* The pipeline exposes two arguments namely `source_embeds` and `target_embeds`
+that let you control the direction of the semantic edits in the final image to be generated. Let's say,
+you wanted to translate from "cat" to "dog". In this case, the edit direction will be "cat -> dog". To reflect
+this in the pipeline, you simply have to set the embeddings related to the phrases including "cat" to
+`source_embeds` and "dog" to `target_embeds`. Refer to the code example below for more details.
+* When you're using this pipeline from a prompt, specify the _source_ concept in the prompt. Taking
+the above example, a valid input prompt would be: "a high resolution painting of a **cat** in the style of van gough".
+* If you wanted to reverse the direction in the example above, i.e., "dog -> cat", then it's recommended to:
+    * Swap the `source_embeds` and `target_embeds`.
+    * Change the input prompt to include "dog".  
+* To learn more about how the source and target embeddings are generated, refer to the [original 
+paper](https://arxiv.org/abs/2302.03027). 
+
+## Available Pipelines:
+
+| Pipeline | Tasks | Demo
+|---|---|:---:|
+| [StableDiffusionPix2PixZeroPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_pix2pix_zero.py) | *Text-Based Image Editing* | [🤗 Space] (soon) |
+
+<!-- TODO: add Colab -->
+
+## Usage example
+
+**Based on an image generated with the input prompt**
+
+```python
+import requests
+import torch
+
+from diffusers import DDIMScheduler, StableDiffusionPix2PixZeroPipeline
+
+
+def download(embedding_url, local_filepath):
+    r = requests.get(embedding_url)
+    with open(local_filepath, "wb") as f:
+        f.write(r.content)
+
+
+model_ckpt = "CompVis/stable-diffusion-v1-4"
+pipeline = StableDiffusionPix2PixZeroPipeline.from_pretrained(
+    model_ckpt, conditions_input_image=False, torch_dtype=torch.float16
+)
+pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
+pipeline.to("cuda")
+
+prompt = "a high resolution painting of a cat in the style of van gough"
+src_embs_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/embeddings_sd_1.4/cat.pt"
+target_embs_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/embeddings_sd_1.4/dog.pt"
+
+for url in [src_embs_url, target_embs_url]:
+    download(url, url.split("/")[-1])
+
+src_embeds = torch.load(src_embs_url.split("/")[-1])
+target_embeds = torch.load(target_embs_url.split("/")[-1])
+
+images = pipeline(
+    prompt,
+    source_embeds=src_embeds,
+    target_embeds=target_embeds,
+    num_inference_steps=50,
+    cross_attention_guidance_amount=0.15,
+).images
+images[0].save("edited_image_dog.png")
+```
+
+**Based on an input image**
+
+_Coming soon_
+
+## StableDiffusionPix2PixZeroPipeline
+[[autodoc]] StableDiffusionPix2PixZeroPipeline
+	- __call__
+	- all

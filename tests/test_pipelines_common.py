@@ -191,10 +191,16 @@ class PipelineTesterMixin:
     def _test_inference_batch_single_identical(
         self, test_max_difference=None, test_mean_pixel_difference=None, relax_max_difference=False
     ):
-        if self.pipeline_class.__name__ in ["CycleDiffusionPipeline", "RePaintPipeline"]:
+        if self.pipeline_class.__name__ in [
+            "CycleDiffusionPipeline",
+            "RePaintPipeline",
+            "StableDiffusionPix2PixZeroPipeline",
+        ]:
             # RePaint can hardly be made deterministic since the scheduler is currently always
             # nondeterministic
             # CycleDiffusion is also slightly nondeterministic
+            # There's a training loop inside Pix2PixZero and is guided by edit directions. This is
+            # why the slight non-determinism.
             return
 
         if test_max_difference is None:

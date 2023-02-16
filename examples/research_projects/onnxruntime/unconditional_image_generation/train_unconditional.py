@@ -11,6 +11,7 @@ import torch
 import torch.nn.functional as F
 from accelerate import Accelerator
 from accelerate.logging import get_logger
+from accelerate.utils import ProjectConfiguration
 from datasets import load_dataset
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from onnxruntime.training.ortmodule import ORTModule
@@ -21,7 +22,7 @@ import diffusers
 from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
-from diffusers.utils import check_min_version
+from diffusers.utils import check_min_version, is_tensorboard_available, is_wandb_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -220,6 +221,7 @@ def parse_args():
         help="Whether the model should predict the 'epsilon'/noise error or directly the reconstructed image 'x0'.",
     )
     parser.add_argument("--ddpm_num_steps", type=int, default=1000)
+    parser.add_argument("--ddpm_num_inference_steps", type=int, default=1000)
     parser.add_argument("--ddpm_beta_schedule", type=str, default="linear")
     parser.add_argument(
         "--checkpointing_steps",
@@ -228,6 +230,16 @@ def parse_args():
         help=(
             "Save a checkpoint of the training state every X updates. These checkpoints are only suitable for resuming"
             " training using `--resume_from_checkpoint`."
+        ),
+    )
+    parser.add_argument(
+        "--checkpoints_total_limit",
+        type=int,
+        default=None,
+        help=(
+            "Max number of checkpoints to store. Passed as `total_limit` to the `Accelerator` `ProjectConfiguration`."
+            " See Accelerator::save_state https://huggingface.co/docs/accelerate/package_reference/accelerator#accelerate.Accelerator.save_state"
+            " for more docs"
         ),
     )
     parser.add_argument(
@@ -264,12 +276,24 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 def main(args):
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
 
+    accelerator_project_config = ProjectConfiguration(total_limit=args.checkpoints_total_limit)
+
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.logger,
         logging_dir=logging_dir,
+        project_config=accelerator_project_config,
     )
+
+    if args.logger == "tensorboard":
+        if not is_tensorboard_available():
+            raise ImportError("Make sure to install tensorboard if you want to use it for logging during training.")
+
+    elif args.logger == "wandb":
+        if not is_wandb_available():
+            raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
+        import wandb
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
@@ -552,7 +576,7 @@ def main(args):
                     generator=generator,
                     batch_size=args.eval_batch_size,
                     output_type="numpy",
-                    num_inference_steps=args.ddpm_num_steps,
+                    num_inference_steps=args.ddpm_num_inference_steps,
                 ).images
 
                 # denormalize the images and save to tensorboard
@@ -561,6 +585,11 @@ def main(args):
                 if args.logger == "tensorboard":
                     accelerator.get_tracker("tensorboard").add_images(
                         "test_samples", images_processed.transpose(0, 3, 1, 2), epoch
+                    )
+                elif args.logger == "wandb":
+                    accelerator.get_tracker("wandb").log(
+                        {"test_samples": [wandb.Image(img) for img in images_processed], "epoch": epoch},
+                        step=global_step,
                     )
 
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:

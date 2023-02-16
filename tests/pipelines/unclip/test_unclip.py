@@ -23,7 +23,7 @@ from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokeni
 from diffusers import PriorTransformer, UnCLIPPipeline, UnCLIPScheduler, UNet2DConditionModel, UNet2DModel
 from diffusers.pipelines.unclip.text_proj import UnCLIPTextProjModel
 from diffusers.utils import load_numpy, nightly, slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
 
 from ...test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 
@@ -349,7 +349,7 @@ class UnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     # Overriding PipelineTesterMixin::test_attention_slicing_forward_pass
     # because UnCLIP GPU undeterminism requires a looser check.
-    @unittest.skipIf(torch_device == "mps", reason="MPS inconsistent")
+    @skip_mps
     def test_attention_slicing_forward_pass(self):
         test_max_difference = torch_device == "cpu"
 
@@ -357,7 +357,7 @@ class UnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     # Overriding PipelineTesterMixin::test_inference_batch_single_identical
     # because UnCLIP undeterminism requires a looser check.
-    @unittest.skipIf(torch_device == "mps", reason="MPS inconsistent")
+    @skip_mps
     def test_inference_batch_single_identical(self):
         test_max_difference = torch_device == "cpu"
         relax_max_difference = True
@@ -374,15 +374,15 @@ class UnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         else:
             self._test_inference_batch_consistent()
 
-    @unittest.skipIf(torch_device == "mps", reason="MPS inconsistent")
+    @skip_mps
     def test_dict_tuple_outputs_equivalent(self):
         return super().test_dict_tuple_outputs_equivalent()
 
-    @unittest.skipIf(torch_device == "mps", reason="MPS inconsistent")
+    @skip_mps
     def test_save_load_local(self):
         return super().test_save_load_local()
 
-    @unittest.skipIf(torch_device == "mps", reason="MPS inconsistent")
+    @skip_mps
     def test_save_load_optional_components(self):
         return super().test_save_load_optional_components()
 
