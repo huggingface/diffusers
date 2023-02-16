@@ -36,7 +36,12 @@ class StableDiffusionPipelineOutput(BaseOutput):
     nsfw_content_detected: Optional[List[bool]]
 
 
-if is_transformers_available() and is_torch_available():
+try:
+    if not (is_transformers_available() and is_torch_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
+else:
     from .pipeline_cycle_diffusion import CycleDiffusionPipeline
     from .pipeline_stable_diffusion import StableDiffusionPipeline
     from .pipeline_stable_diffusion_img2img import StableDiffusionImg2ImgPipeline
@@ -74,14 +79,24 @@ else:
 
 
 try:
-    if not (is_torch_available() and is_transformers_available() and is_k_diffusion_version(">=", "0.0.12")):
+    if not (
+        is_torch_available()
+        and is_transformers_available()
+        and is_k_diffusion_available()
+        and is_k_diffusion_version(">=", "0.0.12")
+    ):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from ...utils.dummy_torch_and_transformers_and_k_diffusion_objects import *  # noqa F403
 else:
     from .pipeline_stable_diffusion_k_diffusion import StableDiffusionKDiffusionPipeline
 
-if is_transformers_available() and is_onnx_available():
+try:
+    if not (is_transformers_available() and is_onnx_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ...utils.dummy_onnx_objects import *  # noqa F403
+else:
     from .pipeline_onnx_stable_diffusion import OnnxStableDiffusionPipeline, StableDiffusionOnnxPipeline
     from .pipeline_onnx_stable_diffusion_img2img import OnnxStableDiffusionImg2ImgPipeline
     from .pipeline_onnx_stable_diffusion_inpaint import OnnxStableDiffusionInpaintPipeline
