@@ -248,7 +248,6 @@ class EMAModel:
             "inv_gamma": self.inv_gamma,
             "power": self.power,
             "shadow_params": self.shadow_params,
-            "temp_stored_params": self.temp_stored_params,
         }
 
     def store(self, parameters: Iterable[torch.nn.Parameter]) -> None:
@@ -274,6 +273,9 @@ class EMAModel:
             raise RuntimeError("This ExponentialMovingAverage has no `store()`ed weights " "to `restore()`")
         for c_param, param in zip(self.temp_stored_params, parameters):
             param.data.copy_(c_param.data)
+
+        # Better memory-wise. 
+        self.temp_stored_params = None
 
     def load_state_dict(self, state_dict: dict) -> None:
         r"""
