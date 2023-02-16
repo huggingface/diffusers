@@ -154,6 +154,8 @@
       title: Stable Diffusion
     - local: api/pipelines/stable_diffusion_2
       title: Stable Diffusion 2
+    - local: api/pipelines/stable_unclip
+      title: Stable unCLIP
     - local: api/pipelines/stochastic_karras_ve
       title: Stochastic Karras VE
     - local: api/pipelines/unclip
