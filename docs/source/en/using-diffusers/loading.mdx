@@ -233,7 +233,7 @@ the "main" variant of a checkpoint (stored in `float32` precision) into mixed pr
 from diffusers import DiffusionPipeline
 import torch
 
-pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", dtype=torch.float16)
+pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
 ```
 
 Now all model components of the pipeline are stored in half-precision dtype. We can now save the 
@@ -276,7 +276,7 @@ The variant now has to be loaded by also passing a `variant="fp16"` to [`Diffusi
 
 
 ```py
-DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5", variant="fp16", dtype=torch.float16)
+DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5", variant="fp16", torch_dtype=torch.float16)
 ```
 
 works just fine, while:
@@ -347,9 +347,9 @@ works.
 
 <Tip>
 
-Note that Diffusers never downloads more checkpoints that needed. E.g. when downloading 
+Note that Diffusers never downloads more checkpoints than needed. E.g. when downloading 
 the "main" variant, none of the "fp16.bin" files are downloaded and cached.
-Only when the user specificies `variant="fp16"` are those files downloaded and cached.
+Only when the user specifies `variant="fp16"` are those files downloaded and cached.
 
 </Tip>
 
@@ -599,7 +599,7 @@ model = UNet2DModel.from_pretrained(repo_id)
 ```
 
 As motivated in [How to save and load variants?](#how-to-save-and-load-variants), models can load and 
-save variants. To load a model variant, one should pass the `variant` function argument to [`ModelMixin.from_pretrained`]. Analogeous, to save a model variant, one should psas the `variant` function argument to [`ModelMixin.save_pretrained`]:
+save variants. To load a model variant, one should pass the `variant` function argument to [`ModelMixin.from_pretrained`]. Analogous, to save a model variant, one should pass the `variant` function argument to [`ModelMixin.save_pretrained`]:
 
 ```python
 from diffusers import UNet2DConditionModel
