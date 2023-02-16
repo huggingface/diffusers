@@ -149,7 +149,6 @@ class EMAModel:
         model = self.model_cls.from_config(self.model_config)
         state_dict = self.state_dict()
         state_dict.pop("shadow_params", None)
-        state_dict.pop("temp_stored_params", None)
 
         model.register_to_config(**state_dict)
         self.copy_to(model.parameters())
@@ -323,12 +322,3 @@ class EMAModel:
                 raise ValueError("shadow_params must be a list")
             if not all(isinstance(p, torch.Tensor) for p in self.shadow_params):
                 raise ValueError("shadow_params must all be Tensors")
-
-        self.temp_stored_params = state_dict.get("temp_stored_params", None)
-        if self.temp_stored_params is not None:
-            if not isinstance(self.temp_stored_params, list):
-                raise ValueError("temp_stored_params must be a list")
-            if not all(isinstance(p, torch.Tensor) for p in self.temp_stored_params):
-                raise ValueError("temp_stored_params must all be Tensors")
-            if len(self.temp_stored_params) != len(self.shadow_params):
-                raise ValueError("temp_stored_params and shadow_params must have the same length")
