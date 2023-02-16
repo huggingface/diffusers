@@ -552,6 +552,8 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             return_tensors="pt",
         ).input_ids
 
+        input_ids = input_ids.to(self.text_encoder.device)
+
         embeds = self.text_encoder(input_ids)[0]
 
         return embeds.mean(0)[None]
@@ -561,6 +563,8 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Optional[Union[str, List[str]]] = None,
+        source_prompts: Optional[Union[List[str], List[List[str]]]] = None,
+        target_prompts: Optional[Union[List[str], List[List[str]]]] = None,
         image: Optional[Union[torch.FloatTensor, PIL.Image.Image]] = None,
         source_embeds: torch.Tensor = None,
         target_embeds: torch.Tensor = None,
@@ -662,15 +666,15 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         width = width or self.unet.config.sample_size * self.vae_scale_factor
 
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(
-            prompt,
-            self.conditions_input_image,
-            image,
-            source_embeds,
-            target_embeds,
-            callback_steps,
-            prompt_embeds,
-        )
+        #        self.check_inputs(
+        #            prompt,
+        #            self.conditions_input_image,
+        #            image,
+        #            source_embeds,
+        #            target_embeds,
+        #            callback_steps,
+        #            prompt_embeds,
+        #        )
         if self.conditions_input_image and prompt_embeds:
             logger.warning(
                 f"You have set `conditions_input_image` to {self.conditions_input_image} and"
@@ -775,6 +779,12 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                         callback(i, t, latents)
 
         # 8. Compute the edit directions.
+        if source_embeds is None:
+            source_embeds = self.get_embeds(source_prompts)
+
+        if target_embeds is None:
+            target_embeds = self.get_embeds(target_prompts)
+
         edit_direction = self.construct_direction(source_embeds, target_embeds).to(prompt_embeds.device)
 
         # 9. Edit the prompt embeddings as per the edit directions discovered.
