@@ -44,7 +44,7 @@ EXAMPLE_DOC_STRING = """
 
 
         >>> prompt = "a cat and a frog"
-        
+
         >>> # use get_indices function to find out indices of the tokens you want to alter
         >>> pipe.get_indices(prompt)
 
@@ -656,7 +656,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
 
         self.unet.set_attn_processor(attn_procs)
         self.attention_store.num_att_layers = cross_att_count
-        
+
     def get_indices(self, prompt: str) -> Dict[str, int]:
         """Utility function to list the indices of the tokens you wish to alte"""
         ids = self.tokenizer(prompt).input_ids
@@ -776,7 +776,14 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            prompt, token_indices, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
+            prompt,
+            token_indices,
+            height,
+            width,
+            callback_steps,
+            negative_prompt,
+            prompt_embeds,
+            negative_prompt_embeds,
         )
 
         # 2. Define call parameters
