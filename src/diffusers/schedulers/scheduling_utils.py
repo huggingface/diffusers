@@ -42,6 +42,7 @@ class KarrasDiffusionSchedulers(Enum):
     KDPM2DiscreteScheduler = 10
     KDPM2AncestralDiscreteScheduler = 11
     DEISMultistepScheduler = 12
+    UniPCMultistepScheduler = 13
 
 
 @dataclass

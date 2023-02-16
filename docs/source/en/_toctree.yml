@@ -148,7 +148,7 @@
       - local: api/pipelines/stable_diffusion/upscale
         title: Super-Resolution
       - local: api/pipelines/stable_diffusion/latent_upscale
-        title: Stable-Diffusion-Latent-Upscaler  
+        title: Stable-Diffusion-Latent-Upscaler
       - local: api/pipelines/stable_diffusion/pix2pix
         title: InstructPix2Pix
       - local: api/pipelines/stable_diffusion/pix2pix_zero
@@ -204,6 +204,8 @@
       title: Singlestep DPM-Solver
     - local: api/schedulers/stochastic_karras_ve
       title: Stochastic Kerras VE
+    - local: api/schedulers/unipc
+      title: UniPCMultistepScheduler
     - local: api/schedulers/score_sde_ve
       title: VE-SDE
     - local: api/schedulers/score_sde_vp
