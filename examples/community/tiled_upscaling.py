@@ -16,14 +16,14 @@ import math
 from typing import Callable, List, Optional, Union
 
 import numpy as np
-import torch
-
 import PIL
+import torch
+from PIL import Image
+from transformers import CLIPTextModel, CLIPTokenizer
+
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale import StableDiffusionUpscalePipeline
 from diffusers.schedulers import DDIMScheduler, DDPMScheduler, LMSDiscreteScheduler, PNDMScheduler
-from PIL import Image
-from transformers import CLIPTextModel, CLIPTokenizer
 
 
 def make_transparency_mask(size, overlap_pixels, remove_borders=[]):

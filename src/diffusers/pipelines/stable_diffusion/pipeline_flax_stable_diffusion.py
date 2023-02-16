@@ -16,10 +16,9 @@ import warnings
 from functools import partial
 from typing import Dict, List, Optional, Union
 
-import numpy as np
-
 import jax
 import jax.numpy as jnp
+import numpy as np
 from flax.core.frozen_dict import FrozenDict
 from flax.jax_utils import unreplicate
 from flax.training.common_utils import shard

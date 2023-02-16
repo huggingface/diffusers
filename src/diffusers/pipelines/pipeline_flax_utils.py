@@ -19,9 +19,8 @@ import inspect
 import os
 from typing import Any, Dict, List, Optional, Union
 
-import numpy as np
-
 import flax
+import numpy as np
 import PIL
 from flax.core.frozen_dict import FrozenDict
 from huggingface_hub import snapshot_download
