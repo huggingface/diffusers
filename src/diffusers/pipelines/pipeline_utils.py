@@ -550,7 +550,7 @@ class DiffusionPipeline(ConfigMixin):
 
                     if set(comp_model_filenames) == set(model_filenames):
                         warnings.warn(
-                            f"You are loading the variant {revision} from {pretrained_model_name_or_path} via `revision='{revision}'` even though you can load it via `variant=`{revision}`. Loading model variants via `revision='{variant}'` is deprecated and will be removed in diffusers v1. Please use `variant='{revision}'` instead. For more information, please have a look at: ",
+                            f"You are loading the variant {revision} from {pretrained_model_name_or_path} via `revision='{revision}'` even though you can load it via `variant=`{revision}`. Loading model variants via `revision='{variant}'` is deprecated and will be removed in diffusers v1. Please use `variant='{revision}'` instead.",
                             FutureWarning,
                         )
                     else:
@@ -580,11 +580,14 @@ class DiffusionPipeline(ConfigMixin):
                 elif is_safetensors_available() and is_safetensors_compatible(model_filenames, variant=variant):
                     ignore_patterns = ["*.bin", "*.msgpack"]
 
-                    onnx_variant_filenames = set([f for f in variant_filenames if f.endswith(".onnx")])
-                    onnx_model_filenames = set([f for f in model_filenames if f.endswith(".onnx")])
-                    if len(onnx_variant_filenames) > 0 and onnx_model_filenames != onnx_variant_filenames:
+                    safetensors_variant_filenames = set([f for f in variant_filenames if f.endswith(".safetensors")])
+                    safetensors_model_filenames = set([f for f in model_filenames if f.endswith(".safetensors")])
+                    if (
+                        len(safetensors_variant_filenames) > 0
+                        and safetensors_model_filenames != safetensors_variant_filenames
+                    ):
                         logger.warn(
-                            f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(onnx_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(onnx_model_filenames - onnx_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
+                            f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(safetensors_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(safetensors_model_filenames - safetensors_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
                         )
 
                 else:

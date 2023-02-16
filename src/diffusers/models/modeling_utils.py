@@ -820,41 +820,16 @@ def _get_model_file(
                 f"Error no file named {weights_name} found in directory {pretrained_model_name_or_path}."
             )
     else:
-        try:
-            if revision in DEPRECATED_REVISION_ARGS and version.parse(
-                version.parse(__version__).base_version
-            ) >= version.parse("0.15.0"):
-                variant = _add_variant(weights_name, revision)
-
-                try:
-                    model_file = hf_hub_download(
-                        pretrained_model_name_or_path,
-                        filename=weights_name,
-                        cache_dir=cache_dir,
-                        force_download=force_download,
-                        proxies=proxies,
-                        resume_download=resume_download,
-                        local_files_only=local_files_only,
-                        use_auth_token=use_auth_token,
-                        user_agent=user_agent,
-                        subfolder=subfolder,
-                        revision=revision,
-                    )
-                    warnings.warn(
-                        f"You are loading the variant {variant} from {pretrained_model_name_or_path} via `revision='{variant}'` even though you can load it via `variant=`{variant}`. Loading model variants via `revision='{variant}'` is deprecated and will be removed in diffusers v1. Please use `variant='{variant}'` instead. For more information, please have a look at: ",
-                        FutureWarning,
-                    )
-                except:  # noqa: E722
-                    warnings.warn(
-                        f"You are loading the variant {variant} from {pretrained_model_name_or_path} via `revision='{variant}'`. This behavior is deprecated and will be removed in diffusers v1. One should use `variant='{variant}'` instead. However, it appears that {pretrained_model_name_or_path} currently does not have a {_add_variant(weights_name)} file in the 'main' branch of {pretrained_model_name_or_path}. \n The Diffusers team and community would be very grateful if you could open an issue: https://github.com/huggingface/diffusers/issues/new with the title '{pretrained_model_name_or_path} is missing {_add_variant(weights_name)}' so that the correct variant file can be added.",
-                        FutureWarning,
-                    )
-                    model_file = None
-            else:
-                # Load from URL or cache if already cached
+        # 1. First check if deprecated way of loading from branches is used
+        if (
+            revision in DEPRECATED_REVISION_ARGS
+            and (weights_name == WEIGHTS_NAME or weights_name == SAFETENSORS_WEIGHTS_NAME)
+            and version.parse(version.parse(__version__).base_version) >= version.parse("0.15.0")
+        ):
+            try:
                 model_file = hf_hub_download(
                     pretrained_model_name_or_path,
-                    filename=weights_name,
+                    filename=_add_variant(weights_name, revision),
                     cache_dir=cache_dir,
                     force_download=force_download,
                     proxies=proxies,
@@ -865,6 +840,31 @@ def _get_model_file(
                     subfolder=subfolder,
                     revision=revision,
                 )
+                warnings.warn(
+                    f"Loading the variant {revision} from {pretrained_model_name_or_path} via `revision='{revision}'` is deprecated. Loading instead from `revision='main'` with `variant={revision}`. Loading model variants via `revision='{revision}'` will be removed in diffusers v1. Please use `variant='{revision}'` instead.",
+                    FutureWarning,
+                )
+                return model_file
+            except:  # noqa: E722
+                warnings.warn(
+                    f"You are loading the variant {revision} from {pretrained_model_name_or_path} via `revision='{revision}'`. This behavior is deprecated and will be removed in diffusers v1. One should use `variant='{revision}'` instead. However, it appears that {pretrained_model_name_or_path} currently does not have a {_add_variant(weights_name)} file in the 'main' branch of {pretrained_model_name_or_path}. \n The Diffusers team and community would be very grateful if you could open an issue: https://github.com/huggingface/diffusers/issues/new with the title '{pretrained_model_name_or_path} is missing {_add_variant(weights_name)}' so that the correct variant file can be added.",
+                    FutureWarning,
+                )
+        try:
+            # 2. Load model file as usual
+            model_file = hf_hub_download(
+                pretrained_model_name_or_path,
+                filename=weights_name,
+                cache_dir=cache_dir,
+                force_download=force_download,
+                proxies=proxies,
+                resume_download=resume_download,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                user_agent=user_agent,
+                subfolder=subfolder,
+                revision=revision,
+            )
             return model_file
 
         except RepositoryNotFoundError:
