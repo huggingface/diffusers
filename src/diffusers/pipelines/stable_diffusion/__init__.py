@@ -39,8 +39,8 @@ class StableDiffusionPipelineOutput(BaseOutput):
 try:
     if not (is_transformers_available() and is_torch_available()):
         raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable():
-    from ..utils.dummy_torch_and_transformers_objects import *  # noqa F403
+except OptionalDependencyNotAvailable:
+    from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
 else:
     from .pipeline_cycle_diffusion import CycleDiffusionPipeline
     from .pipeline_stable_diffusion import StableDiffusionPipeline
@@ -95,7 +95,7 @@ try:
     if not (is_transformers_available() and is_onnx_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from ..utils.dummy_onnx_objects import *  # noqa F403
+    from ...utils.dummy_onnx_objects import *  # noqa F403
 else:
     from .pipeline_onnx_stable_diffusion import OnnxStableDiffusionPipeline, StableDiffusionOnnxPipeline
     from .pipeline_onnx_stable_diffusion_img2img import OnnxStableDiffusionImg2ImgPipeline
