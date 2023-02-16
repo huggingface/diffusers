@@ -274,7 +274,7 @@ class EMAModel:
         for c_param, param in zip(self.temp_stored_params, parameters):
             param.data.copy_(c_param.data)
 
-        # Better memory-wise. 
+        # Better memory-wise.
         self.temp_stored_params = None
 
     def load_state_dict(self, state_dict: dict) -> None:
