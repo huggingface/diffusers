@@ -208,7 +208,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
 
     def convert_model_output(
         self, model_output: torch.FloatTensor, timestep: int, sample: torch.FloatTensor
-    ):
+    ) -> torch.FloatTensor:
         r"""
         Convert the model output to the corresponding type that the algorithm PC needs.
 
@@ -275,7 +275,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         prev_timestep: int,
         sample: torch.FloatTensor,
         order: int,
-    ):
+    ) -> torch.FloatTensor:
         """
         One step for the UniP (B(h) version). Alternatively, `self.solver_p` is used if is specified.
 
@@ -388,7 +388,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         last_sample: torch.FloatTensor,
         this_sample: torch.FloatTensor,
         order: int,
-    ):
+    ) -> torch.FloatTensor:
         """
         One step for the UniC (B(h) version). 
 
@@ -500,8 +500,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         timestep: int,
         sample: torch.FloatTensor,
         return_dict: bool = True,
-    ):
-        # -> Union[SchedulerOutput, Tuple]:
+    ) -> Union[SchedulerOutput, Tuple]:
         """
         Step function propagating the sample with the multistep UniPC.
 
@@ -531,8 +530,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         else:
             step_index = step_index.item()
 
-        use_corrector = step_index > 0 and step_index - 1 not in self.disable_corrector # step_index not in self.disable_corrector
-        print('step index:', step_index, 'use corrector:', use_corrector)
+        use_corrector = step_index > 0 and step_index - 1 not in self.disable_corrector
 
         model_output_convert = self.convert_model_output(model_output, timestep, sample)
         if use_corrector:
@@ -580,7 +578,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         return SchedulerOutput(prev_sample=prev_sample)
 
-    def scale_model_input(self, sample: torch.FloatTensor, *args, **kwargs):# -> torch.FloatTensor:
+    def scale_model_input(self, sample: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
@@ -598,8 +596,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         original_samples: torch.FloatTensor,
         noise: torch.FloatTensor,
         timesteps: torch.IntTensor,
-    ):
-        # -> torch.FloatTensor:
+    ) -> torch.FloatTensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
         self.alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
         timesteps = timesteps.to(original_samples.device)
