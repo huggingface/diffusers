@@ -17,7 +17,7 @@ Accelerate utilities: Utilities related to accelerate
 
 from packaging import version
 
-from .import_utils import is_accelerate_available, is_accelerate_version
+from .import_utils import is_accelerate_available
 
 
 if is_accelerate_available():
