@@ -245,8 +245,6 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
 
         # We'll offload the last model manually.
-        # Alternative: daisy-chain with the first one so a new inference will offload the last model,
-        # but then we need access to `hook.hook.prev_module_hook`.
         self.final_offload_hook = hook
 
     @property
