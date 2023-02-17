@@ -33,7 +33,12 @@ Unless otherwise mentioned, these are techniques that work with existing models 
 
 ## Instruct pix2pix
 
-[Paper](../api/pipelines/stable_diffusion/pix2pix) is fine-tuned from stable diffusion to support editing input images. It takes as input an image with a prompt describing an edit, and it outputs the edited image.
+[Paper](https://github.com/timothybrooks/instruct-pix2pix)
+
+[Pix2Pix](../api/pipelines/stable_diffusion/pix2pix) is fine-tuned from stable diffusion to support editing input images. It takes as input an image with a prompt describing an edit, and it outputs the edited image. 
+Pix2Pix has been trained to work explicitely well with instructGPT-like prompts.
+
+See [here](../api/pipelines/stable_diffusion/pix2pix) for more information on how to use it.
 
 ## Pix2PixZero
 
@@ -43,6 +48,8 @@ Unless otherwise mentioned, these are techniques that work with existing models 
 
 The denoising process is guided from one conceptual embedding towards another conceptual embedding. The intermediate latents are optimized during the denoising process to push the attention maps towards reference attention maps. The reference attention maps are from the denoising process of the input image and are used to encourage semantic preservation.
 
+See [here](../api/pipelines/stable_diffusion/pix2pix_zero) for more information on how to use it.
+
 ## Attend and excite
 
 [Paper](https://attendandexcite.github.io/Attend-and-Excite/)
@@ -50,6 +57,8 @@ The denoising process is guided from one conceptual embedding towards another co
 [Attend and excite](../api/pipelines/stable_diffusion/attend_and_excite) allows subjects in the prompt to be faithfully represented in the final image. 
 
 A set of token indices are given as input, corresponding to the subjects in the prompt that need to be present in the image. During denoising, each token index is insured to have above a minimum attention threshold for at least one patch of the image. The intermediate latents are iteratively optimized during the denoising process to strengthen the attention of the most neglected subject token until the attention threshold is passed for all subject tokens.
+
+See [here](../api/pipelines/stable_diffusion/attend_and_excite) for more information on how to use it.
 
 ## Semantic guidance
 
@@ -59,6 +68,7 @@ SEGA allows applying or removing one or more concepts from an image. The strengt
 
 Similar to how classifier free guidance provides guidance via empty prompt inputs, SEGA provides guidance on conceptual prompts. Multiple of these conceptual prompts can be applied simultaneously. Each conceptual prompt can either add or remove their concept depending on if the guidance is applied positively or negatively.
 
+See [here](../api/pipelines/semantic_stable_diffusion) for more information on how to use it.
 
 ## Self attention guidance
 
@@ -68,6 +78,7 @@ Similar to how classifier free guidance provides guidance via empty prompt input
 
 SAG provides guidance from predictions not conditioned on high frequency details to fully conditioned images. The high frequency details are extracted out of the UNet self-attention maps.
 
+See [here](../api/pipelines/stable_diffusion/self_attention_guidance) for more information on how to use it.
 
 ## Depth2image
 
@@ -82,3 +93,5 @@ The above-mentioned techniques don't essentially fine-tune any of the sub-models
 One can also use techniques like [DreamBooth](https://huggingface.co/docs/diffusers/main/en/training/dreambooth) or [Textual Inversion](https://huggingface.co/docs/diffusers/main/en/training/text_inversion) to have personalized control over the generated outputs. But note that these techniques require additional fine-tuning.  
 
 Depending on the use case, one should choose a technique accordingly. In many cases, these techniques could be combined. For example, one could combine Textual Inversion with SEGA to provide more semantic guidance to the outputs generated using Textual Inversion.
+
+See [here](../api/pipelines/stable_diffusion/depth2img) for more information on how to use it.
