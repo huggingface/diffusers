@@ -86,11 +86,11 @@ pip install --pre torch torchvision --index-url https://download.pytorch.org/whl
 
 ## Benchmark
 
-We conducted a simple benchmark on different GPUs to compare between vannila attention, xFormers, `torch.nn.functional.scaled_dot_product_attention` and `torch.compile+torch.nn.functional.scaled_dot_product_attention`.
+We conducted a simple benchmark on different GPUs to compare vanilla attention, xFormers, `torch.nn.functional.scaled_dot_product_attention` and `torch.compile+torch.nn.functional.scaled_dot_product_attention`.
 For the benchmark we used the the [stable-diffusion-v1-4]() model with `torch.float16`, for 50 steps. `xFormers` benchmark is done using the `torch==1.13.1` version. The table below summarizes the result that we got.
 The `Speed over xformers` columns denotes the speed-up gained over `xFormers` using the `torch.compile+torch.nn.functional.scaled_dot_product_attention`.
 
-As we can see `torch.nn.functional.scaled_dot_product_attention` is fast as `xFormers` (somtimes slighly faster/slower) on all the GPUs we tested. And using `torch.compile` gives further speed-up, but it's motsly noticable on the A100 GPU.
+As we can see, `torch.nn.functional.scaled_dot_product_attention` is fast as `xFormers` (sometimes slightly faster/slower) on all the GPUs we tested. And using `torch.compile` gives further speed-up, but it's mostly noticeable on the A100 GPU.
 
 ___The time reported is in seconds.___
 
