@@ -287,6 +287,11 @@ class SchedulerCommonTest(unittest.TestCase):
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
 
+            # Make sure `scale_model_input` is invoked to prevent a warning
+            if scheduler_class != VQDiffusionScheduler:
+                _ = scheduler.scale_model_input(sample, 0)
+                _ = new_scheduler.scale_model_input(sample, 0)
+
             # Set the seed before step() as some schedulers are stochastic like EulerAncestralDiscreteScheduler, EulerDiscreteScheduler
             if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
                 kwargs["generator"] = torch.manual_seed(0)
