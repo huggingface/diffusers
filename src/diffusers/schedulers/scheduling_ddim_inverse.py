@@ -213,7 +213,6 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.FloatTensor,
         eta: float = 0.0,
         use_clipped_model_output: bool = False,
-        generator=None,
         variance_noise: Optional[torch.FloatTensor] = None,
         return_dict: bool = True,
         reverse=False,

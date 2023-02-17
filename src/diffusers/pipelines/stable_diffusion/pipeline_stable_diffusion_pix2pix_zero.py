@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import inspect
-from random import randrange
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
@@ -924,7 +923,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
         return StableDiffusionPipelineOutput(images=edited_image, nsfw_content_detected=has_nsfw_concept)
 
-    def auto_corr_loss(self, x, random_shift=True):
+    def auto_corr_loss(self, x, random_shift=True, generator=None):
         B, C, H, W = x.shape
         assert B == 1
         x = x.squeeze(0)
@@ -934,7 +933,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             noise = x[ch_idx][None, None, :, :]
             while True:
                 if random_shift:
-                    roll_amount = randrange(noise.shape[2] // 2)
+                    roll_amount = torch.randint(noise.shape[2] // 2, (1,), generator=generator).item()
                 else:
                     roll_amount = 1
                 reg_loss += (noise * torch.roll(noise, shifts=roll_amount, dims=2)).mean() ** 2
@@ -1084,9 +1083,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
         # 7. Prepare latent variables
         latents = self.prepare_image_latents(image, batch_size, prompt_embeds.dtype, device, generator)
-
-        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
-        extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
+        print("l", latents.abs().sum())
 
         # 8. Rejig the UNet so that we can obtain the cross-attenion maps and
         # use them for guiding the subsequent image generation.
@@ -1120,7 +1117,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                         if lambda_ac > 0:
                             for _inner in range(num_ac_rolls):
                                 _var = torch.autograd.Variable(e_t.detach().clone(), requires_grad=True)
-                                l_ac = self.auto_corr_loss(_var)
+                                l_ac = self.auto_corr_loss(_var, generator=generator)
                                 l_ac.backward()
                                 _grad = _var.grad.detach() / num_ac_rolls
                                 e_t = e_t - lambda_ac * _grad
@@ -1135,9 +1132,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 noise_pred = e_t
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.inverse_scheduler.step(
-                    noise_pred, t, latents, reverse=True, **extra_step_kwargs
-                ).prev_sample
+                latents = self.inverse_scheduler.step(noise_pred, t, latents, reverse=True).prev_sample
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or (
