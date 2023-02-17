@@ -404,8 +404,8 @@ class InversionPipelineSlowTests(unittest.TestCase):
         generator = torch.manual_seed(0)
         inv_latents, inv_image = pipe.invert(caption, image=raw_image, generator=generator)
 
-        source_prompts = 4 * ["a cat sitting on the street", "a cat playing in the field", "a face of a cat"]
-        target_prompts = 4 * ["a dog sitting on the street", "a dog playing in the field", "a face of a dog"]
+        source_prompts = ["a cat sitting on the street", "a cat playing in the field", "a face of a cat"]
+        target_prompts = ["a dog sitting on the street", "a dog playing in the field", "a face of a dog"]
 
         source_embeds = pipe.get_embeds(source_prompts)
         target_embeds = pipe.get_embeds(target_prompts)
