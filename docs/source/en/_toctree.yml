@@ -182,6 +182,8 @@
       title: Overview
     - local: api/schedulers/ddim
       title: DDIM
+    - local: api/schedulers/ddim_inverse
+      title: DDIMInverse
     - local: api/schedulers/ddpm
       title: DDPM
     - local: api/schedulers/deis

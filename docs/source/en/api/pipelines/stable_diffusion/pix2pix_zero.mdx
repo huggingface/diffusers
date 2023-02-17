@@ -138,14 +138,15 @@ caption = pipeline.generate_caption(raw_image)
 Then we employ the generated caption and the input image to get the inverted noise: 
 
 ```py 
-inv_latents, inv_image = pipeline.invert(caption, image=raw_image)
+generator = torch.manual_seed(0)
+inv_latents = pipeline.invert(caption, image=raw_image, generator=generator).latents
 ```
 
 Now, generate the image with edit directions: 
 
 ```py
 # See the "Generating source and target embeddings" section below to
-# automate the generation of these captions with a pre-trained model like Flan-T5.
+# automate the generation of these captions with a pre-trained model like Flan-T5 as explained below.
 source_prompts = ["a cat sitting on the street", "a cat playing in the field", "a face of a cat"]
 target_prompts = ["a dog sitting on the street", "a dog playing in the field", "a face of a dog"]
 

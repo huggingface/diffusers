@@ -67,6 +67,7 @@ else:
         ScoreSdeVePipeline,
     )
     from .schedulers import (
+        DDIMInverseScheduler,
         DDIMScheduler,
         DDPMScheduler,
         DEISMultistepScheduler,
