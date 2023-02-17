@@ -114,6 +114,10 @@ class StableDiffusionPanoramaPipelineFastTests(PipelineTesterMixin, unittest.Tes
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
         assert image.shape == (1, 64, 64, 3)
+
+        image_slice_list = image_slice.flatten().tolist()
+        image_slice_list = [str(round(x, 4)) for x in image_slice_list]
+        print(f"Slice: {image_slice_list}")
         expected_slice = np.array(
             [0.52095956, 0.5728042, 0.47328112, 0.5396356, 0.56953084, 0.478509, 0.53698486, 0.49946913, 0.49484408]
         )
@@ -134,6 +138,9 @@ class StableDiffusionPanoramaPipelineFastTests(PipelineTesterMixin, unittest.Tes
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
+        image_slice_list = image_slice.flatten().tolist()
+        image_slice_list = [str(round(x, 4)) for x in image_slice_list]
+        print(f"Slice: {image_slice_list}")
         expected_slice = np.array(
             [0.52345127, 0.57358813, 0.4750267, 0.5251877, 0.5592096, 0.46904403, 0.5258986, 0.49059927, 0.48685694]
         )
@@ -155,6 +162,9 @@ class StableDiffusionPanoramaPipelineFastTests(PipelineTesterMixin, unittest.Tes
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
+        image_slice_list = image_slice.flatten().tolist()
+        image_slice_list = [str(round(x, 4)) for x in image_slice_list]
+        print(f"Slice: {image_slice_list}")
         expected_slice = np.array(
             [0.48235387, 0.5423796, 0.46016198, 0.5377287, 0.5803722, 0.4876525, 0.5515428, 0.5045897, 0.50709957]
         )
@@ -170,6 +180,7 @@ class StableDiffusionPanoramaPipelineFastTests(PipelineTesterMixin, unittest.Tes
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
+        # the pipeline does not expect pndm so test if it raises error.
         with self.assertRaises(ValueError):
             _ = sd_pipe(**inputs).images
 
@@ -242,6 +253,9 @@ class StableDiffusionPanoramaSlowTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1].flatten()
 
         assert image.shape == (1, 512, 2048, 3)
+        image_slice_list = image_slice.tolist()
+        image_slice_list = [str(round(x, 4)) for x in image_slice_list]
+        print(f"Slice: {image_slice_list}")
         expected_slice = np.array(
             [
                 0.36968392,
@@ -272,6 +286,9 @@ class StableDiffusionPanoramaSlowTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1].flatten()
 
         assert image.shape == (1, 512, 2048, 3)
+        image_slice_list = image_slice.tolist()
+        image_slice_list = [str(round(x, 4)) for x in image_slice_list]
+        print(f"Slice: {image_slice_list}")
         expected_slice = np.array(
             [
                 [
@@ -301,6 +318,9 @@ class StableDiffusionPanoramaSlowTests(unittest.TestCase):
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 256)
                 latents_slice = latents[0, -3:, -3:, -1]
+                latents_slice_list = latents_slice.flatten().tolist()
+                latents_slice_list = [str(round(x, 4)) for x in latents_slice_list]
+                print(f"Slice: {latents_slice_list}")
                 expected_slice = np.array(
                     [
                         0.18681869,
@@ -319,6 +339,9 @@ class StableDiffusionPanoramaSlowTests(unittest.TestCase):
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 256)
                 latents_slice = latents[0, -3:, -3:, -1]
+                latents_slice_list = latents_slice.flatten().tolist()
+                latents_slice_list = [str(round(x, 4)) for x in latents_slice_list]
+                print(f"Slice: {latents_slice_list}")
                 expected_slice = np.array(
                     [
                         0.18539645,
