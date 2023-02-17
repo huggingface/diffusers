@@ -1,4 +1,4 @@
-__version__ = "0.13.0.dev0"
+__version__ = "0.13.0"
 
 from .configuration_utils import ConfigMixin
 from .utils import (
