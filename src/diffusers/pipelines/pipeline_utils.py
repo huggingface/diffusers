@@ -929,7 +929,7 @@ class DiffusionPipeline(ConfigMixin):
         if set(components.keys()) != expected_modules:
             raise ValueError(
                 f"{self} has been incorrectly initialized or {self.__class__} is incorrectly implemented. Expected"
-                f" {expected_modules} to be defined, but {components} are defined."
+                f" {expected_modules} to be defined, but {components.keys()} are defined."
             )
 
         return components

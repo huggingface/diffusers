@@ -291,9 +291,9 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
         scheduler: Union[DDPMScheduler, DDIMScheduler, EulerAncestralDiscreteScheduler, LMSDiscreteScheduler],
+        feature_extractor: CLIPFeatureExtractor,
         safety_checker: StableDiffusionSafetyChecker,
         inverse_scheduler: DDIMInverseScheduler,
-        feature_extractor: CLIPFeatureExtractor,
         caption_generator: BlipForConditionalGeneration,
         caption_processor: BlipProcessor,
         requires_safety_checker: bool = True,
@@ -326,6 +326,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             feature_extractor=feature_extractor,
             caption_processor=caption_processor,
             caption_generator=caption_generator,
+            inverse_scheduler=inverse_scheduler,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
@@ -1172,7 +1173,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                         noise_pred = noise_pred.detach()
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.inverse_scheduler.step(noise_pred, t, latents, reverse=True).prev_sample
+                latents = self.inverse_scheduler.step(noise_pred, t, latents).prev_sample
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or (

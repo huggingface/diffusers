@@ -22,7 +22,7 @@ import numpy as np
 import torch
 
 from diffusers.configuration_utils import ConfigMixin, register_to_config
-from diffusers.schedulers.scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
+from diffusers.schedulers.scheduling_utils import SchedulerMixin
 from diffusers.utils import BaseOutput
 
 
@@ -76,8 +76,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> torch.Tensor
 
 class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
     """
-    Denoising diffusion implicit models is a scheduler that extends the denoising procedure introduced in denoising
-    diffusion probabilistic models (DDPMs) with non-Markovian guidance.
+    DDIMInverseScheduler is the reverse scheduler of [`DDIMScheduler`].
 
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
@@ -111,7 +110,6 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
             https://imagen.research.google/video/paper.pdf)
     """
 
-    _compatibles = [e.name for e in KarrasDiffusionSchedulers]
     order = 1
 
     @register_to_config
@@ -172,16 +170,6 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
-    def _get_variance(self, timestep, prev_timestep):
-        alpha_prod_t = self.alphas_cumprod[timestep]
-        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
-        beta_prod_t = 1 - alpha_prod_t
-        beta_prod_t_prev = 1 - alpha_prod_t_prev
-
-        variance = (beta_prod_t_prev / beta_prod_t) * (1 - alpha_prod_t / alpha_prod_t_prev)
-
-        return variance
-
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -215,23 +203,24 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         use_clipped_model_output: bool = False,
         variance_noise: Optional[torch.FloatTensor] = None,
         return_dict: bool = True,
-        reverse=False,
     ) -> Union[DDIMSchedulerOutput, Tuple]:
         e_t = model_output
 
         x = sample
         prev_timestep = timestep + self.config.num_train_timesteps // self.num_inference_steps
-        # print(timestep, prev_timestep)
+
         a_t = self.alphas_cumprod[timestep - 1]
         a_prev = self.alphas_cumprod[prev_timestep - 1] if prev_timestep >= 0 else self.final_alpha_cumprod
 
         pred_x0 = (x - (1 - a_t) ** 0.5 * e_t) / a_t.sqrt()
-        # direction pointing to x_t
+
         dir_xt = (1.0 - a_prev).sqrt() * e_t
-        x = a_prev.sqrt() * pred_x0 + dir_xt
+
+        prev_sample = a_prev.sqrt() * pred_x0 + dir_xt
+
         if not return_dict:
-            return (x,)
-        return DDIMSchedulerOutput(prev_sample=x, pred_original_sample=pred_x0)
+            return (prev_sample, pred_x0)
+        return DDIMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_x0)
 
     def add_noise(
         self,

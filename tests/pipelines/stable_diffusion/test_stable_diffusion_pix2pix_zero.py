@@ -96,6 +96,9 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
             "tokenizer": tokenizer,
             "safety_checker": None,
             "feature_extractor": None,
+            "inverse_scheduler": None,
+            "caption_generator": None,
+            "caption_processor": None,
         }
         return components
 
