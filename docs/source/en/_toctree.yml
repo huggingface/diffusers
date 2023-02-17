@@ -55,6 +55,8 @@
 - sections:
   - local: optimization/fp16
     title: Memory and Speed
+  - local: optimization/torch2.0
+    title: Torch2.0 support
   - local: optimization/xformers
     title: xFormers
   - local: optimization/onnx
