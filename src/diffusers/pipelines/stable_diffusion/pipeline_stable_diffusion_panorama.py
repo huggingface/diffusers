@@ -148,6 +148,8 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline):
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
         text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
         `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
+        Note that offloading happens on a submodule basis. Memory savings are higher than with
+        `enable_model_cpu_offload`, but performance is lower.
         """
         if is_accelerate_available():
             from accelerate import cpu_offload
@@ -170,7 +172,7 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline):
         `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
         hooks.
         """
-        if self.device != torch.device("meta") or not hasattr(self.unet, "_hf_hook"):
+        if not hasattr(self.unet, "_hf_hook"):
             return self.device
         for module in self.unet.modules():
             if (
@@ -204,7 +206,7 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline):
                 number of images that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
-            negative_ prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
                 Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
@@ -336,7 +338,7 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline):
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
