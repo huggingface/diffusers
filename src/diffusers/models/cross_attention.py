@@ -99,9 +99,9 @@ class CrossAttention(nn.Module):
         self.to_out.append(nn.Dropout(dropout))
 
         # set attention processor
-        # We use the TorchAttentionProcessor by default when torch2.x is used which uses
+        # We use the Torch2AttnProcessor by default when torch2.x is used which uses
         # torch.nn.functional.scaled_dot_product_attention for native Flash/memory_efficient_attention
-        processor = TorchAttentionProcessor() if hasattr(F, "scaled_dot_product_attention") else CrossAttnProcessor()
+        processor = Torch2AttnProcessor() if hasattr(F, "scaled_dot_product_attention") else CrossAttnProcessor()
         self.set_processor(processor)
 
     def set_use_memory_efficient_attention_xformers(
@@ -465,7 +465,7 @@ class XFormersCrossAttnProcessor:
         return hidden_states
 
 
-class TorchAttentionProcessor:
+class Torch2AttnProcessor:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
