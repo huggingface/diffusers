@@ -28,6 +28,7 @@ Resources:
 
 ## Tips 
 
+* The pipeline can be conditioned on real input images. Check out the code examples below to know more.
 * The pipeline exposes two arguments namely `source_embeds` and `target_embeds`
 that let you control the direction of the semantic edits in the final image to be generated. Let's say,
 you wanted to translate from "cat" to "dog". In this case, the edit direction will be "cat -> dog". To reflect
@@ -51,7 +52,7 @@ paper](https://arxiv.org/abs/2302.03027). Below, we also provide some directions
 
 ## Usage example
 
-**Based on an image generated with the input prompt**
+### Based on an image generated with the input prompt
 
 ```python
 import requests
@@ -93,9 +94,77 @@ images = pipeline(
 images[0].save("edited_image_dog.png")
 ```
 
-**Based on an input image**
+### Based on an input image
 
-_Coming soon_
+When the pipeline is conditioned on an input image, we first obtain an inverted
+noise from it using a `DDIMInverseScheduler` with the help of a generated caption. Then 
+the inverted noise is used to start the generation process. 
+
+First, let's load our pipeline: 
+
+```py
+import torch
+from transformers import BlipForConditionalGeneration, BlipProcessor
+from diffusers import DDIMScheduler, DDIMInverseScheduler, StableDiffusionPix2PixZeroPipeline
+
+captioner_id = "Salesforce/blip-image-captioning-base"
+processor = BlipProcessor.from_pretrained(captioner_id)
+model = BlipForConditionalGeneration.from_pretrained(captioner_id, torch_dtype=torch.float16, low_cpu_mem_usage=True)
+
+sd_model_ckpt = "CompVis/stable-diffusion-v1-4"
+pipeline = StableDiffusionPix2PixZeroPipeline.from_pretrained(
+    sd_model_ckpt,
+    caption_generator=model,
+    caption_processor=processor,
+    torch_dtype=torch.float16,
+    safety_checker=None,
+)
+pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
+pipeline.inverse_scheduler = DDIMInverseScheduler.from_config(pipeline.scheduler.config)
+pipeline.enable_model_cpu_offload()
+```
+
+Then, we load an input image for conditioning and obtain a suitable caption for it: 
+
+```py
+import requests
+from PIL import Image
+
+img_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/test_images/cats/cat_6.png"
+raw_image = Image.open(requests.get(img_url, stream=True).raw).convert("RGB").resize((512, 512))
+caption = pipeline.generate_caption(raw_image)
+```
+
+Then we employ the generated caption and the input image to get the inverted noise: 
+
+```py 
+inv_latents, inv_image = pipeline.invert(caption, image=raw_image)
+```
+
+Now, generate the image with edit directions: 
+
+```py
+# See the "Generating source and target embeddings" section below to
+# automate the generation of these captions with a pre-trained model like Flan-T5.
+source_prompts = ["a cat sitting on the street", "a cat playing in the field", "a face of a cat"]
+target_prompts = ["a dog sitting on the street", "a dog playing in the field", "a face of a dog"]
+
+source_embeds = pipeline.get_embeds(source_prompts, batch_size=2)
+target_embeds = pipeline.get_embeds(target_prompts, batch_size=2)
+
+
+image = pipeline(
+    caption,
+    source_embeds=source_embeds,
+    target_embeds=target_embeds,
+    num_inference_steps=50,
+    cross_attention_guidance_amount=0.15,
+    generator=generator,
+    latents=inv_latents,
+    negative_prompt=caption,
+).images[0]
+image.save("edited_image.png")
+```
 
 ## Generating source and target embeddings 
 
