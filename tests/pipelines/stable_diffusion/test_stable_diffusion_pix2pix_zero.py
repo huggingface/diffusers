@@ -372,7 +372,8 @@ class InversionPipelineSlowTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-        inv_latents, inv_image = pipe.invert(caption, image=raw_image, generator=generator, num_inference_steps=10)
+        output = pipe.invert(caption, image=raw_image, generator=generator, num_inference_steps=10)
+        inv_latents = output[0]
 
         image_slice = inv_latents[0, -3:, -3:, -1].flatten()
 
@@ -402,10 +403,11 @@ class InversionPipelineSlowTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-        inv_latents, inv_image = pipe.invert(caption, image=raw_image, generator=generator)
+        output = pipe.invert(caption, image=raw_image, generator=generator)
+        inv_latents = output[0]
 
-        source_prompts = ["a cat sitting on the street", "a cat playing in the field", "a face of a cat"]
-        target_prompts = ["a dog sitting on the street", "a dog playing in the field", "a face of a dog"]
+        source_prompts = 4 * ["a cat sitting on the street", "a cat playing in the field", "a face of a cat"]
+        target_prompts = 4 * ["a dog sitting on the street", "a dog playing in the field", "a face of a dog"]
 
         source_embeds = pipe.get_embeds(source_prompts)
         target_embeds = pipe.get_embeds(target_prompts)

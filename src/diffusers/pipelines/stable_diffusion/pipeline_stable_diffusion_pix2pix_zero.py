@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import inspect
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
@@ -33,6 +34,7 @@ from ...schedulers import DDIMScheduler, DDPMScheduler, EulerAncestralDiscreteSc
 from ...schedulers.scheduling_ddim_inverse import DDIMInverseScheduler
 from ...utils import (
     PIL_INTERPOLATION,
+    BaseOutput,
     is_accelerate_available,
     is_accelerate_version,
     logging,
@@ -45,6 +47,24 @@ from .safety_checker import StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+@dataclass
+class Pix2PixInversionPipelineOutput(BaseOutput):
+    """
+    Output class for Stable Diffusion pipelines.
+
+    Args:
+        latents (`torch.FloatTensor`)
+            inverted latents tensor
+        images (`List[PIL.Image.Image]` or `np.ndarray`)
+            List of denoised PIL images of length `batch_size` or numpy array of shape `(batch_size, height, width,
+            num_channels)`. PIL images or numpy array present the denoised images of the diffusion pipeline.
+    """
+
+    latents: torch.FloatTensor
+    images: Union[List[PIL.Image.Image], np.ndarray]
+
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -84,6 +104,43 @@ EXAMPLE_DOC_STRING = """
         ... ).images
         >>> images[0].save("edited_image_dog.png")
         ```
+"""
+
+EXAMPLE_INVERT_DOC_STRING = """
+>>> import torch >>> from transformers import BlipForConditionalGeneration, BlipProcessor >>> from diffusers import
+DDIMScheduler, DDIMInverseScheduler, StableDiffusionPix2PixZeroPipeline >>> import requests >>> from PIL import Image
+
+>>> captioner_id = "Salesforce/blip-image-captioning-base"
+
+>>> processor = BlipProcessor.from_pretrained(captioner_id) >>> model =
+BlipForConditionalGeneration.from_pretrained(captioner_id, torch_dtype=torch.float16, low_cpu_mem_usage=True)
+
+>>> sd_model_ckpt = "CompVis/stable-diffusion-v1-4" >>> pipeline = StableDiffusionPix2PixZeroPipeline.from_pretrained(
+... sd_model_ckpt, ... caption_generator=model, ... caption_processor=processor, ... torch_dtype=torch.float16, ...
+safety_checker=None, ... )
+
+>>> pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config) >>> pipeline.inverse_scheduler =
+DDIMInverseScheduler.from_config(pipeline.scheduler.config) >>> pipeline.enable_model_cpu_offload()
+
+>>> img_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/test_images/cats/cat_6.png" >>> raw_image =
+Image.open(requests.get(img_url, stream=True).raw).convert("RGB").resize((512, 512))
+
+>>> # generate caption >>> caption = pipeline.generate_caption(raw_image) >>> # "a photography of a cat with flowers
+and dai dai daie - daie - daie kasaii"
+
+>>> inv_latents = pipeline.invert(caption, image=raw_image).latents
+
+>>> # we need to generate source and target embeds >>> source_prompts = ["a cat sitting on the street", "a cat playing
+in the field", "a face of a cat"] >>> target_prompts = ["a dog sitting on the street", "a dog playing in the field", "a
+face of a dog"]
+
+>>> source_embeds = pipeline.get_embeds(source_prompts, batch_size=2) >>> target_embeds =
+pipeline.get_embeds(target_prompts, batch_size=2)
+
+>>> # the latents can then be used to edit a real image >>> image = pipeline( ... caption, ...
+source_embeds=source_embeds, ... target_embeds=target_embeds, ... num_inference_steps=50, ...
+cross_attention_guidance_amount=0.15, ... generator=generator, ... latents=inv_latents, ... negative_prompt=caption,
+... ).images[0] >>> image.save("edited_image.png")
 """
 
 
@@ -646,6 +703,31 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
         return latents
 
+    def auto_corr_loss(self, hidden_states, generator=None):
+        batch_size, channel, height, width = hidden_states.shape
+        if batch_size > 1:
+            raise ValueError("Only batch_size 1 is supported for now")
+
+        hidden_states = hidden_states.squeeze(0)
+        # hidden_states must be shape [C,H,W] now
+        reg_loss = 0.0
+        for i in range(hidden_states.shape[0]):
+            noise = hidden_states[i][None, None, :, :]
+            while True:
+                roll_amount = torch.randint(noise.shape[2] // 2, (1,), generator=generator).item()
+                reg_loss += (noise * torch.roll(noise, shifts=roll_amount, dims=2)).mean() ** 2
+                reg_loss += (noise * torch.roll(noise, shifts=roll_amount, dims=3)).mean() ** 2
+
+                if noise.shape[2] <= 8:
+                    break
+                noise = F.avg_pool2d(noise, kernel_size=2)
+        return reg_loss
+
+    def kl_divergence(self, hidden_states):
+        mean = hidden_states.mean()
+        var = hidden_states.var()
+        return var + mean**2 - 1 - torch.log(var + 1e-7)
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -923,57 +1005,30 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
         return StableDiffusionPipelineOutput(images=edited_image, nsfw_content_detected=has_nsfw_concept)
 
-    def auto_corr_loss(self, x, random_shift=True, generator=None):
-        B, C, H, W = x.shape
-        assert B == 1
-        x = x.squeeze(0)
-        # x must be shape [C,H,W] now
-        reg_loss = 0.0
-        for ch_idx in range(x.shape[0]):
-            noise = x[ch_idx][None, None, :, :]
-            while True:
-                if random_shift:
-                    roll_amount = torch.randint(noise.shape[2] // 2, (1,), generator=generator).item()
-                else:
-                    roll_amount = 1
-                reg_loss += (noise * torch.roll(noise, shifts=roll_amount, dims=2)).mean() ** 2
-                reg_loss += (noise * torch.roll(noise, shifts=roll_amount, dims=3)).mean() ** 2
-                if noise.shape[2] <= 8:
-                    break
-                noise = F.avg_pool2d(noise, kernel_size=2)
-        return reg_loss
-
-    def kl_divergence(self, x):
-        _mu = x.mean()
-        _var = x.var()
-        return _var + _mu**2 - 1 - torch.log(_var + 1e-7)
-
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_INVERT_DOC_STRING)
     def invert(
         self,
         prompt: Optional[str] = None,
         image: Union[torch.FloatTensor, PIL.Image.Image] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 1,
-        eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         cross_attention_guidance_amount: float = 0.1,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        # inversion regularization parameters
-        lambda_ac: float = 20.0,
+        lambda_auto_corr: float = 20.0,
         lambda_kl: float = 20.0,
         num_reg_steps: int = 5,
-        num_ac_rolls: int = 5,
+        num_auto_corr_rolls: int = 5,
     ):
         r"""
-        Function invoked when calling the pipeline for generation.
+        Function used to generate inverted latents given a prompt and image.
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
@@ -981,16 +1036,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 instead.
             image (`PIL.Image.Image`, *optional*):
                 `Image`, or tensor representing an image batch which will be used for conditioning.
-            source_embeds (`torch.Tensor`):
-                Source concept embeddings. Generation of the embeddings as per the [original
-                paper](https://arxiv.org/abs/2302.03027). Used in discovering the edit direction.
-            target_embeds (`torch.Tensor`):
-                Target concept embeddings. Generation of the embeddings as per the [original
-                paper](https://arxiv.org/abs/2302.03027). Used in discovering the edit direction.
-            height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The width in pixels of the generated image.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -1000,15 +1045,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
-            negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
-                Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
-            num_images_per_prompt (`int`, *optional*, defaults to 1):
-                The number of images to generate per prompt.
-            eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
-                [`schedulers.DDIMScheduler`], will be ignored for others.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
@@ -1019,10 +1055,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
-                argument.
             cross_attention_guidance_amount (`float`, defaults to 0.1):
                 Amount of guidance needed from the reference cross-attention maps.
             output_type (`str`, *optional*, defaults to `"pil"`):
@@ -1037,17 +1069,25 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
+            lambda_auto_corr (`float`, *optional*, defaults to 20.0):
+                Lambda parameter to control auto correction
+            lambda_kl (`float`, *optional*, defaults to 20.0):
+                Lambda parameter to control Kullback–Leibler divergence output
+            num_reg_steps (`int`, *optional*, defaults to 5):
+                Number of regularization loss steps
+            num_auto_corr_rolls (`int`, *optional*, defaults to 5):
+                Number of auto correction roll steps
 
         Examples:
 
         Returns:
-            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
-            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
-            When returning a tuple, the first element is a list with the generated images, and the second element is a
-            list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
-            (nsfw) content, according to the `safety_checker`.
+            [`~pipelines.stable_diffusion.pipeline_stable_diffusion_pix2pix_zero.Pix2PixInversionPipelineOutput`] or
+            `tuple`:
+            [`~pipelines.stable_diffusion.pipeline_stable_diffusion_pix2pix_zero.Pix2PixInversionPipelineOutput`] if
+            `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is the inverted
+            latents tensor and then second is the corresponding decoded image.
         """
-        # 2. Define call parameters
+        # 1. Define call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -1063,7 +1103,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        # 3. Encode input prompt
+        # 2. Encode input prompt
         num_images_per_prompt = 1
         prompt_embeds = self._encode_prompt(
             prompt,
@@ -1071,21 +1111,19 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             num_images_per_prompt,
             do_classifier_free_guidance,
             prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
         )
 
-        # 4. Preprocess image
+        # 3. Preprocess image
         image = preprocess(image)
 
         # 4. Prepare timesteps
         self.inverse_scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.inverse_scheduler.timesteps
 
-        # 7. Prepare latent variables
+        # 5. Prepare latent variables
         latents = self.prepare_image_latents(image, batch_size, prompt_embeds.dtype, device, generator)
-        print("l", latents.abs().sum())
 
-        # 8. Rejig the UNet so that we can obtain the cross-attenion maps and
+        # 6. Rejig the UNet so that we can obtain the cross-attenion maps and
         # use them for guiding the subsequent image generation.
         self.unet = prepare_unet(self.unet)
 
@@ -1111,25 +1149,27 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # regularization of the noise prediction
-                e_t = noise_pred
                 with torch.enable_grad():
-                    for _outer in range(num_reg_steps):
-                        if lambda_ac > 0:
-                            for _inner in range(num_ac_rolls):
-                                _var = torch.autograd.Variable(e_t.detach().clone(), requires_grad=True)
-                                l_ac = self.auto_corr_loss(_var, generator=generator)
+                    for _ in range(num_reg_steps):
+                        if lambda_auto_corr > 0:
+                            for _ in range(num_auto_corr_rolls):
+                                var = torch.autograd.Variable(noise_pred.detach().clone(), requires_grad=True)
+                                l_ac = self.auto_corr_loss(var, generator=generator)
                                 l_ac.backward()
-                                _grad = _var.grad.detach() / num_ac_rolls
-                                e_t = e_t - lambda_ac * _grad
-                        if lambda_kl > 0:
-                            _var = torch.autograd.Variable(e_t.detach().clone(), requires_grad=True)
-                            l_kld = self.kl_divergence(_var)
-                            l_kld.backward()
-                            _grad = _var.grad.detach()
-                            e_t = e_t - lambda_kl * _grad
-                        e_t = e_t.detach()
 
-                noise_pred = e_t
+                                grad = var.grad.detach() / num_auto_corr_rolls
+                                noise_pred = noise_pred - lambda_auto_corr * grad
+
+                        if lambda_kl > 0:
+                            var = torch.autograd.Variable(noise_pred.detach().clone(), requires_grad=True)
+
+                            l_kld = self.kl_divergence(var)
+                            l_kld.backward()
+
+                            grad = var.grad.detach()
+                            noise_pred = noise_pred - lambda_kl * grad
+
+                        noise_pred = noise_pred.detach()
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.inverse_scheduler.step(noise_pred, t, latents, reverse=True).prev_sample
@@ -1142,15 +1182,20 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
-        x_inv = latents.detach().clone()
-        # reconstruct the image
+        inverted_latents = latents.detach().clone()
 
         # 8. Post-processing
         image = self.decode_latents(latents.detach())
-        image = self.numpy_to_pil(image)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.final_offload_hook.offload()
 
-        return x_inv, image
+        # 9. Convert to PIL.
+        if output_type == "pil":
+            image = self.numpy_to_pil(image)
+
+        if not return_dict:
+            return (inverted_latents, image)
+
+        return Pix2PixInversionPipelineOutput(latents=inverted_latents, images=image)
