@@ -1,5 +1,4 @@
-# Copyright 2023 Omar Bar Tal and The HuggingFace Team. All rights reserved.
-#
+# Copyright 2023 MultiDiffusion Authors and The HuggingFace Team. All rights reserved."
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -35,11 +34,11 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import StableDiffusionText2PanoramaPipeline, DDIMScheduler
+        >>> from diffusers import StableDiffusionPanoramaPipeline, DDIMScheduler
 
         >>> model_ckpt = "stabilityai/stable-diffusion-2-base"
         >>> scheduler = DDIMScheduler.from_pretrained(model_ckpt, subfolder="scheduler")
-        >>> pipe = StableDiffusionText2PanoramaPipeline.from_pretrained(
+        >>> pipe = StableDiffusionPanoramaPipeline.from_pretrained(
         ...     model_ckpt, scheduler=scheduler, torch_dtype=torch.float16
         ... )
 
@@ -51,7 +50,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class StableDiffusionMultiDiffusionPanoramaPipeline(DiffusionPipeline):
+class StableDiffusionPanoramaPipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using "MultiDiffusion: Fusing Diffusion Paths for Controlled Image
     Generation".
@@ -100,33 +99,6 @@ class StableDiffusionMultiDiffusionPanoramaPipeline(DiffusionPipeline):
         if isinstance(scheduler, PNDMScheduler):
             logger.error("PNDMScheduler for this pipeline is currently not supported.")
 
-        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
-            deprecation_message = (
-                f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
-                f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
-                "to update the config accordingly as leaving `steps_offset` might led to incorrect results"
-                " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub,"
-                " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
-                " file"
-            )
-            deprecate("steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False)
-            new_config = dict(scheduler.config)
-            new_config["steps_offset"] = 1
-            scheduler._internal_dict = FrozenDict(new_config)
-
-        if hasattr(scheduler.config, "clip_sample") and scheduler.config.clip_sample is True:
-            deprecation_message = (
-                f"The configuration file of this scheduler: {scheduler} has not set the configuration `clip_sample`."
-                " `clip_sample` should be set to False in the configuration file. Please make sure to update the"
-                " config accordingly as not setting `clip_sample` in the config might lead to incorrect results in"
-                " future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be very"
-                " nice if you could open a Pull request for the `scheduler/scheduler_config.json` file"
-            )
-            deprecate("clip_sample not set", "1.0.0", deprecation_message, standard_warn=False)
-            new_config = dict(scheduler.config)
-            new_config["clip_sample"] = False
-            scheduler._internal_dict = FrozenDict(new_config)
-
         if safety_checker is None and requires_safety_checker:
             logger.warning(
                 f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
@@ -142,27 +114,6 @@ class StableDiffusionMultiDiffusionPanoramaPipeline(DiffusionPipeline):
                 "Make sure to define a feature extractor when loading {self.__class__} if you want to use the safety"
                 " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
             )
-
-        is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
-            version.parse(unet.config._diffusers_version).base_version
-        ) < version.parse("0.9.0.dev0")
-        is_unet_sample_size_less_64 = hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
-        if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
-            deprecation_message = (
-                "The configuration file of the unet has set the default `sample_size` to smaller than"
-                " 64 which seems highly unlikely. If your checkpoint is a fine-tuned version of any of the"
-                " following: \n- CompVis/stable-diffusion-v1-4 \n- CompVis/stable-diffusion-v1-3 \n-"
-                " CompVis/stable-diffusion-v1-2 \n- CompVis/stable-diffusion-v1-1 \n- runwayml/stable-diffusion-v1-5"
-                " \n- runwayml/stable-diffusion-inpainting \n you should change 'sample_size' to 64 in the"
-                " configuration file. Please make sure to update the config accordingly as leaving `sample_size=32`"
-                " in the config might lead to incorrect results in future versions. If you have downloaded this"
-                " checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for"
-                " the `unet/config.json` file"
-            )
-            deprecate("sample_size<64", "1.0.0", deprecation_message, standard_warn=False)
-            new_config = dict(unet.config)
-            new_config["sample_size"] = 64
-            unet._internal_dict = FrozenDict(new_config)
 
         self.register_modules(
             vae=vae,
@@ -477,6 +428,7 @@ class StableDiffusionMultiDiffusionPanoramaPipeline(DiffusionPipeline):
         return latents
 
     def get_views(self, panorama_height, panorama_width, window_size=64, stride=8):
+        # Here, we define the mappings F_i (see Eq. 7 in the MultiDiffusion paper https://arxiv.org/abs/2302.08113)
         panorama_height /= 8
         panorama_width /= 8
         num_blocks_height = (panorama_height - window_size) // stride + 1
@@ -653,8 +605,9 @@ class StableDiffusionMultiDiffusionPanoramaPipeline(DiffusionPipeline):
 
                 # generate views
                 # Here, we iterate through different spatial crops of the latents and denoise them. These
-                # denoised (latent) crops are then stiched together to produce the final latent
-                # for the current timestep via MultiDiffusion.
+                # denoised (latent) crops are then averaged to produce the final latent
+                # for the current timestep via MultiDiffusion. Please see Sec. 4.1 in the
+                # MultiDiffusion paper for more details: https://arxiv.org/abs/2302.08113
                 for h_start, h_end, w_start, w_end in views:
                     # get the latents corresponding to the current view coordinates
                     latents_for_view = latents[:, :, h_start:h_end, w_start:w_end]
@@ -683,7 +636,7 @@ class StableDiffusionMultiDiffusionPanoramaPipeline(DiffusionPipeline):
                     value[:, :, h_start:h_end, w_start:w_end] += latents_view_denoised
                     count[:, :, h_start:h_end, w_start:w_end] += 1
 
-                # take the MultiDiffusion step
+                # take the MultiDiffusion step. Eq. 5 in MultiDiffusion paper: https://arxiv.org/abs/2302.08113
                 latents = torch.where(count > 0, value / count, value)
 
                 # call the callback, if provided

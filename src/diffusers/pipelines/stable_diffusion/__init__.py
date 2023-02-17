@@ -49,7 +49,7 @@ else:
     from .pipeline_stable_diffusion_inpaint import StableDiffusionInpaintPipeline
     from .pipeline_stable_diffusion_inpaint_legacy import StableDiffusionInpaintPipelineLegacy
     from .pipeline_stable_diffusion_instruct_pix2pix import StableDiffusionInstructPix2PixPipeline
-    from .pipeline_stable_diffusion_multiDiffusion_panorama import StableDiffusionMultiDiffusionPanoramaPipeline
+    from .pipeline_stable_diffusion_panorama import StableDiffusionPanoramaPipeline
     from .pipeline_stable_diffusion_latent_upscale import StableDiffusionLatentUpscalePipeline
     from .pipeline_stable_diffusion_sag import StableDiffusionSAGPipeline
     from .pipeline_stable_diffusion_upscale import StableDiffusionUpscalePipeline

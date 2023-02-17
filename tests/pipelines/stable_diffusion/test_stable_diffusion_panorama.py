@@ -25,7 +25,7 @@ from diffusers import (
     EulerAncestralDiscreteScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
-    StableDiffusionMultiDiffusionPanoramaPipeline,
+    StableDiffusionPanoramaPipeline,
     UNet2DConditionModel,
 )
 from diffusers.utils import load_numpy, nightly, slow, torch_device
@@ -38,8 +38,8 @@ from ...test_pipelines_common import PipelineTesterMixin
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class StableDiffusionMultiDiffusionPanoramaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = StableDiffusionMultiDiffusionPanoramaPipeline
+class StableDiffusionPanoramaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = StableDiffusionPanoramaPipeline
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -103,10 +103,10 @@ class StableDiffusionMultiDiffusionPanoramaPipelineFastTests(PipelineTesterMixin
         }
         return inputs
 
-    def test_stable_diffusion_multiDiffusion_panorama_default_case(self):
+    def test_stable_diffusion_panorama_default_case(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionMultiDiffusionPanoramaPipeline(**components)
+        sd_pipe = StableDiffusionPanoramaPipeline(**components)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -120,10 +120,10 @@ class StableDiffusionMultiDiffusionPanoramaPipelineFastTests(PipelineTesterMixin
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    def test_stable_diffusion_multiDiffusion_panorama_negative_prompt(self):
+    def test_stable_diffusion_panorama_negative_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionMultiDiffusionPanoramaPipeline(**components)
+        sd_pipe = StableDiffusionPanoramaPipeline(**components)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -140,13 +140,13 @@ class StableDiffusionMultiDiffusionPanoramaPipelineFastTests(PipelineTesterMixin
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    def test_stable_diffusion_multiDiffusion_panorama_euler(self):
+    def test_stable_diffusion_panorama_euler(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         components["scheduler"] = EulerAncestralDiscreteScheduler(
             beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
         )
-        sd_pipe = StableDiffusionMultiDiffusionPanoramaPipeline(**components)
+        sd_pipe = StableDiffusionPanoramaPipeline(**components)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -161,11 +161,11 @@ class StableDiffusionMultiDiffusionPanoramaPipelineFastTests(PipelineTesterMixin
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    def test_stable_diffusion_multiDiffusion_panorama_pndm(self):
+    def test_stable_diffusion_panorama_pndm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         components["scheduler"] = PNDMScheduler()
-        sd_pipe = StableDiffusionMultiDiffusionPanoramaPipeline(**components)
+        sd_pipe = StableDiffusionPanoramaPipeline(**components)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -173,10 +173,10 @@ class StableDiffusionMultiDiffusionPanoramaPipelineFastTests(PipelineTesterMixin
         with self.assertRaises(ValueError):
             _ = sd_pipe(**inputs).images
 
-    def test_stable_diffusion_multiDiffusion_panorama_num_images_per_prompt(self):
+    def test_stable_diffusion_panorama_num_images_per_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionMultiDiffusionPanoramaPipeline(**components)
+        sd_pipe = StableDiffusionPanoramaPipeline(**components)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -212,7 +212,7 @@ class StableDiffusionMultiDiffusionPanoramaPipelineFastTests(PipelineTesterMixin
 
 @slow
 @require_torch_gpu
-class StableDiffusionMultiDiffusionPanoramaSlowTests(unittest.TestCase):
+class StableDiffusionPanoramaSlowTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -229,10 +229,10 @@ class StableDiffusionMultiDiffusionPanoramaSlowTests(unittest.TestCase):
         }
         return inputs
 
-    def test_stable_diffusion_multiDiffusion_panorama_default(self):
+    def test_stable_diffusion_panorama_default(self):
         model_ckpt = "stabilityai/stable-diffusion-2-base"
         scheduler = DDIMScheduler.from_pretrained(model_ckpt, subfolder="scheduler")
-        pipe = StableDiffusionMultiDiffusionPanoramaPipeline.from_pretrained(
+        pipe = StableDiffusionPanoramaPipeline.from_pretrained(
             model_ckpt, scheduler=scheduler, safety_checker=None
         )
         pipe.to(torch_device)
@@ -260,8 +260,8 @@ class StableDiffusionMultiDiffusionPanoramaSlowTests(unittest.TestCase):
 
         assert np.abs(expected_slice - image_slice).max() < 1e-2
 
-    def test_stable_diffusion_multiDiffusion_panorama_k_lms(self):
-        pipe = StableDiffusionMultiDiffusionPanoramaPipeline.from_pretrained(
+    def test_stable_diffusion_panorama_k_lms(self):
+        pipe = StableDiffusionPanoramaPipeline.from_pretrained(
             "stabilityai/stable-diffusion-2-base", safety_checker=None
         )
         pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
@@ -292,7 +292,7 @@ class StableDiffusionMultiDiffusionPanoramaSlowTests(unittest.TestCase):
 
         assert np.abs(expected_slice - image_slice).max() < 1e-3
 
-    def test_stable_diffusion_multiDiffusion_panorama_intermediate_state(self):
+    def test_stable_diffusion_panorama_intermediate_state(self):
         number_of_steps = 0
 
         def callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
@@ -341,7 +341,7 @@ class StableDiffusionMultiDiffusionPanoramaSlowTests(unittest.TestCase):
 
         model_ckpt = "stabilityai/stable-diffusion-2-base"
         scheduler = DDIMScheduler.from_pretrained(model_ckpt, subfolder="scheduler")
-        pipe = StableDiffusionMultiDiffusionPanoramaPipeline.from_pretrained(
+        pipe = StableDiffusionPanoramaPipeline.from_pretrained(
             model_ckpt, scheduler=scheduler, safety_checker=None
         )
         pipe = pipe.to(torch_device)
@@ -353,14 +353,14 @@ class StableDiffusionMultiDiffusionPanoramaSlowTests(unittest.TestCase):
         assert callback_fn.has_been_called
         assert number_of_steps == 3
 
-    def test_stable_diffusion_multiDiffusion_panorama_pipeline_with_sequential_cpu_offloading(self):
+    def test_stable_diffusion_panorama_pipeline_with_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()
 
         model_ckpt = "stabilityai/stable-diffusion-2-base"
         scheduler = DDIMScheduler.from_pretrained(model_ckpt, subfolder="scheduler")
-        pipe = StableDiffusionMultiDiffusionPanoramaPipeline.from_pretrained(
+        pipe = StableDiffusionPanoramaPipeline.from_pretrained(
             model_ckpt, scheduler=scheduler, safety_checker=None
         )
         pipe = pipe.to(torch_device)
@@ -374,45 +374,3 @@ class StableDiffusionMultiDiffusionPanoramaSlowTests(unittest.TestCase):
         mem_bytes = torch.cuda.max_memory_allocated()
         # make sure that less than 5.2 GB is allocated
         assert mem_bytes < 5.2 * 10**9
-
-
-@nightly
-@require_torch_gpu
-class StableDiffusionPipelineNightlyTests(unittest.TestCase):
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        torch.cuda.empty_cache()
-
-    def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
-        generator = torch.Generator(device=generator_device).manual_seed(seed)
-        latents = np.random.RandomState(seed).standard_normal((1, 4, 64, 64))
-        latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
-        inputs = {
-            "prompt": "a photo of the dolomites",
-            "latents": latents,
-            "generator": generator,
-            "num_inference_steps": 50,
-            "guidance_scale": 7.5,
-            "output_type": "numpy",
-        }
-        return inputs
-
-    def test_stable_diffusion_ddim(self):
-        model_ckpt = "stabilityai/stable-diffusion-2-base"
-        scheduler = DDIMScheduler.from_pretrained(model_ckpt, subfolder="scheduler")
-        pipe = StableDiffusionMultiDiffusionPanoramaPipeline.from_pretrained(
-            model_ckpt, scheduler=scheduler, safety_checker=None
-        )
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        image = pipe(**inputs).images[0]
-
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_multiDiffusion_panorama/stable_diffusion_2_base_ddim.npy"
-        )
-        max_diff = np.abs(expected_image - image).max()
-        assert max_diff < 1e-3

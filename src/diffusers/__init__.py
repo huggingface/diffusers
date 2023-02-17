@@ -123,7 +123,7 @@ else:
         StableDiffusionPix2PixZeroPipeline,
         StableDiffusionSAGPipeline,
         StableDiffusionUpscalePipeline,
-        StableDiffusionMultiDiffusionPanoramaPipeline,
+        StableDiffusionPanoramaPipeline,
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
         UnCLIPImageVariationPipeline,
