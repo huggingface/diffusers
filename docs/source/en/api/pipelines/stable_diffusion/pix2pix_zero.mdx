@@ -138,7 +138,8 @@ caption = pipeline.generate_caption(raw_image)
 Then we employ the generated caption and the input image to get the inverted noise: 
 
 ```py 
-inv_latents = pipeline.invert(caption, image=raw_image).latents
+generator = torch.manual_seed(0)
+inv_latents = pipeline.invert(caption, image=raw_image, generator=generator).latents
 ```
 
 Now, generate the image with edit directions: 
