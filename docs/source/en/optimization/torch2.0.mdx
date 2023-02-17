@@ -71,12 +71,14 @@ pip install --pre torch torchvision --index-url https://download.pytorch.org/whl
     import torch
     from diffusers import StableDiffusionPipeline
 
-    pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, safety_checker=None).to("cuda")
+    pipe = StableDiffusionPipeline.from_pretrained(
+        "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, safety_checker=None
+    ).to("cuda")
     pipe.unet = torch.compile(pipe.unet)
 
     batch_size = 10
-    prompt =  "A photo of an astronaut riding a horse on marse."
-    images = pipe(prompt,  num_inference_steps=steps, num_images_per_prompt=batch_size).images
+    prompt = "A photo of an astronaut riding a horse on marse."
+    images = pipe(prompt, num_inference_steps=steps, num_images_per_prompt=batch_size).images
     ```
 
     Depending on the type of GPUs it can give between 2-9% spee-up over efficient attention. But note that as of now the speed-up is mostly noticable on high-end GPUs such as A100.
