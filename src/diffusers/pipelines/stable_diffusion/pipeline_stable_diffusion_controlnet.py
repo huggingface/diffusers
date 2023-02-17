@@ -369,6 +369,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        controlnet_hint: Optional[torch.FloatTensor] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -501,13 +502,26 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                # predict the noise residual
-                noise_pred = self.unet(
-                    latent_model_input,
-                    t,
-                    encoder_hidden_states=prompt_embeds,
-                    cross_attention_kwargs=cross_attention_kwargs,
-                ).sample
+                if controlnet_hint is not None:
+                    # ControlNet predict the noise residual
+                    control = self.controlnet(
+                        latent_model_input, t, encoder_hidden_states=prompt_embeds, controlnet_hint=controlnet_hint
+                    )
+                    noise_pred = self.unet(
+                        latent_model_input,
+                        t,
+                        encoder_hidden_states=prompt_embeds,
+                        cross_attention_kwargs=cross_attention_kwargs,
+                        control=control,
+                    ).sample
+                else:
+                    # predict the noise residual
+                    noise_pred = self.unet(
+                        latent_model_input,
+                        t,
+                        encoder_hidden_states=prompt_embeds,
+                        cross_attention_kwargs=cross_attention_kwargs,
+                    ).sample
 
                 # perform guidance
                 if do_classifier_free_guidance:
