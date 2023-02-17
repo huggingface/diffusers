@@ -159,7 +159,7 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
                 raise NotImplementedError(f"{algorithm_type} does is not implemented for {self.__class__}")
 
         if solver_type not in ["logrho"]:
-            if solver_type in ["midpoint", "heun"]:
+            if solver_type in ["midpoint", "heun", "bh1", "bh2"]:
                 solver_type = "logrho"
             else:
                 raise NotImplementedError(f"solver type {solver_type} does is not implemented for {self.__class__}")

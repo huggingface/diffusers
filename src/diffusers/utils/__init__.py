@@ -18,6 +18,7 @@ import os
 from packaging import version
 
 from .. import __version__
+from .accelerate_utils import apply_forward_hook
 from .constants import (
     CONFIG_NAME,
     DEPRECATED_REVISION_ARGS,
@@ -44,6 +45,7 @@ from .import_utils import (
     DummyObject,
     OptionalDependencyNotAvailable,
     is_accelerate_available,
+    is_accelerate_version,
     is_flax_available,
     is_inflect_available,
     is_k_diffusion_available,
