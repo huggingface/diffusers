@@ -90,17 +90,17 @@ EXAMPLE_DOC_STRING = """
         >>> target_emb_url = "https://hf.co/datasets/sayakpaul/sample-datasets/resolve/main/dog.pt"
 
         >>> for url in [source_emb_url, target_emb_url]:
-        download(url, url.split("/")[-1])
+        ...     download(url, url.split("/")[-1])
 
         >>> src_embeds = torch.load(source_emb_url.split("/")[-1])
         >>> target_embeds = torch.load(target_emb_url.split("/")[-1])
         >>> images = pipeline(
-        prompt,
-            source_embeds=src_embeds,
-            target_embeds=target_embeds,
-            num_inference_steps=50,
-            cross_attention_guidance_amount=0.15,
-        ).images
+        ...     prompt,
+        ...     source_embeds=src_embeds,
+        ...     target_embeds=target_embeds,
+        ...     num_inference_steps=50,
+        ...     cross_attention_guidance_amount=0.15,
+        ... ).images
 
         >>> images[0].save("edited_image_dog.png")
         ```
