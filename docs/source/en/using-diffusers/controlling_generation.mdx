@@ -48,6 +48,18 @@ See [here](../api/pipelines/stable_diffusion/pix2pix) for more information on ho
 
 The denoising process is guided from one conceptual embedding towards another conceptual embedding. The intermediate latents are optimized during the denoising process to push the attention maps towards reference attention maps. The reference attention maps are from the denoising process of the input image and are used to encourage semantic preservation.
 
+Pix2PixZero can be used both to edit synthetic images as well as real images.
+- To edit synthetic images, one first generates on image given a caption.
+Next, for a concept of the caption that shall be edited as well as the new target concept one generates image captions (e.g. with a model like [Flan-T5](https://huggingface.co/docs/transformers/model_doc/flan-t5)). Then, "mean" prompt embeddings for both the source and target concepts are created via the text encoder. Finally, the pix2pix-zero algorithm is used to edit the synthetic image.
+- To edit a real image, one first generates an image caption using a model like [Blip](https://huggingface.co/docs/transformers/model_doc/blip). Then one applies ddim inversion on the prompt and image to generate "inverse" latents. Similar to before, "mean" prompt embeddings for both source and target concepts are created and finally the pix2pix-zero algorithm in combination with the "inverse" latents is used to edit the image.
+
+<Tip>
+
+Pix2PixZero is the first model that allows "0-shot" image editing. This means that the model 
+can edit an image in less than a minute on a consumer GPU as shown [here](../api/pipelines/stable_diffusion/pix2pix_zero#usage-example)
+
+</Tip>
+
 See [here](../api/pipelines/stable_diffusion/pix2pix_zero) for more information on how to use it.
 
 ## Attend and excite
