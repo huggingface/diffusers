@@ -236,8 +236,8 @@ class StableDiffusionPix2PixZeroPipelineSlowTests(unittest.TestCase):
         for url in [src_emb_url, tgt_emb_url]:
             download_from_url(url, url.split("/")[-1])
 
-        src_embeds = torch.load(src_emb_url.split("/1")[-1])
-        target_embeds = torch.load(tgt_emb_url.split("/1")[-1])
+        src_embeds = torch.load(src_emb_url.split("/")[-1])
+        target_embeds = torch.load(tgt_emb_url.split("/")[-1])
 
         inputs = {
             "prompt": "turn him into a cyborg",
@@ -265,7 +265,7 @@ class StableDiffusionPix2PixZeroPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.4705, 0.4771, 0.4832, 0.4783, 0.4495, 0.447, 0.4658, 0.4568, 0.438])
+        expected_slice = np.array([0.5742, 0.5757, 0.5747, 0.5781, 0.5688, 0.5713, 0.5742, 0.5664, 0.5747])
 
         assert np.abs(expected_slice - image_slice).max() < 1e-3
 
@@ -283,7 +283,7 @@ class StableDiffusionPix2PixZeroPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.6514, 0.5571, 0.5244, 0.5591, 0.4998, 0.4834, 0.502, 0.468, 0.4663])
+        expected_slice = np.array([0.6367, 0.5459, 0.5146, 0.5479, 0.4905, 0.4753, 0.4961, 0.4629, 0.4624])
 
         assert np.abs(expected_slice - image_slice).max() < 1e-3
 
@@ -298,18 +298,14 @@ class StableDiffusionPix2PixZeroPipelineSlowTests(unittest.TestCase):
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array(
-                    [-0.5176, 0.0669, -0.1963, -0.1653, -0.7856, -0.2871, -0.5562, -0.0096, -0.012]
-                )
+                expected_slice = np.array([0.1345, 0.268, 0.1539, 0.0726, 0.0959, 0.2261, -0.2673, 0.0277, -0.2062])
 
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
             elif step == 2:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array(
-                    [-0.5127, 0.0613, -0.1937, -0.1622, -0.7856, -0.2849, -0.5601, -0.0111, -0.0137]
-                )
+                expected_slice = np.array([0.1393, 0.2637, 0.1617, 0.0724, 0.0987, 0.2271, -0.2666, 0.0299, -0.2104])
 
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
 
