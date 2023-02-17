@@ -602,7 +602,7 @@ class SchedulerCommonTest(unittest.TestCase):
                 continue
 
             scheduler_config = self.get_scheduler_config()
-            scheduler = scheduler_class(**scheduler_config, trained_betas=np.array([0.0, 0.1]))
+            scheduler = scheduler_class(**scheduler_config, trained_betas=np.array([0.1, 0.3]))
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_pretrained(tmpdirname)
