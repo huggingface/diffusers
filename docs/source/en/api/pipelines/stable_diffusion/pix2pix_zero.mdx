@@ -39,7 +39,7 @@ the above example, a valid input prompt would be: "a high resolution painting of
     * Swap the `source_embeds` and `target_embeds`.
     * Change the input prompt to include "dog".  
 * To learn more about how the source and target embeddings are generated, refer to the [original 
-paper](https://arxiv.org/abs/2302.03027). 
+paper](https://arxiv.org/abs/2302.03027). Below, we also provide some directions on how to generate the embeddings.
 
 ## Available Pipelines:
 
@@ -96,6 +96,122 @@ images[0].save("edited_image_dog.png")
 **Based on an input image**
 
 _Coming soon_
+
+## Generating source and target embeddings 
+
+The authors originally used the [GPT-3 API](https://openai.com/api/) to generate the source and target captions for discovering
+edit directions. However, we can also leverage open source and public models for the same purpose.
+Below, we provide an end-to-end example with the [Flan-T5](https://huggingface.co/docs/transformers/model_doc/flan-t5) model
+for generating captions and [CLIP](https://huggingface.co/docs/transformers/model_doc/clip) for
+computing embeddings on the generated captions.  
+
+**1. Load the generation model**:
+
+```py
+import torch
+from transformers import AutoTokenizer, T5ForConditionalGeneration
+
+tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-xl")
+model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-xl", device_map="auto", torch_dtype=torch.float16)
+```
+
+**2. Construct a starting prompt**: 
+
+```py
+source_concept = "cat"
+target_concept = "dog"
+
+source_text = f"Provide a caption for images containing a {source_concept}. "
+"The captions should be in English and should be no longer than 150 characters."
+
+target_text = f"Provide a caption for images containing a {target_concept}. "
+"The captions should be in English and should be no longer than 150 characters."
+```
+
+Here, we're interested in the "cat -> dog" direction. 
+
+**3. Generate captions**:
+
+We can use a utility like so for this purpose. 
+
+```py
+def generate_captions(input_prompt):
+    input_ids = tokenizer(input_prompt, return_tensors="pt").input_ids.to("cuda")
+
+    outputs = model.generate(
+        input_ids, temperature=0.8, num_return_sequences=16, do_sample=True, max_new_tokens=128, top_k=10
+    )
+    return tokenizer.batch_decode(outputs, skip_special_tokens=True)
+```
+
+And then we just call it to generate our captions:
+
+```py
+source_captions = generate_captions(source_text)
+target_captions = generate_captions(target_concept)
+```
+
+We encourage you to play around with the different parameters supported by the
+`generate()` method ([documentation](https://huggingface.co/docs/transformers/main/en/main_classes/text_generation#transformers.generation_tf_utils.TFGenerationMixin.generate)) for the generation quality you are looking for.
+
+**4. Load the embedding model**: 
+
+Here, we need to use the same text encoder model used by the subsequent Stable Diffusion model.
+
+```py 
+from diffusers import StableDiffusionPix2PixZeroPipeline 
+
+pipeline = StableDiffusionPix2PixZeroPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16
+)
+pipeline = pipeline.to("cuda")
+tokenizer = pipeline.tokenizer
+text_encoder = pipeline.text_encoder
+```
+
+**5. Compute embeddings**:
+
+```py 
+import torch 
+
+def embed_captions(sentences, tokenizer, text_encoder, device="cuda"):
+    with torch.no_grad():
+        embeddings = []
+        for sent in sentences:
+            text_inputs = tokenizer(
+                sent,
+                padding="max_length",
+                max_length=tokenizer.model_max_length,
+                truncation=True,
+                return_tensors="pt",
+            )
+            text_input_ids = text_inputs.input_ids
+            prompt_embeds = text_encoder(text_input_ids.to(device), attention_mask=None)[0]
+            embeddings.append(prompt_embeds)
+    return torch.concatenate(embeddings, dim=0).mean(dim=0).unsqueeze(0)
+
+source_embeddings = embed_captions(source_captions, tokenizer, text_encoder)
+target_embeddings = embed_captions(target_captions, tokenizer, text_encoder)
+```
+
+And you're done! [Here](https://colab.research.google.com/drive/1tz2C1EdfZYAPlzXXbTnf-5PRBiR8_R1F?usp=sharing) is a Colab Notebook that you can use to interact with the entire process.
+
+Now, you can use these embeddings directly while calling the pipeline: 
+
+```py
+from diffusers import DDIMScheduler
+
+pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
+
+images = pipeline(
+    prompt,
+    source_embeds=source_embeddings,
+    target_embeds=target_embeddings,
+    num_inference_steps=50,
+    cross_attention_guidance_amount=0.15,
+).images
+images[0].save("edited_image_dog.png")
+```
 
 ## StableDiffusionPix2PixZeroPipeline
 [[autodoc]] StableDiffusionPix2PixZeroPipeline
