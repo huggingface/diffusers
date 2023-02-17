@@ -301,11 +301,6 @@ class StableDiffusionPix2PixZeroPipelineSlowTests(unittest.TestCase):
                 expected_slice = np.array(
                     [0.1345, 0.268, 0.1539, 0.0726, 0.0959, 0.2261, -0.2673, 0.0277, -0.2062]
                 )
-                # print(f"Step: {step}")
-                # latents_slice_list = [str(round(x, 4)) for x in latents_slice.flatten().tolist()]
-                # print(", ".join(latents_slice_list))
-                # print(f"expected_slice: {expected_slice}")
-                print(f"Max absolute difference: {np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2}")
 
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
             elif step == 2:
@@ -315,6 +310,10 @@ class StableDiffusionPix2PixZeroPipelineSlowTests(unittest.TestCase):
                 expected_slice = np.array(
                     [-0.5127, 0.0613, -0.1937, -0.1622, -0.7856, -0.2849, -0.5601, -0.0111, -0.0137]
                 )
+                print(f"Step: {step}")
+                latents_slice_list = [str(round(x, 4)) for x in latents_slice.flatten().tolist()]
+                print(", ".join(latents_slice_list))
+                print(f"expected_slice: {expected_slice}")
 
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
 
