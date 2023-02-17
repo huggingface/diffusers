@@ -543,7 +543,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         return (embs_target.mean(0) - embs_source.mean(0)).unsqueeze(0)
 
     @torch.no_grad()
-    def get_embeds(self, prompt: List[str], batch_size=16) -> torch.FloatTensor:
+    def get_embeds(self, prompt: List[str], batch_size: int = 16) -> torch.FloatTensor:
         num_prompts = len(prompt)
         embeds = []
         for i in range(0, num_prompts, batch_size):
