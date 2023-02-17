@@ -32,6 +32,8 @@
       title: Text-Guided Image-Inpainting
     - local: using-diffusers/depth2img
       title: Text-Guided Depth-to-Image
+    - local: using-diffusers/controlling_generation
+      title: Controlling generation
     - local: using-diffusers/reusing_seeds
       title: Reusing seeds for deterministic generation
     - local: using-diffusers/reproducibility
