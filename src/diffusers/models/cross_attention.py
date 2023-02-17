@@ -469,7 +469,7 @@ class Torch2AttnProcessor:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "TorchAttentionProcessor requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+                "Torch2AttnProcessor requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
             )
 
     def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None):

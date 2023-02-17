@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Torch2.0 support in diffusers.
+# Torch2.0 support in Diffusers
 
 Starting from version `0.13.0`, Diffusers supports the latest optimization from the upcoming [PyTorch 2.0](https://pytorch.org/get-started/pytorch-2.0/) release. These include:
 1. Support for native flash and memory-efficient attention (from xFormers) without any extra dependencies.
@@ -30,9 +30,9 @@ pip install --pre torch torchvision --index-url https://download.pytorch.org/whl
 
 1. **Efficient Attention**
 
-    The efficient attention is implemented via the `torch.nn.functional.scaled_dot_product_attention` function, which automatically enables flash/memory efficient attention, depending on the input and the GPU type. This is the same as the `memory_efficient_attention` from [xFormers](https://github.com/facebookresearch/xformers) but built natively into the torch. For more information, refer to torch [docs](https://pytorch.org/docs/master/generated/torch.nn.functional.scaled_dot_product_attention).
+    The efficient attention is implemented via the [`torch.nn.functional.scaled_dot_product_attention`](https://pytorch.org/docs/master/generated/torch.nn.functional.scaled_dot_product_attention) function, which automatically enables flash/memory efficient attention, depending on the input and the GPU type. This is the same as the `memory_efficient_attention` from [xFormers](https://github.com/facebookresearch/xformers) but built natively into the torch. 
 
-    The efficient attention will be enabled by default if torch2.0 is installed and if `torch.nn.functional.scaled_dot_product_attention` is available. To use it, you can just install torch2.0 as suggested above and use the pipeline. For example:
+    The efficient attention will be enabled by default in Diffusers if torch2.0 is installed and if `torch.nn.functional.scaled_dot_product_attention` is available. To use it, you can install torch2.0 as suggested above and use the pipeline. For example:
 
     ```Python
     import torch
@@ -81,4 +81,4 @@ pip install --pre torch torchvision --index-url https://download.pytorch.org/whl
     images = pipe(prompt, num_inference_steps=steps, num_images_per_prompt=batch_size).images
     ```
 
-    Depending on the type of GPUs it can give between 2-9% spee-up over efficient attention. But note that as of now the speed-up is mostly noticable on high-end GPUs such as A100.
+    Depending on the type of GPU it can give between 2-9% speed-up over efficient attention. But note that as of now the speed-up is mostly noticeable on high-end GPUs such as A100.
