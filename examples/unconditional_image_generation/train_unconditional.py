@@ -27,7 +27,7 @@ from diffusers.utils import check_min_version, is_tensorboard_available, is_wand
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.13.0.dev0")
+check_min_version("0.13.0")
 
 logger = get_logger(__name__, log_level="INFO")
 
