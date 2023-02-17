@@ -145,9 +145,9 @@ Now, generate the image with edit directions:
 
 ```py
 # See the "Generating source and target embeddings" section below to
-# automate the generation of these captions.
-source_prompts = 4 * ["a cat sitting on the street", "a cat playing in the field", "a face of a cat"]
-target_prompts = 4 * ["a dog sitting on the street", "a dog playing in the field", "a face of a dog"]
+# automate the generation of these captions with a pre-trained model like Flan-T5.
+source_prompts = ["a cat sitting on the street", "a cat playing in the field", "a face of a cat"]
+target_prompts = ["a dog sitting on the street", "a dog playing in the field", "a face of a dog"]
 
 source_embeds = pipeline.get_embeds(source_prompts, batch_size=2)
 target_embeds = pipeline.get_embeds(target_prompts, batch_size=2)
