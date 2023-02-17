@@ -39,7 +39,7 @@ the above example, a valid input prompt would be: "a high resolution painting of
     * Swap the `source_embeds` and `target_embeds`.
     * Change the input prompt to include "dog".  
 * To learn more about how the source and target embeddings are generated, refer to the [original 
-paper](https://arxiv.org/abs/2302.03027). Below, we also provide a some directions on how to generate the embeddings.
+paper](https://arxiv.org/abs/2302.03027). Below, we also provide some directions on how to generate the embeddings.
 
 ## Available Pipelines:
 
@@ -100,7 +100,7 @@ _Coming soon_
 ## Generating source and target embeddings 
 
 The authors originally used the [GPT-3 API](https://openai.com/api/) to generate the source and target captions for discovering
-edit directions. However, we can also leverage the open-source and the publicly models for this purpose.
+edit directions. However, we can also leverage open source and public models for the same purpose.
 Below, we provide an end-to-end example with the [Flan-T5](https://huggingface.co/docs/transformers/model_doc/flan-t5) model
 for generating captions and [CLIP](https://huggingface.co/docs/transformers/model_doc/clip) for
 computing embeddings on the generated captions.  
@@ -143,7 +143,7 @@ def generate_captions(input_prompt):
     return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 ```
 
-And the just call:
+And then we just call it to generate our captions:
 
 ```py
 source_captions = generate_captions(source_text)
