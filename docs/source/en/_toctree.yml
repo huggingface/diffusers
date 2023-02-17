@@ -180,10 +180,10 @@
       title: Overview
     - local: api/schedulers/ddim
       title: DDIM
-    - local: api/schedulers/ddpm
-      title: DDPM
     - local: api/schedulers/ddim_inverse
       title: DDIMInverse
+    - local: api/schedulers/ddpm
+      title: DDPM
     - local: api/schedulers/deis
       title: DEIS
     - local: api/schedulers/dpm_discrete
