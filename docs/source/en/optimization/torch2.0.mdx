@@ -12,16 +12,16 @@ specific language governing permissions and limitations under the License.
 
 # Torch2.0 support in diffusers.
 
-Starting from version `0.13.0` Diffusers supports latest optimization from the upcoming [PyTorch 2.0](https://pytorch.org/get-started/pytorch-2.0/) release. These include:
-1. Support for native flash and memory efficient attention (from xFormers) without any extra dependacnies.
+Starting from version `0.13.0`, Diffusers supports the latest optimization from the upcoming [PyTorch 2.0](https://pytorch.org/get-started/pytorch-2.0/) release. These include:
+1. Support for native flash and memory-efficient attention (from xFormers) without any extra dependencies.
 2. [`torch.compile`](https://pytorch.org/tutorials/intermediate/torch_compile_tutorial.html) support for compiling individual models for extra performance boost.
 
 
 ## Installation
-To benift from the the native effcient attention and `torch.compile`, we will need to install the nightly version of PyTorch as the stable for version is yet to be release. The first step is to install CUDA11.7 as torch2.0 does not support the previsou version. Once CUDA11.7 installed, 
+To benefit from the native efficient attention and `torch.compile`, we will need to install the nightly version of PyTorch as the stable version is yet to be released. The first step is to install CUDA11.7, as torch2.0 does not support the previous version. Once CUDA11.7 is installed, 
 torch nightly can be installed using 
 
-```python
+```bash
 pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu117
 ```
 
@@ -30,9 +30,9 @@ pip install --pre torch torchvision --index-url https://download.pytorch.org/whl
 
 1. **Efficient Attention**
 
-    The efficient attention is implemented via the `torch.nn.functional.scaled_dot_product_attention` function which automatically enables flash/memory efficient attention, depending on the input and the GPU type. This is same as the `memory_efficient_attention` from [xFormers](https://github.com/facebookresearch/xformers) but built natively into torch. For more information refer to torch [docs](https://pytorch.org/docs/master/generated/torch.nn.functional.scaled_dot_product_attention).
+    The efficient attention is implemented via the `torch.nn.functional.scaled_dot_product_attention` function, which automatically enables flash/memory efficient attention, depending on the input and the GPU type. This is the same as the `memory_efficient_attention` from [xFormers](https://github.com/facebookresearch/xformers) but built natively into the torch. For more information, refer to torch [docs](https://pytorch.org/docs/master/generated/torch.nn.functional.scaled_dot_product_attention).
 
-    The efficient attention will be enaled by default if torch2.0 is installed and if `torch.nn.functional.scaled_dot_product_attention` is available. To use it just install torch2.0 as suggested above and simply use the pipelines. For example:
+    The efficient attention will be enabled by default if torch2.0 is installed and if `torch.nn.functional.scaled_dot_product_attention` is available. To use it, you can just install torch2.0 as suggested above and use the pipeline. For example:
 
     ```Python
     import torch
@@ -64,7 +64,7 @@ pip install --pre torch torchvision --index-url https://download.pytorch.org/whl
 
 2. **torch.compile**
 
-    To get further speed-up we can make use of `torch2.0`. To do so we simply wrap our `unet` with `torch.compile`. For more infomation and different options, refer to the 
+    To get further speed up, we can use the new `torch.compile` feature. To do so, we wrap our `unet` with `torch.compile`. For more information and different options, refer to the 
     [torch compile docs](https://pytorch.org/tutorials/intermediate/torch_compile_tutorial.html).
 
     ```python
