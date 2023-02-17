@@ -3,16 +3,13 @@ from itertools import repeat
 from typing import Callable, List, Optional, Union
 
 import torch
-
-from packaging import version
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
-from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
 from ...pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import deprecate, logging, randn_tensor
+from ...utils import logging, randn_tensor
 from . import SemanticStableDiffusionPipelineOutput
 
 
@@ -105,25 +102,6 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
         requires_safety_checker: bool = True,
     ):
         super().__init__()
-        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
-            deprecation_message = (
-                f"Unsupported scheduler configuration: {scheduler} is outdated. `steps_offset` should be set to 1"
-                f" instead of {scheduler.config.steps_offset}. Please make sure to update the config accordingly as"
-                " leaving `steps_offset` is no longer supported. If you have downloaded this checkpoint from the"
-                " Hugging Face Hub, it would be very nice if you could open a Pull request for the"
-                " `scheduler/scheduler_config.json` file"
-            )
-            raise ValueError(deprecation_message)
-
-        if hasattr(scheduler.config, "clip_sample") and scheduler.config.clip_sample is True:
-            deprecation_message = (
-                f"Unsupported scheduler configuration: {scheduler} has not set the configuration `clip_sample`."
-                " `clip_sample` should be set to False in the configuration file. Please make sure to update the"
-                " config accordingly as not setting `clip_sample` in the config is no longer supported. If you have"
-                " downloaded this checkpoint from the Hugging Face Hub, it would be very nice if you could open a"
-                " Pull request for the `scheduler/scheduler_config.json` file"
-            )
-            raise ValueError(deprecation_message)
 
         if safety_checker is None and requires_safety_checker:
             logger.warning(
@@ -140,23 +118,6 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
                 "Make sure to define a feature extractor when loading {self.__class__} if you want to use the safety"
                 " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
             )
-
-        is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
-            version.parse(unet.config._diffusers_version).base_version
-        ) < version.parse("0.9.0.dev0")
-        is_unet_sample_size_less_64 = hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
-        if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
-            deprecation_message = (
-                " Unsupported unet configuration: The configuration of the unet has set the default `sample_size` to"
-                " smaller than 64 which seems highly unlikely. If your checkpoint is a fine-tuned version of any of"
-                " the following: \n- CompVis/stable-diffusion-v1-4 \n- CompVis/stable-diffusion-v1-3 \n-"
-                " CompVis/stable-diffusion-v1-2 \n- CompVis/stable-diffusion-v1-1 \n- runwayml/stable-diffusion-v1-5"
-                " \n- runwayml/stable-diffusion-inpainting \n you should change 'sample_size' to 64 in the"
-                " configuration file. Please make sure to update the config accordingly as leaving `sample_size=32` in"
-                " the config is no longer supported. If you have downloaded this checkpoint from the Hugging Face Hub,"
-                " it would be very nice if you could open a Pull request for the `unet/config.json` file"
-            )
-            raise ValueError(deprecation_message)
 
         self.register_modules(
             vae=vae,
@@ -175,7 +136,7 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 

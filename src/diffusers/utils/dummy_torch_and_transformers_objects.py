@@ -77,7 +77,6 @@ class PaintByExamplePipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-
 class SemanticStableDiffusionPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
@@ -92,8 +91,8 @@ class SemanticStableDiffusionPipeline(metaclass=DummyObject):
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch", "transformers"])
 
-class StableDiffusionAttendAndExcitePipeline(metaclass=DummyObject):
 
+class StableDiffusionAttendAndExcitePipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
