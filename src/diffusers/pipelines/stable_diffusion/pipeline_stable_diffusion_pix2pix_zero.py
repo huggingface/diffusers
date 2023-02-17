@@ -543,20 +543,24 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         return (embs_target.mean(0) - embs_source.mean(0)).unsqueeze(0)
 
     @torch.no_grad()
-    def get_embeds(self, prompt: List[str]) -> torch.FloatTensor:
-        input_ids = self.tokenizer(
-            prompt,
-            padding="max_length",
-            max_length=self.tokenizer.model_max_length,
-            truncation=True,
-            return_tensors="pt",
-        ).input_ids
+    def get_embeds(self, prompt: List[str], batch_size=16) -> torch.FloatTensor:
+        num_prompts = len(prompt)
+        embeds = []
+        for i in range(0, num_prompts, batch_size):
+            prompt_slice = prompt[i : i + batch_size]
 
-        input_ids = input_ids.to(self.text_encoder.device)
+            input_ids = self.tokenizer(
+                prompt_slice,
+                padding="max_length",
+                max_length=self.tokenizer.model_max_length,
+                truncation=True,
+                return_tensors="pt",
+            ).input_ids
 
-        embeds = self.text_encoder(input_ids)[0]
+            input_ids = input_ids.to(self.text_encoder.device)
+            embeds.append(self.text_encoder(input_ids)[0])
 
-        return embeds.mean(0)[None]
+        return torch.cat(embeds, dim=0).mean(0)[None]
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -671,7 +675,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             source_embeds,
             target_embeds,
             callback_steps,
-            prompt_embeds ,
+            prompt_embeds,
         )
         if self.conditions_input_image and prompt_embeds:
             logger.warning(
@@ -775,7 +779,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
-
 
         # 8. Compute the edit directions.
         edit_direction = self.construct_direction(source_embeds, target_embeds).to(prompt_embeds.device)
