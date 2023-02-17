@@ -1126,7 +1126,13 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        # 2. Encode input prompt
+        # 3. Preprocess image
+        image = preprocess(image)
+
+        # 4. Prepare latent variables
+        latents = self.prepare_image_latents(image, batch_size, self.vae.dtype, device, generator)
+
+        # 5. Encode input prompt
         num_images_per_prompt = 1
         prompt_embeds = self._encode_prompt(
             prompt,
@@ -1136,15 +1142,9 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             prompt_embeds=prompt_embeds,
         )
 
-        # 3. Preprocess image
-        image = preprocess(image)
-
         # 4. Prepare timesteps
         self.inverse_scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.inverse_scheduler.timesteps
-
-        # 5. Prepare latent variables
-        latents = self.prepare_image_latents(image, batch_size, prompt_embeds.dtype, device, generator)
 
         # 6. Rejig the UNet so that we can obtain the cross-attenion maps and
         # use them for guiding the subsequent image generation.
