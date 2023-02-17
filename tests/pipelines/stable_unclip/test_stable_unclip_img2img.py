@@ -185,6 +185,8 @@ class StableUnCLIPImg2ImgPipelineIntegrationTests(unittest.TestCase):
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+        pipe.enable_sequential_cpu_offload()
 
         generator = torch.Generator(device="cpu").manual_seed(0)
         output = pipe("anime turle", image=input_image, generator=generator, output_type="np")
@@ -209,6 +211,8 @@ class StableUnCLIPImg2ImgPipelineIntegrationTests(unittest.TestCase):
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+        pipe.enable_sequential_cpu_offload()
 
         generator = torch.Generator(device="cpu").manual_seed(0)
         output = pipe("anime turle", image=input_image, generator=generator, output_type="np")
