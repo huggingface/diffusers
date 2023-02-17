@@ -563,8 +563,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Optional[Union[str, List[str]]] = None,
-        source_prompts: Optional[Union[List[str], List[List[str]]]] = None,
-        target_prompts: Optional[Union[List[str], List[List[str]]]] = None,
         image: Optional[Union[torch.FloatTensor, PIL.Image.Image]] = None,
         source_embeds: torch.Tensor = None,
         target_embeds: torch.Tensor = None,
@@ -778,7 +776,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
-        if 
 
         # 8. Compute the edit directions.
         edit_direction = self.construct_direction(source_embeds, target_embeds).to(prompt_embeds.device)
