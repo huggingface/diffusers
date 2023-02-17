@@ -7,6 +7,7 @@ import torch.nn as nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models import ModelMixin
 from ...models.attention import CrossAttention
+from ...models.controlnet_blocks import ControlNetInputHintBlock, ControlNetZeroConvBlock
 from ...models.cross_attention import AttnProcessor, CrossAttnAddedKVProcessor
 from ...models.dual_transformer_2d import DualTransformer2DModel
 from ...models.embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
