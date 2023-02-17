@@ -110,6 +110,7 @@ else:
         CycleDiffusionPipeline,
         LDMTextToImagePipeline,
         PaintByExamplePipeline,
+        SemanticStableDiffusionPipeline,
         StableDiffusionAttendAndExcitePipeline,
         StableDiffusionDepth2ImgPipeline,
         StableDiffusionImageVariationPipeline,

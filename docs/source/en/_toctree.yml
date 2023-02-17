@@ -134,6 +134,8 @@
       title: Safe Stable Diffusion
     - local: api/pipelines/score_sde_ve
       title: Score SDE VE
+    - local: api/pipelines/semantic_stable_diffusion
+      title: Semantic Guidance
     - sections:
       - local: api/pipelines/stable_diffusion/overview
         title: Overview

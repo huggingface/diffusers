@@ -44,6 +44,7 @@ else:
     from .alt_diffusion import AltDiffusionImg2ImgPipeline, AltDiffusionPipeline
     from .latent_diffusion import LDMTextToImagePipeline
     from .paint_by_example import PaintByExamplePipeline
+    from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
     from .stable_diffusion import (
         CycleDiffusionPipeline,
         StableDiffusionAttendAndExcitePipeline,
