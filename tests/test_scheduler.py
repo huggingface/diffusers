@@ -2648,6 +2648,7 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
             "beta_end": 0.02,
             "beta_schedule": "linear",
             "solver_order": 2,
+            "solver_type": "bh1",
         }
 
         config.update(**kwargs)
