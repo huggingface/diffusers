@@ -305,7 +305,7 @@ class StableDiffusionPix2PixZeroPipelineSlowTests(unittest.TestCase):
                 latents_slice_list = [str(round(x, 4)) for x in latents_slice.flatten().tolist()]
                 print(", ".join(latents_slice_list))
                 print(f"expected_slice: {expected_slice}")
-                print(f"Max absolute difference: {np.abs(latents_slice.flatten() - expected_slice).max()}")
+                print(f"Max absolute difference: {np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2}")
 
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
             elif step == 2:
