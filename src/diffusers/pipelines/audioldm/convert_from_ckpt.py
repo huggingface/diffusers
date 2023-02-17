@@ -36,6 +36,7 @@ from transformers import (
     ClapTextConfig,
     ClapTextModelWithProjection,
     SpeechT5HifiGan,
+    SpeechT5HifiGanConfig,
 )
 
 from ...utils import is_omegaconf_available, is_safetensors_available
@@ -241,7 +242,7 @@ def create_unet_diffusers_config(original_config, image_size: int):
     return config
 
 
-def create_vae_diffusers_config(original_config, image_size: int):
+def create_vae_diffusers_config(original_config, scaling_factor: float, image_size: int):
     """
     Creates a config for the diffusers based on the config of the LDM model.
     """
@@ -261,6 +262,7 @@ def create_vae_diffusers_config(original_config, image_size: int):
         block_out_channels=tuple(block_out_channels),
         latent_channels=vae_params.z_channels,
         layers_per_block=vae_params.num_res_blocks,
+        scaling_factor=float(scaling_factor)
     )
     return config
 
@@ -567,182 +569,68 @@ def convert_ldm_vae_checkpoint(checkpoint, config):
     conv_attn_to_linear(new_checkpoint)
     return new_checkpoint
 
+def create_transformers_diffusers_config(original_config):
+    """
+    Creates a config for transformers SpeechT5HifiGan based on the config of the vocoder model.
+    """
+    config = dict(
+    model_in_dim = original_config.num_mels,
+    sampling_rate = original_config.sampling_rate,
+    upsample_initial_channel = original_config.upsample_initial_channel,
+    upsample_rates = list(original_config.upsample_rates),
+    upsample_kernel_sizes = list(original_config.upsample_kernel_sizes),
+    resblock_kernel_sizes = list(original_config.resblock_kernel_sizes),
+    resblock_dilation_sizes = [list(resblock_dilation) for resblock_dilation in original_config.resblock_dilation_sizes],
+    normalize_before=False,
+    )
+    return config
 
-def convert_ldm_bert_checkpoint(checkpoint, config):
-    def _copy_attn_layer(hf_attn_layer, pt_attn_layer):
-        hf_attn_layer.q_proj.weight.data = pt_attn_layer.to_q.weight
-        hf_attn_layer.k_proj.weight.data = pt_attn_layer.to_k.weight
-        hf_attn_layer.v_proj.weight.data = pt_attn_layer.to_v.weight
-
-        hf_attn_layer.out_proj.weight = pt_attn_layer.to_out.weight
-        hf_attn_layer.out_proj.bias = pt_attn_layer.to_out.bias
-
-    def _copy_linear(hf_linear, pt_linear):
-        hf_linear.weight = pt_linear.weight
-        hf_linear.bias = pt_linear.bias
-
-    def _copy_layer(hf_layer, pt_layer):
-        # copy layer norms
-        _copy_linear(hf_layer.self_attn_layer_norm, pt_layer[0][0])
-        _copy_linear(hf_layer.final_layer_norm, pt_layer[1][0])
-
-        # copy attn
-        _copy_attn_layer(hf_layer.self_attn, pt_layer[0][1])
-
-        # copy MLP
-        pt_mlp = pt_layer[1][1]
-        _copy_linear(hf_layer.fc1, pt_mlp.net[0][0])
-        _copy_linear(hf_layer.fc2, pt_mlp.net[2])
-
-    def _copy_layers(hf_layers, pt_layers):
-        for i, hf_layer in enumerate(hf_layers):
-            if i != 0:
-                i += i
-            pt_layer = pt_layers[i : i + 2]
-            _copy_layer(hf_layer, pt_layer)
-
-    hf_model = LDMBertModel(config).eval()
-
-    # copy  embeds
-    hf_model.model.embed_tokens.weight = checkpoint.transformer.token_emb.weight
-    hf_model.model.embed_positions.weight.data = checkpoint.transformer.pos_emb.emb.weight
-
-    # copy layer norm
-    _copy_linear(hf_model.model.layer_norm, checkpoint.transformer.norm)
-
-    # copy hidden layers
-    _copy_layers(hf_model.model.layers, checkpoint.transformer.attn_layers.layers)
-
-    _copy_linear(hf_model.to_logits, checkpoint.transformer.to_logits)
-
-    return hf_model
-
-
-textenc_conversion_lst = [
-    ("cond_stage_model.model.positional_embedding", "text_model.embeddings.position_embedding.weight"),
-    ("cond_stage_model.model.token_embedding.weight", "text_model.embeddings.token_embedding.weight"),
-    ("cond_stage_model.model.ln_final.weight", "text_model.final_layer_norm.weight"),
-    ("cond_stage_model.model.ln_final.bias", "text_model.final_layer_norm.bias"),
-]
-textenc_conversion_map = {x[0]: x[1] for x in textenc_conversion_lst}
-
-textenc_transformer_conversion_lst = [
-    # (stable-diffusion, HF Diffusers)
-    ("resblocks.", "text_model.encoder.layers."),
-    ("ln_1", "layer_norm1"),
-    ("ln_2", "layer_norm2"),
-    (".c_fc.", ".fc1."),
-    (".c_proj.", ".fc2."),
-    (".attn", ".self_attn"),
-    ("ln_final.", "transformer.text_model.final_layer_norm."),
-    ("token_embedding.weight", "transformer.text_model.embeddings.token_embedding.weight"),
-    ("positional_embedding", "transformer.text_model.embeddings.position_embedding.weight"),
-]
-protected = {re.escape(x[0]): x[1] for x in textenc_transformer_conversion_lst}
-textenc_pattern = re.compile("|".join(protected.keys()))
-
-
-def convert_laion_clap_checkpoint(checkpoint):
-    text_model = ClapTextModelWithProjection.from_pretrained("stabilityai/stable-diffusion-2", subfolder="text_encoder")
-
+def convert_hifigan_checkpoint(
+    checkpoint,
+    config,
+):
+    # extract state dict for vocoder
+    vocoder_state_dict = {}
+    vocoder_key = "first_stage_model.vocoder."
     keys = list(checkpoint.keys())
-
-    text_model_dict = {}
-
-    d_model = int(checkpoint["cond_stage_model.model.text_projection"].shape[0])
-
-    text_model_dict["text_model.embeddings.position_ids"] = text_model.text_model.embeddings.get_buffer("position_ids")
-
     for key in keys:
-        if "resblocks.23" in key:  # Diffusers drops the final layer and only uses the penultimate layer
-            continue
-        if key in textenc_conversion_map:
-            text_model_dict[textenc_conversion_map[key]] = checkpoint[key]
-        if key.startswith("cond_stage_model.model.transformer."):
-            new_key = key[len("cond_stage_model.model.transformer.") :]
-            if new_key.endswith(".in_proj_weight"):
-                new_key = new_key[: -len(".in_proj_weight")]
-                new_key = textenc_pattern.sub(lambda m: protected[re.escape(m.group(0))], new_key)
-                text_model_dict[new_key + ".q_proj.weight"] = checkpoint[key][:d_model, :]
-                text_model_dict[new_key + ".k_proj.weight"] = checkpoint[key][d_model : d_model * 2, :]
-                text_model_dict[new_key + ".v_proj.weight"] = checkpoint[key][d_model * 2 :, :]
-            elif new_key.endswith(".in_proj_bias"):
-                new_key = new_key[: -len(".in_proj_bias")]
-                new_key = textenc_pattern.sub(lambda m: protected[re.escape(m.group(0))], new_key)
-                text_model_dict[new_key + ".q_proj.bias"] = checkpoint[key][:d_model]
-                text_model_dict[new_key + ".k_proj.bias"] = checkpoint[key][d_model : d_model * 2]
-                text_model_dict[new_key + ".v_proj.bias"] = checkpoint[key][d_model * 2 :]
-            else:
-                new_key = textenc_pattern.sub(lambda m: protected[re.escape(m.group(0))], new_key)
+        if key.startswith(vocoder_key):
+            vocoder_state_dict[key.replace(vocoder_key, "")] = checkpoint.get(key)
 
-                text_model_dict[new_key] = checkpoint[key]
+    for i in range(len(config.upsample_rates)):
+        vocoder_state_dict[f"upsampler.{i}.weight"] = vocoder_state_dict.pop(f"ups.{i}.weight")
+        vocoder_state_dict[f"upsampler.{i}.bias"] = vocoder_state_dict.pop(f"ups.{i}.bias")
 
-    text_model.load_state_dict(text_model_dict)
+    if not config.normalize_before:
+        # these are dummy variables that are unused if we don't normalize before the vocoder
+        vocoder_state_dict["mean"] = torch.zeros(config.model_in_dim)
+        vocoder_state_dict["scale"] = torch.ones(config.model_in_dim)
 
-    return text_model
+    return vocoder_state_dict
 
+def default_vocoder_config():
+    return {
+        "upsample_rates": [5, 4, 2, 2, 2],
+        "upsample_kernel_sizes": [16, 16, 8, 4, 4],
+        "upsample_initial_channel": 1024,
+        "resblock_kernel_sizes": [3, 7, 11],
+        "resblock_dilation_sizes": [[1, 3, 5], [1, 3, 5], [1, 3, 5]],
+        "num_mels": 64,
+        "num_freq": 1025,
+        "n_fft": 1024,
+        "hop_size": 160,
+        "win_size": 1024,
+        "sampling_rate": 16000,
+        "fmin": 0,
+        "fmax": 8000,
+        "fmax_for_loss": None,
+    }
 
-def load_pipeline_from_original_audioldm_ckpt(
-    checkpoint_path: str,
-    original_config_file: str = None,
-    image_size: int = 1024,
-    prediction_type: str = None,
-    model_type: str = None,
-    extract_ema: bool = False,
-    scheduler_type: str = "pndm",
-    num_in_channels: int = None,
-    device: str = None,
-    from_safetensors: bool = False,
-) -> AudioLDMPipeline:
-    """
-    Load a Stable Diffusion pipeline object from a CompVis-style `.ckpt`/`.safetensors` file and (ideally) a `.yaml`
-    config file.
-
-    Although many of the arguments can be automatically inferred, some of these rely on brittle checks against the
-    global step count, which will likely fail for models that have undergone further fine-tuning. Therefore, it is
-    recommended that you override the default values and/or supply an `original_config_file` wherever possible.
-
-    :param checkpoint_path: Path to `.ckpt` file. :param original_config_file: Path to `.yaml` config file
-    corresponding to the original architecture. If `None`, will be
-            automatically inferred by looking for a key that only exists in SD2.0 models.
-    :param image_size: The image size that the model was trained on. Use 512 for Stable Diffusion v1.X and Stable
-    Siffusion v2
-            Base. Use 768 for Stable Diffusion v2.
-    :param prediction_type: The prediction type that the model was trained on. Use `'epsilon'` for Stable Diffusion
-    v1.X and Stable
-            Siffusion v2 Base. Use `'v-prediction'` for Stable Diffusion v2.
-    :param num_in_channels: The number of input channels. If `None` number of input channels will be automatically
-    inferred. :param scheduler_type: Type of scheduler to use. Should be one of `["pndm", "lms", "heun", "euler",
-    "euler-ancestral", "dpm", "ddim"]`. :param model_type: The pipeline type. `None` to automatically infer, or one of
-    `["FrozenOpenClapEmbedder", "FrozenCLAPEmbedder", "PaintByExample"]`. :param extract_ema: Only relevant for
-    checkpoints that have both EMA and non-EMA weights. Whether to extract the EMA weights
-            or not. Defaults to `False`. Pass `True` to extract the EMA weights. EMA weights usually yield higher
-            quality images for inference. Non-EMA weights are usually better to continue fine-tuning.
-    :param device: The device to use. Pass `None` to determine automatically. :param from_safetensors: If
-    `checkpoint_path` is in `safetensors` format, load checkpoint with safetensors instead of PyTorch. :return: A
-    StableDiffusionPipeline object representing the passed-in `.ckpt`/`.safetensors` file.
-    """
-
-    if not is_omegaconf_available():
-        raise ValueError(BACKENDS_MAPPING["omegaconf"][1])
-
-    from omegaconf import OmegaConf
-
-    # TODO: remove this func for final PR
-    # Copied from https://huggingface.co/spaces/haoheliu/audioldm-text-to-audio-generation/blob/84a0384742a22bd80c44e903e241f0623e874f1d/audioldm/utils.py#L72-L73
-    def default_audioldm_config():
-        return OmegaConf.create(
-            {
-                "wave_file_save_path": "./output",
-                "id": {
-                    "version": "v1",
-                    "name": "default",
-                    "root": "/mnt/fast/nobackup/users/hl01486/projects/general_audio_generation/AudioLDM-python/config/default/latent_diffusion.yaml",
-                },
+# TODO: remove this func for final PR
+# Copied from https://huggingface.co/spaces/haoheliu/audioldm-text-to-audio-generation/blob/84a0384742a22bd80c44e903e241f0623e874f1d/audioldm/utils.py#L72-L73
+def default_audioldm_config():
+    return {
                 "model": {
-                    "device": "cuda",
-                    "reload_from_ckpt": "/mnt/fast/nobackup/scratch4weeks/hl01486/exps/audio_generation/stablediffusion/LDM/audioverse/2023_01_14_full_F4_B_spatial_v2_v1/checkpoints/last.ckpt",
-                    "target": "audioldm.pipline.LatentDiffusion",
                     "params": {
                         "base_learning_rate": 5e-06,
                         "linear_start": 0.0015,
@@ -811,7 +699,122 @@ def load_pipeline_from_original_audioldm_ckpt(
                     },
                 },
             }
-        )
+
+clap_keys_to_modify_mapping = {
+    "text_branch": "text_model",
+    "attn": "attention.self",
+    "self.proj": "output.dense",
+    "attention.self_mask": "attn_mask",
+    "mlp.fc1": "intermediate.dense",
+    "mlp.fc2": "output.dense",
+    "norm1": "layernorm_before",
+    "norm2": "layernorm_after",
+    "bn0": "batch_norm",
+}
+
+clap_keys_to_ignore = ["text_transform"]
+
+def convert_open_clap_checkpoint(checkpoint):
+    # extract state dict for VAE
+    model_state_dict = {}
+    model_key = "cond_stage_model.model.text_"
+    keys = list(checkpoint.keys())
+    for key in keys:
+        if key.startswith(model_key):
+            model_state_dict[key.replace(model_key, "text_")] = checkpoint.get(key)
+
+    new_checkpoint = {}
+
+    sequential_layers_pattern = r".*sequential.(\d+).*"
+    text_projection_pattern = r".*_projection.(\d+).*"
+
+    for key, value in model_state_dict.items():
+        # check if key should be ignored in mapping
+        if key.split(".")[0] in clap_keys_to_ignore:
+            continue
+
+        # check if any key needs to be modified
+        for key_to_modify, new_key in clap_keys_to_modify_mapping.items():
+            if key_to_modify in key:
+                key = key.replace(key_to_modify, new_key)
+
+        if re.match(sequential_layers_pattern, key):
+            # replace sequential layers with list
+            sequential_layer = re.match(sequential_layers_pattern, key).group(1)
+
+            key = key.replace(f"sequential.{sequential_layer}.", f"layers.{int(sequential_layer)//3}.linear.")
+        elif re.match(text_projection_pattern, key):
+            projecton_layer = int(re.match(text_projection_pattern, key).group(1))
+
+            # Because in CLAP they use `nn.Sequential`...
+            transformers_projection_layer = 1 if projecton_layer == 0 else 2
+
+            key = key.replace(f"_projection.{projecton_layer}.", f"_projection.linear{transformers_projection_layer}.")
+
+        if "audio" and "qkv" in key:
+            # split qkv into query key and value
+            mixed_qkv = value
+            qkv_dim = mixed_qkv.size(0) // 3
+
+            query_layer = mixed_qkv[:qkv_dim]
+            key_layer = mixed_qkv[qkv_dim : qkv_dim * 2]
+            value_layer = mixed_qkv[qkv_dim * 2 :]
+
+            new_checkpoint[key.replace("qkv", "query")] = query_layer
+            new_checkpoint[key.replace("qkv", "key")] = key_layer
+            new_checkpoint[key.replace("qkv", "value")] = value_layer
+        else:
+            new_checkpoint[key] = value
+
+    return new_checkpoint
+
+
+def load_pipeline_from_original_audioldm_ckpt(
+    checkpoint_path: str,
+    original_config_file: str = None,
+    image_size: int = 1024,
+    prediction_type: str = None,
+    model_type: str = None,
+    extract_ema: bool = False,
+    scheduler_type: str = "pndm",
+    num_in_channels: int = None,
+    device: str = None,
+    from_safetensors: bool = False,
+    original_vocoder_config_file: str = None,
+) -> AudioLDMPipeline:
+    """
+    Load a Stable Diffusion pipeline object from a CompVis-style `.ckpt`/`.safetensors` file and (ideally) a `.yaml`
+    config file.
+
+    Although many of the arguments can be automatically inferred, some of these rely on brittle checks against the
+    global step count, which will likely fail for models that have undergone further fine-tuning. Therefore, it is
+    recommended that you override the default values and/or supply an `original_config_file` wherever possible.
+
+    :param checkpoint_path: Path to `.ckpt` file. :param original_config_file: Path to `.yaml` config file
+    corresponding to the original architecture. If `None`, will be
+            automatically inferred by looking for a key that only exists in SD2.0 models.
+    :param image_size: The image size that the model was trained on. Use 512 for Stable Diffusion v1.X and Stable
+    Siffusion v2
+            Base. Use 768 for Stable Diffusion v2.
+    :param prediction_type: The prediction type that the model was trained on. Use `'epsilon'` for Stable Diffusion
+    v1.X and Stable
+            Siffusion v2 Base. Use `'v-prediction'` for Stable Diffusion v2.
+    :param num_in_channels: The number of input channels. If `None` number of input channels will be automatically
+    inferred. :param scheduler_type: Type of scheduler to use. Should be one of `["pndm", "lms", "heun", "euler",
+    "euler-ancestral", "dpm", "ddim"]`. :param model_type: The pipeline type. `None` to automatically infer, or one of
+    `["FrozenOpenClapEmbedder", "FrozenCLAPEmbedder", "PaintByExample"]`. :param extract_ema: Only relevant for
+    checkpoints that have both EMA and non-EMA weights. Whether to extract the EMA weights
+            or not. Defaults to `False`. Pass `True` to extract the EMA weights. EMA weights usually yield higher
+            quality images for inference. Non-EMA weights are usually better to continue fine-tuning.
+    :param device: The device to use. Pass `None` to determine automatically. :param from_safetensors: If
+    `checkpoint_path` is in `safetensors` format, load checkpoint with safetensors instead of PyTorch. :return: A
+    StableDiffusionPipeline object representing the passed-in `.ckpt`/`.safetensors` file.
+    """
+
+    if not is_omegaconf_available():
+        raise ValueError(BACKENDS_MAPPING["omegaconf"][1])
+
+    from omegaconf import OmegaConf
 
     if from_safetensors:
         if not is_safetensors_available():
@@ -835,6 +838,7 @@ def load_pipeline_from_original_audioldm_ckpt(
 
     if original_config_file is None:
         original_config = default_audioldm_config()
+        original_config = OmegaConf.create(original_config)
     else:
         original_config = OmegaConf.load(original_config_file)
 
@@ -902,7 +906,7 @@ def load_pipeline_from_original_audioldm_ckpt(
     unet.load_state_dict(converted_unet_checkpoint)
 
     # Convert the VAE model.
-    vae_config = create_vae_diffusers_config(original_config, image_size=image_size)
+    vae_config = create_vae_diffusers_config(original_config, scaling_factor=checkpoint["scale_factor"], image_size=image_size)
     converted_vae_checkpoint = convert_ldm_vae_checkpoint(checkpoint, vae_config)
 
     vae = AutoencoderKL(**vae_config)
@@ -913,17 +917,35 @@ def load_pipeline_from_original_audioldm_ckpt(
         model_type = original_config.model.params.cond_stage_config.target.split(".")[-1]
 
     if model_type == "CLAPAudioEmbeddingClassifierFreev2":
-        text_model = ClapTextModelWithProjection.from_pretrained("laion/clap-htsat-unfused")
+        # AudioLDM uses the same configuration and tokenizer as the original CLAP model
+        config = ClapTextConfig.from_pretrained("laion/clap-htsat-unfused")
         tokenizer = AutoTokenizer.from_pretrained("laion/clap-htsat-unfused")
 
-        vocoder = SpeechT5HifiGan.from_pretrained("microsoft/speecht5_hifigan")
-        pipe = AudioLDMPipeline(
-            vae=vae,
-            text_encoder=text_model,
-            tokenizer=tokenizer,
-            unet=unet,
-            scheduler=scheduler,
-            vocoder=vocoder,
-        )
+        converted_text_model = convert_open_clap_checkpoint(checkpoint)
+        text_model = ClapTextModelWithProjection(config)
+        text_model.load_state_dict(converted_text_model)
+
+    # Convert the vocoder model TODO: add the vocoder config to full config
+    if original_vocoder_config_file is None:
+        original_vocoder_config = default_vocoder_config()
+        original_vocoder_config = OmegaConf.create(original_vocoder_config)
+    else:
+        original_vocoder_config = OmegaConf.load(original_vocoder_config_file)
+
+    vocoder_config = create_transformers_diffusers_config(original_vocoder_config)
+    vocoder_config = SpeechT5HifiGanConfig(**vocoder_config)
+    converted_vocoder_checkpoint = convert_hifigan_checkpoint(checkpoint, vocoder_config)
+
+    vocoder = SpeechT5HifiGan(vocoder_config)
+    vocoder.load_state_dict(converted_vocoder_checkpoint)
+
+    pipe = AudioLDMPipeline(
+        vae=vae,
+        text_encoder=text_model,
+        tokenizer=tokenizer,
+        unet=unet,
+        scheduler=scheduler,
+        vocoder=vocoder,
+    )
 
     return pipe

@@ -16,6 +16,7 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
+import torch.nn.functional as F
 
 from packaging import version
 from transformers import ClapTextModelWithProjection, RobertaTokenizer, RobertaTokenizerFast, SpeechT5HifiGan
@@ -242,6 +243,7 @@ class AudioLDMPipeline(DiffusionPipeline):
                 return_tensors="pt",
             )
             text_input_ids = text_inputs.input_ids
+            attention_mask = text_inputs.attention_mask
             untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
             if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
@@ -255,16 +257,13 @@ class AudioLDMPipeline(DiffusionPipeline):
                     f" {self.tokenizer.model_max_length} tokens: {removed_text}"
                 )
 
-            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
-                attention_mask = text_inputs.attention_mask.to(device)
-            else:
-                attention_mask = None
-
             prompt_embeds = self.text_encoder(
                 text_input_ids.to(device),
-                attention_mask=attention_mask,
+                attention_mask=attention_mask.to(device),
             )
             prompt_embeds = prompt_embeds.text_embeds
+            # additional L_2 normalization over each hidden-state
+            prompt_embeds = F.normalize(prompt_embeds, dim=-1)
 
         prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
 
@@ -303,16 +302,16 @@ class AudioLDMPipeline(DiffusionPipeline):
                 return_tensors="pt",
             )
 
-            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
-                attention_mask = uncond_input.attention_mask.to(device)
-            else:
-                attention_mask = None
+            uncond_input_ids = uncond_input.input_ids.to(device)
+            attention_mask = uncond_input.attention_mask.to(device)
 
             negative_prompt_embeds = self.text_encoder(
-                uncond_input.input_ids.to(device),
+                uncond_input_ids,
                 attention_mask=attention_mask,
             )
             negative_prompt_embeds = negative_prompt_embeds.text_embeds
+            # additional L_2 normalization over each hidden-state
+            negative_prompt_embeds = F.normalize(negative_prompt_embeds, dim=-1)
 
         if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
@@ -336,7 +335,12 @@ class AudioLDMPipeline(DiffusionPipeline):
         return mel_spectrogram
 
     def mel_spectrogram_to_waveform(self, mel_spectrogram):
-        mel_spectrogram = mel_spectrogram.permute(0, 2, 1)
+        if mel_spectrogram.dim() == 4:
+            mel_spectrogram = mel_spectrogram.squeeze(1)
+
+        mel_spectrogram = mel_spectrogram.squeeze(1)
+        # TODO: our transformers implementation can't handle batching! Squeeze tensor from [bsz, seq_len, mel_bins] to [seq_len, mel_bins]
+        mel_spectrogram = mel_spectrogram.squeeze(0)
         waveform = self.vocoder(mel_spectrogram)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         waveform = waveform.cpu().detach().numpy()

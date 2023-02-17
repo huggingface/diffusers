@@ -135,14 +135,16 @@ class UNet2DModel(ModelMixin, ConfigMixin):
 
         # film condition
         if self.class_embedding is not None and extra_film_condition_dim is not None:
-            raise ValueError("You cannot set both `class_embed_type` and `extra_film_use_concat`.")
+            raise ValueError("You cannot set both `class_embed_type` and `extra_film_condition_dim`.")
         self.use_extra_film_by_concat = extra_film_condition_dim is not None and extra_film_use_concat
-        self.use_extra_film_by_addition = extra_film_condition_dim is not None and not extra_film_use_concat
 
         if extra_film_condition_dim is not None:
             self.film_embedding = nn.Linear(extra_film_condition_dim, time_embed_dim)
+        else:
+            self.film_embedding = None
 
         if self.use_extra_film_by_concat:
+            # we're concatenating the time embeddings and film embeddings so need to double the resnet embedding dim
             time_embed_dim = time_embed_dim * 2
 
         self.down_blocks = nn.ModuleList([])
@@ -286,10 +288,14 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
             emb = emb + class_emb
 
-        if self.use_extra_film_by_addition:
-            emb = emb + self.film_embedding(class_labels)
-        elif self.use_extra_film_by_concat:
-            emb = torch.cat([emb, self.film_embedding(class_labels)], dim=-1)
+        if self.film_embedding is not None:
+            if class_labels is None:
+                raise ValueError("class_labels should be provided when doing film embedding")
+            film_emb = self.film_embedding(class_labels).to(dtype=self.dtype)
+            if self.use_extra_film_by_concat:
+                emb = torch.cat([emb, film_emb], dim=-1)
+            else:
+                emb = emb + film_emb
 
         # 2. pre-process
         skip_sample = sample
