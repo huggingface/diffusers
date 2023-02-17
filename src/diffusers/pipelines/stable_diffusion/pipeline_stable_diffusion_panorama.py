@@ -15,14 +15,11 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
-
-from packaging import version
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
-from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDIMScheduler, PNDMScheduler
-from ...utils import deprecate, is_accelerate_available, logging, randn_tensor, replace_example_docstring
+from ...utils import is_accelerate_available, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker

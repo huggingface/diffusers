@@ -18,6 +18,7 @@ import unittest
 
 import numpy as np
 import torch
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
@@ -28,9 +29,8 @@ from diffusers import (
     StableDiffusionPanoramaPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import load_numpy, nightly, slow, torch_device
+from diffusers.utils import slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from ...test_pipelines_common import PipelineTesterMixin
 
@@ -232,9 +232,7 @@ class StableDiffusionPanoramaSlowTests(unittest.TestCase):
     def test_stable_diffusion_panorama_default(self):
         model_ckpt = "stabilityai/stable-diffusion-2-base"
         scheduler = DDIMScheduler.from_pretrained(model_ckpt, subfolder="scheduler")
-        pipe = StableDiffusionPanoramaPipeline.from_pretrained(
-            model_ckpt, scheduler=scheduler, safety_checker=None
-        )
+        pipe = StableDiffusionPanoramaPipeline.from_pretrained(model_ckpt, scheduler=scheduler, safety_checker=None)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -341,9 +339,7 @@ class StableDiffusionPanoramaSlowTests(unittest.TestCase):
 
         model_ckpt = "stabilityai/stable-diffusion-2-base"
         scheduler = DDIMScheduler.from_pretrained(model_ckpt, subfolder="scheduler")
-        pipe = StableDiffusionPanoramaPipeline.from_pretrained(
-            model_ckpt, scheduler=scheduler, safety_checker=None
-        )
+        pipe = StableDiffusionPanoramaPipeline.from_pretrained(model_ckpt, scheduler=scheduler, safety_checker=None)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -360,9 +356,7 @@ class StableDiffusionPanoramaSlowTests(unittest.TestCase):
 
         model_ckpt = "stabilityai/stable-diffusion-2-base"
         scheduler = DDIMScheduler.from_pretrained(model_ckpt, subfolder="scheduler")
-        pipe = StableDiffusionPanoramaPipeline.from_pretrained(
-            model_ckpt, scheduler=scheduler, safety_checker=None
-        )
+        pipe = StableDiffusionPanoramaPipeline.from_pretrained(model_ckpt, scheduler=scheduler, safety_checker=None)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
