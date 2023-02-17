@@ -83,6 +83,7 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
     decoder_scheduler: UnCLIPScheduler
     super_res_scheduler: UnCLIPScheduler
 
+    # Copied from diffusers.pipelines.unclip.pipeline_unclip_image_variation.UnCLIPImageVariationPipeline.__init__
     def __init__(
         self,
         decoder: UNet2DConditionModel,
@@ -123,6 +124,7 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
         latents = latents * scheduler.init_noise_sigma
         return latents
 
+    # Copied from diffusers.pipelines.unclip.pipeline_unclip_image_variation.UnCLIPImageVariationPipeline._encode_prompt
     def _encode_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance):
         batch_size = len(prompt) if isinstance(prompt, list) else 1
 
@@ -186,6 +188,7 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
 
         return prompt_embeds, text_encoder_hidden_states, text_mask
 
+    # Copied from diffusers.pipelines.unclip.pipeline_unclip_image_variation.UnCLIPImageVariationPipeline._encode_image
     def _encode_image(self, image, device, num_images_per_prompt, image_embeddings: Optional[torch.Tensor] = None):
         dtype = next(self.image_encoder.parameters()).dtype
 
@@ -200,6 +203,7 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
 
         return image_embeddings
 
+    # Copied from diffusers.pipelines.unclip.pipeline_unclip_image_variation.UnCLIPImageVariationPipeline.enable_sequential_cpu_offload
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, the pipeline's
@@ -251,10 +255,9 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
         decoder_num_inference_steps: int = 25,
         super_res_num_inference_steps: int = 7,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        image_embeddings: Optional[torch.FloatTensor] = None,
+        image_embeddings: Optional[torch.Tensor] = None,
         decoder_latents: Optional[torch.FloatTensor] = None,
         super_res_latents: Optional[torch.FloatTensor] = None,
-        prior_guidance_scale: float = 4.0,
         decoder_guidance_scale: float = 8.0,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -263,14 +266,13 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`):
-                The prompt or prompts to guide the image generation. This can only be left undefined if
-                `text_model_output` and `text_attention_mask` is passed.
-            num_images_per_prompt (`int`, *optional*, defaults to 1):
-                The number of images to generate per prompt.
-            prior_num_inference_steps (`int`, *optional*, defaults to 25):
-                The number of denoising steps for the prior. More denoising steps usually lead to a higher quality
-                image at the expense of slower inference.
+            image (`List[PIL.Image.Image]` or `torch.FloatTensor`):
+                The images to use for the image interpolation. Only accepts a list of two PIL Images or If you provide a tensor, it needs to comply with the
+                configuration of
+                [this](https://huggingface.co/fusing/karlo-image-variations-diffusers/blob/main/feature_extractor/preprocessor_config.json)
+                `CLIPFeatureExtractor` while still having a shape of two in the 0th dimension. Can be left to `None` only when `image_embeddings` are passed.
+            steps (`int`, *optional*, defaults to 5):
+                The number of interpolation images to generate.
             decoder_num_inference_steps (`int`, *optional*, defaults to 25):
                 The number of denoising steps for the decoder. More denoising steps usually lead to a higher quality
                 image at the expense of slower inference.
@@ -280,31 +282,19 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
-            prior_latents (`torch.FloatTensor` of shape (batch size, embeddings dimension), *optional*):
-                Pre-generated noisy latents to be used as inputs for the prior.
+            image_embeddings (`torch.Tensor`, *optional*):
+                Pre-defined image embeddings that can be derived from the image encoder. Pre-defined image embeddings
+                can be passed for tasks like image interpolations. `image` can the be left to `None`.
             decoder_latents (`torch.FloatTensor` of shape (batch size, channels, height, width), *optional*):
                 Pre-generated noisy latents to be used as inputs for the decoder.
             super_res_latents (`torch.FloatTensor` of shape (batch size, channels, super res height, super res width), *optional*):
                 Pre-generated noisy latents to be used as inputs for the decoder.
-            prior_guidance_scale (`float`, *optional*, defaults to 4.0):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
             decoder_guidance_scale (`float`, *optional*, defaults to 4.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
-            text_model_output (`CLIPTextModelOutput`, *optional*):
-                Pre-defined CLIPTextModel outputs that can be derived from the text encoder. Pre-defined text outputs
-                can be passed for tasks like text embedding interpolations. Make sure to also pass
-                `text_attention_mask` in this case. `prompt` can the be left to `None`.
-            text_attention_mask (`torch.Tensor`, *optional*):
-                Pre-defined CLIP text attention mask that can be derived from the tokenizer. Pre-defined text attention
-                masks are necessary when passing `text_model_output`.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -330,19 +320,19 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
                 raise AssertionError(
                     f"Expected 'image' to be torch.FloatTensor of shape 2 in 0th dimension, but passed 'image' size is {image.shape[0]}"
                 )
-        elif isinstance(image_embeddings, torch.FloatTensor):
+        elif isinstance(image_embeddings, torch.Tensor):
             if image_embeddings.shape[0] != 2:
                 raise AssertionError(
-                    f"Expected 'image' to be torch.FloatTensor of shape 2 in 0th dimension, but passed 'image' size is {image.shape[0]}"
+                    f"Expected 'image_embeddings' to be torch.FloatTensor of shape 2 in 0th dimension, but passed 'image_embeddings' shape is {image_embeddings.shape[0]}"
                 )
         else:
-            raise AssertionError("Expected either 'image' or 'image_embeddings' to be not None")
+            raise AssertionError(
+                f"Expected 'image' or 'image_embeddings' to be not None with types List[PIL.Image] or Torch.FloatTensor respectively. Received {type(image)} and {type(image_embeddings)} repsectively"
+            )
 
         original_image_embeddings = self._encode_image(
             image=image, device=device, num_images_per_prompt=1, image_embeddings=image_embeddings
         )
-
-        print(original_image_embeddings.shape)
 
         image_embeddings = []
 
@@ -354,8 +344,6 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
 
         image_embeddings = torch.cat(image_embeddings).to(device)
 
-        print(image_embeddings.shape)
-
         do_classifier_free_guidance = decoder_guidance_scale > 1.0
 
         prompt_embeds, text_encoder_hidden_states, text_mask = self._encode_prompt(
@@ -364,8 +352,6 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
             num_images_per_prompt=1,
             do_classifier_free_guidance=do_classifier_free_guidance,
         )
-
-        print(prompt_embeds.shape)
 
         text_encoder_hidden_states, additive_clip_time_embeddings = self.text_proj(
             image_embeddings=image_embeddings,
