@@ -264,6 +264,10 @@ class StableDiffusionPix2PixZeroPipelineSlowTests(unittest.TestCase):
         image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1].flatten()
 
+        image_slice_list = [round(x, 4) for x in image_slice.tolist()]
+        print("Default:")
+        print(", ".join([str(x) for x in image_slice_list]))
+
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.4705, 0.4771, 0.4832, 0.4783, 0.4495, 0.447, 0.4658, 0.4568, 0.438])
 
@@ -281,6 +285,10 @@ class StableDiffusionPix2PixZeroPipelineSlowTests(unittest.TestCase):
         inputs = self.get_inputs()
         image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1].flatten()
+
+        image_slice_list = [round(x, 4) for x in image_slice.tolist()]
+        print("LMS:")
+        print(", ".join([str(x) for x in image_slice_list]))
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.6514, 0.5571, 0.5244, 0.5591, 0.4998, 0.4834, 0.502, 0.468, 0.4663])
@@ -302,11 +310,19 @@ class StableDiffusionPix2PixZeroPipelineSlowTests(unittest.TestCase):
                     [-0.5176, 0.0669, -0.1963, -0.1653, -0.7856, -0.2871, -0.5562, -0.0096, -0.012]
                 )
 
+                latent_slice_list = [round(x, 4) for x in expected_slice.flatten().tolist()]
+                print(f"Step: {step}:")
+                print(", ".join([str(x) for x in latent_slice_list]))
+
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
             elif step == 2:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
+
+                latent_slice_list = [round(x, 4) for x in expected_slice.flatten().tolist()]
+                print(f"Step: {step}:")
+                print(", ".join([str(x) for x in latent_slice_list]))
                 expected_slice = np.array(
                     [-0.5127, 0.0613, -0.1937, -0.1622, -0.7856, -0.2849, -0.5601, -0.0111, -0.0137]
                 )
