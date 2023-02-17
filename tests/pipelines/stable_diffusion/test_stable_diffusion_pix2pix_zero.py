@@ -301,6 +301,9 @@ class StableDiffusionPix2PixZeroPipelineSlowTests(unittest.TestCase):
                 expected_slice = np.array(
                     [-0.5176, 0.0669, -0.1963, -0.1653, -0.7856, -0.2871, -0.5562, -0.0096, -0.012]
                 )
+                print("Step: {step}")
+                print(f"latents_slice: {latents_slice}")
+                print(f"expected_slice: {expected_slice}")
 
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
             elif step == 2:
