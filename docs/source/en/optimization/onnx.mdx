@@ -37,6 +37,37 @@ prompt = "a photo of an astronaut riding a horse on mars"
 image = pipe(prompt).images[0]
 ```
 
+The snippet below demonstrates how to use the ONNX runtime with the Stable Diffusion upscaling pipeline.
+
+```python
+from diffusers import StableDiffusionOnnxPipeline
+
+prompt = "a photo of an astronaut riding a horse on mars"
+steps = 50
+
+txt2img = StableDiffusionOnnxPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    revision="onnx",
+    provider="CUDAExecutionProvider",
+)
+small_image = txt2img(
+    prompt,
+    num_inference_steps=steps,
+).images[0]
+
+generator = torch.manual_seed(0)
+upscale = OnnxStableDiffusionUpscalePipeline.from_pretrained(
+    "ssube/stable-diffusion-x4-upscaler-onnx",
+    provider="CUDAExecutionProvider",
+)
+large_image = upscale(
+    prompt,
+    small_image,
+    generator=generator,
+    num_inference_steps=steps,
+).images[0]
+```
+
 ## Known Issues
 
 - Generating multiple prompts in a batch seems to take too much memory. While we look into it, you may need to iterate instead of batching.
