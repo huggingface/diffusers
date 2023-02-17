@@ -157,8 +157,8 @@
         title: Pix2Pix Zero
       - local: api/pipelines/stable_diffusion/self_attention_guidance
         title: Self-Attention Guidance
-      - local: api/pipelines/stable_diffusion/MultiDiffusionPanorama
-        title: MultiDiffusionPanorama
+      - local: api/pipelines/stable_diffusion/multiDiffusion_panorama
+        title: MultiDiffusion Panorama
       title: Stable Diffusion
     - local: api/pipelines/stable_diffusion_2
       title: Stable Diffusion 2
