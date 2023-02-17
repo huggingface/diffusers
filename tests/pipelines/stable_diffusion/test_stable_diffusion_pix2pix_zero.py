@@ -236,8 +236,8 @@ class StableDiffusionPix2PixZeroPipelineSlowTests(unittest.TestCase):
         for url in [src_emb_url, tgt_emb_url]:
             download_from_url(url, url.split("/")[-1])
 
-        src_embeds = torch.load(src_emb_url.split("/1")[-1])
-        target_embeds = torch.load(tgt_emb_url.split("/1")[-1])
+        src_embeds = torch.load(src_emb_url.split("/")[-1])
+        target_embeds = torch.load(tgt_emb_url.split("/")[-1])
 
         inputs = {
             "prompt": "turn him into a cyborg",
