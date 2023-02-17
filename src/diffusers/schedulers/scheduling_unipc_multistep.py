@@ -68,9 +68,8 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
     to use `solver_order=2` for guided sampling, and `solver_order=3` for unconditional sampling.
 
     We also support the "dynamic thresholding" method in Imagen (https://arxiv.org/abs/2205.11487). For pixel-space
-    diffusion models, you can set both `predict_x0=True` and `thresholding=True` to use the dynamic
-    thresholding. Note that the thresholding method is unsuitable for latent-space diffusion models (such as
-    stable-diffusion).
+    diffusion models, you can set both `predict_x0=True` and `thresholding=True` to use the dynamic thresholding. Note
+    that the thresholding method is unsuitable for latent-space diffusion models (such as stable-diffusion).
 
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
@@ -96,9 +95,9 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             https://imagen.research.google/video/paper.pdf)
         thresholding (`bool`, default `False`):
             whether to use the "dynamic thresholding" method (introduced by Imagen, https://arxiv.org/abs/2205.11487).
-            For pixel-space diffusion models, you can set both `predict_x0=True` and `thresholding=True` to
-            use the dynamic thresholding. Note that the thresholding method is unsuitable for latent-space diffusion
-            models (such as stable-diffusion).
+            For pixel-space diffusion models, you can set both `predict_x0=True` and `thresholding=True` to use the
+            dynamic thresholding. Note that the thresholding method is unsuitable for latent-space diffusion models
+            (such as stable-diffusion).
         dynamic_thresholding_ratio (`float`, default `0.995`):
             the ratio for the dynamic thresholding method. Default is `0.995`, the same as Imagen
             (https://arxiv.org/abs/2205.11487).
