@@ -30,9 +30,9 @@ pip install --pre torch torchvision --index-url https://download.pytorch.org/whl
 
 1. **Efficient Attention**
 
-    The efficient attention is implemented via the [`torch.nn.functional.scaled_dot_product_attention`](https://pytorch.org/docs/master/generated/torch.nn.functional.scaled_dot_product_attention) function, which automatically enables flash/memory efficient attention, depending on the input and the GPU type. This is the same as the `memory_efficient_attention` from [xFormers](https://github.com/facebookresearch/xformers) but built natively into the torch. 
+   Efficient attention is implemented via the [`torch.nn.functional.scaled_dot_product_attention`](https://pytorch.org/docs/master/generated/torch.nn.functional.scaled_dot_product_attention) function, which automatically enables flash/memory efficient attention, depending on the input and the GPU type. This is the same as the `memory_efficient_attention` from [xFormers](https://github.com/facebookresearch/xformers) but built natively into PyTorch. 
 
-    The efficient attention will be enabled by default in Diffusers if torch2.0 is installed and if `torch.nn.functional.scaled_dot_product_attention` is available. To use it, you can install torch2.0 as suggested above and use the pipeline. For example:
+   Efficient attention will be enabled by default in Diffusers if torch2.0 is installed and if `torch.nn.functional.scaled_dot_product_attention` is available. To use it, you can install torch2.0 as suggested above and use the pipeline. For example:
 
     ```Python
     import torch
@@ -64,7 +64,7 @@ pip install --pre torch torchvision --index-url https://download.pytorch.org/whl
 
 2. **torch.compile**
 
-    To get further speed up, we can use the new `torch.compile` feature. To do so, we wrap our `unet` with `torch.compile`. For more information and different options, refer to the 
+    To get an additional speedup, we can use the new `torch.compile` feature. To do so, we wrap our `unet` with `torch.compile`. For more information and different options, refer to the 
     [torch compile docs](https://pytorch.org/tutorials/intermediate/torch_compile_tutorial.html).
 
     ```python
@@ -81,7 +81,9 @@ pip install --pre torch torchvision --index-url https://download.pytorch.org/whl
     images = pipe(prompt, num_inference_steps=steps, num_images_per_prompt=batch_size).images
     ```
 
-    Depending on the type of GPU it can give between 2-9% speed-up over efficient attention. But note that as of now the speed-up is mostly noticeable on high-end GPUs such as A100.
+    Depending on the type of GPU it can give between 2-9% speed-up over efficient attention. But note that as of now the speed-up is mostly noticeable on the more recent GPU architectures, such as in the A100.
+    
+    Note that compilation will also take some time to complete, so it is best suited for situations where you need to prepare your pipeline once and then perform the same type of inference operations multiple times.
 
 
 ## Benchmark
