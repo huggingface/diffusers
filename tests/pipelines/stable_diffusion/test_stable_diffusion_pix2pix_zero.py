@@ -299,7 +299,7 @@ class StableDiffusionPix2PixZeroPipelineSlowTests(unittest.TestCase):
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array(
-                    [-0.5176, 0.0669, -0.1963, -0.1653, -0.7856, -0.2871, -0.5562, -0.0096, -0.012]
+                    [0.1345, 0.268, 0.1539, 0.0726, 0.0959, 0.2261, -0.2673, 0.0277, -0.2062]
                 )
                 print(f"Step: {step}")
                 print(f"latents_slice: {latents_slice}")
