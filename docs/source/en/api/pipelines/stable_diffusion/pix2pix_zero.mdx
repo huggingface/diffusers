@@ -144,6 +144,8 @@ inv_latents, inv_image = pipeline.invert(caption, image=raw_image)
 Now, generate the image with edit directions: 
 
 ```py
+# See the "Generating source and target embeddings" section below to
+# automate the generation of these captions.
 source_prompts = 4 * ["a cat sitting on the street", "a cat playing in the field", "a face of a cat"]
 target_prompts = 4 * ["a dog sitting on the street", "a dog playing in the field", "a face of a dog"]
 
