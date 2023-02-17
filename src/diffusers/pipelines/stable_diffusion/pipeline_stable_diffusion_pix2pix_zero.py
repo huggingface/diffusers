@@ -350,9 +350,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
             cpu_offload(cpu_offloaded_model, device)
 
-        if self.caption_generator is not None:
-            cpu_offload(self.caption_generator, execution_device=device)
-
         if self.safety_checker is not None:
             cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
 
@@ -1131,7 +1128,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         # 7. Denoising loop where we obtain the cross-attention maps.
         num_warmup_steps = len(timesteps) - num_inference_steps * self.inverse_scheduler.order
         with self.progress_bar(total=num_inference_steps - 2) as progress_bar:
-            for i, t in enumerate(timesteps.flip(0)[1:-1]):
+            for i, t in enumerate(timesteps[1:-1]):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.inverse_scheduler.scale_model_input(latent_model_input, t)
