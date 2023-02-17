@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
@@ -43,6 +44,36 @@ class EulerDiscreteSchedulerOutput(BaseOutput):
 
     prev_sample: torch.FloatTensor
     pred_original_sample: Optional[torch.FloatTensor] = None
+
+
+# Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
+def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
+    """
+    Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
+    (1-beta) over time from t = [0,1].
+
+    Contains a function alpha_bar that takes an argument t and transforms it to the cumulative product of (1-beta) up
+    to that part of the diffusion process.
+
+
+    Args:
+        num_diffusion_timesteps (`int`): the number of betas to produce.
+        max_beta (`float`): the maximum beta to use; use values lower than 1 to
+                     prevent singularities.
+
+    Returns:
+        betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
+    """
+
+    def alpha_bar(time_step):
+        return math.cos((time_step + 0.008) / 1.008 * math.pi / 2) ** 2
+
+    betas = []
+    for i in range(num_diffusion_timesteps):
+        t1 = i / num_diffusion_timesteps
+        t2 = (i + 1) / num_diffusion_timesteps
+        betas.append(min(1 - alpha_bar(t2) / alpha_bar(t1), max_beta))
+    return torch.tensor(betas, dtype=torch.float32)
 
 
 class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
@@ -97,6 +128,9 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.betas = (
                 torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
             )
+        elif beta_schedule == "squaredcos_cap_v2":
+            # Glide cosine schedule
+            self.betas = betas_for_alpha_bar(num_train_timesteps)
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
@@ -245,7 +279,9 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             sample = sample + eps * (sigma_hat**2 - sigma**2) ** 0.5
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
-        if self.config.prediction_type == "original_sample":
+        # NOTE: "original_sample" should not be an expected prediction_type but is left in for
+        # backwards compatibility
+        if self.config.prediction_type == "original_sample" or self.config.prediction_type == "sample":
             pred_original_sample = model_output
         elif self.config.prediction_type == "epsilon":
             pred_original_sample = sample - sigma_hat * model_output

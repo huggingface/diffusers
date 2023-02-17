@@ -119,6 +119,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         variance_type: str = "fixed_small",
         clip_sample: bool = True,
         prediction_type: str = "epsilon",
+        clip_sample_range: Optional[float] = 1.0,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -284,7 +285,9 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         # 3. Clip "predicted x_0"
         if self.config.clip_sample:
-            pred_original_sample = torch.clamp(pred_original_sample, -1, 1)
+            pred_original_sample = torch.clamp(
+                pred_original_sample, -self.config.clip_sample_range, self.config.clip_sample_range
+            )
 
         # 4. Compute coefficients for pred_original_sample x_0 and current sample x_t
         # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
