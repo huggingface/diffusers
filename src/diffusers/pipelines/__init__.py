@@ -56,6 +56,7 @@ else:
         StableDiffusionLatentUpscalePipeline,
         StableDiffusionPipeline,
         StableDiffusionPix2PixZeroPipeline,
+        StableDiffusionMultiDiffusionPanoramaPipeline,
         StableDiffusionSAGPipeline,
         StableDiffusionUpscalePipeline,
         StableUnCLIPImg2ImgPipeline,
