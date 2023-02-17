@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# DISCLAIMER: This file is strongly influenced by https://github.com/LuChengTHU/dpm-solver
+# DISCLAIMER: check https://arxiv.org/abs/2302.04867 and https://github.com/wl-zhao/UniPC for more info
+# The codebase is modified based on https://github.com/huggingface/diffusers/blob/main/src/diffusers/schedulers/scheduling_dpmsolver_multistep.py
 
 import math
 from typing import List, Optional, Tuple, Union
@@ -67,9 +68,8 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
     to use `solver_order=2` for guided sampling, and `solver_order=3` for unconditional sampling.
 
     We also support the "dynamic thresholding" method in Imagen (https://arxiv.org/abs/2205.11487). For pixel-space
-    diffusion models, you can set both `algorithm_type="dpmsolver++"` and `thresholding=True` to use the dynamic
-    thresholding. Note that the thresholding method is unsuitable for latent-space diffusion models (such as
-    stable-diffusion).
+    diffusion models, you can set both `predict_x0=True` and `thresholding=True` to use the dynamic thresholding. Note
+    that the thresholding method is unsuitable for latent-space diffusion models (such as stable-diffusion).
 
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
@@ -95,9 +95,9 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             https://imagen.research.google/video/paper.pdf)
         thresholding (`bool`, default `False`):
             whether to use the "dynamic thresholding" method (introduced by Imagen, https://arxiv.org/abs/2205.11487).
-            For pixel-space diffusion models, you can set both `algorithm_type=dpmsolver++` and `thresholding=True` to
-            use the dynamic thresholding. Note that the thresholding method is unsuitable for latent-space diffusion
-            models (such as stable-diffusion).
+            For pixel-space diffusion models, you can set both `predict_x0=True` and `thresholding=True` to use the
+            dynamic thresholding. Note that the thresholding method is unsuitable for latent-space diffusion models
+            (such as stable-diffusion).
         dynamic_thresholding_ratio (`float`, default `0.995`):
             the ratio for the dynamic thresholding method. Default is `0.995`, the same as Imagen
             (https://arxiv.org/abs/2205.11487).
@@ -136,7 +136,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         dynamic_thresholding_ratio: float = 0.995,
         sample_max_value: float = 1.0,
         predict_x0: bool = True,
-        solver_type: str = "bh1",
+        solver_type: str = "bh2",
         lower_order_final: bool = True,
         disable_corrector: List[int] = [],
         solver_p: SchedulerMixin = None,
@@ -237,7 +237,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             else:
                 raise ValueError(
                     f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, or"
-                    " `v_prediction` for the DPMSolverMultistepScheduler."
+                    " `v_prediction` for the UniPCMultistepScheduler."
                 )
 
             if self.config.thresholding:
@@ -269,7 +269,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             else:
                 raise ValueError(
                     f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, or"
-                    " `v_prediction` for the DPMSolverMultistepScheduler."
+                    " `v_prediction` for the UniPCMultistepScheduler."
                 )
 
     def multistep_uni_p_bh_update(
