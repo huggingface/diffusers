@@ -1,4 +1,4 @@
-<!--Copyright 2022 The HuggingFace Team. All rights reserved.
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -47,13 +47,17 @@ pipe = StableDiffusionAttendAndExcitePipeline.from_pretrained(model_id, torch_dt
 pipe = pipe.to("cuda")
 
 prompt = "a cat and a frog"
-indices = [2, 5]
+
+# use get_indices function to find out indices of the tokens you want to alter
+pipe.get_indices(prompt)
+
+token_indices = [2, 5]
 seed = 6141
 generator = torch.Generator("cuda").manual_seed(seed)
 
 images = pipe(
     prompt=prompt,
-    indices=indices,
+    token_indices=token_indices,
     guidance_scale=7.5,
     generator=generator,
     num_inference_steps=50,

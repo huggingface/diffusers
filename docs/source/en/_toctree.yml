@@ -32,6 +32,8 @@
       title: Text-Guided Image-Inpainting
     - local: using-diffusers/depth2img
       title: Text-Guided Depth-to-Image
+    - local: using-diffusers/controlling_generation
+      title: Controlling generation
     - local: using-diffusers/reusing_seeds
       title: Reusing seeds for deterministic generation
     - local: using-diffusers/reproducibility
@@ -55,6 +57,8 @@
 - sections:
   - local: optimization/fp16
     title: Memory and Speed
+  - local: optimization/torch2.0
+    title: Torch2.0 support
   - local: optimization/xformers
     title: xFormers
   - local: optimization/onnx
@@ -132,6 +136,8 @@
       title: Safe Stable Diffusion
     - local: api/pipelines/score_sde_ve
       title: Score SDE VE
+    - local: api/pipelines/semantic_stable_diffusion
+      title: Semantic Guidance
     - sections:
       - local: api/pipelines/stable_diffusion/overview
         title: Overview
@@ -157,6 +163,8 @@
         title: Pix2Pix Zero
       - local: api/pipelines/stable_diffusion/self_attention_guidance
         title: Self-Attention Guidance
+      - local: api/pipelines/stable_diffusion/panorama
+        title: MultiDiffusion Panorama
       title: Stable Diffusion
     - local: api/pipelines/stable_diffusion_2
       title: Stable Diffusion 2
@@ -178,6 +186,8 @@
       title: Overview
     - local: api/schedulers/ddim
       title: DDIM
+    - local: api/schedulers/ddim_inverse
+      title: DDIMInverse
     - local: api/schedulers/ddpm
       title: DDPM
     - local: api/schedulers/deis
