@@ -369,8 +369,10 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                     + f"{channels}, {height}, {width}) but is {controlnet_hint.shape}"
                 )
         elif isinstance(controlnet_hint, np.ndarray):
-            # np.ndarray: acceptable shape is any of hwc, bhwc(b==1) or bhwc(b==num_images_per_promot)
+            # np.ndarray: acceptable shape is any of hw, hwc, bhwc(b==1) or bhwc(b==num_images_per_promot)
             # hwc is opencv compatible image format
+            if controlnet_hint.shape == (height, width):
+                controlnet_hint = np.repeat(controlnet_hint[:, :, np.newaxis], channels, axis=2)  # hw -> hwc(c==3)
             shape_hwc = (height, width, channels)
             shape_bhwc = (1, height, width, channels)
             shape_nhwc = (num_images_per_prompt, height, width, channels)
@@ -384,13 +386,14 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                 return controlnet_hint
             else:
                 raise ValueError(
-                    f"Acceptble shape of `controlnet_hint` are any of ({height}, {width}, {channels}),"
-                    + f" (1, {height}, {width}, {channels}) or ({num_images_per_prompt}, "
-                    + f"{channels}, {height}, {width}) but is {controlnet_hint.shape}"
+                    f"Acceptble shape of `controlnet_hint` are any of ({width}, {channels}), "
+                    + f"({height}, {width}, {channels}), "
+                    + f"(1, {height}, {width}, {channels}) or "
+                    + f"({num_images_per_prompt}, {channels}, {height}, {width}) but is {controlnet_hint.shape}"
                 )
         elif isinstance(controlnet_hint, PIL.Image.Image):
             if controlnet_hint.size == (width, height):
-                # controlnet_hint = controlnet_hint.convert("RGB")  # make sure 3 channel RGB format
+                controlnet_hint = controlnet_hint.convert("RGB")  # make sure 3 channel RGB format
                 return self.controlnet_hint_conversion(np.array(controlnet_hint), height, width, num_images_per_prompt)
             else:
                 raise ValueError(
