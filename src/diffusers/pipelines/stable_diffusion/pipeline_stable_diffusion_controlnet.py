@@ -16,6 +16,8 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
+import numpy as np
+import PIL.Image
 import torch
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
@@ -348,6 +350,57 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    def controlnet_hint_conversion(self, controlnet_hint, height, width, num_images_per_prompt):
+        channels = 3
+        if isinstance(controlnet_hint, torch.Tensor):
+            # torch.Tensor: acceptble shape are any of chw, bchw(b==1) or bchw(b==num_images_per_prompt)
+            shape_chw = (channels, height, width)
+            shape_bchw = (1, channels, height, width)
+            shape_nchw = (num_images_per_prompt, channels, height, width)
+            if controlnet_hint.shape in [shape_chw, shape_bchw, shape_nchw]:
+                controlnet_hint = controlnet_hint.to(dtype=self.controlnet.dtype, device=self.controlnet.device)
+                if controlnet_hint.shape != shape_nchw:
+                    controlnet_hint = controlnet_hint.repeat(num_images_per_prompt, 1, 1, 1)
+                return controlnet_hint
+            else:
+                raise ValueError(
+                    f"Acceptble shape of `controlnet_hint` are any of ({channels}, {height}, {width}),"
+                    + f" (1, {channels}, {height}, {width}) or ({num_images_per_prompt}, "
+                    + f"{channels}, {height}, {width}) but is {controlnet_hint.shape}"
+                )
+        elif isinstance(controlnet_hint, np.ndarray):
+            # np.ndarray: acceptable shape is any of hwc, bhwc(b==1) or bhwc(b==num_images_per_promot)
+            # hwc is opencv compatible image format
+            shape_hwc = (height, width, channels)
+            shape_bhwc = (1, height, width, channels)
+            shape_nhwc = (num_images_per_prompt, height, width, channels)
+            if controlnet_hint.shape in [shape_hwc, shape_bhwc, shape_nhwc]:
+                controlnet_hint = torch.from_numpy(controlnet_hint.copy())
+                controlnet_hint = controlnet_hint.to(dtype=self.controlnet.dtype, device=self.controlnet.device)
+                controlnet_hint /= 255.0
+                if controlnet_hint.shape != shape_nhwc:
+                    controlnet_hint = controlnet_hint.repeat(num_images_per_prompt, 1, 1, 1)
+                controlnet_hint = controlnet_hint.permute(0, 3, 1, 2)  # b h w c -> b c h w
+                return controlnet_hint
+            else:
+                raise ValueError(
+                    f"Acceptble shape of `controlnet_hint` are any of ({height}, {width}, {channels}),"
+                    + f" (1, {height}, {width}, {channels}) or ({num_images_per_prompt}, "
+                    + f"{channels}, {height}, {width}) but is {controlnet_hint.shape}"
+                )
+        elif isinstance(controlnet_hint, PIL.Image.Image):
+            if controlnet_hint.size == (width, height):
+                # controlnet_hint = controlnet_hint.convert("RGB")  # make sure 3 channel RGB format
+                return self.controlnet_hint_conversion(np.array(controlnet_hint), height, width, num_images_per_prompt)
+            else:
+                raise ValueError(
+                    f"Acceptable image size of `controlnet_hint` is ({width}, {height}) but is {controlnet_hint.size}"
+                )
+        else:
+            raise ValueError(
+                f"Acceptable type of `controlnet_hint` are any of torch.Tensor, np.ndarray, PIL.Image.Image but is {type(controlnet_hint)}"
+            )
+
     @torch.no_grad()
     # @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -369,7 +422,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        controlnet_hint: Optional[torch.FloatTensor] = None,
+        controlnet_hint: Optional[Union[torch.FloatTensor, np.ndarray, PIL.Image.Image]] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -444,12 +497,15 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
 
-        # 1. Check inputs. Raise error if not correct
+        # 1. Control Embedding check & conversion
+        controlnet_hint = self.controlnet_hint_conversion(controlnet_hint, height, width, num_images_per_prompt)
+
+        # 2. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
         )
 
-        # 2. Define call parameters
+        # 3. Define call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -463,7 +519,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        # 3. Encode input prompt
+        # 4. Encode input prompt
         prompt_embeds = self._encode_prompt(
             prompt,
             device,
@@ -474,11 +530,11 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
             negative_prompt_embeds=negative_prompt_embeds,
         )
 
-        # 4. Prepare timesteps
+        # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
-        # 5. Prepare latent variables
+        # 6. Prepare latent variables
         num_channels_latents = self.unet.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
@@ -491,10 +547,10 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
             latents,
         )
 
-        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 7. Denoising loop
+        # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
