@@ -37,6 +37,7 @@ Unless otherwise mentioned, these are techniques that work with existing models 
 9. [Textual Inversion](#textual-inversion)
 10. [ControlNet](#controlnet)
 11. [Prompt Weighting](#prompt-weighting)
+12. [T2I-Adapter](#t2i-adapter)
 
 ## Instruct Pix2Pix
 
@@ -165,3 +166,13 @@ Prompt weighting is a simple technique that puts more attention weight on certai
 input. 
 
 For a more in-detail explanation and examples, see [here](../using-diffusers/weighted_prompts).
+
+## T2I-Adapter
+
+[Paper](https://arxiv.org/abs/2302.08453)
+
+[T2I-Adapter](../api/pipelines/stable_diffusion/adapter) is an auxiliary network which adds an extra condition.
+There are 8 canonical pre-trained adapters trained on different conditionings such as edge detection, sketch, 
+depth maps, and semantic segmentations.
+
+See [here](../api/pipelines/stable_diffusion/adapter) for more information on how to use it.
