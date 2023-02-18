@@ -789,6 +789,10 @@ def main():
                 if global_step % args.validation_steps == 0:
                     if accelerator.is_main_process:
                         if args.validation_prompt:
+                            if args.use_ema:
+                                # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
+                                ema_unet.store(unet.parameters()) 
+                                ema_unet.copy_to(unet.parameters())
                             pipeline = StableDiffusionPipeline.from_pretrained(
                                 args.pretrained_model_name_or_path,
                                 text_encoder=text_encoder,
@@ -823,6 +827,9 @@ def main():
                                             ]
                                         }
                                     )
+                            if args.use_ema:
+                                # Switch back to the original UNet parameters.
+                                ema_unet.restore(unet.parameters())
                             del pipeline
                             torch.cuda.empty_cache()
 
