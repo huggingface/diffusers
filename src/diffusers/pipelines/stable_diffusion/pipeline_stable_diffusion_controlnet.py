@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import is_accelerate_available, logging, randn_tensor
+from ...utils import is_accelerate_available, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
@@ -31,8 +31,52 @@ from .safety_checker import StableDiffusionSafetyChecker
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> from diffusers import StableDiffusionControlNetPipeline
+        >>> from diffusers.utils import load_image
+
+        >>> # Canny edged image for control
+        >>> canny_edged_image = load_image(
+        ...     "https://huggingface.co/takuma104/controlnet_dev/resolve/main/vermeer_canny_edged.png"
+        ... )
+        >>> pipe = StableDiffusionControlNetPipeline.from_pretrained("takuma104/control_sd15_canny").to("cuda")
+        >>> image = pipe(prompt="best quality, extremely detailed", controlnet_hint=canny_edged_image).images[0]
+        ```
+"""
+
 
 class StableDiffusionControlNetPipeline(DiffusionPipeline):
+    r"""
+    Pipeline for text-to-image generation using Stable Diffusion with ControlNet guidance.
+
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+
+    Args:
+        vae ([`AutoencoderKL`]):
+            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
+        text_encoder ([`CLIPTextModel`]):
+            Frozen text-encoder. Stable Diffusion uses the text portion of
+            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
+            the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
+        tokenizer (`CLIPTokenizer`):
+            Tokenizer of class
+            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
+        unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
+        controlnet ([`UNet2DConditionModel`]):
+            [ControlNet](https://arxiv.org/abs/2302.05543) architecture to generate guidance.
+        scheduler ([`SchedulerMixin`]):
+            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
+            [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
+        safety_checker ([`StableDiffusionSafetyChecker`]):
+            Classification module that estimates whether generated images could be considered offensive or harmful.
+            Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
+        feature_extractor ([`CLIPFeatureExtractor`]):
+            Model that extracts features from generated images to be used as inputs for the `safety_checker`.
+    """
+
     def __init__(
         self,
         vae: AutoencoderKL,
@@ -405,7 +449,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
             )
 
     @torch.no_grad()
-    # @replace_example_docstring(EXAMPLE_DOC_STRING)
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
@@ -486,6 +530,11 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                 A kwargs dictionary that if specified is passed along to the `AttnProcessor` as defined under
                 `self.processor` in
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
+            controlnet_hint (`torch.FloatTensor`, `np.ndarray` or `PIL.Image.Image`, *optional*):
+                ControlNet input embedding. ControlNet generates guidances using this input embedding. If the type is
+                specified as `torch.FloatTensor`, it is passed to ControlNet as is. If the type is `np.ndarray`, it is
+                assumed to be an OpenCV compatible image format. PIL.Image.Image` can also be accepted as an image. The
+                size of all these types must correspond to the output image size.
 
         Examples:
 
