@@ -1,4 +1,3 @@
-import einops
 import numpy as np
 import pytest
 import torch
@@ -49,11 +48,10 @@ def test_pixel_match():
         f"https://huggingface.co/takuma104/controlnet_dev/resolve/main/vermeer_canny_edged_seed_{seed}.png"
     )
 
-    # code from https://github.com/lllyasviel/ControlNet/blob/main/gradio_canny2image.py
-    num_samples = 1
+    batch = 1
     control = torch.from_numpy(np.array(canny_edged_image).copy()).float().cuda() / 255.0
-    control = torch.stack([control for _ in range(num_samples)], dim=0)
-    control = einops.rearrange(control, "b h w c -> b c h w").clone()
+    control = control.repeat(batch, 1, 1, 1)
+    control = control.permute(0, 3, 1, 2)  # b h w c -> b c h w
 
     generator = torch.Generator(device="cuda").manual_seed(seed)
     image = pipe(
@@ -66,5 +64,5 @@ def test_pixel_match():
     ).images[0]
     image.save(f"/tmp/seed_{seed}.png")
 
-    max_diff = np.abs(np.array(image).astype(np.int) - np.array(output_ref_image).astype(np.int)).max()
+    max_diff = np.abs(np.array(image).astype(np.int32) - np.array(output_ref_image).astype(np.int32)).max()
     assert max_diff < 10  # must be max_diff == 0 but it appears that there is a tiny difference for some reason.
