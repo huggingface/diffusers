@@ -1452,21 +1452,22 @@ def load_pipeline_from_control_net_ckpt(
 
             original_config_file = os.path.join(tmpdir, "inference.yaml")
             if key_name in checkpoint and checkpoint[key_name].shape[-1] == 1024:
-                if not os.path.isfile("v2-inference-v.yaml"):
-                    # model_type = "v2"
-                    r = requests.get(
-                        " https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/v2-inference-v.yaml"
-                    )
-                    open(original_config_file, "wb").write(r.content)
+                raise NotImplementedError("Currently only support SD1.x models.")
+                # if not os.path.isfile("v2-inference-v.yaml"):
+                #     # model_type = "v2"
+                #     r = requests.get(
+                #         " https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/v2-inference-v.yaml"
+                #     )
+                #     open(original_config_file, "wb").write(r.content)
 
-                if global_step == 110000:
-                    # v2.1 needs to upcast attention
-                    upcast_attention = True
+                # if global_step == 110000:
+                #     # v2.1 needs to upcast attention
+                #     upcast_attention = True
             else:
-                if not os.path.isfile("v1-inference.yaml"):
+                if not os.path.isfile("cldm_v15.yaml"):
                     # model_type = "v1"
                     r = requests.get(
-                        " https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml"
+                        "https://raw.githubusercontent.com/lllyasviel/ControlNet/main/models/cldm_v15.yaml"
                     )
                     open(original_config_file, "wb").write(r.content)
 
