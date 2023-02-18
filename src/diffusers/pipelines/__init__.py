@@ -80,6 +80,7 @@ else:
     from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
     from .stable_diffusion import (
         CycleDiffusionPipeline,
+        StableDiffusionAdapterPipeline,
         StableDiffusionAttendAndExcitePipeline,
         StableDiffusionDepth2ImgPipeline,
         StableDiffusionDiffEditPipeline,

@@ -955,6 +955,7 @@ class CrossAttnDownBlock2D(nn.Module):
         attention_mask: Optional[torch.FloatTensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
+        additional_residuals=None,
     ):
         output_states = ()
 
@@ -1000,6 +1001,10 @@ class CrossAttnDownBlock2D(nn.Module):
                 )[0]
 
             output_states = output_states + (hidden_states,)
+
+        if additional_residuals is not None:
+            hidden_states += additional_residuals
+            output_states = output_states[:-1] + (output_states[-1] + additional_residuals,)
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
