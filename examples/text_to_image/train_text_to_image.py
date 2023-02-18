@@ -791,7 +791,7 @@ def main():
                         if args.validation_prompt:
                             if args.use_ema:
                                 # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
-                                ema_unet.store(unet.parameters()) 
+                                ema_unet.store(unet.parameters())
                                 ema_unet.copy_to(unet.parameters())
                             pipeline = StableDiffusionPipeline.from_pretrained(
                                 args.pretrained_model_name_or_path,
