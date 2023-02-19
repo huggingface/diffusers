@@ -734,7 +734,7 @@ image = pipe(prompt, generator=generator, num_inference_steps=50).images[0]
 ![diffusers_euler](https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/k_diffusion/astronaut_euler_k_diffusion.png)
 
 ### Checkpoint Merger Pipeline
-Based on the AUTOMATIC1111/webui for checkpoint merging. This is a custom pipeline that merges upto 3 pretrained model checkpoints as long as they are in the HuggingFace model_index.json format.
+Based on the AUTOMATIC1111/webui for checkpoint merging. This is a custom pipeline that merges up to 3 pretrained model checkpoints as long as they are in the HuggingFace model_index.json format.
 
 The checkpoint merging is currently memory intensive as it modifies the weights of a DiffusionPipeline object in place. Expect atleast 13GB RAM Usage on Kaggle GPU kernels and
 on colab you might run out of the 12GB memory even while merging two checkpoints.
@@ -758,7 +758,15 @@ merged_pipe = pipe.merge(["CompVis/stable-diffusion-v1-4","CompVis/stable-diffus
 merged_pipe_1 = pipe.merge(["CompVis/stable-diffusion-v1-4","hakurei/waifu-diffusion"], force = True, interp = "sigmoid", alpha = 0.4)
 
 #Three checkpoint merging. Only "add_difference" method actually works on all three checkpoints. Using any other options will ignore the 3rd checkpoint.
-merged_pipe_2 = pipe.merge(["CompVis/stable-diffusion-v1-4","hakurei/waifu-diffusion","prompthero/openjourney"], force = True, interp = "add_difference", alpha = 0.4)
+merged_pipe_2 = pipe.merge(["CompVis/stable-diffusion-v1-4","hakurei/waifu-diffusion","prompthero/openjourney"], force = True, interp = "add_diff", alpha = 0.4)
+
+#Merging with different weights for unet and text_encoder
+merged_pipe_3 = pipe.merge(["CompVis/stable-diffusion-v2-1","IlluminatiAI/Illuminati_Diffusion_v1.0"], force = True, interp = "weighted_sum", 
+                           alpha = 0.5, module_override_alphas = {'unet': 0.2, 'text_encoder': 0.6})
+
+#Merging with different weights for different layers in the unet (12 weights for the down layers, 1 weight for the middle layer, 12 weights for the up layers)
+merged_pipe_4 = pipe.merge(["CompVis/stable-diffusion-v2-1","IlluminatiAI/Illuminati_Diffusion_v1.0"], force = True, interp = "weighted_sum", 
+                           alpha = 0.5, block_weights = "0,0,0,0,0,0,0,0,0,0,0,0,0.5,1,1,1,1,1,1,1,1,1,1,1,1")
 
 prompt = "An astronaut riding a horse on Mars"
 
