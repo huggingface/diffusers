@@ -187,6 +187,9 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         conv_out_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_out` layer.
         projection_class_embeddings_input_dim (`int`, *optional*): The dimension of the `class_labels` input when
             using the "projection" `class_embed_type`. Required when using the "projection" `class_embed_type`.
+        controlnet_hint_channels (`int`, *optional*, default to `None`):
+            The number of channels in the `controlnet_hint`. If this value is not None, this unet model behaves as
+            ControlNet.
     """
 
     _supports_gradient_checkpointing = True
@@ -596,10 +599,10 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        controlnet_hint: Optional[torch.Tensor] = None,
-        control: Optional[List[torch.Tensor]] = None,
+        controlnet_hint: Optional[torch.FloatTensor] = None,
+        control: Optional[List[torch.FloatTensor]] = None,
         return_dict: bool = True,
-    ) -> Union[UNet2DConditionOutput, Tuple, List[torch.Tensor]]:
+    ) -> Union[UNet2DConditionOutput, Tuple, List[torch.FloatTensor]]:
         r"""
         Args:
             sample (`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
@@ -611,11 +614,17 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 A kwargs dictionary that if specified is passed along to the `AttnProcessor` as defined under
                 `self.processor` in
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
-
+            controlnet_hint (`torch.FloatTensor`, *optional*, defaults to `None`):
+                ControlNet input embedding. If `controlnet_hint_channel` of `__init__()` is not None, it must be
+                specified as a tensors.
+            control (`List[torch.FloatTensor]`, *optional*, defaults to `None`):
+                If `control` is not None, this unet model behaves as ControlledUnet. ControlledUnet is controlled by
+                this list of tensors.
         Returns:
-            [`~models.unet_2d_condition.UNet2DConditionOutput`] or `tuple`:
+            [`~models.unet_2d_condition.UNet2DConditionOutput`] , `tuple` or [torch.FloatTensor]:
             [`~models.unet_2d_condition.UNet2DConditionOutput`] if `return_dict` is True, otherwise a `tuple`. When
-            returning a tuple, the first element is the sample tensor.
+            returning a tuple, the first element is the sample tensor. If `controlnet_hint` is not None, the ControlNet
+            result of the processing is output as a list of tensors.
         """
         # By default samples have to be AT least a multiple of the overall upsampling factor.
         # The overall upsampling factor is equal to 2 ** (# num of upsampling layears).
