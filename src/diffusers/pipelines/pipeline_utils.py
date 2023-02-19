@@ -537,7 +537,7 @@ class DiffusionPipeline(ConfigMixin):
 
                 if revision in DEPRECATED_REVISION_ARGS and version.parse(
                     version.parse(__version__).base_version
-                ) >= version.parse("0.10.0"):
+                ) >= version.parse("0.15.0"):
                     info = model_info(
                         pretrained_model_name_or_path,
                         use_auth_token=use_auth_token,
