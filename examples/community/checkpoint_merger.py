@@ -12,7 +12,7 @@ if is_safetensors_available():
 
 from huggingface_hub import snapshot_download
 
-from diffusers import DiffusionPipeline, __version__, UNet2DConditionModel
+from diffusers import DiffusionPipeline, UNet2DConditionModel, __version__
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, DIFFUSERS_CACHE, ONNX_WEIGHTS_NAME, WEIGHTS_NAME
 
@@ -70,11 +70,6 @@ DIFFUSERS_KEY_PREFIX_TO_WEIGHT_INDEX = {
     "conv_norm_out.": 24,
     "conv_out.": 24,
 }
-
-
-def dprint(str, flg):
-    if flg:
-        print(str)
 
 
 def get_weight_index(key: str) -> int:
