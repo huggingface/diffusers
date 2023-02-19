@@ -414,7 +414,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                 )
         elif isinstance(controlnet_hint, np.ndarray):
             # np.ndarray: acceptable shape is any of hw, hwc, bhwc(b==1) or bhwc(b==num_images_per_promot)
-            # hwc is opencv compatible image format
+            # hwc is opencv compatible image format. Color channel must be BGR Format.
             if controlnet_hint.shape == (height, width):
                 controlnet_hint = np.repeat(controlnet_hint[:, :, np.newaxis], channels, axis=2)  # hw -> hwc(c==3)
             shape_hwc = (height, width, channels)
@@ -438,7 +438,9 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         elif isinstance(controlnet_hint, PIL.Image.Image):
             if controlnet_hint.size == (width, height):
                 controlnet_hint = controlnet_hint.convert("RGB")  # make sure 3 channel RGB format
-                return self.controlnet_hint_conversion(np.array(controlnet_hint), height, width, num_images_per_prompt)
+                controlnet_hint = np.array(controlnet_hint)  # to numpy
+                controlnet_hint = controlnet_hint[:, :, ::-1]  # RGB -> BGR
+                return self.controlnet_hint_conversion(controlnet_hint, height, width, num_images_per_prompt)
             else:
                 raise ValueError(
                     f"Acceptable image size of `controlnet_hint` is ({width}, {height}) but is {controlnet_hint.size}"
