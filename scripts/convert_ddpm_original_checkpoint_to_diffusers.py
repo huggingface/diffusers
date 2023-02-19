@@ -404,7 +404,7 @@ if __name__ == "__main__":
         config = json.loads(f.read())
 
     # unet case
-    key_prefix_set = set(key.split(".")[0] for key in checkpoint.keys())
+    key_prefix_set = {key.split(".")[0] for key in checkpoint.keys()}
     if "encoder" in key_prefix_set and "decoder" in key_prefix_set:
         converted_checkpoint = convert_vq_autoenc_checkpoint(checkpoint, config)
     else:

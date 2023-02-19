@@ -52,13 +52,13 @@ class ValueGuidedRLPipeline(DiffusionPipeline):
         self.scheduler = scheduler
         self.env = env
         self.data = env.get_dataset()
-        self.means = dict()
+        self.means = {}
         for key in self.data.keys():
             try:
                 self.means[key] = self.data[key].mean()
             except:  # noqa: E722
                 pass
-        self.stds = dict()
+        self.stds = {}
         for key in self.data.keys():
             try:
                 self.stds[key] = self.data[key].std()

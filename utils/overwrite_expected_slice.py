@@ -67,7 +67,7 @@ def overwrite_file(file, class_name, test_name, correct_line, done_test):
 def main(correct, fail=None):
     if fail is not None:
         with open(fail, "r") as f:
-            test_failures = set([l.strip() for l in f.readlines()])
+            test_failures = {l.strip() for l in f.readlines()}
     else:
         test_failures = None
 

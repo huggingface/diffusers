@@ -134,7 +134,7 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
             return embeds
 
         if isinstance(prompt, torch.Tensor) and len(prompt.shape) == 4:
-            prompt = [p for p in prompt]
+            prompt = list(prompt)
 
         batch_size = len(prompt) if isinstance(prompt, list) else 1
 
