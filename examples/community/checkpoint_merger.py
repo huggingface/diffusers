@@ -71,9 +71,11 @@ DIFFUSERS_KEY_PREFIX_TO_WEIGHT_INDEX = {
     "conv_out.": 24,
 }
 
+
 def dprint(str, flg):
     if flg:
         print(str)
+
 
 def get_weight_index(key: str) -> int:
     for k, v in DIFFUSERS_KEY_PREFIX_TO_WEIGHT_INDEX.items():
