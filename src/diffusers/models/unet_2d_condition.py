@@ -105,6 +105,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         conv_out_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_out` layer.
         projection_class_embeddings_input_dim (`int`, *optional*): The dimension of the `class_labels` input when
             using the "projection" `class_embed_type`. Required when using the "projection" `class_embed_type`.
+        ff_multiplier (`int`, *optional*, default to `4`): The multiplier to use for the feedforward layer.
     """
 
     _supports_gradient_checkpointing = True
@@ -148,6 +149,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         conv_in_kernel: int = 3,
         conv_out_kernel: int = 3,
         projection_class_embeddings_input_dim: Optional[int] = None,
+        ff_multiplier: int = 4,
     ):
         super().__init__()
 
@@ -282,6 +284,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 dual_cross_attention=dual_cross_attention,
                 use_linear_projection=use_linear_projection,
                 upcast_attention=upcast_attention,
+                ff_multiplier=ff_multiplier,
             )
         elif mid_block_type == "UNetMidBlock2DSimpleCrossAttn":
             self.mid_block = UNetMidBlock2DSimpleCrossAttn(
@@ -294,6 +297,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 attn_num_head_channels=attention_head_dim[-1],
                 resnet_groups=norm_num_groups,
                 resnet_time_scale_shift=resnet_time_scale_shift,
+                ff_multiplier=ff_multiplier,
             )
         elif mid_block_type is None:
             self.mid_block = None

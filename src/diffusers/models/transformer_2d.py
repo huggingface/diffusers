@@ -74,6 +74,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             up to but not more than steps than `num_embeds_ada_norm`.
         attention_bias (`bool`, *optional*):
             Configure if the TransformerBlocks' attention should contain a bias parameter.
+        ff_multiplier (`int`, *optional*, defaults to 4): The multiplier to use for the feed-forward layer.
     """
 
     @register_to_config
@@ -98,6 +99,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         upcast_attention: bool = False,
         norm_type: str = "layer_norm",
         norm_elementwise_affine: bool = True,
+        ff_multiplier: int = 4,
     ):
         super().__init__()
         self.use_linear_projection = use_linear_projection
@@ -190,6 +192,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     upcast_attention=upcast_attention,
                     norm_type=norm_type,
                     norm_elementwise_affine=norm_elementwise_affine,
+                    ff_multiplier=ff_multiplier,
                 )
                 for d in range(num_layers)
             ]

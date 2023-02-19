@@ -189,6 +189,7 @@ class BasicTransformerBlock(nn.Module):
             obj: `int`, *optional*): The number of diffusion steps used during training. See `Transformer2DModel`.
         attention_bias (:
             obj: `bool`, *optional*, defaults to `False`): Configure if the attentions should contain a bias parameter.
+        ff_multiplier (`int`, *optional*, defaults to 4): The multiplier to use for the feed-forward layer.
     """
 
     def __init__(
@@ -206,6 +207,7 @@ class BasicTransformerBlock(nn.Module):
         norm_elementwise_affine: bool = True,
         norm_type: str = "layer_norm",
         final_dropout: bool = False,
+        ff_multiplier: int = 4,
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
@@ -230,7 +232,9 @@ class BasicTransformerBlock(nn.Module):
             upcast_attention=upcast_attention,
         )
 
-        self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn, final_dropout=final_dropout)
+        self.ff = FeedForward(
+            dim, dropout=dropout, activation_fn=activation_fn, final_dropout=final_dropout, mult=ff_multiplier
+        )
 
         # 2. Cross-Attn
         if cross_attention_dim is not None:

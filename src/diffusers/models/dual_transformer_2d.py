@@ -43,6 +43,7 @@ class DualTransformer2DModel(nn.Module):
             up to but not more than steps than `num_embeds_ada_norm`.
         attention_bias (`bool`, *optional*):
             Configure if the TransformerBlocks' attention should contain a bias parameter.
+        ff_multiplier (`int`, *optional*, defaults to 4): The multiplier to use for the feed-forward layer.
     """
 
     def __init__(
@@ -59,6 +60,7 @@ class DualTransformer2DModel(nn.Module):
         num_vector_embeds: Optional[int] = None,
         activation_fn: str = "geglu",
         num_embeds_ada_norm: Optional[int] = None,
+        ff_multiplier: int = 4,
     ):
         super().__init__()
         self.transformers = nn.ModuleList(
@@ -76,6 +78,7 @@ class DualTransformer2DModel(nn.Module):
                     num_vector_embeds=num_vector_embeds,
                     activation_fn=activation_fn,
                     num_embeds_ada_norm=num_embeds_ada_norm,
+                    ff_multiplier=ff_multiplier,
                 )
                 for _ in range(2)
             ]
