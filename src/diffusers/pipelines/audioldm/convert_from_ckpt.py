@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The HuggingFace Inc. team.
+# Copyright 2023 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Conversion script for the Stable Diffusion checkpoints."""
+""" Conversion script for the AudioLDM checkpoints."""
 
 import re
 
@@ -30,7 +30,6 @@ from diffusers import (
     PNDMScheduler,
     UNet2DModel,
 )
-from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
 from transformers import (
     AutoTokenizer,
     ClapTextConfig,
@@ -43,6 +42,7 @@ from ...utils import is_omegaconf_available, is_safetensors_available
 from ...utils.import_utils import BACKENDS_MAPPING
 
 
+# Copied from diffusers.pipelines.stable_diffusion.convert_from_checkpoint.shave_segments
 def shave_segments(path, n_shave_prefix_segments=1):
     """
     Removes segments. Positive values shave the first segments, negative shave the last segments.
@@ -53,6 +53,7 @@ def shave_segments(path, n_shave_prefix_segments=1):
         return ".".join(path.split(".")[:n_shave_prefix_segments])
 
 
+# Copied from diffusers.pipelines.stable_diffusion.convert_from_checkpoint.renew_resnet_paths
 def renew_resnet_paths(old_list, n_shave_prefix_segments=0):
     """
     Updates paths inside resnets to the new naming scheme (local renaming)
@@ -75,6 +76,7 @@ def renew_resnet_paths(old_list, n_shave_prefix_segments=0):
     return mapping
 
 
+# Copied from diffusers.pipelines.stable_diffusion.convert_from_checkpoint.renew_vae_resnet_paths
 def renew_vae_resnet_paths(old_list, n_shave_prefix_segments=0):
     """
     Updates paths inside resnets to the new naming scheme (local renaming)
@@ -91,6 +93,7 @@ def renew_vae_resnet_paths(old_list, n_shave_prefix_segments=0):
     return mapping
 
 
+# Copied from diffusers.pipelines.stable_diffusion.convert_from_checkpoint.renew_attention_paths
 def renew_attention_paths(old_list):
     """
     Updates paths inside attentions to the new naming scheme (local renaming)
@@ -103,6 +106,7 @@ def renew_attention_paths(old_list):
     return mapping
 
 
+# Copied from diffusers.pipelines.stable_diffusion.convert_from_checkpoint.renew_vae_attention_paths
 def renew_vae_attention_paths(old_list, n_shave_prefix_segments=0):
     """
     Updates paths inside attentions to the new naming scheme (local renaming)
@@ -133,6 +137,7 @@ def renew_vae_attention_paths(old_list, n_shave_prefix_segments=0):
     return mapping
 
 
+# Copied from diffusers.pipelines.stable_diffusion.convert_from_checkpoint.assign_to_checkpoint
 def assign_to_checkpoint(
     paths, checkpoint, old_checkpoint, attention_paths_to_split=None, additional_replacements=None, config=None
 ):
@@ -184,6 +189,7 @@ def assign_to_checkpoint(
             checkpoint[new_path] = old_checkpoint[path["old"]]
 
 
+# Copied from diffusers.pipelines.stable_diffusion.convert_from_checkpoint.convert_attn_to_linear
 def conv_attn_to_linear(checkpoint):
     keys = list(checkpoint.keys())
     attn_keys = ["query.weight", "key.weight", "value.weight"]
@@ -198,7 +204,7 @@ def conv_attn_to_linear(checkpoint):
 
 def create_unet_diffusers_config(original_config, image_size: int):
     """
-    Creates a config for the diffusers based on the config of the LDM model.
+    Creates a UNet config for diffusers based on the config of the original AudioLDM model.
     """
     unet_params = original_config.model.params.unet_config.params
     vae_params = original_config.model.params.first_stage_config.params.ddconfig
@@ -234,7 +240,7 @@ def create_unet_diffusers_config(original_config, image_size: int):
         up_block_types=tuple(up_block_types),
         block_out_channels=tuple(block_out_channels),
         layers_per_block=unet_params.num_res_blocks,
-        cross_attention_dim=True,
+        cross_attention_dim=True,  # TODO: hacky - what are we doing re cross attention?
         extra_film_condition_dim=extra_film_condition_dim,
         extra_film_use_concat=extra_film_use_concat,
     )
@@ -242,9 +248,12 @@ def create_unet_diffusers_config(original_config, image_size: int):
     return config
 
 
-def create_vae_diffusers_config(original_config, scaling_factor: float, image_size: int):
+# Adapted from diffusers.pipelines.stable_diffusion.convert_from_checkpoint.create_vae_diffusers_config
+def create_vae_diffusers_config(original_config, checkpoint, image_size: int):
     """
-    Creates a config for the diffusers based on the config of the LDM model.
+    Creates a VAE config for diffusers based on the config of the original AudioLDM model.
+    Compared to the original Stable Diffusion conversion, this function passes a
+    *learnt* VAE scaling factor to the diffusers VAE.
     """
     vae_params = original_config.model.params.first_stage_config.params.ddconfig
     _ = original_config.model.params.first_stage_config.params.embed_dim
@@ -252,6 +261,8 @@ def create_vae_diffusers_config(original_config, scaling_factor: float, image_si
     block_out_channels = [vae_params.ch * mult for mult in vae_params.ch_mult]
     down_block_types = ["DownEncoderBlock2D"] * len(block_out_channels)
     up_block_types = ["UpDecoderBlock2D"] * len(block_out_channels)
+
+    scaling_factor = checkpoint["scale_factor"] if "scale_by_std" in original_config.model.params else 0.18215
 
     config = dict(
         sample_size=image_size,
@@ -262,11 +273,12 @@ def create_vae_diffusers_config(original_config, scaling_factor: float, image_si
         block_out_channels=tuple(block_out_channels),
         latent_channels=vae_params.z_channels,
         layers_per_block=vae_params.num_res_blocks,
-        scaling_factor=float(scaling_factor)
+        scaling_factor=float(scaling_factor),
     )
     return config
 
 
+# Copied from diffusers.pipelines.stable_diffusion.convert_from_checkpoint.create_diffusers_schedular
 def create_diffusers_schedular(original_config):
     schedular = DDIMScheduler(
         num_train_timesteps=original_config.model.params.timesteps,
@@ -277,19 +289,12 @@ def create_diffusers_schedular(original_config):
     return schedular
 
 
-def create_ldm_bert_config(original_config):
-    bert_params = original_config.model.parms.cond_stage_config.params
-    config = LDMBertConfig(
-        d_model=bert_params.n_embed,
-        encoder_layers=bert_params.n_layer,
-        encoder_ffn_dim=bert_params.n_embed * 4,
-    )
-    return config
-
-
+# Adapted from diffusers.pipelines.stable_diffusion.convert_from_checkpoint.convert_ldm_unet_checkpoint
 def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False):
     """
-    Takes a state dict and a config, and returns a converted checkpoint.
+    Takes a state dict and a config, and returns a converted checkpoint. Compared to the
+    original Stable Diffusion conversion, this function additionally converts the learnt
+    film embedding linear layer.
     """
 
     # extract state_dict for UNet
@@ -463,6 +468,7 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
     return new_checkpoint
 
 
+# Copied from diffusers.pipelines.stable_diffusion.convert_from_checkpoint.convert_ldm_vae_checkpoint
 def convert_ldm_vae_checkpoint(checkpoint, config):
     # extract state dict for VAE
     vae_state_dict = {}
@@ -569,138 +575,8 @@ def convert_ldm_vae_checkpoint(checkpoint, config):
     conv_attn_to_linear(new_checkpoint)
     return new_checkpoint
 
-def create_transformers_diffusers_config(original_config):
-    """
-    Creates a config for transformers SpeechT5HifiGan based on the config of the vocoder model.
-    """
-    config = dict(
-    model_in_dim = original_config.num_mels,
-    sampling_rate = original_config.sampling_rate,
-    upsample_initial_channel = original_config.upsample_initial_channel,
-    upsample_rates = list(original_config.upsample_rates),
-    upsample_kernel_sizes = list(original_config.upsample_kernel_sizes),
-    resblock_kernel_sizes = list(original_config.resblock_kernel_sizes),
-    resblock_dilation_sizes = [list(resblock_dilation) for resblock_dilation in original_config.resblock_dilation_sizes],
-    normalize_before=False,
-    )
-    return config
 
-def convert_hifigan_checkpoint(
-    checkpoint,
-    config,
-):
-    # extract state dict for vocoder
-    vocoder_state_dict = {}
-    vocoder_key = "first_stage_model.vocoder."
-    keys = list(checkpoint.keys())
-    for key in keys:
-        if key.startswith(vocoder_key):
-            vocoder_state_dict[key.replace(vocoder_key, "")] = checkpoint.get(key)
-
-    for i in range(len(config.upsample_rates)):
-        vocoder_state_dict[f"upsampler.{i}.weight"] = vocoder_state_dict.pop(f"ups.{i}.weight")
-        vocoder_state_dict[f"upsampler.{i}.bias"] = vocoder_state_dict.pop(f"ups.{i}.bias")
-
-    if not config.normalize_before:
-        # these are dummy variables that are unused if we don't normalize before the vocoder
-        vocoder_state_dict["mean"] = torch.zeros(config.model_in_dim)
-        vocoder_state_dict["scale"] = torch.ones(config.model_in_dim)
-
-    return vocoder_state_dict
-
-def default_vocoder_config():
-    return {
-        "upsample_rates": [5, 4, 2, 2, 2],
-        "upsample_kernel_sizes": [16, 16, 8, 4, 4],
-        "upsample_initial_channel": 1024,
-        "resblock_kernel_sizes": [3, 7, 11],
-        "resblock_dilation_sizes": [[1, 3, 5], [1, 3, 5], [1, 3, 5]],
-        "num_mels": 64,
-        "num_freq": 1025,
-        "n_fft": 1024,
-        "hop_size": 160,
-        "win_size": 1024,
-        "sampling_rate": 16000,
-        "fmin": 0,
-        "fmax": 8000,
-        "fmax_for_loss": None,
-    }
-
-# TODO: remove this func for final PR
-# Copied from https://huggingface.co/spaces/haoheliu/audioldm-text-to-audio-generation/blob/84a0384742a22bd80c44e903e241f0623e874f1d/audioldm/utils.py#L72-L73
-def default_audioldm_config():
-    return {
-                "model": {
-                    "params": {
-                        "base_learning_rate": 5e-06,
-                        "linear_start": 0.0015,
-                        "linear_end": 0.0195,
-                        "num_timesteps_cond": 1,
-                        "log_every_t": 200,
-                        "timesteps": 1000,
-                        "first_stage_key": "fbank",
-                        "cond_stage_key": "waveform",
-                        "latent_t_size": 256,
-                        "latent_f_size": 16,
-                        "channels": 8,
-                        "cond_stage_trainable": True,
-                        "conditioning_key": "film",
-                        "monitor": "val/loss_simple_ema",
-                        "scale_by_std": True,
-                        "unet_config": {
-                            "target": "audioldm.latent_diffusion.openaimodel.UNetModel",
-                            "params": {
-                                "image_size": 64,
-                                "extra_film_condition_dim": 512,
-                                "extra_film_use_concat": True,
-                                "in_channels": 8,
-                                "out_channels": 8,
-                                "model_channels": 128,
-                                "attention_resolutions": [8, 4, 2],
-                                "num_res_blocks": 2,
-                                "channel_mult": [1, 2, 3, 5],
-                                "num_head_channels": 32,
-                                "use_spatial_transformer": True,
-                            },
-                        },
-                        "first_stage_config": {
-                            "base_learning_rate": 4.5e-05,
-                            "target": "audioldm.variational_autoencoder.autoencoder.AutoencoderKL",
-                            "params": {
-                                "monitor": "val/rec_loss",
-                                "image_key": "fbank",
-                                "subband": 1,
-                                "embed_dim": 8,
-                                "time_shuffle": 1,
-                                "ddconfig": {
-                                    "double_z": True,
-                                    "z_channels": 8,
-                                    "resolution": 256,
-                                    "downsample_time": False,
-                                    "in_channels": 1,
-                                    "out_ch": 1,
-                                    "ch": 128,
-                                    "ch_mult": [1, 2, 4],
-                                    "num_res_blocks": 2,
-                                    "attn_resolutions": [],
-                                    "dropout": 0.0,
-                                },
-                            },
-                        },
-                        "cond_stage_config": {
-                            "target": "audioldm.clap.encoders.CLAPAudioEmbeddingClassifierFreev2",
-                            "params": {
-                                "key": "waveform",
-                                "sampling_rate": 16000,
-                                "embed_mode": "audio",
-                                "unconditional_prob": 0.1,
-                            },
-                        },
-                    },
-                },
-            }
-
-clap_keys_to_modify_mapping = {
+CLAP_KEYS_TO_MODIFY_MAPPING = {
     "text_branch": "text_model",
     "attn": "attention.self",
     "self.proj": "output.dense",
@@ -712,10 +588,13 @@ clap_keys_to_modify_mapping = {
     "bn0": "batch_norm",
 }
 
-clap_keys_to_ignore = ["text_transform"]
+CLAP_KEYS_TO_IGNORE = ["text_transform"]
 
 def convert_open_clap_checkpoint(checkpoint):
-    # extract state dict for VAE
+    """
+    Takes a state dict and returns a converted CLAP checkpoint.
+    """
+    # extract state dict for CLAP text embedding model, discarding the audio component
     model_state_dict = {}
     model_key = "cond_stage_model.model.text_"
     keys = list(checkpoint.keys())
@@ -730,11 +609,11 @@ def convert_open_clap_checkpoint(checkpoint):
 
     for key, value in model_state_dict.items():
         # check if key should be ignored in mapping
-        if key.split(".")[0] in clap_keys_to_ignore:
+        if key.split(".")[0] in CLAP_KEYS_TO_IGNORE:
             continue
 
         # check if any key needs to be modified
-        for key_to_modify, new_key in clap_keys_to_modify_mapping.items():
+        for key_to_modify, new_key in CLAP_KEYS_TO_MODIFY_MAPPING.items():
             if key_to_modify in key:
                 key = key.replace(key_to_modify, new_key)
 
@@ -768,47 +647,141 @@ def convert_open_clap_checkpoint(checkpoint):
 
     return new_checkpoint
 
+def create_transformers_vocoder_config(original_config):
+    """
+    Creates a config for transformers SpeechT5HifiGan based on the config of the vocoder model.
+    """
+    vocoder_params = original_config.model.params.vocoder_config.params
+
+    config = dict(
+    model_in_dim = vocoder_params.num_mels,
+    sampling_rate = vocoder_params.sampling_rate,
+    upsample_initial_channel = vocoder_params.upsample_initial_channel,
+    upsample_rates = list(vocoder_params.upsample_rates),
+    upsample_kernel_sizes = list(vocoder_params.upsample_kernel_sizes),
+    resblock_kernel_sizes = list(vocoder_params.resblock_kernel_sizes),
+    resblock_dilation_sizes = [list(resblock_dilation) for resblock_dilation in vocoder_params.resblock_dilation_sizes],
+    normalize_before=False,
+    )
+
+    return config
+
+def convert_hifigan_checkpoint(checkpoint, config):
+    """
+    Takes a state dict and config, and returns a converted HiFiGAN vocoder checkpoint.
+    """
+    # extract state dict for vocoder
+    vocoder_state_dict = {}
+    vocoder_key = "first_stage_model.vocoder."
+    keys = list(checkpoint.keys())
+    for key in keys:
+        if key.startswith(vocoder_key):
+            vocoder_state_dict[key.replace(vocoder_key, "")] = checkpoint.get(key)
+
+    # fix upsampler keys, everything else is correct already
+    for i in range(len(config.upsample_rates)):
+        vocoder_state_dict[f"upsampler.{i}.weight"] = vocoder_state_dict.pop(f"ups.{i}.weight")
+        vocoder_state_dict[f"upsampler.{i}.bias"] = vocoder_state_dict.pop(f"ups.{i}.bias")
+
+    if not config.normalize_before:
+        # if we don't normalize before these variables are unused, so we set them to arbitrary values
+        # TODO: fix this in transformers
+        vocoder_state_dict["mean"] = torch.zeros(config.model_in_dim)
+        vocoder_state_dict["scale"] = torch.ones(config.model_in_dim)
+
+    return vocoder_state_dict
+
+# Adapted from https://huggingface.co/spaces/haoheliu/audioldm-text-to-audio-generation/blob/84a0384742a22bd80c44e903e241f0623e874f1d/audioldm/utils.py#L72-L73
+DEFAULT_CONFIG = {
+                "model": {
+                    "params": {
+                        "linear_start": 0.0015,
+                        "linear_end": 0.0195,
+                        "timesteps": 1000,
+                        "channels": 8,
+                        "scale_by_std": True,
+                        "unet_config": {
+                            "target": "audioldm.latent_diffusion.openaimodel.UNetModel",
+                            "params": {
+                                "extra_film_condition_dim": 512,
+                                "extra_film_use_concat": True,
+                                "in_channels": 8,
+                                "out_channels": 8,
+                                "model_channels": 128,
+                                "attention_resolutions": [8, 4, 2],
+                                "num_res_blocks": 2,
+                                "channel_mult": [1, 2, 3, 5],
+                                "num_head_channels": 32,
+                            },
+                        },
+                        "first_stage_config": {
+                            "target": "audioldm.variational_autoencoder.autoencoder.AutoencoderKL",
+                            "params": {
+                                "embed_dim": 8,
+                                "ddconfig": {
+                                    "z_channels": 8,
+                                    "resolution": 256,
+                                    "in_channels": 1,
+                                    "out_ch": 1,
+                                    "ch": 128,
+                                    "ch_mult": [1, 2, 4],
+                                    "num_res_blocks": 2,
+                                },
+                            },
+                        },
+                        "vocoder_config": {
+                            "target": "audioldm.first_stage_model.vocoder",
+                            "params": {
+                                "upsample_rates": [5, 4, 2, 2, 2],
+                                "upsample_kernel_sizes": [16, 16, 8, 4, 4],
+                                "upsample_initial_channel": 1024,
+                                "resblock_kernel_sizes": [3, 7, 11],
+                                "resblock_dilation_sizes": [[1, 3, 5], [1, 3, 5], [1, 3, 5]],
+                                "num_mels": 64,
+                                "sampling_rate": 16000,
+                            }
+
+                        }
+                    },
+                },
+            }
 
 def load_pipeline_from_original_audioldm_ckpt(
     checkpoint_path: str,
     original_config_file: str = None,
-    image_size: int = 1024,
+    image_size: int = 512,
     prediction_type: str = None,
-    model_type: str = None,
     extract_ema: bool = False,
-    scheduler_type: str = "pndm",
+    scheduler_type: str = "ddim",
     num_in_channels: int = None,
     device: str = None,
     from_safetensors: bool = False,
-    original_vocoder_config_file: str = None,
 ) -> AudioLDMPipeline:
     """
-    Load a Stable Diffusion pipeline object from a CompVis-style `.ckpt`/`.safetensors` file and (ideally) a `.yaml`
-    config file.
+    Load an AudioLDM pipeline object from a `.ckpt`/`.safetensors` file and (ideally) a `.yaml` config file.
 
     Although many of the arguments can be automatically inferred, some of these rely on brittle checks against the
     global step count, which will likely fail for models that have undergone further fine-tuning. Therefore, it is
     recommended that you override the default values and/or supply an `original_config_file` wherever possible.
 
-    :param checkpoint_path: Path to `.ckpt` file. :param original_config_file: Path to `.yaml` config file
-    corresponding to the original architecture. If `None`, will be
-            automatically inferred by looking for a key that only exists in SD2.0 models.
-    :param image_size: The image size that the model was trained on. Use 512 for Stable Diffusion v1.X and Stable
-    Siffusion v2
-            Base. Use 768 for Stable Diffusion v2.
-    :param prediction_type: The prediction type that the model was trained on. Use `'epsilon'` for Stable Diffusion
-    v1.X and Stable
-            Siffusion v2 Base. Use `'v-prediction'` for Stable Diffusion v2.
+    :param checkpoint_path: Path to `.ckpt` file.
+    :param original_config_file: Path to `.yaml` config file corresponding to the original architecture.
+            If `None`, will be automatically instantiated based on default values.
+    :param image_size: The image size that the model was trained on. Use 512 for original AudioLDM checkpoints.
+    :param prediction_type: The prediction type that the model was trained on. Use `'epsilon'` for original
+            AudioLDM checkpoints.
     :param num_in_channels: The number of input channels. If `None` number of input channels will be automatically
-    inferred. :param scheduler_type: Type of scheduler to use. Should be one of `["pndm", "lms", "heun", "euler",
-    "euler-ancestral", "dpm", "ddim"]`. :param model_type: The pipeline type. `None` to automatically infer, or one of
-    `["FrozenOpenClapEmbedder", "FrozenCLAPEmbedder", "PaintByExample"]`. :param extract_ema: Only relevant for
-    checkpoints that have both EMA and non-EMA weights. Whether to extract the EMA weights
-            or not. Defaults to `False`. Pass `True` to extract the EMA weights. EMA weights usually yield higher
-            quality images for inference. Non-EMA weights are usually better to continue fine-tuning.
-    :param device: The device to use. Pass `None` to determine automatically. :param from_safetensors: If
-    `checkpoint_path` is in `safetensors` format, load checkpoint with safetensors instead of PyTorch. :return: A
-    StableDiffusionPipeline object representing the passed-in `.ckpt`/`.safetensors` file.
+            inferred.
+    :param scheduler_type: Type of scheduler to use. Should be one of `["pndm", "lms", "heun", "euler",
+            "euler-ancestral", "dpm", "ddim"]`.
+    :param extract_ema: Only relevant for checkpoints that have both EMA and non-EMA weights. Whether to extract
+            the EMA weights or not. Defaults to `False`. Pass `True` to extract the EMA weights. EMA weights
+            usually yield higher quality images for inference. Non-EMA weights are usually better to continue
+            fine-tuning.
+    :param device: The device to use. Pass `None` to determine automatically.
+    :param from_safetensors: If `checkpoint_path` is in `safetensors` format, load checkpoint with safetensors
+            instead of PyTorch.
+    :return: An AudioLDMPipeline object representing the passed-in `.ckpt`/`.safetensors` file.
     """
 
     if not is_omegaconf_available():
@@ -837,7 +810,7 @@ def load_pipeline_from_original_audioldm_ckpt(
         checkpoint = checkpoint["state_dict"]
 
     if original_config_file is None:
-        original_config = default_audioldm_config()
+        original_config = DEFAULT_CONFIG
         original_config = OmegaConf.create(original_config)
     else:
         original_config = OmegaConf.load(original_config_file)
@@ -851,13 +824,12 @@ def load_pipeline_from_original_audioldm_ckpt(
     ):
         if prediction_type is None:
             prediction_type = "v_prediction"
-        if image_size is None:
-            image_size = 1024
     else:
         if prediction_type is None:
             prediction_type = "epsilon"
-        if image_size is None:
-            image_size = 1024
+
+    if image_size is None:
+        image_size = 512
 
     num_train_timesteps = original_config.model.params.timesteps
     beta_start = original_config.model.params.linear_start
@@ -905,40 +877,31 @@ def load_pipeline_from_original_audioldm_ckpt(
 
     unet.load_state_dict(converted_unet_checkpoint)
 
-    # Convert the VAE model.
-    vae_config = create_vae_diffusers_config(original_config, scaling_factor=checkpoint["scale_factor"], image_size=image_size)
+    # Convert the VAE model
+    vae_config = create_vae_diffusers_config(original_config, checkpoint=checkpoint, image_size=image_size)
     converted_vae_checkpoint = convert_ldm_vae_checkpoint(checkpoint, vae_config)
 
     vae = AutoencoderKL(**vae_config)
     vae.load_state_dict(converted_vae_checkpoint)
 
-    # Convert the text model.
-    if model_type is None:
-        model_type = original_config.model.params.cond_stage_config.target.split(".")[-1]
+    # Convert the text model
+    # AudioLDM uses the same configuration and tokenizer as the original CLAP model
+    config = ClapTextConfig.from_pretrained("laion/clap-htsat-unfused")
+    tokenizer = AutoTokenizer.from_pretrained("laion/clap-htsat-unfused")
 
-    if model_type == "CLAPAudioEmbeddingClassifierFreev2":
-        # AudioLDM uses the same configuration and tokenizer as the original CLAP model
-        config = ClapTextConfig.from_pretrained("laion/clap-htsat-unfused")
-        tokenizer = AutoTokenizer.from_pretrained("laion/clap-htsat-unfused")
+    converted_text_model = convert_open_clap_checkpoint(checkpoint)
+    text_model = ClapTextModelWithProjection(config)
+    text_model.load_state_dict(converted_text_model)
 
-        converted_text_model = convert_open_clap_checkpoint(checkpoint)
-        text_model = ClapTextModelWithProjection(config)
-        text_model.load_state_dict(converted_text_model)
-
-    # Convert the vocoder model TODO: add the vocoder config to full config
-    if original_vocoder_config_file is None:
-        original_vocoder_config = default_vocoder_config()
-        original_vocoder_config = OmegaConf.create(original_vocoder_config)
-    else:
-        original_vocoder_config = OmegaConf.load(original_vocoder_config_file)
-
-    vocoder_config = create_transformers_diffusers_config(original_vocoder_config)
+    # Convert the vocoder model
+    vocoder_config = create_transformers_vocoder_config(original_config)
     vocoder_config = SpeechT5HifiGanConfig(**vocoder_config)
     converted_vocoder_checkpoint = convert_hifigan_checkpoint(checkpoint, vocoder_config)
 
     vocoder = SpeechT5HifiGan(vocoder_config)
     vocoder.load_state_dict(converted_vocoder_checkpoint)
 
+    # Instantiate the diffusers pipeline
     pipe = AudioLDMPipeline(
         vae=vae,
         text_encoder=text_model,

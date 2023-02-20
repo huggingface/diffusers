@@ -22,7 +22,7 @@ from packaging import version
 from transformers import ClapTextModelWithProjection, RobertaTokenizer, RobertaTokenizerFast, SpeechT5HifiGan
 
 from ...configuration_utils import FrozenDict
-from ...models import AutoencoderKL, UNet2DConditionModel
+from ...models import AutoencoderKL, UNet2DModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import deprecate, is_accelerate_available, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
@@ -78,7 +78,7 @@ class AudioLDMPipeline(DiffusionPipeline):
         vae: AutoencoderKL,
         text_encoder: ClapTextModelWithProjection,
         tokenizer: Union[RobertaTokenizer, RobertaTokenizerFast],
-        unet: UNet2DConditionModel,
+        unet: UNet2DModel,
         scheduler: KarrasDiffusionSchedulers,
         vocoder: SpeechT5HifiGan,
     ):

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The HuggingFace Inc. team.
+# Copyright 2023 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Conversion script for the LDM checkpoints. """
+""" Conversion script for the AudioLDM checkpoints. """
 
 import argparse
 
@@ -59,8 +59,7 @@ if __name__ == "__main__":
         default=None,
         type=int,
         help=(
-            "The image size that the model was trained on. Use 512 for Stable Diffusion v1.X and Stable Siffusion v2"
-            " Base. Use 768 for Stable Diffusion v2."
+            "The image size that the model was trained on."
         ),
     )
     parser.add_argument(
@@ -68,13 +67,12 @@ if __name__ == "__main__":
         default=None,
         type=str,
         help=(
-            "The prediction type that the model was trained on. Use 'epsilon' for Stable Diffusion v1.X and Stable"
-            " Siffusion v2 Base. Use 'v-prediction' for Stable Diffusion v2."
+            "The prediction type that the model was trained on."
         ),
     )
     parser.add_argument(
         "--extract_ema",
-        action="store_true",
+        action="store_false",  # TODO: revert to store_true
         help=(
             "Only relevant for checkpoints that have both EMA and non-EMA weights. Whether to extract the EMA weights"
             " or not. Defaults to `False`. Add `--extract_ema` to extract the EMA weights. EMA weights usually yield"
@@ -93,7 +91,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--dump_path",
-        default="/Users/sanchitgandhi/convert-audioldm/diffusers_out",
+        default="/Users/sanchitgandhi/convert-audioldm/diffusers_out_2",
         type=str,
         required=False,  # TODO: revert to True
         help="Path to the output model.",
@@ -106,7 +104,6 @@ if __name__ == "__main__":
         original_config_file=args.original_config_file,
         image_size=args.image_size,
         prediction_type=args.prediction_type,
-        model_type=args.pipeline_type,
         extract_ema=args.extract_ema,
         scheduler_type=args.scheduler_type,
         num_in_channels=args.num_in_channels,
