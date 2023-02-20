@@ -590,6 +590,8 @@ CLAP_KEYS_TO_MODIFY_MAPPING = {
 
 CLAP_KEYS_TO_IGNORE = ["text_transform"]
 
+CLAP_EXPECTED_MISSING_KEYS = ["text_model.embeddings.token_type_ids"]
+
 def convert_open_clap_checkpoint(checkpoint):
     """
     Takes a state dict and returns a converted CLAP checkpoint.
@@ -891,7 +893,16 @@ def load_pipeline_from_original_audioldm_ckpt(
 
     converted_text_model = convert_open_clap_checkpoint(checkpoint)
     text_model = ClapTextModelWithProjection(config)
-    text_model.load_state_dict(converted_text_model)
+
+    missing_keys, unexpected_keys = text_model.load_state_dict(converted_text_model, strict=False)
+    # we expect not to have token_type_ids in our original state dict so let's ignore them
+    missing_keys = list(set(missing_keys) - set(CLAP_EXPECTED_MISSING_KEYS))
+
+    if len(unexpected_keys) > 0:
+        raise ValueError(f"Unexpected keys when loading CLAP model: {unexpected_keys}")
+
+    if len(missing_keys) > 0:
+        raise ValueError(f"Missing keys when loading CLAP model: {missing_keys}")
 
     # Convert the vocoder model
     vocoder_config = create_transformers_vocoder_config(original_config)
