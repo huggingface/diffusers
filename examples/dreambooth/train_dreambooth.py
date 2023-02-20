@@ -196,6 +196,14 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
+        "--save_every",
+        type=int,
+        default=50,
+        help=(
+            "Update saved model interval (measured in updates)."
+        ),
+    )
+    parser.add_argument(
         "--checkpoints_total_limit",
         type=int,
         default=None,
@@ -920,6 +928,18 @@ def main(args):
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
+
+                if global_step % args.save_every == 0:
+                    if accelerator.is_main_process:
+                        pipeline = DiffusionPipeline.from_pretrained(
+                            args.pretrained_model_name_or_path,
+                            unet=accelerator.unwrap_model(unet),
+                            text_encoder=accelerator.unwrap_model(text_encoder),
+                            revision=args.revision,
+                        )
+                        pipeline.save_pretrained(args.output_dir)
+                        logger.info(f"Saved pipeline (saved every {args.save_every} updates).")
+
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
