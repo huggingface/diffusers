@@ -829,7 +829,7 @@ class DiffusionPipeline(ConfigMixin):
                 if is_transformers_available():
                     transformers_version = version.parse(version.parse(transformers.__version__).base_version)
                 else:
-                    transformers_version = version.parse("not installed")
+                    transformers_version = "N/A"
 
                 is_transformers_model = (
                     is_transformers_available()
