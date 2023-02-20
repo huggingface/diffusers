@@ -159,7 +159,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         self.sample_size = sample_size
 
         # Check inputs
-        if len(down_block_types) != len(up_block_types):
+        if controlnet_hint_channels is None and len(down_block_types) != len(up_block_types):
             raise ValueError(
                 f"Must provide the same number of `down_block_types` as `up_block_types`. `down_block_types`: {down_block_types}. `up_block_types`: {up_block_types}."
             )

@@ -121,7 +121,6 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         init_dict = {
             "block_out_channels": (32, 64),
             "down_block_types": ("CrossAttnDownBlock2D", "DownBlock2D"),
-            "up_block_types": ("UpBlock2D", "CrossAttnUpBlock2D"),  # dummy, to avoid ValueError
             "cross_attention_dim": 32,
             "attention_head_dim": 8,
             "in_channels": 4,
