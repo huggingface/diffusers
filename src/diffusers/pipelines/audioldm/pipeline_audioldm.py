@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import torch
 import torch.nn.functional as F
@@ -30,18 +30,18 @@ from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-# TODO: update doc string for AudioLDM
+# TODO: update doc string with checkpoint path
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import StableDiffusionPipeline
+        >>> from diffusers import AudioLDMPipeline
 
-        >>> pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+        >>> pipe = AudioLDMPipeline.from_pretrained("org/audioldm-checkpoint", torch_dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
 
-        >>> prompt = "a photo of an astronaut riding a horse on mars"
-        >>> image = pipe(prompt).images[0]
+        >>> prompt = "A hammer hitting a wooden surface"
+        >>> audio = pipe(prompt).audio[0]
         ```
 """
 
@@ -55,23 +55,22 @@ class AudioLDMPipeline(DiffusionPipeline):
 
     Args:
         vae ([`AutoencoderKL`]):
-            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
+            Variational Auto-Encoder (VAE) Model to encode and decode audios to and from latent representations.
         text_encoder ([`ClapTextModelWithProjection`]):
             Frozen text-encoder. AudioLDM uses the text portion of
-            [CLAP](https://huggingface.co/docs/transformers/model_doc/clap#transformers.ClapTextModelWithProjection),
-            specifically the (TODO) variant.
+            [CLAP](https://huggingface.co/docs/transformers/main/model_doc/clap#transformers.ClapTextModelWithProjection),
+            specifically the [RoBERTa HSTAT-unfused](https://huggingface.co/laion/clap-htsat-unfused) variant.
         tokenizer ([`PreTrainedTokenizer`]):
             Tokenizer of class
-            [RobertaTokenizer](https://huggingface.co/docs/transformers/v4.27.0/en/model_doc/clap#transformers.RobertaTokenizer).
-        unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
+            [RobertaTokenizer](https://huggingface.co/docs/transformers/model_doc/roberta#transformers.RobertaTokenizer).
+        unet ([`UNet2DModel`]): U-Net architecture to denoise the encoded audio latents.
         scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
+            A scheduler to be used in combination with `unet` to denoise the encoded audio latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
-        vocoder (`SpeechT5HifiGan`):
+        vocoder ([`SpeechT5HifiGan`]):
             Vocoder of class
-            [SpeechT5HifiGan](https://huggingface.co/docs/transformers/v4.27.0/en/model_doc/speecht5#transformers.SpeechT5HifiGan).
+            [SpeechT5HifiGan](https://huggingface.co/docs/transformers/main/en/model_doc/speecht5#transformers.SpeechT5HifiGan).
     """
-    _optional_components = ["safety_checker", "feature_extractor"]
 
     def __init__(
         self,
@@ -119,9 +118,7 @@ class AudioLDMPipeline(DiffusionPipeline):
             deprecation_message = (
                 "The configuration file of the unet has set the default `sample_size` to smaller than"
                 " 64 which seems highly unlikely. If your checkpoint is a fine-tuned version of any of the"
-                " following: \n- CompVis/stable-diffusion-v1-4 \n- CompVis/stable-diffusion-v1-3 \n-"
-                " CompVis/stable-diffusion-v1-2 \n- CompVis/stable-diffusion-v1-1 \n- runwayml/stable-diffusion-v1-5"
-                " \n- runwayml/stable-diffusion-inpainting \n you should change 'sample_size' to 64 in the"
+                " following: \n- org/audioldm-checkpoint \n you should change 'sample_size' to 64 in the"
                 " configuration file. Please make sure to update the config accordingly as leaving `sample_size=32`"
                 " in the config might lead to incorrect results in future versions. If you have downloaded this"
                 " checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for"
@@ -207,16 +204,16 @@ class AudioLDMPipeline(DiffusionPipeline):
         Encodes the prompt into text encoder hidden states.
 
         Args:
-             prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `List[str]`, *optional*):
                 prompt to be encoded
-            device: (`torch.device`):
+            device (`torch.device`):
                 torch device
             num_waveforms_per_prompt (`int`):
                 number of waveforms that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
-            negative_ prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the audio generation. If not defined, one has to pass
                 `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
                 Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
             prompt_embeds (`torch.FloatTensor`, *optional*):
@@ -452,23 +449,23 @@ class AudioLDMPipeline(DiffusionPipeline):
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
+                The prompt or prompts to guide the audio generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The height in pixels of the generated image.
+                The height in pixels of the generated audio.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The width in pixels of the generated image.
+                The width in pixels of the generated audio.
             num_inference_steps (`int`, *optional*, defaults to 200):
-                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                The number of denoising steps. More denoising steps usually lead to a higher quality audio at the
                 expense of slower inference.
             guidance_scale (`float`, *optional*, defaults to 2.5):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
+                1`. Higher guidance scale encourages to generate audios that are closely linked to the text `prompt`,
+                usually at the expense of lower sound quality.
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                The prompt or prompts not to guide the audio generation. If not defined, one has to pass
                 `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
                 Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
             num_waveforms_per_prompt (`int`, *optional*, defaults to 1):
@@ -480,7 +477,7 @@ class AudioLDMPipeline(DiffusionPipeline):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             latents (`torch.FloatTensor`, *optional*):
-                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
+                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for audio
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor will ge generated by sampling using the supplied random `generator`.
             prompt_embeds (`torch.FloatTensor`, *optional*):
@@ -490,9 +487,6 @@ class AudioLDMPipeline(DiffusionPipeline):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
-            output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
@@ -508,9 +502,7 @@ class AudioLDMPipeline(DiffusionPipeline):
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
-            When returning a tuple, the first element is a list with the generated images, and the second element is a
-            list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
-            (nsfw) content, according to the `safety_checker`.
+            When returning a tuple, the first element is a list with the generated audios.
         """
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
