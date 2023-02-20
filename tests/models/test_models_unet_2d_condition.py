@@ -84,6 +84,16 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         return {"sample": noise, "timestep": time_step, "encoder_hidden_states": encoder_hidden_states}
 
     @property
+    def dummpy_input_for_controlnet(self):
+        hint_channels = 3
+        input_dict = self.dummy_input
+        sample_shape = input_dict["sample"].shape
+        input_dict["controlnet_hint"] = floats_tensor(
+            (sample_shape[0], hint_channels, sample_shape[2] * 8, sample_shape[3] * 8)
+        ).to(torch_device)
+        return input_dict
+
+    @property
     def input_shape(self):
         return (4, 32, 32)
 
@@ -104,6 +114,21 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
             "sample_size": 32,
         }
         inputs_dict = self.dummy_input
+        return init_dict, inputs_dict
+
+    def prepare_init_args_and_inputs_for_controlnet(self):
+        init_dict = {
+            "block_out_channels": (32, 64),
+            "down_block_types": ("CrossAttnDownBlock2D", "DownBlock2D"),
+            "up_block_types": ("UpBlock2D", "CrossAttnUpBlock2D"),  # dummy, to avoid ValueError
+            "cross_attention_dim": 32,
+            "attention_head_dim": 8,
+            "in_channels": 4,
+            "layers_per_block": 2,
+            "sample_size": 32,
+            "controlnet_hint_channels": 3,
+        }
+        inputs_dict = self.dummpy_input_for_controlnet
         return init_dict, inputs_dict
 
     @unittest.skipIf(
@@ -440,6 +465,54 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
         assert (sample - on_sample).abs().max() < 1e-4
         assert (sample - off_sample).abs().max() < 1e-4
+
+    def test_model_controlnet_inference(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_controlnet()
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)
+
+            conv_in_n = 1
+            cross_attn_n = init_dict["layers_per_block"] + 1  # with down sampler
+            down_block_n = init_dict["layers_per_block"]  # no down sampler
+            mid_block_n = 1
+            assert len(output) == conv_in_n + cross_attn_n + down_block_n + mid_block_n
+
+            cross_attn_ch = init_dict["block_out_channels"][0]
+            down_block_ch = init_dict["block_out_channels"][1]
+            inshape = self.input_shape
+            batch = inputs_dict["sample"].shape[0]
+            s1 = (batch, cross_attn_ch, inshape[1], inshape[2])
+            s2 = (batch, cross_attn_ch, inshape[1] / 2, inshape[2] / 2)
+            s3 = (batch, down_block_ch, inshape[1] / 2, inshape[2] / 2)
+            expected_shape = [s1, s1, s1, s2, s3, s3, s3]
+            assert all([out.shape == shape for out, shape in zip(output, expected_shape)])
+
+    def test_model_controlnet_and_unet_inference(self):
+        controlnet_init_dict, controlnet_inputs_dict = self.prepare_init_args_and_inputs_for_controlnet()
+        unet_init_dict, unet_inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        controlnet_model = self.model_class(**controlnet_init_dict)
+        controlnet_model.to(torch_device)
+        controlnet_model.eval()
+
+        unet_model = self.model_class(**unet_init_dict)
+        unet_model.to(torch_device)
+        unet_model.eval()
+
+        with torch.no_grad():
+            control = controlnet_model(**controlnet_inputs_dict)
+            unet_inputs_dict["control"] = control
+            output = unet_model(**unet_inputs_dict)
+            if isinstance(output, dict):
+                output = output.sample
+
+            batch = unet_inputs_dict["sample"].shape[0]
+            assert output.shape == (batch,) + self.output_shape
 
 
 @slow
