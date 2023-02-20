@@ -22,14 +22,18 @@ We will document some of the techniques `diffusers` supports to control generati
 
 We provide a high level explanation of how the generation can be controlled as well as a snippet of the technicals. For more in depth explanations on the technicals, the original papers which are linked from the pipelines are always the best resources.
 
+Depending on the use case, one should choose a technique accordingly. In many cases, these techniques can be combined. For example, one can combine Textual Inversion with SEGA to provide more semantic guidance to the outputs generated using Textual Inversion.
+
 Unless otherwise mentioned, these are techniques that work with existing models and don't require their own weights.
 
 1. [Instruct Pix2Pix](#instruct-pix2pix)
 2. [Pix2Pix 0](#pix2pixzero)
 3. [Attend and excite](#attend-and-excite)
-4. [Semantic guidance](#segmantic-guidance)
-5. [Self attention guidance](#attend-and-excite)
+4. [Semantic guidance](#semantic-guidance)
+5. [Self attention guidance](#self-attention-guidance)
 6. [Depth2image](#depth2image)
+7. [DreamBooth](#dreambooth)
+8. [Textual Inversion](#textual-inversion)
 
 ## Instruct pix2pix
 
@@ -96,14 +100,25 @@ See [here](../api/pipelines/stable_diffusion/self_attention_guidance) for more i
 
 [Paper](https://huggingface.co/stabilityai/stable-diffusion-2-depth)
 
-[Depth2image](../pipelines/stable_diffusion/depth2img) is fine-tuned from stable diffusion to better preserve semantics for text guided image variation. 
+[Depth2image](../pipelines/stable_diffusion_2#depthtoimage) is fine-tuned from stable diffusion to better preserve semantics for text guided image variation. 
 
 It conditions on a monocular depth estimate of the original image.
 
-The above-mentioned techniques don't essentially fine-tune any of the sub-models, i.e., VAE, UNet, and the text encoder. 
 
-One can also use techniques like [DreamBooth](https://huggingface.co/docs/diffusers/main/en/training/dreambooth) or [Textual Inversion](https://huggingface.co/docs/diffusers/main/en/training/text_inversion) to have personalized control over the generated outputs. But note that these techniques require additional fine-tuning.  
+See [here](../api/pipelines/stable_diffusion_2#depthtoimage) for more information on how to use it.
 
-Depending on the use case, one should choose a technique accordingly. In many cases, these techniques could be combined. For example, one could combine Textual Inversion with SEGA to provide more semantic guidance to the outputs generated using Textual Inversion.
+### Fine-tuning methods
 
-See [here](../api/pipelines/stable_diffusion/depth2img) for more information on how to use it.
+In addition to pre-trained models, diffusers has training scripts for fine-tuning models on user provided data.
+
+## DreamBooth
+
+[DreamBooth](../training/dreambooth) fine-tunes a model to teach it about a new subject. I.e. a few pictures of a person can be used to generate images of that person in different styles.
+
+See [here](../training/dreambooth) for more information on how to use it.
+
+## Textual Inversion
+
+[Textual Inversion](../training/text_inversion) fine-tunes a model to teach it about a new concept. I.e. a few pictures of a style of artwork can be used to generate images in that style.
+
+See [here](../training/text_inversion) for more information on how to use it.
