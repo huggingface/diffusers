@@ -47,6 +47,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> # use get_indices function to find out indices of the tokens you want to alter
         >>> pipe.get_indices(prompt)
+        {0: '<|startoftext|>', 1: 'a</w>', 2: 'cat</w>', 3: 'and</w>', 4: 'a</w>', 5: 'frog</w>', 6: '<|endoftext|>'}
 
         >>> token_indices = [2, 5]
         >>> seed = 6141
@@ -662,7 +663,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
     def get_indices(self, prompt: str) -> Dict[str, int]:
         """Utility function to list the indices of the tokens you wish to alte"""
         ids = self.tokenizer(prompt).input_ids
-        indices = {tok: i for tok, i in zip(self.tokenizer.convert_ids_to_tokens(ids), range(len(ids)))}
+        indices = {i: tok for tok, i in zip(self.tokenizer.convert_ids_to_tokens(ids), range(len(ids)))}
         return indices
 
     @torch.no_grad()
