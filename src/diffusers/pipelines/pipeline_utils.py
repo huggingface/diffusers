@@ -825,12 +825,12 @@ class DiffusionPipeline(ConfigMixin):
                     loading_kwargs["sess_options"] = sess_options
 
                 is_diffusers_model = issubclass(class_obj, diffusers.ModelMixin)
-                
+
                 if is_transformers_available():
                     transformers_version = version.parse(version.parse(transformers.__version__).base_version)
                 else:
                     transformers_version = version.parse("not installed")
-                    
+
                 is_transformers_model = (
                     is_transformers_available()
                     and issubclass(class_obj, PreTrainedModel)
