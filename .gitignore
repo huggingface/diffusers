@@ -2,6 +2,9 @@
 
 # Personal
 personal_workspace/finetune/experiments
+personal_workspace/dreambooth/experiments
+personal_workspace/dreambooth/datasets
+personal_workspace/dreambooth/class_data
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

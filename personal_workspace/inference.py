@@ -1,16 +1,17 @@
 '''
 Author: Juncfang
 Date: 2023-02-05 08:28:56
-LastEditTime: 2023-02-06 10:16:02
+LastEditTime: 2023-02-06 15:20:56
 LastEditors: Juncfang
 Description: 
-FilePath: /diffusers_fork/personal_workspace/finetune/inference.py
+FilePath: /diffusers_fork/personal_workspace/inference.py
  
 '''
 import os
 import argparse
 import torch
 import json
+import random
 from datetime import datetime
 from diffusers import StableDiffusionPipeline
 from tqdm import tqdm
@@ -38,12 +39,13 @@ def main():
     args = get_args()
     pipe = StableDiffusionPipeline.from_pretrained(args.pretrained_model_name_or_path, torch_dtype=torch.float16)
     pipe.to(f"cuda:{args.gpu_id}")
-    seed = args.base_seed
+    seed_ = args.base_seed
     prompt_brief = args.prompt[:20] # will be truncated if lenght less than 20
     now_str = datetime.now().strftime("%Y-%m-%dT%H-%M")
     image_output_dir = os.path.join(args.output_dir, f"{now_str}-{prompt_brief}")
     os.makedirs(image_output_dir, exist_ok=True)
     for i in tqdm(range(args.image_num)):
+        seed = seed_ + i  if seed_ != -1 else random.randint(0, 1000000)
         image = pipe(
             prompt=args.prompt,
             negative_prompt=args.negative_prompt,
@@ -51,9 +53,9 @@ def main():
             width=args.width,
             height=args.height,
             num_inference_steps=args.num_inference_steps,
-            generator=torch.Generator(device='cuda').manual_seed(seed + i),
+            generator=torch.Generator(device='cuda').manual_seed(seed),
         ).images[0]
-        image.save(f"{image_output_dir}/{i}.png")
+        image.save(f"{image_output_dir}/{i}_seed_{seed}.png")
     # write params
     params = {
         "prompt": args.prompt,
