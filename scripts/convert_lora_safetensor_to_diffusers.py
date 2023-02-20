@@ -109,7 +109,7 @@ if __name__ == "__main__":
         type=str,
         help="The prefix of text encoder weight in safetensors",
     )
-    parser.add_argument("--alpha", default=0.75, type=int, help="The merging ratio in W = W0 + alpha * deltaW")
+    parser.add_argument("--alpha", default=0.75, type=float, help="The merging ratio in W = W0 + alpha * deltaW")
     parser.add_argument(
         "--to_safetensors", action="store_true", help="Whether to store pipeline in safetensors format or not."
     )
