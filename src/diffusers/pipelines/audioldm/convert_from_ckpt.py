@@ -35,7 +35,7 @@ from diffusers import (
     HeunDiscreteScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
-    UNet2DModel, UNet2DConditionModel,
+    UNet2DConditionModel,
 )
 
 from ...utils import is_omegaconf_available, is_safetensors_available
