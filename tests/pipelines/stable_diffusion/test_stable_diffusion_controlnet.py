@@ -610,7 +610,9 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         assert np.abs(image_slice - expected_slice).max() < 1e-4
 
     def test_stable_diffusion_ddim(self):
-        sd_pipe = StableDiffusionControlNetPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
+        sd_pipe = StableDiffusionControlNetPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", safety_checker=None
+        )
         sd_pipe.scheduler = DDIMScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
@@ -624,7 +626,9 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         assert np.abs(image_slice - expected_slice).max() < 1e-4
 
     def test_stable_diffusion_lms(self):
-        sd_pipe = StableDiffusionControlNetPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
+        sd_pipe = StableDiffusionControlNetPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", safety_checker=None
+        )
         sd_pipe.scheduler = LMSDiscreteScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
@@ -638,7 +642,9 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         assert np.abs(image_slice - expected_slice).max() < 1e-4
 
     def test_stable_diffusion_dpm(self):
-        sd_pipe = StableDiffusionControlNetPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
+        sd_pipe = StableDiffusionControlNetPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", safety_checker=None
+        )
         sd_pipe.scheduler = DPMSolverMultistepScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
@@ -653,7 +659,9 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 
     def test_stable_diffusion_attention_slicing(self):
         torch.cuda.reset_peak_memory_stats()
-        pipe = StableDiffusionControlNetPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
+        pipe = StableDiffusionControlNetPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16
+        )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -679,7 +687,9 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 
     def test_stable_diffusion_vae_slicing(self):
         torch.cuda.reset_peak_memory_stats()
-        pipe = StableDiffusionControlNetPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
+        pipe = StableDiffusionControlNetPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16
+        )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -712,7 +722,9 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
     def test_stable_diffusion_fp16_vs_autocast(self):
         # this test makes sure that the original model with autocast
         # and the new model with fp16 yield the same result
-        pipe = StableDiffusionControlNetPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
+        pipe = StableDiffusionControlNetPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16
+        )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -757,7 +769,9 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 
         callback_fn.has_been_called = False
 
-        pipe = StableDiffusionControlNetPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
+        pipe = StableDiffusionControlNetPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16
+        )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -771,12 +785,16 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         pipeline_id = "CompVis/stable-diffusion-v1-4"
 
         start_time = time.time()
-        pipeline_low_cpu_mem_usage = StableDiffusionControlNetPipeline.from_pretrained(pipeline_id, torch_dtype=torch.float16)
+        pipeline_low_cpu_mem_usage = StableDiffusionControlNetPipeline.from_pretrained(
+            pipeline_id, torch_dtype=torch.float16
+        )
         pipeline_low_cpu_mem_usage.to(torch_device)
         low_cpu_mem_usage_time = time.time() - start_time
 
         start_time = time.time()
-        _ = StableDiffusionControlNetPipeline.from_pretrained(pipeline_id, torch_dtype=torch.float16, low_cpu_mem_usage=False)
+        _ = StableDiffusionControlNetPipeline.from_pretrained(
+            pipeline_id, torch_dtype=torch.float16, low_cpu_mem_usage=False
+        )
         normal_load_time = time.time() - start_time
 
         assert 2 * low_cpu_mem_usage_time < normal_load_time
@@ -786,7 +804,9 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         torch.cuda.reset_max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()
 
-        pipe = StableDiffusionControlNetPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
+        pipe = StableDiffusionControlNetPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16
+        )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
