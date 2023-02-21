@@ -27,6 +27,10 @@ from ..utils import BaseOutput
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
 
 
+# NOTE: We make this type an enum because it simplifies usage in docs and prevents
+# circular imports when used for `_compatibles` within the schedulers module.
+# When it's used as a type in pipelines, it really is a Union because the actual
+# scheduler instance is passed in.
 class FlaxKarrasDiffusionSchedulers(Enum):
     FlaxDDIMScheduler = 1
     FlaxDDPMScheduler = 2
