@@ -103,8 +103,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             The dimension of `cond_proj` layer in timestep embedding.
         conv_in_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_in` layer.
         conv_out_kernel (`int`, *optional*, default to `3`): the Kernel size of `conv_out` layer.
-        extra_film_condition_dim (`int`, *optional*, default to `None`): The dimensionality of the extra film conditioning layer.
-        extra_film_use_concat (`bool`, *optional*, defaults to `False`): Whether to concatenate the extra film embedding with the time embedding or sum them.
+        extra_film_condition_dim (`int`, *optional*, default to `None`):
+            The dimensionality of the extra film conditioning layer.
+        extra_film_use_concat (`bool`, *optional*, defaults to `False`):
+            Whether to concatenate the extra film embedding with the time embedding or sum them.
     """
 
     _supports_gradient_checkpointing = True
