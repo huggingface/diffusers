@@ -395,6 +395,8 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         return latents
 
     def controlnet_hint_conversion(self, controlnet_hint, height, width, num_images_per_prompt):
+        if controlnet_hint is None:
+            return None
         channels = 3
         if isinstance(controlnet_hint, torch.Tensor):
             # torch.Tensor: acceptble shape are any of chw, bchw(b==1) or bchw(b==num_images_per_prompt)
