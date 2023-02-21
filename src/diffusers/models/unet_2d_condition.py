@@ -103,6 +103,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             The dimension of `cond_proj` layer in timestep embedding.
         conv_in_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_in` layer.
         conv_out_kernel (`int`, *optional*, default to `3`): the Kernel size of `conv_out` layer.
+        extra_film_condition_dim (`int`, *optional*, default to `None`): The dimensionality of the extra film conditioning layer.
+        extra_film_use_concat (`bool`, *optional*, defaults to `False`): Whether to concatenate the extra film embedding with the time embedding or sum them.
     """
 
     _supports_gradient_checkpointing = True
@@ -205,12 +207,11 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         if extra_film_condition_dim is not None:
             self.film_embedding = nn.Linear(extra_film_condition_dim, time_embed_dim)
+            if extra_film_use_concat:
+                # we're concatenating the time embeddings and film embeddings so need to double the resnet embedding dim
+                time_embed_dim = time_embed_dim * 2
         else:
             self.film_embedding = None
-
-        if self.use_extra_film_by_concat:
-            # we're concatenating the time embeddings and film embeddings so need to double the resnet embedding dim
-            time_embed_dim = time_embed_dim * 2
 
         if isinstance(only_cross_attention, bool):
             only_cross_attention = [only_cross_attention] * len(down_block_types)
@@ -551,7 +552,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         if self.film_embedding is not None:
             if class_labels is None:
-                raise ValueError("class_labels should be provided when doing film embedding")
+                raise ValueError("class_labels should be provided when extra_film_condition_dim > 0")
             film_emb = self.film_embedding(class_labels).to(dtype=self.dtype)
             if self.use_extra_film_by_concat:
                 emb = torch.cat([emb, film_emb], dim=-1)
