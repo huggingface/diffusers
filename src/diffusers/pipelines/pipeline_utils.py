@@ -537,7 +537,7 @@ class DiffusionPipeline(ConfigMixin):
 
                 if revision in DEPRECATED_REVISION_ARGS and version.parse(
                     version.parse(__version__).base_version
-                ) >= version.parse("0.10.0"):
+                ) >= version.parse("0.15.0"):
                     info = model_info(
                         pretrained_model_name_or_path,
                         use_auth_token=use_auth_token,
@@ -825,7 +825,12 @@ class DiffusionPipeline(ConfigMixin):
                     loading_kwargs["sess_options"] = sess_options
 
                 is_diffusers_model = issubclass(class_obj, diffusers.ModelMixin)
-                transformers_version = version.parse(version.parse(transformers.__version__).base_version)
+
+                if is_transformers_available():
+                    transformers_version = version.parse(version.parse(transformers.__version__).base_version)
+                else:
+                    transformers_version = "N/A"
+
                 is_transformers_model = (
                     is_transformers_available()
                     and issubclass(class_obj, PreTrainedModel)
