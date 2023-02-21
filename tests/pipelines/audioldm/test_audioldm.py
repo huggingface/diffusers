@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,15 +15,16 @@
 
 
 import gc
-import tempfile
 import time
 import unittest
 
 import numpy as np
 import torch
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
+import torch.nn.functional as F
+from transformers import ClapTextConfig, ClapTextModelWithProjection, RobertaTokenizer, SpeechT5HifiGan, SpeechT5HifiGanConfig
 
 from diffusers import (
+    AudioLDMPipeline,
     AutoencoderKL,
     DDIMScheduler,
     DPMSolverMultistepScheduler,
@@ -31,26 +32,24 @@ from diffusers import (
     EulerDiscreteScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
-    StableDiffusionPipeline,
-    UNet2DConditionModel,
+    UNet2DModel,
     logging,
 )
 from diffusers.utils import load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
 
-from ...models.test_models_unet_2d_condition import create_lora_layers
 from ...test_pipelines_common import PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = StableDiffusionPipeline
+class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = AudioLDMPipeline
 
     def get_dummy_components(self):
         torch.manual_seed(0)
-        unet = UNet2DConditionModel(
+        unet = UNet2DModel(
             block_out_channels=(32, 64),
             layers_per_block=2,
             sample_size=32,
@@ -59,6 +58,8 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=32,
+            extra_film_condition_dim=32,
+            extra_film_use_concat=True,
         )
         scheduler = DDIMScheduler(
             beta_start=0.00085,
@@ -70,14 +71,14 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         torch.manual_seed(0)
         vae = AutoencoderKL(
             block_out_channels=[32, 64],
-            in_channels=3,
-            out_channels=3,
+            in_channels=1,
+            out_channels=1,
             down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
             up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
             latent_channels=4,
         )
         torch.manual_seed(0)
-        text_encoder_config = CLIPTextConfig(
+        text_encoder_config = ClapTextConfig(
             bos_token_id=0,
             eos_token_id=2,
             hidden_size=32,
@@ -87,9 +88,23 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             num_hidden_layers=5,
             pad_token_id=1,
             vocab_size=1000,
+            projection_dim=32,
         )
-        text_encoder = CLIPTextModel(text_encoder_config)
-        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+        text_encoder = ClapTextModelWithProjection(text_encoder_config)
+        tokenizer = RobertaTokenizer.from_pretrained("hf-internal-testing/tiny-random-roberta", model_max_length=77)
+
+        vocoder_config = SpeechT5HifiGanConfig(
+        model_in_dim=8,
+        sampling_rate=16000,
+        upsample_initial_channel=16,
+        upsample_rates=[2, 2],
+        upsample_kernel_sizes=[4, 4],
+        resblock_kernel_sizes=[3, 7],
+        resblock_dilation_sizes=[[1, 3, 5], [1, 3, 5]],
+        normalize_before=False,
+        )
+
+        vocoder = SpeechT5HifiGan(vocoder_config)
 
         components = {
             "unet": unet,
@@ -97,8 +112,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "vae": vae,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
-            "safety_checker": None,
-            "feature_extractor": None,
+            "vocoder": vocoder,
         }
         return components
 
@@ -108,109 +122,80 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
-            "prompt": "A painting of a squirrel eating a burger",
+            "prompt": "A hammer hitting a wooden surface",
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
         }
         return inputs
 
-    def test_stable_diffusion_ddim(self):
+    def test_audioldm_ddim(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        audioldm_pipe = AudioLDMPipeline(**components)
+        audioldm_pipe = audioldm_pipe.to(torch_device)
+        audioldm_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs)
-        image = output.images
+        output = audioldm_pipe(**inputs)
+        audio = output.audios[0]
 
-        image_slice = image[0, -3:, -3:, -1]
+        assert audio.ndim == 1
+        assert len(audio) == 256
 
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5643, 0.6017, 0.4799, 0.5267, 0.5584, 0.4641, 0.5159, 0.4963, 0.4791])
+        audio_slice = audio[:10]
+        expected_slice = np.array([-0.0050,  0.0050, -0.0060,  0.0033, -0.0026,  0.0033, -0.0027, 0.0033, -0.0028,  0.0033])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(audio_slice - expected_slice).max() < 1e-3
 
-    def test_stable_diffusion_lora(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
+    def test_audioldm_prompt_embeds(self):
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        # forward 1
-        inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs)
-        image = output.images
-        image_slice = image[0, -3:, -3:, -1]
-
-        # set lora layers
-        lora_attn_procs = create_lora_layers(sd_pipe.unet)
-        sd_pipe.unet.set_attn_processor(lora_attn_procs)
-        sd_pipe = sd_pipe.to(torch_device)
-
-        # forward 2
-        inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs, cross_attention_kwargs={"scale": 0.0})
-        image = output.images
-        image_slice_1 = image[0, -3:, -3:, -1]
-
-        # forward 3
-        inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs, cross_attention_kwargs={"scale": 0.5})
-        image = output.images
-        image_slice_2 = image[0, -3:, -3:, -1]
-
-        assert np.abs(image_slice - image_slice_1).max() < 1e-2
-        assert np.abs(image_slice - image_slice_2).max() > 1e-2
-
-    def test_stable_diffusion_prompt_embeds(self):
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        audioldm_pipe = AudioLDMPipeline(**components)
+        audioldm_pipe = audioldm_pipe.to(torch_device)
+        audioldm_pipe = audioldm_pipe.to(torch_device)
+        audioldm_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
         inputs["prompt"] = 3 * [inputs["prompt"]]
 
         # forward
-        output = sd_pipe(**inputs)
-        image_slice_1 = output.images[0, -3:, -3:, -1]
+        output = audioldm_pipe(**inputs)
+        audio_1 = output.audios[0]
 
         inputs = self.get_dummy_inputs(torch_device)
         prompt = 3 * [inputs.pop("prompt")]
 
-        text_inputs = sd_pipe.tokenizer(
+        text_inputs = audioldm_pipe.tokenizer(
             prompt,
             padding="max_length",
-            max_length=sd_pipe.tokenizer.model_max_length,
+            max_length=audioldm_pipe.tokenizer.model_max_length,
             truncation=True,
             return_tensors="pt",
         )
         text_inputs = text_inputs["input_ids"].to(torch_device)
 
-        prompt_embeds = sd_pipe.text_encoder(text_inputs)[0]
+        prompt_embeds = audioldm_pipe.text_encoder(
+            text_inputs,
+        )
+        prompt_embeds = prompt_embeds.text_embeds
+        # additional L_2 normalization over each hidden-state
+        prompt_embeds = F.normalize(prompt_embeds, dim=-1)
 
         inputs["prompt_embeds"] = prompt_embeds
 
         # forward
-        output = sd_pipe(**inputs)
-        image_slice_2 = output.images[0, -3:, -3:, -1]
+        output = audioldm_pipe(**inputs)
+        audio_2 = output.audios[0]
 
-        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+        assert np.abs(audio_1 - audio_2).max() < 1e-4
 
-    def test_stable_diffusion_negative_prompt_embeds(self):
+    def test_audioldm_negative_prompt_embeds(self):
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        audioldm_pipe = AudioLDMPipeline(**components)
+        audioldm_pipe = audioldm_pipe.to(torch_device)
+        audioldm_pipe = audioldm_pipe.to(torch_device)
+        audioldm_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
         negative_prompt = 3 * ["this is a negative prompt"]
@@ -218,342 +203,374 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs["prompt"] = 3 * [inputs["prompt"]]
 
         # forward
-        output = sd_pipe(**inputs)
-        image_slice_1 = output.images[0, -3:, -3:, -1]
+        output = audioldm_pipe(**inputs)
+        audio_1 = output.audios[0]
 
         inputs = self.get_dummy_inputs(torch_device)
         prompt = 3 * [inputs.pop("prompt")]
 
         embeds = []
         for p in [prompt, negative_prompt]:
-            text_inputs = sd_pipe.tokenizer(
+            text_inputs = audioldm_pipe.tokenizer(
                 p,
                 padding="max_length",
-                max_length=sd_pipe.tokenizer.model_max_length,
+                max_length=audioldm_pipe.tokenizer.model_max_length,
                 truncation=True,
                 return_tensors="pt",
             )
             text_inputs = text_inputs["input_ids"].to(torch_device)
 
-            embeds.append(sd_pipe.text_encoder(text_inputs)[0])
+            text_embeds = audioldm_pipe.text_encoder(
+                text_inputs,
+            )
+            text_embeds = text_embeds.text_embeds
+            # additional L_2 normalization over each hidden-state
+            text_embeds = F.normalize(text_embeds, dim=-1)
+
+            embeds.append(text_embeds)
 
         inputs["prompt_embeds"], inputs["negative_prompt_embeds"] = embeds
 
         # forward
-        output = sd_pipe(**inputs)
-        image_slice_2 = output.images[0, -3:, -3:, -1]
+        output = audioldm_pipe(**inputs)
+        audio_2 = output.audios[0]
 
-        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+        assert np.abs(audio_1 - audio_2).max() < 1e-4
 
-    def test_stable_diffusion_ddim_factor_8(self):
+    def test_audioldm_ddim_factor_8(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        audioldm_pipe = AudioLDMPipeline(**components)
+        audioldm_pipe = audioldm_pipe.to(device)
+        audioldm_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs, height=136, width=136)
-        image = output.images
+        output = audioldm_pipe(**inputs, height=136)  # width has to stay fixed for the vocoder
+        audio = output.audios[0]
 
-        image_slice = image[0, -3:, -3:, -1]
+        assert audio.ndim == 1
+        assert len(audio) == 544
 
-        assert image.shape == (1, 136, 136, 3)
-        expected_slice = np.array([0.5524, 0.5626, 0.6069, 0.4727, 0.386, 0.3995, 0.4613, 0.4328, 0.4269])
+        audio_slice = audio[-10:]
+        expected_slice = np.array([-0.0029,  0.0036, -0.0027,  0.0032, -0.0029,  0.0034, -0.0028, 0.0073,  0.0039,  0.0058])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(audio_slice - expected_slice).max() < 1e-3
 
-    def test_stable_diffusion_pndm(self):
+    def test_audioldm_pndm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe.scheduler = PNDMScheduler(skip_prk_steps=True)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        audioldm_pipe = AudioLDMPipeline(**components)
+        audioldm_pipe.scheduler = PNDMScheduler(skip_prk_steps=True)
+        audioldm_pipe = audioldm_pipe.to(device)
+        audioldm_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs)
-        image = output.images
-        image_slice = image[0, -3:, -3:, -1]
+        output = audioldm_pipe(**inputs)
+        audio = output.audios[0]
 
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5094, 0.5674, 0.4667, 0.5125, 0.5696, 0.4674, 0.5277, 0.4964, 0.4945])
+        assert audio.ndim == 1
+        assert len(audio) == 256
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        audio_slice = audio[:10]
+        expected_slice = np.array([-0.0051,  0.0050, -0.0060,  0.0034, -0.0026,  0.0033, -0.0027, 0.0033, -0.0028,  0.0032])
 
-    def test_stable_diffusion_no_safety_checker(self):
-        pipe = StableDiffusionPipeline.from_pretrained(
-            "hf-internal-testing/tiny-stable-diffusion-lms-pipe", safety_checker=None
-        )
-        assert isinstance(pipe, StableDiffusionPipeline)
-        assert isinstance(pipe.scheduler, LMSDiscreteScheduler)
-        assert pipe.safety_checker is None
+        assert np.abs(audio_slice - expected_slice).max() < 1e-3
 
-        image = pipe("example prompt", num_inference_steps=2).images[0]
-        assert image is not None
-
-        # check that there's no error when saving a pipeline with one of the models being None
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            pipe.save_pretrained(tmpdirname)
-            pipe = StableDiffusionPipeline.from_pretrained(tmpdirname)
-
-        # sanity check that the pipeline still works
-        assert pipe.safety_checker is None
-        image = pipe("example prompt", num_inference_steps=2).images[0]
-        assert image is not None
-
-    def test_stable_diffusion_k_lms(self):
+    def test_audioldm_k_lms(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe.scheduler = LMSDiscreteScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        audioldm_pipe = AudioLDMPipeline(**components)
+        audioldm_pipe.scheduler = LMSDiscreteScheduler.from_config(audioldm_pipe.scheduler.config)
+        audioldm_pipe = audioldm_pipe.to(device)
+        audioldm_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs)
-        image = output.images
-        image_slice = image[0, -3:, -3:, -1]
+        output = audioldm_pipe(**inputs)
+        audio = output.audios[0]
 
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array(
-            [
-                0.47082293033599854,
-                0.5371589064598083,
-                0.4562119245529175,
-                0.5220914483070374,
-                0.5733777284622192,
-                0.4795039892196655,
-                0.5465868711471558,
-                0.5074326395988464,
-                0.5042197108268738,
-            ]
-        )
+        assert audio.ndim == 1
+        assert len(audio) == 256
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        audio_slice = audio[:10]
+        expected_slice = np.array([-0.0051, 0.0050, -0.0060, 0.0034, -0.0026, 0.0033, -0.0027, 0.0033, -0.0028, 0.0032])
 
-    def test_stable_diffusion_k_euler_ancestral(self):
+        assert np.abs(audio_slice - expected_slice).max() < 1e-3
+
+    def test_audioldm_k_euler_ancestral(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        audioldm_pipe = AudioLDMPipeline(**components)
+        audioldm_pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(audioldm_pipe.scheduler.config)
+        audioldm_pipe = audioldm_pipe.to(device)
+        audioldm_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs)
-        image = output.images
-        image_slice = image[0, -3:, -3:, -1]
+        output = audioldm_pipe(**inputs)
+        audio = output.audios[0]
 
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array(
-            [
-                0.4707113206386566,
-                0.5372191071510315,
-                0.4563021957874298,
-                0.5220003724098206,
-                0.5734264850616455,
-                0.4794946610927582,
-                0.5463782548904419,
-                0.5074145197868347,
-                0.504422664642334,
-            ]
-        )
+        assert audio.ndim == 1
+        assert len(audio) == 256
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        audio_slice = audio[:10]
+        expected_slice = np.array([-0.0051, 0.0050, -0.0060, 0.0034, -0.0026, 0.0033, -0.0027, 0.0033, -0.0028, 0.0032])
 
-    def test_stable_diffusion_k_euler(self):
+        assert np.abs(audio_slice - expected_slice).max() < 1e-3
+
+    def test_audioldm_k_euler(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe.scheduler = EulerDiscreteScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        audioldm_pipe = AudioLDMPipeline(**components)
+        audioldm_pipe.scheduler = EulerDiscreteScheduler.from_config(audioldm_pipe.scheduler.config)
+        audioldm_pipe = audioldm_pipe.to(device)
+        audioldm_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs)
-        image = output.images
-        image_slice = image[0, -3:, -3:, -1]
+        output = audioldm_pipe(**inputs)
+        audio = output.audios[0]
 
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array(
-            [
-                0.47082313895225525,
-                0.5371587872505188,
-                0.4562119245529175,
-                0.5220913887023926,
-                0.5733776688575745,
-                0.47950395941734314,
-                0.546586811542511,
-                0.5074326992034912,
-                0.5042197108268738,
-            ]
-        )
+        assert audio.ndim == 1
+        assert len(audio) == 256
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        audio_slice = audio[:10]
+        expected_slice = np.array([-0.0051, 0.0050, -0.0060, 0.0034, -0.0026, 0.0033, -0.0027, 0.0033, -0.0028, 0.0032])
 
-    def test_stable_diffusion_vae_slicing(self):
+        assert np.abs(audio_slice - expected_slice).max() < 1e-3
+
+    def test_audioldm_vae_slicing(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        audioldm_pipe = AudioLDMPipeline(**components)
+        audioldm_pipe = audioldm_pipe.to(device)
+        audioldm_pipe.set_progress_bar_config(disable=None)
 
         image_count = 4
 
         inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"]] * image_count
-        output_1 = sd_pipe(**inputs)
+        output_1 = audioldm_pipe(**inputs)
 
         # make sure sliced vae decode yields the same result
-        sd_pipe.enable_vae_slicing()
+        audioldm_pipe.enable_vae_slicing()
         inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"]] * image_count
-        output_2 = sd_pipe(**inputs)
+        output_2 = audioldm_pipe(**inputs)
 
-        # there is a small discrepancy at image borders vs. full batch decode
-        assert np.abs(output_2.images.flatten() - output_1.images.flatten()).max() < 3e-3
+        # there is a small discrepancy at spectrogram borders vs. full batch decode
+        assert np.abs(output_2.audios - output_1.audios).max() < 1e-4
 
-    def test_stable_diffusion_negative_prompt(self):
+    def test_audioldm_negative_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         components["scheduler"] = PNDMScheduler(skip_prk_steps=True)
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        audioldm_pipe = AudioLDMPipeline(**components)
+        audioldm_pipe = audioldm_pipe.to(device)
+        audioldm_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        negative_prompt = "french fries"
-        output = sd_pipe(**inputs, negative_prompt=negative_prompt)
+        negative_prompt = "egg cracking"
+        output = audioldm_pipe(**inputs, negative_prompt=negative_prompt)
+        audio = output.audios[0]
 
-        image = output.images
-        image_slice = image[0, -3:, -3:, -1]
+        assert audio.ndim == 1
+        assert len(audio) == 256
 
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array(
-            [
-                0.5108221173286438,
-                0.5688379406929016,
-                0.4685141146183014,
-                0.5098261833190918,
-                0.5657756328582764,
-                0.4631010890007019,
-                0.5226285457611084,
-                0.49129390716552734,
-                0.4899061322212219,
-            ]
-        )
+        audio_slice = audio[:10]
+        expected_slice = np.array([-0.0051,  0.0050, -0.0060,  0.0034, -0.0026,  0.0033, -0.0027,
+        0.0033, -0.0028,  0.0032])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(audio_slice - expected_slice).max() < 1e-3
 
-    def test_stable_diffusion_num_images_per_prompt(self):
+    def test_audioldm_num_waveforms_per_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         components["scheduler"] = PNDMScheduler(skip_prk_steps=True)
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        audioldm_pipe = AudioLDMPipeline(**components)
+        audioldm_pipe = audioldm_pipe.to(device)
+        audioldm_pipe.set_progress_bar_config(disable=None)
 
-        prompt = "A painting of a squirrel eating a burger"
+        prompt = "A hammer hitting a wooden surface"
 
-        # test num_images_per_prompt=1 (default)
-        images = sd_pipe(prompt, num_inference_steps=2, output_type="np").images
+        # test num_waveforms_per_prompt=1 (default)
+        audios = audioldm_pipe(prompt, num_inference_steps=2).audios
 
-        assert images.shape == (1, 64, 64, 3)
+        assert audios.shape == (1, 256)
 
-        # test num_images_per_prompt=1 (default) for batch of prompts
+        # test num_waveforms_per_prompt=1 (default) for batch of prompts
         batch_size = 2
-        images = sd_pipe([prompt] * batch_size, num_inference_steps=2, output_type="np").images
+        audios = audioldm_pipe([prompt] * batch_size, num_inference_steps=2).audios
 
-        assert images.shape == (batch_size, 64, 64, 3)
+        assert audios.shape == (batch_size, 256)
 
-        # test num_images_per_prompt for single prompt
-        num_images_per_prompt = 2
-        images = sd_pipe(
-            prompt, num_inference_steps=2, output_type="np", num_images_per_prompt=num_images_per_prompt
-        ).images
+        # test num_waveforms_per_prompt for single prompt
+        num_waveforms_per_prompt = 2
+        audios = audioldm_pipe(
+            prompt, num_inference_steps=2, num_waveforms_per_prompt=num_waveforms_per_prompt
+        ).audios
 
-        assert images.shape == (num_images_per_prompt, 64, 64, 3)
+        assert audios.shape == (num_waveforms_per_prompt, 256)
 
-        # test num_images_per_prompt for batch of prompts
+        # test num_waveforms_per_prompt for batch of prompts
         batch_size = 2
-        images = sd_pipe(
-            [prompt] * batch_size, num_inference_steps=2, output_type="np", num_images_per_prompt=num_images_per_prompt
-        ).images
+        audios = audioldm_pipe(
+            [prompt] * batch_size, num_inference_steps=2, num_waveforms_per_prompt=num_waveforms_per_prompt
+        ).audios
 
-        assert images.shape == (batch_size * num_images_per_prompt, 64, 64, 3)
+        assert audios.shape == (batch_size * num_waveforms_per_prompt, 256)
 
-    def test_stable_diffusion_long_prompt(self):
+    def test_audioldm_long_prompt(self):
         components = self.get_dummy_components()
         components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        audioldm_pipe = AudioLDMPipeline(**components)
+        audioldm_pipe = audioldm_pipe.to(torch_device)
+        audioldm_pipe.set_progress_bar_config(disable=None)
 
         do_classifier_free_guidance = True
         negative_prompt = None
         num_images_per_prompt = 1
-        logger = logging.get_logger("diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion")
+        logger = logging.get_logger("diffusers.pipelines.audioldm.pipeline_audioldm")
 
         prompt = 25 * "@"
         with CaptureLogger(logger) as cap_logger_3:
-            text_embeddings_3 = sd_pipe._encode_prompt(
+            text_embeddings_3 = audioldm_pipe._encode_prompt(
                 prompt, torch_device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
             )
 
         prompt = 100 * "@"
         with CaptureLogger(logger) as cap_logger:
-            text_embeddings = sd_pipe._encode_prompt(
+            text_embeddings = audioldm_pipe._encode_prompt(
                 prompt, torch_device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
             )
 
         negative_prompt = "Hello"
         with CaptureLogger(logger) as cap_logger_2:
-            text_embeddings_2 = sd_pipe._encode_prompt(
+            text_embeddings_2 = audioldm_pipe._encode_prompt(
                 prompt, torch_device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
             )
 
         assert text_embeddings_3.shape == text_embeddings_2.shape == text_embeddings.shape
-        assert text_embeddings.shape[1] == 77
+
+        assert text_embeddings.shape[1] == 32
 
         assert cap_logger.out == cap_logger_2.out
         # 100 - 77 + 1 (BOS token) + 1 (EOS token) = 25
         assert cap_logger.out.count("@") == 25
         assert cap_logger_3.out == ""
 
-    def test_stable_diffusion_height_width_opt(self):
+    def test_audioldm_height_opt(self):
         components = self.get_dummy_components()
         components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        audioldm_pipe = AudioLDMPipeline(**components)
+        audioldm_pipe = audioldm_pipe.to(torch_device)
+        audioldm_pipe.set_progress_bar_config(disable=None)
 
-        prompt = "hey"
+        prompt = ["hey"]
 
-        output = sd_pipe(prompt, num_inference_steps=1, output_type="np")
-        image_shape = output.images[0].shape[:2]
-        assert image_shape == (64, 64)
+        output = audioldm_pipe(prompt, num_inference_steps=1)
+        audio_shape = output.audios.shape
+        assert audio_shape == (1, 256)
 
-        output = sd_pipe(prompt, num_inference_steps=1, height=96, width=96, output_type="np")
-        image_shape = output.images[0].shape[:2]
-        assert image_shape == (96, 96)
+        output = audioldm_pipe(prompt, num_inference_steps=1, height=96, width=8)
+        audio_shape = output.audios.shape
+        assert audio_shape == (1, 384)
 
-        config = dict(sd_pipe.unet.config)
+        config = dict(audioldm_pipe.unet.config)
         config["sample_size"] = 96
-        sd_pipe.unet = UNet2DConditionModel.from_config(config).to(torch_device)
-        output = sd_pipe(prompt, num_inference_steps=1, output_type="np")
-        image_shape = output.images[0].shape[:2]
-        assert image_shape == (192, 192)
+        audioldm_pipe.unet = UNet2DModel.from_config(config).to(torch_device)
+        output = audioldm_pipe(prompt, num_inference_steps=1, width=8)  # need to keep width fixed for vocoder
+        audio_shape = output.audios.shape
+        assert audio_shape == (1, 768)
+
+    def test_audioldm_width_opt(self):
+        components = self.get_dummy_components()
+        components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
+        audioldm_pipe = AudioLDMPipeline(**components)
+        audioldm_pipe = audioldm_pipe.to(torch_device)
+        audioldm_pipe.set_progress_bar_config(disable=None)
+
+        prompt = ["hey"]
+
+        width = audioldm_pipe.vocoder.config.model_in_dim
+
+        output = audioldm_pipe(prompt, num_inference_steps=1, width=width)
+        audio_shape = output.audios.shape
+        assert audio_shape == (1, 256)
+
+        config = audioldm_pipe.vocoder.config
+        config.model_in_dim = width * 2
+        audioldm_pipe.vocoder = SpeechT5HifiGan(config).to(torch_device)
+        output = audioldm_pipe(prompt, num_inference_steps=1, width=width*2)
+        audio_shape = output.audios.shape
+        # waveform shape is unchanged, we just have 2x the number of mel channels in the spectrogram
+        assert audio_shape == (1, 256)
+
+    def test_attention_slicing_forward_pass(self):
+        # override this test since we want to compare 1-d audio waveforms (not 3d pixel arrays)
+        if not self.test_attention_slicing:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        # Warmup pass when using mps (see #372)
+        if torch_device == "mps":
+            _ = pipe(**self.get_dummy_inputs(torch_device))
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_without_slicing = pipe(**inputs).audios
+
+        pipe.enable_attention_slicing(slice_size=1)
+        inputs = self.get_dummy_inputs(torch_device)
+        output_with_slicing = pipe(**inputs).audios
+
+        max_diff = np.abs(output_with_slicing - output_without_slicing).max()
+        self.assertLess(max_diff, 1e-3, "Attention slicing should not affect the inference results")
+
+    def test_inference_batch_single_identical(self):
+        # override this test since we want to compare 1-d audio waveforms (not 3d pixel arrays)
+        components = self.get_dummy_components()
+        audioldm_pipe = AudioLDMPipeline(**components)
+        audioldm_pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(audioldm_pipe.scheduler.config)
+        audioldm_pipe = audioldm_pipe.to(torch_device)
+        audioldm_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        # run single-sample inference
+        inputs["generator"] = self.get_generator(0)
+        output = audioldm_pipe(**inputs).audios
+
+        batch_size = 3
+        batched_inputs = {}
+
+        # make unequal batch sizes
+        batched_inputs["prompt"] = [inputs["prompt"][: len(inputs["prompt"]) // i] for i in range(1, batch_size + 1)]
+        # make last batch super long
+        batched_inputs["prompt"][-1] = 2000 * "very long"
+        # set the generator
+        batched_inputs["generator"] = [self.get_generator(i) for i in range(batch_size)]
+        # duplicate any remaining inputs
+        for named_input in inputs:
+            if named_input not in batched_inputs:
+                batched_inputs[named_input] = inputs[named_input]
+
+        # run batched inference
+        output_batch = audioldm_pipe(**batched_inputs).audios
+        assert output_batch.shape[0] == batch_size
+
+        max_diff = np.abs(output_batch[0] - output[0]).max()
+        assert max_diff < 1e-4
 
 
 @slow
 @require_torch_gpu
-class StableDiffusionPipelineSlowTests(unittest.TestCase):
+class AudioLDMPipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -561,96 +578,79 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 
     def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
         generator = torch.Generator(device=generator_device).manual_seed(seed)
-        latents = np.random.RandomState(seed).standard_normal((1, 4, 64, 64))
+        latents = np.random.RandomState(seed).standard_normal((1, 8, 128, 16))
         latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
         inputs = {
-            "prompt": "a photograph of an astronaut riding a horse",
+            "prompt": "A hammer hitting a wooden surface",
             "latents": latents,
             "generator": generator,
             "num_inference_steps": 3,
-            "guidance_scale": 7.5,
-            "output_type": "numpy",
+            "guidance_scale": 2.5,
         }
         return inputs
 
-    def test_stable_diffusion_1_1_pndm(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1")
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+    def test_audioldm_ddim(self):
+        audioldm_pipe = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio")
+        audioldm_pipe.scheduler = DDIMScheduler.from_config(audioldm_pipe.scheduler.config)
+        audioldm_pipe = audioldm_pipe.to(torch_device)
+        audioldm_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1].flatten()
+        audio = audioldm_pipe(**inputs).audios[0]
+        
+        assert audio.ndim == 1
+        assert len(audio) == 81952
 
-        assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.43625, 0.43554, 0.36670, 0.40660, 0.39703, 0.38658, 0.43936, 0.43557, 0.40592])
-        assert np.abs(image_slice - expected_slice).max() < 1e-4
+        audio_slice = audio[3880:3890]
+        expected_slice = np.array([-0.0574,  0.2462,  0.3955,  0.4213,  0.3901,  0.3770,  0.2762, 0.0206, -0.2208, -0.3282])
+        max_diff = np.abs(expected_slice - audio_slice).max()
+        assert max_diff < 1e-3
 
-    def test_stable_diffusion_1_4_pndm(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1].flatten()
-
-        assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.57400, 0.47841, 0.31625, 0.63583, 0.58306, 0.55056, 0.50825, 0.56306, 0.55748])
-        assert np.abs(image_slice - expected_slice).max() < 1e-4
-
-    def test_stable_diffusion_ddim(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
-        sd_pipe.scheduler = DDIMScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+    def test_audioldm_lms(self):
+        audioldm_pipe = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio")
+        audioldm_pipe.scheduler = LMSDiscreteScheduler.from_config(audioldm_pipe.scheduler.config)
+        audioldm_pipe = audioldm_pipe.to(torch_device)
+        audioldm_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1].flatten()
+        audio = audioldm_pipe(**inputs).audios[0]
 
-        assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.38019, 0.28647, 0.27321, 0.40377, 0.38290, 0.35446, 0.39218, 0.38165, 0.42239])
-        assert np.abs(image_slice - expected_slice).max() < 1e-4
+        assert audio.ndim == 1
+        assert len(audio) == 81952
 
-    def test_stable_diffusion_lms(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
-        sd_pipe.scheduler = LMSDiscreteScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        audio_slice = audio[27780:27790]
+        expected_slice = np.array([-0.2131, -0.0873, -0.0124, -0.0189,  0.0569,  0.1373,  0.1883, 0.2886,  0.3297,  0.2212])
+        max_diff = np.abs(expected_slice - audio_slice).max()
+        assert max_diff < 1e-3
 
-        inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1].flatten()
-
-        assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.10542, 0.09620, 0.07332, 0.09015, 0.09382, 0.07597, 0.08496, 0.07806, 0.06455])
-        assert np.abs(image_slice - expected_slice).max() < 1e-4
-
-    def test_stable_diffusion_dpm(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
-        sd_pipe.scheduler = DPMSolverMultistepScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+    def test_audioldm_dpm(self):
+        audioldm_pipe = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio")
+        audioldm_pipe.scheduler = DPMSolverMultistepScheduler.from_config(audioldm_pipe.scheduler.config)
+        audioldm_pipe = audioldm_pipe.to(torch_device)
+        audioldm_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1].flatten()
+        audio = audioldm_pipe(**inputs).audios[0]
 
-        assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.03503, 0.03494, 0.01087, 0.03128, 0.02552, 0.00803, 0.00742, 0.00372, 0.00000])
-        assert np.abs(image_slice - expected_slice).max() < 1e-4
+        assert audio.ndim == 1
+        assert len(audio) == 81952
 
-    def test_stable_diffusion_attention_slicing(self):
+        audio_slice = audio[69310:69320]
+        expected_slice = np.array([ 0.1842,  0.2411,  0.3127,  0.3069,  0.2287,  0.0948, -0.0071, -0.041 , -0.1293, -0.2075])
+        max_diff = np.abs(expected_slice - audio_slice).max()
+        assert max_diff < 1e-3
+
+    def test_audioldm_attention_slicing(self):
+        # TODO(SG): fix or remove. This test yields the same memory for with / without attn slicing
         torch.cuda.reset_peak_memory_stats()
-        pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
+        pipe = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio", torch_dtype=torch.float16)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         # enable attention slicing
-        pipe.enable_attention_slicing()
+        pipe.enable_attention_slicing(slice_size="max")
         inputs = self.get_inputs(torch_device, dtype=torch.float16)
-        image_sliced = pipe(**inputs).images
+        audios_sliced = pipe(**inputs).audios
 
         mem_bytes = torch.cuda.max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()
@@ -660,16 +660,16 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         # disable slicing
         pipe.disable_attention_slicing()
         inputs = self.get_inputs(torch_device, dtype=torch.float16)
-        image = pipe(**inputs).images
+        audios = pipe(**inputs).audios
 
         # make sure that more than 3.75 GB is allocated
         mem_bytes = torch.cuda.max_memory_allocated()
         assert mem_bytes > 3.75 * 10**9
-        assert np.abs(image_sliced - image).max() < 1e-3
+        assert np.abs(audios_sliced - audios).max() < 1e-3
 
-    def test_stable_diffusion_vae_slicing(self):
+    def test_audioldm_vae_slicing(self):
         torch.cuda.reset_peak_memory_stats()
-        pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
+        pipe = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio", torch_dtype=torch.float16)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -679,47 +679,47 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         inputs = self.get_inputs(torch_device, dtype=torch.float16)
         inputs["prompt"] = [inputs["prompt"]] * 4
         inputs["latents"] = torch.cat([inputs["latents"]] * 4)
-        image_sliced = pipe(**inputs).images
+        audio_sliced = pipe(**inputs).audios
 
         mem_bytes = torch.cuda.max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()
-        # make sure that less than 4 GB is allocated
-        assert mem_bytes < 4e9
+        # make sure that less than 1.1 GB is allocated
+        assert mem_bytes < 1.1 * 10**9
 
         # disable vae slicing
         pipe.disable_vae_slicing()
         inputs = self.get_inputs(torch_device, dtype=torch.float16)
         inputs["prompt"] = [inputs["prompt"]] * 4
         inputs["latents"] = torch.cat([inputs["latents"]] * 4)
-        image = pipe(**inputs).images
+        audio = pipe(**inputs).audios
 
-        # make sure that more than 4 GB is allocated
+        # make sure that more than 1.1 GB is allocated
         mem_bytes = torch.cuda.max_memory_allocated()
-        assert mem_bytes > 4e9
-        # There is a small discrepancy at the image borders vs. a fully batched version.
-        assert np.abs(image_sliced - image).max() < 1e-2
+        assert mem_bytes > 1.1 * 10**9
+        # There is a small discrepancy at the spectrogram borders vs. a fully batched version.
+        assert np.abs(audio_sliced - audio).max() < 1e-2
 
-    def test_stable_diffusion_fp16_vs_autocast(self):
+    def test_audioldm_fp16_vs_autocast(self):
         # this test makes sure that the original model with autocast
         # and the new model with fp16 yield the same result
-        pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
+        pipe = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio", torch_dtype=torch.float16)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device, dtype=torch.float16)
-        image_fp16 = pipe(**inputs).images
+        audio_fp16 = pipe(**inputs).audios
 
         with torch.autocast(torch_device):
             inputs = self.get_inputs(torch_device)
-            image_autocast = pipe(**inputs).images
+            audio_autocast = pipe(**inputs).audios
 
         # Make sure results are close enough
-        diff = np.abs(image_fp16.flatten() - image_autocast.flatten())
+        diff = np.abs(audio_fp16.flatten() - audio_autocast.flatten())
         # They ARE different since ops are not run always at the same precision
         # however, they should be extremely close.
-        assert diff.mean() < 2e-2
+        assert diff.mean() < 1e-3
 
-    def test_stable_diffusion_intermediate_state(self):
+    def test_audioldm_intermediate_state(self):
         number_of_steps = 0
 
         def callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
@@ -728,26 +728,26 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
             number_of_steps += 1
             if step == 1:
                 latents = latents.detach().cpu().numpy()
-                assert latents.shape == (1, 4, 64, 64)
+                assert latents.shape == (1, 8, 128, 16)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array(
-                    [-0.5693, -0.3018, -0.9746, 0.0518, -0.8770, 0.7559, -1.7402, 0.1022, 1.1582]
+                    [-0.6730, -0.9062, 1.0400, 0.4220, -0.9785, 1.817, 0.1906, -1.3430, 1.3330]
                 )
 
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
             elif step == 2:
                 latents = latents.detach().cpu().numpy()
-                assert latents.shape == (1, 4, 64, 64)
+                assert latents.shape == (1, 8, 128, 16)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array(
-                    [-0.1958, -0.2993, -1.0166, -0.5005, -0.4810, 0.6162, -0.9492, 0.6621, 1.4492]
+                    [-0.6763, -0.9062, 1.0520, 0.4200, -0.9750, 1.8220, 0.1879, -1.3490, 1.3190]
                 )
 
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
 
         callback_fn.has_been_called = False
 
-        pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
+        pipe = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio", torch_dtype=torch.float16)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -757,26 +757,26 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         assert callback_fn.has_been_called
         assert number_of_steps == inputs["num_inference_steps"]
 
-    def test_stable_diffusion_low_cpu_mem_usage(self):
-        pipeline_id = "CompVis/stable-diffusion-v1-4"
+    def test_audioldm_low_cpu_mem_usage(self):
+        pipeline_id = "sanchit-gandhi/audioldm-text-to-audio"
 
         start_time = time.time()
-        pipeline_low_cpu_mem_usage = StableDiffusionPipeline.from_pretrained(pipeline_id, torch_dtype=torch.float16)
+        pipeline_low_cpu_mem_usage = AudioLDMPipeline.from_pretrained(pipeline_id, torch_dtype=torch.float16)
         pipeline_low_cpu_mem_usage.to(torch_device)
         low_cpu_mem_usage_time = time.time() - start_time
 
         start_time = time.time()
-        _ = StableDiffusionPipeline.from_pretrained(pipeline_id, torch_dtype=torch.float16, low_cpu_mem_usage=False)
+        _ = AudioLDMPipeline.from_pretrained(pipeline_id, torch_dtype=torch.float16, low_cpu_mem_usage=False)
         normal_load_time = time.time() - start_time
 
         assert 2 * low_cpu_mem_usage_time < normal_load_time
 
-    def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
+    def test_audioldm_pipeline_with_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()
 
-        pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16)
+        pipe = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio", torch_dtype=torch.float16)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
@@ -792,7 +792,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 
 @nightly
 @require_torch_gpu
-class StableDiffusionPipelineNightlyTests(unittest.TestCase):
+class AudioLDMPipelineNightlyTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -800,103 +800,69 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
 
     def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
         generator = torch.Generator(device=generator_device).manual_seed(seed)
-        latents = np.random.RandomState(seed).standard_normal((1, 4, 64, 64))
+        latents = np.random.RandomState(seed).standard_normal((1, 8, 128, 16))
         latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
         inputs = {
-            "prompt": "a photograph of an astronaut riding a horse",
+            "prompt": "A hammer hitting a wooden table",
             "latents": latents,
             "generator": generator,
-            "num_inference_steps": 50,
-            "guidance_scale": 7.5,
-            "output_type": "numpy",
+            "num_inference_steps": 5,
+            "guidance_scale": 2.5,
         }
         return inputs
 
-    def test_stable_diffusion_1_4_pndm(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+    def test_audioldm_ddim(self):
+        audioldm_pipe = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio").to(torch_device)
+        audioldm_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images[0]
+        audios = audioldm_pipe(**inputs).audios[0]
 
-        expected_image = load_numpy(
+        expected_audios = load_numpy(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_text2img/stable_diffusion_1_4_pndm.npy"
         )
-        max_diff = np.abs(expected_image - image).max()
+        max_diff = np.abs(expected_audios - audios).max()
         assert max_diff < 1e-3
 
-    def test_stable_diffusion_1_5_pndm(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5").to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+    def test_audioldm_lms(self):
+        audioldm_pipe = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio").to(torch_device)
+        audioldm_pipe.scheduler = LMSDiscreteScheduler.from_config(audioldm_pipe.scheduler.config)
+        audioldm_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images[0]
+        audios = audioldm_pipe(**inputs).audios[0]
 
-        expected_image = load_numpy(
+        expected_audios = load_numpy(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_text2img/stable_diffusion_1_5_pndm.npy"
         )
-        max_diff = np.abs(expected_image - image).max()
+        max_diff = np.abs(expected_audios - audios).max()
         assert max_diff < 1e-3
 
-    def test_stable_diffusion_ddim(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to(torch_device)
-        sd_pipe.scheduler = DDIMScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe.set_progress_bar_config(disable=None)
+    def test_audioldm_euler(self):
+        audioldm_pipe = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio").to(torch_device)
+        audioldm_pipe.scheduler = EulerDiscreteScheduler.from_config(audioldm_pipe.scheduler.config)
+        audioldm_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images[0]
+        audios = audioldm_pipe(**inputs).audios[0]
 
-        expected_image = load_numpy(
+        expected_audios = load_numpy(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_text2img/stable_diffusion_1_4_ddim.npy"
         )
-        max_diff = np.abs(expected_image - image).max()
+        max_diff = np.abs(expected_audios - audios).max()
         assert max_diff < 1e-3
 
-    def test_stable_diffusion_lms(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to(torch_device)
-        sd_pipe.scheduler = LMSDiscreteScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images[0]
-
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_text2img/stable_diffusion_1_4_lms.npy"
-        )
-        max_diff = np.abs(expected_image - image).max()
-        assert max_diff < 1e-3
-
-    def test_stable_diffusion_euler(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to(torch_device)
-        sd_pipe.scheduler = EulerDiscreteScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images[0]
-
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_text2img/stable_diffusion_1_4_euler.npy"
-        )
-        max_diff = np.abs(expected_image - image).max()
-        assert max_diff < 1e-3
-
-    def test_stable_diffusion_dpm(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to(torch_device)
-        sd_pipe.scheduler = DPMSolverMultistepScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe.set_progress_bar_config(disable=None)
+    def test_audioldm_dpm(self):
+        audioldm_pipe = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio").to(torch_device)
+        audioldm_pipe.scheduler = DPMSolverMultistepScheduler.from_config(audioldm_pipe.scheduler.config)
+        audioldm_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
         inputs["num_inference_steps"] = 25
-        image = sd_pipe(**inputs).images[0]
+        audios = audioldm_pipe(**inputs).audios[0]
 
-        expected_image = load_numpy(
+        expected_audios = load_numpy(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_text2img/stable_diffusion_1_4_dpm_multi.npy"
         )
-        max_diff = np.abs(expected_image - image).max()
+        max_diff = np.abs(expected_audios - audios).max()
         assert max_diff < 1e-3

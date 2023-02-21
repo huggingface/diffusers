@@ -335,12 +335,9 @@ class AudioLDMPipeline(DiffusionPipeline):
         if mel_spectrogram.dim() == 4:
             mel_spectrogram = mel_spectrogram.squeeze(1)
 
-        mel_spectrogram = mel_spectrogram.squeeze(1)
-        # TODO: our transformers implementation can't handle batching! Squeeze tensor from [bsz, seq_len, mel_bins] to [seq_len, mel_bins]
-        mel_spectrogram = mel_spectrogram.squeeze(0)
         waveform = self.vocoder(mel_spectrogram)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-        waveform = waveform.cpu().detach().numpy()
+        waveform = waveform.cpu().detach()
         return waveform
 
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -443,6 +440,7 @@ class AudioLDMPipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
+        output_type: Optional[str] = "np",
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -496,6 +494,10 @@ class AudioLDMPipeline(DiffusionPipeline):
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
+            output_type (`str`, *optional*, defaults to `"np"`):
+                The output format of the generate image. Choose between:
+                - `"np"`: Return Numpy `np.ndarray` objects.
+                - `"pt"`: Return PyTorch `torch.Tensor` objects.
 
         Examples:
 
@@ -506,7 +508,7 @@ class AudioLDMPipeline(DiffusionPipeline):
         """
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
-        width = width or self.unet.config.sample_size * self.vae_scale_factor
+        width = width or self.unet.config.sample_size * self.vae_scale_factor // 8
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
@@ -591,6 +593,9 @@ class AudioLDMPipeline(DiffusionPipeline):
         mel_spectrogram = self.decode_latents(latents)
 
         audio = self.mel_spectrogram_to_waveform(mel_spectrogram)
+
+        if output_type == "np":
+            audio = audio.numpy()
 
         if not return_dict:
             return (audio,)
