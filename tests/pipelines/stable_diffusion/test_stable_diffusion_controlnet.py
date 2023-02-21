@@ -119,7 +119,6 @@ class StableDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.T
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
             "generator": generator,
-            # "controlnet_hint": torch.randn((1, 3, 64, 64)),
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
             "output_type": "numpy",
@@ -293,6 +292,8 @@ class StableDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.T
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_no_safety_checker(self):
+        # TODO: Update model
+        # this test due to this test load dummy pipe without controlnet instance
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
             "hf-internal-testing/tiny-stable-diffusion-lms-pipe", safety_checker=None
         )
@@ -533,7 +534,9 @@ class StableDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.T
 
         assert cap_logger.out == cap_logger_2.out
         # 100 - 77 + 1 (BOS token) + 1 (EOS token) = 25
-        assert cap_logger.out.count("@") == 25
+        assert (
+            cap_logger.out.count("@") == 25
+        )  # TODO: Investigate. this test should pass, but cap_logger.out.count("@") == 0
         assert cap_logger_3.out == ""
 
     def test_stable_diffusion_height_width_opt(self):
