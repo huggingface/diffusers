@@ -198,7 +198,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             timestep_input_dim = block_out_channels[0]
         else:
             raise ValueError(
-                f"{time_embedding_type} does not exist. Pleaes make sure to use one of `fourier` or `positional`."
+                f"{time_embedding_type} does not exist. Please make sure to use one of `fourier` or `positional`."
             )
 
         self.time_embedding = TimestepEmbedding(
