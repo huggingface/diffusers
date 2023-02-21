@@ -240,7 +240,7 @@ def create_unet_diffusers_config(original_config, image_size: int):
         up_block_types=tuple(up_block_types),
         block_out_channels=tuple(block_out_channels),
         layers_per_block=unet_params.num_res_blocks,
-        cross_attention_dim=True,  # TODO: hacky - what are we doing re cross attention?
+        cross_attention_dim=True,  # TODO(SG): hacky - what are we doing re cross attention?
         extra_film_condition_dim=extra_film_condition_dim,
         extra_film_use_concat=extra_film_use_concat,
     )
@@ -686,8 +686,7 @@ def convert_hifigan_checkpoint(checkpoint, config):
         vocoder_state_dict[f"upsampler.{i}.bias"] = vocoder_state_dict.pop(f"ups.{i}.bias")
 
     if not config.normalize_before:
-        # if we don't normalize before these variables are unused, so we set them to arbitrary values
-        # TODO: fix this in transformers
+        # if we don't set normalize_before then these variables are unused, so we set them to their initialised values
         vocoder_state_dict["mean"] = torch.zeros(config.model_in_dim)
         vocoder_state_dict["scale"] = torch.ones(config.model_in_dim)
 

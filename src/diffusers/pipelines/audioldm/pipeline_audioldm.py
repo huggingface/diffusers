@@ -450,9 +450,10 @@ class AudioLDMPipeline(DiffusionPipeline):
                 The prompt or prompts to guide the audio generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The height in pixels of the generated audio.
-            width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The width in pixels of the generated audio.
+                The height in pixels of the generated spectrogram. Using a larger height results in a longer spectrogram
+                and thus longer audio sample.
+            width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor // 8):
+                The width in pixels of the generated spectrogram.
             num_inference_steps (`int`, *optional*, defaults to 200):
                 The number of denoising steps. More denoising steps usually lead to a higher quality audio at the
                 expense of slower inference.
