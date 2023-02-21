@@ -42,7 +42,7 @@ from ...utils import is_omegaconf_available, is_safetensors_available
 from ...utils.import_utils import BACKENDS_MAPPING
 
 
-# Copied from diffusers.pipelines.stable_diffusion.convert_from_checkpoint.shave_segments
+# Copied from diffusers.pipelines.stable_diffusion.convert_from_ckpt.shave_segments
 def shave_segments(path, n_shave_prefix_segments=1):
     """
     Removes segments. Positive values shave the first segments, negative shave the last segments.
@@ -53,7 +53,7 @@ def shave_segments(path, n_shave_prefix_segments=1):
         return ".".join(path.split(".")[:n_shave_prefix_segments])
 
 
-# Copied from diffusers.pipelines.stable_diffusion.convert_from_checkpoint.renew_resnet_paths
+# Copied from diffusers.pipelines.stable_diffusion.convert_from_ckpt.renew_resnet_paths
 def renew_resnet_paths(old_list, n_shave_prefix_segments=0):
     """
     Updates paths inside resnets to the new naming scheme (local renaming)
@@ -76,7 +76,7 @@ def renew_resnet_paths(old_list, n_shave_prefix_segments=0):
     return mapping
 
 
-# Copied from diffusers.pipelines.stable_diffusion.convert_from_checkpoint.renew_vae_resnet_paths
+# Copied from diffusers.pipelines.stable_diffusion.convert_from_ckpt.renew_vae_resnet_paths
 def renew_vae_resnet_paths(old_list, n_shave_prefix_segments=0):
     """
     Updates paths inside resnets to the new naming scheme (local renaming)
@@ -93,7 +93,7 @@ def renew_vae_resnet_paths(old_list, n_shave_prefix_segments=0):
     return mapping
 
 
-# Copied from diffusers.pipelines.stable_diffusion.convert_from_checkpoint.renew_attention_paths
+# Copied from diffusers.pipelines.stable_diffusion.convert_from_ckpt.renew_attention_paths
 def renew_attention_paths(old_list):
     """
     Updates paths inside attentions to the new naming scheme (local renaming)
@@ -101,12 +101,21 @@ def renew_attention_paths(old_list):
     mapping = []
     for old_item in old_list:
         new_item = old_item
+
+        #         new_item = new_item.replace('norm.weight', 'group_norm.weight')
+        #         new_item = new_item.replace('norm.bias', 'group_norm.bias')
+
+        #         new_item = new_item.replace('proj_out.weight', 'proj_attn.weight')
+        #         new_item = new_item.replace('proj_out.bias', 'proj_attn.bias')
+
+        #         new_item = shave_segments(new_item, n_shave_prefix_segments=n_shave_prefix_segments)
+
         mapping.append({"old": old_item, "new": new_item})
 
     return mapping
 
 
-# Copied from diffusers.pipelines.stable_diffusion.convert_from_checkpoint.renew_vae_attention_paths
+# Copied from diffusers.pipelines.stable_diffusion.convert_from_ckpt.renew_vae_attention_paths
 def renew_vae_attention_paths(old_list, n_shave_prefix_segments=0):
     """
     Updates paths inside attentions to the new naming scheme (local renaming)
@@ -137,7 +146,7 @@ def renew_vae_attention_paths(old_list, n_shave_prefix_segments=0):
     return mapping
 
 
-# Copied from diffusers.pipelines.stable_diffusion.convert_from_checkpoint.assign_to_checkpoint
+# Copied from diffusers.pipelines.stable_diffusion.convert_from_ckpt.assign_to_checkpoint
 def assign_to_checkpoint(
     paths, checkpoint, old_checkpoint, attention_paths_to_split=None, additional_replacements=None, config=None
 ):
@@ -189,7 +198,7 @@ def assign_to_checkpoint(
             checkpoint[new_path] = old_checkpoint[path["old"]]
 
 
-# Copied from diffusers.pipelines.stable_diffusion.convert_from_checkpoint.convert_attn_to_linear
+# Copied from diffusers.pipelines.stable_diffusion.convert_from_ckpt.conv_attn_to_linear
 def conv_attn_to_linear(checkpoint):
     keys = list(checkpoint.keys())
     attn_keys = ["query.weight", "key.weight", "value.weight"]
@@ -248,7 +257,7 @@ def create_unet_diffusers_config(original_config, image_size: int):
     return config
 
 
-# Adapted from diffusers.pipelines.stable_diffusion.convert_from_checkpoint.create_vae_diffusers_config
+# Adapted from diffusers.pipelines.stable_diffusion.convert_from_ckpt.create_vae_diffusers_config
 def create_vae_diffusers_config(original_config, checkpoint, image_size: int):
     """
     Creates a VAE config for diffusers based on the config of the original AudioLDM model. Compared to the original
@@ -277,7 +286,7 @@ def create_vae_diffusers_config(original_config, checkpoint, image_size: int):
     return config
 
 
-# Copied from diffusers.pipelines.stable_diffusion.convert_from_checkpoint.create_diffusers_schedular
+# Copied from diffusers.pipelines.stable_diffusion.convert_from_ckpt.create_diffusers_schedular
 def create_diffusers_schedular(original_config):
     schedular = DDIMScheduler(
         num_train_timesteps=original_config.model.params.timesteps,
@@ -288,7 +297,7 @@ def create_diffusers_schedular(original_config):
     return schedular
 
 
-# Adapted from diffusers.pipelines.stable_diffusion.convert_from_checkpoint.convert_ldm_unet_checkpoint
+# Adapted from diffusers.pipelines.stable_diffusion.convert_from_ckpt.convert_ldm_unet_checkpoint
 def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False):
     """
     Takes a state dict and a config, and returns a converted checkpoint. Compared to the original Stable Diffusion
@@ -466,7 +475,7 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
     return new_checkpoint
 
 
-# Copied from diffusers.pipelines.stable_diffusion.convert_from_checkpoint.convert_ldm_vae_checkpoint
+# Copied from diffusers.pipelines.stable_diffusion.convert_from_ckpt.convert_ldm_vae_checkpoint
 def convert_ldm_vae_checkpoint(checkpoint, config):
     # extract state dict for VAE
     vae_state_dict = {}
