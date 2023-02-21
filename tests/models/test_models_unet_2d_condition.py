@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import gc
+import os
 import tempfile
 import unittest
 
@@ -372,6 +373,65 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_attn_procs(tmpdirname)
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+            torch.manual_seed(0)
+            new_model = self.model_class(**init_dict)
+            new_model.to(torch_device)
+            new_model.load_attn_procs(tmpdirname)
+
+        with torch.no_grad():
+            new_sample = new_model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
+
+        assert (sample - new_sample).abs().max() < 1e-4
+
+        # LoRA and no LoRA should NOT be the same
+        assert (sample - old_sample).abs().max() > 1e-4
+
+    def test_lora_save_load_safetensors(self):
+        # enable deterministic behavior for gradient checkpointing
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        init_dict["attention_head_dim"] = (8, 16)
+
+        torch.manual_seed(0)
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        with torch.no_grad():
+            old_sample = model(**inputs_dict).sample
+
+        lora_attn_procs = {}
+        for name in model.attn_processors.keys():
+            cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
+            if name.startswith("mid_block"):
+                hidden_size = model.config.block_out_channels[-1]
+            elif name.startswith("up_blocks"):
+                block_id = int(name[len("up_blocks.")])
+                hidden_size = list(reversed(model.config.block_out_channels))[block_id]
+            elif name.startswith("down_blocks"):
+                block_id = int(name[len("down_blocks.")])
+                hidden_size = model.config.block_out_channels[block_id]
+
+            lora_attn_procs[name] = LoRACrossAttnProcessor(
+                hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
+            )
+            lora_attn_procs[name] = lora_attn_procs[name].to(model.device)
+
+            # add 1 to weights to mock trained weights
+            with torch.no_grad():
+                lora_attn_procs[name].to_q_lora.up.weight += 1
+                lora_attn_procs[name].to_k_lora.up.weight += 1
+                lora_attn_procs[name].to_v_lora.up.weight += 1
+                lora_attn_procs[name].to_out_lora.up.weight += 1
+
+        model.set_attn_processor(lora_attn_procs)
+
+        with torch.no_grad():
+            sample = model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            model.save_attn_procs(tmpdirname, safe_serialization=True)
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
             torch.manual_seed(0)
             new_model = self.model_class(**init_dict)
             new_model.to(torch_device)
