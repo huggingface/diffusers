@@ -101,9 +101,6 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         add_attention: bool = True,
         class_embed_type: Optional[str] = None,
         num_class_embeds: Optional[int] = None,
-        extra_film_condition_dim: int = None,
-        extra_film_use_concat: bool = False,
-        cross_attention_dim: int = None,
     ):
         super().__init__()
 
@@ -133,20 +130,6 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         else:
             self.class_embedding = None
 
-        # film condition
-        if self.class_embedding is not None and extra_film_condition_dim is not None:
-            raise ValueError("You cannot set both `class_embed_type` and `extra_film_condition_dim`.")
-        self.use_extra_film_by_concat = extra_film_condition_dim is not None and extra_film_use_concat
-
-        if extra_film_condition_dim is not None:
-            self.film_embedding = nn.Linear(extra_film_condition_dim, time_embed_dim)
-        else:
-            self.film_embedding = None
-
-        if self.use_extra_film_by_concat:
-            # we're concatenating the time embeddings and film embeddings so need to double the resnet embedding dim
-            time_embed_dim = time_embed_dim * 2
-
         self.down_blocks = nn.ModuleList([])
         self.mid_block = None
         self.up_blocks = nn.ModuleList([])
@@ -171,35 +154,21 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 attn_num_head_channels=attention_head_dim,
                 downsample_padding=downsample_padding,
                 resnet_time_scale_shift=resnet_time_scale_shift,
-                cross_attention_dim=cross_attention_dim,
             )
             self.down_blocks.append(down_block)
 
         # mid
-        if cross_attention_dim is not None:
-            self.mid_block = UNetMidBlock2DCrossAttn(
-                in_channels=block_out_channels[-1],
-                temb_channels=time_embed_dim,
-                resnet_eps=norm_eps,
-                resnet_act_fn=act_fn,
-                output_scale_factor=mid_block_scale_factor,
-                resnet_time_scale_shift=resnet_time_scale_shift,
-                cross_attention_dim=cross_attention_dim,
-                attn_num_head_channels=attention_head_dim,
-                resnet_groups=norm_num_groups,
-            )
-        else:
-            self.mid_block = UNetMidBlock2D(
-                in_channels=block_out_channels[-1],
-                temb_channels=time_embed_dim,
-                resnet_eps=norm_eps,
-                resnet_act_fn=act_fn,
-                output_scale_factor=mid_block_scale_factor,
-                resnet_time_scale_shift=resnet_time_scale_shift,
-                attn_num_head_channels=attention_head_dim,
-                resnet_groups=norm_num_groups,
-                add_attention=add_attention,
-            )
+        self.mid_block = UNetMidBlock2D(
+            in_channels=block_out_channels[-1],
+            temb_channels=time_embed_dim,
+            resnet_eps=norm_eps,
+            resnet_act_fn=act_fn,
+            output_scale_factor=mid_block_scale_factor,
+            resnet_time_scale_shift=resnet_time_scale_shift,
+            attn_num_head_channels=attention_head_dim,
+            resnet_groups=norm_num_groups,
+            add_attention=add_attention,
+        )
 
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
@@ -224,7 +193,6 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 resnet_groups=norm_num_groups,
                 attn_num_head_channels=attention_head_dim,
                 resnet_time_scale_shift=resnet_time_scale_shift,
-                cross_attention_dim=cross_attention_dim,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -286,15 +254,6 @@ class UNet2DModel(ModelMixin, ConfigMixin):
 
             class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
             emb = emb + class_emb
-
-        if self.film_embedding is not None:
-            if class_labels is None:
-                raise ValueError("class_labels should be provided when doing film embedding")
-            film_emb = self.film_embedding(class_labels).to(dtype=self.dtype)
-            if self.use_extra_film_by_concat:
-                emb = torch.cat([emb, film_emb], dim=-1)
-            else:
-                emb = emb + film_emb
 
         # 2. pre-process
         skip_sample = sample

@@ -35,7 +35,7 @@ from diffusers import (
     HeunDiscreteScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
-    UNet2DModel,
+    UNet2DModel, UNet2DConditionModel,
 )
 
 from ...utils import is_omegaconf_available, is_safetensors_available
@@ -882,7 +882,7 @@ def load_pipeline_from_original_audioldm_ckpt(
 
     # Convert the UNet2DModel
     unet_config = create_unet_diffusers_config(original_config, image_size=image_size)
-    unet = UNet2DModel(**unet_config)
+    unet = UNet2DConditionModel(**unet_config)
 
     converted_unet_checkpoint = convert_ldm_unet_checkpoint(
         checkpoint, unet_config, path=checkpoint_path, extract_ema=extract_ema

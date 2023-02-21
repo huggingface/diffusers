@@ -145,6 +145,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         time_cond_proj_dim: Optional[int] = None,
         conv_in_kernel: int = 3,
         conv_out_kernel: int = 3,
+        extra_film_condition_dim: int = None,
+        extra_film_use_concat: bool = False,
     ):
         super().__init__()
 
@@ -195,6 +197,20 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         self.down_blocks = nn.ModuleList([])
         self.up_blocks = nn.ModuleList([])
+
+        # film condition
+        if self.class_embedding is not None and extra_film_condition_dim is not None:
+            raise ValueError("You cannot set both `class_embed_type` and `extra_film_condition_dim`.")
+        self.use_extra_film_by_concat = extra_film_condition_dim is not None and extra_film_use_concat
+
+        if extra_film_condition_dim is not None:
+            self.film_embedding = nn.Linear(extra_film_condition_dim, time_embed_dim)
+        else:
+            self.film_embedding = None
+
+        if self.use_extra_film_by_concat:
+            # we're concatenating the time embeddings and film embeddings so need to double the resnet embedding dim
+            time_embed_dim = time_embed_dim * 2
 
         if isinstance(only_cross_attention, bool):
             only_cross_attention = [only_cross_attention] * len(down_block_types)
@@ -532,6 +548,15 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
             class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
             emb = emb + class_emb
+
+        if self.film_embedding is not None:
+            if class_labels is None:
+                raise ValueError("class_labels should be provided when doing film embedding")
+            film_emb = self.film_embedding(class_labels).to(dtype=self.dtype)
+            if self.use_extra_film_by_concat:
+                emb = torch.cat([emb, film_emb], dim=-1)
+            else:
+                emb = emb + film_emb
 
         # 2. pre-process
         sample = self.conv_in(sample)

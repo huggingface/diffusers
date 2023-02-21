@@ -38,7 +38,7 @@ from diffusers import (
     EulerDiscreteScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
-    UNet2DModel,
+    UNet2DConditionModel,
     logging,
 )
 from diffusers.utils import load_numpy, nightly, slow, torch_device
@@ -55,7 +55,7 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_components(self):
         torch.manual_seed(0)
-        unet = UNet2DModel(
+        unet = UNet2DConditionModel(
             block_out_channels=(32, 64),
             layers_per_block=2,
             sample_size=32,
@@ -495,7 +495,7 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         config = dict(audioldm_pipe.unet.config)
         config["sample_size"] = 96
-        audioldm_pipe.unet = UNet2DModel.from_config(config).to(torch_device)
+        audioldm_pipe.unet = UNet2DConditionModel.from_config(config).to(torch_device)
         output = audioldm_pipe(prompt, num_inference_steps=1, width=8)  # need to keep width fixed for vocoder
         audio_shape = output.audios.shape
         assert audio_shape == (1, 768)

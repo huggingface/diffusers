@@ -575,6 +575,7 @@ class AudioLDMPipeline(DiffusionPipeline):
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
+                    encoder_hidden_states=None,
                     class_labels=prompt_embeds,
                 ).sample
 
