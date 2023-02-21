@@ -60,7 +60,7 @@ def download_image(url):
 image = download_image(url)
 
 prompt = "make the mountains snowy"
-edit = pipe(prompt, image=image, num_inference_steps=20, image_guidance_scale=1.5, guidance_scale=7).images[0]
+images = pipe(prompt, image=image, num_inference_steps=20, image_guidance_scale=1.5, guidance_scale=7).images
 images[0].save("snowy_mountains.png")
 ```
 
