@@ -52,7 +52,6 @@ We can import the `DDPMPipeline`, which will allow you to do inference with a co
 
 ```py
 >>> from diffusers import DDPMPipeline
-
 ```
 
 The `from_pretrained()` method allows downloading the model and its configuration from [the Hugging Face Hub](https://huggingface.co/google/ddpm-celebahq-256), a repository of over 60,000 models shared by the community.
@@ -60,7 +59,6 @@ The `from_pretrained()` method allows downloading the model and its configuratio
 ```py
 >>> image_pipe = DDPMPipeline.from_pretrained("google/ddpm-celebahq-256")
 >>> image_pipe.to("cuda")
-
 ```
 
 To generate an image, we simply run the pipeline and don't even need to give it any input, it will generate a random initial noise sample and then iterate the diffusion process.
@@ -69,14 +67,12 @@ The pipeline returns as output a dictionary with a generated `sample` of interes
 
 ```py
 >>> images = image_pipe().images
-
 ```
 
 Let's take a look 🙂
 
 ```py
 >>> images[0]
-
 ```
 
 Looks pretty good!
@@ -97,7 +93,6 @@ DDPMPipeline {
     "UNet2DModel"
   ]
 }
-
 ```
 
 We can see inside the pipeline a scheduler and a UNet model. Let's have a closer look at them and what this pipeline just did behind the scenes.
@@ -115,14 +110,12 @@ Similarly to what we've seen for the pipeline class, we can load the model confi
 
 >>> repo_id = "google/ddpm-church-256"
 >>> model = UNet2DModel.from_pretrained(repo_id)
-
 ```
 
 The `from_pretrained()` method caches the model weights locally, so if you execute the cell above a second time, it will go much faster. The model is a pure PyTorch `torch.nn.Module` class which you can see when printing out `model`.
 
 ```py
 >>> model
-
 ```
 
 Now let's take a look at the model's configuration. The configuration can be accessed via the `config` attribute and shows all the necessary parameters to define the model architecture (and only those).
@@ -161,7 +154,6 @@ FrozenDict([('sample_size', 256),
             ('_class_name', 'UNet2DModel'),
             ('_diffusers_version', '0.3.0'),
             ('_name_or_path', 'google/ddpm-church-256')])
-
 ```
 
 As you can see, the model config is a frozen dictionary. This is to enforce that the configuration will **only** be used to define the model architecture at instantiation time and not for any attributes that can be changed during inference.
@@ -177,7 +169,6 @@ Knowing how a UNet config looks like, you can quickly try to instantiate the exa
 
 ```py
 >>> model_random = UNet2DModel(**model.config)
-
 ```
 
 Cool, the above created a randomly initialized model with the same config as the previous one.
@@ -185,14 +176,13 @@ Cool, the above created a randomly initialized model with the same config as the
 If you want to save the model you just created, you can use the `save_pretrained()` method, which saves both the model weights as well as the model config in the provided folder.
 
 ```py
->>>model_random.save_pretrained("my_model")
-
+>>> odel_random.save_pretrained("my_model")
 ```
 
 Let's take a look at what files were saved in `my_model`.
 
-```python
->>> !ls my_model
+```bash
+!ls my_model
 ```
 
 ```python out
@@ -205,7 +195,6 @@ If you want to reuse the model, you can simply use the `from_pretrained()` metho
 
 ```py
 >>> model_random = UNet2DModel.from_pretrained("my_model")
-
 ```
 
 Coming back to the actually trained model, let's now see how you can use the model for inference. First, you need a random gaussian sample in the shape of an image (`batch_size` $\times$ `in_channels` $\times$ `sample_size` $\times$ `sample_size`). We have a `batch` axis because a model can receive multiple random noises, a `channel` axis because each one consists of multiple channels (such as red-green-blue), and finally `sample_size` corresponds to the height and width.
@@ -216,14 +205,13 @@ Coming back to the actually trained model, let's now see how you can use the mod
 >>> torch.manual_seed(0)
 
 >>> noisy_sample = torch.randn(
-...    1,
-...    model.config.in_channels,
-...    model.config.sample_size, 
-...    model.config.sample_size,
-...    )
+...     1,
+...     model.config.in_channels,
+...     model.config.sample_size,
+...     model.config.sample_size,
+... )
 >>> noisy_sample.shape
 torch.Size([1, 3, 256, 256])
-
 ```
 
 Time to do the inference!
@@ -234,8 +222,7 @@ As explained in the introduction, the model predicts either the slightly less no
 
 ```py
 >>> with torch.no_grad():
->>>    noisy_residual = model(sample=noisy_sample, timestep=2).sample
-
+...     noisy_residual = model(sample=noisy_sample, timestep=2).sample
 ```
 
 The predicted `noisy_residual` has the exact same shape as the input and we use it to compute a slightly less noised image. Let's confirm the output shapes match:
@@ -243,7 +230,6 @@ The predicted `noisy_residual` has the exact same shape as the input and we use 
 ```py
 >>> noisy_residual.shape
 torch.Size([1, 3, 256, 256])
-
 ```
 
 Great.
@@ -264,23 +250,25 @@ Let's use `DDPMScheduler`, the denoising algorithm proposed in the [DDPM Paper](
 >>> from diffusers import DDPMScheduler
 
 >>> scheduler = DDPMScheduler.from_config(repo_id)
-
 ```
 
 Let's also take a look at the config here.
 
 ```py
 scheduler.config
-FrozenDict([('num_train_timesteps', 1000),
-            ('beta_start', 0.0001),
-            ('beta_end', 0.02),
-            ('beta_schedule', 'linear'),
-            ('trained_betas', None),
-            ('variance_type', 'fixed_small'),
-            ('clip_sample', True),
-            ('_class_name', 'DDPMScheduler'),
-            ('_diffusers_version', '0.3.0')])
-
+FrozenDict(
+    [
+        ("num_train_timesteps", 1000),
+        ("beta_start", 0.0001),
+        ("beta_end", 0.02),
+        ("beta_schedule", "linear"),
+        ("trained_betas", None),
+        ("variance_type", "fixed_small"),
+        ("clip_sample", True),
+        ("_class_name", "DDPMScheduler"),
+        ("_diffusers_version", "0.3.0"),
+    ]
+)
 ```
 
 Different schedulers are usually defined by different parameters. To better understand what the parameters are used for exactly, the reader is advised to directly look into the respective scheduler files under `src/diffusers/schedulers/`, such as the [`src/diffusers/schedulers/scheduling_ddpm.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/schedulers/scheduling_ddpm.py) file. Here are the most important ones:
@@ -292,8 +280,7 @@ Like the *models*, *schedulers* can be saved and loaded with `save_config()` and
 
 ```py
 >>> scheduler.save_config("my_scheduler")
->>>new_scheduler = DDPMScheduler.from_config("my_scheduler")
-
+>>> ew_scheduler = DDPMScheduler.from_config("my_scheduler")
 ```
 
 All schedulers provide one or multiple `step()` methods that can be used to compute the slightly less noisy image. The `step()` method may vary from one scheduler to another, but normally expects at least the model output, the `timestep` and the current `noisy_sample`.
@@ -303,10 +290,9 @@ Note that the `step()` method is somewhat of a black box function that "just wor
 Let's give it a try using the model output from the previous section.
 
 ```py
->>> less_noisy_sample = scheduler.step(model_output=noisy_residual, timestep=2, >>> sample=noisy_sample).prev_sample
+>>> less_noisy_sample = scheduler.step(model_output=noisy_residual, timestep=2, sample=noisy_sample).prev_sample
 >>> less_noisy_sample.shape
 torch.Size([1, 3, 256, 256])
-
 ```
 
 You can see that the computed sample has the exact same shape as the model input, meaning that you are ready to pass it to the model again in a next step.
@@ -319,14 +305,13 @@ Let's now bring it all together and actually define the denoising loop. This loo
 
 
 >>> def display_sample(sample, i):
-...    image_processed = sample.cpu().permute(0, 2, 3, 1)
-...    image_processed = (image_processed + 1.0) * 127.5
-...    image_processed = image_processed.numpy().astype(np.uint8)
+...     image_processed = sample.cpu().permute(0, 2, 3, 1)
+...     image_processed = (image_processed + 1.0) * 127.5
+...     image_processed = image_processed.numpy().astype(np.uint8)
 
->>>    image_pil = PIL.Image.fromarray(image_processed[0])
->>>    display(f"Image at step {i}")
->>>    display(image_pil)
-
+...     image_pil = PIL.Image.fromarray(image_processed[0])
+...     display(f"Image at step {i}")
+...     display(image_pil)
 ```
 
 Before defining the loop, let's move the input and model to the GPU to speed up the denoising process a bit.
@@ -334,7 +319,6 @@ Before defining the loop, let's move the input and model to the GPU to speed up 
 ```py
 >>> model.to("cuda")
 >>> noisy_sample = noisy_sample.to("cuda")
-
 ```
 
 Time to finally define the denoising loop! It is rather straight-forward for DDPM. 
@@ -354,14 +338,13 @@ Depending on your GPU this might take up to a minute - enough time to reflect on
 >>> sample = noisy_sample
 
 >>> for i, t in enumerate(tqdm.tqdm(scheduler.timesteps)):
->>>     with torch.no_grad():
->>>        residual = model(sample, t).sample
+...     with torch.no_grad():
+...         residual = model(sample, t).sample
 
->>>    sample = scheduler.step(residual, t, sample).prev_sample
+...     sample = scheduler.step(residual, t, sample).prev_sample
 
->>>    if (i + 1) % 50 == 0:
->>>        display_sample(sample, i + 1)
-
+...     if (i + 1) % 50 == 0:
+...         display_sample(sample, i + 1)
 ```
 
 You can see that it takes quite some time to see a somewhat meaningful shape - only after *ca.* 800 steps. 
@@ -380,14 +363,12 @@ The DDPM and DDIM scheduler more or less share the same configuration, so you ca
 >>> from diffusers import DDIMScheduler
 
 >>> scheduler = DDIMScheduler.from_config(repo_id)
-
 ```
 
 The DDIM scheduler allows the user to define how many denoising steps should be run at inference via the `set_timesteps` method. The DDPM scheduler runs by default 1000 denoising steps. Let's significantly reduce this number to just 50 inference steps for DDIM.
 
 ```py
 >>> scheduler.set_timesteps(num_inference_steps=50)
-
 ```
 
 And you can run the same loop as before - only that you are now making use of the much faster DDIM scheduler.
@@ -398,14 +379,13 @@ And you can run the same loop as before - only that you are now making use of th
 >>> sample = noisy_sample
 
 >>> for i, t in enumerate(tqdm.tqdm(scheduler.timesteps)):
->>>    with torch.no_grad():
->>>        residual = model(sample, t).sample
+...     with torch.no_grad():
+...         residual = model(sample, t).sample
 
->>>    sample = scheduler.step(residual, t, sample).prev_sample
+...     sample = scheduler.step(residual, t, sample).prev_sample
 
->>>    if (i + 1) % 10 == 0:
->>>        display_sample(sample, i + 1)
-
+...     if (i + 1) % 10 == 0:
+...         display_sample(sample, i + 1)
 ```
 
 You can see that the image generation is indeed much faster - a mere two seconds - but also that you pay by giving away image quality in exchange for speed.
