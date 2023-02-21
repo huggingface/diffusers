@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Optional
 
 import accelerate
+import json
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
@@ -200,7 +201,7 @@ def parse_args(input_args=None):
         type=int,
         default=50,
         help=(
-            "Update saved model interval (measured in updates)."
+            "Save the current model every X updates. This is different from checkpoints in that the model is stored where the final model will be saved."
         ),
     )
     parser.add_argument(
@@ -931,14 +932,12 @@ def main(args):
 
                 if global_step % args.save_every == 0:
                     if accelerator.is_main_process:
-                        pipeline = DiffusionPipeline.from_pretrained(
-                            args.pretrained_model_name_or_path,
-                            unet=accelerator.unwrap_model(unet),
-                            text_encoder=accelerator.unwrap_model(text_encoder),
-                            revision=args.revision,
+                        save_pipeline(accelerator.unwrap_model(unet), accelerator.unwrap_model(text_encoder), args)
+                        json.dump(
+                            {"global_step": global_step},
+                            open(os.path.join(args.output_dir, "progress.json"), "w")
                         )
-                        pipeline.save_pretrained(args.output_dir)
-                        logger.info(f"Saved pipeline (saved every {args.save_every} updates).")
+                        logger.info(f"Saved pipeline (saving every {args.save_every} updates).")
 
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
@@ -951,18 +950,22 @@ def main(args):
     # Create the pipeline using using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        pipeline = DiffusionPipeline.from_pretrained(
-            args.pretrained_model_name_or_path,
-            unet=accelerator.unwrap_model(unet),
-            text_encoder=accelerator.unwrap_model(text_encoder),
-            revision=args.revision,
-        )
-        pipeline.save_pretrained(args.output_dir)
+        save_pipeline(accelerator.unwrap_model(unet), accelerator.unwrap_model(text_encoder), args)
 
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
 
     accelerator.end_training()
+
+
+def save_pipeline(unet, text_encoder, args):
+    pipeline = DiffusionPipeline.from_pretrained(
+        args.pretrained_model_name_or_path,
+        unet=unet,
+        text_encoder=text_encoder,
+        revision=args.revision,
+    )
+    pipeline.save_pretrained(args.output_dir)
 
 
 if __name__ == "__main__":
