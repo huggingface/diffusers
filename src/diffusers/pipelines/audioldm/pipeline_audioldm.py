@@ -21,7 +21,7 @@ from packaging import version
 from transformers import ClapTextModelWithProjection, RobertaTokenizer, RobertaTokenizerFast, SpeechT5HifiGan
 
 from ...configuration_utils import FrozenDict
-from ...models import AutoencoderKL, UNet2DModel
+from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import deprecate, is_accelerate_available, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
@@ -62,7 +62,7 @@ class AudioLDMPipeline(DiffusionPipeline):
         tokenizer ([`PreTrainedTokenizer`]):
             Tokenizer of class
             [RobertaTokenizer](https://huggingface.co/docs/transformers/model_doc/roberta#transformers.RobertaTokenizer).
-        unet ([`UNet2DModel`]): U-Net architecture to denoise the encoded audio latents.
+        unet ([`UNet2DConditionModel`]): U-Net architecture to denoise the encoded audio latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded audio latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
@@ -76,7 +76,7 @@ class AudioLDMPipeline(DiffusionPipeline):
         vae: AutoencoderKL,
         text_encoder: ClapTextModelWithProjection,
         tokenizer: Union[RobertaTokenizer, RobertaTokenizerFast],
-        unet: UNet2DModel,
+        unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         vocoder: SpeechT5HifiGan,
     ):
