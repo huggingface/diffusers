@@ -21,7 +21,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
 from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
-from .unet_2d_blocks import UNetMidBlock2D, get_down_block, get_up_block, UNetMidBlock2DCrossAttn
+from .unet_2d_blocks import UNetMidBlock2D, UNetMidBlock2DCrossAttn, get_down_block, get_up_block
 
 
 @dataclass
@@ -200,7 +200,6 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 resnet_groups=norm_num_groups,
                 add_attention=add_attention,
             )
-
 
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))

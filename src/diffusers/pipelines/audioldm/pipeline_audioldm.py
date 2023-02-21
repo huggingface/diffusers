@@ -17,7 +17,6 @@ from typing import Callable, List, Optional, Union
 
 import torch
 import torch.nn.functional as F
-
 from packaging import version
 from transformers import ClapTextModelWithProjection, RobertaTokenizer, RobertaTokenizerFast, SpeechT5HifiGan
 
@@ -159,8 +158,8 @@ class AudioLDMPipeline(DiffusionPipeline):
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
-        text_encoder, vae and vocoder have their state dicts saved to CPU and then are moved to a
-        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
+        text_encoder, vae and vocoder have their state dicts saved to CPU and then are moved to a `torch.device('meta')
+        and loaded to GPU only when their specific submodule has its `forward` method called.
         """
         if is_accelerate_available():
             from accelerate import cpu_offload
@@ -264,7 +263,10 @@ class AudioLDMPipeline(DiffusionPipeline):
 
         prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
 
-        bs_embed, seq_len, = prompt_embeds.shape
+        (
+            bs_embed,
+            seq_len,
+        ) = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_waveforms_per_prompt)
         prompt_embeds = prompt_embeds.view(bs_embed * num_waveforms_per_prompt, seq_len)
@@ -450,8 +452,8 @@ class AudioLDMPipeline(DiffusionPipeline):
                 The prompt or prompts to guide the audio generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The height in pixels of the generated spectrogram. Using a larger height results in a longer spectrogram
-                and thus longer audio sample.
+                The height in pixels of the generated spectrogram. Using a larger height results in a longer
+                spectrogram and thus longer audio sample.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor // 8):
                 The width in pixels of the generated spectrogram.
             num_inference_steps (`int`, *optional*, defaults to 200):

@@ -17,6 +17,13 @@
 import re
 
 import torch
+from transformers import (
+    AutoTokenizer,
+    ClapTextConfig,
+    ClapTextModelWithProjection,
+    SpeechT5HifiGan,
+    SpeechT5HifiGanConfig,
+)
 
 from diffusers import (
     AudioLDMPipeline,
@@ -29,13 +36,6 @@ from diffusers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
     UNet2DModel,
-)
-from transformers import (
-    AutoTokenizer,
-    ClapTextConfig,
-    ClapTextModelWithProjection,
-    SpeechT5HifiGan,
-    SpeechT5HifiGanConfig,
 )
 
 from ...utils import is_omegaconf_available, is_safetensors_available
@@ -251,9 +251,8 @@ def create_unet_diffusers_config(original_config, image_size: int):
 # Adapted from diffusers.pipelines.stable_diffusion.convert_from_checkpoint.create_vae_diffusers_config
 def create_vae_diffusers_config(original_config, checkpoint, image_size: int):
     """
-    Creates a VAE config for diffusers based on the config of the original AudioLDM model.
-    Compared to the original Stable Diffusion conversion, this function passes a
-    *learnt* VAE scaling factor to the diffusers VAE.
+    Creates a VAE config for diffusers based on the config of the original AudioLDM model. Compared to the original
+    Stable Diffusion conversion, this function passes a *learnt* VAE scaling factor to the diffusers VAE.
     """
     vae_params = original_config.model.params.first_stage_config.params.ddconfig
     _ = original_config.model.params.first_stage_config.params.embed_dim
@@ -292,9 +291,8 @@ def create_diffusers_schedular(original_config):
 # Adapted from diffusers.pipelines.stable_diffusion.convert_from_checkpoint.convert_ldm_unet_checkpoint
 def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False):
     """
-    Takes a state dict and a config, and returns a converted checkpoint. Compared to the
-    original Stable Diffusion conversion, this function additionally converts the learnt
-    film embedding linear layer.
+    Takes a state dict and a config, and returns a converted checkpoint. Compared to the original Stable Diffusion
+    conversion, this function additionally converts the learnt film embedding linear layer.
     """
 
     # extract state_dict for UNet
@@ -592,6 +590,7 @@ CLAP_KEYS_TO_IGNORE = ["text_transform"]
 
 CLAP_EXPECTED_MISSING_KEYS = ["text_model.embeddings.token_type_ids"]
 
+
 def convert_open_clap_checkpoint(checkpoint):
     """
     Takes a state dict and returns a converted CLAP checkpoint.
@@ -649,6 +648,7 @@ def convert_open_clap_checkpoint(checkpoint):
 
     return new_checkpoint
 
+
 def create_transformers_vocoder_config(original_config):
     """
     Creates a config for transformers SpeechT5HifiGan based on the config of the vocoder model.
@@ -656,17 +656,20 @@ def create_transformers_vocoder_config(original_config):
     vocoder_params = original_config.model.params.vocoder_config.params
 
     config = dict(
-    model_in_dim = vocoder_params.num_mels,
-    sampling_rate = vocoder_params.sampling_rate,
-    upsample_initial_channel = vocoder_params.upsample_initial_channel,
-    upsample_rates = list(vocoder_params.upsample_rates),
-    upsample_kernel_sizes = list(vocoder_params.upsample_kernel_sizes),
-    resblock_kernel_sizes = list(vocoder_params.resblock_kernel_sizes),
-    resblock_dilation_sizes = [list(resblock_dilation) for resblock_dilation in vocoder_params.resblock_dilation_sizes],
-    normalize_before=False,
+        model_in_dim=vocoder_params.num_mels,
+        sampling_rate=vocoder_params.sampling_rate,
+        upsample_initial_channel=vocoder_params.upsample_initial_channel,
+        upsample_rates=list(vocoder_params.upsample_rates),
+        upsample_kernel_sizes=list(vocoder_params.upsample_kernel_sizes),
+        resblock_kernel_sizes=list(vocoder_params.resblock_kernel_sizes),
+        resblock_dilation_sizes=[
+            list(resblock_dilation) for resblock_dilation in vocoder_params.resblock_dilation_sizes
+        ],
+        normalize_before=False,
     )
 
     return config
+
 
 def convert_hifigan_checkpoint(checkpoint, config):
     """
@@ -692,60 +695,61 @@ def convert_hifigan_checkpoint(checkpoint, config):
 
     return vocoder_state_dict
 
+
 # Adapted from https://huggingface.co/spaces/haoheliu/audioldm-text-to-audio-generation/blob/84a0384742a22bd80c44e903e241f0623e874f1d/audioldm/utils.py#L72-L73
 DEFAULT_CONFIG = {
-                "model": {
-                    "params": {
-                        "linear_start": 0.0015,
-                        "linear_end": 0.0195,
-                        "timesteps": 1000,
-                        "channels": 8,
-                        "scale_by_std": True,
-                        "unet_config": {
-                            "target": "audioldm.latent_diffusion.openaimodel.UNetModel",
-                            "params": {
-                                "extra_film_condition_dim": 512,
-                                "extra_film_use_concat": True,
-                                "in_channels": 8,
-                                "out_channels": 8,
-                                "model_channels": 128,
-                                "attention_resolutions": [8, 4, 2],
-                                "num_res_blocks": 2,
-                                "channel_mult": [1, 2, 3, 5],
-                                "num_head_channels": 32,
-                            },
-                        },
-                        "first_stage_config": {
-                            "target": "audioldm.variational_autoencoder.autoencoder.AutoencoderKL",
-                            "params": {
-                                "embed_dim": 8,
-                                "ddconfig": {
-                                    "z_channels": 8,
-                                    "resolution": 256,
-                                    "in_channels": 1,
-                                    "out_ch": 1,
-                                    "ch": 128,
-                                    "ch_mult": [1, 2, 4],
-                                    "num_res_blocks": 2,
-                                },
-                            },
-                        },
-                        "vocoder_config": {
-                            "target": "audioldm.first_stage_model.vocoder",
-                            "params": {
-                                "upsample_rates": [5, 4, 2, 2, 2],
-                                "upsample_kernel_sizes": [16, 16, 8, 4, 4],
-                                "upsample_initial_channel": 1024,
-                                "resblock_kernel_sizes": [3, 7, 11],
-                                "resblock_dilation_sizes": [[1, 3, 5], [1, 3, 5], [1, 3, 5]],
-                                "num_mels": 64,
-                                "sampling_rate": 16000,
-                            }
-
-                        }
+    "model": {
+        "params": {
+            "linear_start": 0.0015,
+            "linear_end": 0.0195,
+            "timesteps": 1000,
+            "channels": 8,
+            "scale_by_std": True,
+            "unet_config": {
+                "target": "audioldm.latent_diffusion.openaimodel.UNetModel",
+                "params": {
+                    "extra_film_condition_dim": 512,
+                    "extra_film_use_concat": True,
+                    "in_channels": 8,
+                    "out_channels": 8,
+                    "model_channels": 128,
+                    "attention_resolutions": [8, 4, 2],
+                    "num_res_blocks": 2,
+                    "channel_mult": [1, 2, 3, 5],
+                    "num_head_channels": 32,
+                },
+            },
+            "first_stage_config": {
+                "target": "audioldm.variational_autoencoder.autoencoder.AutoencoderKL",
+                "params": {
+                    "embed_dim": 8,
+                    "ddconfig": {
+                        "z_channels": 8,
+                        "resolution": 256,
+                        "in_channels": 1,
+                        "out_ch": 1,
+                        "ch": 128,
+                        "ch_mult": [1, 2, 4],
+                        "num_res_blocks": 2,
                     },
                 },
-            }
+            },
+            "vocoder_config": {
+                "target": "audioldm.first_stage_model.vocoder",
+                "params": {
+                    "upsample_rates": [5, 4, 2, 2, 2],
+                    "upsample_kernel_sizes": [16, 16, 8, 4, 4],
+                    "upsample_initial_channel": 1024,
+                    "resblock_kernel_sizes": [3, 7, 11],
+                    "resblock_dilation_sizes": [[1, 3, 5], [1, 3, 5], [1, 3, 5]],
+                    "num_mels": 64,
+                    "sampling_rate": 16000,
+                },
+            },
+        },
+    },
+}
+
 
 def load_pipeline_from_original_audioldm_ckpt(
     checkpoint_path: str,
@@ -765,22 +769,21 @@ def load_pipeline_from_original_audioldm_ckpt(
     global step count, which will likely fail for models that have undergone further fine-tuning. Therefore, it is
     recommended that you override the default values and/or supply an `original_config_file` wherever possible.
 
-    :param checkpoint_path: Path to `.ckpt` file.
-    :param original_config_file: Path to `.yaml` config file corresponding to the original architecture.
+    :param checkpoint_path: Path to `.ckpt` file. :param original_config_file: Path to `.yaml` config file
+    corresponding to the original architecture.
             If `None`, will be automatically instantiated based on default values.
-    :param image_size: The image size that the model was trained on. Use 512 for original AudioLDM checkpoints.
-    :param prediction_type: The prediction type that the model was trained on. Use `'epsilon'` for original
+    :param image_size: The image size that the model was trained on. Use 512 for original AudioLDM checkpoints. :param
+    prediction_type: The prediction type that the model was trained on. Use `'epsilon'` for original
             AudioLDM checkpoints.
     :param num_in_channels: The number of input channels. If `None` number of input channels will be automatically
             inferred.
     :param scheduler_type: Type of scheduler to use. Should be one of `["pndm", "lms", "heun", "euler",
             "euler-ancestral", "dpm", "ddim"]`.
     :param extract_ema: Only relevant for checkpoints that have both EMA and non-EMA weights. Whether to extract
-            the EMA weights or not. Defaults to `False`. Pass `True` to extract the EMA weights. EMA weights
-            usually yield higher quality images for inference. Non-EMA weights are usually better to continue
-            fine-tuning.
-    :param device: The device to use. Pass `None` to determine automatically.
-    :param from_safetensors: If `checkpoint_path` is in `safetensors` format, load checkpoint with safetensors
+            the EMA weights or not. Defaults to `False`. Pass `True` to extract the EMA weights. EMA weights usually
+            yield higher quality images for inference. Non-EMA weights are usually better to continue fine-tuning.
+    :param device: The device to use. Pass `None` to determine automatically. :param from_safetensors: If
+    `checkpoint_path` is in `safetensors` format, load checkpoint with safetensors
             instead of PyTorch.
     :return: An AudioLDMPipeline object representing the passed-in `.ckpt`/`.safetensors` file.
     """

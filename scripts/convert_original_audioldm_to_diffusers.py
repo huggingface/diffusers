@@ -58,17 +58,13 @@ if __name__ == "__main__":
         "--image_size",
         default=None,
         type=int,
-        help=(
-            "The image size that the model was trained on."
-        ),
+        help=("The image size that the model was trained on."),
     )
     parser.add_argument(
         "--prediction_type",
         default=None,
         type=str,
-        help=(
-            "The prediction type that the model was trained on."
-        ),
+        help=("The prediction type that the model was trained on."),
     )
     parser.add_argument(
         "--extract_ema",

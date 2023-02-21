@@ -40,6 +40,7 @@ audio = pipe(prompt, num_inference_steps=10, height=512).audios[0]
 
 # save the audio sample as a .wav file
 import scipy
+
 scipy.io.wavfile.write("techno.wav", rate=16000, data=audio)
 ```
 
@@ -68,7 +69,9 @@ method, or pass the `scheduler` argument to the `from_pretrained` method of the 
 >>> pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
 
 >>> # or
->>> dpm_scheduler = DPMSolverMultistepScheduler.from_pretrained("sanchit-gandhi/audioldm-text-to-audio", subfolder="scheduler")
+>>> dpm_scheduler = DPMSolverMultistepScheduler.from_pretrained(
+...     "sanchit-gandhi/audioldm-text-to-audio", subfolder="scheduler"
+... )
 >>> pipeline = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio", scheduler=dpm_scheduler)
 ```
 
