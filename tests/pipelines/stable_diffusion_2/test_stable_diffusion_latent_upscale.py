@@ -89,7 +89,7 @@ class StableDiffusionLatentUpscalePipelineFastTests(PipelineTesterMixin, unittes
             up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"],
             latent_channels=4,
         )
-        scheduler = EulerDiscreteScheduler(prediction_type="original_sample")
+        scheduler = EulerDiscreteScheduler(prediction_type="sample")
         text_config = CLIPTextConfig(
             bos_token_id=0,
             eos_token_id=2,
