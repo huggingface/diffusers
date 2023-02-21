@@ -186,6 +186,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         conv_out_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_out` layer.
         projection_class_embeddings_input_dim (`int`, *optional*): The dimension of the `class_labels` input when
             using the "projection" `class_embed_type`. Required when using the "projection" `class_embed_type`.
+        ff_multiplier (`int`, *optional*, default to `4`): The multiplier to use for the feedforward layer.
     """
 
     _supports_gradient_checkpointing = True
@@ -234,6 +235,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         conv_in_kernel: int = 3,
         conv_out_kernel: int = 3,
         projection_class_embeddings_input_dim: Optional[int] = None,
+        ff_multiplier: int = 4,
     ):
         super().__init__()
 
@@ -372,6 +374,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 dual_cross_attention=dual_cross_attention,
                 use_linear_projection=use_linear_projection,
                 upcast_attention=upcast_attention,
+                ff_multiplier=ff_multiplier,
             )
         elif mid_block_type == "UNetMidBlockFlatSimpleCrossAttn":
             self.mid_block = UNetMidBlockFlatSimpleCrossAttn(
@@ -384,6 +387,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 attn_num_head_channels=attention_head_dim[-1],
                 resnet_groups=norm_num_groups,
                 resnet_time_scale_shift=resnet_time_scale_shift,
+                ff_multiplier=ff_multiplier,
             )
         elif mid_block_type is None:
             self.mid_block = None
@@ -943,6 +947,7 @@ class CrossAttnDownBlockFlat(nn.Module):
         use_linear_projection=False,
         only_cross_attention=False,
         upcast_attention=False,
+        ff_multiplier=4,
     ):
         super().__init__()
         resnets = []
@@ -979,6 +984,7 @@ class CrossAttnDownBlockFlat(nn.Module):
                         use_linear_projection=use_linear_projection,
                         only_cross_attention=only_cross_attention,
                         upcast_attention=upcast_attention,
+                        ff_multiplier=ff_multiplier,
                     )
                 )
             else:
@@ -990,6 +996,7 @@ class CrossAttnDownBlockFlat(nn.Module):
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
+                        ff_multiplier=ff_multiplier,
                     )
                 )
         self.attentions = nn.ModuleList(attentions)
@@ -1150,6 +1157,7 @@ class CrossAttnUpBlockFlat(nn.Module):
         use_linear_projection=False,
         only_cross_attention=False,
         upcast_attention=False,
+        ff_multiplier=4,
     ):
         super().__init__()
         resnets = []
@@ -1188,6 +1196,7 @@ class CrossAttnUpBlockFlat(nn.Module):
                         use_linear_projection=use_linear_projection,
                         only_cross_attention=only_cross_attention,
                         upcast_attention=upcast_attention,
+                        ff_multiplier=ff_multiplier,
                     )
                 )
             else:
@@ -1199,6 +1208,7 @@ class CrossAttnUpBlockFlat(nn.Module):
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
+                        ff_multiplier=ff_multiplier,
                     )
                 )
         self.attentions = nn.ModuleList(attentions)
@@ -1280,6 +1290,7 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         dual_cross_attention=False,
         use_linear_projection=False,
         upcast_attention=False,
+        ff_multiplier: int = 4,
     ):
         super().__init__()
 
@@ -1316,6 +1327,7 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
                         upcast_attention=upcast_attention,
+                        ff_multiplier=ff_multiplier,
                     )
                 )
             else:
@@ -1327,6 +1339,7 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
+                        ff_multiplier=ff_multiplier,
                     )
                 )
             resnets.append(
