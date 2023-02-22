@@ -40,7 +40,11 @@ def zero_conv(channels):
 class ControlNetInputHintBlock(nn.Module):
     def __init__(self, hint_channels: int = 3, channels: int = 320):
         super().__init__()
-        #  Layer configurations are from reference implementation.
+        # Layer configurations are from reference implementation.
+        #
+        # Note: The sequence of convolution operations reduces the width and height by 1/8.
+        # This assumes that the vae_scale_factor for SD is 8.
+        # TODO: support vae_scale_factor != 8 situation
         self.input_hint_block = nn.Sequential(
             nn.Conv2d(hint_channels, 16, 3, padding=1),
             nn.SiLU(),
