@@ -16,4 +16,4 @@ pipe = StableDiffusionPipeline.from_pretrained(
 ).to("cuda")
 
 with torch.inference_mode(), torch.autocast("cuda"):
-   image = pipe("a small cat")
+   image = pipe("a big dog standing on the eiffel tower")
