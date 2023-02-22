@@ -199,6 +199,68 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         expected_shape = inputs_dict["sample"].shape
         self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
+    def test_model_with_cross_attention_dim_tuple(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        init_dict["cross_attention_dim"] = (32, 32)
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)
+
+            if isinstance(output, dict):
+                output = output.sample
+
+        self.assertIsNotNone(output)
+        expected_shape = inputs_dict["sample"].shape
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+
+    def test_model_with_extra_film_condition_dim(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        batch_size, _, _, sample_size = inputs_dict["sample"].shape
+        init_dict["extra_film_condition_dim"] = sample_size
+        inputs_dict["class_labels"] = floats_tensor((batch_size, sample_size)).to(torch_device)
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)
+
+            if isinstance(output, dict):
+                output = output.sample
+
+        self.assertIsNotNone(output)
+        expected_shape = inputs_dict["sample"].shape
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+
+    def test_model_with_extra_film_use_concat(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        batch_size, _, _, sample_size = inputs_dict["sample"].shape
+        init_dict["extra_film_condition_dim"] = sample_size
+        init_dict["extra_film_use_concat"] = True
+        inputs_dict["class_labels"] = floats_tensor((batch_size, sample_size)).to(torch_device)
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)
+
+            if isinstance(output, dict):
+                output = output.sample
+
+        self.assertIsNotNone(output)
+        expected_shape = inputs_dict["sample"].shape
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+
     def test_model_attention_slicing(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 

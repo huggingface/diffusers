@@ -236,6 +236,10 @@ def create_unet_diffusers_config(original_config, image_size: int):
 
     vae_scale_factor = 2 ** (len(vae_params.ch_mult) - 1)
 
+    cross_attention_dim = (
+        unet_params.cross_attention_dim if "cross_attention_dim" in unet_params else block_out_channels
+    )
+
     extra_film_condition_dim = (
         unet_params.extra_film_condition_dim if "extra_film_condition_dim" in unet_params else None
     )
@@ -249,7 +253,7 @@ def create_unet_diffusers_config(original_config, image_size: int):
         up_block_types=tuple(up_block_types),
         block_out_channels=tuple(block_out_channels),
         layers_per_block=unet_params.num_res_blocks,
-        cross_attention_dim=True,  # TODO(SG): hacky - what are we doing re cross attention?
+        cross_attention_dim=cross_attention_dim,
         extra_film_condition_dim=extra_film_condition_dim,
         extra_film_use_concat=extra_film_use_concat,
     )
