@@ -18,7 +18,7 @@ import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
+from ..utils import BaseOutput, apply_forward_hook
 from .modeling_utils import ModelMixin
 from .vae import Decoder, DecoderOutput, DiagonalGaussianDistribution, Encoder
 
@@ -109,6 +109,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         self.post_quant_conv = nn.Conv2d(latent_channels, latent_channels, 1)
         self.use_slicing = False
 
+    @apply_forward_hook
     def encode(self, x: torch.FloatTensor, return_dict: bool = True) -> AutoencoderKLOutput:
         h = self.encoder(x)
         moments = self.quant_conv(h)
@@ -144,6 +145,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         """
         self.use_slicing = False
 
+    @apply_forward_hook
     def decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
         if self.use_slicing and z.shape[0] > 1:
             decoded_slices = [self._decode(z_slice).sample for z_slice in z.split(1)]
