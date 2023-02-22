@@ -29,14 +29,13 @@ from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-# TODO(SG): move checkpoint to correct org and update
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
         >>> from diffusers import AudioLDMPipeline
 
-        >>> pipe = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio", torch_dtype=torch.float16)
+        >>> pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm", torch_dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
 
         >>> prompt = "A hammer hitting a wooden surface"
@@ -117,7 +116,7 @@ class AudioLDMPipeline(DiffusionPipeline):
             deprecation_message = (
                 "The configuration file of the unet has set the default `sample_size` to smaller than"
                 " 64 which seems highly unlikely. If your checkpoint is a fine-tuned version of any of the"
-                " following: \n- sanchit-gandhi/audioldm-text-to-audio \n you should change 'sample_size' to 64 in the"
+                " following: \n- cvssp/audioldm \n you should change 'sample_size' to 64 in the"
                 " configuration file. Please make sure to update the config accordingly as leaving `sample_size=32`"
                 " in the config might lead to incorrect results in future versions. If you have downloaded this"
                 " checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for"

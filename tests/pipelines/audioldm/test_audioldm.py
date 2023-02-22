@@ -605,7 +605,7 @@ class AudioLDMPipelineSlowTests(unittest.TestCase):
         return inputs
 
     def test_audioldm_ddim(self):
-        audioldm_pipe = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio")
+        audioldm_pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm")
         audioldm_pipe.scheduler = DDIMScheduler.from_config(audioldm_pipe.scheduler.config)
         audioldm_pipe = audioldm_pipe.to(torch_device)
         audioldm_pipe.set_progress_bar_config(disable=None)
@@ -622,7 +622,7 @@ class AudioLDMPipelineSlowTests(unittest.TestCase):
         assert max_diff < 1e-3
 
     def test_audioldm_lms(self):
-        audioldm_pipe = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio")
+        audioldm_pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm")
         audioldm_pipe.scheduler = LMSDiscreteScheduler.from_config(audioldm_pipe.scheduler.config)
         audioldm_pipe = audioldm_pipe.to(torch_device)
         audioldm_pipe.set_progress_bar_config(disable=None)
@@ -639,7 +639,7 @@ class AudioLDMPipelineSlowTests(unittest.TestCase):
         assert max_diff < 1e-3
 
     def test_audioldm_dpm(self):
-        audioldm_pipe = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio")
+        audioldm_pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm")
         audioldm_pipe.scheduler = DPMSolverMultistepScheduler.from_config(audioldm_pipe.scheduler.config)
         audioldm_pipe = audioldm_pipe.to(torch_device)
         audioldm_pipe.set_progress_bar_config(disable=None)
@@ -658,7 +658,7 @@ class AudioLDMPipelineSlowTests(unittest.TestCase):
     def test_audioldm_attention_slicing(self):
         # TODO(SG): fix or remove. This test yields the same memory for with / without attn slicing
         torch.cuda.reset_peak_memory_stats()
-        pipe = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio", torch_dtype=torch.float16)
+        pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm", torch_dtype=torch.float16)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -684,7 +684,7 @@ class AudioLDMPipelineSlowTests(unittest.TestCase):
 
     def test_audioldm_vae_slicing(self):
         torch.cuda.reset_peak_memory_stats()
-        pipe = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio", torch_dtype=torch.float16)
+        pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm", torch_dtype=torch.float16)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -717,7 +717,7 @@ class AudioLDMPipelineSlowTests(unittest.TestCase):
     def test_audioldm_fp16_vs_autocast(self):
         # this test makes sure that the original model with autocast
         # and the new model with fp16 yield the same result
-        pipe = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio", torch_dtype=torch.float16)
+        pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm", torch_dtype=torch.float16)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -758,7 +758,7 @@ class AudioLDMPipelineSlowTests(unittest.TestCase):
 
         callback_fn.has_been_called = False
 
-        pipe = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio", torch_dtype=torch.float16)
+        pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm", torch_dtype=torch.float16)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -769,7 +769,7 @@ class AudioLDMPipelineSlowTests(unittest.TestCase):
         assert number_of_steps == inputs["num_inference_steps"]
 
     def test_audioldm_low_cpu_mem_usage(self):
-        pipeline_id = "sanchit-gandhi/audioldm-text-to-audio"
+        pipeline_id = "cvssp/audioldm"
 
         start_time = time.time()
         pipeline_low_cpu_mem_usage = AudioLDMPipeline.from_pretrained(pipeline_id, torch_dtype=torch.float16)
@@ -787,7 +787,7 @@ class AudioLDMPipelineSlowTests(unittest.TestCase):
         torch.cuda.reset_max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()
 
-        pipe = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio", torch_dtype=torch.float16)
+        pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm", torch_dtype=torch.float16)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
@@ -823,7 +823,7 @@ class AudioLDMPipelineNightlyTests(unittest.TestCase):
         return inputs
 
     def test_audioldm_ddim(self):
-        audioldm_pipe = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio").to(torch_device)
+        audioldm_pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm").to(torch_device)
         audioldm_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
@@ -834,7 +834,7 @@ class AudioLDMPipelineNightlyTests(unittest.TestCase):
         assert max_diff < 1e-3
 
     def test_audioldm_lms(self):
-        audioldm_pipe = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio").to(torch_device)
+        audioldm_pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm").to(torch_device)
         audioldm_pipe.scheduler = LMSDiscreteScheduler.from_config(audioldm_pipe.scheduler.config)
         audioldm_pipe.set_progress_bar_config(disable=None)
 
@@ -846,7 +846,7 @@ class AudioLDMPipelineNightlyTests(unittest.TestCase):
         assert max_diff < 1e-3
 
     def test_audioldm_euler(self):
-        audioldm_pipe = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio").to(torch_device)
+        audioldm_pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm").to(torch_device)
         audioldm_pipe.scheduler = EulerDiscreteScheduler.from_config(audioldm_pipe.scheduler.config)
         audioldm_pipe.set_progress_bar_config(disable=None)
 
@@ -858,7 +858,7 @@ class AudioLDMPipelineNightlyTests(unittest.TestCase):
         assert max_diff < 1e-3
 
     def test_audioldm_dpm(self):
-        audioldm_pipe = AudioLDMPipeline.from_pretrained("sanchit-gandhi/audioldm-text-to-audio").to(torch_device)
+        audioldm_pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm").to(torch_device)
         audioldm_pipe.scheduler = DPMSolverMultistepScheduler.from_config(audioldm_pipe.scheduler.config)
         audioldm_pipe.set_progress_bar_config(disable=None)
 
