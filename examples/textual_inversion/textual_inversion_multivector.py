@@ -12,7 +12,6 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
-
 import argparse
 import logging
 import math
@@ -20,7 +19,7 @@ import os
 import random
 import shutil
 from pathlib import Path
-from typing import Optional, Union, List
+from typing import List, Optional, Union
 
 import numpy as np
 import PIL
@@ -606,7 +605,7 @@ def main():
     mask_no_update = torch.ones(len(tokenizer), dtype=torch.bool)
 
     # Initialize new token vectors
-    logger.info(f"Initializing extra token embeddings from initializer token with additional noise.")
+    logger.info("Initializing extra token embeddings from initializer token with additional noise.")
     for j, extratoken in enumerate(extratokens):
         logger.info(f"Using init word: {args.initializer_token}")
         randfactor = 0.25
@@ -825,7 +824,7 @@ def main():
                 progress_bar.update(1)
                 global_step += 1
                 if global_step % args.save_steps == 0:
-                    save_path = os.path.join(args.output_dir, f"learned_embeddings.bin")
+                    save_path = os.path.join(args.output_dir, "learned_embeddings.bin")
                     save_embeddings(
                         accelerator.unwrap_model(text_encoder), extratokenids, args, save_path, global_step
                     )
