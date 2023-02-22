@@ -63,7 +63,7 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             out_channels=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
-            cross_attention_dim=32,
+            cross_attention_dim=(32, 64),
             extra_film_condition_dim=32,
             extra_film_use_concat=True,
         )
