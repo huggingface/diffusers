@@ -87,17 +87,19 @@ def save_embeddings(text_encoder, extratokenids, args, save_path, global_step, c
     learned_embeds_dict = {
         "pretrained_model_name_or_path": args.pretrained_model_name_or_path,
         "global_step": global_step,
-        "tokens": {args.placeholder_token: learned_embeds.detach().cpu()}
+        "tokens": {args.placeholder_token: learned_embeds.detach().cpu()},
     }
     torch.save(learned_embeds_dict, save_path)
     if check_reloaded:
         reloaded = load_textual_inversion(save_path)
-        assert torch.allclose(reloaded[0].text_encoder.get_input_embeddings().weight,
-                       text_encoder.get_input_embeddings().weight.cpu().half())
+        assert torch.allclose(
+            reloaded[0].text_encoder.get_input_embeddings().weight,
+            text_encoder.get_input_embeddings().weight.cpu().half(),
+        )
         return reloaded
 
 
-def load_textual_inversion(paths:Union[str, List[str]], dtype=torch.float16, use_dpm=False, basepipe=None):
+def load_textual_inversion(paths: Union[str, List[str]], dtype=torch.float16, use_dpm=False, basepipe=None):
     pipe = basepipe
     if isinstance(paths, str):
         paths = [paths]
@@ -118,7 +120,9 @@ def load_textual_inversion(paths:Union[str, List[str]], dtype=torch.float16, use
             repldict[token] = " ".join(extratokens)
             tokenizervocab = pipe.tokenizer.get_vocab()
 
-            logger.info(f"Extending token embedder with {num_token_vectors} extra token vectors and loading saved vectors.")
+            logger.info(
+                f"Extending token embedder with {num_token_vectors} extra token vectors and loading saved vectors."
+            )
             pipe.text_encoder.resize_token_embeddings(len(pipe.tokenizer))
             token_embeds = pipe.text_encoder.get_input_embeddings()
             for i, extratoken in enumerate(extratokens):
@@ -136,16 +140,10 @@ def load_textual_inversion(paths:Union[str, List[str]], dtype=torch.float16, use
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
-        "--save_steps",
-        type=int,
-        default=500,
-        help="Save learned_embeds.bin every X updates steps.",
+        "--save_steps", type=int, default=500, help="Save learned_embeds.bin every X updates steps.",
     )
     parser.add_argument(
-        "--only_save_embeds",
-        action="store_true",
-        default=False,
-        help="Save only the embeddings for the new concept.",
+        "--only_save_embeds", action="store_true", default=False, help="Save only the embeddings for the new concept.",
     )
     parser.add_argument(
         "--pretrained_model_name_or_path",
@@ -180,9 +178,7 @@ def parse_args():
     parser.add_argument(
         "--initializer_token", type=str, default=None, required=True, help="A token to use as initializer word."
     )
-    parser.add_argument(
-        "--num_token_vectors", type=int, default=1, help="How many vectors to learn per token."
-    )
+    parser.add_argument("--num_token_vectors", type=int, default=1, help="How many vectors to learn per token.")
     parser.add_argument("--learnable_property", type=str, default="object", help="Choose between 'object' and 'style'")
     parser.add_argument("--repeats", type=int, default=100, help="How many times to repeat the training data.")
     parser.add_argument(
@@ -490,10 +486,7 @@ class TextualInversionDataset(Dataset):
 
         if self.center_crop:
             crop = min(img.shape[0], img.shape[1])
-            (
-                h,
-                w,
-            ) = (
+            (h, w,) = (
                 img.shape[0],
                 img.shape[1],
             )
@@ -541,9 +534,7 @@ def main():
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
-        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-        datefmt="%m/%d/%Y %H:%M:%S",
-        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s", datefmt="%m/%d/%Y %H:%M:%S", level=logging.INFO,
     )
     logger.info(accelerator.state, main_process_only=False)
     if accelerator.is_local_main_process:
@@ -618,9 +609,11 @@ def main():
     logger.info(f"Initializing extra token embeddings from initializer token with additional noise.")
     for j, extratoken in enumerate(extratokens):
         logger.info(f"Using init word: {args.initializer_token}")
-        randfactor = .25
-        _initword_vector = initializer_token_vector * (1 - randfactor) + torch.randn_like(
-            initializer_token_vector) * initializer_token_vector.std() * randfactor
+        randfactor = 0.25
+        _initword_vector = (
+            initializer_token_vector * (1 - randfactor)
+            + torch.randn_like(initializer_token_vector) * initializer_token_vector.std() * randfactor
+        )
         token_embeds.weight.data[extratokenids, :] = _initword_vector
         mask_no_update[extratokenids] = False
     # End of token initialization
@@ -833,7 +826,9 @@ def main():
                 global_step += 1
                 if global_step % args.save_steps == 0:
                     save_path = os.path.join(args.output_dir, f"learned_embeddings.bin")
-                    save_embeddings(accelerator.unwrap_model(text_encoder), extratokenids, args, save_path, global_step)
+                    save_embeddings(
+                        accelerator.unwrap_model(text_encoder), extratokenids, args, save_path, global_step
+                    )
                     copy_path = os.path.join(args.output_dir, f"learned_embeddings_at_step_{global_step}.bin")
                     shutil.copyfile(save_path, copy_path)
 
