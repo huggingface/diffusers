@@ -11,8 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+
+''' Modifying the attention script to ensure memory efficient attention
+Author: Mitterrand Ekole
+
+'''
 import math
-from typing import Callable, Optional
+from typing import Callable, Optional, Any
 
 import torch
 import torch.nn.functional as F
@@ -22,12 +28,9 @@ from ..utils.import_utils import is_xformers_available
 from .cross_attention import CrossAttention
 from .embeddings import CombinedTimestepLabelEmbeddings
 
-
-if is_xformers_available():
-    import xformers
-    import xformers.ops
-else:
-    xformers = None
+import xformers
+import xformers.ops
+import os
 
 
 class AttentionBlock(nn.Module):
@@ -173,158 +176,103 @@ class AttentionBlock(nn.Module):
         hidden_states = (hidden_states + residual) / self.rescale_output_factor
         return hidden_states
 
+''' Create the class memory efficient attention-- Mitterrand Ekole'''
+class MemoryEfficientCrossAttention(nn.Module):
+     def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0.0):
+         super().__init__()
+         inner_dim = dim_head * heads
+         context_dim = default(context_dim, query_dim)
 
+         self.heads = heads
+         self.dim_head = dim_head
+
+         self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
+         self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
+         self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
+
+         self.to_out = nn.Sequential(nn.Linear(inner_dim, query_dim), nn.Dropout(dropout))
+         self.attention_op: Optional[Any] = None
+
+     def forward(self, x, context=None, mask=None):
+         q = self.to_q(x)
+         context = default(context, x)
+         k = self.to_k(context)
+         v = self.to_v(context)
+
+         b, _, _ = q.shape
+         q, k, v = map(
+             lambda t: t.unsqueeze(3)
+             .reshape(b, t.shape[1], self.heads, self.dim_head)
+             .permute(0, 2, 1, 3)
+             .reshape(b * self.heads, t.shape[1], self.dim_head)
+             .contiguous(),
+             (q, k, v),
+         )
+
+         # actually compute the attention, what we cannot get enough of
+         out = xformers.ops.memory_efficient_attention(q, k, v, attn_bias=None, op=self.attention_op)
+
+         # TODO: Use this directly in the attention operation, as a bias
+         if exists(mask):
+             raise NotImplementedError
+         out = (
+             out.unsqueeze(0)
+             .reshape(b, self.heads, out.shape[1], self.dim_head)
+             .permute(0, 2, 1, 3)
+             .reshape(b, out.shape[1], self.heads * self.dim_head)
+         )
+         return self.to_out(out)
+
+
+''' Update memory basic transformer block to leverage xformer memory efficient attention-- Mitterrand Ekole'''
+
+_USE_MEMORY_EFFICIENT_ATTENTION = int(os.environ.get("USE_MEMORY_EFFICIENT_ATTENTION", 0)) == 1
 class BasicTransformerBlock(nn.Module):
     r"""
     A basic Transformer block.
-
     Parameters:
-        dim (`int`): The number of channels in the input and output.
-        num_attention_heads (`int`): The number of heads to use for multi-head attention.
-        attention_head_dim (`int`): The number of channels in each head.
-        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        cross_attention_dim (`int`, *optional*): The size of the encoder_hidden_states vector for cross attention.
-        activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
-        num_embeds_ada_norm (:
-            obj: `int`, *optional*): The number of diffusion steps used during training. See `Transformer2DModel`.
-        attention_bias (:
-            obj: `bool`, *optional*, defaults to `False`): Configure if the attentions should contain a bias parameter.
+        dim (:obj:`int`): The number of channels in the input and output.
+        n_heads (:obj:`int`): The number of heads to use for multi-head attention.
+        d_head (:obj:`int`): The number of channels in each head.
+        dropout (:obj:`float`, *optional*, defaults to 0.0): The dropout probability to use.
+        context_dim (:obj:`int`, *optional*): The size of the context vector for cross attention.
+        gated_ff (:obj:`bool`, *optional*, defaults to :obj:`False`): Whether to use a gated feed-forward network.
+        checkpoint (:obj:`bool`, *optional*, defaults to :obj:`False`): Whether to use checkpointing.
     """
 
     def __init__(
         self,
         dim: int,
-        num_attention_heads: int,
-        attention_head_dim: int,
+        n_heads: int,
+        d_head: int,
         dropout=0.0,
-        cross_attention_dim: Optional[int] = None,
-        activation_fn: str = "geglu",
-        num_embeds_ada_norm: Optional[int] = None,
-        attention_bias: bool = False,
-        only_cross_attention: bool = False,
-        upcast_attention: bool = False,
-        norm_elementwise_affine: bool = True,
-        norm_type: str = "layer_norm",
-        final_dropout: bool = False,
+        context_dim: Optional[int] = None,
+        gated_ff: bool = True,
+        checkpoint: bool = True,
     ):
         super().__init__()
-        self.only_cross_attention = only_cross_attention
+        AttentionBuilder = MemoryEfficientCrossAttention if _USE_MEMORY_EFFICIENT_ATTENTION else CrossAttention
+        self.attn1 = AttentionBuilder(
+            query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout
+        )  # is a self-attention
+        self.ff = FeedForward(dim, dropout=dropout, glu=gated_ff)
+        self.attn2 = AttentionBuilder(
+            query_dim=dim, context_dim=context_dim, heads=n_heads, dim_head=d_head, dropout=dropout
+        )  # is self-attn if context is none
+        self.norm1 = nn.LayerNorm(dim)
+        self.norm2 = nn.LayerNorm(dim)
+        self.norm3 = nn.LayerNorm(dim)
+        self.checkpoint = checkpoint
 
-        self.use_ada_layer_norm_zero = (num_embeds_ada_norm is not None) and norm_type == "ada_norm_zero"
-        self.use_ada_layer_norm = (num_embeds_ada_norm is not None) and norm_type == "ada_norm"
+    def _set_attention_slice(self, slice_size):
+        self.attn1._slice_size = slice_size
+        self.attn2._slice_size = slice_size
 
-        if norm_type in ("ada_norm", "ada_norm_zero") and num_embeds_ada_norm is None:
-            raise ValueError(
-                f"`norm_type` is set to {norm_type}, but `num_embeds_ada_norm` is not defined. Please make sure to"
-                f" define `num_embeds_ada_norm` if setting `norm_type` to {norm_type}."
-            )
-
-        # 1. Self-Attn
-        self.attn1 = CrossAttention(
-            query_dim=dim,
-            heads=num_attention_heads,
-            dim_head=attention_head_dim,
-            dropout=dropout,
-            bias=attention_bias,
-            cross_attention_dim=cross_attention_dim if only_cross_attention else None,
-            upcast_attention=upcast_attention,
-        )
-
-        self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn, final_dropout=final_dropout)
-
-        # 2. Cross-Attn
-        if cross_attention_dim is not None:
-            self.attn2 = CrossAttention(
-                query_dim=dim,
-                cross_attention_dim=cross_attention_dim,
-                heads=num_attention_heads,
-                dim_head=attention_head_dim,
-                dropout=dropout,
-                bias=attention_bias,
-                upcast_attention=upcast_attention,
-            )  # is self-attn if encoder_hidden_states is none
-        else:
-            self.attn2 = None
-
-        if self.use_ada_layer_norm:
-            self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm)
-        elif self.use_ada_layer_norm_zero:
-            self.norm1 = AdaLayerNormZero(dim, num_embeds_ada_norm)
-        else:
-            self.norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
-
-        if cross_attention_dim is not None:
-            # We currently only use AdaLayerNormZero for self attention where there will only be one attention block.
-            # I.e. the number of returned modulation chunks from AdaLayerZero would not make sense if returned during
-            # the second cross attention block.
-            self.norm2 = (
-                AdaLayerNorm(dim, num_embeds_ada_norm)
-                if self.use_ada_layer_norm
-                else nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
-            )
-        else:
-            self.norm2 = None
-
-        # 3. Feed-forward
-        self.norm3 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
-
-    def forward(
-        self,
-        hidden_states,
-        encoder_hidden_states=None,
-        timestep=None,
-        attention_mask=None,
-        cross_attention_kwargs=None,
-        class_labels=None,
-    ):
-        if self.use_ada_layer_norm:
-            norm_hidden_states = self.norm1(hidden_states, timestep)
-        elif self.use_ada_layer_norm_zero:
-            norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(
-                hidden_states, timestep, class_labels, hidden_dtype=hidden_states.dtype
-            )
-        else:
-            norm_hidden_states = self.norm1(hidden_states)
-
-        # 1. Self-Attention
-        cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
-        attn_output = self.attn1(
-            norm_hidden_states,
-            encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
-            attention_mask=attention_mask,
-            **cross_attention_kwargs,
-        )
-        if self.use_ada_layer_norm_zero:
-            attn_output = gate_msa.unsqueeze(1) * attn_output
-        hidden_states = attn_output + hidden_states
-
-        if self.attn2 is not None:
-            norm_hidden_states = (
-                self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
-            )
-
-            # 2. Cross-Attention
-            attn_output = self.attn2(
-                norm_hidden_states,
-                encoder_hidden_states=encoder_hidden_states,
-                attention_mask=attention_mask,
-                **cross_attention_kwargs,
-            )
-            hidden_states = attn_output + hidden_states
-
-        # 3. Feed-forward
-        norm_hidden_states = self.norm3(hidden_states)
-
-        if self.use_ada_layer_norm_zero:
-            norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
-
-        ff_output = self.ff(norm_hidden_states)
-
-        if self.use_ada_layer_norm_zero:
-            ff_output = gate_mlp.unsqueeze(1) * ff_output
-
-        hidden_states = ff_output + hidden_states
-
+    def forward(self, hidden_states, context=None):
+        hidden_states = hidden_states.contiguous() if hidden_states.device.type == "mps" else hidden_states
+        hidden_states = self.attn1(self.norm1(hidden_states)) + hidden_states
+        hidden_states = self.attn2(self.norm2(hidden_states), context=context) + hidden_states
+        hidden_states = self.ff(self.norm3(hidden_states)) + hidden_states
         return hidden_states
 
 
