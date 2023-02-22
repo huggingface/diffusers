@@ -638,6 +638,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline):
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.check_inputs
     def check_inputs(
         self, prompt, callback_steps, negative_prompt=None, prompt_embeds=None, negative_prompt_embeds=None
     ):
