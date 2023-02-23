@@ -531,7 +531,7 @@ class StableDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.T
         do_classifier_free_guidance = True
         negative_prompt = None
         num_images_per_prompt = 1
-        logger = logging.get_logger("diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion")
+        logger = logging.get_logger("diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_controlnet")
 
         prompt = 25 * "@"
         with CaptureLogger(logger) as cap_logger_3:
@@ -556,9 +556,7 @@ class StableDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.T
 
         assert cap_logger.out == cap_logger_2.out
         # 100 - 77 + 1 (BOS token) + 1 (EOS token) = 25
-        assert (
-            cap_logger.out.count("@") == 25
-        )  # TODO: Investigate. this test should pass, but cap_logger.out.count("@") == 0
+        assert cap_logger.out.count("@") == 25
         assert cap_logger_3.out == ""
 
     def test_stable_diffusion_height_width_opt(self):
