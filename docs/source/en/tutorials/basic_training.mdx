@@ -20,7 +20,7 @@ This tutorial will show you how to finetune a [`UNet2DModel`] on a subset of the
 
 <Tip>
 
-This training tutorial is based on the [Training with 🧨 Diffusers](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb) notebook. For additional details and context about diffusion models such as how they work, check out the notebook!
+💡 This training tutorial is based on the [Training with 🧨 Diffusers](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb) notebook. For additional details and context about diffusion models like how they work, check out the notebook!
 
 </Tip>
 
@@ -47,7 +47,7 @@ Since the model checkpoints are quite large, install [Git-LFS](https://git-lfs.c
 
 ## Training configuration
 
-For convenience, create a `TrainingConfig` class containing all the training hyperparameters (feel free to adjust them):
+For convenience, create a `TrainingConfig` class containing the training hyperparameters (feel free to adjust them):
 
 ```py
 >>> from dataclasses import dataclass
@@ -65,7 +65,7 @@ For convenience, create a `TrainingConfig` class containing all the training hyp
 ...     save_image_epochs = 10
 ...     save_model_epochs = 30
 ...     mixed_precision = "fp16"  # `no` for float32, `fp16` for automatic mixed precision
-...     output_dir = "ddpm-butterflies-128"  # the model namy locally and on the HF Hub
+...     output_dir = "ddpm-butterflies-128"  # the model name locally and on the HF Hub
 
 ...     push_to_hub = True  # whether to upload the saved model to the HF Hub
 ...     hub_private_repo = False
@@ -78,7 +78,7 @@ For convenience, create a `TrainingConfig` class containing all the training hyp
 
 ## Load the dataset
 
-With the 🤗 Datasets library, you can easily load the [Smithsonian Butterflies](https://huggingface.co/datasets/huggan/smithsonian_butterflies_subset) dataset:
+You can easily load the [Smithsonian Butterflies](https://huggingface.co/datasets/huggan/smithsonian_butterflies_subset) dataset with the 🤗 Datasets library:
 
 ```py
 >>> from datasets import load_dataset
@@ -89,7 +89,7 @@ With the 🤗 Datasets library, you can easily load the [Smithsonian Butterflies
 
 <Tip>
 
-You can find additional datasets from the [HugGan Community Event](https://huggingface.co/huggan) or you can use your own dataset by creating a local [`ImageFolder`](https://huggingface.co/docs/datasets/image_dataset#imagefolder). Just replace `config.dataset_name` with the repository id of the dataset if it is from the HugGan Community Event, or `imagefolder` if you're using your own images.
+💡 You can find additional datasets from the [HugGan Community Event](https://huggingface.co/huggan) or you can use your own dataset by creating a local [`ImageFolder`](https://huggingface.co/docs/datasets/image_dataset#imagefolder). Set `config.dataset_name` to the repository id of the dataset if it is from the HugGan Community Event, or `imagefolder` if you're using your own images.
 
 </Tip>
 
@@ -128,7 +128,7 @@ The images are all different sizes though, so you'll need to preprocess them fir
 ... )
 ```
 
-Use 🤗 Datasets' [`~Dataset.set_transform`] method to apply the preprocessing on the fly during training:
+Use 🤗 Datasets' [`~Dataset.set_transform`] method to apply `preprocess` function on the fly during training:
 
 ```py
 >>> def transform(examples):
@@ -159,7 +159,7 @@ Pretrained models in 🧨 Diffusers are easily created from their model class wi
 ...     in_channels=3,  # the number of input channels, 3 for RGB images
 ...     out_channels=3,  # the number of output channels
 ...     layers_per_block=2,  # how many ResNet layers to use per UNet block
-...     block_out_channels=(128, 128, 256, 256, 512, 512),  # the number of output channes for each UNet block
+...     block_out_channels=(128, 128, 256, 256, 512, 512),  # the number of output channels for each UNet block
 ...     down_block_types=(
 ...         "DownBlock2D",  # a regular ResNet downsampling block
 ...         "DownBlock2D",
@@ -179,7 +179,7 @@ Pretrained models in 🧨 Diffusers are easily created from their model class wi
 ... )
 ```
 
-It is often a good idea to quickly check the sample image shape, and the model output shape to ensure they match:
+It is often a good idea to quickly check the sample image shape matches the model output shape:
 
 ```py
 >>> sample_image = dataset[0]["images"].unsqueeze(0)
@@ -190,11 +190,11 @@ Input shape: torch.Size([1, 3, 128, 128])
 Output shape: torch.Size([1, 3, 128, 128])
 ```
 
-Great! Now you'll need a scheduler to add some noise to an image.
+Great! Next, you'll need a scheduler to add some noise to an image.
 
 ## Create a scheduler
 
-The scheduler behaves differently depending on whether you're using the model for training or inference. During inference, the scheduler generates image from the noise. During training, the scheduler takes a model output - also known as a sample - from a specific point in the diffusion process and applies noise to the image using a *noise schedule* and an *update rule*.
+The scheduler behaves differently depending on whether you're using the model for training or inference. During inference, the scheduler generates image from the noise. During training, the scheduler takes a model output - or a sample - from a specific point in the diffusion process and applies noise to the image according to a *noise schedule* and an *update rule*.
 
 Let's take a look at the [`DDPMScheduler`] and use the `add_noise` method to add some random noise to the `sample_image` from before:
 
@@ -215,7 +215,7 @@ Let's take a look at the [`DDPMScheduler`] and use the `add_noise` method to add
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/noisy_butterfly.png"/>
 </div>
 
-The training objective of the model is to predict the noise that was added to the image. The loss at this step can be calculated by:
+The training objective of the model is to predict the noise added to the image. The loss at this step can be calculated by:
 
 ```py
 >>> import torch.nn.functional as F
@@ -241,7 +241,7 @@ First, you'll need an optimizer and a learning rate scheduler:
 ... )
 ```
 
-Then, you'll need to way to evaluate the model. For this, you can use the [`DDPMPipeline`] to generate a batch of sample images and save it as a grid:
+Then, you'll need to way to evaluate the model. For evaluation, you can use the [`DDPMPipeline`] to generate a batch of sample images and save it as a grid:
 
 ```py
 >>> from diffusers import DDPMPipeline
@@ -277,7 +277,7 @@ Wrap all these components together and write a training function with 🤗 Accel
 
 <Tip>
 
-💡 The training loop below may look intimidating and long, but it'll be worth it later when you launch your training in just one line of code! If you want to just skip ahead and start generating images, feel free to copy and run the code below. You can always come back and examine this code more in-depth later, say like, when you're waiting for your model to finish training. 🤗
+💡 The training loop below may look intimidating and long, but it'll be worth it later when you launch your training in just one line of code! If you can't wait and want to start generating images, feel free to copy and run the code below. You can always come back and examine the training looop more in-depth later, like when you're waiting for your model to finish training. 🤗
 
 </Tip>
 
@@ -375,7 +375,7 @@ Wrap all these components together and write a training function with 🤗 Accel
 ...                     pipeline.save_pretrained(config.output_dir)
 ```
 
-Phew, that was quite a bit of code! But you're finally ready to launch the training with 🤗 Accelerate's [`~accelerate.notebook_launcher`] function. Pass the function the training loop, all the training arguments, and the number of processes (feel free to change this value to the number of GPUs available to you) to use for training:
+Phew, that was quite a bit of code! But you're finally ready to launch the training with 🤗 Accelerate's [`~accelerate.notebook_launcher`] function. Pass the function the training loop, all the training arguments, and the number of processes (you can change this value to the number of GPUs available to you) to use for training:
 
 ```py
 >>> from accelerate import notebook_launcher
@@ -385,7 +385,7 @@ Phew, that was quite a bit of code! But you're finally ready to launch the train
 >>> notebook_launcher(train_loop, args, num_processes=1)
 ```
 
-Once training is complete, take a look at the final images generated by your diffusion model:
+Once training is complete, take a look at the final 🦋 images 🦋 generated by your diffusion model!
 
 ```py
 >>> import glob
@@ -400,7 +400,7 @@ Once training is complete, take a look at the final images generated by your dif
 
 ## Next steps
 
-Now that you understand how to train a diffusion model for unconditional image generation, you can explore other training techniques and tasks by visiting the [🧨 Diffusers Training Examples](./training/overview) page. Here are some examples of what you can learn:
+Unconditional image generation is one example of a task that can be trained by diffusion models. You can explore other tasks and training techniques by visiting the [🧨 Diffusers Training Examples](./training/overview) page. Here are some examples of what you can learn:
 
 * [Textual Inversion](./training/text_inversion), an algorithm that teaches a model a specific visual concept and integrates it into the generated image.
 * [Dreambooth](./training/dreambooth), a technique for generating personalized images of a subject given several input images of the subject.
