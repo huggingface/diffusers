@@ -184,7 +184,6 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         latents = 1 / self.vqvae.config.scaling_factor * latents
         if output_type == "latent":
             image = latents
-            has_nsfw_concept = None
         else:
             image = self.vqvae.decode(latents).sample
 

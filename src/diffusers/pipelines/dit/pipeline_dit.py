@@ -184,7 +184,7 @@ class DiTPipeline(DiffusionPipeline):
 
         latents = 1 / self.vae.config.scaling_factor * latents
         if output_type == "latent":
-            image = latents
+            samples = latents
         else:
             samples = self.vae.decode(latents).sample
 

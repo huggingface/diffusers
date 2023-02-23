@@ -146,7 +146,6 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
 
         if output_type == "latent":
             image = latents
-            has_nsfw_concept = None
         else:
             # decode the image latents with the VQVAE
             image = self.vqvae.decode(latents).sample
