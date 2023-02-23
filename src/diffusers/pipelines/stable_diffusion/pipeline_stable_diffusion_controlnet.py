@@ -178,9 +178,6 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
-        if self.vae_scale_factor != 8:
-            raise ValueError("ControlNet currently supports only for vae_scale_factor == 8.")
-
     def enable_vae_slicing(self):
         r"""
         Enable sliced VAE decoding.
@@ -658,6 +655,8 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
 
         # 1. Control Embedding check & conversion
         controlnet_hint = self.controlnet_hint_conversion(controlnet_hint, height, width, num_images_per_prompt)
+        if controlnet_hint is not None and self.vae_scale_factor != 8:
+            raise ValueError("ControlNet currently supports only for vae_scale_factor == 8.")
 
         # 2. Check inputs. Raise error if not correct
         self.check_inputs(
