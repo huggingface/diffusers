@@ -91,7 +91,7 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
                 to make generation deterministic.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image`, `np.array`, or 'latent'.
             return_dict (`bool`, *optional*):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
 
@@ -144,14 +144,18 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.scheduler.step(noise_pred, t, latents, **extra_kwargs).prev_sample
 
-        # decode the image latents with the VQVAE
-        image = self.vqvae.decode(latents).sample
-        image = torch.clamp(image, -1.0, 1.0)
-        image = image / 2 + 0.5
-        image = image.cpu().permute(0, 2, 3, 1).numpy()
+        if output_type == "latent":
+            image = latents
+            has_nsfw_concept = None
+        else:
+            # decode the image latents with the VQVAE
+            image = self.vqvae.decode(latents).sample
+            image = torch.clamp(image, -1.0, 1.0)
+            image = image / 2 + 0.5
+            image = image.cpu().permute(0, 2, 3, 1).numpy()
 
-        if output_type == "pil":
-            image = self.numpy_to_pil(image)
+            if output_type == "pil":
+                image = self.numpy_to_pil(image)
 
         if not return_dict:
             return (image,)

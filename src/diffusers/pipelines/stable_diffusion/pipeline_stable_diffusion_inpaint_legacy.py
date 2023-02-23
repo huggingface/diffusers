@@ -584,7 +584,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
                 argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image`, `np.array`, or 'latent'.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
@@ -684,16 +684,19 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
 
         # use original latents corresponding to unmasked portions of the image
         latents = (init_latents_orig * mask) + (latents * (1 - mask))
+        if output_type == "latent":
+            image = latents
+            has_nsfw_concept = None
+        else:
+            # 10. Post-processing
+            image = self.decode_latents(latents)
 
-        # 10. Post-processing
-        image = self.decode_latents(latents)
+            # 11. Run safety checker
+            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
-        # 11. Run safety checker
-        image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
-
-        # 12. Convert to PIL
-        if output_type == "pil":
-            image = self.numpy_to_pil(image)
+            # 12. Convert to PIL
+            if output_type == "pil":
+                image = self.numpy_to_pil(image)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:

@@ -56,7 +56,7 @@ class ScoreSdeVePipeline(DiffusionPipeline):
                 to make generation deterministic.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image`, `np.array`, or 'latent'.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
 
@@ -91,9 +91,10 @@ class ScoreSdeVePipeline(DiffusionPipeline):
             sample, sample_mean = output.prev_sample, output.prev_sample_mean
 
         sample = sample_mean.clamp(0, 1)
-        sample = sample.cpu().permute(0, 2, 3, 1).numpy()
-        if output_type == "pil":
-            sample = self.numpy_to_pil(sample)
+        if output_type != "latent":
+            sample = sample.cpu().permute(0, 2, 3, 1).numpy()
+            if output_type == "pil":
+                sample = self.numpy_to_pil(sample)
 
         if not return_dict:
             return (sample,)

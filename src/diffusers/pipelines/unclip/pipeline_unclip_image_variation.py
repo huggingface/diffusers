@@ -291,7 +291,7 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
                 can be passed for tasks like image interpolations. `image` can the be left to `None`.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image`, `np.array`, or 'latent'.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
         """
@@ -448,14 +448,15 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
 
         # done super res
 
-        # post processing
+        if output_type != "latent":
+            # post processing
 
-        image = image * 0.5 + 0.5
-        image = image.clamp(0, 1)
-        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
+            image = image * 0.5 + 0.5
+            image = image.clamp(0, 1)
+            image = image.cpu().permute(0, 2, 3, 1).float().numpy()
 
-        if output_type == "pil":
-            image = self.numpy_to_pil(image)
+            if output_type == "pil":
+                image = self.numpy_to_pil(image)
 
         if not return_dict:
             return (image,)

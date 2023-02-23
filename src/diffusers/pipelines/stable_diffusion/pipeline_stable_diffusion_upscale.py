@@ -433,7 +433,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
                 argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image`, `np.array`, or 'latent'.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
@@ -578,14 +578,17 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
-        # 10. Post-processing
-        # make sure the VAE is in float32 mode, as it overflows in float16
-        self.vae.to(dtype=torch.float32)
-        image = self.decode_latents(latents.float())
+        if output_type == "latent":
+            image = latents
+        else:
+            # 10. Post-processing
+            # make sure the VAE is in float32 mode, as it overflows in float16
+            self.vae.to(dtype=torch.float32)
+            image = self.decode_latents(latents.float())
 
-        # 11. Convert to PIL
-        if output_type == "pil":
-            image = self.numpy_to_pil(image)
+            # 11. Convert to PIL
+            if output_type == "pil":
+                image = self.numpy_to_pil(image)
 
         if not return_dict:
             return (image,)

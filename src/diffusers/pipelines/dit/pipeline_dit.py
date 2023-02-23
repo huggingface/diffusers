@@ -109,7 +109,7 @@ class DiTPipeline(DiffusionPipeline):
                 expense of slower inference.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image`, `np.array`, or 'latent'.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`ImagePipelineOutput`] instead of a plain tuple.
         """
@@ -183,15 +183,18 @@ class DiTPipeline(DiffusionPipeline):
             latents = latent_model_input
 
         latents = 1 / self.vae.config.scaling_factor * latents
-        samples = self.vae.decode(latents).sample
+        if output_type == "latent":
+            image = latents
+        else:
+            samples = self.vae.decode(latents).sample
 
-        samples = (samples / 2 + 0.5).clamp(0, 1)
+            samples = (samples / 2 + 0.5).clamp(0, 1)
 
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-        samples = samples.cpu().permute(0, 2, 3, 1).float().numpy()
+            # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
+            samples = samples.cpu().permute(0, 2, 3, 1).float().numpy()
 
-        if output_type == "pil":
-            samples = self.numpy_to_pil(samples)
+            if output_type == "pil":
+                samples = self.numpy_to_pil(samples)
 
         if not return_dict:
             return (samples,)

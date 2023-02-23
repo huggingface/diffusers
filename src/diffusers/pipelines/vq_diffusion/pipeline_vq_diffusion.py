@@ -208,7 +208,7 @@ class VQDiffusionPipeline(DiffusionPipeline):
                 be generated of completely masked latent pixels.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image`, `np.array`, or 'latent'.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
             callback (`Callable`, *optional*):
@@ -291,16 +291,19 @@ class VQDiffusionPipeline(DiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 callback(i, t, sample)
 
-        embedding_channels = self.vqvae.config.vq_embed_dim
-        embeddings_shape = (batch_size, self.transformer.height, self.transformer.width, embedding_channels)
-        embeddings = self.vqvae.quantize.get_codebook_entry(sample, shape=embeddings_shape)
-        image = self.vqvae.decode(embeddings, force_not_quantize=True).sample
+        if output_type == "latent":
+            image = sample
+        else:
+            embedding_channels = self.vqvae.config.vq_embed_dim
+            embeddings_shape = (batch_size, self.transformer.height, self.transformer.width, embedding_channels)
+            embeddings = self.vqvae.quantize.get_codebook_entry(sample, shape=embeddings_shape)
+            image = self.vqvae.decode(embeddings, force_not_quantize=True).sample
 
-        image = (image / 2 + 0.5).clamp(0, 1)
-        image = image.cpu().permute(0, 2, 3, 1).numpy()
+            image = (image / 2 + 0.5).clamp(0, 1)
+            image = image.cpu().permute(0, 2, 3, 1).numpy()
 
-        if output_type == "pil":
-            image = self.numpy_to_pil(image)
+            if output_type == "pil":
+                image = self.numpy_to_pil(image)
 
         if not return_dict:
             return (image,)
