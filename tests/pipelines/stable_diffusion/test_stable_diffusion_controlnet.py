@@ -313,29 +313,6 @@ class StableDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.T
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    def test_stable_diffusion_no_safety_checker(self):
-        # TODO: Update model
-        # this test due to this test load dummy pipe without controlnet instance
-        pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "hf-internal-testing/tiny-stable-diffusion-lms-pipe", safety_checker=None
-        )
-        assert isinstance(pipe, StableDiffusionControlNetPipeline)
-        assert isinstance(pipe.scheduler, LMSDiscreteScheduler)
-        assert pipe.safety_checker is None
-
-        image = pipe("example prompt", num_inference_steps=2).images[0]
-        assert image is not None
-
-        # check that there's no error when saving a pipeline with one of the models being None
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            pipe.save_pretrained(tmpdirname)
-            pipe = StableDiffusionControlNetPipeline.from_pretrained(tmpdirname)
-
-        # sanity check that the pipeline still works
-        assert pipe.safety_checker is None
-        image = pipe("example prompt", num_inference_steps=2).images[0]
-        assert image is not None
-
     def test_stable_diffusion_k_lms(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
@@ -890,3 +867,22 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
 
         assert mem_bytes_slicing < mem_bytes_offloaded
         assert mem_bytes_slicing < 3 * 10**9 + self.controlnet_memsize / 2
+
+    def test_stable_diffusion_no_safety_checker(self):
+        pipe = StableDiffusionControlNetPipeline.from_pretrained(self.model_id, safety_checker=None)
+        assert isinstance(pipe, StableDiffusionControlNetPipeline)
+        assert isinstance(pipe.scheduler, DDIMScheduler)
+        assert pipe.safety_checker is None
+
+        image = pipe("example prompt", num_inference_steps=2).images[0]
+        assert image is not None
+
+        # check that there's no error when saving a pipeline with one of the models being None
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe.save_pretrained(tmpdirname)
+            pipe = StableDiffusionControlNetPipeline.from_pretrained(tmpdirname)
+
+        # sanity check that the pipeline still works
+        assert pipe.safety_checker is None
+        image = pipe("example prompt", num_inference_steps=2).images[0]
+        assert image is not None
