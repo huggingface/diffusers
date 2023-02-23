@@ -20,7 +20,7 @@ Whether you're a developer or an everyday user, this quicktour will introduce yo
 
 * The [`DiffusionPipeline`] is a high-level end-to-end class designed to rapidly generate samples from pretrained diffusion models for inference.
 * Popular pretrained [model](./api/models) architectures and modules that can be used as building blocks for creating diffusion systems.
-* Many different [schedulers](./api/schedulers/overview) - algorithms that control how noise is added - for generating samples from noise during inference and generating noisy images for training.
+* Many different [schedulers](./api/schedulers/overview) - algorithms that control how noise is added for training, and how to generate denoised images during inference.
 
 The quicktour will show you how to use the [`DiffusionPipeline`] for inference, and then walk you through how to combine a model and scheduler to replicate what's happening inside the [`DiffusionPipeline`].
 
@@ -53,13 +53,11 @@ The [`DiffusionPipeline`] is the easiest way to use a pretrained diffusion syste
 
 Start by creating an instance of [`DiffusionPipeline`] and specify which pipeline checkpoint you would like to download.
 You can use the [`DiffusionPipeline`] for any [checkpoint](https://huggingface.co/models?library=diffusers&sort=downloads) stored on the Hugging Face Hub.
-In this quicktour, you'll load the [Stable Diffusion](https://huggingface.co/CompVis/stable-diffusion) checkpoint in the [`DiffusionPipeline`] for text-to-image generation.
+In this quicktour, you'll load the [Stable Diffusion](https://huggingface.co/CompVis/stable-diffusion) checkpoint in the [`DiffusionPipeline`] for text-to-image generation. More specifically, you'll use the [`stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) checkpoint.
 
 <Tip warning={true}>
 
-For [Stable Diffusion](https://huggingface.co/CompVis/stable-diffusion) models, please carefully read the [license](https://huggingface.co/spaces/CompVis/stable-diffusion-license) first before running the model.
-The model's improved image generation capabilities can produce potentially harmful content.
-This quicktour uses the [`stable-diffiusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) checkpoint.
+For [Stable Diffusion](https://huggingface.co/CompVis/stable-diffusion) models, please carefully read the [license](https://huggingface.co/spaces/CompVis/stable-diffusion-license) first before running the model. 🧨 Diffusers implements a `safety_checker` to prevent offensive or harmful content, but the model's improved image generation capabilities can still produce potentially harmful content.
 
 </Tip>
 
@@ -71,7 +69,7 @@ Load the model with the [`~DiffusionPipeline.from_pretrained`] method:
 >>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
 ```
 
-The [`DiffusionPipeline`] downloads and caches all modeling, tokenization, and scheduling components. You'll see that the Stable Diffusion pipeline is actually composed of two 🧨 Diffusers models - [`UNet2DConditionModel`] and [`AutoencoderKL`] - and the [`PNDMScheduler`]:
+The [`DiffusionPipeline`] downloads and caches all modeling, tokenization, and scheduling components. You'll see that the Stable Diffusion pipeline is composed of the [`UNet2DConditionModel`] and [`PNDMScheduler`]:
 
 ```py
 >>> pipeline
@@ -153,7 +151,7 @@ In the next section, you'll take a closer look at the components - the model and
 
 ## Models
 
-Models take a noisy sample, and at each timestep it predicts the *noise residual*, the difference between a less noisy image and the input image. You can mix and match models to create other diffusion systems.
+Models take a noisy sample, and at each timestep it predicts the *noise residual*, the difference between a less noisy image and the input image. This is just one objective though. Other models can make different predictions like the gradient between two timesteps or predict the slightly less noisy image directly. You can mix and match models to create other diffusion systems.
 
 Models are initiated with the [`~ModelMixin.from_pretrained`] method which'll also locally cache the model weights so it is faster the next time you load the model. For the quicktour, you'll load the [`UNet2DModel`], a basic unconditional image generation model with a checkpoint trained on cat images:
 
@@ -192,7 +190,7 @@ To use the model for inference, create the shape of an image with random Gaussia
 torch.Size([1, 3, 256, 256])
 ```
 
-For inference, pass the noisy image to the model and a `timestep`. The `timestep` indicates how noisy the input image is, with more noise at the beginning and less at the end. This helps the model determine its position in the diffusion process, whether it is closer to the start or the end. Use the [`~diffusers.models.unet_2d.UNet2DOutput.sample`] method to get the model output:
+For inference, pass the noisy image to the model and a `timestep`. The `timestep` indicates how noisy the input image is, with more noise at the beginning and less at the end. This helps the model determine its position in the diffusion process, whether it is closer to the start or the end. Use the [`~UNet2DOutput.sample`] method to get the model output:
 
 ```py
 >>> with torch.no_grad():
@@ -204,6 +202,12 @@ To generate actual examples though, you'll need a scheduler to guide the denoisi
 ## Schedulers
 
 Schedulers manage going from a noisy sample to a less noisy sample given the model output - in this case, it is the `noisy_residual`.
+
+<Tip>
+
+🧨 Diffusers is a toolbox for building diffusion systems. While the [`DiffusionPipeline`] is a convenient way to get started with a pre-built diffusion system, you can also choose your own the model and scheduler components separately to build a custom diffusion system.
+
+</Tip>
 
 For the quicktour, you'll instantiate the [`DDPMScheduler`] with it's [`~diffusers.ConfigMixin.from_config`] method:
 
@@ -302,7 +306,8 @@ Sit back and watch as an image of a cat is generated from nothing but noise! �
 
 Hopefully you generated some cool images with 🧨 Diffusers in this quicktour! For your next steps, you can:
 
-* Train or finetune a model to generate your own images with the [training]() tutorial.
+* Train or finetune a model to generate your own images with the [training](./tutorials/basic_training) tutorial.
+* See example official and community [training or finetuning scripts](https://github.com/huggingface/diffusers/tree/main/examples#-diffusers-examples) for a variety of use cases.
 * Learn more about loading, accessing, changing and comparing schedulers in the [Using different Schedulers](./using-diffusers/schedulers) guide.
 * Explore prompt engineering, speed and memory optimizations, and tips and tricks for generating higher quality images with the [Stable Diffusion](./stable_diffusion) guide.
 * Dive deeper into speeding up 🧨 Diffusers with guides on [optimized PyTorch on a GPU](./optimization/fp16), and inference guides for running [Stable Diffusion on Apple Silicon (M1/M2)](./optimization/mps) and [ONNX Runtime](./optimization/onnx).
