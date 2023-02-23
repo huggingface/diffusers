@@ -455,7 +455,6 @@ class ResnetBlock2D(nn.Module):
     ):
         super().__init__()
         self.pre_norm = pre_norm
-        self.pre_norm = True
         self.in_channels = in_channels
         out_channels = in_channels if out_channels is None else out_channels
         self.out_channels = out_channels
