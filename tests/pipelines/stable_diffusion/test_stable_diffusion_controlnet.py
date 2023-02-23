@@ -125,6 +125,28 @@ class StableDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.T
         }
         return inputs
 
+    def get_dummy_components_for_controlnet(self):
+        components = self.get_dummy_components()
+        # vae_scale_factor 8 version
+        # this for ControlNetInputHintBlock accepts only vae_scale_factor=8
+        components["vae"] = AutoencoderKL(
+            block_out_channels=[32, 64, 64, 64],
+            in_channels=3,
+            out_channels=3,
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"],
+            latent_channels=4,
+        )
+        return components
+
+    def get_dummy_inputs_for_controlnet(self, device, seed=0):
+        inputs = self.get_dummy_inputs(device, seed)
+        vae_scale_factor = 8
+        inputs["controlnet_hint"] = torch.randn(
+            (1, 3, 32 * vae_scale_factor, 32 * vae_scale_factor), generator=inputs["generator"]
+        )
+        return inputs
+
     def test_stable_diffusion_ddim(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
@@ -562,6 +584,29 @@ class StableDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.T
         output = sd_pipe(prompt, num_inference_steps=1, output_type="np")
         image_shape = output.images[0].shape[:2]
         assert image_shape == (192, 192)
+
+    def test_stable_diffusion_controlnet_ddim(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        vae_scale_factor = 8
+        components = self.get_dummy_components_for_controlnet()
+        sd_pipe = StableDiffusionControlNetPipeline(**components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs_for_controlnet(device)
+        output = sd_pipe(**inputs)
+        image = output.images
+
+        image_slice = image[0, -3:, -3:, -1]
+        # print("image_slice", image_slice)
+
+        assert image.shape == (1, 32 * vae_scale_factor, 32 * vae_scale_factor, 3)
+        expected_slice = np.array(
+            [0.4780106, 0.46282214, 0.49179333, 0.437001, 0.4518742, 0.46226522, 0.41771045, 0.4315053, 0.4805042]
+        )
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
 
 @slow
