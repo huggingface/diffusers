@@ -1,7 +1,7 @@
 ###
  # @Author: Juncfang
  # @Date: 2022-12-30 09:57:16
- # @LastEditTime: 2023-02-22 15:36:43
+ # @LastEditTime: 2023-02-22 17:42:24
  # @LastEditors: Juncfang
  # @Description: 
  # @FilePath: /diffusers_fork/personal_workspace/db_inpainting/train_db_inpainting.sh
@@ -11,11 +11,11 @@ printf -v DATE '%(%Y-%m-%dT%H:%M:%S)T' -1
 export CURDIR="$( cd "$( dirname $0 )" && pwd )"
 export PROJECT_DIR="$( cd "$CURDIR/../.." && pwd )"
 
-export GPU_ID="1"
-export EXPERIMENT_NAME="test"
+export GPU_ID="3"
+export EXPERIMENT_NAME="test-2000"
 export EXPERIMENT_NAME="$DATE-$EXPERIMENT_NAME"
 export INSTANCE_DIR="$CURDIR/datasets/test"
-export MAX_STEP=800
+export MAX_STEP=2000
 export CLASS_NAME="woman" # "man", "man2", "<ID-PHOTO>", "woman", "person", "cat", "dog" ...
 # MODEL_NAME ect. "CompVis/stable-diffusion-v1-4", "runwayml/stable-diffusion-v1-5"
 export MODEL_NAME="runwayml/stable-diffusion-inpainting"
@@ -37,8 +37,8 @@ elif [[ ! -d $OUTPUT_DIR ]]; then
     echo "$OUTPUT_DIR already exists but is not a directory" 1>&2
 fi
 
-export INSTANCE_PROMPT="<?>"
-# export INSTANCE_PROMPT="a photo of a <?> $CLASS_NAME"
+# export INSTANCE_PROMPT="<?>"
+export INSTANCE_PROMPT="a photo of a <?> $CLASS_NAME"
 export CLASS_PROMPT="a photo of a $CLASS_NAME"
 
 # print some information
@@ -61,7 +61,7 @@ accelerate launch ./train_dreambooth_inpaint.py \
 --instance_data_dir=$INSTANCE_DIR \
 --class_data_dir=$CLASS_DIR \
 --output_dir=$OUTPUT_DIR \
---prior_loss_weight=1.0 \
+--prior_loss_weight=0.5 \
 --instance_prompt="$INSTANCE_PROMPT" \
 --class_prompt="$CLASS_PROMPT" \
 --resolution=512 \
@@ -73,11 +73,10 @@ accelerate launch ./train_dreambooth_inpaint.py \
 --lr_warmup_steps=0 \
 --num_class_images=260 \
 --max_train_steps=$MAX_STEP \
---train_text_encoder \
 --logging_dir="../logs" \
-
-# --mixed_precision="fp16" \
-# --gradient_accumulation_steps=1 \
-# --with_prior_preservation \
+--mixed_precision="fp16" \
+--gradient_accumulation_steps=1 \
+--with_prior_preservation \
+--train_text_encoder \
 # --enable_xformers \
 # --enable_xformers_memory_efficient_attention

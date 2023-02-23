@@ -1,7 +1,7 @@
 ###
  # @Author: Juncfang
  # @Date: 2023-02-03 15:45:03
- # @LastEditTime: 2023-02-20 16:03:37
+ # @LastEditTime: 2023-02-22 22:08:43
  # @LastEditors: Juncfang
  # @Description: 
  # @FilePath: /diffusers_fork/personal_workspace/dreambooth/inference.sh
@@ -10,11 +10,11 @@
 export CURDIR="$( cd "$( dirname $0 )" && pwd )"
 export PROJECT_DIR="$( cd "$CURDIR/../.." && pwd )"
 
-export GPU_ID="1"
-export EXPERIMENT_NAME="2023-02-20T10:35:41-idphoto0216-800-seg-align3-u7-white-woprloss"
+export GPU_ID="2"
+export EXPERIMENT_NAME="2023-02-22T20:44:29-idphoto0216-5manual-1200-seg-align3-u8-white"
 # Test
-export PROMPT=" <?>, <?> a <?> woman with smooth white fair skin styled by a asian with long hair wearing a black suit, <?> highly detailed skin texture"
-# export PROMPT="<?>"
+export PROMPT=" Symmetry!!, highly detailed, digital photo, a photo of a <?> man in a suit and tie, solid red background"
+# export PROMPT="a photo of <?> man"
 # export PROMPT="a asian with short hair wearing a black t - shirt"
 # OTHER
 # export PROMPT="solid color background. <ID-PHOTO>!! a photo of a <?> man with solid color background with <ID-PHOTO>, red background, <ID-PHOTO>"
