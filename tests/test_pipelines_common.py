@@ -197,7 +197,7 @@ class PipelineTesterMixin:
         self._test_inference_batch_single_identical()
 
     def _test_inference_batch_single_identical(
-        self, test_max_difference=None, test_mean_pixel_difference=None, relax_max_difference=False
+        self, test_max_difference=None, test_mean_pixel_difference=None, relax_max_difference=False, expected_max_diff=1e-4
     ):
         if self.pipeline_class.__name__ in [
             "CycleDiffusionPipeline",
@@ -277,7 +277,7 @@ class PipelineTesterMixin:
                 max_diff = np.median(diff[-5:])
             else:
                 max_diff = np.abs(output_batch[0][0] - output[0][0]).max()
-            assert max_diff < 1e-4
+            assert max_diff < expected_max_diff
 
         if test_mean_pixel_difference:
             assert_mean_pixel_difference(output_batch[0][0], output[0][0])
@@ -436,7 +436,7 @@ class PipelineTesterMixin:
     def test_attention_slicing_forward_pass(self):
         self._test_attention_slicing_forward_pass()
 
-    def _test_attention_slicing_forward_pass(self, test_max_difference=True):
+    def _test_attention_slicing_forward_pass(self, test_max_difference=True, expected_max_diff=1e-3):
         if not self.test_attention_slicing:
             return
 
@@ -468,7 +468,7 @@ class PipelineTesterMixin:
 
         if test_max_difference:
             max_diff = np.abs(output_with_slicing - output_without_slicing).max()
-            self.assertLess(max_diff, 1e-3, "Attention slicing should not affect the inference results")
+            self.assertLess(max_diff, expected_max_diff, "Attention slicing should not affect the inference results")
 
         assert_mean_pixel_difference(output_with_slicing[0], output_without_slicing[0])
 
@@ -502,7 +502,7 @@ class PipelineTesterMixin:
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass()
 
-    def _test_xformers_attention_forwardGenerator_pass(self, test_max_difference=True):
+    def _test_xformers_attention_forwardGenerator_pass(self, test_max_difference=True, expected_max_diff=1e-4):
         if not self.test_xformers_attention:
             return
 
@@ -520,7 +520,7 @@ class PipelineTesterMixin:
 
         if test_max_difference:
             max_diff = np.abs(output_with_offload - output_without_offload).max()
-            self.assertLess(max_diff, 1e-4, "XFormers attention should not affect the inference results")
+            self.assertLess(max_diff, expected_max_diff, "XFormers attention should not affect the inference results")
 
         assert_mean_pixel_difference(output_with_offload[0], output_without_offload[0])
 
