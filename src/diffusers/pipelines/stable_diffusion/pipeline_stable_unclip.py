@@ -881,7 +881,6 @@ class StableUnCLIPPipeline(DiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 callback(i, t, latents)
 
-
         if output_type == "latent":
             image = latents
         else:
