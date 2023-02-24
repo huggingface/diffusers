@@ -826,7 +826,7 @@ def main():
                     prompt_mask = random_p < 2 * args.conditioning_dropout_prob
                     prompt_mask = prompt_mask.reshape(bsz, 1, 1)
                     # Final text conditioning.
-                    null_conditioning = text_encoder(tokenize_captions([NULL_PROMPT]))[0]
+                    null_conditioning = text_encoder(tokenize_captions([NULL_PROMPT]).to(accelerator.device))[0]
                     encoder_hidden_states = torch.where(prompt_mask, null_conditioning, encoder_hidden_states)
 
                     # Sample masks for the original images.
