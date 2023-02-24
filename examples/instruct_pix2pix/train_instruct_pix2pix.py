@@ -124,7 +124,7 @@ def parse_args():
         help="The column of the dataset containing the edit instruction.",
     )
     parser.add_argument(
-        "--validation_image_url",
+        "--val_image_url",
         type=str,
         default=None,
         help="URL to the original image that you would like to edit (used during inference for debugging purposes).",
@@ -899,7 +899,7 @@ def main():
 
         if accelerator.is_main_process:
             if (
-                (args.validation_image_url is not None)
+                (args.val_image_url is not None)
                 and (args.validation_prompt is not None)
                 and (epoch % args.validation_epochs == 0)
             ):
@@ -923,7 +923,7 @@ def main():
 
                 # run inference
                 generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
-                original_image = download_image(args.validation_image_url)
+                original_image = download_image(args.val_image_url)
                 edited_images = []
                 with torch.autocast(str(accelerator.device), enabled=accelerator.mixed_precision == "fp16"):
                     for _ in range(args.num_validation_images):
