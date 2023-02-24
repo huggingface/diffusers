@@ -5,7 +5,7 @@ import io
 import re
 import tempfile
 import unittest
-from typing import Callable, Union
+from typing import Callable, List, Union
 
 import numpy as np
 import torch
@@ -545,6 +545,37 @@ class PipelineTesterMixin:
         with io.StringIO() as stderr, contextlib.redirect_stderr(stderr):
             _ = pipe(**inputs)
             self.assertTrue(stderr.getvalue() == "", "Progress bar should be disabled")
+
+    def test_num_images_per_prompt(self):
+        self._test_num_images_per_prompt()
+
+    def _test_num_images_per_prompt(self, prompt_key: Union[str, List[str]] = "prompt"):
+        sig = inspect.signature(self.pipeline_class.__call__)
+
+        if "num_images_per_prompt" not in sig.parameters:
+            return
+
+        if not isinstance(prompt_key, list):
+            prompt_key = [prompt_key]
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        batch_sizes = [1, 2]
+        num_images_per_prompts = [1, 2]
+
+        for batch_size in batch_sizes:
+            for num_images_per_prompt in num_images_per_prompts:
+                inputs = self.get_dummy_inputs(torch_device)
+
+                for key in prompt_key:
+                    inputs[key] = batch_size * [inputs[key]]
+
+                images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
+
+                assert images.shape[0] == batch_size * num_images_per_prompt
 
 
 # Some models (e.g. unCLIP) are extremely likely to significantly deviate depending on which hardware is used.
