@@ -818,7 +818,6 @@ def main():
                 # Conditioning dropout to support classifier-free guidance during inference. For more details
                 # check out the section 3.2.1 of the original paper https://arxiv.org/abs/2211.09800.
                 if args.conditioning_dropout_prob is not None:
-                    logger.info(f"Using condiitioning dropout with prob: {args.conditioning_dropout_prob}.")
                     random_p = torch.rand(bsz, device=latents.device)
                     # Sample masks for the edit prompts.
                     prompt_mask = random_p < 2 * args.conditioning_dropout_prob
