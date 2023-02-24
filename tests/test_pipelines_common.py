@@ -18,7 +18,6 @@ from diffusers import (
     RePaintPipeline,
     StableDiffusionDepth2ImgPipeline,
     StableDiffusionImg2ImgPipeline,
-    StableDiffusionPanoramaPipeline,
 )
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_xformers_available
@@ -89,7 +88,6 @@ class PipelineTesterMixin:
             CycleDiffusionPipeline,
             RePaintPipeline,
             StableDiffusionImg2ImgPipeline,
-            StableDiffusionPanoramaPipeline,
         ):
             # FIXME: inconsistent outputs on MPS
             return
@@ -145,10 +143,6 @@ class PipelineTesterMixin:
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-
-        if torch_device == "mps" and self.pipeline_class == StableDiffusionPanoramaPipeline:
-            # FIXME: slow (> 60s) inference on mps CI
-            return
 
         inputs = self.get_dummy_inputs(torch_device)
 
@@ -294,7 +288,6 @@ class PipelineTesterMixin:
             CycleDiffusionPipeline,
             RePaintPipeline,
             StableDiffusionImg2ImgPipeline,
-            StableDiffusionPanoramaPipeline,
         ):
             # FIXME: inconsistent outputs on MPS
             return
@@ -382,7 +375,6 @@ class PipelineTesterMixin:
             CycleDiffusionPipeline,
             RePaintPipeline,
             StableDiffusionImg2ImgPipeline,
-            StableDiffusionPanoramaPipeline,
         ):
             # FIXME: inconsistent outputs on MPS
             return
@@ -454,7 +446,6 @@ class PipelineTesterMixin:
             RePaintPipeline,
             StableDiffusionImg2ImgPipeline,
             StableDiffusionDepth2ImgPipeline,
-            StableDiffusionPanoramaPipeline,
         ):
             # FIXME: inconsistent outputs on MPS
             return
