@@ -23,6 +23,7 @@ import warnings
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 import accelerate
 import torch
 import torch.nn.functional as F
@@ -40,9 +41,9 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
 import diffusers
-from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
+from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel, DPMSolverMultistepScheduler
 from diffusers.optimization import get_scheduler
-from diffusers.utils import check_min_version
+from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
 
@@ -508,6 +509,11 @@ def main(args):
         project_config=accelerator_project_config,
     )
 
+    if args.report_to == "wandb":
+        if not is_wandb_available():
+            raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
+        import wandb
+
     # Currently, it's not possible to do gradient accumulation when training two models with accelerate.accumulate
     # This will be enabled soon in accelerate. For now, we don't allow gradient accumulation when training two models.
     # TODO (patil-suraj): Remove this check when gradient accumulation with two models is enabled in accelerate.
@@ -928,6 +934,48 @@ def main(args):
             if global_step >= args.max_train_steps:
                 break
 
+        if accelerator.is_main_process:
+            if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
+                logger.info(
+                    f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+                    f" {args.validation_prompt}."
+                )
+                # create pipeline
+                pipeline = DiffusionPipeline.from_pretrained(
+                    args.pretrained_model_name_or_path,
+                    unet=accelerator.unwrap_model(unet),
+                    text_encoder=accelerator.unwrap_model(text_encoder),
+                    revision=args.revision,
+                    torch_dtype=weight_dtype,
+                )
+                pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
+                pipeline = pipeline.to(accelerator.device)
+                pipeline.set_progress_bar_config(disable=True)
+
+                # run inference
+                generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+                images = [
+                    pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
+                    for _ in range(args.num_validation_images)
+                ]
+
+                for tracker in accelerator.trackers:
+                    if tracker.name == "tensorboard":
+                        np_images = np.stack([np.asarray(img) for img in images])
+                        tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+                    if tracker.name == "wandb":
+                        tracker.log(
+                            {
+                                "validation": [
+                                    wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                    for i, image in enumerate(images)
+                                ]
+                            }
+                        )
+
+                del pipeline
+                torch.cuda.empty_cache()
+
     # Create the pipeline using using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
@@ -938,6 +986,42 @@ def main(args):
             revision=args.revision,
         )
         pipeline.save_pretrained(args.output_dir)
+
+        if args.validation_prompt and args.num_validation_images > 0:
+            # Final inference
+            # Load previous pipeline
+            pipeline = DiffusionPipeline.from_pretrained(
+                args.output_dir,
+                revision=args.revision,
+                torch_dtype=weight_dtype,
+            )
+            pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
+            pipeline = pipeline.to(accelerator.device)
+
+            # run inference
+            logger.info(
+                f"Running test... \n Generating {args.num_validation_images} images with prompt:"
+                f" {args.validation_prompt}."
+            )
+            generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+            images = [
+                pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
+                for _ in range(args.num_validation_images)
+            ]
+
+            for tracker in accelerator.trackers:
+                if tracker.name == "tensorboard":
+                    np_images = np.stack([np.asarray(img) for img in images])
+                    tracker.writer.add_images("test", np_images, epoch, dataformats="NHWC")
+                if tracker.name == "wandb":
+                    tracker.log(
+                        {
+                            "test": [
+                                wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                for i, image in enumerate(images)
+                            ]
+                        }
+                    )
 
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
