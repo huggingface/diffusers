@@ -49,8 +49,9 @@ def preprocess(image, width, height):
         image = [np.array(i.resize((width, height), resample=PIL_INTERPOLATION["lanczos"]))[None, :] for i in image]
         image = np.concatenate(image, axis=0)
         image = np.array(image).astype(np.float32) / 255.0
+        image = image[:, :, :, ::-1]  # RGB -> BGR
         image = image.transpose(0, 3, 1, 2)
-        image = torch.from_numpy(image)
+        image = torch.from_numpy(image.copy())  # copy: ::-1 workaround
     elif isinstance(image[0], torch.Tensor):
         image = torch.cat(image, dim=0)
     return image
