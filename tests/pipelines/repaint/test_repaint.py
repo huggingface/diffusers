@@ -20,7 +20,7 @@ import numpy as np
 import torch
 
 from diffusers import RePaintPipeline, RePaintScheduler, UNet2DModel
-from diffusers.utils.testing_utils import load_image, load_numpy, nightly, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import load_image, load_numpy, nightly, require_torch_gpu, skip_mps, torch_device
 
 from ...test_pipelines_common import PipelineTesterMixin
 
@@ -83,6 +83,28 @@ class RepaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         expected_slice = np.array([1.0000, 0.5426, 0.5497, 0.2200, 1.0000, 1.0000, 0.5623, 1.0000, 0.6274])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    @skip_mps
+    def test_save_load_local(self):
+        return super().test_save_load_local()
+
+    # RePaint can hardly be made deterministic since the scheduler is currently always
+    # nondeterministic
+    @unittest.skip("non-deterministic pipeline")
+    def test_inference_batch_single_identical(self):
+        return super().test_inference_batch_single_identical()
+
+    @skip_mps
+    def test_dict_tuple_outputs_equivalent(self):
+        return super().test_dict_tuple_outputs_equivalent()
+
+    @skip_mps
+    def test_save_load_optional_components(self):
+        return super().test_save_load_optional_components()
+
+    @skip_mps
+    def test_attention_slicing_forward_pass(self):
+        return super().test_attention_slicing_forward_pass()
 
 
 @nightly
