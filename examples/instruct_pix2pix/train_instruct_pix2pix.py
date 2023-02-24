@@ -59,7 +59,7 @@ DATASET_NAME_MAPPING = {
 }
 LAYER_TO_FILL = "conv_in.weight"
 NULL_PROMPT = ""
-WANDB_TABLE_COL_NAMES = ["original_image", "edit_prompt", "edited_image"]
+WANDB_TABLE_COL_NAMES = ["original_image", "edited_image", "edit_prompt"]
 
 
 def parse_args():
