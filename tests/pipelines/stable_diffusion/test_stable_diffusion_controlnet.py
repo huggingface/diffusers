@@ -119,7 +119,9 @@ class StableDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.T
 
         controlnet_embedder_scale_factor = 8
         image = randn_tensor(
-            (1, 3, 32 * controlnet_embedder_scale_factor, 32 * controlnet_embedder_scale_factor), generator=generator, device=torch.device(device)
+            (1, 3, 32 * controlnet_embedder_scale_factor, 32 * controlnet_embedder_scale_factor),
+            generator=generator,
+            device=torch.device(device),
         )
 
         inputs = {
@@ -131,6 +133,44 @@ class StableDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.T
             "image": image,
         }
 
+        return inputs
+
+    def get_dummy_components_for_controlnet(self):
+        components = self.get_dummy_components()
+        # vae_scale_factor 8 version
+        # this for ControlNetInputHintBlock accepts only vae_scale_factor=8
+        components["vae"] = AutoencoderKL(
+            block_out_channels=[32, 64, 64, 64],
+            in_channels=3,
+            out_channels=3,
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"],
+            latent_channels=4,
+        )
+        return components
+
+    def get_dummy_inputs_for_controlnet(self, device, seed=0, num_of_prompts=1, num_images_per_prompt=1):
+        inputs = self.get_dummy_inputs(device, seed)
+        vae_scale_factor = 8
+        if num_of_prompts > 1:
+            inputs["prompt"] = [f"a photo of {i} cats" for i in range(num_of_prompts)]
+
+        controlnet_hint = torch.randn(
+            (num_of_prompts * num_images_per_prompt, 3, 32 * vae_scale_factor, 32 * vae_scale_factor),
+            generator=inputs["generator"],
+        )
+
+        controlnet_hint = controlnet_hint.detach().numpy().copy()
+        images = np.zeros_like(controlnet_hint, dtype=np.uint8)
+        images[controlnet_hint > 0.5] = 255
+        images = images.transpose(0, 3, 2, 1)  # b c h w -> b w h c
+        if images.shape[0] == 1:
+            controlnet_hint = PIL.Image.fromarray(images[0])  # PIL.Image
+        else:
+            controlnet_hint = [PIL.Image.fromarray(images[b]) for b in range(images.shape[0])]  # List of PIL.Image
+
+        inputs["image"] = controlnet_hint
+        inputs["num_images_per_prompt"] = num_images_per_prompt
         return inputs
 
     def test_attention_slicing_forward_pass(self):
@@ -146,7 +186,7 @@ class StableDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.T
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
-    def test_stable_diffusion_controlnet_ddim_pil_image(self):
+    def test_stable_diffusion_controlnet_ddim(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
         vae_scale_factor = 8
@@ -155,7 +195,7 @@ class StableDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.T
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs_for_controlnet(device, pil_image=True)
+        inputs = self.get_dummy_inputs_for_controlnet(device)
         output = sd_pipe(**inputs)
         image = output.images
 
@@ -164,7 +204,7 @@ class StableDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.T
 
         assert image.shape == (1, 32 * vae_scale_factor, 32 * vae_scale_factor, 3)
         expected_slice = np.array(
-            [0.4780106, 0.46282214, 0.49179333, 0.437001, 0.4518742, 0.46226522, 0.41771045, 0.4315053, 0.4805042]
+            [0.47653976, 0.4843403, 0.46522307, 0.39793792, 0.454136, 0.4749748, 0.37724984, 0.4025603, 0.47651842]
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
@@ -191,10 +231,10 @@ class StableDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.T
         assert image.shape == (2, 32 * vae_scale_factor, 32 * vae_scale_factor, 3)
 
         expected_slice0 = np.array(
-            [0.47709626, 0.48531038, 0.4648616, 0.39797616, 0.4541167, 0.47469646, 0.3775609, 0.4033805, 0.4765025]
+            [0.4394728, 0.46073985, 0.49796283, 0.52271855, 0.51414967, 0.5314792, 0.47262335, 0.47206822, 0.48990324]
         )
         expected_slice1 = np.array(
-            [0.4621172, 0.4676137, 0.5062453, 0.5052618, 0.5217055, 0.5249935, 0.4406457, 0.4661678, 0.5214513]
+            [0.5315275, 0.4819456, 0.4750305, 0.4453807, 0.44164768, 0.47079763, 0.40049344, 0.39453578, 0.47368276]
         )
 
         assert np.abs(image_slice0.flatten() - expected_slice0).max() < 1e-2
@@ -222,41 +262,10 @@ class StableDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.T
         assert image.shape == (2, 32 * vae_scale_factor, 32 * vae_scale_factor, 3)
 
         expected_slice0 = np.array(
-            [0.4763651, 0.48430225, 0.46508622, 0.3978958, 0.45416373, 0.4748904, 0.3773327, 0.40261823, 0.47642976]
+            [0.44349974, 0.46209368, 0.4967181, 0.5238648, 0.5147134, 0.5299364, 0.47317895, 0.47206104, 0.48903918]
         )
         expected_slice1 = np.array(
-            [0.462687, 0.46804678, 0.50551665, 0.50405616, 0.5203774, 0.52371174, 0.43939433, 0.46502018, 0.52084166]
-        )
-
-        assert np.abs(image_slice0.flatten() - expected_slice0).max() < 1e-2
-        assert np.abs(image_slice1.flatten() - expected_slice1).max() < 1e-2
-
-    def test_stable_diffusion_controlnet_ddim_two_images_per_prompt_pil_image(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
-        vae_scale_factor = 8
-        components = self.get_dummy_components_for_controlnet()
-        sd_pipe = StableDiffusionControlNetPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs_for_controlnet(device, num_images_per_prompt=2, pil_image=True)
-        output = sd_pipe(**inputs)
-        image = output.images
-
-        image_slice0 = image[0, -3:, -3:, -1]
-        image_slice1 = image[1, -3:, -3:, -1]
-
-        # print("image_slice0", image_slice0)
-        # print("image_slice1", image_slice1)
-
-        assert image.shape == (2, 32 * vae_scale_factor, 32 * vae_scale_factor, 3)
-
-        expected_slice0 = np.array(
-            [0.4763651, 0.48430225, 0.46508622, 0.3978958, 0.45416373, 0.4748904, 0.3773327, 0.40261823, 0.47642976]
-        )
-        expected_slice1 = np.array(
-            [0.462687, 0.46804678, 0.50551665, 0.50405616, 0.5203774, 0.52371174, 0.43939433, 0.46502018, 0.52084166]
+            [0.5333272, 0.48134372, 0.47437134, 0.44782317, 0.44065917, 0.4701641, 0.40167314, 0.39400867, 0.47319612]
         )
 
         assert np.abs(image_slice0.flatten() - expected_slice0).max() < 1e-2
