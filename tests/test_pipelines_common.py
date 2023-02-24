@@ -197,7 +197,11 @@ class PipelineTesterMixin:
         self._test_inference_batch_single_identical()
 
     def _test_inference_batch_single_identical(
-        self, test_max_difference=None, test_mean_pixel_difference=None, relax_max_difference=False, expected_max_diff=1e-4
+        self,
+        test_max_difference=None,
+        test_mean_pixel_difference=None,
+        relax_max_difference=False,
+        expected_max_diff=1e-4,
     ):
         if self.pipeline_class.__name__ in [
             "CycleDiffusionPipeline",

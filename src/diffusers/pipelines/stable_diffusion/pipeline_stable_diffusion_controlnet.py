@@ -634,7 +634,11 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 down_block_res_samples, mid_block_res_sample = self.controlnet(
-                    latent_model_input, t, encoder_hidden_states=prompt_embeds, controlnet_cond=image, return_dict=False
+                    latent_model_input,
+                    t,
+                    encoder_hidden_states=prompt_embeds,
+                    controlnet_cond=image,
+                    return_dict=False,
                 )
 
                 # predict the noise residual
