@@ -287,9 +287,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
         generator = torch.Generator(device=generator_device).manual_seed(seed)
         latents = torch.randn((1, 4, 64, 64), generator=generator, dtype=dtype)
         vae_scale_factor = 8
-        controlnet_hint = torch.randn(
-            (1, 3, 64 * vae_scale_factor, 64 * vae_scale_factor), generator=generator, dtype=dtype
-        )
+        image = torch.randn((1, 3, 64 * vae_scale_factor, 64 * vae_scale_factor), generator=generator, dtype=dtype)
         inputs = {
             "prompt": "a photograph of an astronaut riding a horse",
             "latents": latents,
@@ -297,7 +295,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
             "num_inference_steps": 50,
             "guidance_scale": 7.5,
             "output_type": "numpy",
-            "controlnet_hint": controlnet_hint,
+            "image": image,
         }
         return inputs
 
