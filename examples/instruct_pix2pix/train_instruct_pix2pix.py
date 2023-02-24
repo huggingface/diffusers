@@ -19,13 +19,11 @@ import argparse
 import logging
 import math
 import os
-import random
 from pathlib import Path
 from typing import Optional
 
 import accelerate
 import datasets
-import numpy as np
 import PIL
 import requests
 import torch
