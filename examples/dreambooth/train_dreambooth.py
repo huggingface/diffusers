@@ -973,7 +973,6 @@ def main(args):
                     unet=accelerator.unwrap_model(unet),
                     text_encoder=accelerator.unwrap_model(text_encoder),
                     revision=args.revision,
-                    torch_dtype=weight_dtype,
                 )
                 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
                 pipeline = pipeline.to(accelerator.device)
@@ -1020,7 +1019,7 @@ def main(args):
             pipeline = DiffusionPipeline.from_pretrained(
                 args.output_dir,
                 revision=args.revision,
-                torch_dtype=weight_dtype,
+                torch_dtype=weight_dtype
             )
             pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
             pipeline = pipeline.to(accelerator.device)
