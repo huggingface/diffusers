@@ -26,7 +26,13 @@ The pretrained [`stable-diffusion-v1-4`](https://huggingface.co/CompVis/stable-d
 * unet: the model used to generate the latent representation of the input.
 * vae: the autoencoder module you'll use to decode latent representations into real images.
 
-Load these components with the [`~ModelMixin.from_pretrained.subfolder`] parameter in the [`~ModelMixin.from_pretrained`] method:
+Load these components individually with the [`~ModelMixin.from_pretrained.subfolder`] parameter in the [`~ModelMixin.from_pretrained`] method:
+
+<Tip>
+
+💡 While you can load the entire checkpoint and all its components by calling the [`StableDiffusionPipeline`] with the [`~DiffusionPipeline.from_pretrained`] method, the goal of this guide is to show how you can pick and choose the individual models and scheduler you want to use to create a custom inference system.
+
+</Tip>
 
 ```py
 >>> from PIL import Image
@@ -102,7 +108,7 @@ You'll also need to generate the *unconditional text embeddings* which are the e
 >>> uncond_embeddings = text_encoder(uncond_input.input_ids.to(torch_device))[0]
 ```
 
-Concatenate the embeddings into a single batch to get it ready for the forward pass:
+For unconditional image generation, you typically do two forward passes, one for each of the embeddings. But in practice, it is better to concatenate the embeddings into a single batch to avoid doing two forward passes:
 
 ```py
 >>> text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
@@ -110,7 +116,7 @@ Concatenate the embeddings into a single batch to get it ready for the forward p
 
 ## Create random noise
 
-Next, generate some initial random noise as a starting point for the diffusion process. This is the latent representation of the image, and it'll be gradually denoised by the model and scheduler. At this point, the `latent` image is smaller than the final image size. That's okay though because the model will transform it into the final 512x512 image dimensions later.
+Next, generate some initial random noise as a starting point for the diffusion process. This is the latent representation of the image, and it'll be gradually denoised. At this point, the `latent` image is smaller than the final image size but that's okay though because the model will transform it into the final 512x512 image dimensions later.
 
 ```py
 >>> latents = torch.randn(
@@ -189,5 +195,3 @@ In this guide you learned how to:
 * create text embeddings from the prompt to guide the UNet model
 * write a denoising loop with the [`LMSDiscreteScheduler`] to generate an image
 * decode and display the generated image
-
-If you're interested in writing your own pipeline for other tasks like text-guided image-to-image generation or text-guide image-inpainting, controlling generation, and how to contribute a new pipeline to the library, take a look at the Pipelines for Inference section.
