@@ -23,7 +23,7 @@ import diffusers
 from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
-from diffusers.utils import check_min_version, is_tensorboard_available, is_wandb_available
+from diffusers.utils import check_min_version, is_accelerate_version, is_tensorboard_available, is_wandb_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -628,10 +628,13 @@ def main(args):
                 images_processed = (images * 255).round().astype("uint8")
 
                 if args.logger == "tensorboard":
-                    accelerator.get_tracker("tensorboard").add_images(
-                        "test_samples", images_processed.transpose(0, 3, 1, 2), epoch
-                    )
+                    if is_accelerate_version(">=", "0.17.0.dev0"):
+                        tracker = accelerator.get_tracker("tensorboard", unwrap=True)
+                    else:
+                        tracker = accelerator.get_tracker()
+                    tracker.add_images("test_samples", images_processed.transpose(0, 3, 1, 2), epoch)
                 elif args.logger == "wandb":
+                    # Upcoming `log_images` helper coming in https://github.com/huggingface/accelerate/pull/962/files
                     accelerator.get_tracker("wandb").log(
                         {"test_samples": [wandb.Image(img) for img in images_processed], "epoch": epoch},
                         step=global_step,
