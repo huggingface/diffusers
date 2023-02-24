@@ -1,0 +1,7 @@
+accelerate
+torchvision
+transformers>=4.25.1
+datasets
+ftfy
+tensorboard
+Jinja2
