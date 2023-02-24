@@ -628,10 +628,11 @@ def main(args):
                 images_processed = (images * 255).round().astype("uint8")
 
                 if args.logger == "tensorboard":
-                    accelerator.get_tracker("tensorboard").add_images(
+                    accelerator.get_tracker("tensorboard", unwrap=True).add_images(
                         "test_samples", images_processed.transpose(0, 3, 1, 2), epoch
                     )
                 elif args.logger == "wandb":
+                    # Upcoming `log_images` helper coming in https://github.com/huggingface/accelerate/pull/962/files
                     accelerator.get_tracker("wandb").log(
                         {"test_samples": [wandb.Image(img) for img in images_processed], "epoch": epoch},
                         step=global_step,
