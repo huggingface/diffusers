@@ -496,7 +496,7 @@ def main():
     # Create EMA for the unet.
     if args.use_ema:
         ema_unet = UNet2DConditionModel.from_config(instruct_pix2pix_config)
-        if accelerator._is_main_process:
+        if accelerator.is_main_process:
             ema_unet = initialize_unet(unet, ema_unet)
         ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config)
 
