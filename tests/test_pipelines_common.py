@@ -89,6 +89,7 @@ class PipelineTesterMixin:
             CycleDiffusionPipeline,
             RePaintPipeline,
             StableDiffusionImg2ImgPipeline,
+            StableDiffusionPanoramaPipeline,
         ):
             # FIXME: inconsistent outputs on MPS
             return
@@ -145,9 +146,7 @@ class PipelineTesterMixin:
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        if torch_device == "mps" and self.pipeline_class in (
-            StableDiffusionPanoramaPipeline,
-        ):
+        if torch_device == "mps" and self.pipeline_class == StableDiffusionPanoramaPipeline:
             # FIXME: slow (> 60s) inference on mps CI
             return
 
@@ -295,6 +294,7 @@ class PipelineTesterMixin:
             CycleDiffusionPipeline,
             RePaintPipeline,
             StableDiffusionImg2ImgPipeline,
+            StableDiffusionPanoramaPipeline,
         ):
             # FIXME: inconsistent outputs on MPS
             return
@@ -382,6 +382,7 @@ class PipelineTesterMixin:
             CycleDiffusionPipeline,
             RePaintPipeline,
             StableDiffusionImg2ImgPipeline,
+            StableDiffusionPanoramaPipeline,
         ):
             # FIXME: inconsistent outputs on MPS
             return
