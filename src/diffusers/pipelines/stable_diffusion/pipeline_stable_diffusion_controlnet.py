@@ -495,6 +495,18 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         return latents
 
     def controlnet_hint_conversion(self, controlnet_hint, height, width, batch_size):
+        def pil_image_to_numpy(image, width, height):
+            assert isinstance(image, PIL.Image.Image)
+            if image.size == (width, height):
+                controlnet_hint = image.convert("RGB")  # make sure 3 channel RGB format
+                controlnet_hint = np.array(controlnet_hint)  # to numpy
+                controlnet_hint = controlnet_hint[:, :, ::-1]  # RGB -> BGR
+                return controlnet_hint
+            else:
+                raise ValueError(
+                    f"Acceptable image size of `controlnet_hint` is ({width}, {height}) but is {image.size}"
+                )
+
         if controlnet_hint is None:
             return None
         channels = 3
@@ -538,15 +550,14 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                     + f"({batch_size}, {channels}, {height}, {width}) but is {controlnet_hint.shape}"
                 )
         elif isinstance(controlnet_hint, PIL.Image.Image):
-            if controlnet_hint.size == (width, height):
-                controlnet_hint = controlnet_hint.convert("RGB")  # make sure 3 channel RGB format
-                controlnet_hint = np.array(controlnet_hint)  # to numpy
-                controlnet_hint = controlnet_hint[:, :, ::-1]  # RGB -> BGR
-                return self.controlnet_hint_conversion(controlnet_hint, height, width, batch_size)
-            else:
-                raise ValueError(
-                    f"Acceptable image size of `controlnet_hint` is ({width}, {height}) but is {controlnet_hint.size}"
-                )
+            return self.controlnet_hint_conversion(
+                pil_image_to_numpy(controlnet_hint, width, height), height, width, batch_size
+            )
+        elif isinstance(controlnet_hint, list):
+            n_arrays = []
+            for image in controlnet_hint:
+                n_arrays.append(pil_image_to_numpy(image, width, height))
+            return self.controlnet_hint_conversion(np.array(n_arrays), height, width, batch_size)
         else:
             raise ValueError(
                 f"Acceptable type of `controlnet_hint` are any of torch.Tensor, np.ndarray, PIL.Image.Image but is {type(controlnet_hint)}"
@@ -573,7 +584,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        controlnet_hint: Optional[Union[torch.FloatTensor, np.ndarray, PIL.Image.Image]] = None,
+        controlnet_hint: Optional[Union[torch.FloatTensor, np.ndarray, PIL.Image.Image, List[PIL.Image.Image]]] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -634,7 +645,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                 A kwargs dictionary that if specified is passed along to the `AttnProcessor` as defined under
                 `self.processor` in
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
-            controlnet_hint (`torch.FloatTensor`, `np.ndarray` or `PIL.Image.Image`, *optional*):
+            controlnet_hint (`torch.FloatTensor`, `np.ndarray`, `PIL.Image.Image` or `List[PIL.Image.Image]`, *optional*):
                 ControlNet input embedding. ControlNet generates guidances using this input embedding. If the type is
                 specified as `torch.FloatTensor`, it is passed to ControlNet as is. If the type is `np.ndarray`, it is
                 assumed to be an OpenCV compatible image format. PIL.Image.Image` can also be accepted as an image. The

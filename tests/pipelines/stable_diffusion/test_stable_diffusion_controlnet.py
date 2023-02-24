@@ -19,6 +19,7 @@ import time
 import unittest
 
 import numpy as np
+import PIL.Image
 import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -139,15 +140,30 @@ class StableDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.T
         )
         return components
 
-    def get_dummy_inputs_for_controlnet(self, device, seed=0, num_of_prompts=1, num_images_per_prompt=1):
+    def get_dummy_inputs_for_controlnet(
+        self, device, seed=0, num_of_prompts=1, num_images_per_prompt=1, pil_image=False
+    ):
         inputs = self.get_dummy_inputs(device, seed)
         vae_scale_factor = 8
         if num_of_prompts > 1:
             inputs["prompt"] = [f"a photo of {i} cats" for i in range(num_of_prompts)]
-        inputs["controlnet_hint"] = torch.randn(
+
+        controlnet_hint = torch.randn(
             (num_of_prompts * num_images_per_prompt, 3, 32 * vae_scale_factor, 32 * vae_scale_factor),
             generator=inputs["generator"],
         )
+
+        if pil_image:
+            controlnet_hint = controlnet_hint.detach().numpy().copy()
+            images = np.zeros_like(controlnet_hint, dtype=np.uint8)
+            images[controlnet_hint > 0.5] = 255
+            images = images.transpose(0, 3, 2, 1)  # b c h w -> b w h c
+            if images.shape[0] == 1:
+                controlnet_hint = PIL.Image.fromarray(images[0])  # PIL.Image
+            else:
+                controlnet_hint = [PIL.Image.fromarray(images[b]) for b in range(images.shape[0])]  # List of PIL.Image
+
+        inputs["controlnet_hint"] = controlnet_hint
         inputs["num_images_per_prompt"] = num_images_per_prompt
         return inputs
 
@@ -587,6 +603,29 @@ class StableDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.T
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    def test_stable_diffusion_controlnet_ddim_pil_image(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        vae_scale_factor = 8
+        components = self.get_dummy_components_for_controlnet()
+        sd_pipe = StableDiffusionControlNetPipeline(**components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs_for_controlnet(device, pil_image=True)
+        output = sd_pipe(**inputs)
+        image = output.images
+
+        image_slice = image[0, -3:, -3:, -1]
+        # print("image_slice", image_slice)
+
+        assert image.shape == (1, 32 * vae_scale_factor, 32 * vae_scale_factor, 3)
+        expected_slice = np.array(
+            [0.4780106, 0.46282214, 0.49179333, 0.437001, 0.4518742, 0.46226522, 0.41771045, 0.4315053, 0.4805042]
+        )
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
     def test_stable_diffusion_controlnet_ddim_two_prompts(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
@@ -628,6 +667,37 @@ class StableDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.T
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs_for_controlnet(device, num_images_per_prompt=2)
+        output = sd_pipe(**inputs)
+        image = output.images
+
+        image_slice0 = image[0, -3:, -3:, -1]
+        image_slice1 = image[1, -3:, -3:, -1]
+
+        # print("image_slice0", image_slice0)
+        # print("image_slice1", image_slice1)
+
+        assert image.shape == (2, 32 * vae_scale_factor, 32 * vae_scale_factor, 3)
+
+        expected_slice0 = np.array(
+            [0.4763651, 0.48430225, 0.46508622, 0.3978958, 0.45416373, 0.4748904, 0.3773327, 0.40261823, 0.47642976]
+        )
+        expected_slice1 = np.array(
+            [0.462687, 0.46804678, 0.50551665, 0.50405616, 0.5203774, 0.52371174, 0.43939433, 0.46502018, 0.52084166]
+        )
+
+        assert np.abs(image_slice0.flatten() - expected_slice0).max() < 1e-2
+        assert np.abs(image_slice1.flatten() - expected_slice1).max() < 1e-2
+
+    def test_stable_diffusion_controlnet_ddim_two_images_per_prompt_pil_image(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        vae_scale_factor = 8
+        components = self.get_dummy_components_for_controlnet()
+        sd_pipe = StableDiffusionControlNetPipeline(**components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs_for_controlnet(device, num_images_per_prompt=2, pil_image=True)
         output = sd_pipe(**inputs)
         image = output.images
 
