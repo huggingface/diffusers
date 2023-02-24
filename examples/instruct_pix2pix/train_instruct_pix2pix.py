@@ -641,18 +641,7 @@ def main():
 
     # Preprocessing the datasets.
     # We need to tokenize input captions and transform the images.
-    def tokenize_captions(examples, is_train=True):
-        captions = []
-        for caption in examples[edit_prompt_column]:
-            if isinstance(caption, str):
-                captions.append(caption)
-            elif isinstance(caption, (list, np.ndarray)):
-                # take a random caption if there are multiple
-                captions.append(random.choice(caption) if is_train else caption[0])
-            else:
-                raise ValueError(
-                    f"Caption column `{edit_prompt_column}` should contain either strings or lists of strings."
-                )
+    def tokenize_captions(captions):
         inputs = tokenizer(
             captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
         )
@@ -674,7 +663,8 @@ def main():
         edited_images = [image.convert("RGB") for image in examples[edited_image_column]]
         examples["original_pixel_values"] = [train_transforms(image) for image in original_images]
         examples["edited_pixel_values"] = [train_transforms(image) for image in edited_images]
-        examples["input_ids"] = tokenize_captions(examples)
+        captions = [caption for caption in examples[edit_prompt_column]]
+        examples["input_ids"] = tokenize_captions(captions)
         return examples
 
     with accelerator.main_process_first():
