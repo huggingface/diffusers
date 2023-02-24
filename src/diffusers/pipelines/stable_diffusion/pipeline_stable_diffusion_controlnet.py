@@ -494,7 +494,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    def controlnet_hint_conversion(self, controlnet_hint, height, width, num_images_per_prompt):
+    def controlnet_hint_conversion(self, controlnet_hint, height, width, batch_size):
         if controlnet_hint is None:
             return None
         channels = 3
@@ -502,16 +502,16 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
             # torch.Tensor: acceptble shape are any of chw, bchw(b==1) or bchw(b==num_images_per_prompt)
             shape_chw = (channels, height, width)
             shape_bchw = (1, channels, height, width)
-            shape_nchw = (num_images_per_prompt, channels, height, width)
+            shape_nchw = (batch_size, channels, height, width)
             if controlnet_hint.shape in [shape_chw, shape_bchw, shape_nchw]:
                 controlnet_hint = controlnet_hint.to(dtype=self.controlnet.dtype, device=self.controlnet.device)
                 if controlnet_hint.shape != shape_nchw:
-                    controlnet_hint = controlnet_hint.repeat(num_images_per_prompt, 1, 1, 1)
+                    controlnet_hint = controlnet_hint.repeat(batch_size, 1, 1, 1)
                 return controlnet_hint
             else:
                 raise ValueError(
                     f"Acceptble shape of `controlnet_hint` are any of ({channels}, {height}, {width}),"
-                    + f" (1, {channels}, {height}, {width}) or ({num_images_per_prompt}, "
+                    + f" (1, {channels}, {height}, {width}) or ({batch_size}, "
                     + f"{channels}, {height}, {width}) but is {controlnet_hint.shape}"
                 )
         elif isinstance(controlnet_hint, np.ndarray):
@@ -521,13 +521,13 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                 controlnet_hint = np.repeat(controlnet_hint[:, :, np.newaxis], channels, axis=2)  # hw -> hwc(c==3)
             shape_hwc = (height, width, channels)
             shape_bhwc = (1, height, width, channels)
-            shape_nhwc = (num_images_per_prompt, height, width, channels)
+            shape_nhwc = (batch_size, height, width, channels)
             if controlnet_hint.shape in [shape_hwc, shape_bhwc, shape_nhwc]:
                 controlnet_hint = torch.from_numpy(controlnet_hint.copy())
                 controlnet_hint = controlnet_hint.to(dtype=self.controlnet.dtype, device=self.controlnet.device)
                 controlnet_hint /= 255.0
                 if controlnet_hint.shape != shape_nhwc:
-                    controlnet_hint = controlnet_hint.repeat(num_images_per_prompt, 1, 1, 1)
+                    controlnet_hint = controlnet_hint.repeat(batch_size, 1, 1, 1)
                 controlnet_hint = controlnet_hint.permute(0, 3, 1, 2)  # b h w c -> b c h w
                 return controlnet_hint
             else:
@@ -535,14 +535,14 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                     f"Acceptble shape of `controlnet_hint` are any of ({width}, {channels}), "
                     + f"({height}, {width}, {channels}), "
                     + f"(1, {height}, {width}, {channels}) or "
-                    + f"({num_images_per_prompt}, {channels}, {height}, {width}) but is {controlnet_hint.shape}"
+                    + f"({batch_size}, {channels}, {height}, {width}) but is {controlnet_hint.shape}"
                 )
         elif isinstance(controlnet_hint, PIL.Image.Image):
             if controlnet_hint.size == (width, height):
                 controlnet_hint = controlnet_hint.convert("RGB")  # make sure 3 channel RGB format
                 controlnet_hint = np.array(controlnet_hint)  # to numpy
                 controlnet_hint = controlnet_hint[:, :, ::-1]  # RGB -> BGR
-                return self.controlnet_hint_conversion(controlnet_hint, height, width, num_images_per_prompt)
+                return self.controlnet_hint_conversion(controlnet_hint, height, width, batch_size)
             else:
                 raise ValueError(
                     f"Acceptable image size of `controlnet_hint` is ({width}, {height}) but is {controlnet_hint.size}"
@@ -653,17 +653,12 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
 
-        # 1. Control Embedding check & conversion
-        controlnet_hint = self.controlnet_hint_conversion(controlnet_hint, height, width, num_images_per_prompt)
-        if controlnet_hint is not None and self.vae_scale_factor != 8:
-            raise ValueError("ControlNet currently supports only for vae_scale_factor == 8.")
-
-        # 2. Check inputs. Raise error if not correct
+        # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
         )
 
-        # 3. Define call parameters
+        # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -676,6 +671,16 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
+
+        # 3. Control Embedding check & conversion
+        controlnet_hint = self.controlnet_hint_conversion(
+            controlnet_hint, height, width, batch_size * num_images_per_prompt
+        )
+        if controlnet_hint is not None:
+            if self.vae_scale_factor != 8:
+                raise ValueError("ControlNet currently supports only for vae_scale_factor == 8.")
+            if do_classifier_free_guidance:
+                controlnet_hint = torch.cat([controlnet_hint] * 2)
 
         # 4. Encode input prompt
         prompt_embeds = self._encode_prompt(
