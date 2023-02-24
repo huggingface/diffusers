@@ -7,7 +7,6 @@ import torch.nn as nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models import ModelMixin
 from ...models.attention import CrossAttention
-from ...models.controlnet_blocks import ControlNetInputHintBlock, ControlNetZeroConvBlock
 from ...models.cross_attention import AttnProcessor, CrossAttnAddedKVProcessor
 from ...models.dual_transformer_2d import DualTransformer2DModel
 from ...models.embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
@@ -187,9 +186,6 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         conv_out_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_out` layer.
         projection_class_embeddings_input_dim (`int`, *optional*): The dimension of the `class_labels` input when
             using the "projection" `class_embed_type`. Required when using the "projection" `class_embed_type`.
-        controlnet_hint_channels (`int`, *optional*, default to `None`):
-            The number of channels in the `controlnet_hint`. If this value is not None, this unet model behaves as
-            ControlNet.
     """
 
     _supports_gradient_checkpointing = True
@@ -232,13 +228,12 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         num_class_embeds: Optional[int] = None,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
-        time_embedding_type: str = "positional",  # fourier, positional
+        time_embedding_type: str = "positional",
         timestep_post_act: Optional[str] = None,
         time_cond_proj_dim: Optional[int] = None,
         conv_in_kernel: int = 3,
         conv_out_kernel: int = 3,
         projection_class_embeddings_input_dim: Optional[int] = None,
-        controlnet_hint_channels: Optional[int] = None,
     ):
         super().__init__()
 
@@ -397,18 +392,6 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
         # count how many layers upsample the images
         self.num_upsamplers = 0
-
-        if controlnet_hint_channels is not None:
-            # ControlNet: add input_hint_block, zero_conv_block
-            self.controlnet_input_hint_block = ControlNetInputHintBlock(
-                hint_channels=controlnet_hint_channels, channels=block_out_channels[0]
-            )
-            self.controlnet_zero_conv_block = ControlNetZeroConvBlock(
-                block_out_channels=block_out_channels,
-                down_block_types=down_block_types,
-                layers_per_block=layers_per_block,
-            )
-            return  # Modules from the following lines are not defined in ControlNet
 
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
@@ -599,10 +582,10 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        controlnet_hint: Optional[torch.FloatTensor] = None,
-        control: Optional[List[torch.FloatTensor]] = None,
+        down_block_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
+        mid_block_additional_residual: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-    ) -> Union[UNet2DConditionOutput, Tuple, List[torch.FloatTensor]]:
+    ) -> Union[UNet2DConditionOutput, Tuple]:
         r"""
         Args:
             sample (`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
@@ -614,17 +597,11 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 A kwargs dictionary that if specified is passed along to the `AttnProcessor` as defined under
                 `self.processor` in
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
-            controlnet_hint (`torch.FloatTensor`, *optional*, defaults to `None`):
-                ControlNet input embedding. If `controlnet_hint_channel` of `__init__()` is not None, it must be
-                specified as a tensors.
-            control (`List[torch.FloatTensor]`, *optional*, defaults to `None`):
-                If `control` is not None, this unet model behaves as ControlledUnet. ControlledUnet is controlled by
-                this list of tensors.
+
         Returns:
-            [`~models.unet_2d_condition.UNet2DConditionOutput`] , `tuple` or [torch.FloatTensor]:
+            [`~models.unet_2d_condition.UNet2DConditionOutput`] or `tuple`:
             [`~models.unet_2d_condition.UNet2DConditionOutput`] if `return_dict` is True, otherwise a `tuple`. When
-            returning a tuple, the first element is the sample tensor. If `controlnet_hint` is not None, the ControlNet
-            result of the processing is output as a list of tensors.
+            returning a tuple, the first element is the sample tensor.
         """
         # By default samples have to be AT least a multiple of the overall upsampling factor.
         # The overall upsampling factor is equal to 2 ** (# num of upsampling layears).
@@ -687,8 +664,6 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
         # 2. pre-process
         sample = self.conv_in(sample)
-        if controlnet_hint is not None:
-            sample += self.controlnet_input_hint_block(controlnet_hint)
 
         # 3. down
         down_block_res_samples = (sample,)
@@ -706,6 +681,17 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
             down_block_res_samples += res_samples
 
+        if down_block_additional_residuals is not None:
+            new_down_block_res_samples = ()
+
+            for down_block_res_sample, down_block_additional_residual in zip(
+                down_block_res_samples, down_block_additional_residuals
+            ):
+                down_block_res_sample += down_block_additional_residual
+                new_down_block_res_samples += (down_block_res_sample,)
+
+            down_block_res_samples = new_down_block_res_samples
+
         # 4. mid
         if self.mid_block is not None:
             sample = self.mid_block(
@@ -716,15 +702,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 cross_attention_kwargs=cross_attention_kwargs,
             )
 
-        if controlnet_hint is not None:
-            # ControlNet: zero convs
-            return self.controlnet_zero_conv_block(
-                down_block_res_samples=down_block_res_samples, mid_block_sample=sample
-            )
-
-        if control is not None:
-            # ControlledUnet: apply mid_zero_conv output
-            sample += control.pop()
+        if mid_block_additional_residual is not None:
+            sample += mid_block_additional_residual
 
         # 5. up
         for i, upsample_block in enumerate(self.up_blocks):
@@ -732,12 +711,6 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
             res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
             down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
-
-            if control is not None:
-                # ControlledUnet: apply ControlNet downblock zero_convs output
-                control_samples = control[-len(upsample_block.resnets) :]
-                control = control[: -len(upsample_block.resnets)]
-                res_samples = [r + c for r, c in zip(res_samples, control_samples)]
 
             # if we have not reached the final block and need to forward the
             # upsample size, we do it here
@@ -758,10 +731,6 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 sample = upsample_block(
                     hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size
                 )
-
-        # TODO: remove this block
-        if control is not None:
-            assert len(control) == 0, f"must consume all control array ({len(control)})"
 
         # 6. post-process
         if self.conv_norm_out:

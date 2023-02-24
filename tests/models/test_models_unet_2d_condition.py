@@ -26,7 +26,6 @@ from diffusers.utils import (
     floats_tensor,
     load_hf_numpy,
     logging,
-    randn_tensor,
     require_torch_gpu,
     slow,
     torch_all_close,
@@ -85,16 +84,6 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         return {"sample": noise, "timestep": time_step, "encoder_hidden_states": encoder_hidden_states}
 
     @property
-    def dummpy_input_for_controlnet(self):
-        hint_channels = 3
-        input_dict = self.dummy_input
-        sample_shape = input_dict["sample"].shape
-        input_dict["controlnet_hint"] = floats_tensor(
-            (sample_shape[0], hint_channels, sample_shape[2] * 8, sample_shape[3] * 8)
-        ).to(torch_device)
-        return input_dict
-
-    @property
     def input_shape(self):
         return (4, 32, 32)
 
@@ -115,20 +104,6 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
             "sample_size": 32,
         }
         inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
-
-    def prepare_init_args_and_inputs_for_controlnet(self):
-        init_dict = {
-            "block_out_channels": (32, 64),
-            "down_block_types": ("CrossAttnDownBlock2D", "DownBlock2D"),
-            "cross_attention_dim": 32,
-            "attention_head_dim": 8,
-            "in_channels": 4,
-            "layers_per_block": 2,
-            "sample_size": 32,
-            "controlnet_hint_channels": 3,
-        }
-        inputs_dict = self.dummpy_input_for_controlnet
         return init_dict, inputs_dict
 
     @unittest.skipIf(
@@ -466,54 +441,6 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         assert (sample - on_sample).abs().max() < 1e-4
         assert (sample - off_sample).abs().max() < 1e-4
 
-    def test_model_controlnet_inference(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_controlnet()
-
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-        model.eval()
-
-        with torch.no_grad():
-            output = model(**inputs_dict)
-
-            conv_in_n = 1
-            cross_attn_n = init_dict["layers_per_block"] + 1  # with down sampler
-            down_block_n = init_dict["layers_per_block"]  # no down sampler
-            mid_block_n = 1
-            assert len(output) == conv_in_n + cross_attn_n + down_block_n + mid_block_n
-
-            cross_attn_ch = init_dict["block_out_channels"][0]
-            down_block_ch = init_dict["block_out_channels"][1]
-            inshape = self.input_shape
-            batch = inputs_dict["sample"].shape[0]
-            s1 = (batch, cross_attn_ch, inshape[1], inshape[2])
-            s2 = (batch, cross_attn_ch, inshape[1] / 2, inshape[2] / 2)
-            s3 = (batch, down_block_ch, inshape[1] / 2, inshape[2] / 2)
-            expected_shape = [s1, s1, s1, s2, s3, s3, s3]
-            assert all([out.shape == shape for out, shape in zip(output, expected_shape)])
-
-    def test_model_controlnet_and_unet_inference(self):
-        controlnet_init_dict, controlnet_inputs_dict = self.prepare_init_args_and_inputs_for_controlnet()
-        unet_init_dict, unet_inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        controlnet_model = self.model_class(**controlnet_init_dict)
-        controlnet_model.to(torch_device)
-        controlnet_model.eval()
-
-        unet_model = self.model_class(**unet_init_dict)
-        unet_model.to(torch_device)
-        unet_model.eval()
-
-        with torch.no_grad():
-            control = controlnet_model(**controlnet_inputs_dict)
-            unet_inputs_dict["control"] = control
-            output = unet_model(**unet_inputs_dict)
-            if isinstance(output, dict):
-                output = output.sample
-
-            batch = unet_inputs_dict["sample"].shape[0]
-            assert output.shape == (batch,) + self.output_shape
-
 
 @slow
 class UNet2DConditionModelIntegrationTests(unittest.TestCase):
@@ -531,12 +458,12 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         image = torch.from_numpy(load_hf_numpy(self.get_file_format(seed, shape))).to(torch_device).to(dtype)
         return image
 
-    def get_unet_model(self, fp16=False, model_id="CompVis/stable-diffusion-v1-4", subfolder="unet"):
+    def get_unet_model(self, fp16=False, model_id="CompVis/stable-diffusion-v1-4"):
         revision = "fp16" if fp16 else None
         torch_dtype = torch.float16 if fp16 else torch.float32
 
         model = UNet2DConditionModel.from_pretrained(
-            model_id, subfolder=subfolder, torch_dtype=torch_dtype, revision=revision
+            model_id, subfolder="unet", torch_dtype=torch_dtype, revision=revision
         )
         model.to(torch_device).eval()
 
@@ -813,58 +740,6 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
 
         with torch.no_grad():
             sample = model(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
-
-        assert sample.shape == latents.shape
-
-        output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
-        expected_output_slice = torch.tensor(expected_slice)
-
-        assert torch_all_close(output_slice, expected_output_slice, atol=5e-3)
-
-    @parameterized.expand(
-        [
-            # fmt: off
-            [83, 4, [-0.0343, -0.7764, -0.5049, -0.1671, -0.8076, -0.8975, -0.0917,  0.6797]],
-            [17, 0.55, [-0.1732, -0.2542,  0.5425, -0.4189, -0.7910,  0.7544,  0.3892, -0.3232]],
-            [8, 0.89, [-0.6738,  0.3801,  0.1443,  0.1410,  0.7944, -0.4167,  0.1897, -0.0763]],
-            [3, 1000, [0.7334,  0.4519, -0.0319, -0.6343, -0.4348, -0.5205, -0.2534,  0.7998]],
-            # fmt: on
-        ]
-    )
-    @require_torch_gpu
-    def test_controlnet_sd15_canny_fp16(self, seed, timestep, expected_slice):
-        model_id = "takuma104/control_sd15_canny"
-        controlnet_model = self.get_unet_model(model_id=model_id, subfolder="controlnet").to(torch.float16)
-        unet_model = self.get_unet_model(model_id=model_id).to(torch.float16)
-        latents = self.get_latents(seed, shape=(4, 4, 96, 96), fp16=True)
-
-        # for my poor memory environment
-        controlnet_model.set_attention_slice(1)  # TODO: remove
-        unet_model.set_attention_slice(1)  # TODO: remove
-
-        generator = torch.manual_seed(seed)
-        controlnet_hint = randn_tensor(
-            (4, 3, 96 * 8, 96 * 8), generator=generator, device=torch.device(torch_device), dtype=torch.float16
-        )
-
-        # encoder_hidden_states = self.get_encoder_hidden_states(seed, shape=(4, 77, 1024), fp16=True)
-        # TODO: investigate for not accepted (4, 77, 1024)
-        encoder_hidden_states = randn_tensor(
-            (4, 77, 768), generator=generator, device=torch.device(torch_device), dtype=torch.float16
-        )
-
-        timestep = torch.tensor([timestep], dtype=torch.long, device=torch_device)
-
-        with torch.no_grad():
-            control = controlnet_model(
-                latents,
-                timestep=timestep,
-                encoder_hidden_states=encoder_hidden_states,
-                controlnet_hint=controlnet_hint,
-            )
-            sample = unet_model(
-                latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states, control=control
-            ).sample
 
         assert sample.shape == latents.shape
 
