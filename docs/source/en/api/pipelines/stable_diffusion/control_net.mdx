@@ -46,9 +46,7 @@ from diffusers import StableDiffusionControlNetPipeline
 from diffusers.utils import load_image
 
 # Canny edged image for control
-canny_edged_image = load_image(
-    "https://huggingface.co/takuma104/controlnet_dev/resolve/main/vermeer_canny_edged.png"
-)
+canny_edged_image = load_image("https://huggingface.co/takuma104/controlnet_dev/resolve/main/vermeer_canny_edged.png")
 pipe = StableDiffusionControlNetPipeline.from_pretrained("takuma104/control_sd15_canny").to("cuda")
 image = pipe(prompt="best quality, extremely detailed", image=canny_edged_image).images[0]
 image.save("generated.png")
@@ -60,18 +58,14 @@ from diffusers import StableDiffusionControlNetPipeline, AutoencoderKL, UNet2DCo
 from diffusers.utils import load_image
 
 # Canny edged image for control
-canny_edged_image = load_image(
-    "https://huggingface.co/takuma104/controlnet_dev/resolve/main/vermeer_canny_edged.png"
-)
+canny_edged_image = load_image("https://huggingface.co/takuma104/controlnet_dev/resolve/main/vermeer_canny_edged.png")
 
-base_model_id = 'prompthero/openjourney' # an example: openjourney model
+base_model_id = "prompthero/openjourney"  # an example: openjourney model
 vae = AutoencoderKL.from_pretrained(base_model_id, subfolder="vae").to("cuda")
 unet = UNet2DConditionModel.from_pretrained(base_model_id, subfolder="unet").to("cuda")
 
-pipe = StableDiffusionControlNetPipeline.from_pretrained("takuma104/control_sd15_canny", 
-                                                         unet=unet, vae=vae).to("cuda")
-image = pipe(prompt="best quality, extremely detailed", image=canny_edged_image, 
-             width=512, height=512).images[0]
+pipe = StableDiffusionControlNetPipeline.from_pretrained("takuma104/control_sd15_canny", unet=unet, vae=vae).to("cuda")
+image = pipe(prompt="best quality, extremely detailed", image=canny_edged_image, width=512, height=512).images[0]
 image.save("generated.png")
 ```
 
