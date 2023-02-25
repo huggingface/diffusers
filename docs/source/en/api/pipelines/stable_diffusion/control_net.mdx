@@ -19,11 +19,61 @@ ControlNet by [@lllyasviel](https://huggingface.co/lllyasviel) is a neural netwo
 It has integration with Stable Diffusion and 8 pre-trained models that conditions the models on different attributes 
 (such as edge detection, scribbles, depth maps, semantic segmentations and more)
 
-The original codebase can be found here: 
+The original codebase/paper can be found here: 
 - [lllyasviel/ControlNet](https://github.com/lllyasviel/ControlNet)
+- [Paper](https://arxiv.org/abs/2302.05543)
 
-Available Checkpoints are:
-- TODO: fill here.
+
+## Available converted checkpoints
+- *ControlNet+SD1.5 using canny edge detection:* [takuma104/control_sd15_canny](https://huggingface.co/takuma104/control_sd15_canny)
+- *ControlNet+SD1.5 using Midas depth estimation:* [takuma104/control_sd15_depth](https://huggingface.co/takuma104/control_sd15_depth)
+- *ControlNet+SD1.5 using HED edge detection (soft edge):* [takuma104/control_sd15_hed](https://huggingface.co/takuma104/control_sd15_hed)
+- *ControlNet+SD1.5 using M-LSD line detection:* [takuma104/control_sd15_mlsd](https://huggingface.co/takuma104/control_sd15_mlsd)
+- *ControlNet+SD1.5 using normal map:* [takuma104/control_sd15_normal](https://huggingface.co/takuma104/control_sd15_normal)
+- *ControlNet+SD1.5 using OpenPose pose detection:* [takuma104/control_sd15_openpose](https://huggingface.co/takuma104/control_sd15_openpose)
+- *ControlNet+SD1.5 using human scribbles:* [takuma104/control_sd15_scribble](https://huggingface.co/takuma104/control_sd15_scribble)
+- *ControlNet+SD1.5 using semantic segmentation:* [takuma104/control_sd15_seg](https://huggingface.co/takuma104/control_sd15_seg)
+
+## Resources
+- [Colab Notebook Example](https://colab.research.google.com/drive/1AiR7Q-sBqO88NCyswpfiuwXZc7DfMyKA?usp=sharing)
+- [controlnet_hinter](https://github.com/takuma104/controlnet_hinter): Image Preprocess Library for ControlNet
+
+## Usage example
+
+- Basic Example (Canny Edge)
+```python
+from diffusers import StableDiffusionControlNetPipeline
+from diffusers.utils import load_image
+
+# Canny edged image for control
+canny_edged_image = load_image(
+    "https://huggingface.co/takuma104/controlnet_dev/resolve/main/vermeer_canny_edged.png"
+)
+pipe = StableDiffusionControlNetPipeline.from_pretrained("takuma104/control_sd15_canny").to("cuda")
+image = pipe(prompt="best quality, extremely detailed", image=canny_edged_image).images[0]
+image.save("generated.png")
+```
+
+- Using SD1.x variant model to control
+```py
+from diffusers import StableDiffusionControlNetPipeline, AutoencoderKL, UNet2DConditionModel
+from diffusers.utils import load_image
+
+# Canny edged image for control
+canny_edged_image = load_image(
+    "https://huggingface.co/takuma104/controlnet_dev/resolve/main/vermeer_canny_edged.png"
+)
+
+base_model_id = 'prompthero/openjourney' # an example: openjourney model
+vae = AutoencoderKL.from_pretrained(base_model_id, subfolder="vae").to("cuda")
+unet = UNet2DConditionModel.from_pretrained(base_model_id, subfolder="unet").to("cuda")
+
+pipe = StableDiffusionControlNetPipeline.from_pretrained("takuma104/control_sd15_canny", 
+                                                         unet=unet, vae=vae).to("cuda")
+image = pipe(prompt="best quality, extremely detailed", image=canny_edged_image, 
+             width=512, height=512).images[0]
+image.save("generated.png")
+```
 
 [[autodoc]] StableDiffusionControlNetPipeline
 	- all
