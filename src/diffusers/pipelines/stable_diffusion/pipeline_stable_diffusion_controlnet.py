@@ -39,23 +39,6 @@ from .safety_checker import StableDiffusionSafetyChecker
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def preprocess(image, width, height):
-    if isinstance(image, torch.Tensor):
-        return image
-    elif isinstance(image, PIL.Image.Image):
-        image = [image]
-
-    if isinstance(image[0], PIL.Image.Image):
-        image = [np.array(i.resize((width, height), resample=PIL_INTERPOLATION["lanczos"]))[None, :] for i in image]
-        image = np.concatenate(image, axis=0)
-        image = np.array(image).astype(np.float32) / 255.0
-        image = image.transpose(0, 3, 1, 2)
-        image = torch.from_numpy(image)
-    elif isinstance(image[0], torch.Tensor):
-        image = torch.cat(image, dim=0)
-    return image
-
-
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
@@ -405,10 +388,10 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
+        image,
         height,
         width,
         callback_steps,
@@ -452,6 +435,67 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
+
+        image_is_pil = isinstance(image, PIL.Image.Image)
+        image_is_tensor = isinstance(image, torch.Tensor)
+        image_is_pil_list = isinstance(image, list) and isinstance(image[0], PIL.Image.Image)
+        image_is_tensor_list = isinstance(image, list) and isinstance(image[0], torch.Tensor)
+
+        if not image_is_pil and not image_is_tensor and not image_is_pil_list and not image_is_tensor_list:
+            raise TypeError(
+                "image must be one of PIL image, torch tensor, list of PIL images, or list of torch tensors"
+            )
+
+        if image_is_pil:
+            image_batch_size = 1
+        elif image_is_tensor:
+            image_batch_size = image.shape[0]
+        elif image_is_pil_list:
+            image_batch_size = len(image)
+        elif image_is_tensor_list:
+            image_batch_size = len(image)
+
+        if prompt is not None and isinstance(prompt, str):
+            prompt_batch_size = 1
+        elif prompt is not None and isinstance(prompt, list):
+            prompt_batch_size = len(prompt)
+        elif prompt_embeds is not None:
+            prompt_batch_size = prompt_embeds.shape[0]
+
+        if image_batch_size != 1 and image_batch_size != prompt_batch_size:
+            raise ValueError(
+                f"If image batch size is not 1, image batch size must be same as prompt batch size. image batch size: {image_batch_size}, prompt batch size: {prompt_batch_size}"
+            )
+
+    def prepare_image(self, image, width, height, batch_size, num_images_per_prompt, device, dtype):
+        if not isinstance(image, torch.Tensor):
+            if isinstance(image, PIL.Image.Image):
+                image = [image]
+
+            if isinstance(image[0], PIL.Image.Image):
+                image = [
+                    np.array(i.resize((width, height), resample=PIL_INTERPOLATION["lanczos"]))[None, :] for i in image
+                ]
+                image = np.concatenate(image, axis=0)
+                image = np.array(image).astype(np.float32) / 255.0
+                image = image.transpose(0, 3, 1, 2)
+                image = torch.from_numpy(image)
+            elif isinstance(image[0], torch.Tensor):
+                image = torch.cat(image, dim=0)
+
+        image_batch_size = image.shape[0]
+
+        if image_batch_size == 1:
+            repeat_by = batch_size
+        else:
+            # image batch size is the same as prompt batch size
+            repeat_by = num_images_per_prompt
+
+        image = image.repeat_interleave(repeat_by, dim=0)
+
+        image = image.to(device=device, dtype=dtype)
+
+        return image
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
@@ -577,7 +621,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
+            prompt, image, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
         )
 
         # 2. Define call parameters
@@ -606,9 +650,15 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         )
 
         # 4. Prepare image
-        image = preprocess(image, width, height)
-
-        image = image.to(device=device, dtype=self.controlnet.dtype)
+        image = self.prepare_image(
+            image,
+            width,
+            height,
+            batch_size * num_images_per_prompt,
+            num_images_per_prompt,
+            device,
+            self.controlnet.dtype,
+        )
 
         if do_classifier_free_guidance:
             image = torch.cat([image] * 2)
