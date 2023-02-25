@@ -67,6 +67,8 @@
     title: OpenVINO
   - local: optimization/mps
     title: MPS
+  - local: optimization/coreml
+    title: Core ML
   - local: optimization/habana
     title: Habana Gaudi
   title: Optimization/Special Hardware
