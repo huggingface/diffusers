@@ -144,36 +144,6 @@ class StableDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.T
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
-    # TODO(will) - remove
-    def test_stable_diffusion_controlnet_ddim_two_images_per_prompt(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
-        vae_scale_factor = 8
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionControlNetPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        inputs["num_images_per_prompt"] = 2
-        output = sd_pipe(**inputs)
-        image = output.images
-
-        image_slice0 = image[0, -3:, -3:, -1]
-        image_slice1 = image[1, -3:, -3:, -1]
-
-        assert image.shape == (2, 32 * vae_scale_factor, 32 * vae_scale_factor, 3)
-
-        expected_slice0 = np.array(
-            [0.44349974, 0.46209368, 0.4967181, 0.5238648, 0.5147134, 0.5299364, 0.47317895, 0.47206104, 0.48903918]
-        )
-        expected_slice1 = np.array(
-            [0.5333272, 0.48134372, 0.47437134, 0.44782317, 0.44065917, 0.4701641, 0.40167314, 0.39400867, 0.47319612]
-        )
-
-        assert np.abs(image_slice0.flatten() - expected_slice0).max() < 1e-2
-        assert np.abs(image_slice1.flatten() - expected_slice1).max() < 1e-2
-
 
 @slow
 @require_torch_gpu
