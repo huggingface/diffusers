@@ -494,6 +494,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        controlnet_conditioning_scale: float = 1.0,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -558,6 +559,9 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                 A kwargs dictionary that if specified is passed along to the `AttnProcessor` as defined under
                 `self.processor` in
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
+            controlnet_conditioning_scale (`float`, *optional*, defaults to 1.0):
+                The outputs of the controlnet are multiplied by `controlnet_conditioning_scale` before they are added
+                to the residual in the original unet.
 
         Examples:
 
@@ -645,6 +649,12 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                     controlnet_cond=image,
                     return_dict=False,
                 )
+
+                down_block_res_samples = [
+                    down_block_res_sample * controlnet_conditioning_scale
+                    for down_block_res_sample in down_block_res_samples
+                ]
+                mid_block_res_sample *= controlnet_conditioning_scale
 
                 # predict the noise residual
                 noise_pred = self.unet(
