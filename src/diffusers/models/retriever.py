@@ -47,7 +47,7 @@ class IndexConfig(PretrainedConfig):
         self.dataset_set = dataset_set
 
 
-class Index:
+class Index(nn.Module):
     """
     Each index for a retrieval model is specific to the clip model used and the dataset used.
     """
@@ -107,7 +107,7 @@ class Index:
         return self.dataset.search(self.index_name, vec, k=k)
 
 
-class Retriever:
+class Retriever(nn.Module):
     def __init__(
         self,
         config: IndexConfig,

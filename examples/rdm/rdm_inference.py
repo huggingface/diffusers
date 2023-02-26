@@ -66,17 +66,6 @@ def get_pipeline(vae, clip_model, unet, tokenizer, feature_extractor):
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.10.0.dev0")
 
-_clip_retrieval_available = True
-try:
-    _clip_retrieval_version = importlib_metadata.version("clip-retrieval")
-    from clip_retrieval.clip_client import ClipClient, Modality
-except importlib_metadata.PackageNotFoundError:
-    _clip_retrieval_available = False
-def is_clip_retrieval_available():
-    return _clip_retrieval_available
-
-
-
 def preprocess_images(images, feature_extractor: CLIPFeatureExtractor) -> torch.FloatTensor:
     """
     Preprocesses a list of images into a batch of tensors.
@@ -155,11 +144,6 @@ def parse_args():
         type=int,
         default=20,
         help="Number of query images.",
-    )
-    parser.add_argument(
-        '--use_clip_retrieval',
-        action="store_true",
-        help="Whether to use clip retrieval",
     )
     parser.add_argument(
         "--clip_model",
@@ -425,19 +409,6 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 dataset_name_mapping = {
     "lambdalabs/pokemon-blip-captions": ("image", "text"),
 }
-def retrieve_images_from_clip_retrieval(client, text, num_queries=10):
-    retrieved_queries = client.query(text=text)
-    retrieved_images = []
-    for retrieved_query in retrieved_queries:
-        if len(retrieved_images) == num_queries:
-            break
-        try:
-            retrieved_image = PIL.Image.open(requests.get(retrieved_query['url'], stream=True).raw)
-            retrieved_image = np.array(retrieved_image)
-            retrieved_images.append(PIL.Image.fromarray(retrieved_image))
-        except:
-            None
-    return retrieved_images
 
 class RDMDataset(Dataset):
     def __init__(
@@ -452,9 +423,7 @@ class RDMDataset(Dataset):
         interpolation="bicubic",
         do_random_flip=True,
         center_crop=False,
-        use_clip_retrieval=True,
-        num_queries=20,
-        client=None
+        num_queries=20
     ):
         self.dataset = dataset
         self.image_column = image_column
@@ -466,10 +435,7 @@ class RDMDataset(Dataset):
         self.center_crop = center_crop
         print(f"Loading {len(dataset)} number of images.")
         self._length = len(dataset)
-        self.client = None
         self.num_queries = num_queries
-        if use_clip_retrieval:
-            self.client = client
 
 
         self.interpolation = {
@@ -520,12 +486,8 @@ class RDMDataset(Dataset):
             image = image.convert("RGB")
         text = self.dataset[self.caption_column][i]
         example["input_ids"] = self.tokenize_caption(text)[0]
-        # TODO: remove current image from nearest neighbors?
-
-        if self.client:
-            retrieved_images = retrieve_images_from_clip_retrieval(self.client, text, num_queries=self.num_queries)
-        else:
-            retrieved_images = self.retriever.get_knn_from_text(text).examples[self.image_column][:self.num_queries]
+        # Note, the retrieval dataset should be always be different from the training dataset
+        retrieved_images = self.retriever.get_knn_from_text(text).examples[self.image_column][:self.num_queries]
         for i in range(len(retrieved_images)):
             if not retrieved_images[i].mode == "RGB":
                 retrieved_images[i] = retrieved_images[i].convert("RGB")
@@ -536,8 +498,6 @@ class RDMDataset(Dataset):
             retrieved_images[i] = (retrieved_images[i] / 127.5 - 1.0).astype(np.float32)
             retrieved_images[i] =  preprocess_images([retrieved_images[i]], self.feature_extractor)[0][None].to(memory_format=torch.contiguous_format)
         example["nearest_neighbors"] = torch.cat(retrieved_images)
-        # print(f"Nearest neighbor shape: {example['nearest_neighbors'].shape}")
-        # default to score-sde preprocessing
         img = np.array(image).astype(np.uint8)
 
         image = PIL.Image.fromarray(img)
@@ -545,14 +505,10 @@ class RDMDataset(Dataset):
         image = np.array(image).astype(np.float32)
         image = (image / 127.5 - 1.0).astype(np.float32)
         example["pixel_values"] = torch.from_numpy(image).to(memory_format=torch.contiguous_format)
-        # print(f"pixel shape: {example['pixel_values'].shape}")
         return example
 
-def get_rdm_pipeline(args):
+def get_rdm_pipeline(args, clip_model, tokenizer):
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
-
-    if args.use_clip_retrieval:
-        assert is_clip_retrieval_available()
     revision_dtype = torch.float32
     if args.revision == "fp16":
         revision_dtype = torch.float16
@@ -568,9 +524,6 @@ def get_rdm_pipeline(args):
 
 
     # Load scheduler, tokenizer and models.
-    tokenizer = CLIPTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
-    )
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision)
 
     if args.unet_save_path:
@@ -582,7 +535,6 @@ def get_rdm_pipeline(args):
             args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision, low_cpu_mem_usage=False
         )
     feature_extractor = CLIPFeatureExtractor.from_pretrained(args.clip_model)
-    clip_model = CLIPModel.from_pretrained(args.clip_model).to(dtype=revision_dtype)
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -647,23 +599,18 @@ def get_rdm_pipeline(args):
                 f"--caption_column' value '{args.caption_column}' needs to be one of: {', '.join(column_names)}"
             )
 
-    retriever = None
-    if not args.use_clip_retrieval:
-        index_config = IndexConfig(clip_name_or_path=args.clip_model, dataset_name=args.dataset_name, image_column=args.image_column,\
-            index_name=args.index_name, dataset_save_path=args.dataset_save_path, dataset_set="train"
-        )
-        retriever = Retriever(index_config, dataset=dataset["train"], model=clip_model.get_image_features, feature_extractor=feature_extractor)
-    client = None
-    if args.use_clip_retrieval:
-        client = ClipClient(url="https://knn5.laion.ai/knn-service", indice_name="laion5B")
+    index_config = IndexConfig(clip_name_or_path=args.clip_model, dataset_name=args.dataset_name, image_column=args.image_column,\
+        index_name=args.index_name, dataset_save_path=args.dataset_save_path, dataset_set="train"
+    )
+    retriever = Retriever(index_config, dataset=dataset["train"], model=clip_model.get_image_features, feature_extractor=feature_extractor)
 
     # Move text_encode and vae to gpu and cast to weight_dtype
     unet.to(args.device, dtype=weight_dtype)
     clip_model.to(args.device, dtype=weight_dtype)
     vae.to(args.device, dtype=weight_dtype)
     pipeline = get_pipeline(vae, clip_model, unet, tokenizer, feature_extractor)
-    return pipeline, client, retriever
-def get_images(prompt, pipeline, client, retriever, img_dir=None, resolution=768, num_queries=10, image_column="image", guidance_scale=7.5, output_dir="sd-model-finetuned", num_log_imgs=3):
+    return pipeline, retriever
+def get_images(embedding, pipeline, retriever, img_dir=None, resolution=768, num_queries=10, image_column="image", guidance_scale=7.5, output_dir="sd-model-finetuned", num_log_imgs=3):
     img_output_dir = os.path.join(output_dir, "imgs")
     os.makedirs(img_output_dir, exist_ok=True)
     imgs = []
@@ -671,10 +618,7 @@ def get_images(prompt, pipeline, client, retriever, img_dir=None, resolution=768
         for img_path in os.listdir(img_dir):
             image = Image.open(os.path.join(img_dir, img_path))
             imgs.append(image)
-    if client:
-        retrieved_images = retrieve_images_from_clip_retrieval(client, prompt, num_queries=num_queries)
-    else:
-        retrieved_images = retriever.get_knn_from_text(prompt).examples[image_column][:num_queries]
+    retrieved_images = retriever.retriever_images(embedding, k=num_queries).examples[image_column]
     for img in imgs:
         retrieved_images.append(img)
     for i in range(len(retrieved_images)):
@@ -689,7 +633,12 @@ def get_images(prompt, pipeline, client, retriever, img_dir=None, resolution=768
 def main():
     args = parse_args()
     prompt = args.prompt
-    pipeline, client, retriever = get_rdm_pipeline(args)
-    get_images(prompt, pipeline, client, retriever, img_dir=args.img_dir, resolution=args.resolution, num_queries=args.num_queries, image_column=args.image_column, guidance_scale=args.guidance_scale)
+    clip_model = CLIPModel.from_pretrained(args.clip_model).to(dtype=revision_dtype)
+    tokenizer = CLIPTokenizer.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
+    )
+    pipeline, retriever = get_rdm_pipeline(args, clip_model, tokenizer)
+    embedding = map_txt_to_clip_feature(clip_model, tokenizer, prompt)
+    get_images(embedding, pipeline, retriever, img_dir=args.img_dir, resolution=args.resolution, num_queries=args.num_queries, image_column=args.image_column, guidance_scale=args.guidance_scale)
 if __name__ == "__main__":
     main()
