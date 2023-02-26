@@ -468,6 +468,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         ff_activation_fn="geglu",
     ):
         super().__init__()
+        print(f"Using {ff_activation_fn} as ff_activation_fn in UNetMidBlock2DCrossAttn")
 
         self.has_cross_attention = True
         self.attn_num_head_channels = attn_num_head_channels

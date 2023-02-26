@@ -211,6 +211,7 @@ class BasicTransformerBlock(nn.Module):
         final_dropout: bool = False,
     ):
         super().__init__()
+        print(f"Using {activation_fn} as activation_fn in BasicTransformerBlock.")
         self.only_cross_attention = only_cross_attention
 
         self.use_ada_layer_norm_zero = (num_embeds_ada_norm is not None) and norm_type == "ada_norm_zero"

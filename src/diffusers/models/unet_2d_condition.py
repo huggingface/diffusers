@@ -151,6 +151,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         ff_activation_fn="geglu",
     ):
         super().__init__()
+        print(f"Using {ff_activation_fn} as ff_activation_fn in UNet2DConditionModel")
 
         self.sample_size = sample_size
 
