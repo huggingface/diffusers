@@ -148,7 +148,7 @@ def move_cache(old_cache_dir=None, new_cache_dir=None):
         new_cache_dir = DIFFUSERS_CACHE
     if old_cache_dir is None:
         old_cache_dir = old_diffusers_cache
-    
+
     for file in os.listdir(old_cache_dir):
         # Move directories only
         if os.path.isdir(os.path.join(old_cache_dir, file)):
