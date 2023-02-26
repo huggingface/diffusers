@@ -71,6 +71,7 @@ class Index:
     def retrieve_indices(self, vec, k:int=20):
         vec = np.array(vec).astype(np.float32)
         return self.dataset.search(self.index_name, vec, k=k)
+
 class Retriever:
     def __init__(self, config:IndexConfig, index:Index=None, dataset:Dataset=None, clip_model:CLIPModel=None,\
                          feature_extractor:CLIPFeatureExtractor=None):
@@ -154,16 +155,7 @@ class Retriever:
         k: int=20,
     ):
         return self.index.retrieve_imgs(embeddings, k)
-def map_img_to_clip_feature(clip, feature_extractor, imgs, device="cuda"):
-    for i, image in enumerate(imgs):
-        if not image.mode == "RGB":
-            imgs[i] = image.convert("RGB")
-    imgs = normalize_images(imgs)
-    retrieved_images = preprocess_images(imgs, feature_extractor).to(device)
-    image_embeddings = clip.get_image_features(retrieved_images)
-    image_embeddings = image_embeddings / torch.linalg.norm(image_embeddings, dim=-1, keepdim=True)
-    image_embeddings = image_embeddings[None, ...]
-    return image_embeddings
+
 def map_txt_to_clip_feature(clip, tokenizer, prompt, device="cuda"):
     text_inputs = tokenizer(
         prompt,
@@ -184,8 +176,7 @@ def map_txt_to_clip_feature(clip, tokenizer, prompt, device="cuda"):
     text_embeddings = text_embeddings / torch.linalg.norm(text_embeddings, dim=-1, keepdim=True)
     text_embeddings = text_embeddings[:, None, :]
     return text_embeddings[0][0].cpu().detach().numpy()
-def get_dataset_with_emb(dataset, clip_model, feature_extractor, device="cuda", image_column="image", index_name="embeddings"):
-    return dataset.map(lambda example: {index_name: map_img_to_clip_feature(clip_model, feature_extractor, [example[image_column]], device).cpu().detach().numpy()[0][0]})
+
 def map_img_to_model_feature(model, feature_extractor, imgs, device="cuda"):
     for i, image in enumerate(imgs):
         if not image.mode == "RGB":
@@ -196,5 +187,9 @@ def map_img_to_model_feature(model, feature_extractor, imgs, device="cuda"):
     image_embeddings = image_embeddings / torch.linalg.norm(image_embeddings, dim=-1, keepdim=True)
     image_embeddings = image_embeddings[None, ...]
     return image_embeddings
+
 def get_dataset_with_emb_from_model(dataset, model, feature_extractor, device="cuda", image_column="image", index_name="embeddings"):
     return dataset.map(lambda example: {index_name: map_img_to_model_feature(model, feature_extractor, [example[image_column]], device).cpu().detach().numpy()[0][0]})
+
+def get_dataset_with_emb(dataset, clip_model, feature_extractor, device="cuda", image_column="image", index_name="embeddings"):
+    return dataset.map(lambda example: {index_name: map_img_to_model_feature(clip_model.get_text_features, feature_extractor, [example[image_column]], device).cpu().detach().numpy()[0][0]})
