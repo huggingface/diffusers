@@ -19,11 +19,11 @@ import unittest
 
 import numpy as np
 import torch
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, CycleDiffusionPipeline, DDIMScheduler, UNet2DConditionModel
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from ...test_pipelines_common import PipelineTesterMixin
 
@@ -182,7 +182,7 @@ class CycleDiffusionPipelineIntegrationTests(unittest.TestCase):
         source_prompt = "A black colored car"
         prompt = "A blue colored car"
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         output = pipe(
             prompt=prompt,
             source_prompt=source_prompt,
@@ -221,7 +221,7 @@ class CycleDiffusionPipelineIntegrationTests(unittest.TestCase):
         source_prompt = "A black colored car"
         prompt = "A blue colored car"
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         output = pipe(
             prompt=prompt,
             source_prompt=source_prompt,

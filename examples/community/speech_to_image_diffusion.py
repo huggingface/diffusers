@@ -2,6 +2,13 @@ import inspect
 from typing import Callable, List, Optional, Union
 
 import torch
+from transformers import (
+    CLIPFeatureExtractor,
+    CLIPTextModel,
+    CLIPTokenizer,
+    WhisperForConditionalGeneration,
+    WhisperProcessor,
+)
 
 from diffusers import (
     AutoencoderKL,
@@ -14,13 +21,6 @@ from diffusers import (
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.utils import logging
-from transformers import (
-    CLIPFeatureExtractor,
-    CLIPTextModel,
-    CLIPTokenizer,
-    WhisperForConditionalGeneration,
-    WhisperProcessor,
-)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -87,7 +87,7 @@ class SpeechToImagePipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
         **kwargs,
     ):
         inputs = self.speech_processor.feature_extractor(
@@ -249,7 +249,7 @@ class SpeechToImagePipeline(DiffusionPipeline):
 
         image = (image / 2 + 0.5).clamp(0, 1)
 
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
 
         if output_type == "pil":

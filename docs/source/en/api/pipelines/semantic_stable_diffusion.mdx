@@ -1,0 +1,79 @@
+<!--Copyright 2022 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+# Semantic Guidance
+
+Semantic Guidance for Diffusion Models was proposed in [SEGA: Instructing Diffusion using Semantic Dimensions](https://arxiv.org/abs/2301.12247) and provides strong semantic control over the image generation.
+Small changes to the text prompt usually result in entirely different output images. However, with SEGA a variety of changes to the image are enabled that can be controlled easily and intuitively, and stay true to the original image composition.
+
+The abstract of the paper is the following:
+
+*Text-to-image diffusion models have recently received a lot of interest for their astonishing ability to produce high-fidelity images from text only. However, achieving one-shot generation that aligns with the user's intent is nearly impossible, yet small changes to the input prompt often result in very different images. This leaves the user with little semantic control. To put the user in control, we show how to interact with the diffusion process to flexibly steer it along semantic directions. This semantic guidance (SEGA) allows for subtle and extensive edits, changes in composition and style, as well as optimizing the overall artistic conception. We demonstrate SEGA's effectiveness on a variety of tasks and provide evidence for its versatility and flexibility.*
+
+
+*Overview*:
+
+| Pipeline | Tasks | Colab | Demo
+|---|---|:---:|:---:|
+| [pipeline_semantic_stable_diffusion.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/semantic_stable_diffusion/pipeline_semantic_stable_diffusion) | *Text-to-Image Generation* |  [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ml-research/semantic-image-editing/blob/main/examples/SemanticGuidance.ipynb) | [Coming Soon](https://huggingface.co/AIML-TUDA)
+
+## Tips
+
+- The Semantic Guidance pipeline can be used with any [Stable Diffusion](./api/pipelines/stable_diffusion/text2img) checkpoint.
+
+### Run Semantic Guidance
+
+The interface of [`SemanticStableDiffusionPipeline`] provides several additional parameters to influence the image generation.
+Exemplary usage may look like this:
+
+```python
+import torch
+from diffusers import SemanticStableDiffusionPipeline
+
+pipe = SemanticStableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+pipe = pipe.to("cuda")
+
+out = pipe(
+    prompt="a photo of the face of a woman",
+    num_images_per_prompt=1,
+    guidance_scale=7,
+    editing_prompt=[
+        "smiling, smile",  # Concepts to apply
+        "glasses, wearing glasses",
+        "curls, wavy hair, curly hair",
+        "beard, full beard, mustache",
+    ],
+    reverse_editing_direction=[False, False, False, False],  # Direction of guidance i.e. increase all concepts
+    edit_warmup_steps=[10, 10, 10, 10],  # Warmup period for each concept
+    edit_guidance_scale=[4, 5, 5, 5.4],  # Guidance scale for each concept
+    edit_threshold=[
+        0.99,
+        0.975,
+        0.925,
+        0.96,
+    ],  # Threshold for each concept. Threshold equals the percentile of the latent space that will be discarded. I.e. threshold=0.99 uses 1% of the latent dimensions
+    edit_momentum_scale=0.3,  # Momentum scale that will be added to the latent guidance
+    edit_mom_beta=0.6,  # Momentum beta
+    edit_weights=[1, 1, 1, 1, 1],  # Weights of the individual concepts against each other
+)
+```
+
+For more examples check the colab notebook.
+
+## StableDiffusionSafePipelineOutput
+[[autodoc]] pipelines.semantic_stable_diffusion.SemanticStableDiffusionPipelineOutput
+	- all
+
+## SemanticStableDiffusionPipeline
+[[autodoc]] SemanticStableDiffusionPipeline
+	- all
+	- __call__

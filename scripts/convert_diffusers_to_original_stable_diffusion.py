@@ -7,6 +7,7 @@ import os.path as osp
 import re
 
 import torch
+from safetensors.torch import load_file, save_file
 
 
 # =================#
@@ -266,6 +267,9 @@ if __name__ == "__main__":
     parser.add_argument("--model_path", default=None, type=str, required=True, help="Path to the model to convert.")
     parser.add_argument("--checkpoint_path", default=None, type=str, required=True, help="Path to the output model.")
     parser.add_argument("--half", action="store_true", help="Save weights in half precision.")
+    parser.add_argument(
+        "--use_safetensors", action="store_true", help="Save weights use safetensors, default is ckpt."
+    )
 
     args = parser.parse_args()
 
@@ -273,22 +277,37 @@ if __name__ == "__main__":
 
     assert args.checkpoint_path is not None, "Must provide a checkpoint path!"
 
-    unet_path = osp.join(args.model_path, "unet", "diffusion_pytorch_model.bin")
-    vae_path = osp.join(args.model_path, "vae", "diffusion_pytorch_model.bin")
-    text_enc_path = osp.join(args.model_path, "text_encoder", "pytorch_model.bin")
+    # Path for safetensors
+    unet_path = osp.join(args.model_path, "unet", "diffusion_pytorch_model.safetensors")
+    vae_path = osp.join(args.model_path, "vae", "diffusion_pytorch_model.safetensors")
+    text_enc_path = osp.join(args.model_path, "text_encoder", "model.safetensors")
+
+    # Load models from safetensors if it exists, if it doesn't pytorch
+    if osp.exists(unet_path):
+        unet_state_dict = load_file(unet_path, device="cpu")
+    else:
+        unet_path = osp.join(args.model_path, "unet", "diffusion_pytorch_model.bin")
+        unet_state_dict = torch.load(unet_path, map_location="cpu")
+
+    if osp.exists(vae_path):
+        vae_state_dict = load_file(vae_path, device="cpu")
+    else:
+        vae_path = osp.join(args.model_path, "vae", "diffusion_pytorch_model.bin")
+        vae_state_dict = torch.load(vae_path, map_location="cpu")
+
+    if osp.exists(text_enc_path):
+        text_enc_dict = load_file(text_enc_path, device="cpu")
+    else:
+        text_enc_path = osp.join(args.model_path, "text_encoder", "pytorch_model.bin")
+        text_enc_dict = torch.load(text_enc_path, map_location="cpu")
 
     # Convert the UNet model
-    unet_state_dict = torch.load(unet_path, map_location="cpu")
     unet_state_dict = convert_unet_state_dict(unet_state_dict)
     unet_state_dict = {"model.diffusion_model." + k: v for k, v in unet_state_dict.items()}
 
     # Convert the VAE model
-    vae_state_dict = torch.load(vae_path, map_location="cpu")
     vae_state_dict = convert_vae_state_dict(vae_state_dict)
     vae_state_dict = {"first_stage_model." + k: v for k, v in vae_state_dict.items()}
-
-    # Convert the text encoder model
-    text_enc_dict = torch.load(text_enc_path, map_location="cpu")
 
     # Easiest way to identify v2.0 model seems to be that the text encoder (OpenCLIP) is deeper
     is_v20_model = "text_model.encoder.layers.22.layer_norm2.bias" in text_enc_dict
@@ -306,5 +325,9 @@ if __name__ == "__main__":
     state_dict = {**unet_state_dict, **vae_state_dict, **text_enc_dict}
     if args.half:
         state_dict = {k: v.half() for k, v in state_dict.items()}
-    state_dict = {"state_dict": state_dict}
-    torch.save(state_dict, args.checkpoint_path)
+
+    if args.use_safetensors:
+        save_file(state_dict, args.checkpoint_path)
+    else:
+        state_dict = {"state_dict": state_dict}
+        torch.save(state_dict, args.checkpoint_path)

@@ -4,7 +4,6 @@ import inspect
 import io
 import re
 import tempfile
-import time
 import unittest
 from typing import Callable, Union
 
@@ -28,9 +27,6 @@ from diffusers.utils.testing_utils import require_torch, torch_device
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-ALLOWED_REQUIRED_ARGS = ["source_prompt", "prompt", "image", "mask_image", "example_image"]
-
-
 @require_torch
 class PipelineTesterMixin:
     """
@@ -38,6 +34,18 @@ class PipelineTesterMixin:
     It provides a set of common tests for each PyTorch pipeline, e.g. saving and loading the pipeline,
     equivalence of dict and tuple outputs, etc.
     """
+
+    allowed_required_args = [
+        "source_prompt",
+        "prompt",
+        "image",
+        "mask_image",
+        "example_image",
+        "class_labels",
+        "token_indices",
+    ]
+    required_optional_params = ["generator", "num_inference_steps", "return_dict"]
+    num_inference_steps_args = ["num_inference_steps"]
 
     # set these parameters to False in the child class if the pipeline does not support the corresponding functionality
     test_attention_slicing = True
@@ -120,15 +128,17 @@ class PipelineTesterMixin:
             if param == "kwargs":
                 # kwargs can be added if arguments of pipeline call function are deprecated
                 continue
-            assert param in ALLOWED_REQUIRED_ARGS
+            assert param in self.allowed_required_args
 
         optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
 
-        required_optional_params = ["generator", "num_inference_steps", "return_dict"]
-        for param in required_optional_params:
+        for param in self.required_optional_params:
             assert param in optional_parameters
 
     def test_inference_batch_consistent(self):
+        self._test_inference_batch_consistent()
+
+    def _test_inference_batch_consistent(self, batch_sizes=[2, 4, 13]):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
@@ -140,10 +150,10 @@ class PipelineTesterMixin:
         logger.setLevel(level=diffusers.logging.FATAL)
 
         # batchify inputs
-        for batch_size in [2, 4, 13]:
+        for batch_size in batch_sizes:
             batched_inputs = {}
             for name, value in inputs.items():
-                if name in ALLOWED_REQUIRED_ARGS:
+                if name in self.allowed_required_args:
                     # prompt is string
                     if name == "prompt":
                         len_prompt = len(value)
@@ -160,7 +170,9 @@ class PipelineTesterMixin:
                 else:
                     batched_inputs[name] = value
 
-            batched_inputs["num_inference_steps"] = inputs["num_inference_steps"]
+            for arg in self.num_inference_steps_args:
+                batched_inputs[arg] = inputs[arg]
+
             batched_inputs["output_type"] = None
 
             if self.pipeline_class.__name__ == "DanceDiffusionPipeline":
@@ -182,11 +194,31 @@ class PipelineTesterMixin:
         logger.setLevel(level=diffusers.logging.WARNING)
 
     def test_inference_batch_single_identical(self):
-        if self.pipeline_class.__name__ in ["CycleDiffusionPipeline", "RePaintPipeline"]:
+        self._test_inference_batch_single_identical()
+
+    def _test_inference_batch_single_identical(
+        self, test_max_difference=None, test_mean_pixel_difference=None, relax_max_difference=False
+    ):
+        if self.pipeline_class.__name__ in [
+            "CycleDiffusionPipeline",
+            "RePaintPipeline",
+            "StableDiffusionPix2PixZeroPipeline",
+        ]:
             # RePaint can hardly be made deterministic since the scheduler is currently always
-            # indeterministic
-            # CycleDiffusion is also slighly undeterministic
+            # nondeterministic
+            # CycleDiffusion is also slightly nondeterministic
+            # There's a training loop inside Pix2PixZero and is guided by edit directions. This is
+            # why the slight non-determinism.
             return
+
+        if test_max_difference is None:
+            # TODO(Pedro) - not sure why, but not at all reproducible at the moment it seems
+            # make sure that batched and non-batched is identical
+            test_max_difference = torch_device != "mps"
+
+        if test_mean_pixel_difference is None:
+            # TODO same as above
+            test_mean_pixel_difference = torch_device != "mps"
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -202,7 +234,7 @@ class PipelineTesterMixin:
         batched_inputs = {}
         batch_size = 3
         for name, value in inputs.items():
-            if name in ALLOWED_REQUIRED_ARGS:
+            if name in self.allowed_required_args:
                 # prompt is string
                 if name == "prompt":
                     len_prompt = len(value)
@@ -221,7 +253,8 @@ class PipelineTesterMixin:
             else:
                 batched_inputs[name] = value
 
-        batched_inputs["num_inference_steps"] = inputs["num_inference_steps"]
+        for arg in self.num_inference_steps_args:
+            batched_inputs[arg] = inputs[arg]
 
         if self.pipeline_class.__name__ != "DanceDiffusionPipeline":
             batched_inputs["output_type"] = "np"
@@ -234,10 +267,20 @@ class PipelineTesterMixin:
         output = pipe(**inputs)
 
         logger.setLevel(level=diffusers.logging.WARNING)
-        if torch_device != "mps":
-            # TODO(Pedro) - not sure why, but not at all reproducible at the moment it seems
-            # make sure that batched and non-batched is identical
-            assert np.abs(output_batch[0][0] - output[0][0]).max() < 1e-4
+        if test_max_difference:
+            if relax_max_difference:
+                # Taking the median of the largest <n> differences
+                # is resilient to outliers
+                diff = np.abs(output_batch[0][0] - output[0][0])
+                diff = diff.flatten()
+                diff.sort()
+                max_diff = np.median(diff[-5:])
+            else:
+                max_diff = np.abs(output_batch[0][0] - output[0][0]).max()
+            assert max_diff < 1e-4
+
+        if test_mean_pixel_difference:
+            assert_mean_pixel_difference(output_batch[0][0], output[0][0])
 
     def test_dict_tuple_outputs_equivalent(self):
         if torch_device == "mps" and self.pipeline_class in (
@@ -263,34 +306,6 @@ class PipelineTesterMixin:
 
         max_diff = np.abs(output - output_tuple).max()
         self.assertLess(max_diff, 1e-4)
-
-    def test_num_inference_steps_consistent(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        # Warmup pass when using mps (see #372)
-        if torch_device == "mps":
-            _ = pipe(**self.get_dummy_inputs(torch_device))
-
-        outputs = []
-        times = []
-        for num_steps in [9, 6, 3]:
-            inputs = self.get_dummy_inputs(torch_device)
-            inputs["num_inference_steps"] = num_steps
-
-            start_time = time.time()
-            output = pipe(**inputs)[0]
-            inference_time = time.time() - start_time
-
-            outputs.append(output)
-            times.append(inference_time)
-
-        # check that all outputs have the same shape
-        self.assertTrue(all(outputs[0].shape == output.shape for output in outputs))
-        # check that the inference time increases with the number of inference steps
-        self.assertTrue(all(times[i] < times[i - 1] for i in range(1, len(times))))
 
     def test_components_function(self):
         init_components = self.get_dummy_components()
@@ -419,6 +434,9 @@ class PipelineTesterMixin:
         self.assertTrue(np.isnan(output_cuda).sum() == 0)
 
     def test_attention_slicing_forward_pass(self):
+        self._test_attention_slicing_forward_pass()
+
+    def _test_attention_slicing_forward_pass(self, test_max_difference=True):
         if not self.test_attention_slicing:
             return
 
@@ -448,8 +466,11 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         output_with_slicing = pipe(**inputs)[0]
 
-        max_diff = np.abs(output_with_slicing - output_without_slicing).max()
-        self.assertLess(max_diff, 1e-3, "Attention slicing should not affect the inference results")
+        if test_max_difference:
+            max_diff = np.abs(output_with_slicing - output_without_slicing).max()
+            self.assertLess(max_diff, 1e-3, "Attention slicing should not affect the inference results")
+
+        assert_mean_pixel_difference(output_with_slicing[0], output_without_slicing[0])
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_accelerate_available(),
@@ -478,7 +499,10 @@ class PipelineTesterMixin:
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
     )
-    def test_xformers_attention_forward_pass(self):
+    def test_xformers_attention_forwardGenerator_pass(self):
+        self._test_xformers_attention_forwardGenerator_pass()
+
+    def _test_xformers_attention_forwardGenerator_pass(self, test_max_difference=True):
         if not self.test_xformers_attention:
             return
 
@@ -494,8 +518,11 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         output_with_offload = pipe(**inputs)[0]
 
-        max_diff = np.abs(output_with_offload - output_without_offload).max()
-        self.assertLess(max_diff, 1e-4, "XFormers attention should not affect the inference results")
+        if test_max_difference:
+            max_diff = np.abs(output_with_offload - output_without_offload).max()
+            self.assertLess(max_diff, 1e-4, "XFormers attention should not affect the inference results")
+
+        assert_mean_pixel_difference(output_with_offload[0], output_without_offload[0])
 
     def test_progress_bar(self):
         components = self.get_dummy_components()
@@ -518,3 +545,13 @@ class PipelineTesterMixin:
         with io.StringIO() as stderr, contextlib.redirect_stderr(stderr):
             _ = pipe(**inputs)
             self.assertTrue(stderr.getvalue() == "", "Progress bar should be disabled")
+
+
+# Some models (e.g. unCLIP) are extremely likely to significantly deviate depending on which hardware is used.
+# This helper function is used to check that the image doesn't deviate on average more than 10 pixels from a
+# reference image.
+def assert_mean_pixel_difference(image, expected_image):
+    image = np.asarray(DiffusionPipeline.numpy_to_pil(image)[0], dtype=np.float32)
+    expected_image = np.asarray(DiffusionPipeline.numpy_to_pil(expected_image)[0], dtype=np.float32)
+    avg_diff = np.abs(image - expected_image).mean()
+    assert avg_diff < 10, f"Error image deviates {avg_diff} pixels on average"

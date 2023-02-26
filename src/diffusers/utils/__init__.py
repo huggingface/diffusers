@@ -18,9 +18,10 @@ import os
 from packaging import version
 
 from .. import __version__
+from .accelerate_utils import apply_forward_hook
 from .constants import (
-    _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS,
     CONFIG_NAME,
+    DEPRECATED_REVISION_ARGS,
     DIFFUSERS_CACHE,
     DIFFUSERS_DYNAMIC_MODULE_NAME,
     FLAX_WEIGHTS_NAME,
@@ -44,20 +45,24 @@ from .import_utils import (
     DummyObject,
     OptionalDependencyNotAvailable,
     is_accelerate_available,
+    is_accelerate_version,
     is_flax_available,
     is_inflect_available,
     is_k_diffusion_available,
+    is_k_diffusion_version,
     is_librosa_available,
-    is_modelcards_available,
+    is_omegaconf_available,
     is_onnx_available,
     is_safetensors_available,
     is_scipy_available,
+    is_tensorboard_available,
     is_tf_available,
     is_torch_available,
     is_torch_version,
     is_transformers_available,
     is_transformers_version,
     is_unidecode_available,
+    is_wandb_available,
     is_xformers_available,
     requires_backends,
 )
@@ -75,7 +80,9 @@ if is_torch_available():
         load_numpy,
         nightly,
         parse_flag_from_env,
+        print_tensor_test,
         require_torch_gpu,
+        skip_mps,
         slow,
         torch_all_close,
         torch_device,
