@@ -33,7 +33,7 @@ class IndexConfig(PretrainedConfig):
         image_column="image",
         index_name="embeddings",
         index_path=None,
-        passages_path=None,
+        dataset_save_path=None,
         dataset_set="train",
         **kwargs,
     ):
@@ -43,7 +43,7 @@ class IndexConfig(PretrainedConfig):
         self.image_column = image_column
         self.index_name = index_name
         self.index_path = index_path
-        self.passages_path = passages_path
+        self.dataset_save_path = dataset_save_path
         self.dataset_set = dataset_set
 
 
@@ -79,21 +79,20 @@ class Index:
         self,
         model=None,
         feature_extractor: CLIPFeatureExtractor = None,
-        device: str = "cuda",
         torch_dtype=torch.float32,
     ):
         if not self.index_initialized:
             model = model or CLIPModel.from_pretrained(self.config.clip_name_or_path).to(
-                device=device, dtype=torch_dtype
+                dtype=torch_dtype
             )
             feature_extractor = feature_extractor or CLIPFeatureExtractor.from_pretrained(
                 self.config.clip_name_or_path
             )
-            self.dataset = get_dataset_with_emb(
+            self.dataset = get_dataset_with_emb_from_model(
                 self.dataset,
                 model,
                 feature_extractor,
-                device=device,
+                device=model.device,
                 image_column=self.config.image_column,
                 index_name=self.config.index_name,
             )
@@ -149,13 +148,13 @@ class Retriever:
             index_path = os.path.join(save_directory, "hf_dataset_index.faiss")
             self.index.dataset.get_index(self.config.index_name).save(index_path)
             self.config.index_path = index_path
-        if self.config.passages_path is None:
-            passages_path = os.path.join(save_directory, "hf_dataset")
+        if self.config.dataset_save_path is None:
+            dataset_save_path = os.path.join(save_directory, "hf_dataset")
             # datasets don't support save_to_disk with indexes right now
             faiss_index = self.index.dataset._indexes.pop(self.config.index_name)
-            self.index.dataset.save_to_disk(passages_path)
+            self.index.dataset.save_to_disk(dataset_save_path)
             self.index.dataset._indexes[self.config.index_name] = faiss_index
-            self.config.passages_path = passages_path
+            self.config.dataset_save_path = dataset_save_path
         self.config.save_pretrained(save_directory)
 
     def init_retrieval(self):
@@ -177,7 +176,7 @@ class Retriever:
         return self.index.retrieve_imgs(embeddings, k)
 
 
-def map_txt_to_clip_feature(clip, tokenizer, prompt, device="cuda"):
+def map_txt_to_clip_feature(clip_model, tokenizer, prompt):
     text_inputs = tokenizer(
         prompt,
         padding="max_length",
@@ -193,18 +192,18 @@ def map_txt_to_clip_feature(clip, tokenizer, prompt, device="cuda"):
             f" {tokenizer.model_max_length} tokens: {removed_text}"
         )
         text_input_ids = text_input_ids[:, : tokenizer.model_max_length]
-    text_embeddings = clip.get_text_features(text_input_ids.to(device))
+    text_embeddings = model.get_text_features(text_input_ids.to(clip_model.device))
     text_embeddings = text_embeddings / torch.linalg.norm(text_embeddings, dim=-1, keepdim=True)
     text_embeddings = text_embeddings[:, None, :]
     return text_embeddings[0][0].cpu().detach().numpy()
 
 
-def map_img_to_model_feature(model, feature_extractor, imgs, device="cuda"):
+def map_img_to_model_feature(model, feature_extractor, imgs):
     for i, image in enumerate(imgs):
         if not image.mode == "RGB":
             imgs[i] = image.convert("RGB")
     imgs = normalize_images(imgs)
-    retrieved_images = preprocess_images(imgs, feature_extractor).to(device)
+    retrieved_images = preprocess_images(imgs, feature_extractor).to(model.device)
     image_embeddings = model(retrieved_images)
     image_embeddings = image_embeddings / torch.linalg.norm(image_embeddings, dim=-1, keepdim=True)
     image_embeddings = image_embeddings[None, ...]
@@ -212,11 +211,11 @@ def map_img_to_model_feature(model, feature_extractor, imgs, device="cuda"):
 
 
 def get_dataset_with_emb_from_model(
-    dataset, model, feature_extractor, device="cuda", image_column="image", index_name="embeddings"
+    dataset, model, feature_extractor, image_column="image", index_name="embeddings"
 ):
     return dataset.map(
         lambda example: {
-            index_name: map_img_to_model_feature(model, feature_extractor, [example[image_column]], device)
+            index_name: map_img_to_model_feature(model, feature_extractor, [example[image_column]], model.device)
             .cpu()
             .detach()
             .numpy()[0][0]
@@ -224,13 +223,13 @@ def get_dataset_with_emb_from_model(
     )
 
 
-def get_dataset_with_emb(
-    dataset, clip_model, feature_extractor, device="cuda", image_column="image", index_name="embeddings"
+def get_dataset_with_emb_from_clip_model(
+    dataset, clip_model, feature_extractor, image_column="image", index_name="embeddings"
 ):
     return dataset.map(
         lambda example: {
             index_name: map_img_to_model_feature(
-                clip_model.get_text_features, feature_extractor, [example[image_column]], device
+                clip_model.get_image_features, feature_extractor, [example[image_column]], clip_model.device
             )
             .cpu()
             .detach()

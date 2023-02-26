@@ -1,9 +1,6 @@
 import argparse
-from diffusers.models.retriever import Retriever
+from diffusers.models.retriever import Retriever, IndexConfig
 from datasets import load_dataset, Image, load_dataset_builder, load_from_disk
-import copy
-import logging
-import math
 import os
 import random
 from pathlib import Path
@@ -16,9 +13,6 @@ import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch.utils.data import Dataset
 
-import datasets
-import diffusers
-import transformers
 from datasets import load_dataset
 from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, UNet2DConditionModel, RDMPipeline
 from diffusers.optimization import get_scheduler
@@ -102,6 +96,12 @@ def preprocess_images(images, feature_extractor: CLIPFeatureExtractor) -> torch.
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
+    parser.add_argument(
+        '--index_name', 
+        type=str,
+        default="embeddings",
+        help="The column containing the embeddings"
+    )
     parser.add_argument(
         "--num_log_imgs",
         type=int,
@@ -649,7 +649,10 @@ def get_rdm_pipeline(args):
 
     retriever = None
     if not args.use_clip_retrieval:
-        retriever = Retriever(clip_model, tokenizer, feature_extractor, dataset["train"], args.dataset_save_path, args.device, args.image_column)
+        index_config = IndexConfig(clip_name_or_path=args.clip_model, dataset_name=args.dataset_name, image_column=args.image_column,\
+            index_name=args.index_name, dataset_save_path=args.dataset_save_path, dataset_set="train"
+        )
+        retriever = Retriever(index_config, dataset=dataset["train"], model=clip_model.get_image_features, feature_extractor=feature_extractor)
     client = None
     if args.use_clip_retrieval:
         client = ClipClient(url="https://knn5.laion.ai/knn-service", indice_name="laion5B")
