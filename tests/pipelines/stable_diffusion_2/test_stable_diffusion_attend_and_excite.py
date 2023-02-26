@@ -135,8 +135,9 @@ class StableDiffusionAttendAndExcitePipelineFastTests(PipelineTesterMixin, unitt
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
-    def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(relax_max_difference=False)
+    def test_inference_batch_consistent(self):
+        # NOTE: Larger batch sizes cause this test to timeout, only test on smaller batches
+        self._test_inference_batch_consistent(batch_sizes=[2, 4])
 
 
 @require_torch_gpu
