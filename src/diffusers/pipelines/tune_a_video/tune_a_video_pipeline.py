@@ -8,7 +8,7 @@ import numpy as np
 import torch
 
 # Remove this
-from einops import rearrange
+# from einops import rearrange
 from packaging import version
 from transformers import CLIPTextModel, CLIPTokenizer
 
@@ -237,9 +237,14 @@ class TuneAVideoPipeline(DiffusionPipeline):
     def decode_latents(self, latents):
         video_length = latents.shape[2]
         latents = 1 / 0.18215 * latents
-        latents = rearrange(latents, "b c f h w -> (b f) c h w")
+        #TODO(Abhinay) verify
+        # latents = rearrange(latents, "b c f h w -> (b f) c h w")
+        latents = latents.movedim((0,1,2,3,4),(0,2,1,3,4))
+        latents = latents.flatten(0,1)
         video = self.vae.decode(latents).sample
-        video = rearrange(video, "(b f) c h w -> b c f h w", f=video_length)
+        # video = rearrange(video, "(b f) c h w -> b c f h w", f=video_length)
+        video = video.reshape([-1, video_length, *video.shape[1:]])
+        video = video.movedim((0,1,2,3,4), (0,2,1,3,4))
         video = (video / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
         video = video.cpu().float().numpy()
