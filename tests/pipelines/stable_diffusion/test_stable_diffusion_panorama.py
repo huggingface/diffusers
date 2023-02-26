@@ -32,6 +32,7 @@ from diffusers import (
 from diffusers.utils import slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
 
+from ...pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin
 
 
@@ -41,6 +42,8 @@ torch.backends.cuda.matmul.allow_tf32 = False
 @skip_mps
 class StableDiffusionPanoramaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionPanoramaPipeline
+    params = TEXT_TO_IMAGE_PARAMS
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
