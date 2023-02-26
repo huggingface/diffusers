@@ -148,6 +148,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         conv_in_kernel: int = 3,
         conv_out_kernel: int = 3,
         projection_class_embeddings_input_dim: Optional[int] = None,
+        ff_activation_fn="geglu",
     ):
         super().__init__()
 
@@ -282,6 +283,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 dual_cross_attention=dual_cross_attention,
                 use_linear_projection=use_linear_projection,
                 upcast_attention=upcast_attention,
+                ff_activation_fn=ff_activation_fn,
             )
         elif mid_block_type == "UNetMidBlock2DSimpleCrossAttn":
             self.mid_block = UNetMidBlock2DSimpleCrossAttn(

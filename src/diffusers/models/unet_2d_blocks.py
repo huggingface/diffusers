@@ -465,6 +465,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         dual_cross_attention=False,
         use_linear_projection=False,
         upcast_attention=False,
+        ff_activation_fn="geglu",
     ):
         super().__init__()
 
@@ -501,6 +502,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
                         upcast_attention=upcast_attention,
+                        activation_fn=ff_activation_fn,
                     )
                 )
             else:
@@ -512,6 +514,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
+                        activation_fn=ff_activation_fn,
                     )
                 )
             resnets.append(
@@ -742,6 +745,7 @@ class CrossAttnDownBlock2D(nn.Module):
         use_linear_projection=False,
         only_cross_attention=False,
         upcast_attention=False,
+        ff_activation_fn="geglu",
     ):
         super().__init__()
         resnets = []
@@ -778,6 +782,7 @@ class CrossAttnDownBlock2D(nn.Module):
                         use_linear_projection=use_linear_projection,
                         only_cross_attention=only_cross_attention,
                         upcast_attention=upcast_attention,
+                        activation_fn=ff_activation_fn,
                     )
                 )
             else:
@@ -789,6 +794,7 @@ class CrossAttnDownBlock2D(nn.Module):
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
+                        activation_fn=ff_activation_fn,
                     )
                 )
         self.attentions = nn.ModuleList(attentions)
@@ -1712,6 +1718,7 @@ class CrossAttnUpBlock2D(nn.Module):
         use_linear_projection=False,
         only_cross_attention=False,
         upcast_attention=False,
+        ff_activation_fn="geglu",
     ):
         super().__init__()
         resnets = []
@@ -1750,6 +1757,7 @@ class CrossAttnUpBlock2D(nn.Module):
                         use_linear_projection=use_linear_projection,
                         only_cross_attention=only_cross_attention,
                         upcast_attention=upcast_attention,
+                        activation_fn=ff_activation_fn,
                     )
                 )
             else:
@@ -1761,6 +1769,7 @@ class CrossAttnUpBlock2D(nn.Module):
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
+                        activation_fn=ff_activation_fn,
                     )
                 )
         self.attentions = nn.ModuleList(attentions)

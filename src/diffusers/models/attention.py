@@ -353,6 +353,7 @@ class FeedForward(nn.Module):
         super().__init__()
         inner_dim = int(dim * mult)
         dim_out = dim_out if dim_out is not None else dim
+        use_bias = True
 
         if activation_fn == "gelu":
             act_fn = GELU(dim, inner_dim)
@@ -362,6 +363,10 @@ class FeedForward(nn.Module):
             act_fn = GEGLU(dim, inner_dim)
         elif activation_fn == "geglu-approximate":
             act_fn = ApproximateGELU(dim, inner_dim)
+        elif activation_fn == "swiglu":
+            inner_dim = int(2 * dim_out / 3)
+            act_fn = SwiGLU(dim, inner_dim)
+            use_bias = False
 
         self.net = nn.ModuleList([])
         # project in
@@ -369,7 +374,7 @@ class FeedForward(nn.Module):
         # project dropout
         self.net.append(nn.Dropout(dropout))
         # project out
-        self.net.append(nn.Linear(inner_dim, dim_out))
+        self.net.append(nn.Linear(inner_dim, dim_out, bias=use_bias))
         # FF as used in Vision Transformer, MLP-Mixer, etc. have a final dropout
         if final_dropout:
             self.net.append(nn.Dropout(dropout))
@@ -440,6 +445,22 @@ class ApproximateGELU(nn.Module):
     def forward(self, x):
         x = self.proj(x)
         return x * torch.sigmoid(1.702 * x)
+
+
+class SwiGLU(nn.Module):
+    """
+    GEGLU-like that uses SiLU instead of GELU on the gates. SwiGLU is used in works like PaLM.
+
+    Reference: https://arxiv.org/abs/2002.05202
+    """
+
+    def __init__(self, dim_in: int, dim_out: int):
+        super().__init__()
+        self.w1 = nn.Linear(dim_in, dim_out, bias=False)
+        self.w3 = nn.Linear(dim_in, dim_out, bias=False)
+
+    def forward(self, x):
+        return F.silu(self.w1(x)) * self.w3(x)
 
 
 class AdaLayerNorm(nn.Module):
