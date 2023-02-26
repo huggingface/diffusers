@@ -159,43 +159,14 @@ class Retriever:
         self.config.save_pretrained(save_directory)
 
     def init_retrieval(self):
-        """
-        Retriever initialization function. It loads the index into memory.
-        """
 
         logger.info("initializing retrieval")
         self.index.init_index()
 
     def retrieve_imgs(self, embeddings: np.ndarray, k: int):
-        """
-        Retrieves images for specified `embeddings`.
-        Args:
-            embeddings (`np.ndarray` of shape `(vector_size)`):
-                A batch of query vectors to retrieve with.
-            k (`int`):
-                The number of nearest neighbor images retrieved per query.
-        Return:
-            `Tuple[np.ndarray, np.ndarray, List[dict]]`: A tuple with the following objects:
-            - **retrieved_doc_embeds** (`np.ndarray` of shape `(batch_size, n_docs, dim)`) -- The retrieval embeddings
-              of the retrieved docs per query.
-            - **doc_dicts** (`List[dict]`): The `retrieved_doc_embeds` examples per query.
-        """
         return self.index.retrieve_imgs(embeddings, k)
 
     def retrieve_indices(self, embeddings: np.ndarray, k: int):
-        """
-        Retrieves indices for specified `embeddings`.
-        Args:
-            embeddings (`np.ndarray` of shape `(vector_size)`):
-                A batch of query vectors to retrieve with.
-            k (`int`):
-                The number of nearest neighbor images retrieved per query.
-        Return:
-            `Tuple[np.ndarray, np.ndarray, List[dict]]`: A tuple with the following objects:
-            - **retrieved_doc_embeds** (`np.ndarray` of shape `(batch_size, n_docs, dim)`) -- The retrieval embeddings
-              of the retrieved docs per query.
-            - **doc_dicts** (`List[dict]`): The `retrieved_doc_embeds` examples per query.
-        """
         return self.index.retrieve_indices(embeddings, k)
 
     def __call__(
