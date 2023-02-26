@@ -209,6 +209,13 @@ def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -
     return arry
 
 
+def load_pt(url: str):
+    response = requests.get(url)
+    response.raise_for_status()
+    arry = torch.load(BytesIO(response.content))
+    return arry
+
+
 def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
     """
     Args:
