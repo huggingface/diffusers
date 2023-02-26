@@ -266,6 +266,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
+                ff_activation_fn=ff_activation_fn,
             )
             self.down_blocks.append(down_block)
 
@@ -344,6 +345,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
+                ff_activation_fn=ff_activation_fn,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
