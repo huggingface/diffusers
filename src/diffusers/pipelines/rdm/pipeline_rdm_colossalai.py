@@ -26,6 +26,7 @@ from .pipeline_rdm import normalize_images, preprocess_images
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+
 class RDMPipelineColossal(DiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using Retrieval Augmented Diffusion.
@@ -290,7 +291,6 @@ class RDMPipelineColossal(DiffusionPipeline):
 
             text_embeddings = torch.cat([text_embeddings, image_embeddings], dim=1)
 
-
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         bs_embed, seq_len, _ = text_embeddings.shape
         text_embeddings = text_embeddings.repeat(1, num_images_per_prompt, 1)
@@ -322,7 +322,9 @@ class RDMPipelineColossal(DiffusionPipeline):
                     get_current_device()
                 )
             else:
-                latents = torch.randn(latents_shape, generator=generator, device=get_current_device(), dtype=latents_dtype)
+                latents = torch.randn(
+                    latents_shape, generator=generator, device=get_current_device(), dtype=latents_dtype
+                )
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")

@@ -24,10 +24,12 @@ from ...utils import deprecate, logging
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+
 def normalize_images(images: List[Image.Image]):
     images = [np.array(image) for image in images]
-    images = [image / 127.5-1 for image in images]
+    images = [image / 127.5 - 1 for image in images]
     return images
+
 
 def preprocess_images(images: List[np.array], feature_extractor: CLIPFeatureExtractor) -> torch.FloatTensor:
     """
@@ -41,7 +43,7 @@ def preprocess_images(images: List[np.array], feature_extractor: CLIPFeatureExtr
         :obj:`torch.FloatTensor`: A batch of tensors.
     """
     images = [np.array(image) for image in images]
-    images = [(image + 1.) / 2. for image in images]
+    images = [(image + 1.0) / 2.0 for image in images]
     images = feature_extractor(images, return_tensors="pt").pixel_values
     return images
 
@@ -309,7 +311,6 @@ class RDMPipeline(DiffusionPipeline):
             image_embeddings = image_embeddings[None, ...]
 
             text_embeddings = torch.cat([text_embeddings, image_embeddings], dim=1)
-
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         bs_embed, seq_len, _ = text_embeddings.shape
