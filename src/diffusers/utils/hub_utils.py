@@ -15,7 +15,9 @@
 
 
 import os
+import shutil
 import sys
+import traceback
 from pathlib import Path
 from typing import Dict, Optional, Union
 from uuid import uuid4
@@ -24,7 +26,7 @@ from huggingface_hub import HfFolder, ModelCard, ModelCardData, whoami
 from huggingface_hub.utils import is_jinja_available
 
 from .. import __version__
-from .constants import HUGGINGFACE_CO_RESOLVE_ENDPOINT
+from .constants import DIFFUSERS_CACHE, HUGGINGFACE_CO_RESOLVE_ENDPOINT
 from .import_utils import (
     ENV_VARS_TRUE_VALUES,
     _flax_version,
@@ -129,3 +131,67 @@ def create_model_card(args, model_name):
 
     card_path = os.path.join(args.output_dir, "README.md")
     model_card.save(card_path)
+
+
+# Old default cache path, potentially to be migrated.
+# This logic was more or less taken from `transformers`, with the following differences:
+# - Diffusers doesn't use custom environment variables to specify the cache path.
+# - There is no need to migrate the cache format, just move the files to the new location.
+hf_cache_home = os.path.expanduser(
+    os.getenv("HF_HOME", os.path.join(os.getenv("XDG_CACHE_HOME", "~/.cache"), "huggingface"))
+)
+old_diffusers_cache = os.path.join(hf_cache_home, "diffusers")
+
+
+def move_cache(old_cache_dir=None, new_cache_dir=None):
+    if new_cache_dir is None:
+        new_cache_dir = DIFFUSERS_CACHE
+    if old_cache_dir is None:
+        old_cache_dir = old_diffusers_cache
+    
+    for file in os.listdir(old_cache_dir):
+        # Move directories only
+        if os.path.isdir(os.path.join(old_cache_dir, file)):
+            # Skip directories that already exist in the new cache
+            if os.path.isdir(os.path.join(new_cache_dir, file)):
+                logger.warning(
+                    f"Skipping migration of directory {file} because it already exists in the new cache location."
+                )
+            shutil.move(os.path.join(old_cache_dir, file), os.path.join(new_cache_dir, file))
+
+
+cache_version_file = os.path.join(DIFFUSERS_CACHE, "version_diffusers_cache.txt")
+if not os.path.isfile(cache_version_file):
+    cache_version = 0
+else:
+    with open(cache_version_file) as f:
+        cache_version = int(f.read())
+
+if cache_version < 1:
+    old_cache_is_not_empty = os.path.isdir(old_diffusers_cache) and len(os.listdir(old_diffusers_cache)) > 0
+    if old_cache_is_not_empty:
+        logger.warning(
+            "The cache for model files in Diffusers v0.14.0 has moved to a new location. Moving your "
+            "existing cached models. This is a one-time operation, you can interrupt it or run it "
+            "later by calling `diffusers.utils.hub_utils.move_cache()`."
+        )
+        try:
+            move_cache()
+        except Exception as e:
+            trace = "\n".join(traceback.format_tb(e.__traceback__))
+            logger.error(
+                f"There was a problem when trying to move your cache:\n\n{trace}\n{e.__class__.__name__}: {e}\n\nPlease "
+                "file an issue at https://github.com/huggingface/diffusers/issues/new/choose, copy paste this whole "
+                "message and we will do our best to help."
+            )
+
+if cache_version < 1:
+    try:
+        os.makedirs(DIFFUSERS_CACHE, exist_ok=True)
+        with open(cache_version_file, "w") as f:
+            f.write("1")
+    except Exception:
+        logger.warning(
+            f"There was a problem when trying to write in your cache folder ({DIFFUSERS_CACHE}). Please, ensure "
+            "the directory exists and can be written to."
+        )
