@@ -18,6 +18,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from ..utils import logging
 from ..utils.import_utils import is_xformers_available
 from .cross_attention import CrossAttention
 from .embeddings import CombinedTimestepLabelEmbeddings
@@ -28,6 +29,8 @@ if is_xformers_available():
     import xformers.ops
 else:
     xformers = None
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class AttentionBlock(nn.Module):
@@ -364,6 +367,7 @@ class FeedForward(nn.Module):
         elif activation_fn == "geglu-approximate":
             act_fn = ApproximateGELU(dim, inner_dim)
         elif activation_fn == "swiglu":
+            logger.info("Using SwiGLU as the activation function in the FFN.")
             inner_dim = int(2 * dim_out / 3)
             act_fn = SwiGLU(dim, inner_dim)
             use_bias = False
