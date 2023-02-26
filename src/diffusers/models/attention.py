@@ -363,12 +363,12 @@ class FeedForward(nn.Module):
         if activation_fn == "gelu-approximate":
             act_fn = GELU(dim, inner_dim, approximate="tanh")
         elif activation_fn == "geglu":
-            logger.info("Using GEGLU as the activation function in the FFN.")
+            print("Using GEGLU as the activation function in the FFN.")
             act_fn = GEGLU(dim, inner_dim)
         elif activation_fn == "geglu-approximate":
             act_fn = ApproximateGELU(dim, inner_dim)
         elif activation_fn == "swiglu":
-            logger.info("Using SwiGLU as the activation function in the FFN.")
+            print("Using SwiGLU as the activation function in the FFN.")
             inner_dim = int(2 * dim_out / 3)
             act_fn = SwiGLU(dim, inner_dim)
             use_bias = False
