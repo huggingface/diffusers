@@ -59,11 +59,11 @@ class Index:
             if self.index_name in self.dataset.features:
                 self.dataset.add_faiss_index(column=self.index_name)
                 self.index_initialized = True
-    def build_index(self, clip_model:CLIPModel=None, feature_extractor:CLIPFeatureExtractor=None, device:str="cuda", torch_dtype=torch.float32):
+    def build_index(self, model=None, feature_extractor:CLIPFeatureExtractor=None, device:str="cuda", torch_dtype=torch.float32):
         if not self.index_initialized:
-            clip_model = clip_model or CLIPModel.from_pretrained(self.config.clip_name_or_path).to(device=device, dtype=torch_dtype)
+            model = model or CLIPModel.from_pretrained(self.config.clip_name_or_path).to(device=device, dtype=torch_dtype)
             feature_extractor = feature_extractor or CLIPFeatureExtractor.from_pretrained(self.config.clip_name_or_path)
-            self.dataset = get_dataset_with_emb(self.dataset, clip_model, feature_extractor, device=device, image_column=self.config.image_column, index_name=self.config.index_name)
+            self.dataset = get_dataset_with_emb(self.dataset, model, feature_extractor, device=device, image_column=self.config.image_column, index_name=self.config.index_name)
             self.init_index()
     def retrieve_imgs(self, vec, k:int=20):
         vec = np.array(vec).astype(np.float32)
@@ -73,28 +73,28 @@ class Index:
         return self.dataset.search(self.index_name, vec, k=k)
 
 class Retriever:
-    def __init__(self, config:IndexConfig, index:Index=None, dataset:Dataset=None, clip_model:CLIPModel=None,\
+    def __init__(self, config:IndexConfig, index:Index=None, dataset:Dataset=None, model=None,\
                          feature_extractor:CLIPFeatureExtractor=None):
         self.config = config
-        self.index = index or self._build_index(config, dataset, clip_model=clip_model, feature_extractor=feature_extractor)
+        self.index = index or self._build_index(config, dataset, model=model, feature_extractor=feature_extractor)
     @classmethod
-    def from_pretrained(cls, retriever_name_or_path:str, index:Index=None, dataset:Dataset=None, clip_model:CLIPModel=None,\
+    def from_pretrained(cls, retriever_name_or_path:str, index:Index=None, dataset:Dataset=None, model=None,\
                          feature_extractor:CLIPFeatureExtractor=None, **kwargs):
         config = kwargs.pop("config", None) or IndexConfig.from_pretrained(retriever_name_or_path, **kwargs)
         return cls(
             config,
             index=index,
             dataset=dataset,
-            clip_model=clip_model,
+            model=model,
             feature_extractor=feature_extractor
         )
     @staticmethod
-    def _build_index(config:IndexConfig, dataset:Dataset=None, clip_model:CLIPModel=None,\
+    def _build_index(config:IndexConfig, dataset:Dataset=None, model=None,\
                          feature_extractor:CLIPFeatureExtractor=None):
         dataset = dataset or load_dataset(config.dataset_name)
         dataset = dataset[config.dataset_set]
         index =Index(config, dataset)
-        index.build_index(clip_model=clip_model, feature_extractor=feature_extractor)
+        index.build_index(model=model, feature_extractor=feature_extractor)
         return index
 
     def save_pretrained(self, save_directory):
