@@ -20,20 +20,32 @@ It has integration with Stable Diffusion and 8 pre-trained models that condition
 (such as edge detection, scribbles, depth maps, semantic segmentations and more)
 
 The original codebase/paper can be found here: 
-- [lllyasviel/ControlNet](https://github.com/lllyasviel/ControlNet)
+- [Code](https://github.com/lllyasviel/ControlNet)
 - [Paper](https://arxiv.org/abs/2302.05543)
 
 
-## Available converted checkpoints
+## Available checkpoints
 
-- *ControlNet+SD1.5 using canny edge detection:* [takuma104/control_sd15_canny](https://huggingface.co/takuma104/control_sd15_canny)
-- *ControlNet+SD1.5 using Midas depth estimation:* [takuma104/control_sd15_depth](https://huggingface.co/takuma104/control_sd15_depth)
-- *ControlNet+SD1.5 using HED edge detection (soft edge):* [takuma104/control_sd15_hed](https://huggingface.co/takuma104/control_sd15_hed)
-- *ControlNet+SD1.5 using M-LSD line detection:* [takuma104/control_sd15_mlsd](https://huggingface.co/takuma104/control_sd15_mlsd)
-- *ControlNet+SD1.5 using normal map:* [takuma104/control_sd15_normal](https://huggingface.co/takuma104/control_sd15_normal)
-- *ControlNet+SD1.5 using OpenPose pose detection:* [takuma104/control_sd15_openpose](https://huggingface.co/takuma104/control_sd15_openpose)
-- *ControlNet+SD1.5 using human scribbles:* [takuma104/control_sd15_scribble](https://huggingface.co/takuma104/control_sd15_scribble)
-- *ControlNet+SD1.5 using semantic segmentation:* [takuma104/control_sd15_seg](https://huggingface.co/takuma104/control_sd15_seg)
+ControlNet requires a *control image* in addition to the text-to-image *prompt*. 
+Each pretrained model is trained using a different method. 
+For this reason, the image content passed to the `image` argument of `pipe()` is different. 
+See the overview and image examples.
+
+All checkpoints are converted from [lllyasviel/ControlNet](https://huggingface.co/lllyasviel/ControlNet).
+
+### ControlNet + SD1.5
+
+| Model Name | Control Image Overview| Control Image Example
+|---|---|---|
+|[takuma104/control_sd15_canny](https://huggingface.co/takuma104/control_sd15_canny)<br/> *Trained with canny edge detection* | A monochrome image with white edges on a black background.  | <a href="https://huggingface.co/takuma104/controlnet_dev/blob/main/gen_compare/control_images/converted/control_bird_canny.png"><img width="64" style="margin:0;padding:0;" src="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/converted/control_bird_canny.png"/></a> |
+|[takuma104/control_sd15_depth](https://huggingface.co/takuma104/control_sd15_depth)<br/> *Trained with Midas depth estimation*  |A grayscale image with black representing deep areas and white representing shallow areas.|<a href="https://huggingface.co/takuma104/controlnet_dev/blob/main/gen_compare/control_images/converted/control_vermeer_depth.png"><img width="64" src="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/converted/control_vermeer_depth.png"/></a>|
+|[takuma104/control_sd15_hed](https://huggingface.co/takuma104/control_sd15_hed)<br/> *Trained with HED edge detection (soft edge)*  |A monochrome image with white soft edges on a black background.|<a href="https://huggingface.co/takuma104/controlnet_dev/blob/main/gen_compare/control_images/converted/control_bird_hed.png"><img width="64" src="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/converted/control_bird_hed.png"/></a>|
+|[takuma104/control_sd15_mlsd](https://huggingface.co/takuma104/control_sd15_mlsd)<br/> *Trained with M-LSD line detection*  |A monochrome image composed only of white straight lines on a black background.|<a href="https://huggingface.co/takuma104/controlnet_dev/blob/main/gen_compare/control_images/converted/control_room_mlsd.png"><img width="64" src="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/converted/control_room_mlsd.png"/></a>|
+|[takuma104/control_sd15_normal](https://huggingface.co/takuma104/control_sd15_normal)<br/> *Trained with normal map*  |A [normal mapped](https://en.wikipedia.org/wiki/Normal_mapping) image.|<a href="https://huggingface.co/takuma104/controlnet_dev/blob/main/gen_compare/control_images/converted/control_human_normal.png"><img width="64" src="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/converted/control_human_normal.png"/></a>|
+|[takuma104/control_sd15_openpose](https://huggingface.co/takuma104/control_sd15_openpose)<br/> *Trained with OpenPose bone image*  |A [OpenPose bone](https://github.com/CMU-Perceptual-Computing-Lab/openpose) image.|<a href="https://huggingface.co/takuma104/controlnet_dev/blob/main/gen_compare/control_images/converted/control_human_openpose.png"><img width="64" src="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/converted/control_human_openpose.png"/></a>|
+|[takuma104/control_sd15_scribble](https://huggingface.co/takuma104/control_sd15_scribble)<br/> *Trained with human scribbles*  |A hand-drawn monochrome image with white outlines on a black background.|<a href="https://huggingface.co/takuma104/controlnet_dev/blob/main/gen_compare/control_images/converted/control_vermeer_scribble.png"><img width="64" src="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/converted/control_vermeer_scribble.png"/></a>|
+|[takuma104/control_sd15_seg](https://huggingface.co/takuma104/control_sd15_seg)<br/>*Trained with semantic segmentation*  |An [ADE20K](https://groups.csail.mit.edu/vision/datasets/ADE20K/)'s segmentation protocol image.|<a href="https://huggingface.co/takuma104/controlnet_dev/blob/main/gen_compare/control_images/converted/control_room_seg.png"><img width="64" src="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/converted/control_room_seg.png"/></a>|
+
 
 ## Resources
 
