@@ -11,14 +11,7 @@ import numpy as np
 import torch
 
 import diffusers
-from diffusers import (
-    CycleDiffusionPipeline,
-    DanceDiffusionPipeline,
-    DiffusionPipeline,
-    RePaintPipeline,
-    StableDiffusionDepth2ImgPipeline,
-    StableDiffusionImg2ImgPipeline,
-)
+from diffusers import DiffusionPipeline
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_xformers_available
 from diffusers.utils.testing_utils import require_torch, torch_device
@@ -117,15 +110,6 @@ class PipelineTesterMixin:
         torch.cuda.empty_cache()
 
     def test_save_load_local(self):
-        if torch_device == "mps" and self.pipeline_class in (
-            DanceDiffusionPipeline,
-            CycleDiffusionPipeline,
-            RePaintPipeline,
-            StableDiffusionImg2ImgPipeline,
-        ):
-            # FIXME: inconsistent outputs on MPS
-            return
-
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
@@ -259,18 +243,6 @@ class PipelineTesterMixin:
         relax_max_difference=False,
         additional_params_copy_to_batched_inputs=["num_inference_steps"],
     ):
-        if self.pipeline_class.__name__ in [
-            "CycleDiffusionPipeline",
-            "RePaintPipeline",
-            "StableDiffusionPix2PixZeroPipeline",
-        ]:
-            # RePaint can hardly be made deterministic since the scheduler is currently always
-            # nondeterministic
-            # CycleDiffusion is also slightly nondeterministic
-            # There's a training loop inside Pix2PixZero and is guided by edit directions. This is
-            # why the slight non-determinism.
-            return
-
         if test_max_difference is None:
             # TODO(Pedro) - not sure why, but not at all reproducible at the moment it seems
             # make sure that batched and non-batched is identical
@@ -343,15 +315,6 @@ class PipelineTesterMixin:
             assert_mean_pixel_difference(output_batch[0][0], output[0][0])
 
     def test_dict_tuple_outputs_equivalent(self):
-        if torch_device == "mps" and self.pipeline_class in (
-            DanceDiffusionPipeline,
-            CycleDiffusionPipeline,
-            RePaintPipeline,
-            StableDiffusionImg2ImgPipeline,
-        ):
-            # FIXME: inconsistent outputs on MPS
-            return
-
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
@@ -430,15 +393,6 @@ class PipelineTesterMixin:
         if not hasattr(self.pipeline_class, "_optional_components"):
             return
 
-        if torch_device == "mps" and self.pipeline_class in (
-            DanceDiffusionPipeline,
-            CycleDiffusionPipeline,
-            RePaintPipeline,
-            StableDiffusionImg2ImgPipeline,
-        ):
-            # FIXME: inconsistent outputs on MPS
-            return
-
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
@@ -498,16 +452,6 @@ class PipelineTesterMixin:
 
     def _test_attention_slicing_forward_pass(self, test_max_difference=True):
         if not self.test_attention_slicing:
-            return
-
-        if torch_device == "mps" and self.pipeline_class in (
-            DanceDiffusionPipeline,
-            CycleDiffusionPipeline,
-            RePaintPipeline,
-            StableDiffusionImg2ImgPipeline,
-            StableDiffusionDepth2ImgPipeline,
-        ):
-            # FIXME: inconsistent outputs on MPS
             return
 
         components = self.get_dummy_components()
