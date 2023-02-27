@@ -239,8 +239,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         conv_in_kernel: int = 3,
         conv_out_kernel: int = 3,
         projection_class_embeddings_input_dim: Optional[int] = None,
-        extra_film_condition_dim: int = None,
-        extra_film_use_concat: bool = False,
+        class_embeddings_concat: bool = False,
     ):
         super().__init__()
 
@@ -330,24 +329,13 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             # When used for embedding actual timesteps, the timesteps are first converted to sinusoidal embeddings.
             # As a result, `TimestepEmbedding` can be passed arbitrary vectors.
             self.class_embedding = TimestepEmbedding(projection_class_embeddings_input_dim, time_embed_dim)
+        elif class_embed_type == "simple_projection":
+            self.class_embedding = nn.Linear(projection_class_embeddings_input_dim, time_embed_dim)
         else:
             self.class_embedding = None
 
         self.down_blocks = nn.ModuleList([])
         self.up_blocks = nn.ModuleList([])
-
-        # film condition
-        if self.class_embedding is not None and extra_film_condition_dim is not None:
-            raise ValueError("You cannot set both `class_embed_type` and `extra_film_condition_dim`.")
-        self.use_extra_film_by_concat = extra_film_condition_dim is not None and extra_film_use_concat
-
-        if extra_film_condition_dim is not None:
-            self.film_embedding = nn.Linear(extra_film_condition_dim, time_embed_dim)
-            if extra_film_use_concat:
-                # we're concatenating the time embeddings and film embeddings so need to double the resnet embedding dim
-                time_embed_dim = time_embed_dim * 2
-        else:
-            self.film_embedding = None
 
         if isinstance(only_cross_attention, bool):
             only_cross_attention = [only_cross_attention] * len(down_block_types)
@@ -357,6 +345,14 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
         if isinstance(cross_attention_dim, int):
             cross_attention_dim = (cross_attention_dim,) * len(down_block_types)
+
+        if class_embeddings_concat:
+            # The time embeddings are concatenated with the class embeddings. The dimension of the
+            # time embeddings passed to the down, middle, and up blocks is twice the dimension of the
+            # regular time embeddings
+            blocks_time_embed_dim = time_embed_dim * 2
+        else:
+            blocks_time_embed_dim = time_embed_dim
 
         # down
         output_channel = block_out_channels[0]
@@ -370,7 +366,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 num_layers=layers_per_block,
                 in_channels=input_channel,
                 out_channels=output_channel,
-                temb_channels=time_embed_dim,
+                temb_channels=blocks_time_embed_dim,
                 add_downsample=not is_final_block,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
@@ -390,7 +386,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         if mid_block_type == "UNetMidBlockFlatCrossAttn":
             self.mid_block = UNetMidBlockFlatCrossAttn(
                 in_channels=block_out_channels[-1],
-                temb_channels=time_embed_dim,
+                temb_channels=blocks_time_embed_dim,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
                 output_scale_factor=mid_block_scale_factor,
@@ -405,7 +401,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         elif mid_block_type == "UNetMidBlockFlatSimpleCrossAttn":
             self.mid_block = UNetMidBlockFlatSimpleCrossAttn(
                 in_channels=block_out_channels[-1],
-                temb_channels=time_embed_dim,
+                temb_channels=blocks_time_embed_dim,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
                 output_scale_factor=mid_block_scale_factor,
@@ -449,7 +445,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 in_channels=input_channel,
                 out_channels=output_channel,
                 prev_output_channel=prev_output_channel,
-                temb_channels=time_embed_dim,
+                temb_channels=blocks_time_embed_dim,
                 add_upsample=add_upsample,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
@@ -688,16 +684,11 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 class_labels = self.time_proj(class_labels)
 
             class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
-            emb = emb + class_emb
 
-        if self.film_embedding is not None:
-            if class_labels is None:
-                raise ValueError("class_labels should be provided when extra_film_condition_dim > 0")
-            film_emb = self.film_embedding(class_labels).to(dtype=self.dtype)
-            if self.use_extra_film_by_concat:
-                emb = torch.cat([emb, film_emb], dim=-1)
+            if self.config.class_embeddings_concat:
+                emb = torch.cat([emb, class_emb], dim=-1)
             else:
-                emb = emb + film_emb
+                emb = emb + class_emb
 
         # 2. pre-process
         sample = self.conv_in(sample)
