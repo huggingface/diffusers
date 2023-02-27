@@ -522,63 +522,10 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert audio_shape == (1, 256)
 
     def test_attention_slicing_forward_pass(self):
-        # override this test since we want to compare 1-d audio waveforms (not 3d pixel arrays)
-        if not self.test_attention_slicing:
-            return
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        # Warmup pass when using mps (see #372)
-        if torch_device == "mps":
-            _ = pipe(**self.get_dummy_inputs(torch_device))
-
-        inputs = self.get_dummy_inputs(torch_device)
-        output_without_slicing = pipe(**inputs).audios
-
-        pipe.enable_attention_slicing(slice_size=1)
-        inputs = self.get_dummy_inputs(torch_device)
-        output_with_slicing = pipe(**inputs).audios
-
-        max_diff = np.abs(output_with_slicing - output_without_slicing).max()
-        self.assertLess(max_diff, 1e-3, "Attention slicing should not affect the inference results")
+        self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False)
 
     def test_inference_batch_single_identical(self):
-        # override this test since we want to compare 1-d audio waveforms (not 3d pixel arrays)
-        components = self.get_dummy_components()
-        audioldm_pipe = AudioLDMPipeline(**components)
-        audioldm_pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(audioldm_pipe.scheduler.config)
-        audioldm_pipe = audioldm_pipe.to(torch_device)
-        audioldm_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(torch_device)
-
-        # run single-sample inference
-        inputs["generator"] = self.get_generator(0)
-        output = audioldm_pipe(**inputs).audios
-
-        batch_size = 3
-        batched_inputs = {}
-
-        # make unequal batch sizes
-        batched_inputs["prompt"] = [inputs["prompt"][: len(inputs["prompt"]) // i] for i in range(1, batch_size + 1)]
-        # make last batch super long
-        batched_inputs["prompt"][-1] = 2000 * "very long"
-        # set the generator
-        batched_inputs["generator"] = [self.get_generator(i) for i in range(batch_size)]
-        # duplicate any remaining inputs
-        for named_input in inputs:
-            if named_input not in batched_inputs:
-                batched_inputs[named_input] = inputs[named_input]
-
-        # run batched inference
-        output_batch = audioldm_pipe(**batched_inputs).audios
-        assert output_batch.shape[0] == batch_size
-
-        max_diff = np.abs(output_batch[0] - output[0]).max()
-        assert max_diff < 1e-4
+        self._test_inference_batch_single_identical(test_mean_pixel_difference=False)
 
 
 @slow
