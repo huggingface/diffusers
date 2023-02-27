@@ -143,21 +143,25 @@ hf_cache_home = os.path.expanduser(
 old_diffusers_cache = os.path.join(hf_cache_home, "diffusers")
 
 
-def move_cache(old_cache_dir=None, new_cache_dir=None):
+def move_cache(old_cache_dir: Optional[str] = None, new_cache_dir: Optional[str] = None) -> None:
     if new_cache_dir is None:
-        new_cache_dir = DIFFUSERS_CACHE
+        new_cache_dir = DIFFUSERS_CACHE  # or directly use HUGGINGFACE_HUB_CACHE to be more explicit ?
     if old_cache_dir is None:
         old_cache_dir = old_diffusers_cache
 
-    for file in os.listdir(old_cache_dir):
-        # Move directories only
-        if os.path.isdir(os.path.join(old_cache_dir, file)):
-            # Skip directories that already exist in the new cache
-            if os.path.isdir(os.path.join(new_cache_dir, file)):
-                logger.warning(
-                    f"Skipping migration of directory {file} because it already exists in the new cache location."
-                )
-            shutil.move(os.path.join(old_cache_dir, file), os.path.join(new_cache_dir, file))
+    old_cache_dir = Path(old_cache_dir).expanduser()
+    new_cache_dir = Path(new_cache_dir).expanduser()
+    for old_blob_path in old_cache_dir.glob("**/blobs/*"): #  move file blob by blob
+        if old_blob_path.isfile():
+            new_blob_path = new_cache_dir / old_blob_path.relative_to(old_cache_dir)
+            new_blob_path.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(old_blob_path, new_blob_path)
+            try:
+                os.symlink(new_blob_path, old_blob_path)
+            except OSError:
+                logger.warning(f"Could not create symlink between old cache and new cache. If you use an older version of diffusers again, models would have to be re-downloaded.")
+            
+    # TODO: At this point, old_cache_dir only contains broken symlinks and references => can be deleted
 
 
 cache_version_file = os.path.join(DIFFUSERS_CACHE, "version_diffusers_cache.txt")
