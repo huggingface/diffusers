@@ -1,7 +1,7 @@
 # Adapted from https://github.com/showlab/Tune-A-Video/blob/main/tuneavideo/pipelines/pipeline_tuneavideo.py
 
 import inspect
-from dataclasses import dataclass
+# from dataclasses import dataclass
 from typing import Callable, List, Optional, Union
 
 import numpy as np
@@ -30,12 +30,6 @@ from ..pipeline_utils import DiffusionPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-@dataclass
-class TuneAVideoPipelineOutput(BaseOutput):
-    videos: Union[torch.Tensor, np.ndarray]
-
 
 class TuneAVideoPipeline(DiffusionPipeline):
     _optional_components = []
