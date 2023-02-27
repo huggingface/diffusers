@@ -23,13 +23,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--checkpoint_path",
-        default="/Users/sanchitgandhi/convert-audioldm/ldm_trimmed.ckpt",
-        type=str,
-        required=False,  # TODO: revert to True
-        help="Path to the checkpoint to convert.",
+        "--checkpoint_path", default=None, type=str, required=True, help="Path to the checkpoint to convert."
     )
-    # !wget https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml
     parser.add_argument(
         "--original_config_file",
         default=None,
@@ -49,12 +44,6 @@ if __name__ == "__main__":
         help="Type of scheduler to use. Should be one of ['pndm', 'lms', 'ddim', 'euler', 'euler-ancestral', 'dpm']",
     )
     parser.add_argument(
-        "--pipeline_type",
-        default=None,
-        type=str,
-        help="The pipeline type. If `None` pipeline will be automatically inferred.",
-    )
-    parser.add_argument(
         "--image_size",
         default=None,
         type=int,
@@ -68,7 +57,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--extract_ema",
-        action="store_false",  # TODO: revert to store_true
+        action="store_true",
         help=(
             "Only relevant for checkpoints that have both EMA and non-EMA weights. Whether to extract the EMA weights"
             " or not. Defaults to `False`. Add `--extract_ema` to extract the EMA weights. EMA weights usually yield"
@@ -85,13 +74,7 @@ if __name__ == "__main__":
         action="store_true",
         help="Whether to store pipeline in safetensors format or not.",
     )
-    parser.add_argument(
-        "--dump_path",
-        default="/Users/sanchitgandhi/convert-audioldm/diffusers_out_3",
-        type=str,
-        required=False,  # TODO: revert to True
-        help="Path to the output model.",
-    )
+    parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output model.")
     parser.add_argument("--device", type=str, help="Device to use (e.g. cpu, cuda:0, cuda:1, etc.)")
     args = parser.parse_args()
 
