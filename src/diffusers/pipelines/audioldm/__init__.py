@@ -5,6 +5,7 @@ from ...utils import (
     is_transformers_version,
 )
 
+
 try:
     if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.27.0")):
         raise OptionalDependencyNotAvailable()
