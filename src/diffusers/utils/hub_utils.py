@@ -15,7 +15,6 @@
 
 
 import os
-import shutil
 import sys
 import traceback
 from pathlib import Path
@@ -151,7 +150,7 @@ def move_cache(old_cache_dir: Optional[str] = None, new_cache_dir: Optional[str]
 
     old_cache_dir = Path(old_cache_dir).expanduser()
     new_cache_dir = Path(new_cache_dir).expanduser()
-    for old_blob_path in old_cache_dir.glob("**/blobs/*"): #  move file blob by blob
+    for old_blob_path in old_cache_dir.glob("**/blobs/*"):  #  move file blob by blob
         if old_blob_path.is_file() and not old_blob_path.is_symlink():
             new_blob_path = new_cache_dir / old_blob_path.relative_to(old_cache_dir)
             new_blob_path.parent.mkdir(parents=True, exist_ok=True)
@@ -159,7 +158,9 @@ def move_cache(old_cache_dir: Optional[str] = None, new_cache_dir: Optional[str]
             try:
                 os.symlink(new_blob_path, old_blob_path)
             except OSError:
-                logger.warning(f"Could not create symlink between old cache and new cache. If you use an older version of diffusers again, models would have to be re-downloaded.")  
+                logger.warning(
+                    "Could not create symlink between old cache and new cache. If you use an older version of diffusers again, files will be re-downloaded."
+                )
     # At this point, old_cache_dir contains symlinks to the new cache (it can still be used).
 
 
