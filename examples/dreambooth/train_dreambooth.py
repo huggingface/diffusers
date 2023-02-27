@@ -318,6 +318,24 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
+        "--log_name",
+        type=str,
+        default=None,
+        required=False,
+        help=(
+            "Name of log to identify experiment in reporting tool."
+        ),
+    )
+    parser.add_argument(
+        "--log_group",
+        type=str,
+        default=None,
+        required=False,
+        help=(
+            "Name of log group to aggregate experiments in reporting tool."
+        ),
+    )
+    parser.add_argument(
         "--allow_tf32",
         action="store_true",
         help=(
@@ -830,7 +848,8 @@ def main(args):
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
         init_kwargs = {"wandb":{"settings":{"console": "off"},
-                                "name":f"{args.log_name}"}}
+                                "name":f"{args.log_name}",
+                                "group":f"{args.log_group}"}}
         accelerator.init_trackers("dreambooth", config=vars(args), init_kwargs=init_kwargs)
 
     # Train!
