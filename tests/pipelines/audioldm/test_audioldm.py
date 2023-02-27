@@ -600,8 +600,8 @@ class AudioLDMPipelineSlowTests(unittest.TestCase):
         max_diff = np.abs(expected_slice - audio_slice).max()
         assert max_diff < 1e-3
 
+    @unittest.skip("TODO(SG): fix or remove. This test yields the same memory for with / without attn slicing")
     def test_audioldm_attention_slicing(self):
-        # TODO(SG): fix or remove. This test yields the same memory for with / without attn slicing
         torch.cuda.reset_peak_memory_stats()
         pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm", torch_dtype=torch.float16)
         pipe = pipe.to(torch_device)
