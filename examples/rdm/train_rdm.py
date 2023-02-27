@@ -107,15 +107,6 @@ def log_progress(pipeline, args, step, prompt, save_path, wandb_run=None, logs={
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.10.0.dev0")
 logger = get_logger(__name__, log_level="INFO")
-_clip_retrieval_available = True
-try:
-    _clip_retrieval_version = importlib_metadata.version("clip-retrieval")
-    from clip_retrieval.clip_client import ClipClient, Modality
-    logger.debug(f"Successfully imported clip retrieval version {_clip_retrieval_version}")
-except importlib_metadata.PackageNotFoundError:
-    _clip_retrieval_available = False
-def is_clip_retrieval_available():
-    return _clip_retrieval_available
 
 
 
@@ -167,11 +158,6 @@ def parse_args():
         type=int,
         default=20,
         help="Number of query images.",
-    )
-    parser.add_argument(
-        '--use_clip_retrieval',
-        action="store_true",
-        help="Whether to use clip retrieval",
     )
     parser.add_argument(
         "--clip_model",
@@ -437,19 +423,6 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 dataset_name_mapping = {
     "lambdalabs/pokemon-blip-captions": ("image", "text"),
 }
-def retrieve_images_from_clip_retrieval(client, text, num_queries=10):
-    retrieved_queries = client.query(text=text)
-    retrieved_images = []
-    for retrieved_query in retrieved_queries:
-        if len(retrieved_images) == num_queries:
-            break
-        try:
-            retrieved_image = PIL.Image.open(requests.get(retrieved_query['url'], stream=True).raw)
-            retrieved_image = np.array(retrieved_image)
-            retrieved_images.append(PIL.Image.fromarray(retrieved_image))
-        except:
-            None
-    return retrieved_images
 
 class RDMDataset(Dataset):
     def __init__(
@@ -464,7 +437,6 @@ class RDMDataset(Dataset):
         interpolation="bicubic",
         do_random_flip=True,
         center_crop=False,
-        use_clip_retrieval=True,
         num_queries=20,
         client=None
     ):
@@ -478,10 +450,7 @@ class RDMDataset(Dataset):
         self.center_crop = center_crop
         print(f"Loading {len(dataset)} number of images.")
         self._length = len(dataset)
-        self.client = None
         self.num_queries = num_queries
-        if use_clip_retrieval:
-            self.client = client
 
 
         self.interpolation = {
@@ -534,10 +503,7 @@ class RDMDataset(Dataset):
         example["input_ids"] = self.tokenize_caption(text)[0]
         # TODO: remove current image from nearest neighbors?
 
-        if self.client:
-            retrieved_images = retrieve_images_from_clip_retrieval(self.client, text, num_queries=self.num_queries)
-        else:
-            retrieved_images = self.retriever.get_knn_from_text(text).examples[self.image_column][:self.num_queries]
+        retrieved_images = self.retriever.get_knn_from_text(text).examples[self.image_column][:self.num_queries]
         for i in range(len(retrieved_images)):
             if not retrieved_images[i].mode == "RGB":
                 retrieved_images[i] = retrieved_images[i].convert("RGB")
@@ -1022,10 +988,7 @@ def main():
                     pipeline = get_pipeline(vae, clip_model, unet, tokenizer, feature_extractor, accelerator)
                     os.makedirs(os.path.join(args.output_dir, "imgs"), exist_ok=True)
                     save_path = os.path.join(args.output_dir, f"imgs/{global_step}.jpg")
-                    if client:
-                        retrieved_images = retrieve_images_from_clip_retrieval(client, prompt, num_queries=args.num_queries)
-                    else:
-                        retrieved_images = retriever.get_knn_from_text(prompt).examples[args.image_column][:args.num_queries]
+                    retrieved_images = retriever.get_knn_from_text(prompt).examples[args.image_column][:args.num_queries]
                     for i in range(len(retrieved_images)):
                         if not retrieved_images[i].mode == "RGB":
                             retrieved_images[i] = retrieved_images[i].convert("RGB")

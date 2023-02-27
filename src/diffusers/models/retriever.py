@@ -23,7 +23,7 @@ from transformers.models.rag.retrieval_rag import LegacyIndex, CustomHFIndex, Ca
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 from diffusers.pipelines.rdm.pipeline_rdm import preprocess_images, normalize_images
 import os
-
+from torch.nn import Module
 
 class IndexConfig(PretrainedConfig):
     def __init__(
@@ -47,7 +47,7 @@ class IndexConfig(PretrainedConfig):
         self.dataset_set = dataset_set
 
 
-class Index(nn.Module):
+class Index:
     """
     Each index for a retrieval model is specific to the clip model used and the dataset used.
     """
@@ -107,7 +107,7 @@ class Index(nn.Module):
         return self.dataset.search(self.index_name, vec, k=k)
 
 
-class Retriever(nn.Module):
+class Retriever:
     def __init__(
         self,
         config: IndexConfig,
@@ -192,7 +192,7 @@ def map_txt_to_clip_feature(clip_model, tokenizer, prompt):
             f" {tokenizer.model_max_length} tokens: {removed_text}"
         )
         text_input_ids = text_input_ids[:, : tokenizer.model_max_length]
-    text_embeddings = model.get_text_features(text_input_ids.to(clip_model.device))
+    text_embeddings = clip_model.get_text_features(text_input_ids.to(clip_model.device))
     text_embeddings = text_embeddings / torch.linalg.norm(text_embeddings, dim=-1, keepdim=True)
     text_embeddings = text_embeddings[:, None, :]
     return text_embeddings[0][0].cpu().detach().numpy()

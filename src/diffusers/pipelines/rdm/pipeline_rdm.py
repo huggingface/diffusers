@@ -305,7 +305,7 @@ class RDMPipeline(DiffusionPipeline):
         if retrieved_images is not None:
             # preprocess retrieved images
             retrieved_images = normalize_images(retrieved_images)
-            retrieved_images = preprocess_images(retrieved_images, self.feature_extractor).to(self.device)
+            retrieved_images = preprocess_images(retrieved_images, self.feature_extractor).to(self.clip.device, dtype=self.clip.dtype)
             image_embeddings = self.clip.get_image_features(retrieved_images)
             image_embeddings = image_embeddings / torch.linalg.norm(image_embeddings, dim=-1, keepdim=True)
             image_embeddings = image_embeddings[None, ...]

@@ -1,5 +1,5 @@
 import argparse
-from diffusers.models.retriever import Retriever, IndexConfig
+from diffusers.models.retriever import Retriever, IndexConfig, map_txt_to_clip_feature
 from datasets import load_dataset, Image, load_dataset_builder, load_from_disk
 import os
 import random
@@ -11,15 +11,13 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-from torch.utils.data import Dataset
-
+from rdm_dataset import RDMDataset
 from datasets import load_dataset
 from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, UNet2DConditionModel, RDMPipeline
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
 from diffusers.utils.import_utils import is_xformers_available
 from huggingface_hub import HfFolder, Repository, whoami
-from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPModel, CLIPFeatureExtractor, CLIPTokenizer
 from packaging import version
@@ -410,104 +408,7 @@ dataset_name_mapping = {
     "lambdalabs/pokemon-blip-captions": ("image", "text"),
 }
 
-class RDMDataset(Dataset):
-    def __init__(
-        self,
-        dataset,
-        image_column,
-        caption_column,
-        tokenizer,
-        feature_extractor,
-        retriever=None,
-        size=512,
-        interpolation="bicubic",
-        do_random_flip=True,
-        center_crop=False,
-        num_queries=20
-    ):
-        self.dataset = dataset
-        self.image_column = image_column
-        self.caption_column = caption_column
-        self.tokenizer = tokenizer
-        self.feature_extractor = feature_extractor
-        self.retriever = retriever
-        self.size = size
-        self.center_crop = center_crop
-        print(f"Loading {len(dataset)} number of images.")
-        self._length = len(dataset)
-        self.num_queries = num_queries
-
-
-        self.interpolation = {
-            "linear": PIL.Image.LINEAR,
-            "bilinear": PIL.Image.BILINEAR,
-            "bicubic": PIL.Image.BICUBIC,
-            "lanczos": PIL.Image.LANCZOS,
-        }[interpolation]
-        self.train_transforms = transforms.Compose(
-            [
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
-                transforms.RandomCrop(size),
-                transforms.RandomHorizontalFlip() if do_random_flip else transforms.Lambda(lambda x: x),
-                transforms.ToTensor(),
-                transforms.Normalize([0.5], [0.5]),
-            ]
-        )
-
-    def __len__(self):
-        return self._length
-    def tokenize_caption(self, caption, is_train=True):
-        if isinstance(caption, str):
-            process_caption = caption
-        elif isinstance(caption, (list, np.ndarray)):
-            # take a random caption if there are multiple
-            process_caption = random.choice(caption) if is_train else caption[0]
-        else:
-            raise ValueError(
-                f"Caption column `{self.caption_column}` should contain either strings or lists of strings."
-            )
-        inputs = self.tokenizer(
-            process_caption, max_length=self.tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
-        )
-        return inputs.input_ids
-    def center_crop_img(self, img):
-        crop = min(img.shape[0], img.shape[1])
-        h, w, = (
-            img.shape[0],
-            img.shape[1],
-        )
-        img = img[(h - crop) // 2 : (h + crop) // 2, (w - crop) // 2 : (w + crop) // 2]
-        return PIL.Image.fromarray(img)
-    def __getitem__(self, i):
-        example = {}
-        image = self.dataset[self.image_column][i]
-
-        if not image.mode == "RGB":
-            image = image.convert("RGB")
-        text = self.dataset[self.caption_column][i]
-        example["input_ids"] = self.tokenize_caption(text)[0]
-        # Note, the retrieval dataset should be always be different from the training dataset
-        retrieved_images = self.retriever.get_knn_from_text(text).examples[self.image_column][:self.num_queries]
-        for i in range(len(retrieved_images)):
-            if not retrieved_images[i].mode == "RGB":
-                retrieved_images[i] = retrieved_images[i].convert("RGB")
-            if self.center_crop:
-                retrieved_images[i] = self.center_crop_img(np.array(retrieved_images[i]))
-            retrieved_images[i] = self.train_transforms(retrieved_images[i])
-            retrieved_images[i] = np.array(retrieved_images[i]).astype(np.float32)
-            retrieved_images[i] = (retrieved_images[i] / 127.5 - 1.0).astype(np.float32)
-            retrieved_images[i] =  preprocess_images([retrieved_images[i]], self.feature_extractor)[0][None].to(memory_format=torch.contiguous_format)
-        example["nearest_neighbors"] = torch.cat(retrieved_images)
-        img = np.array(image).astype(np.uint8)
-
-        image = PIL.Image.fromarray(img)
-        image = self.train_transforms(image)
-        image = np.array(image).astype(np.float32)
-        image = (image / 127.5 - 1.0).astype(np.float32)
-        example["pixel_values"] = torch.from_numpy(image).to(memory_format=torch.contiguous_format)
-        return example
-
-def get_rdm_pipeline(args, clip_model, tokenizer):
+def get_rdm_pipeline(args):
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
     revision_dtype = torch.float32
     if args.revision == "fp16":
@@ -524,6 +425,9 @@ def get_rdm_pipeline(args, clip_model, tokenizer):
 
 
     # Load scheduler, tokenizer and models.
+    tokenizer = CLIPTokenizer.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
+    )
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision)
 
     if args.unet_save_path:
@@ -535,7 +439,7 @@ def get_rdm_pipeline(args, clip_model, tokenizer):
             args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision, low_cpu_mem_usage=False
         )
     feature_extractor = CLIPFeatureExtractor.from_pretrained(args.clip_model)
-
+    clip_model = CLIPModel.from_pretrained(args.clip_model).to(dtype=revision_dtype)
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
             unet.enable_xformers_memory_efficient_attention()
@@ -602,15 +506,15 @@ def get_rdm_pipeline(args, clip_model, tokenizer):
     index_config = IndexConfig(clip_name_or_path=args.clip_model, dataset_name=args.dataset_name, image_column=args.image_column,\
         index_name=args.index_name, dataset_save_path=args.dataset_save_path, dataset_set="train"
     )
-    retriever = Retriever(index_config, dataset=dataset["train"], model=clip_model.get_image_features, feature_extractor=feature_extractor)
+    retriever = Retriever(index_config, dataset=dataset, model=clip_model.get_image_features, feature_extractor=feature_extractor)
 
     # Move text_encode and vae to gpu and cast to weight_dtype
     unet.to(args.device, dtype=weight_dtype)
     clip_model.to(args.device, dtype=weight_dtype)
     vae.to(args.device, dtype=weight_dtype)
     pipeline = get_pipeline(vae, clip_model, unet, tokenizer, feature_extractor)
-    return pipeline, retriever
-def get_images(embedding, pipeline, retriever, img_dir=None, resolution=768, num_queries=10, image_column="image", guidance_scale=7.5, output_dir="sd-model-finetuned", num_log_imgs=3):
+    return pipeline, retriever, clip_model, tokenizer
+def get_images(prompt, embedding, pipeline, retriever, img_dir=None, resolution=768, num_queries=10, image_column="image", guidance_scale=7.5, output_dir="sd-model-finetuned", num_log_imgs=3):
     img_output_dir = os.path.join(output_dir, "imgs")
     os.makedirs(img_output_dir, exist_ok=True)
     imgs = []
@@ -618,7 +522,9 @@ def get_images(embedding, pipeline, retriever, img_dir=None, resolution=768, num
         for img_path in os.listdir(img_dir):
             image = Image.open(os.path.join(img_dir, img_path))
             imgs.append(image)
-    retrieved_images = retriever.retriever_images(embedding, k=num_queries).examples[image_column]
+    retrieved_images = []
+    if num_queries > 0:
+        retrieved_images = retriever.retrieve_imgs(embedding, k=num_queries).examples[image_column]
     for img in imgs:
         retrieved_images.append(img)
     for i in range(len(retrieved_images)):
@@ -633,12 +539,9 @@ def get_images(embedding, pipeline, retriever, img_dir=None, resolution=768, num
 def main():
     args = parse_args()
     prompt = args.prompt
-    clip_model = CLIPModel.from_pretrained(args.clip_model).to(dtype=revision_dtype)
-    tokenizer = CLIPTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
-    )
-    pipeline, retriever = get_rdm_pipeline(args, clip_model, tokenizer)
+    
+    pipeline, retriever, clip_model, tokenizer = get_rdm_pipeline(args)
     embedding = map_txt_to_clip_feature(clip_model, tokenizer, prompt)
-    get_images(embedding, pipeline, retriever, img_dir=args.img_dir, resolution=args.resolution, num_queries=args.num_queries, image_column=args.image_column, guidance_scale=args.guidance_scale)
+    get_images(prompt, embedding, pipeline, retriever, img_dir=args.img_dir, resolution=args.resolution, num_queries=args.num_queries, image_column=args.image_column, guidance_scale=args.guidance_scale)
 if __name__ == "__main__":
     main()
