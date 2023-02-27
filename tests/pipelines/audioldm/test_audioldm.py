@@ -47,8 +47,6 @@ from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
 from ...test_pipelines_common import PipelineTesterMixin
 
 
-
-
 class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = AudioLDMPipeline
 
@@ -63,8 +61,9 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=(32, 64),
-            extra_film_condition_dim=32,
-            extra_film_use_concat=True,
+            class_embed_type="simple_projection",
+            projection_class_embeddings_input_dim=32,
+            class_embeddings_concat=True,
         )
         scheduler = DDIMScheduler(
             beta_start=0.00085,

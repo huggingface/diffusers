@@ -92,7 +92,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         resnet_time_scale_shift (`str`, *optional*, defaults to `"default"`): Time scale shift config
             for resnet blocks, see [`~models.resnet.ResnetBlock2D`]. Choose from `default` or `scale_shift`.
         class_embed_type (`str`, *optional*, defaults to None): The type of class embedding to use which is ultimately
-            summed with the time embeddings. Choose from `None`, `"timestep"`, `"identity"`, or `"projection"`.
+            summed with the time embeddings. Choose from `None`, `"timestep"`, `"identity"`, `"projection"`, or
+            `"simple_projection"`.
         num_class_embeds (`int`, *optional*, defaults to None):
             Input dimension of the learnable embedding matrix to be projected to `time_embed_dim`, when performing
             class conditioning with `class_embed_type` equal to `None`.
@@ -106,10 +107,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         conv_out_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_out` layer.
         projection_class_embeddings_input_dim (`int`, *optional*): The dimension of the `class_labels` input when
             using the "projection" `class_embed_type`. Required when using the "projection" `class_embed_type`.
-        extra_film_condition_dim (`int`, *optional*, default to `None`):
-            The dimensionality of the extra film conditioning layer.
-        extra_film_use_concat (`bool`, *optional*, defaults to `False`):
-            Whether to concatenate the extra film embedding with the time embedding or sum them.
+        class_embeddings_concat (`bool`, *optional*, defaults to `False`): Whether to concatenate the time
+        embeddings with the class embeddings.
     """
 
     _supports_gradient_checkpointing = True
@@ -239,6 +238,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             # As a result, `TimestepEmbedding` can be passed arbitrary vectors.
             self.class_embedding = TimestepEmbedding(projection_class_embeddings_input_dim, time_embed_dim)
         elif class_embed_type == "simple_projection":
+            if projection_class_embeddings_input_dim is None:
+                raise ValueError(
+                    "`class_embed_type`: 'simple_projection' requires `projection_class_embeddings_input_dim` be set"
+                )
             self.class_embedding = nn.Linear(projection_class_embeddings_input_dim, time_embed_dim)
         else:
             self.class_embedding = None
