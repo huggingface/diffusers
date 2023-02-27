@@ -223,6 +223,11 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
 
         assert images.shape == (batch_size * num_images_per_prompt, 64, 64, 3)
 
+    # Non-determinism caused by the scheduler optimizing the latent inputs during inference
+    @unittest.skip("non-deterministic pipeline")
+    def test_inference_batch_single_identical(self):
+        return super().test_inference_batch_single_identical()
+
 
 @slow
 @require_torch_gpu
