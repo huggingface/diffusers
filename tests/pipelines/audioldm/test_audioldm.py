@@ -47,7 +47,6 @@ from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
 from ...test_pipelines_common import PipelineTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
 
 
 class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
