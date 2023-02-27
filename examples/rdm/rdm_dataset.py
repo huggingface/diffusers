@@ -3,6 +3,7 @@ from torchvision import transforms
 import random
 import numpy as np
 from torch.utils.data import Dataset
+from diffusers.models.retriever import map_txt_to_clip_feature
 import torch
 
 class RDMDataset(Dataset):
@@ -13,7 +14,8 @@ class RDMDataset(Dataset):
         caption_column,
         tokenizer,
         feature_extractor,
-        retriever=None,
+        retriever,
+        clip_model,
         size=512,
         interpolation="bicubic",
         do_random_flip=True,
@@ -26,6 +28,7 @@ class RDMDataset(Dataset):
         self.tokenizer = tokenizer
         self.feature_extractor = feature_extractor
         self.retriever = retriever
+        self.clip_model = clip_model
         self.size = size
         self.center_crop = center_crop
         print(f"Loading {len(dataset)} number of images.")
@@ -51,20 +54,6 @@ class RDMDataset(Dataset):
 
     def __len__(self):
         return self._length
-    def tokenize_caption(self, caption, is_train=True):
-        if isinstance(caption, str):
-            process_caption = caption
-        elif isinstance(caption, (list, np.ndarray)):
-            # take a random caption if there are multiple
-            process_caption = random.choice(caption) if is_train else caption[0]
-        else:
-            raise ValueError(
-                f"Caption column `{self.caption_column}` should contain either strings or lists of strings."
-            )
-        inputs = self.tokenizer(
-            process_caption, max_length=self.tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
-        )
-        return inputs.input_ids
     def center_crop_img(self, img):
         crop = min(img.shape[0], img.shape[1])
         h, w, = (
@@ -80,9 +69,10 @@ class RDMDataset(Dataset):
         if not image.mode == "RGB":
             image = image.convert("RGB")
         text = self.dataset[self.caption_column][i]
-        example["input_ids"] = self.tokenize_caption(text)[0]
+        # TODO: Do both of below in preprocessing. Where in the db, add column for top k indices+compute clip embedding and put in column
+        embeddings = map_txt_to_clip_feature(self.clip_model, self.tokenizer, text)
         # Note, the retrieval dataset should be always be different from the training dataset
-        retrieved_images = self.retriever.get_knn_from_text(text).examples[self.image_column][:self.num_queries]
+        retrieved_images = self.retriever.retrieve_imgs(embeddings, k=self.num_queries).examples[self.image_column]
         for i in range(len(retrieved_images)):
             if not retrieved_images[i].mode == "RGB":
                 retrieved_images[i] = retrieved_images[i].convert("RGB")
