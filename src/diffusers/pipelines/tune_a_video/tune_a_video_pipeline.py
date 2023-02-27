@@ -12,8 +12,6 @@ import torch
 from packaging import version
 from transformers import CLIPTextModel, CLIPTokenizer
 
-from diffusers.utils import is_accelerate_available
-
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL
 from ...models.unet_3d_condition import UNet3DConditionModel
@@ -25,7 +23,7 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ...utils import BaseOutput, deprecate, logging
+from ...utils import BaseOutput, deprecate, logging, is_accelerate_available
 from ..pipeline_utils import DiffusionPipeline
 
 
