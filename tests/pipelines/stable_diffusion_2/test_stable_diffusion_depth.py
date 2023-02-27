@@ -382,6 +382,10 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
+    @skip_mps
+    def test_attention_slicing_forward_pass(self):
+        return super().test_attention_slicing_forward_pass()
+
 
 @slow
 @require_torch_gpu
