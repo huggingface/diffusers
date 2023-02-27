@@ -452,7 +452,7 @@ class PipelineTesterMixin:
     def test_attention_slicing_forward_pass(self):
         self._test_attention_slicing_forward_pass()
 
-    def _test_attention_slicing_forward_pass(self, test_max_difference=True):
+    def _test_attention_slicing_forward_pass(self, test_max_difference=True, test_mean_pixel_difference=True):
         if not self.test_attention_slicing:
             return
 
@@ -486,7 +486,8 @@ class PipelineTesterMixin:
             max_diff = np.abs(output_with_slicing - output_without_slicing).max()
             self.assertLess(max_diff, 1e-3, "Attention slicing should not affect the inference results")
 
-        assert_mean_pixel_difference(output_with_slicing[0], output_without_slicing[0])
+        if test_mean_pixel_difference:
+            assert_mean_pixel_difference(output_with_slicing[0], output_without_slicing[0])
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_accelerate_available(),
