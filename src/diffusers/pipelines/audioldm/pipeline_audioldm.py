@@ -17,13 +17,11 @@ from typing import Callable, List, Optional, Union
 
 import torch
 import torch.nn.functional as F
-from packaging import version
 from transformers import ClapTextModelWithProjection, RobertaTokenizer, RobertaTokenizerFast, SpeechT5HifiGan
 
-from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import deprecate, is_accelerate_available, logging, randn_tensor, replace_example_docstring
+from ...utils import is_accelerate_available, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 
 
@@ -81,7 +79,6 @@ class AudioLDMPipeline(DiffusionPipeline):
     ):
         super().__init__()
 
-
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -134,7 +131,7 @@ class AudioLDMPipeline(DiffusionPipeline):
         `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
         hooks.
         """
-        if self.device != torch.device("meta") or not hasattr(self.unet, "_hf_hook"):
+        if not hasattr(self.unet, "_hf_hook"):
             return self.device
         for module in self.unet.modules():
             if (
