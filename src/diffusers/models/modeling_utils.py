@@ -308,7 +308,9 @@ class ModelMixin(torch.nn.Module):
 
         # Save the model
         if safe_serialization:
-            safetensors.torch.save_file(state_dict, os.path.join(save_directory, weights_name), metadata={"format": "pt"})
+            safetensors.torch.save_file(
+                state_dict, os.path.join(save_directory, weights_name), metadata={"format": "pt"}
+            )
         else:
             torch.save(state_dict, os.path.join(save_directory, weights_name))
 
