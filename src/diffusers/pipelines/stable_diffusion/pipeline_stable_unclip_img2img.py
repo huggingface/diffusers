@@ -169,7 +169,7 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        # TODO: self.image_noiser.{scale,unscale} are not covered by the offload hooks, so they fails if added to the list
+        # TODO: self.image_normalizer.{scale,unscale} are not covered by the offload hooks, so they fails if added to the list
         models = [
             self.image_encoder,
             self.text_encoder,
