@@ -367,7 +367,7 @@ class DreamBoothDataset(Dataset):
                 self.class_data_root.append(Path(class_data_root[i]))
                 self.class_data_root[i].mkdir(parents=True, exist_ok=True)
                 self.class_images_path.append(list(self.class_data_root[i].iterdir()))
-                self.num_class_images.append(len(self.class_images_path))
+                self.num_class_images.append(len(self.class_images_path[i]))
                 if self.num_class_images[i] > self.num_instance_images[i]:
                     self._length -= self.num_instance_images[i]
                     self._length += self.num_class_images[i]
