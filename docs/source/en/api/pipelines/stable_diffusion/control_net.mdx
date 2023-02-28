@@ -29,7 +29,7 @@ The original codebase/paper can be found here:
 ## Available checkpoints
 
 ControlNet requires a *control image* in addition to the text-to-image *prompt*. 
-Each pretrained model is trained using a different method. 
+Each pretrained model is trained using a different conditioning method that requires different conditioning images. For example, Canny edge conditioning requires the control image to be the output of a Canny filter, while depth conditioning requires the control image to be a depth mask.
 For this reason, the image content passed to the `image` argument of `pipe()` is different. 
 See the overview and image examples.
 
