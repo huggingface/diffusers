@@ -14,9 +14,9 @@ specific language governing permissions and limitations under the License.
 
 # Train a diffusion model
 
-A popular application of diffusion models is unconditional image generation. The model generates an image that resembles the dataset it was trained on. Typically, the best results are obtained from finetuning a pretrained model on a specific dataset. You can find many of these checkpoints on the [Hub](https://huggingface.co/models?library=diffusers&sort=downloads), but if you can't find one you like, you can always train your own!
+A popular application of diffusion models is unconditional image generation. The model generates an image that resembles the dataset it was trained on. Typically, the best results are obtained from finetuning a pretrained model on a specific dataset. You can find many of these checkpoints on the [Hub](https://huggingface.co/search/full-text?q=unconditional-image-generation&type=model), but if you can't find one you like, you can always train your own!
 
-This tutorial will show you how to finetune a [`UNet2DModel`] on a subset of the [Smithsonian Butterflies](https://huggingface.co/datasets/huggan/smithsonian_butterflies_subset) dataset to generate your own 🦋 butterflies 🦋.
+This tutorial will show you how to train a [`UNet2DModel`] from scratch on a subset of the [Smithsonian Butterflies](https://huggingface.co/datasets/huggan/smithsonian_butterflies_subset) dataset to generate your own 🦋 butterflies 🦋.
 
 <Tip>
 
@@ -24,18 +24,24 @@ This tutorial will show you how to finetune a [`UNet2DModel`] on a subset of the
 
 </Tip>
 
-Before you begin, make sure you have 🤗 Datasets installed to load and preprocess image datasets and 🤗 Accelerate to simplify training on any number of GPUs. The following command will also install [TensorBoard](https://www.tensorflow.org/tensorboard) to visualize training metrics.
+Before you begin, make sure you have 🤗 Datasets installed to load and preprocess image datasets and 🤗 Accelerate to simplify training on any number of GPUs. The following command will also install [TensorBoard](https://www.tensorflow.org/tensorboard) to visualize training metrics (you can also use [Weights & Biases](https://docs.wandb.ai/) to track your training).
 
 ```bash
 !pip install diffusers[training]==0.13.0
 ```
 
-We encourage you to share your model with the community, and in order to do that, you'll need to login to your Hugging Face account (create one [here](https://hf.co/join) if you don't already have one!) and enter your token when prompted:
+We encourage you to share your model with the community, and in order to do that, you'll need to login to your Hugging Face account (create one [here](https://hf.co/join) if you don't already have one!). You can login from a notebook and enter your token when prompted:
 
 ```py
 >>> from huggingface_hub import notebook_login
 
 >>> notebook_login()
+```
+
+Or login in from the terminal:
+
+```bash
+huggingface-cli login
 ```
 
 Since the model checkpoints are quite large, install [Git-LFS](https://git-lfs.com/) to version these large files:
@@ -241,7 +247,7 @@ First, you'll need an optimizer and a learning rate scheduler:
 ... )
 ```
 
-Then, you'll need to way to evaluate the model. For evaluation, you can use the [`DDPMPipeline`] to generate a batch of sample images and save it as a grid:
+Then, you'll need a way to evaluate the model. For evaluation, you can use the [`DDPMPipeline`] to generate a batch of sample images and save it as a grid:
 
 ```py
 >>> from diffusers import DDPMPipeline
