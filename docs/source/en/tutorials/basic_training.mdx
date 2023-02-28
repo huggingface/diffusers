@@ -27,7 +27,7 @@ This tutorial will show you how to finetune a [`UNet2DModel`] on a subset of the
 Before you begin, make sure you have 🤗 Datasets installed to load and preprocess image datasets and 🤗 Accelerate to simplify training on any number of GPUs. The following command will also install [TensorBoard](https://www.tensorflow.org/tensorboard) to visualize training metrics.
 
 ```bash
-!pip install diffusers[training]==0.11.1
+!pip install diffusers[training]==0.13.0
 ```
 
 We encourage you to share your model with the community, and in order to do that, you'll need to login to your Hugging Face account (create one [here](https://hf.co/join) if you don't already have one!) and enter your token when prompted:
@@ -128,7 +128,7 @@ The images are all different sizes though, so you'll need to preprocess them fir
 ... )
 ```
 
-Use 🤗 Datasets' [`~Dataset.set_transform`] method to apply `preprocess` function on the fly during training:
+Use 🤗 Datasets' [`~datasets.Dataset.set_transform`] method to apply the `preprocess` function on the fly during training:
 
 ```py
 >>> def transform(examples):
@@ -277,7 +277,7 @@ Wrap all these components together and write a training function with 🤗 Accel
 
 <Tip>
 
-💡 The training loop below may look intimidating and long, but it'll be worth it later when you launch your training in just one line of code! If you can't wait and want to start generating images, feel free to copy and run the code below. You can always come back and examine the training looop more in-depth later, like when you're waiting for your model to finish training. 🤗
+💡 The training loop below may look intimidating and long, but it'll be worth it later when you launch your training in just one line of code! If you can't wait and want to start generating images, feel free to copy and run the code below. You can always come back and examine the training loop more in-depth later, like when you're waiting for your model to finish training. 🤗
 
 </Tip>
 
