@@ -458,14 +458,14 @@ class ModelMixin(torch.nn.Module):
                 " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
             )
 
+        # Load config if we don't provide a configuration
+        config_path = pretrained_model_name_or_path
+
         user_agent = {
             "diffusers": __version__,
             "file_type": "model",
             "framework": "pytorch",
         }
-
-        # Load config if we don't provide a configuration
-        config_path = pretrained_model_name_or_path
 
         # load config
         config, unused_kwargs = cls.load_config(
@@ -480,6 +480,7 @@ class ModelMixin(torch.nn.Module):
             revision=revision,
             subfolder=subfolder,
             device_map=device_map,
+            user_agent=user_agent,
             **kwargs,
         )
         _commit_hash = config.pop("_commit_hash", None)

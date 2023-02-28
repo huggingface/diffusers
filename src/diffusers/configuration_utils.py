@@ -36,6 +36,7 @@ from .utils import (
     DummyObject,
     deprecate,
     extract_commit_hash,
+    http_user_agent,
     logging,
     try_cache_hub_download,
 )
@@ -302,8 +303,10 @@ class ConfigMixin:
         revision = kwargs.pop("revision", None)
         _ = kwargs.pop("mirror", None)
         subfolder = kwargs.pop("subfolder", None)
+        user_agent = kwargs.pop("user_agent", {})
 
-        user_agent = {"file_type": "config"}
+        user_agent = {**user_agent, "file_type": "config"}
+        user_agent = http_user_agent(user_agent)
 
         pretrained_model_name_or_path = str(pretrained_model_name_or_path)
 

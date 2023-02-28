@@ -159,8 +159,8 @@ def try_cache_hub_download(
     **kwargs,
 ) -> Union[os.PathLike, str]:
     """Wrapper method around hf_hub_download:
-https://huggingface.co/docs/huggingface_hub/main/en/package_reference/file_download#huggingface_hub.hf_hub_download
-that first tries to load from cache before pinging the Hub"""
+    https://huggingface.co/docs/huggingface_hub/main/en/package_reference/file_download#huggingface_hub.hf_hub_download
+    that first tries to load from cache before pinging the Hub"""
     if _commit_hash is not None:
         # If the file is cached under that commit hash, we return it directly.
         resolved_file = try_to_load_from_cache(repo_id, filename, cache_dir=cache_dir, revision=_commit_hash)

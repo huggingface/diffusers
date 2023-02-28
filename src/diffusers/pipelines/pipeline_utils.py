@@ -47,7 +47,6 @@ from ..utils import (
     BaseOutput,
     deprecate,
     get_class_from_dynamic_module,
-    http_user_agent,
     is_accelerate_available,
     is_safetensors_available,
     is_torch_version,
@@ -513,6 +512,8 @@ class DiffusionPipeline(ConfigMixin):
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
         if not os.path.isdir(pretrained_model_name_or_path):
+            user_agent = {"pipeline_class": cls.__name__}
+
             config_dict = cls.load_config(
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,
@@ -522,6 +523,7 @@ class DiffusionPipeline(ConfigMixin):
                 local_files_only=local_files_only,
                 use_auth_token=use_auth_token,
                 revision=revision,
+                user_agent=user_agent,
             )
             _commit_hash = config_dict.pop("_commit_hash", None)
 
@@ -621,8 +623,6 @@ class DiffusionPipeline(ConfigMixin):
             user_agent = {"pipeline_class": requested_pipeline_class}
             if custom_pipeline is not None and not custom_pipeline.endswith(".py"):
                 user_agent["custom_pipeline"] = custom_pipeline
-
-            user_agent = http_user_agent(user_agent)
 
             # download all allow_patterns
             cached_folder = snapshot_download(
