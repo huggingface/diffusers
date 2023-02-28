@@ -142,4 +142,9 @@ if __name__ == "__main__":
         clip_stats_path=args.clip_stats_path,
         controlnet=args.controlnet,
     )
-    pipe.save_pretrained(args.dump_path, safe_serialization=args.to_safetensors)
+
+    if args.controlnet:
+        # only save the controlnet model
+        pipe.controlnet.save_pretrained(args.dump_path, safe_serialization=args.to_safetensors)
+    else:
+        pipe.save_pretrained(args.dump_path, safe_serialization=args.to_safetensors)
