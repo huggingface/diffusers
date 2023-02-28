@@ -76,7 +76,7 @@ pipeline = StableDiffusionPix2PixZeroPipeline.from_pretrained(
 pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
 pipeline.to("cuda")
 
-prompt = "a high resolution painting of a cat in the style of van gough"
+prompt = "a high resolution painting of a cat in the style of van gogh"
 src_embs_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/embeddings_sd_1.4/cat.pt"
 target_embs_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/embeddings_sd_1.4/dog.pt"
 
