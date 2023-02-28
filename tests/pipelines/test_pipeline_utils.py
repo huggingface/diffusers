@@ -30,7 +30,8 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "safety_checker/model.safetensors",
             "vae/diffusion_pytorch_model.bin",
             "vae/diffusion_pytorch_model.safetensors",
-            "text_encoder/pytorch_model.bin" "text_encoder/model.safetensors",
+            "text_encoder/pytorch_model.bin",
+            "text_encoder/model.safetensors",
             "unet/diffusion_pytorch_model.bin",
             # Removed: 'unet/diffusion_pytorch_model.safetensors',
         ]
