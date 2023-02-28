@@ -40,8 +40,8 @@ Unless otherwise mentioned, these are techniques that work with existing models 
 
 [Paper](https://arxiv.org/abs/2211.09800)
 
-[Instruct Pix2Pix](../api/pipelines/stable_diffusion/pix2pix) is fine-tuned from stable diffusion to support editing input images. It takes as input an image with a prompt describing an edit, and it outputs the edited image. 
-Instruct Pix2Pix has been trained to work explicitly well with [instructGPT](https://openai.com/blog/instruction-following/-like prompts.
+[Instruct Pix2Pix](../api/pipelines/stable_diffusion/pix2pix) is fine-tuned from stable diffusion to support editing input images. It takes as inputs an image and a prompt describing an edit, and it outputs the edited image. 
+Instruct Pix2Pix has been explicitly trained to work well with [InstructGPT](https://openai.com/blog/instruction-following/)-like prompts.
 
 See [here](../api/pipelines/stable_diffusion/pix2pix) for more information on how to use it.
 
@@ -49,13 +49,13 @@ See [here](../api/pipelines/stable_diffusion/pix2pix) for more information on ho
 
 [Paper](https://arxiv.org/abs/2302.03027)
 
-[Pix2Pix Zero](../api/pipelines/stable_diffusion/pix2pix_zero) allows modifying an image from one concept to another while preserving general image semantics.
+[Pix2Pix Zero](../api/pipelines/stable_diffusion/pix2pix_zero) allows modifying an image so that one concept or subject is translated to another one while preserving general image semantics.
 
 The denoising process is guided from one conceptual embedding towards another conceptual embedding. The intermediate latents are optimized during the denoising process to push the attention maps towards reference attention maps. The reference attention maps are from the denoising process of the input image and are used to encourage semantic preservation.
 
 Pix2Pix Zero can be used both to edit synthetic images as well as real images.
 - To edit synthetic images, one first generates an image given a caption.
-Next, for a concept of the caption that shall be edited as well as the new target concept one generates image captions (e.g., with a model like [Flan-T5](https://huggingface.co/docs/transformers/model_doc/flan-t5)). Then, "mean" prompt embeddings for both the source and target concepts are created via the text encoder. Finally, the pix2pix-zero algorithm is used to edit the synthetic image.
+Next, we generate image captions for the concept that shall be edited and for the new target concept. We can use a model like [Flan-T5](https://huggingface.co/docs/transformers/model_doc/flan-t5) for this purpose. Then, "mean" prompt embeddings for both the source and target concepts are created via the text encoder. Finally, the pix2pix-zero algorithm is used to edit the synthetic image.
 - To edit a real image, one first generates an image caption using a model like [BLIP](https://huggingface.co/docs/transformers/model_doc/blip). Then one applies ddim inversion on the prompt and image to generate "inverse" latents. Similar to before, "mean" prompt embeddings for both source and target concepts are created and finally the pix2pix-zero algorithm in combination with the "inverse" latents is used to edit the image.
 
 <Tip>
@@ -76,7 +76,7 @@ See [here](../api/pipelines/stable_diffusion/pix2pix_zero) for more information 
 
 [Attend and Excite](../api/pipelines/stable_diffusion/attend_and_excite) allows subjects in the prompt to be faithfully represented in the final image. 
 
-A set of token indices are given as input, corresponding to the subjects in the prompt that need to be present in the image. During denoising, each token index is insured to have above a minimum attention threshold for at least one patch of the image. The intermediate latents are iteratively optimized during the denoising process to strengthen the attention of the most neglected subject token until the attention threshold is passed for all subject tokens.
+A set of token indices are given as input, corresponding to the subjects in the prompt that need to be present in the image. During denoising, each token index is guaranteed to have a minimum attention threshold for at least one patch of the image. The intermediate latents are iteratively optimized during the denoising process to strengthen the attention of the most neglected subject token until the attention threshold is passed for all subject tokens.
 
 Like Pix2Pix Zero, Attend and Excite also involves a mini optimization loop (leaving the pre-trained weights untouched) in its pipeline and can require more memory than the usual `StableDiffusionPipeline`.
 
@@ -117,7 +117,8 @@ See [here](../api/pipelines/stable_diffusion_2#depthtoimage) for more informatio
 <Tip>
 
 An important distinction between methods like InstructPix2Pix and Pix2Pix Zero is that the former
-involves fine-tuning the pre-trained weights while the latter does not.
+involves fine-tuning the pre-trained weights while the latter does not. This means that you can
+apply Pix2Pix Zero to any of the available Stable Diffusion models.
 
 </Tip>
 
@@ -125,14 +126,14 @@ involves fine-tuning the pre-trained weights while the latter does not.
 
 [Paper](https://arxiv.org/abs/2302.08113)
 
-MultiDiffusion defines a new generation process over a pre-trained diffusion model. This process binds together multiple diffusion generation processes can be readily applied to generate high quality and diverse images that adhere to user-provided controls, such as desired aspect ratio (e.g., panorama), and spatial guiding signals, ranging from tight segmentation masks to bounding boxes.
+MultiDiffusion defines a new generation process over a pre-trained diffusion model. This process binds together multiple diffusion generation methods that can be readily applied to generate high quality and diverse images. Results adhere to user-provided controls, such as desired aspect ratio (e.g., panorama), and spatial guiding signals, ranging from tight segmentation masks to bounding boxes.
 [MultiDiffusion Panorama](../api/pipelines/stable_diffusion/panorama) allows to generate high-quality images at arbitrary aspect ratios (e.g., panoramas).
 
 See [here](../api/pipelines/stable_diffusion/panorama) for more information on how to use it to generate panoramic images.
 
-## Fine-tuning methods
+## Fine-tuning your own models
 
-In addition to pre-trained models, Diffusers has training scripts for fine-tuning models on user provided data.
+In addition to pre-trained models, Diffusers has training scripts for fine-tuning models on user-provided data.
 
 ### DreamBooth
 
