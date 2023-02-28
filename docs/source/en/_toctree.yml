@@ -23,7 +23,7 @@
     title: Loading & Hub
   - sections:
     - local: using-diffusers/write_own_pipeline
-      title: Write your own inference pipeline
+      title: Understanding models and schedulers
     - local: using-diffusers/unconditional_image_generation
       title: Unconditional Image Generation
     - local: using-diffusers/conditional_image_generation

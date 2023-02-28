@@ -10,27 +10,34 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Write your own inference pipeline
+# Understanding models and schedulers
 
 [[open-in-colab]]
 
-🧨 Diffusers allows you to freely exchange models and schedulers in the pipeline to create your own custom pipeline for inference. This guide will show you how to create a custom Stable Diffusion pipeline for inference with the [`LMSDiscreteScheduler`] instead of the default [`PNDMScheduler`].
+A diffusion model consists of two main components, the model and the scheduler. The model's primary function is to denoise noisy input samples. The scheduler handles all the details of the denoising process, such as the number of denoising steps and the amount of noise to add. Depending on the context, the scheduler does slightly different things:
 
-## Load pipeline components
+* During *inference*, the scheduler defines how to update a noisy image to generate a denoised image.
+* During *training*, the scheduler defines the amount of noise added to the inputs for the model to train on.
 
-The pretrained [`stable-diffusion-v1-4`](https://huggingface.co/CompVis/stable-diffusion-v1-4/tree/main) checkpoint includes all the components required to setup a complete diffusion pipeline. These components are stored in the following folders:
+To make things easier, these components are bundled together into the [`DiffusionPipeline`]. However, you can also use them separately to create your own custom diffusion system, as 🧨 Diffusers is designed to be a modular toolbox.
 
-* text_encoder: the model used to generate the text representation of the input. Stable Diffusion uses CLIP, but other diffusion models may use other encoders such as BERT.
-* tokenizer: it must match the one used by the `text_encoder` model.
-* scheduler: the scheduling algorithm used to progressively add noise to the image during training.
-* unet: the model used to generate the latent representation of the input.
-* vae: the autoencoder module you'll use to decode latent representations into real images.
+This tutorial will focus on understanding the model and scheduler and teach you how to use these components to recreate a Stable Diffusion pipeline (but with a twist!) so you can learn how to combine them for other tasks.
+
+## Load models and scheduler
+
+The pretrained [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) checkpoint includes all the necessary components of a diffusion model, and they're stored in the following folders:
+
+* `text_encoder`: the model used to generate the text embeddings from the input.
+* `tokenizer`: the tokenizer used to tokenize the text prompt; it must match the one used by the `text_encoder` model.
+* `scheduler`: the scheduling algorithm used to generate a denoised image.
+* `unet`: the model used to generate the latent representation of the input. A UNet model has ResNet blocks in its encoder and decoder. The encoder compresses an image representation into a lower resolution image, and the decoder decodes it back to the original higher resolution image with less noise. 
+* `vae`: the autoencoder module you'll use to decode latent representations into real images. For inference, you'll only need the VAE decoder to convert the denoised latents back into images.
 
 Load these components individually with the [`~ModelMixin.from_pretrained.subfolder`] parameter in the [`~ModelMixin.from_pretrained`] method:
 
 <Tip>
 
-💡 While you can load the entire checkpoint and all its components by calling the [`StableDiffusionPipeline`] with the [`~DiffusionPipeline.from_pretrained`] method, the goal of this guide is to show how you can pick and choose the individual models and scheduler you want to use to create a custom inference system.
+💡 Read the [How does Stable Diffusion work?](https://huggingface.co/blog/stable_diffusion#how-does-stable-diffusion-work) blog for more information about the UNet and VAE models work.
 
 </Tip>
 
@@ -39,19 +46,14 @@ Load these components individually with the [`~ModelMixin.from_pretrained.subfol
 >>> import torch
 >>> from transformers import CLIPTextModel, CLIPTokenizer
 >>> from diffusers import AutoencoderKL, UNet2DConditionModel, PNDMScheduler
-# 1. Load the autoencoder model which will be used to decode the latents into image space.
 
 >>> vae = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae")
-# 2. Load the tokenizer and text encoder to tokenize and encode the text.
-
 >>> tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
 >>> text_encoder = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14")
-# 3. The UNet model for generating the latents.
-
 >>> unet = UNet2DConditionModel.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="unet")
 ```
 
-Instead of loading the default [`PNDMScheduler`], load the [`LMSDiscreteScheduler`] and feel free to configure some of the parameters:
+Ready for the twist we mentioned earlier? Instead of loading the default [`PNDMScheduler`], you'll load the [`LMSDiscreteScheduler`] to see how you can plug a different scheduler in:
 
 ```py
 >>> from diffusers import LMSDiscreteScheduler
@@ -61,7 +63,7 @@ Instead of loading the default [`PNDMScheduler`], load the [`LMSDiscreteSchedule
 ... )
 ```
 
-Move the models to a GPU to speed up inference:
+To speed up inference, move the models to a GPU since they have trainable weights, unlike the scheduler:
 
 ```py
 >>> torch_device = "cuda"
@@ -72,7 +74,7 @@ Move the models to a GPU to speed up inference:
 
 ## Create text embeddings
 
-The pipeline generates an image from a text prompt, so the next step is to tokenize the text to generate embeddings to condition the UNet model and steer the diffusion process towards something that resembles the input prompt. 
+The model generates an image from a text prompt, so the next step is to tokenize the text to generate embeddings. The text is used to condition the UNet model and steer the diffusion process towards something that resembles the input prompt. 
 
 <Tip>
 
@@ -80,7 +82,7 @@ The pipeline generates an image from a text prompt, so the next step is to token
 
 </Tip>
 
-Feel free to choose any prompt you'd like!
+Feel free to choose any prompt you like if you want to generate something else!
 
 ```py
 >>> prompt = ["a photograph of an astronaut riding a horse"]
@@ -166,7 +168,7 @@ Finally, write a denoising loop that'll turn the noise into an image!
 
 ## Decode the image
 
-The final step is to use the `vae` to decode the latent representation into an image with the [`~diffusers.models.vae.DecoderOutput.sample`] method:
+The final step is to use the `vae` to decode the latent representation into an image with the [`DecoderOutput.sample`] method:
 
 ```py
 # scale and decode the image latents with vae
@@ -189,11 +191,9 @@ Lastly, convert the image to a `PIL.Image` to see your generated image!
     <img src="https://huggingface.co/blog/assets/98_stable_diffusion/stable_diffusion_k_lms.png"/>
 </div>
 
-## Summary
+## Next steps
 
-In this guide you learned how to:
+Now that you understand how models and schedulers work, you might be interested in:
 
-* individually load the components of a Stable Diffusion model and replace the default scheduler with another one
-* create text embeddings from the prompt to guide the UNet model
-* write a denoising loop with the [`LMSDiscreteScheduler`] to generate an image
-* decode and display the generated image
+* How to [exchange compatible schedulers](using-diffusers/schedulers#changing-the-scheduler) and compare their results.
+* A more in-depth [guide](using-diffusers/loading#loading-models) to loading models and schedulers.`
