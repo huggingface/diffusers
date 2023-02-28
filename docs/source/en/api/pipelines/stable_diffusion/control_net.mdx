@@ -68,7 +68,9 @@ image = pipe(prompt="best quality, extremely detailed", image=canny_edged_image)
 image.save("generated.png")
 ```
 
-- Using SD1.x variant model to control
+- Controlling custom Stable Diffusion 1.5 models
+
+In the following example we use PromptHero's [Openjourney model](https://huggingface.co/prompthero/openjourney), which was fine-tuned from the base Stable Diffusion v1.5 model on images from Midjourney. This model has the same structure as Stable Diffusion 1.5 but is capable of producing a different output style.
 ```py
 from diffusers import StableDiffusionControlNetPipeline, AutoencoderKL, UNet2DConditionModel
 from diffusers.utils import load_image
