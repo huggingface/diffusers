@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import fnmatch
 import importlib
 import inspect
 import os
@@ -27,6 +28,7 @@ import numpy as np
 import PIL
 import torch
 from huggingface_hub import model_info, snapshot_download
+from huggingface_hub.utils import send_telemetry
 from packaging import version
 from PIL import Image
 from tqdm.auto import tqdm
@@ -146,8 +148,7 @@ def is_safetensors_compatible(filenames, variant=None) -> bool:
     return is_safetensors_compatible
 
 
-def variant_compatible_siblings(info, variant=None) -> Union[List[os.PathLike], str]:
-    filenames = set(sibling.rfilename for sibling in info.siblings)
+def variant_compatible_siblings(filenames, variant=None) -> Union[List[os.PathLike], str]:
     weight_names = [WEIGHTS_NAME, SAFETENSORS_WEIGHTS_NAME, FLAX_WEIGHTS_NAME, ONNX_WEIGHTS_NAME]
 
     if is_transformers_available():
@@ -179,6 +180,28 @@ def variant_compatible_siblings(info, variant=None) -> Union[List[os.PathLike], 
             usable_filenames.add(f)
 
     return usable_filenames, variant_filenames
+
+
+def warn_deprecated_model_variant(pretrained_model_name_or_path, use_auth_token, variant, revision, model_filenames):
+    info = model_info(
+        pretrained_model_name_or_path,
+        use_auth_token=use_auth_token,
+        revision=None,
+    )
+    filenames = set(sibling.rfilename for sibling in info.siblings)
+    comp_model_filenames, _ = variant_compatible_siblings(filenames, variant=revision)
+    comp_model_filenames = [".".join(f.split(".")[:1] + f.split(".")[2:]) for f in comp_model_filenames]
+
+    if set(comp_model_filenames) == set(model_filenames):
+        warnings.warn(
+            f"You are loading the variant {revision} from {pretrained_model_name_or_path} via `revision='{revision}'` even though you can load it via `variant=`{revision}`. Loading model variants via `revision='{variant}'` is deprecated and will be removed in diffusers v1. Please use `variant='{revision}'` instead.",
+            FutureWarning,
+        )
+    else:
+        warnings.warn(
+            f"You are loading the variant {revision} from {pretrained_model_name_or_path} via `revision='{revision}'`. This behavior is deprecated and will be removed in diffusers v1. One should use `variant='{revision}'` instead. However, it appears that {pretrained_model_name_or_path} currently does not have the required variant filenames in the 'main' branch. \n The Diffusers team and community would be very grateful if you could open an issue: https://github.com/huggingface/diffusers/issues/new with the title '{pretrained_model_name_or_path} is missing {revision} files' so that the correct variant file can be added.",
+            FutureWarning,
+        )
 
 
 class DiffusionPipeline(ConfigMixin):
@@ -512,74 +535,59 @@ class DiffusionPipeline(ConfigMixin):
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
         if not os.path.isdir(pretrained_model_name_or_path):
-            user_agent = {"pipeline_class": cls.__name__}
-
-            config_dict = cls.load_config(
-                pretrained_model_name_or_path,
-                cache_dir=cache_dir,
-                resume_download=resume_download,
-                force_download=force_download,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
-                revision=revision,
-                user_agent=user_agent,
-            )
-            _commit_hash = config_dict.pop("_commit_hash", None)
-
-            # retrieve all folder_names that contain relevant files
-            folder_names = [k for k, v in config_dict.items() if isinstance(v, list)]
-
-            # verify that every model folder of the pipeline is present
-            pipeline_is_cached = True
-            for k, v in config_dict.items():
-                component_is_expected = isinstance(v, list) and v[0] is not None
-                component_is_None_passed = k in kwargs and kwargs.get(k) is None
-                if component_is_expected and not component_is_None_passed:
-                    pipeline_is_cached = (
-                        try_to_load_from_cache(
-                            pretrained_model_name_or_path, cache_dir=cache_dir, subfolder=k, revision=_commit_hash
-                        )
-                        is not None
-                    )
-            # TODO(Patrick) - need to check here that every subfolder is compatible
-            # There can still be edge cases with `variant` and `safetensors`
-
-            # if the whole pipeline is cached we don't have to ping the Hub
-            local_files_only = local_files_only or pipeline_is_cached
-
             if not local_files_only:
                 info = model_info(
                     pretrained_model_name_or_path,
                     use_auth_token=use_auth_token,
                     revision=revision,
                 )
-                model_filenames, variant_filenames = variant_compatible_siblings(info, variant=variant)
-                model_folder_names = set([os.path.split(f)[0] for f in model_filenames])
 
+                user_agent = {"pipeline_class": cls.__name__}
+                if custom_pipeline is not None and not custom_pipeline.endswith(".py"):
+                    user_agent["custom_pipeline"] = custom_pipeline
+
+                send_telemetry(
+                    "pipelines", library_name="diffusers", library_version=__version__, user_agent=user_agent
+                )
+                _commit_hash = info.sha
+
+                # try loading the config file
+                config_file = try_to_load_from_cache(
+                    pretrained_model_name_or_path, cls.config_name, cache_dir=cache_dir, revision=_commit_hash
+                )
+
+                if config_file is None:
+                    config_dict = cls.load_config(
+                        pretrained_model_name_or_path,
+                        cache_dir=cache_dir,
+                        resume_download=resume_download,
+                        force_download=force_download,
+                        proxies=proxies,
+                        local_files_only=local_files_only,
+                        use_auth_token=use_auth_token,
+                        revision=revision,
+                    )
+                    config_dict.pop("_commit_hash", None)
+                    config_is_cached = False
+                else:
+                    config_dict = cls._dict_from_json_file(config_file)
+                    config_is_cached = True
+
+                # retrieve all folder_names that contain relevant files
+                folder_names = [k for k, v in config_dict.items() if isinstance(v, list)]
+
+                filenames = set(sibling.rfilename for sibling in info.siblings)
+                model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+
+                # if the whole pipeline is cached we don't have to ping the Hub
                 if revision in DEPRECATED_REVISION_ARGS and version.parse(
                     version.parse(__version__).base_version
                 ) >= version.parse("0.15.0"):
-                    info = model_info(
-                        pretrained_model_name_or_path,
-                        use_auth_token=use_auth_token,
-                        revision=None,
+                    warn_deprecated_model_variant(
+                        pretrained_model_name_or_path, use_auth_token, variant, revision, model_filenames
                     )
-                    comp_model_filenames, _ = variant_compatible_siblings(info, variant=revision)
-                    comp_model_filenames = [
-                        ".".join(f.split(".")[:1] + f.split(".")[2:]) for f in comp_model_filenames
-                    ]
 
-                    if set(comp_model_filenames) == set(model_filenames):
-                        warnings.warn(
-                            f"You are loading the variant {revision} from {pretrained_model_name_or_path} via `revision='{revision}'` even though you can load it via `variant=`{revision}`. Loading model variants via `revision='{variant}'` is deprecated and will be removed in diffusers v1. Please use `variant='{revision}'` instead.",
-                            FutureWarning,
-                        )
-                    else:
-                        warnings.warn(
-                            f"You are loading the variant {revision} from {pretrained_model_name_or_path} via `revision='{revision}'`. This behavior is deprecated and will be removed in diffusers v1. One should use `variant='{revision}'` instead. However, it appears that {pretrained_model_name_or_path} currently does not have the required variant filenames in the 'main' branch. \n The Diffusers team and community would be very grateful if you could open an issue: https://github.com/huggingface/diffusers/issues/new with the title '{pretrained_model_name_or_path} is missing {revision} files' so that the correct variant file can be added.",
-                            FutureWarning,
-                        )
+                model_folder_names = set([os.path.split(f)[0] for f in model_filenames])
 
                 # all filenames compatible with variant will be added
                 allow_patterns = list(model_filenames)
@@ -612,41 +620,48 @@ class DiffusionPipeline(ConfigMixin):
                             f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(safetensors_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(safetensors_model_filenames - safetensors_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
                         )
 
-                else:
-                    ignore_patterns = ["*.safetensors", "*.msgpack"]
+                    else:
+                        ignore_patterns = ["*.safetensors", "*.msgpack"]
 
-                    bin_variant_filenames = set([f for f in variant_filenames if f.endswith(".bin")])
-                    bin_model_filenames = set([f for f in model_filenames if f.endswith(".bin")])
-                    if len(bin_variant_filenames) > 0 and bin_model_filenames != bin_variant_filenames:
-                        logger.warn(
-                            f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(bin_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(bin_model_filenames - bin_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
+                        bin_variant_filenames = set([f for f in variant_filenames if f.endswith(".bin")])
+                        bin_model_filenames = set([f for f in model_filenames if f.endswith(".bin")])
+                        if len(bin_variant_filenames) > 0 and bin_model_filenames != bin_variant_filenames:
+                            logger.warn(
+                                f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(bin_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(bin_model_filenames - bin_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
+                            )
+
+                    if config_is_cached:
+                        re_ignore_pattern = [re.compile(fnmatch.translate(p)) for p in ignore_patterns]
+                        re_allow_pattern = [re.compile(fnmatch.translate(p)) for p in allow_patterns]
+
+                        expected_files = [f for f in filenames if not any(p.match(f) for p in re_ignore_pattern)]
+                        expected_files = [f for f in expected_files if any(p.match(f) for p in re_allow_pattern)]
+                        cached_pipeline = try_to_load_from_cache(
+                            pretrained_model_name_or_path, cache_dir=cache_dir, revision=_commit_hash
                         )
+                        pipeline_is_cached = all(
+                            os.path.isfile(os.path.join(cached_pipeline, f)) for f in expected_files
+                        )
+                    else:
+                        pipeline_is_cached = False
 
-            else:
-                # allow everything since it has to be downloaded anyways
-                ignore_patterns = allow_patterns = None
-
-            if cls != DiffusionPipeline:
-                requested_pipeline_class = cls.__name__
-            else:
-                requested_pipeline_class = config_dict.get("_class_name", cls.__name__)
-            user_agent = {"pipeline_class": requested_pipeline_class}
-            if custom_pipeline is not None and not custom_pipeline.endswith(".py"):
-                user_agent["custom_pipeline"] = custom_pipeline
-
-            # download all allow_patterns
-            cached_folder = snapshot_download(
-                pretrained_model_name_or_path,
-                cache_dir=cache_dir,
-                resume_download=resume_download,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
-                revision=revision,
-                allow_patterns=allow_patterns,
-                ignore_patterns=ignore_patterns,
-                user_agent=user_agent,
-            )
+                # user_agent = {"pipeline_class": cls.__name__}
+                if pipeline_is_cached:
+                    cached_folder = cached_pipeline
+                else:
+                    # download all allow_patterns
+                    cached_folder = snapshot_download(
+                        pretrained_model_name_or_path,
+                        cache_dir=cache_dir,
+                        resume_download=resume_download,
+                        proxies=proxies,
+                        local_files_only=local_files_only,
+                        use_auth_token=use_auth_token,
+                        revision=revision,
+                        allow_patterns=allow_patterns,
+                        ignore_patterns=ignore_patterns,
+                        user_agent=user_agent,
+                    )
         else:
             cached_folder = pretrained_model_name_or_path
             config_dict = cls.load_config(cached_folder)
