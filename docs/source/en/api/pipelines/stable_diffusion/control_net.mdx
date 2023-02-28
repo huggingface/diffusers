@@ -17,7 +17,9 @@ specific language governing permissions and limitations under the License.
 ControlNet by [@lllyasviel](https://huggingface.co/lllyasviel) is a neural network structure to control diffusion models by adding extra conditions.
 
 There are 8 pre-trained ControlNet models that were trained to condition the original Stable Diffusion model on different inputs, 
-(such as edge detection, scribbles, depth maps, semantic segmentations and more)
+such as edge detection, scribbles, depth maps, semantic segmentations and more.
+
+Using the pretrained models we can provide control images (for example, a depth map) to control Stable Diffusion text-to-image generation so that it follows the structure of the depth image and fills in the details.
 
 The original codebase/paper can be found here: 
 - [Code](https://github.com/lllyasviel/ControlNet)
