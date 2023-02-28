@@ -13,7 +13,7 @@ import torch
 import diffusers
 from diffusers import DiffusionPipeline
 from diffusers.utils import logging
-from diffusers.utils.import_utils import is_accelerate_available, is_xformers_available
+from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
 from diffusers.utils.testing_utils import require_torch, torch_device
 
 
@@ -417,8 +417,8 @@ class PipelineTesterMixin:
         assert_mean_pixel_difference(output_with_slicing[0], output_without_slicing[0])
 
     @unittest.skipIf(
-        torch_device != "cuda" or not is_accelerate_available(),
-        reason="CPU offload is only available with CUDA and `accelerate` installed",
+        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
+        reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
     )
     def test_cpu_offload_forward_pass(self):
         if not self.test_cpu_offload:
