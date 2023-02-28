@@ -39,7 +39,16 @@ from diffusers import (
     StableDiffusionDepth2ImgPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import floats_tensor, is_accelerate_available, load_image, load_numpy, nightly, slow, torch_device
+from diffusers.utils import (
+    floats_tensor,
+    is_accelerate_available,
+    is_accelerate_version,
+    load_image,
+    load_numpy,
+    nightly,
+    slow,
+    torch_device,
+)
 from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
 
 from ...test_pipelines_common import PipelineTesterMixin
@@ -227,8 +236,8 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
         self.assertLess(max_diff, 1.3e-2, "The outputs of the fp16 and fp32 pipelines are too different.")
 
     @unittest.skipIf(
-        torch_device != "cuda" or not is_accelerate_available(),
-        reason="CPU offload is only available with CUDA and `accelerate` installed",
+        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
+        reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
     )
     def test_cpu_offload_forward_pass(self):
         components = self.get_dummy_components()
