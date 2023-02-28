@@ -46,11 +46,53 @@ from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
 from diffusers.utils.import_utils import is_xformers_available
 
+from packaging import version
+
+from torch.distributions import Gamma
+
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.14.0.dev0")
 
 logger = get_logger(__name__)
+
+
+def make_noise(latents, freq):
+    # calculate the size of the random noise tensor
+    noise_size = (latents.shape[0], latents.shape[1], int(latents.shape[2] * freq), int(latents.shape[3] * freq))
+    # generate random noise tensor
+    if freq == 1:
+        noise = torch.randn_like(latents, device=latents.device)
+    elif freq == 0:
+        noise = torch.randn(latents.shape[0], latents.shape[1], 1, 1, device=latents.device)
+    else:
+        noise = torch.randn(*noise_size, device=latents.device)
+        # upsample the noise tensor to match the original size
+        noise = torch.nn.functional.interpolate(
+            noise, size=(latents.shape[2], latents.shape[3]), mode="bicubic", align_corners=False
+        )
+    return noise
+
+
+def random_gamma(shape, alpha, beta=1.0):
+    alpha = torch.ones(shape) * torch.tensor(alpha)
+    beta = torch.ones(shape) * torch.tensor(beta)
+    gamma_distribution = Gamma(alpha, beta)
+
+    return gamma_distribution.sample()
+
+
+# Takes the ideas from offset noise(1) and adds uses two gamma distributions to
+# alter the noise schedule adding different amounts of offset noise at different frequencies
+# [1] https://www.crosslabs.org/blog/diffusion-with-offset-noise
+def offset_gamma_noise(latents):
+    device = latents.device
+    g1 = torch.clamp(random_gamma((1), alpha=4.5, beta=10), 0, 1).to(device)
+    g2 = torch.clamp(random_gamma((latents.shape[0], latents.shape[1], 1, 1), alpha=0.5, beta=10), 0, 1).to(device)
+
+    # g1 is the random freq
+    # g2 is the proportion to shift the noise
+    return make_noise(latents, 1) + g2 * make_noise(latents, g1[0].item())
 
 
 def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision: str):
@@ -116,7 +158,7 @@ def parse_args(input_args=None):
         "--instance_prompt",
         type=str,
         default=None,
-        required=True,
+        required=False,
         help="The prompt with identifier specifying the instance",
     )
     parser.add_argument(
@@ -454,8 +496,6 @@ class DreamBoothDataset(Dataset):
         path = self.instance_images_path[index % self.num_instance_images]
         prompt = get_filename(path) if self.use_filename_as_label else self.instance_prompt
         prompt = get_label_from_txt(path) if self.use_txt_as_label else prompt
-
-        print("prompt", prompt)
 
         instance_image = Image.open(path)
         if not instance_image.mode == "RGB":
@@ -929,7 +969,7 @@ def main(args):
                 # Sample noise that we'll add to the latents
                 # noise = torch.randn_like(latents)
                 # offset noise
-                noise = torch.randn_like(latents) + 0.1 * torch.randn(latents.shape[0], latents.shape[1], 1, 1)
+                noise = offset_gamma_noise(latents)
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
                 timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
