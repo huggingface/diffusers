@@ -26,12 +26,19 @@ from pathlib import PosixPath
 from typing import Any, Dict, Tuple, Union
 
 import numpy as np
-from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
 
 from . import __version__
-from .utils import DIFFUSERS_CACHE, HUGGINGFACE_CO_RESOLVE_ENDPOINT, DummyObject, deprecate, logging
+from .utils import (
+    DIFFUSERS_CACHE,
+    HUGGINGFACE_CO_RESOLVE_ENDPOINT,
+    DummyObject,
+    deprecate,
+    extract_commit_hash,
+    logging,
+    try_cache_hub_download,
+)
 
 
 logger = logging.get_logger(__name__)
@@ -323,7 +330,7 @@ class ConfigMixin:
         else:
             try:
                 # Load from URL or cache if already cached
-                config_file = hf_hub_download(
+                config_file = try_cache_hub_download(
                     pretrained_model_name_or_path,
                     filename=cls.config_name,
                     cache_dir=cache_dir,
@@ -336,7 +343,6 @@ class ConfigMixin:
                     subfolder=subfolder,
                     revision=revision,
                 )
-
             except RepositoryNotFoundError:
                 raise EnvironmentError(
                     f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier"
@@ -378,6 +384,9 @@ class ConfigMixin:
         try:
             # Load config dict
             config_dict = cls._dict_from_json_file(config_file)
+
+            commit_hash = extract_commit_hash(config_file)
+            config_dict["_commit_hash"] = commit_hash
         except (json.JSONDecodeError, UnicodeDecodeError):
             raise EnvironmentError(f"It looks like the config file at '{config_file}' is not a valid JSON file.")
 

@@ -53,6 +53,7 @@ from ..utils import (
     is_torch_version,
     is_transformers_available,
     logging,
+    try_to_load_from_cache,
 )
 
 
@@ -522,9 +523,15 @@ class DiffusionPipeline(ConfigMixin):
                 use_auth_token=use_auth_token,
                 revision=revision,
             )
+            _commit_hash = config_dict.pop("_commit_hash", None)
 
-            # retrieve all folder_names that contain relevant files
-            folder_names = [k for k, v in config_dict.items() if isinstance(v, list)]
+            pipeline_is_cached = (
+                try_to_load_from_cache(pretrained_model_name_or_path, cache_dir=cache_dir, revision=_commit_hash)
+                is not None
+            )
+
+            # if the whole pipeline is cached we don't have to ping the Hub
+            local_files_only = local_files_only or pipeline_is_cached
 
             if not local_files_only:
                 info = model_info(
@@ -561,6 +568,9 @@ class DiffusionPipeline(ConfigMixin):
 
                 # all filenames compatible with variant will be added
                 allow_patterns = list(model_filenames)
+
+                # retrieve all folder_names that contain relevant files
+                folder_names = [k for k, v in config_dict.items() if isinstance(v, list)]
 
                 # allow all patterns from non-model folders
                 # this enables downloading schedulers, tokenizers, ...
