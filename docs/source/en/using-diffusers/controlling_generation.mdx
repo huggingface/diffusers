@@ -35,6 +35,8 @@ Unless otherwise mentioned, these are techniques that work with existing models 
 7. [DreamBooth](#dreambooth)
 8. [Textual Inversion](#textual-inversion)
 10. [MultiDiffusion Panorama](#panorama)
+11. [ControlNet](#controlnet)
+
 
 ## Instruct pix2pix
 
@@ -132,3 +134,15 @@ MultiDiffusion defines a new generation process over a pre-trained diffusion mod
 [MultiDiffusion Panorama](../api/pipelines/stable_diffusion/panorama) allows to generate high-quality images at arbitrary aspect ratios (e.g., panoramas).
 
 See [here](../api/pipelines/stable_diffusion/panorama) for more information on how to use it to generate panoramic images.
+
+## ControlNet
+
+[Paper](https://arxiv.org/abs/2302.05543)
+
+[ControlNet](../api/pipelines/stable_diffusion/controlnet) is a neural network structure to control diffusion models by adding extra conditions.
+There are 8 pre-trained ControlNet models that were trained to condition the original Stable Diffusion model on different inputs, 
+such as edge detection, scribbles, depth maps, semantic segmentations and more.
+
+Using the pretrained models we can provide control images (for example, a depth map) to control Stable Diffusion text-to-image generation so that it follows the structure of the depth image and fills in the details.
+
+See [here](../api/pipelines/stable_diffusion/controlnet) for more information on how to use it.
