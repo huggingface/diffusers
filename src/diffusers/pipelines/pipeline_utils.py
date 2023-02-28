@@ -527,10 +527,18 @@ class DiffusionPipeline(ConfigMixin):
             )
             _commit_hash = config_dict.pop("_commit_hash", None)
 
-            pipeline_is_cached = (
-                try_to_load_from_cache(pretrained_model_name_or_path, cache_dir=cache_dir, revision=_commit_hash)
-                is not None
-            )
+            # retrieve all folder_names that contain relevant files
+            folder_names = [k for k, v in config_dict.items() if isinstance(v, list)]
+
+            # verify that every model folder of the pipeline is present
+            pipeline_is_cached = True
+            for k, v in config_dict.items():
+                component_is_expected = isinstance(v, list) and v[0] is not None
+                component_is_None_passed = k in kwargs and kwargs.get(k) is None
+                if component_is_expected and not component_is_None_passed:
+                    pipeline_is_cached = try_to_load_from_cache(pretrained_model_name_or_path, cache_dir=cache_dir, subfolder=k, revision=_commit_hash) is not None
+            # TODO(Patrick) - need to check here that every subfolder is compatible
+            # There can still be edge cases with `variant` and `safetensors`
 
             # if the whole pipeline is cached we don't have to ping the Hub
             local_files_only = local_files_only or pipeline_is_cached
@@ -570,9 +578,6 @@ class DiffusionPipeline(ConfigMixin):
 
                 # all filenames compatible with variant will be added
                 allow_patterns = list(model_filenames)
-
-                # retrieve all folder_names that contain relevant files
-                folder_names = [k for k, v in config_dict.items() if isinstance(v, list)]
 
                 # allow all patterns from non-model folders
                 # this enables downloading schedulers, tokenizers, ...
