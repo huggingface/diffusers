@@ -319,20 +319,17 @@ class ConfigMixin:
         if os.path.isfile(pretrained_model_name_or_path):
             config_file = pretrained_model_name_or_path
         elif os.path.isdir(pretrained_model_name_or_path):
-            try:
-                if os.path.isfile(os.path.join(pretrained_model_name_or_path, cls.config_name)):
-                    # Load from a PyTorch checkpoint
-                    config_file = os.path.join(pretrained_model_name_or_path, cls.config_name)
-                elif subfolder is not None and os.path.isfile(
-                    os.path.join(pretrained_model_name_or_path, subfolder, cls.config_name)
-                ):
-                    config_file = os.path.join(pretrained_model_name_or_path, subfolder, cls.config_name)
-                else:
-                    raise EnvironmentError(
-                        f"Error no file named {cls.config_name} found in directory {pretrained_model_name_or_path}."
-                    )
-            except:
-                import ipdb; ipdb.set_trace()
+            if os.path.isfile(os.path.join(pretrained_model_name_or_path, cls.config_name)):
+                # Load from a PyTorch checkpoint
+                config_file = os.path.join(pretrained_model_name_or_path, cls.config_name)
+            elif subfolder is not None and os.path.isfile(
+                os.path.join(pretrained_model_name_or_path, subfolder, cls.config_name)
+            ):
+                config_file = os.path.join(pretrained_model_name_or_path, subfolder, cls.config_name)
+            else:
+                raise EnvironmentError(
+                    f"Error no file named {cls.config_name} found in directory {pretrained_model_name_or_path}."
+                )
         else:
             try:
                 # Load from URL or cache if already cached

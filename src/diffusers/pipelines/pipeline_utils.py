@@ -536,7 +536,12 @@ class DiffusionPipeline(ConfigMixin):
                 component_is_expected = isinstance(v, list) and v[0] is not None
                 component_is_None_passed = k in kwargs and kwargs.get(k) is None
                 if component_is_expected and not component_is_None_passed:
-                    pipeline_is_cached = try_to_load_from_cache(pretrained_model_name_or_path, cache_dir=cache_dir, subfolder=k, revision=_commit_hash) is not None
+                    pipeline_is_cached = (
+                        try_to_load_from_cache(
+                            pretrained_model_name_or_path, cache_dir=cache_dir, subfolder=k, revision=_commit_hash
+                        )
+                        is not None
+                    )
             # TODO(Patrick) - need to check here that every subfolder is compatible
             # There can still be edge cases with `variant` and `safetensors`
 
