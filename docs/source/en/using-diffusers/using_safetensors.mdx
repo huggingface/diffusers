@@ -65,7 +65,7 @@ torch.load = lambda *args, **kwargs: _raise()
 
 # I want to use model X but it doesn't have safetensors weights.
 
-Just go to this [space](https://huggingface.co/spaces/safetensors/convert).
+Just go to this [space](https://huggingface.co/spaces/diffusers/convert).
 This will create a new PR with the weights, let's say `refs/pr/22`.
 
 This space will download the pickled version, convert it, and upload it on the hub as a PR.
@@ -80,8 +80,8 @@ from diffusers import StableDiffusionPipeline
 pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1", revision="refs/pr/22")
 ```
 
+or you can test it directly online with this [space](https://huggingface.co/spaces/diffusers/check_pr).
+
 And that's it !
 
 Anything unclear, concerns, or found a bugs ? [Open an issue](https://github.com/huggingface/diffusers/issues/new/choose)
-
-
