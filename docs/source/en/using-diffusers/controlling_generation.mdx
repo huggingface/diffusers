@@ -34,6 +34,7 @@ Unless otherwise mentioned, these are techniques that work with existing models 
 6. [Depth2image](#depth2image)
 7. [DreamBooth](#dreambooth)
 8. [Textual Inversion](#textual-inversion)
+10. [MultiDiffusion Panorama](#panorama)
 
 ## Instruct pix2pix
 
@@ -122,3 +123,12 @@ See [here](../training/dreambooth) for more information on how to use it.
 [Textual Inversion](../training/text_inversion) fine-tunes a model to teach it about a new concept. I.e. a few pictures of a style of artwork can be used to generate images in that style.
 
 See [here](../training/text_inversion) for more information on how to use it.
+
+## MultiDiffusion Panorama
+
+[Paper](https://multidiffusion.github.io/)
+[Demo](https://huggingface.co/spaces/weizmannscience/MultiDiffusion)
+MultiDiffusion defines a new generation process over a pre-trained diffusion model. This process binds together multiple diffusion generation processes can be readily applied to generate high quality and diverse images that adhere to user-provided controls, such as desired aspect ratio (e.g., panorama), and spatial guiding signals, ranging from tight segmentation masks to bounding boxes.
+[MultiDiffusion Panorama](../api/pipelines/stable_diffusion/panorama) allows to generate high-quality images at arbitrary aspect ratios (e.g., panoramas).
+
+See [here](../api/pipelines/stable_diffusion/panorama) for more information on how to use it to generate panoramic images.
