@@ -2,13 +2,13 @@ import argparse
 import tempfile
 
 import torch
-
 from accelerate import load_checkpoint_and_dispatch
+from transformers import CLIPTextModelWithProjection, CLIPTokenizer
+
 from diffusers import UnCLIPPipeline, UNet2DConditionModel, UNet2DModel
 from diffusers.models.prior_transformer import PriorTransformer
 from diffusers.pipelines.unclip.text_proj import UnCLIPTextProjModel
 from diffusers.schedulers.scheduling_unclip import UnCLIPScheduler
-from transformers import CLIPTextModelWithProjection, CLIPTokenizer
 
 
 """
@@ -249,7 +249,6 @@ DECODER_CONFIG = {
     "class_embed_type": "identity",
     "attention_head_dim": 64,
     "resnet_time_scale_shift": "scale_shift",
-    "class_embed_type": "identity",
 }
 
 

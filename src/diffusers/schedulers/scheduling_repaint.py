@@ -1,4 +1,4 @@
-# Copyright 2022 ETH Zurich Computer Vision Lab and The HuggingFace Team. All rights reserved.
+# Copyright 2023 ETH Zurich Computer Vision Lab and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -42,6 +42,7 @@ class RePaintSchedulerOutput(BaseOutput):
     pred_original_sample: torch.FloatTensor
 
 
+# Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of

@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -68,7 +68,7 @@ class UNet2DConditionLoadersMixin:
 
         <Tip warning={true}>
 
-            This function is experimental and might change in the future
+            This function is experimental and might change in the future.
 
         </Tip>
 
@@ -199,7 +199,7 @@ class UNet2DConditionLoadersMixin:
         save_function: Callable = None,
     ):
         r"""
-        Save an attention procesor to a directory, so that it can be re-loaded using the
+        Save an attention processor to a directory, so that it can be re-loaded using the
         `[`~loaders.UNet2DConditionLoadersMixin.load_attn_procs`]` method.
 
         Arguments:

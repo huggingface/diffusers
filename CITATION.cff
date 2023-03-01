@@ -1,0 +1,40 @@
+cff-version: 1.2.0
+title: 'Diffusers: State-of-the-art diffusion models'
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Patrick
+    family-names: von Platen
+  - given-names: Suraj
+    family-names: Patil
+  - given-names: Anton
+    family-names: Lozhkov
+  - given-names: Pedro
+    family-names: Cuenca
+  - given-names: Nathan
+    family-names: Lambert
+  - given-names: Kashif
+    family-names: Rasul
+  - given-names: Mishig
+    family-names: Davaadorj
+  - given-names: Thomas
+    family-names: Wolf
+repository-code: 'https://github.com/huggingface/diffusers'
+abstract: >-
+  Diffusers provides pretrained diffusion models across
+  multiple modalities, such as vision and audio, and serves
+  as a modular toolbox for inference and training of
+  diffusion models.
+keywords:
+  - deep-learning
+  - pytorch
+  - image-generation
+  - diffusion
+  - text2image
+  - image2image
+  - score-based-generative-modeling
+  - stable-diffusion
+license: Apache-2.0
+version: 0.12.1

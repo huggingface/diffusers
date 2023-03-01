@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The HuggingFace Inc. team.
+# Copyright 2023 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -48,7 +48,10 @@ if __name__ == "__main__":
         "--pipeline_type",
         default=None,
         type=str,
-        help="The pipeline type. If `None` pipeline will be automatically inferred.",
+        help=(
+            "The pipeline type. One of 'FrozenOpenCLIPEmbedder', 'FrozenCLIPEmbedder', 'PaintByExample'"
+            ". If `None` pipeline will be automatically inferred."
+        ),
     )
     parser.add_argument(
         "--image_size",
@@ -65,7 +68,7 @@ if __name__ == "__main__":
         type=str,
         help=(
             "The prediction type that the model was trained on. Use 'epsilon' for Stable Diffusion v1.X and Stable"
-            " Siffusion v2 Base. Use 'v-prediction' for Stable Diffusion v2."
+            " Diffusion v2 Base. Use 'v_prediction' for Stable Diffusion v2."
         ),
     )
     parser.add_argument(
@@ -79,8 +82,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--upcast_attention",
-        default=False,
-        type=bool,
+        action="store_true",
         help=(
             "Whether the attention computation should always be upcasted. This is necessary when running stable"
             " diffusion 2.1."
@@ -98,6 +100,26 @@ if __name__ == "__main__":
     )
     parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output model.")
     parser.add_argument("--device", type=str, help="Device to use (e.g. cpu, cuda:0, cuda:1, etc.)")
+    parser.add_argument(
+        "--stable_unclip",
+        type=str,
+        default=None,
+        required=False,
+        help="Set if this is a stable unCLIP model. One of 'txt2img' or 'img2img'.",
+    )
+    parser.add_argument(
+        "--stable_unclip_prior",
+        type=str,
+        default=None,
+        required=False,
+        help="Set if this is a stable unCLIP txt2img model. Selects which prior to use. If `--stable_unclip` is set to `txt2img`, the karlo prior (https://huggingface.co/kakaobrain/karlo-v1-alpha/tree/main/prior) is selected by default.",
+    )
+    parser.add_argument(
+        "--clip_stats_path",
+        type=str,
+        help="Path to the clip stats file. Only required if the stable unclip model's config specifies `model.params.noise_aug_config.params.clip_stats_path`.",
+        required=False,
+    )
     args = parser.parse_args()
 
     pipe = load_pipeline_from_original_stable_diffusion_ckpt(
@@ -111,5 +133,9 @@ if __name__ == "__main__":
         num_in_channels=args.num_in_channels,
         upcast_attention=args.upcast_attention,
         from_safetensors=args.from_safetensors,
+        device=args.device,
+        stable_unclip=args.stable_unclip,
+        stable_unclip_prior=args.stable_unclip_prior,
+        clip_stats_path=args.clip_stats_path,
     )
     pipe.save_pretrained(args.dump_path, safe_serialization=args.to_safetensors)

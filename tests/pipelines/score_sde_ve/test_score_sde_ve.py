@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -61,6 +61,7 @@ class ScoreSdeVeipelineFastTests(unittest.TestCase):
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -86,4 +87,5 @@ class ScoreSdeVePipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (1, 256, 256, 3)
 
         expected_slice = np.array([0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

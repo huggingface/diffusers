@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,10 +17,10 @@ import unittest
 
 import numpy as np
 import torch
+from transformers import CLIPTextConfig, CLIPTextModel
 
 from diffusers import DDIMScheduler, LDMPipeline, UNet2DModel, VQModel
 from diffusers.utils.testing_utils import require_torch, slow, torch_device
-from transformers import CLIPTextConfig, CLIPTextModel
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -96,6 +96,7 @@ class LDMPipelineFastTests(unittest.TestCase):
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.8512, 0.818, 0.6411, 0.6808, 0.4465, 0.5618, 0.46, 0.6231, 0.5172])
         tolerance = 1e-2 if torch_device != "mps" else 3e-2
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < tolerance
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < tolerance
 
@@ -116,4 +117,5 @@ class LDMPipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (1, 256, 256, 3)
         expected_slice = np.array([0.4399, 0.44975, 0.46825, 0.474, 0.4359, 0.4581, 0.45095, 0.4341, 0.4447])
         tolerance = 1e-2 if torch_device != "mps" else 3e-2
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < tolerance

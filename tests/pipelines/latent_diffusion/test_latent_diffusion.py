@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,10 +18,10 @@ import unittest
 
 import numpy as np
 import torch
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DDIMScheduler, LDMTextToImagePipeline, UNet2DConditionModel
 from diffusers.utils.testing_utils import load_numpy, nightly, require_torch_gpu, slow, torch_device
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from ...test_pipelines_common import PipelineTesterMixin
 
@@ -126,7 +126,7 @@ class LDMTextToImagePipelineSlowTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def get_inputs(self, device, dtype=torch.float32, seed=0):
-        generator = torch.Generator(device=device).manual_seed(seed)
+        generator = torch.manual_seed(seed)
         latents = np.random.RandomState(seed).standard_normal((1, 4, 32, 32))
         latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
         inputs = {
@@ -162,7 +162,7 @@ class LDMTextToImagePipelineNightlyTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def get_inputs(self, device, dtype=torch.float32, seed=0):
-        generator = torch.Generator(device=device).manual_seed(seed)
+        generator = torch.manual_seed(seed)
         latents = np.random.RandomState(seed).standard_normal((1, 4, 32, 32))
         latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
         inputs = {

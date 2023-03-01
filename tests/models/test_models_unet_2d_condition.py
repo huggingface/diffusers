@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,9 +18,10 @@ import tempfile
 import unittest
 
 import torch
+from parameterized import parameterized
 
 from diffusers import UNet2DConditionModel
-from diffusers.models.cross_attention import LoRACrossAttnProcessor
+from diffusers.models.cross_attention import CrossAttnProcessor, LoRACrossAttnProcessor
 from diffusers.utils import (
     floats_tensor,
     load_hf_numpy,
@@ -31,13 +32,40 @@ from diffusers.utils import (
     torch_device,
 )
 from diffusers.utils.import_utils import is_xformers_available
-from parameterized import parameterized
 
 from ..test_modeling_common import ModelTesterMixin
 
 
 logger = logging.get_logger(__name__)
 torch.backends.cuda.matmul.allow_tf32 = False
+
+
+def create_lora_layers(model):
+    lora_attn_procs = {}
+    for name in model.attn_processors.keys():
+        cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
+        if name.startswith("mid_block"):
+            hidden_size = model.config.block_out_channels[-1]
+        elif name.startswith("up_blocks"):
+            block_id = int(name[len("up_blocks.")])
+            hidden_size = list(reversed(model.config.block_out_channels))[block_id]
+        elif name.startswith("down_blocks"):
+            block_id = int(name[len("down_blocks.")])
+            hidden_size = model.config.block_out_channels[block_id]
+
+        lora_attn_procs[name] = LoRACrossAttnProcessor(
+            hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
+        )
+        lora_attn_procs[name] = lora_attn_procs[name].to(model.device)
+
+        # add 1 to weights to mock trained weights
+        with torch.no_grad():
+            lora_attn_procs[name].to_q_lora.up.weight += 1
+            lora_attn_procs[name].to_k_lora.up.weight += 1
+            lora_attn_procs[name].to_v_lora.up.weight += 1
+            lora_attn_procs[name].to_out_lora.up.weight += 1
+
+    return lora_attn_procs
 
 
 class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
@@ -224,7 +252,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
             def __call__(self, attn, hidden_states, encoder_hidden_states=None, attention_mask=None, number=None):
                 batch_size, sequence_length, _ = hidden_states.shape
-                attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length)
+                attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
                 query = attn.to_q(hidden_states)
 
@@ -336,30 +364,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             old_sample = model(**inputs_dict).sample
 
-        lora_attn_procs = {}
-        for name in model.attn_processors.keys():
-            cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
-            if name.startswith("mid_block"):
-                hidden_size = model.config.block_out_channels[-1]
-            elif name.startswith("up_blocks"):
-                block_id = int(name[len("up_blocks.")])
-                hidden_size = list(reversed(model.config.block_out_channels))[block_id]
-            elif name.startswith("down_blocks"):
-                block_id = int(name[len("down_blocks.")])
-                hidden_size = model.config.block_out_channels[block_id]
-
-            lora_attn_procs[name] = LoRACrossAttnProcessor(
-                hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
-            )
-            lora_attn_procs[name] = lora_attn_procs[name].to(model.device)
-
-            # add 1 to weights to mock trained weights
-            with torch.no_grad():
-                lora_attn_procs[name].to_q_lora.up.weight += 1
-                lora_attn_procs[name].to_k_lora.up.weight += 1
-                lora_attn_procs[name].to_v_lora.up.weight += 1
-                lora_attn_procs[name].to_out_lora.up.weight += 1
-
+        lora_attn_procs = create_lora_layers(model)
         model.set_attn_processor(lora_attn_procs)
 
         with torch.no_grad():
@@ -379,6 +384,62 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
         # LoRA and no LoRA should NOT be the same
         assert (sample - old_sample).abs().max() > 1e-4
+
+    def test_lora_on_off(self):
+        # enable deterministic behavior for gradient checkpointing
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        init_dict["attention_head_dim"] = (8, 16)
+
+        torch.manual_seed(0)
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        with torch.no_grad():
+            old_sample = model(**inputs_dict).sample
+
+        lora_attn_procs = create_lora_layers(model)
+        model.set_attn_processor(lora_attn_procs)
+
+        with torch.no_grad():
+            sample = model(**inputs_dict, cross_attention_kwargs={"scale": 0.0}).sample
+
+        model.set_attn_processor(CrossAttnProcessor())
+
+        with torch.no_grad():
+            new_sample = model(**inputs_dict).sample
+
+        assert (sample - new_sample).abs().max() < 1e-4
+        assert (sample - old_sample).abs().max() < 1e-4
+
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_lora_xformers_on_off(self):
+        # enable deterministic behavior for gradient checkpointing
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        init_dict["attention_head_dim"] = (8, 16)
+
+        torch.manual_seed(0)
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        lora_attn_procs = create_lora_layers(model)
+        model.set_attn_processor(lora_attn_procs)
+
+        # default
+        with torch.no_grad():
+            sample = model(**inputs_dict).sample
+
+            model.enable_xformers_memory_efficient_attention()
+            on_sample = model(**inputs_dict).sample
+
+            model.disable_xformers_memory_efficient_attention()
+            off_sample = model(**inputs_dict).sample
+
+        assert (sample - on_sample).abs().max() < 1e-4
+        assert (sample - off_sample).abs().max() < 1e-4
 
 
 @slow

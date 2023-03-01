@@ -8,33 +8,45 @@ import urllib.parse
 from distutils.util import strtobool
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 import numpy as np
-
 import PIL.Image
 import PIL.ImageOps
 import requests
 from packaging import version
 
 from .import_utils import is_flax_available, is_onnx_available, is_torch_available
+from .logging import get_logger
 
 
 global_rng = random.Random()
 
+logger = get_logger(__name__)
 
 if is_torch_available():
     import torch
 
-    torch_device = "cuda" if torch.cuda.is_available() else "cpu"
-    is_torch_higher_equal_than_1_12 = version.parse(version.parse(torch.__version__).base_version) >= version.parse(
-        "1.12"
-    )
+    if "DIFFUSERS_TEST_DEVICE" in os.environ:
+        torch_device = os.environ["DIFFUSERS_TEST_DEVICE"]
 
-    if is_torch_higher_equal_than_1_12:
-        # Some builds of torch 1.12 don't have the mps backend registered. See #892 for more details
-        mps_backend_registered = hasattr(torch.backends, "mps")
-        torch_device = "mps" if (mps_backend_registered and torch.backends.mps.is_available()) else torch_device
+        available_backends = ["cuda", "cpu", "mps"]
+        if torch_device not in available_backends:
+            raise ValueError(
+                f"unknown torch backend for diffusers tests: {torch_device}. Available backends are:"
+                f" {available_backends}"
+            )
+        logger.info(f"torch_device overrode to {torch_device}")
+    else:
+        torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+        is_torch_higher_equal_than_1_12 = version.parse(
+            version.parse(torch.__version__).base_version
+        ) >= version.parse("1.12")
+
+        if is_torch_higher_equal_than_1_12:
+            # Some builds of torch 1.12 don't have the mps backend registered. See #892 for more details
+            mps_backend_registered = hasattr(torch.backends, "mps")
+            torch_device = "mps" if (mps_backend_registered and torch.backends.mps.is_available()) else torch_device
 
 
 def torch_all_close(a, b, *args, **kwargs):
@@ -43,6 +55,21 @@ def torch_all_close(a, b, *args, **kwargs):
     if not torch.allclose(a, b, *args, **kwargs):
         assert False, f"Max diff is absolute {(a - b).abs().max()}. Diff tensor is {(a - b).abs()}."
     return True
+
+
+def print_tensor_test(tensor, filename="test_corrections.txt", expected_tensor_name="expected_slice"):
+    test_name = os.environ.get("PYTEST_CURRENT_TEST")
+    if not torch.is_tensor(tensor):
+        tensor = torch.from_numpy(tensor)
+
+    tensor_str = str(tensor.detach().cpu().flatten().to(torch.float32)).replace("\n", "")
+    # format is usually:
+    # expected_slice = np.array([-0.5713, -0.3018, -0.9814, 0.04663, -0.879, 0.76, -1.734, 0.1044, 1.161])
+    output_str = tensor_str.replace("tensor", f"{expected_tensor_name} = np.array")
+    test_file, test_class, test_fn = test_name.split("::")
+    test_fn = test_fn.split()[0]
+    with open(filename, "a") as f:
+        print(";".join([test_file, test_class, test_fn, output_str]), file=f)
 
 
 def get_tests_dir(append_path=None):
@@ -136,6 +163,11 @@ def require_torch_gpu(test_case):
     )
 
 
+def skip_mps(test_case):
+    """Decorator marking a test to skip if torch_device is 'mps'"""
+    return unittest.skipUnless(torch_device != "mps", "test requires non 'mps' device")(test_case)
+
+
 def require_flax(test_case):
     """
     Decorator marking a test that requires JAX & Flax. These tests are skipped when one / both are not installed
@@ -150,9 +182,13 @@ def require_onnxruntime(test_case):
     return unittest.skipUnless(is_onnx_available(), "test requires onnxruntime")(test_case)
 
 
-def load_numpy(arry: Union[str, np.ndarray]) -> np.ndarray:
+def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -> np.ndarray:
     if isinstance(arry, str):
-        if arry.startswith("http://") or arry.startswith("https://"):
+        # local_path = "/home/patrick_huggingface_co/"
+        if local_path is not None:
+            # local_path can be passed to correct images of tests
+            return os.path.join(local_path, "/".join([arry.split("/")[-5], arry.split("/")[-2], arry.split("/")[-1]]))
+        elif arry.startswith("http://") or arry.startswith("https://"):
             response = requests.get(arry)
             response.raise_for_status()
             arry = np.load(BytesIO(response.content))
@@ -170,6 +206,13 @@ def load_numpy(arry: Union[str, np.ndarray]) -> np.ndarray:
             " ndarray."
         )
 
+    return arry
+
+
+def load_pt(url: str):
+    response = requests.get(url)
+    response.raise_for_status()
+    arry = torch.load(BytesIO(response.content))
     return arry
 
 

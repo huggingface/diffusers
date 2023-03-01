@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
+from ..utils import BaseOutput, apply_forward_hook
 from .modeling_utils import ModelMixin
 from .vae import Decoder, DecoderOutput, DiagonalGaussianDistribution, Encoder
 
@@ -54,8 +54,15 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         block_out_channels (`Tuple[int]`, *optional*, defaults to :
             obj:`(64,)`): Tuple of block output channels.
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
-        latent_channels (`int`, *optional*, defaults to `4`): Number of channels in the latent space.
+        latent_channels (`int`, *optional*, defaults to 4): Number of channels in the latent space.
         sample_size (`int`, *optional*, defaults to `32`): TODO
+        scaling_factor (`float`, *optional*, defaults to 0.18215):
+            The component-wise standard deviation of the trained latent space computed using the first batch of the
+            training set. This is used to scale the latent space to have unit variance when training the diffusion
+            model. The latents are scaled with the formula `z = z * scaling_factor` before being passed to the
+            diffusion model. When decoding, the latents are scaled back to the original scale with the formula: `z = 1
+            / scaling_factor * z`. For more details, refer to sections 4.3.2 and D.1 of the [High-Resolution Image
+            Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) paper.
     """
 
     @register_to_config
@@ -71,6 +78,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         latent_channels: int = 4,
         norm_num_groups: int = 32,
         sample_size: int = 32,
+        scaling_factor: float = 0.18215,
     ):
         super().__init__()
 
@@ -101,6 +109,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         self.post_quant_conv = nn.Conv2d(latent_channels, latent_channels, 1)
         self.use_slicing = False
 
+    @apply_forward_hook
     def encode(self, x: torch.FloatTensor, return_dict: bool = True) -> AutoencoderKLOutput:
         h = self.encoder(x)
         moments = self.quant_conv(h)
@@ -136,6 +145,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         """
         self.use_slicing = False
 
+    @apply_forward_hook
     def decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
         if self.use_slicing and z.shape[0] > 1:
             decoded_slices = [self._decode(z_slice).sample for z_slice in z.split(1)]
