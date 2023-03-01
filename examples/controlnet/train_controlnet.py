@@ -123,15 +123,6 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--center_crop",
-        default=False,
-        action="store_true",
-        help=(
-            "Whether to center crop the input images to the resolution. If not set, the images will be randomly"
-            " cropped. The images will be resized to the resolution first before cropping."
-        ),
-    )
-    parser.add_argument(
         "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
     )
     parser.add_argument(
@@ -315,10 +306,8 @@ class DreamBoothDataset(Dataset):
         instance_data_root,
         tokenizer,
         size=512,
-        center_crop=False,
     ):
         self.size = size
-        self.center_crop = center_crop
         self.tokenizer = tokenizer
 
         self.instance_data_root = Path(instance_data_root)
@@ -332,12 +321,22 @@ class DreamBoothDataset(Dataset):
 
         self._length = len(self.data)
 
-        self.image_transforms = transforms.Compose(
+        # RandomCrop is not supported since the crop should be the same for both images.
+
+        self.target_transforms = transforms.Compose(
             [
                 transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
-                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
+                transforms.CenterCrop(size),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
+            ]
+        )
+
+        self.source_transforms = transforms.Compose(
+            [
+                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
+                transforms.CenterCrop(size),
+                transforms.ToTensor()
             ]
         )
 
@@ -359,8 +358,8 @@ class DreamBoothDataset(Dataset):
         if not target.mode == "RGB":
             target = target.convert("RGB")
 
-        example["source_images"] = self.image_transforms(source)
-        example["target_images"] = self.image_transforms(target)
+        example["source_images"] = self.source_transforms(source)
+        example["target_images"] = self.target_transforms(target)
         example["prompt_ids"] = self.tokenizer(
             prompt,
             truncation=True,
@@ -573,8 +572,7 @@ def main(args):
     train_dataset = DreamBoothDataset(
         instance_data_root=args.instance_data_dir,
         tokenizer=tokenizer,
-        size=args.resolution,
-        center_crop=args.center_crop,
+        size=args.resolution
     )
 
     train_dataloader = torch.utils.data.DataLoader(
@@ -730,7 +728,6 @@ def main(args):
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
-                #print('loss', loss.detach().item())
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
