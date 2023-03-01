@@ -133,7 +133,6 @@ images = pipe([prompt] * 32).images
 You may see a small performance boost in VAE decode on multi-image batches. There should be no performance impact on single-image batches.
 
 
-<<<<<<< HEAD:docs/source/optimization/fp16.mdx
 ## Tiled VAE decode and encode for large images
 
 Tiled VAE processing makes it possible to work with large images on limited VRAM. For example, generating 4k images in 8GB of VRAM. Tiled VAE decoder splits the image into overlapping tiles, decodes the tiles, and blends the outputs to make the final image.
