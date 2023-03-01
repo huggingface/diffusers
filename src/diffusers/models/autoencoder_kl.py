@@ -191,12 +191,11 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         r"""Encode a batch of images using a tiled encoder.
         Args:
         When this option is enabled, the VAE will split the input tensor into tiles to compute encoding in several
-        steps. This is useful to keep memory use constant regardless of image size. The end result of tiled encoding is
+        steps. This is useful to keep memory use constant regardless of image size. The end result of tiled encoding is:
         different from non-tiled encoding due to each tile using a different encoder. To avoid tiling artifacts, the
         tiles overlap and are blended together to form a smooth output. You may still see tile-sized changes in the
         look of the output, but they should be much less noticeable.
-            x (`torch.FloatTensor`): Input batch of images.
-            return_dict (`bool`, *optional*, defaults to `True`):
+            x (`torch.FloatTensor`): Input batch of images. return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`AutoencoderKLOutput`] instead of a plain tuple.
         """
         # Split the image into 512x512 tiles and encode them separately.
@@ -234,12 +233,12 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         r"""Decode a batch of images using a tiled decoder.
         Args:
         When this option is enabled, the VAE will split the input tensor into tiles to compute decoding in several
-        steps. This is useful to keep memory use constant regardless of image size. The end result of tiled decoding is
+        steps. This is useful to keep memory use constant regardless of image size. The end result of tiled decoding is:
         different from non-tiled decoding due to each tile using a different decoder. To avoid tiling artifacts, the
         tiles overlap and are blended together to form a smooth output. You may still see tile-sized changes in the
         look of the output, but they should be much less noticeable.
-            z (`torch.FloatTensor`): Input batch of latent vectors.
-            return_dict (`bool`, *optional*, defaults to `True`):
+            z (`torch.FloatTensor`): Input batch of latent vectors. return_dict (`bool`, *optional*, defaults to
+            `True`):
                 Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
         """
         # Split z into overlapping 64x64 tiles and decode them separately.
