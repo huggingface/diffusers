@@ -35,7 +35,6 @@ class PipelineTesterMixin:
         [
             "num_inference_steps",
             "num_images_per_prompt",
-            "eta",
             "generator",
             "latents",
             "output_type",

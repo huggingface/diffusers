@@ -47,7 +47,7 @@ class StableDiffusionLatentUpscalePipelineFastTests(PipelineTesterMixin, unittes
         "negative_prompt_embeds",
         "prompt_embeds",
     }
-    required_optional_params = PipelineTesterMixin.required_optional_params - {"num_images_per_prompt", "eta"}
+    required_optional_params = PipelineTesterMixin.required_optional_params - {"num_images_per_prompt"}
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
     test_cpu_offload = True
 

@@ -39,7 +39,6 @@ class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     required_optional_params = PipelineTesterMixin.required_optional_params - {
         "latents",
         "num_images_per_prompt",
-        "eta",
         "callback",
         "callback_steps",
     }

@@ -38,7 +38,6 @@ class DanceDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "latents",
         "callback_steps",
         "output_type",
-        "eta",
         "num_images_per_prompt",
     }
     batch_params = UNCONDITIONAL_AUDIO_GENERATION_BATCH_PARAMS
