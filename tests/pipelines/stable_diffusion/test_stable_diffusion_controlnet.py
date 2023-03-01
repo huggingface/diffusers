@@ -199,7 +199,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth_out.npy"
         )
 
-        assert np.abs(expected_image - image).max() < 0e-4
+        assert np.abs(expected_image - image).max() < 1e-4
 
     def test_hed(self):
         controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-hed")
