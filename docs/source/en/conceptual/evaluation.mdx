@@ -174,6 +174,15 @@ print(f"CLIP Score with v-1-5: {sd_clip_score_1_5}")
 
 It seems like the [v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) checkpoint performs better than its predecessor. Note, however, that the number of prompts we used to compute the CLIP scores is quite low. For a more practical evaluation, this number should be way higher, and the prompts should be diverse.
 
+<Tip warning={true}>
+
+By construction, there are some limitations in this score. The captions in the training dataset
+were crawled from the web and extracted from `alt` and similar tags associated an image on the internet.
+They are not necessarily representative of what a human being would use to describe an image. Hence we
+had to "engineer" some prompts here. 
+
+</Tip>
+
 ## Image-conditioned text-to-image generation
 
 In this case, we condition the generation pipeline with an input image as well as a text prompt. Let's take the [`StableDiffusionInstructPix2PixPipeline`], as an example. It takes an edit instruction as an input prompt and an input image to be edited.
