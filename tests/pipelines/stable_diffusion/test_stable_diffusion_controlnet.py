@@ -178,18 +178,18 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
         controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-depth")
 
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet, revision="non-ema"
+            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator(device="cpu").manual_seed(5)
+        generator = torch.Generator(device="cpu").manual_seed(0)
         prompt = "Stormtrooper's lecture"
         image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth.png"
         )
 
-        output = pipe(prompt, image, generator=generator, output_type="pt")
+        output = pipe(prompt, image, generator=generator, output_type="np")
 
         image = output.images[0]
 
@@ -199,10 +199,34 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth_out.npy"
         )
 
-        assert np.abs(expected_image - image).max() < 1e-4
+        assert np.abs(expected_image - image).max() < 0e-4
 
     def test_hed(self):
-        ...
+        controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-hed")
+
+        pipe = StableDiffusionControlNetPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
+        )
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        prompt = "oil painting of handsome old man, masterpiece"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/man_hed.png"
+        )
+
+        output = pipe(prompt, image, generator=generator, height=768, output_type="np")
+
+        image = output.images[0]
+
+        assert image.shape == (768, 512, 3)
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/man_hed_out.npy"
+        )
+
+        assert np.abs(expected_image - image).max() < 1e-4
 
     def test_mlsd(self):
         ...
