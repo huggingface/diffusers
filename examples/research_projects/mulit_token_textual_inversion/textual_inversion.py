@@ -168,9 +168,6 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--initialize_rest_random", action="store_true", help="Initialize rest of the placeholder tokens with random."
-    )
-    parser.add_argument(
         "--save_steps",
         type=int,
         default=500,

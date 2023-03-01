@@ -1,3 +1,13 @@
+## This project
+
+We add multi token support to textual inversion. I added
+1. num_vec_per_token for the number of used to reference that token
+2. progressive_tokens for progressively training the token from 1 token to 2 token etc
+3. progressive_tokens_max_steps for the max number of steps until we start full training
+4. vector_shuffle to shuffle vectors
+
+Feel free to add these options to your training! In practice num_vec_per_token around 10+vector shuffle works great!
+
 ## Textual Inversion fine-tuning example
 
 [Textual inversion](https://arxiv.org/abs/2208.01618) is a method to personalize text2image models like stable diffusion on your own images using just 3-5 examples.
