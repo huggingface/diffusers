@@ -46,7 +46,7 @@ PartiPrompts has the following columns:
 
 These benchmarks allow for side-by-side human evaluation of different image generation models. Let’s see how we can use `diffusers` on a couple of PartiPrompts. 
 
-Here are some prompts sampled across different challenges: Basic, Complex, Linguistic Structures, Imagination, and Writing & Symbols:
+Below we show some prompts sampled across different challenges: Basic, Complex, Linguistic Structures, Imagination, and Writing & Symbols. Here we are using PartiPrompts as a [dataset](https://huggingface.co/datasets/nateraw/parti-prompts).
 
 ```python
 from datasets import load_dataset
@@ -70,7 +70,7 @@ Now we can use these prompts to generate some images using Stable Diffusion ([v1
 import torch
 
 seed = 0
-generator = torch.Generator(device).manual_seed(seed)
+generator = torch.manual_seed(seed)
 
 images = sd_pipeline(sample_prompts, num_images_per_prompt=1, generator=generator, output_type="numpy").images
 ```
