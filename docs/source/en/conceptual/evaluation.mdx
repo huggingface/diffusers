@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 Evaluation of generative models like [Stable Diffusion](https://huggingface.co/docs/diffusers/stable_diffusion) is subjective in nature. But as practitioners and researchers, we often have to make careful choices amongst many different possibilities. So, when working with different generative models (like GANs, Diffusion, etc.), how do we choose one over the other?
 
-Qualitative evaluation of such models can often be error-prone and might incorrectly influence a decision. However, solely relying on quantitative metrics doesn't give a full picture either. For example, a generative model might provide a lower FID score, but the generated images might still lack quality. So, usually, a combination of both qualitative and quantitative evaluations provides a stronger signal when choosing one model over the other.
+Qualitative evaluation of such models can be error-prone and might incorrectly influence a decision. However, solely relying on quantitative metrics doesn't give a full picture either. For example, a generative model might provide a lower FID score, but the generated images might still lack quality. So, usually, a combination of both qualitative and quantitative evaluations provides a stronger signal when choosing one model over the other.
 
 In this document, we provide a non-exhaustive overview of qualitative and quantitative methods to evaluate Diffusion models. For quantitative methods, we specifically focus on how to implement them alongside `diffusers`. 
 
@@ -96,7 +96,7 @@ In this section, we focus on:
 
 One commonly used metric here is the [CLIP score](https://arxiv.org/abs/2104.08718). It measures how well-aligned a pair of image and caption is. The higher the CLIP score, the better it is 🔼
 
-Let's first load a `StableDiffusionPipeline`:
+Let's first load a [`StableDiffusionPipeline`]:
 
 ```python
 from diffusers import StableDiffusionPipeline
@@ -148,11 +148,11 @@ print(f"CLIP score: {sd_clip_score}")
 
 In the above example, we generated one image per prompt. If we generated multiple images per prompt, we could uniformly sample just one from the pool of generated images.
 
-Now, if we wanted to compare two checkpoints compatible with the `StableDiffusionPipeline` we should pass a generator while calling the pipeline:
+Now, if we wanted to compare two checkpoints compatible with the [`StableDiffusionPipeline`] we should pass a generator while calling the pipeline:
 
 ```python
 seed = 0
-generator = torch.Generator(device).manual_seed(seed)
+generator = torch.manual_seed(seed)
 
 images = sd_pipeline(prompts, num_images_per_prompt=1, generator=generator, output_type="numpy").images
 ```
@@ -176,7 +176,7 @@ It seems like the [v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) 
 
 ## Image-conditioned text-to-image generation
 
-In this case, we condition the generation pipeline with an input image as well as a text prompt. Let's take the `[StableDiffusionInstructPix2PixPipeline](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/pix2pix)`, as an example. It takes an edit instruction as an input prompt and an input image to be edited.
+In this case, we condition the generation pipeline with an input image as well as a text prompt. Let's take the `[StableDiffusionInstructPix2PixPipeline]`, as an example. It takes an edit instruction as an input prompt and an input image to be edited.
 
 Here is one example:
 
@@ -238,13 +238,13 @@ dataset[idx]["image"]
 
 We will first edit the images of our dataset with the edit instruction and compute the directional similarity.
 
-Let's first load the `StableDiffusionInstructPix2PixPipeline`:
+Let's first load the [`StableDiffusionInstructPix2PixPipeline`]:
 
 ```python
 from diffusers import StableDiffusionInstructPix2PixPipeline
 
 instruct_pix2pix_model_id = "timbrooks/instruct-pix2pix"
-instruct_pix2pix_pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
+instruct_pix2pix_pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained("timbrooks/instruct-pix2pix", torch_dtype=torch.float16)
     instruct_pix2pix_model_id, torch_dtype=weight_dtype
 ).to(device)
 ```
@@ -391,7 +391,7 @@ We can use these metrics for similar pipelines such as the`[StableDiffusionPix2P
 
 ## Class-conditioned image generation
 
-Class-conditioned generative models are usually pre-trained on a class-labeled dataset such as [ImageNet-1k](https://huggingface.co/datasets/imagenet-1k). Popular metrics for evaluating these models include Fréchet Inception Distance (FID), Kernel Inception Distance (KID), and Inception Score (IS). In this document, we focus on FID ([Heusel et al.](https://arxiv.org/abs/1706.08500)). We show how to compute it with the `[DiTPipeline](https://huggingface.co/docs/diffusers/api/pipelines/dit)`, which uses the [DiT model](https://arxiv.org/abs/2212.09748) under the hood.
+Class-conditioned generative models are usually pre-trained on a class-labeled dataset such as [ImageNet-1k](https://huggingface.co/datasets/imagenet-1k). Popular metrics for evaluating these models include Fréchet Inception Distance (FID), Kernel Inception Distance (KID), and Inception Score (IS). In this document, we focus on FID ([Heusel et al.](https://arxiv.org/abs/1706.08500)). We show how to compute it with the `[DiTPipeline]`, which uses the [DiT model](https://arxiv.org/abs/2212.09748) under the hood.
 
 FID aims to measure how similar are two datasets of images. As per [this resource](https://mmgeneration.readthedocs.io/en/latest/quick_run.html#fid):
 
@@ -501,5 +501,5 @@ As a final step, let's visually inspect the `fake_images` and `real_images`, 
 
 <p align="center">
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/real-images.png" alt="real-images"><br>
-    <em>Fake images.</em>
+    <em>Real images.</em>
 </p>
