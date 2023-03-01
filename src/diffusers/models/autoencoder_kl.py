@@ -109,30 +109,24 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         self.post_quant_conv = nn.Conv2d(latent_channels, latent_channels, 1)
         self.use_slicing = False
 
-    @apply_forward_hook
-    def encode(self, x: torch.FloatTensor, return_dict: bool = True) -> AutoencoderKLOutput:
-        h = self.encoder(x)
-        moments = self.quant_conv(h)
-        posterior = DiagonalGaussianDistribution(moments)
+    def enable_tiling(self, use_tiling: bool = True):
+        r"""
+        Enable tiled VAE decoding.
+        When this option is enabled, the VAE will split the input tensor into tiles to compute decoding and encoding in
+        several steps. This is useful to save a large amount of memory and to allow the processing of larger images.
+        """
+        self.use_tiling = use_tiling
 
-        if not return_dict:
-            return (posterior,)
-
-        return AutoencoderKLOutput(latent_dist=posterior)
-
-    def _decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
-        z = self.post_quant_conv(z)
-        dec = self.decoder(z)
-
-        if not return_dict:
-            return (dec,)
-
-        return DecoderOutput(sample=dec)
+    def disable_tiling(self):
+        r"""
+        Disable tiled VAE decoding. If `enable_vae_tiling` was previously invoked, this method will go back to
+        computing decoding in one step.
+        """
+        self.enable_tiling(False)
 
     def enable_slicing(self):
         r"""
         Enable sliced VAE decoding.
-
         When this option is enabled, the VAE will split the input tensor in slices to compute decoding in several
         steps. This is useful to save some memory and allow larger batch sizes.
         """
@@ -146,6 +140,32 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         self.use_slicing = False
 
     @apply_forward_hook
+    def encode(self, x: torch.FloatTensor, return_dict: bool = True) -> AutoencoderKLOutput:
+        if self.use_tiling and (x.shape[-1] > 512 or x.shape[-2] > 512):
+            return self.tiled_encode(x, return_dict=return_dict)
+
+        h = self.encoder(x)
+        moments = self.quant_conv(h)
+        posterior = DiagonalGaussianDistribution(moments)
+
+        if not return_dict:
+            return (posterior,)
+
+        return AutoencoderKLOutput(latent_dist=posterior)
+
+    def _decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
+        if self.use_tiling and (z.shape[-1] > 64 or z.shape[-2] > 64):
+            return self.tiled_decode(z, return_dict=return_dict)
+
+        z = self.post_quant_conv(z)
+        dec = self.decoder(z)
+
+        if not return_dict:
+            return (dec,)
+
+        return DecoderOutput(sample=dec)
+
+    @apply_forward_hook
     def decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
         if self.use_slicing and z.shape[0] > 1:
             decoded_slices = [self._decode(z_slice).sample for z_slice in z.split(1)]
@@ -157,6 +177,101 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
             return (decoded,)
 
         return DecoderOutput(sample=decoded)
+
+    def blend_v(self, a, b, blend_width):
+        for y in range(blend_width):
+            b[:, :, y, :] = a[:, :, -blend_width + y, :] * (1 - y / blend_width) + b[:, :, y, :] * (y / blend_width)
+        return b
+
+    def blend_h(self, a, b, blend_width):
+        for x in range(blend_width):
+            b[:, :, :, x] = a[:, :, :, -blend_width + x] * (1 - x / blend_width) + b[:, :, :, x] * (x / blend_width)
+        return b
+
+    def tiled_encode(self, x: torch.FloatTensor, return_dict: bool = True) -> AutoencoderKLOutput:
+        r"""Encode a batch of images using a tiled encoder.
+        When this option is enabled, the VAE will split the input tensor into tiles to compute encoding in several
+        steps. This is useful to keep memory use constant regardless of image size.
+        The end result of tiled encoding is different from non-tiled encoding due to each tile using a different
+        encoder. To avoid tiling artifacts, the tiles overlap and are blended together to form a smooth output. You may
+        still see tile-sized changes in the look of the output, but they should be much less noticeable.
+        Args:
+            x (`torch.FloatTensor`): Input batch of images.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`AutoencoderKLOutput`] instead of a plain tuple.
+        """
+        # Split the image into 512x512 tiles and encode them separately.
+        rows = []
+        for i in range(0, x.shape[2], 384):
+            row = []
+            for j in range(0, x.shape[3], 384):
+                tile = x[:, :, i : i + 512, j : j + 512]
+                tile = self.encoder(tile)
+                tile = self.quant_conv(tile)
+                row.append(tile)
+            rows.append(row)
+        result_rows = []
+        for i, row in enumerate(rows):
+            result_row = []
+            for j, tile in enumerate(row):
+                # blend the above tile and the left tile
+                # to the current tile and add the current tile to the result row
+                if i > 0:
+                    tile = self.blend_v(rows[i - 1][j], tile, 16)
+                if j > 0:
+                    tile = self.blend_h(row[j - 1], tile, 16)
+                result_row.append(tile[:, :, :48, :48])
+            result_rows.append(torch.cat(result_row, dim=3))
+
+        moments = torch.cat(result_rows, dim=2)
+        posterior = DiagonalGaussianDistribution(moments)
+
+        if not return_dict:
+            return (posterior,)
+
+        return AutoencoderKLOutput(latent_dist=posterior)
+
+    def tiled_decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
+        r"""Decode a batch of images using a tiled decoder.
+        When this option is enabled, the VAE will split the input tensor into tiles to compute decoding in several
+        steps. This is useful to keep memory use constant regardless of image size.
+        The end result of tiled decoding is different from non-tiled decoding due to each tile using a different
+        decoder. To avoid tiling artifacts, the tiles overlap and are blended together to form a smooth output. You may
+        still see tile-sized changes in the look of the output, but they should be much less noticeable.
+        Args:
+            z (`torch.FloatTensor`): Input batch of latent vectors.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
+        """
+        # Split z into overlapping 64x64 tiles and decode them separately.
+        # The tiles have an overlap to avoid seams between tiles.
+        rows = []
+        for i in range(0, z.shape[2], 48):
+            row = []
+            for j in range(0, z.shape[3], 48):
+                tile = z[:, :, i : i + 64, j : j + 64]
+                tile = self.post_quant_conv(tile)
+                decoded = self.decoder(tile)
+                row.append(decoded)
+            rows.append(row)
+        result_rows = []
+        for i, row in enumerate(rows):
+            result_row = []
+            for j, tile in enumerate(row):
+                # blend the above tile and the left tile
+                # to the current tile and add the current tile to the result row
+                if i > 0:
+                    tile = self.blend_v(rows[i - 1][j], tile, 128)
+                if j > 0:
+                    tile = self.blend_h(row[j - 1], tile, 128)
+                result_row.append(tile[:, :, :384, :384])
+            result_rows.append(torch.cat(result_row, dim=3))
+
+        dec = torch.cat(result_rows, dim=2)
+        if not return_dict:
+            return (dec,)
+
+        return DecoderOutput(sample=dec)
 
     def forward(
         self,
