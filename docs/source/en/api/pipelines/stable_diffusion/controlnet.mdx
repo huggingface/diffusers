@@ -12,26 +12,32 @@ specific language governing permissions and limitations under the License.
 
 # Text-to-Image Generation with ControlNet Conditioning
 
-## StableDiffusionControlNetPipeline
+## Overview
 
-ControlNet by [@lllyasviel](https://huggingface.co/lllyasviel) is a neural network structure to control diffusion models by adding extra conditions.
-
-There are 8 pre-trained ControlNet models that were trained to condition the original Stable Diffusion model on different inputs, 
-such as edge detection, scribbles, depth maps, semantic segmentations and more.
+[Adding Conditional Control to Text-to-Image Diffusion Models](https://arxiv.org/abs/2302.05543) by Lvmin Zhang and Maneesh Agrawala.
 
 Using the pretrained models we can provide control images (for example, a depth map) to control Stable Diffusion text-to-image generation so that it follows the structure of the depth image and fills in the details.
 
-The original codebase/paper can be found here: 
-- [Code](https://github.com/lllyasviel/ControlNet)
-- [Paper](https://arxiv.org/abs/2302.05543)
+The abstract of the paper is the following:
 
+*We present a neural network structure, ControlNet, to control pretrained large diffusion models to support additional input conditions. The ControlNet learns task-specific conditions in an end-to-end way, and the learning is robust even when the training dataset is small (< 50k). Moreover, training a ControlNet is as fast as fine-tuning a diffusion model, and the model can be trained on a personal devices. Alternatively, if powerful computation clusters are available, the model can scale to large amounts (millions to billions) of data. We report that large diffusion models like Stable Diffusion can be augmented with ControlNets to enable conditional inputs like edge maps, segmentation maps, keypoints, etc. This may enrich the methods to control large diffusion models and further facilitate related applications.*
 
+Resources:
+
+* [Paper](https://arxiv.org/abs/2302.05543)
+* [Original Code](https://github.com/lllyasviel/ControlNet)
+
+## Available Pipelines:
+
+| Pipeline | Tasks | Demo
+|---|---|:---:|
+| [StableDiffusionControlNetPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_controlnet.py) | *Text-to-Image Generation with ControlNet Conditioning* | [Colab Example](https://colab.research.google.com/drive/1AiR7Q-sBqO88NCyswpfiuwXZc7DfMyKA?usp=sharing) |
+
+<!-- TODO: add space -->
 ## Available checkpoints
 
 ControlNet requires a *control image* in addition to the text-to-image *prompt*. 
 Each pretrained model is trained using a different conditioning method that requires different images for conditioning the generated outputs. For example, Canny edge conditioning requires the control image to be the output of a Canny filter, while depth conditioning requires the control image to be a depth map. See the overview and image examples below to know more.
-Each pretrained model is trained using a different conditioning method that requires different conditioning images. For example, Canny edge conditioning requires the control image to be the output of a Canny filter, while depth conditioning requires the control image to be a depth map.
-See the overview and image examples.
 
 All checkpoints are converted from [lllyasviel/ControlNet](https://huggingface.co/lllyasviel/ControlNet).
 
@@ -48,12 +54,6 @@ All checkpoints are converted from [lllyasviel/ControlNet](https://huggingface.c
 |[takuma104/control_sd15_scribble](https://huggingface.co/takuma104/control_sd15_scribble)<br/> *Trained with human scribbles*  |A hand-drawn monochrome image with white outlines on a black background.|<a href="https://huggingface.co/takuma104/controlnet_dev/blob/main/gen_compare/control_images/converted/control_vermeer_scribble.png"><img width="64" src="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/converted/control_vermeer_scribble.png"/></a>|<a href="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/output_images/diffusers/output_vermeer_scribble_0.png"><img width="64" src="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/output_images/diffusers/output_vermeer_scribble_0.png"/></a> |
 |[takuma104/control_sd15_seg](https://huggingface.co/takuma104/control_sd15_seg)<br/>*Trained with semantic segmentation*  |An [ADE20K](https://groups.csail.mit.edu/vision/datasets/ADE20K/)'s segmentation protocol image.|<a href="https://huggingface.co/takuma104/controlnet_dev/blob/main/gen_compare/control_images/converted/control_room_seg.png"><img width="64" src="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/converted/control_room_seg.png"/></a>|<a href="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/output_images/diffusers/output_room_seg_1.png"><img width="64" src="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/output_images/diffusers/output_room_seg_1.png"/></a> |
 
-
-## Resources
-
-- [Colab Notebook Example](https://colab.research.google.com/drive/1AiR7Q-sBqO88NCyswpfiuwXZc7DfMyKA?usp=sharing)
-- [controlnet_hinter](https://github.com/takuma104/controlnet_hinter): Image Preprocess Library for ControlNet
-
 ## Usage example
 
 - Basic Example (Canny Edge)
@@ -61,6 +61,8 @@ All checkpoints are converted from [lllyasviel/ControlNet](https://huggingface.c
 The conditioning image is an outline of the image edges, as detected by a Canny filter. This is the example we'll use to control the generation:
 
 ![White on black edges detected on Vermeer's Girl with a Pearl Earring portrait](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/vermeer_canny_edged.png)
+
+In the following example, note that the text prompt does not make any reference to the structure or contents of the image we are generating. Stable Diffusion interprets the control image as an additional input that controls what to generate.
 
 ```python
 from diffusers import StableDiffusionControlNetPipeline
@@ -73,7 +75,6 @@ image = pipe(prompt="best quality, extremely detailed", image=canny_edged_image)
 image.save("generated.png")
 ```
 
-Note that the text prompt does not make any reference to the structure or contents of the image we are generating. Stable Diffusion interprets the control image as an additional input that controls what to generate.
 - Controlling custom Stable Diffusion 1.5 models
 
 In the following example we use PromptHero's [Openjourney model](https://huggingface.co/prompthero/openjourney), which was fine-tuned from the base Stable Diffusion v1.5 model on images from Midjourney. This model has the same structure as Stable Diffusion 1.5 but is capable of producing outputs in a different style.
@@ -83,7 +84,7 @@ from diffusers import StableDiffusionControlNetPipeline, AutoencoderKL, UNet2DCo
 from diffusers.utils import load_image
 
 # Canny edged image for control
-canny_edged_image = load_image("https://huggingface.co/takuma104/controlnet_dev/resolve/main/vermeer_canny_edged.png")
+canny_edged_image = load_image("https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/vermeer_canny_edged.png")
 
 base_model_id = "prompthero/openjourney"  # an example: openjourney model
 vae = AutoencoderKL.from_pretrained(base_model_id, subfolder="vae").to("cuda")
@@ -97,9 +98,3 @@ image.save("generated.png")
 [[autodoc]] StableDiffusionControlNetPipeline
 	- all
 	- __call__
-	- enable_attention_slicing
-	- disable_attention_slicing
-	- enable_vae_slicing
-	- disable_vae_slicing
-	- enable_xformers_memory_efficient_attention
-	- disable_xformers_memory_efficient_attention
