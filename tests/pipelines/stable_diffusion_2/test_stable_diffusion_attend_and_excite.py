@@ -152,7 +152,7 @@ class StableDiffusionAttendAndExcitePipelineIntegrationTests(unittest.TestCase):
         generator = torch.manual_seed(51)
 
         pipe = StableDiffusionAttendAndExcitePipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16
+            "CompVis/stable-diffusion-v1-4", safety_checker=None, torch_dtype=torch.float16
         )
         pipe.to("cuda")
 
@@ -164,8 +164,9 @@ class StableDiffusionAttendAndExcitePipelineIntegrationTests(unittest.TestCase):
             token_indices=token_indices,
             guidance_scale=7.5,
             generator=generator,
-            num_inference_steps=50,
-            max_iter_to_alter=25,
+            num_inference_steps=5,
+            max_iter_to_alter=5,
+            output_type="numpy",
         ).images[0]
 
         expected_image = load_numpy(

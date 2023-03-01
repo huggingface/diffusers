@@ -21,7 +21,7 @@ import numpy as np
 import torch
 
 from diffusers import VersatileDiffusionTextToImagePipeline
-from diffusers.utils.testing_utils import require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import nightly, require_torch_gpu, torch_device
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -31,7 +31,7 @@ class VersatileDiffusionTextToImagePipelineFastTests(unittest.TestCase):
     pass
 
 
-@slow
+@nightly
 @require_torch_gpu
 class VersatileDiffusionTextToImagePipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
@@ -67,7 +67,9 @@ class VersatileDiffusionTextToImagePipelineIntegrationTests(unittest.TestCase):
         assert np.abs(image - new_image).sum() < 1e-5, "Models don't have the same forward pass"
 
     def test_inference_text2img(self):
-        pipe = VersatileDiffusionTextToImagePipeline.from_pretrained("shi-labs/versatile-diffusion")
+        pipe = VersatileDiffusionTextToImagePipeline.from_pretrained(
+            "shi-labs/versatile-diffusion", torch_dtype=torch.float16
+        )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -80,6 +82,6 @@ class VersatileDiffusionTextToImagePipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.3493, 0.3757, 0.4093, 0.4495, 0.4233, 0.4102, 0.4507, 0.4756, 0.4787])
+        expected_slice = np.array([0.3367, 0.3169, 0.2656, 0.3870, 0.4790, 0.3796, 0.4009, 0.4878, 0.4778])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

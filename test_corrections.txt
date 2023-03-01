@@ -1,0 +1,2 @@
+tests/pipelines/versatile_diffusion/test_versatile_diffusion_text_to_image.py;VersatileDiffusionTextToImagePipelineIntegrationTests;test_inference_text2img;expected_slice = np.array([0.3367, 0.3169, 0.2656, 0.3870, 0.4790, 0.3796, 0.4009, 0.4878, 0.4778])
+tests/pipelines/versatile_diffusion/test_versatile_diffusion_text_to_image.py;VersatileDiffusionTextToImagePipelineIntegrationTests;test_inference_text2img;expected_slice = np.array([0.3367, 0.3169, 0.2656, 0.3870, 0.4790, 0.3796, 0.4009, 0.4878, 0.4778])

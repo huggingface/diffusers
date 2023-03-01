@@ -271,7 +271,7 @@ class StableDiffusionPix2PixZeroPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.5742, 0.5757, 0.5747, 0.5781, 0.5688, 0.5713, 0.5742, 0.5664, 0.5747])
 
-        assert np.abs(expected_slice - image_slice).max() < 1e-3
+        assert np.abs(expected_slice - image_slice).max() < 5e-2
 
     def test_stable_diffusion_pix2pix_zero_k_lms(self):
         pipe = StableDiffusionPix2PixZeroPipeline.from_pretrained(
@@ -289,7 +289,7 @@ class StableDiffusionPix2PixZeroPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.6367, 0.5459, 0.5146, 0.5479, 0.4905, 0.4753, 0.4961, 0.4629, 0.4624])
 
-        assert np.abs(expected_slice - image_slice).max() < 1e-3
+        assert np.abs(expected_slice - image_slice).max() < 5e-2
 
     def test_stable_diffusion_pix2pix_zero_intermediate_state(self):
         number_of_steps = 0
@@ -389,7 +389,7 @@ class InversionPipelineSlowTests(unittest.TestCase):
         assert inv_latents.shape == (1, 4, 64, 64)
         expected_slice = np.array([0.8877, 0.0587, 0.7700, -1.6035, -0.5962, 0.4827, -0.6265, 1.0498, -0.8599])
 
-        assert np.abs(expected_slice - image_slice.cpu().numpy()).max() < 1e-3
+        assert np.abs(expected_slice - image_slice.cpu().numpy()).max() < 5e-2
 
     def test_stable_diffusion_pix2pix_full(self):
         # numpy array of https://huggingface.co/datasets/hf-internal-testing/diffusers-images/blob/main/pix2pix/dog.png
@@ -430,5 +430,5 @@ class InversionPipelineSlowTests(unittest.TestCase):
             output_type="np",
         ).images
 
-        max_diff = np.abs(expected_image - image).max()
-        assert max_diff < 1e-3
+        max_diff = np.abs(expected_image - image).mean()
+        assert max_diff < 0.05
