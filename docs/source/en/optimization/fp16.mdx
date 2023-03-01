@@ -141,20 +141,21 @@ You want to couple this with [`~StableDiffusionPipeline.enable_attention_slicing
 
 To use tiled VAE processing, invoke [`~StableDiffusionPipeline.enable_vae_tiling`] in your pipeline before inference. For example:
 
-```Python
+```python
 import torch
-from diffusers import StableDiffusionPipeline
+from diffusers import StableDiffusionPipeline, UniPCMultistepScheduler
 
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
     torch_dtype=torch.float16,
 )
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
 pipe = pipe.to("cuda")
-
 prompt = "a beautiful landscape photograph"
 pipe.enable_vae_tiling()
 pipe.enable_xformers_memory_efficient_attention()
-images = pipe([prompt], width=3840, height=2224).images
+
+image = pipe([prompt], width=3840, height=2224, num_inference_steps=20).images[0]
 ```
 
 The output image will have some tile-to-tile tone variation from the tiles having separate decoders, but you shouldn't see sharp seams between the tiles. The tiling is turned off for images that are 512x512 or smaller.
