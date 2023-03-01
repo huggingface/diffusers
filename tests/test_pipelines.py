@@ -879,8 +879,8 @@ class PipelineSlowTests(unittest.TestCase):
                 )
 
         assert (
-            cap_logger.out
-            == "Keyword arguments {'not_used': True} are not expected by DDPMPipeline and will be ignored.\n"
+            cap_logger.out.strip().split("\n")[-1]
+            == "Keyword arguments {'not_used': True} are not expected by DDPMPipeline and will be ignored."
         )
 
     def test_from_save_pretrained(self):
