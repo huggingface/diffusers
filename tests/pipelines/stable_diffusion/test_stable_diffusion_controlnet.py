@@ -283,10 +283,58 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
         assert np.abs(expected_image - image).max() < 1e-4
 
     def test_openpose(self):
-        ...
+        controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-openpose")
+
+        pipe = StableDiffusionControlNetPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
+        )
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        prompt = "Chef in the kitchen"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/pose.png"
+        )
+
+        output = pipe(prompt, image, generator=generator, height=768, output_type="np")
+
+        image = output.images[0]
+
+        assert image.shape == (768, 512, 3)
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/chef_pose_out.npy"
+        )
+
+        assert np.abs(expected_image - image).max() < 1e-4
 
     def test_scribble(self):
-        ...
+        controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-scribble")
+
+        pipe = StableDiffusionControlNetPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
+        )
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device="cpu").manual_seed(5)
+        prompt = "bag"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bag_scribble.png"
+        )
+
+        output = pipe(prompt, image, generator=generator, height=640, output_type="np")
+
+        image = output.images[0]
+
+        assert image.shape == (640, 512, 3)
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bag_scribble_out.npy"
+        )
+
+        assert np.abs(expected_image - image).max() < 1e-4
 
     def test_seg(self):
         ...
