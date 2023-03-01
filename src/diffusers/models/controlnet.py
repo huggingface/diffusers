@@ -106,6 +106,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
         projection_class_embeddings_input_dim: Optional[int] = None,
+        controlnet_conditioning_channel_order: str = "rgb",
     ):
         super().__init__()
 
@@ -382,6 +383,17 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[ControlNetOutput, Tuple]:
+        # check channel order
+        channel_order = self.config.controlnet_conditioning_channel_order
+
+        if channel_order == "rgb":
+            # in rgb order by default
+            ...
+        elif channel_order == "bgr":
+            controlnet_cond = torch.flip(controlnet_cond, dims=[1])
+        else:
+            raise ValueError(f"unknown `controlnet_conditioning_channel_order`: {channel_order}")
+
         # prepare attention_mask
         if attention_mask is not None:
             attention_mask = (1 - attention_mask.to(sample.dtype)) * -10000.0
