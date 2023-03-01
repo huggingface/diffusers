@@ -9,6 +9,7 @@ personal_workspace/db_inpainting/experiments
 personal_workspace/db_inpainting/datasets
 personal_workspace/db_inpainting/class_data
 personal_workspace/db_inpainting/test_data
+personal_workspace/base_model
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

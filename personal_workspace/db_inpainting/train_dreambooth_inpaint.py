@@ -6,6 +6,7 @@ import os
 import random
 from pathlib import Path
 from typing import Optional
+import copy
 
 import numpy as np
 import torch
@@ -80,6 +81,42 @@ def random_mask(im_shape, ratio=1, mask_full_image=False):
     return mask
 
 
+def random_padding(ref_mask: Image):
+    w, h = ref_mask.size
+    mask_arry = np.array(ref_mask)
+    center_list = np.where(mask_arry == 255)
+    rand_index = random.randint(0, len(center_list[0]))
+    center = (center_list[1][rand_index], center_list[0][rand_index]) # x, y
+    limits = (min(center[0], w - center[0]), min(center[1], h - center[1]))
+    p_h, p_w = random.randint(10, limits[0]), random.randint(10, limits[1])
+    draw_type = random.randint(0, 1)
+    mask = Image.fromarray(copy.deepcopy(mask_arry))
+    draw = ImageDraw.Draw(mask)
+    if draw_type == 0:
+        draw.rectangle(
+            (center[0] -p_h, center[1] - p_w, center[0] + p_h, center[1] + p_w),
+            fill=0,
+        )
+    else:
+        draw.ellipse(
+            (center[0] -p_h, center[1] - p_w, center[0] + p_h, center[1] + p_w),
+            fill=0,
+        )
+    return mask
+    
+
+# generate mask according to input PIL mask
+def schedule_random_mask(ref_mask: Image, ratio=1, mask_full_image=False):
+    rand = random.random()
+    if rand < 0.1: # 10%
+        mask = random_mask(ref_mask.size, ratio, mask_full_image)
+    elif rand < 0.5: # 40%
+        mask = random_padding(ref_mask)
+    else: # 50%
+        mask = ref_mask
+    return mask
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
@@ -151,15 +188,6 @@ def parse_args():
         help=(
             "The resolution for input images, all the images in the train/validation dataset will be resized to this"
             " resolution"
-        ),
-    )
-    parser.add_argument(
-        "--center_crop",
-        default=False,
-        action="store_true",
-        help=(
-            "Whether to center crop the input images to the resolution. If not set, the images will be randomly"
-            " cropped. The images will be resized to the resolution first before cropping."
         ),
     )
     parser.add_argument("--train_text_encoder", action="store_true", help="Whether to train the text encoder")
@@ -295,7 +323,8 @@ def parse_args():
     return args
 
 
-class DreamBoothDataset(Dataset):
+# TODO(juncfang) : add prior loss mask 
+class InpaintingDataset(Dataset):
     """
     A dataset to prepare the instance and class images with the prompts for fine-tuning the model.
     It pre-processes the images and the tokenizes prompts.
@@ -309,18 +338,23 @@ class DreamBoothDataset(Dataset):
         class_data_root=None,
         class_prompt=None,
         size=512,
-        center_crop=False,
     ):
         self.size = size
-        self.center_crop = center_crop
         self.tokenizer = tokenizer
 
-        self.instance_data_root = Path(instance_data_root)
+        self.instance_data_root = Path(instance_data_root) / "instance"
         if not self.instance_data_root.exists():
             raise ValueError("Instance images root doesn't exists.")
+        self.mask_data_root = Path(instance_data_root) / "mask"
+        if not self.mask_data_root.exists():
+            raise ValueError("Mask images root doesn't exists.")
 
-        self.instance_images_path = list(Path(instance_data_root).iterdir())
+        self.instance_images_path = list(self.instance_data_root.iterdir())
         self.num_instance_images = len(self.instance_images_path)
+        self.mask_images_path = list( self.mask_data_root.iterdir())
+        self.num_mask_images = len(self.mask_images_path)
+        if self.num_mask_images != self.num_instance_images:
+            raise ValueError(f"num_instance_images({self.num_instance_images}) is not equal to num_mask_images({self.num_mask_images}) !!")
         self.instance_prompt = instance_prompt
         self._length = self.num_instance_images
 
@@ -337,7 +371,7 @@ class DreamBoothDataset(Dataset):
         self.image_transforms_resize_and_crop = transforms.Compose(
             [
                 transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
-                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
+                transforms.CenterCrop(size),
             ]
         )
 
@@ -360,7 +394,13 @@ class DreamBoothDataset(Dataset):
 
         example["PIL_images"] = instance_image
         example["instance_images"] = self.image_transforms(instance_image)
-
+        
+        mask_image = Image.open(self.mask_images_path[index % self.num_instance_images])
+        if not mask_image.mode == "L":
+            mask_image = mask_image.convert("L")
+        mask_image = self.image_transforms_resize_and_crop(mask_image)
+        example["PIL_images_mask"] = mask_image
+        
         example["instance_prompt_ids"] = self.tokenizer(
             self.instance_prompt,
             padding="do_not_pad",
@@ -470,6 +510,7 @@ def main():
                 transform_to_pil = transforms.ToPILImage()
                 fake_pil_images = transform_to_pil(fake_images)
 
+                # TODO(juncfang) : use scheduler instead
                 fake_mask = random_mask((args.resolution, args.resolution), ratio=1, mask_full_image=True)
 
                 images = pipeline(prompt=example["prompt"], mask_image=fake_mask, image=fake_pil_images).images
@@ -552,14 +593,13 @@ def main():
 
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
 
-    train_dataset = DreamBoothDataset(
+    train_dataset = InpaintingDataset(
         instance_data_root=args.instance_data_dir,
         instance_prompt=args.instance_prompt,
         class_data_root=args.class_data_dir if args.with_prior_preservation else None,
         class_prompt=args.class_prompt,
         tokenizer=tokenizer,
-        size=args.resolution,
-        center_crop=args.center_crop,
+        size=args.resolution
     )
 
     def collate_fn(examples):
@@ -577,8 +617,10 @@ def main():
         masked_images = []
         for example in examples:
             pil_image = example["PIL_images"]
+            pil_image_mask = example["PIL_images_mask"]
             # generate a random mask
-            mask = random_mask(pil_image.size, 1, False)
+            mask = schedule_random_mask(pil_image_mask)
+            mask.save(f"{random.random()}.png")
             # prepare mask and masked image
             mask, masked_image = prepare_mask_and_masked_image(pil_image, mask)
 

@@ -1,7 +1,7 @@
 ###
  # @Author: Juncfang
  # @Date: 2022-12-30 09:57:16
- # @LastEditTime: 2023-02-23 10:36:36
+ # @LastEditTime: 2023-02-28 16:32:49
  # @LastEditors: Juncfang
  # @Description: 
  # @FilePath: /diffusers_fork/personal_workspace/dreambooth/train_dreambooth.sh
@@ -12,13 +12,13 @@ export CURDIR="$( cd "$( dirname $0 )" && pwd )"
 export PROJECT_DIR="$( cd "$CURDIR/../.." && pwd )"
 
 export GPU_ID="1"
-export EXPERIMENT_NAME="idphoto0216-5manual-1200-seg-align3-u9-white"
+export EXPERIMENT_NAME="idphoto0216-5manual-r1.3-man_r-1200-seg-align3-u9-white"
 export EXPERIMENT_NAME="$DATE-$EXPERIMENT_NAME"
 export INSTANCE_DIR="$CURDIR/datasets/u9_align3_seg"
 export MAX_STEP=1200
 export CLASS_NAME="man" # "man", "man2", "<ID-PHOTO>", "woman", "person", "cat", "dog" ...
 # MODEL_NAME ect. "CompVis/stable-diffusion-v1-4", "runwayml/stable-diffusion-v1-5"
-export MODEL_NAME="/home/junkai/code/diffusers_fork/personal_workspace/finetune/experiments/idphoto0216_5manual/models" 
+export MODEL_NAME="/home/junkai/code/diffusers_fork/personal_workspace/finetune/experiments/idphoto0216_5manual_r1.3/models" 
 
 export CLASS_DIR="$CURDIR/class_data/$CLASS_NAME"
 export OUTPUT_DIR="$CURDIR/experiments/$EXPERIMENT_NAME/models"
