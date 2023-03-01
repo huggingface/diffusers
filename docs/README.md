@@ -1,5 +1,5 @@
 <!---
-Copyright 2022- The HuggingFace Team. All rights reserved.
+Copyright 2023- The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -54,7 +54,7 @@ doc-builder preview {package_name} {path_to_docs}
 For example:
 
 ```bash
-doc-builder preview diffusers docs/source/
+doc-builder preview diffusers docs/source/en
 ```
 
 The docs will be viewable at [http://localhost:3000](http://localhost:3000). You can also preview the docs once you have opened a PR. You will see a bot add a comment to a link where the documentation with your changes lives.
@@ -126,21 +126,26 @@ When adding a new pipeline:
     - Paper abstract
     - Tips and tricks and how to use it best
     - Possible an end-to-end example of how to use it
-- Add all the pipeline classes that should be linked in the diffusion model. These classes should be added using our Markdown syntax. Usually as follows:
+- Add all the pipeline classes that should be linked in the diffusion model. These classes should be added using our Markdown syntax. By default as follows:
 
 ```
 ## XXXPipeline
 
 [[autodoc]] XXXPipeline
-```
-
-This will include every public method of the pipeline that is documented. You can specify which methods should be in the docs:
-
-```
-## XXXPipeline
-
-[[autodoc]] XXXPipeline
+    - all
 	- __call__
+```
+
+This will include every public method of the pipeline that is documented, as well as the  `__call__` method that is not documented by default. If you just want to add additional methods that are not documented, you can put the list of all methods to add in a list that contains `all`.
+
+```
+[[autodoc]] XXXPipeline
+    - all
+	- __call__
+	- enable_attention_slicing
+	- disable_attention_slicing
+    - enable_xformers_memory_efficient_attention 
+    - disable_xformers_memory_efficient_attention
 ```
 
 You can follow the same process to create a new scheduler under the `docs/source/api/schedulers` folder
@@ -155,9 +160,9 @@ adds a link to its documentation with this syntax: \[\`XXXClass\`\] or \[\`funct
 function to be in the main package.
 
 If you want to create a link to some internal class or function, you need to
-provide its path. For instance: \[\`pipeline_utils.ImagePipelineOutput\`\]. This will be converted into a link with
-`pipeline_utils.ImagePipelineOutput` in the description. To get rid of the path and only keep the name of the object you are
-linking to in the description, add a ~: \[\`~pipeline_utils.ImagePipelineOutput\`\] will generate a link with `ImagePipelineOutput` in the description.
+provide its path. For instance: \[\`pipelines.ImagePipelineOutput\`\]. This will be converted into a link with
+`pipelines.ImagePipelineOutput` in the description. To get rid of the path and only keep the name of the object you are
+linking to in the description, add a ~: \[\`~pipelines.ImagePipelineOutput\`\] will generate a link with `ImagePipelineOutput` in the description.
 
 The same works for methods so you can either use \[\`XXXClass.method\`\] or \[~\`XXXClass.method\`\].
 

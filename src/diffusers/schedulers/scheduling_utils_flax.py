@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,17 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import importlib
+import math
 import os
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Dict, Optional, Tuple, Union
 
+import flax
 import jax.numpy as jnp
 
-from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, BaseOutput
+from ..utils import BaseOutput
 
 
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
-_FLAX_COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS = ["Flax" + c for c in _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS]
+
+
+# NOTE: We make this type an enum because it simplifies usage in docs and prevents
+# circular imports when used for `_compatibles` within the schedulers module.
+# When it's used as a type in pipelines, it really is a Union because the actual
+# scheduler instance is passed in.
+class FlaxKarrasDiffusionSchedulers(Enum):
+    FlaxDDIMScheduler = 1
+    FlaxDDPMScheduler = 2
+    FlaxPNDMScheduler = 3
+    FlaxLMSDiscreteScheduler = 4
+    FlaxDPMSolverMultistepScheduler = 5
 
 
 @dataclass
@@ -50,6 +64,7 @@ class FlaxSchedulerMixin:
     """
 
     config_name = SCHEDULER_CONFIG_NAME
+    ignore_for_config = ["dtype"]
     _compatibles = []
     has_compatibles = True
 
@@ -167,3 +182,103 @@ class FlaxSchedulerMixin:
 def broadcast_to_shape_from_left(x: jnp.ndarray, shape: Tuple[int]) -> jnp.ndarray:
     assert len(shape) >= x.ndim
     return jnp.broadcast_to(x.reshape(x.shape + (1,) * (len(shape) - x.ndim)), shape)
+
+
+def betas_for_alpha_bar(num_diffusion_timesteps: int, max_beta=0.999, dtype=jnp.float32) -> jnp.ndarray:
+    """
+    Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
+    (1-beta) over time from t = [0,1].
+
+    Contains a function alpha_bar that takes an argument t and transforms it to the cumulative product of (1-beta) up
+    to that part of the diffusion process.
+
+
+    Args:
+        num_diffusion_timesteps (`int`): the number of betas to produce.
+        max_beta (`float`): the maximum beta to use; use values lower than 1 to
+                     prevent singularities.
+
+    Returns:
+        betas (`jnp.ndarray`): the betas used by the scheduler to step the model outputs
+    """
+
+    def alpha_bar(time_step):
+        return math.cos((time_step + 0.008) / 1.008 * math.pi / 2) ** 2
+
+    betas = []
+    for i in range(num_diffusion_timesteps):
+        t1 = i / num_diffusion_timesteps
+        t2 = (i + 1) / num_diffusion_timesteps
+        betas.append(min(1 - alpha_bar(t2) / alpha_bar(t1), max_beta))
+    return jnp.array(betas, dtype=dtype)
+
+
+@flax.struct.dataclass
+class CommonSchedulerState:
+    alphas: jnp.ndarray
+    betas: jnp.ndarray
+    alphas_cumprod: jnp.ndarray
+
+    @classmethod
+    def create(cls, scheduler):
+        config = scheduler.config
+
+        if config.trained_betas is not None:
+            betas = jnp.asarray(config.trained_betas, dtype=scheduler.dtype)
+        elif config.beta_schedule == "linear":
+            betas = jnp.linspace(config.beta_start, config.beta_end, config.num_train_timesteps, dtype=scheduler.dtype)
+        elif config.beta_schedule == "scaled_linear":
+            # this schedule is very specific to the latent diffusion model.
+            betas = (
+                jnp.linspace(
+                    config.beta_start**0.5, config.beta_end**0.5, config.num_train_timesteps, dtype=scheduler.dtype
+                )
+                ** 2
+            )
+        elif config.beta_schedule == "squaredcos_cap_v2":
+            # Glide cosine schedule
+            betas = betas_for_alpha_bar(config.num_train_timesteps, dtype=scheduler.dtype)
+        else:
+            raise NotImplementedError(
+                f"beta_schedule {config.beta_schedule} is not implemented for scheduler {scheduler.__class__.__name__}"
+            )
+
+        alphas = 1.0 - betas
+
+        alphas_cumprod = jnp.cumprod(alphas, axis=0)
+
+        return cls(
+            alphas=alphas,
+            betas=betas,
+            alphas_cumprod=alphas_cumprod,
+        )
+
+
+def get_sqrt_alpha_prod(
+    state: CommonSchedulerState, original_samples: jnp.ndarray, noise: jnp.ndarray, timesteps: jnp.ndarray
+):
+    alphas_cumprod = state.alphas_cumprod
+
+    sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5
+    sqrt_alpha_prod = sqrt_alpha_prod.flatten()
+    sqrt_alpha_prod = broadcast_to_shape_from_left(sqrt_alpha_prod, original_samples.shape)
+
+    sqrt_one_minus_alpha_prod = (1 - alphas_cumprod[timesteps]) ** 0.5
+    sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
+    sqrt_one_minus_alpha_prod = broadcast_to_shape_from_left(sqrt_one_minus_alpha_prod, original_samples.shape)
+
+    return sqrt_alpha_prod, sqrt_one_minus_alpha_prod
+
+
+def add_noise_common(
+    state: CommonSchedulerState, original_samples: jnp.ndarray, noise: jnp.ndarray, timesteps: jnp.ndarray
+):
+    sqrt_alpha_prod, sqrt_one_minus_alpha_prod = get_sqrt_alpha_prod(state, original_samples, noise, timesteps)
+    noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
+    return noisy_samples
+
+
+def get_velocity_common(state: CommonSchedulerState, sample: jnp.ndarray, noise: jnp.ndarray, timesteps: jnp.ndarray):
+    sqrt_alpha_prod, sqrt_one_minus_alpha_prod = get_sqrt_alpha_prod(state, sample, noise, timesteps)
+    velocity = sqrt_alpha_prod * noise - sqrt_one_minus_alpha_prod * sample
+    return velocity

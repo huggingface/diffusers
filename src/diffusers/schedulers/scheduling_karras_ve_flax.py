@@ -1,4 +1,4 @@
-# Copyright 2022 NVIDIA and The HuggingFace Team. All rights reserved.
+# Copyright 2023 NVIDIA and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -233,5 +233,5 @@ class FlaxKarrasVeScheduler(FlaxSchedulerMixin, ConfigMixin):
 
         return FlaxKarrasVeOutput(prev_sample=sample_prev, derivative=derivative, state=state)
 
-    def add_noise(self, original_samples, noise, timesteps):
+    def add_noise(self, state: KarrasVeSchedulerState, original_samples, noise, timesteps):
         raise NotImplementedError()

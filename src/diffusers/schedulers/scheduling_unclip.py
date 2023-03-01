@@ -1,4 +1,4 @@
-# Copyright 2022 Kakao Brain and The HuggingFace Team. All rights reserved.
+# Copyright 2023 Kakao Brain and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
+from ..utils import BaseOutput, randn_tensor
 from .scheduling_utils import SchedulerMixin
 
 
@@ -43,6 +43,7 @@ class UnCLIPSchedulerOutput(BaseOutput):
     pred_original_sample: Optional[torch.FloatTensor] = None
 
 
+# Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
@@ -106,8 +107,11 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         clip_sample: bool = True,
         clip_sample_range: Optional[float] = 1.0,
         prediction_type: str = "epsilon",
+        beta_schedule: str = "squaredcos_cap_v2",
     ):
-        # beta scheduler is "squaredcos_cap_v2"
+        if beta_schedule != "squaredcos_cap_v2":
+            raise ValueError("UnCLIPScheduler only supports `beta_schedule`: 'squaredcos_cap_v2'")
+
         self.betas = betas_for_alpha_bar(num_train_timesteps)
 
         self.alphas = 1.0 - self.betas
@@ -219,7 +223,6 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
             returning a tuple, the first element is the sample tensor.
 
         """
-
         t = timestep
 
         if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type == "learned_range":
@@ -273,15 +276,9 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         # 6. Add noise
         variance = 0
         if t > 0:
-            device = model_output.device
-            if device.type == "mps":
-                # randn does not work reproducibly on mps
-                variance_noise = torch.randn(model_output.shape, dtype=model_output.dtype, generator=generator)
-                variance_noise = variance_noise.to(device)
-            else:
-                variance_noise = torch.randn(
-                    model_output.shape, generator=generator, device=device, dtype=model_output.dtype
-                )
+            variance_noise = randn_tensor(
+                model_output.shape, dtype=model_output.dtype, generator=generator, device=model_output.device
+            )
 
             variance = self._get_variance(
                 t,

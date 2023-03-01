@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,14 +17,13 @@ from typing import Callable, List, Optional, Union
 
 import numpy as np
 import torch
-
 from transformers import CLIPFeatureExtractor, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
-from ...onnx_utils import ORT_TO_NP_TYPE, OnnxRuntimeModel
-from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import deprecate, logging
+from ..onnx_utils import ORT_TO_NP_TYPE, OnnxRuntimeModel
+from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 
 
@@ -117,7 +116,7 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `list(int)`):
+            prompt (`str` or `List[str]`):
                 prompt to be encoded
             num_images_per_prompt (`int`):
                 number of images that should be generated per prompt
@@ -147,8 +146,8 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
 
-        text_embeddings = self.text_encoder(input_ids=text_input_ids.astype(np.int32))[0]
-        text_embeddings = np.repeat(text_embeddings, num_images_per_prompt, axis=0)
+        prompt_embeds = self.text_encoder(input_ids=text_input_ids.astype(np.int32))[0]
+        prompt_embeds = np.repeat(prompt_embeds, num_images_per_prompt, axis=0)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
@@ -179,15 +178,15 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
                 truncation=True,
                 return_tensors="np",
             )
-            uncond_embeddings = self.text_encoder(input_ids=uncond_input.input_ids.astype(np.int32))[0]
-            uncond_embeddings = np.repeat(uncond_embeddings, num_images_per_prompt, axis=0)
+            negative_prompt_embeds = self.text_encoder(input_ids=uncond_input.input_ids.astype(np.int32))[0]
+            negative_prompt_embeds = np.repeat(negative_prompt_embeds, num_images_per_prompt, axis=0)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
-            text_embeddings = np.concatenate([uncond_embeddings, text_embeddings])
+            prompt_embeds = np.concatenate([negative_prompt_embeds, prompt_embeds])
 
-        return text_embeddings
+        return prompt_embeds
 
     def __call__(
         self,
@@ -204,7 +203,7 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, np.ndarray], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
     ):
         if isinstance(prompt, str):
             batch_size = 1
@@ -232,12 +231,12 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        text_embeddings = self._encode_prompt(
+        prompt_embeds = self._encode_prompt(
             prompt, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
 
         # get the initial random noise unless the user supplied it
-        latents_dtype = text_embeddings.dtype
+        latents_dtype = prompt_embeds.dtype
         latents_shape = (batch_size * num_images_per_prompt, 4, height // 8, width // 8)
         if latents is None:
             latents = generator.randn(*latents_shape).astype(latents_dtype)
@@ -247,7 +246,7 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
 
-        latents = latents * np.float(self.scheduler.init_noise_sigma)
+        latents = latents * np.float64(self.scheduler.init_noise_sigma)
 
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
@@ -271,7 +270,7 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
 
             # predict the noise residual
             timestep = np.array([t], dtype=timestep_dtype)
-            noise_pred = self.unet(sample=latent_model_input, timestep=timestep, encoder_hidden_states=text_embeddings)
+            noise_pred = self.unet(sample=latent_model_input, timestep=timestep, encoder_hidden_states=prompt_embeds)
             noise_pred = noise_pred[0]
 
             # perform guidance
@@ -304,9 +303,6 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
                 self.numpy_to_pil(image), return_tensors="np"
             ).pixel_values.astype(image.dtype)
 
-            image, has_nsfw_concepts = self.safety_checker(clip_input=safety_checker_input, images=image)
-
-            # There will throw an error if use safety_checker batchsize>1
             images, has_nsfw_concept = [], []
             for i in range(image.shape[0]):
                 image_i, has_nsfw_concept_i = self.safety_checker(

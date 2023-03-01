@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,8 +16,9 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 
-from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from ...utils import deprecate
+from ...schedulers import DDIMScheduler
+from ...utils import randn_tensor
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 class DDIMPipeline(DiffusionPipeline):
@@ -34,6 +35,10 @@ class DDIMPipeline(DiffusionPipeline):
 
     def __init__(self, unet, scheduler):
         super().__init__()
+
+        # make sure scheduler can always be converted to DDIM
+        scheduler = DDIMScheduler.from_config(scheduler.config)
+
         self.register_modules(unet=unet, scheduler=scheduler)
 
     @torch.no_grad()
@@ -66,31 +71,12 @@ class DDIMPipeline(DiffusionPipeline):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
+                Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
 
         Returns:
-            [`~pipeline_utils.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if
-            `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is a list with the
-            generated images.
+            [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if `return_dict` is
+            True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
         """
-
-        if (
-            generator is not None
-            and isinstance(generator, torch.Generator)
-            and generator.device.type != self.device.type
-            and self.device.type != "mps"
-        ):
-            message = (
-                f"The `generator` device is `{generator.device}` and does not match the pipeline "
-                f"device `{self.device}`, so the `generator` will be ignored. "
-                f'Please use `generator=torch.Generator(device="{self.device}")` instead.'
-            )
-            deprecate(
-                "generator.device == 'cpu'",
-                "0.13.0",
-                message,
-            )
-            generator = None
 
         # Sample gaussian noise to begin loop
         if isinstance(self.unet.sample_size, int):
@@ -104,17 +90,7 @@ class DDIMPipeline(DiffusionPipeline):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        rand_device = "cpu" if self.device.type == "mps" else self.device
-        if isinstance(generator, list):
-            shape = (1,) + image_shape[1:]
-            image = [
-                torch.randn(shape, generator=generator[i], device=rand_device, dtype=self.unet.dtype)
-                for i in range(batch_size)
-            ]
-            image = torch.cat(image, dim=0).to(self.device)
-        else:
-            image = torch.randn(image_shape, generator=generator, device=rand_device, dtype=self.unet.dtype)
-            image = image.to(self.device)
+        image = randn_tensor(image_shape, generator=generator, device=self.device, dtype=self.unet.dtype)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)

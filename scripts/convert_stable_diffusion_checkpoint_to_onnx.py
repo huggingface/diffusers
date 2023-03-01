@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,13 +17,12 @@ import os
 import shutil
 from pathlib import Path
 
+import onnx
 import torch
+from packaging import version
 from torch.onnx import export
 
-import onnx
-from diffusers import OnnxStableDiffusionPipeline, StableDiffusionPipeline
-from diffusers.onnx_utils import OnnxRuntimeModel
-from packaging import version
+from diffusers import OnnxRuntimeModel, OnnxStableDiffusionPipeline, StableDiffusionPipeline
 
 
 is_torch_less_than_1_11 = version.parse(version.parse(torch.__version__).base_version) < version.parse("1.11")

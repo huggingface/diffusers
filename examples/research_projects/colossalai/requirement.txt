@@ -1,0 +1,7 @@
+diffusers
+torch
+torchvision
+ftfy
+tensorboard
+Jinja2
+transformers

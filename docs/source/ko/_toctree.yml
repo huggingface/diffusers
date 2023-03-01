@@ -1,0 +1,193 @@
+- sections:
+  - local: index
+    title: "🧨 Diffusers"
+  - local: quicktour
+    title: "훑어보기"
+  - local: installation
+    title: "설치"
+  title: "시작하기"
+- sections:
+  - sections:
+    - local: in_translation
+      title: "Loading Pipelines, Models, and Schedulers"
+    - local: in_translation
+      title: "Using different Schedulers"
+    - local: in_translation
+      title: "Configuring Pipelines, Models, and Schedulers"
+    - local: in_translation
+      title: "Loading and Adding Custom Pipelines"
+    title: "불러오기 & 허브 (번역 예정)"
+  - sections:
+    - local: in_translation
+      title: "Unconditional Image Generation"
+    - local: in_translation
+      title: "Text-to-Image Generation"
+    - local: in_translation
+      title: "Text-Guided Image-to-Image"
+    - local: in_translation
+      title: "Text-Guided Image-Inpainting"
+    - local: in_translation
+      title: "Text-Guided Depth-to-Image"
+    - local: in_translation
+      title: "Reusing seeds for deterministic generation"
+    - local: in_translation
+      title: "Community Pipelines"
+    - local: in_translation
+      title: "How to contribute a Pipeline"
+    title: "추론을 위한 파이프라인 (번역 예정)"
+  - sections:
+    - local: in_translation
+      title: "Reinforcement Learning"
+    - local: in_translation
+      title: "Audio"
+    - local: in_translation
+      title: "Other Modalities"
+    title: "Taking Diffusers Beyond Images"
+  title: "Diffusers 사용법 (번역 예정)"
+- sections:
+  - local: in_translation
+    title: "Memory and Speed"
+  - local: in_translation
+    title: "xFormers"
+  - local: in_translation
+    title: "ONNX"
+  - local: in_translation
+    title: "OpenVINO"
+  - local: in_translation
+    title: "MPS"
+  - local: in_translation
+    title: "Habana Gaudi"
+  title: "최적화/특수 하드웨어 (번역 예정)"
+- sections:
+  - local: in_translation
+    title: "Overview"
+  - local: in_translation
+    title: "Unconditional Image Generation"
+  - local: in_translation
+    title: "Textual Inversion"
+  - local: in_translation
+    title: "Dreambooth"
+  - local: in_translation
+    title: "Text-to-image fine-tuning"
+  title: "학습 (번역 예정)"
+- sections:
+  - local: in_translation
+    title: "Stable Diffusion"
+  - local: in_translation
+    title: "Philosophy"
+  - local: in_translation
+    title: "How to contribute?"
+  title: "개념 설명 (번역 예정)"
+- sections:
+  - sections:
+    - local: in_translation
+      title: "Models"
+    - local: in_translation
+      title: "Diffusion Pipeline"
+    - local: in_translation
+      title: "Logging"
+    - local: in_translation
+      title: "Configuration"
+    - local: in_translation
+      title: "Outputs"
+    title: "Main Classes"
+    
+  - sections:
+    - local: in_translation
+      title: "Overview"
+    - local: in_translation
+      title: "AltDiffusion"
+    - local: in_translation
+      title: "Cycle Diffusion"
+    - local: in_translation
+      title: "DDIM"
+    - local: in_translation
+      title: "DDPM"
+    - local: in_translation
+      title: "Latent Diffusion"
+    - local: in_translation
+      title: "Unconditional Latent Diffusion"
+    - local: in_translation
+      title: "PaintByExample"
+    - local: in_translation
+      title: "PNDM"
+    - local: in_translation
+      title: "Score SDE VE"
+    - sections:
+      - local: in_translation
+        title: "Overview"
+      - local: in_translation
+        title: "Text-to-Image"
+      - local: in_translation
+        title: "Image-to-Image"
+      - local: in_translation
+        title: "Inpaint"
+      - local: in_translation
+        title: "Depth-to-Image"
+      - local: in_translation
+        title: "Image-Variation"  
+      - local: in_translation
+        title: "Super-Resolution"  
+      title: "Stable Diffusion"
+    - local: in_translation
+      title: "Stable Diffusion 2"
+    - local: in_translation
+      title: "Safe Stable Diffusion"
+    - local: in_translation
+      title: "Stochastic Karras VE"
+    - local: in_translation
+      title: "Dance Diffusion"
+    - local: in_translation
+      title: "UnCLIP"
+    - local: in_translation
+      title: "Versatile Diffusion"
+    - local: in_translation
+      title: "VQ Diffusion"
+    - local: in_translation
+      title: "RePaint"
+    - local: in_translation
+      title: "Audio Diffusion"
+    title: "파이프라인 (번역 예정)"
+  - sections:
+    - local: in_translation
+      title: "Overview"
+    - local: in_translation
+      title: "DDIM"
+    - local: in_translation
+      title: "DDPM"
+    - local: in_translation
+      title: "Singlestep DPM-Solver"
+    - local: in_translation
+      title: "Multistep DPM-Solver"
+    - local: in_translation
+      title: "Heun Scheduler"
+    - local: in_translation
+      title: "DPM Discrete Scheduler"
+    - local: in_translation
+      title: "DPM Discrete Scheduler with ancestral sampling"
+    - local: in_translation
+      title: "Stochastic Kerras VE"
+    - local: in_translation
+      title: "Linear Multistep"
+    - local: in_translation
+      title: "PNDM"
+    - local: in_translation
+      title: "VE-SDE"
+    - local: in_translation
+      title: "IPNDM"
+    - local: in_translation
+      title: "VP-SDE"
+    - local: in_translation
+      title: "Euler scheduler"
+    - local: in_translation
+      title: "Euler Ancestral Scheduler"
+    - local: in_translation
+      title: "VQDiffusionScheduler"
+    - local: in_translation
+      title: "RePaint Scheduler"      
+    title: "스케줄러 (번역 예정)"
+  - sections:
+    - local: in_translation
+      title: "RL Planning"
+    title: "Experimental Features"
+  title: "API (번역 예정)"

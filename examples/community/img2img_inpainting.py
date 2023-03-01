@@ -2,17 +2,17 @@ import inspect
 from typing import Callable, List, Optional, Tuple, Union
 
 import numpy as np
-import torch
-
 import PIL
+import torch
+from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+
+from diffusers import DiffusionPipeline
 from diffusers.configuration_utils import FrozenDict
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
-from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from diffusers.utils import deprecate, logging
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -175,7 +175,7 @@ class ImageToImageInpaintingPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
         **kwargs,
     ):
         r"""

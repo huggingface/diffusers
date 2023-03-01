@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,7 +18,24 @@ import os
 from packaging import version
 
 from .. import __version__
+from .accelerate_utils import apply_forward_hook
+from .constants import (
+    CONFIG_NAME,
+    DEPRECATED_REVISION_ARGS,
+    DIFFUSERS_CACHE,
+    DIFFUSERS_DYNAMIC_MODULE_NAME,
+    FLAX_WEIGHTS_NAME,
+    HF_MODULES_CACHE,
+    HUGGINGFACE_CO_RESOLVE_ENDPOINT,
+    ONNX_EXTERNAL_WEIGHTS_NAME,
+    ONNX_WEIGHTS_NAME,
+    SAFETENSORS_WEIGHTS_NAME,
+    WEIGHTS_NAME,
+)
 from .deprecation_utils import deprecate
+from .doc_utils import replace_example_docstring
+from .dynamic_modules_utils import get_class_from_dynamic_module
+from .hub_utils import HF_HUB_OFFLINE, http_user_agent
 from .import_utils import (
     ENV_VARS_TRUE_AND_AUTO_VALUES,
     ENV_VARS_TRUE_VALUES,
@@ -28,25 +45,31 @@ from .import_utils import (
     DummyObject,
     OptionalDependencyNotAvailable,
     is_accelerate_available,
+    is_accelerate_version,
     is_flax_available,
     is_inflect_available,
     is_k_diffusion_available,
+    is_k_diffusion_version,
     is_librosa_available,
-    is_modelcards_available,
+    is_omegaconf_available,
     is_onnx_available,
     is_safetensors_available,
     is_scipy_available,
+    is_tensorboard_available,
     is_tf_available,
     is_torch_available,
     is_torch_version,
     is_transformers_available,
     is_transformers_version,
     is_unidecode_available,
+    is_wandb_available,
+    is_xformers_available,
     requires_backends,
 )
 from .logging import get_logger
 from .outputs import BaseOutput
 from .pil_utils import PIL_INTERPOLATION
+from .torch_utils import randn_tensor
 
 
 if is_torch_available():
@@ -57,7 +80,9 @@ if is_torch_available():
         load_numpy,
         nightly,
         parse_flag_from_env,
+        print_tensor_test,
         require_torch_gpu,
+        skip_mps,
         slow,
         torch_all_close,
         torch_device,
@@ -65,36 +90,6 @@ if is_torch_available():
 
 
 logger = get_logger(__name__)
-
-
-hf_cache_home = os.path.expanduser(
-    os.getenv("HF_HOME", os.path.join(os.getenv("XDG_CACHE_HOME", "~/.cache"), "huggingface"))
-)
-default_cache_path = os.path.join(hf_cache_home, "diffusers")
-
-
-CONFIG_NAME = "config.json"
-WEIGHTS_NAME = "diffusion_pytorch_model.bin"
-FLAX_WEIGHTS_NAME = "diffusion_flax_model.msgpack"
-ONNX_WEIGHTS_NAME = "model.onnx"
-SAFETENSORS_WEIGHTS_NAME = "diffusion_pytorch_model.safetensors"
-ONNX_EXTERNAL_WEIGHTS_NAME = "weights.pb"
-HUGGINGFACE_CO_RESOLVE_ENDPOINT = "https://huggingface.co"
-DIFFUSERS_CACHE = default_cache_path
-DIFFUSERS_DYNAMIC_MODULE_NAME = "diffusers_modules"
-HF_MODULES_CACHE = os.getenv("HF_MODULES_CACHE", os.path.join(hf_cache_home, "modules"))
-
-_COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS = [
-    "DDIMScheduler",
-    "DDPMScheduler",
-    "PNDMScheduler",
-    "LMSDiscreteScheduler",
-    "EulerDiscreteScheduler",
-    "HeunDiscreteScheduler",
-    "EulerAncestralDiscreteScheduler",
-    "DPMSolverMultistepScheduler",
-    "DPMSolverSinglestepScheduler",
-]
 
 
 def check_min_version(min_version):

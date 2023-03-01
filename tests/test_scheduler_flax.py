@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ import unittest
 from typing import Dict, List, Tuple
 
 from diffusers import FlaxDDIMScheduler, FlaxDDPMScheduler, FlaxPNDMScheduler
-from diffusers.utils import deprecate, is_flax_available
+from diffusers.utils import is_flax_available
 from diffusers.utils.testing_utils import require_flax
 
 
@@ -296,10 +296,11 @@ class FlaxDDPMSchedulerTest(FlaxSchedulerCommonTest):
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
         scheduler = scheduler_class(**scheduler_config)
+        state = scheduler.create_state()
 
-        assert jnp.sum(jnp.abs(scheduler._get_variance(0) - 0.0)) < 1e-5
-        assert jnp.sum(jnp.abs(scheduler._get_variance(487) - 0.00979)) < 1e-5
-        assert jnp.sum(jnp.abs(scheduler._get_variance(999) - 0.02)) < 1e-5
+        assert jnp.sum(jnp.abs(scheduler._get_variance(state, 0) - 0.0)) < 1e-5
+        assert jnp.sum(jnp.abs(scheduler._get_variance(state, 487) - 0.00979)) < 1e-5
+        assert jnp.sum(jnp.abs(scheduler._get_variance(state, 999) - 0.02)) < 1e-5
 
     def test_full_loop_no_noise(self):
         scheduler_class = self.scheduler_classes[0]
@@ -577,12 +578,12 @@ class FlaxDDIMSchedulerTest(FlaxSchedulerCommonTest):
         scheduler = scheduler_class(**scheduler_config)
         state = scheduler.create_state()
 
-        assert jnp.sum(jnp.abs(scheduler._get_variance(0, 0, state.alphas_cumprod) - 0.0)) < 1e-5
-        assert jnp.sum(jnp.abs(scheduler._get_variance(420, 400, state.alphas_cumprod) - 0.14771)) < 1e-5
-        assert jnp.sum(jnp.abs(scheduler._get_variance(980, 960, state.alphas_cumprod) - 0.32460)) < 1e-5
-        assert jnp.sum(jnp.abs(scheduler._get_variance(0, 0, state.alphas_cumprod) - 0.0)) < 1e-5
-        assert jnp.sum(jnp.abs(scheduler._get_variance(487, 486, state.alphas_cumprod) - 0.00979)) < 1e-5
-        assert jnp.sum(jnp.abs(scheduler._get_variance(999, 998, state.alphas_cumprod) - 0.02)) < 1e-5
+        assert jnp.sum(jnp.abs(scheduler._get_variance(state, 0, 0) - 0.0)) < 1e-5
+        assert jnp.sum(jnp.abs(scheduler._get_variance(state, 420, 400) - 0.14771)) < 1e-5
+        assert jnp.sum(jnp.abs(scheduler._get_variance(state, 980, 960) - 0.32460)) < 1e-5
+        assert jnp.sum(jnp.abs(scheduler._get_variance(state, 0, 0) - 0.0)) < 1e-5
+        assert jnp.sum(jnp.abs(scheduler._get_variance(state, 487, 486) - 0.00979)) < 1e-5
+        assert jnp.sum(jnp.abs(scheduler._get_variance(state, 999, 998) - 0.02)) < 1e-5
 
     def test_full_loop_no_noise(self):
         sample = self.full_loop()
@@ -624,22 +625,6 @@ class FlaxDDIMSchedulerTest(FlaxSchedulerCommonTest):
     def test_prediction_type(self):
         for prediction_type in ["epsilon", "sample", "v_prediction"]:
             self.check_over_configs(prediction_type=prediction_type)
-
-    def test_deprecated_predict_epsilon(self):
-        deprecate("remove this test", "0.13.0", "remove")
-        for predict_epsilon in [True, False]:
-            self.check_over_configs(predict_epsilon=predict_epsilon)
-
-    def test_deprecated_predict_epsilon_to_prediction_type(self):
-        deprecate("remove this test", "0.13.0", "remove")
-        for scheduler_class in self.scheduler_classes:
-            scheduler_config = self.get_scheduler_config(predict_epsilon=True)
-            scheduler = scheduler_class.from_config(scheduler_config)
-            assert scheduler.prediction_type == "epsilon"
-
-            scheduler_config = self.get_scheduler_config(predict_epsilon=False)
-            scheduler = scheduler_class.from_config(scheduler_config)
-            assert scheduler.prediction_type == "sample"
 
 
 @require_flax

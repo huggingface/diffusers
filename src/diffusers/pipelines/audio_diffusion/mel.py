@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,15 +13,10 @@
 # limitations under the License.
 
 
-import warnings
+import numpy as np  # noqa: E402
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...schedulers.scheduling_utils import SchedulerMixin
-
-
-warnings.filterwarnings("ignore")
-
-import numpy as np  # noqa: E402
 
 
 try:

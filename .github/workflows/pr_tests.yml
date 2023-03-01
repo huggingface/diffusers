@@ -31,11 +31,11 @@ jobs:
             runner: docker-cpu
             image: diffusers/diffusers-flax-cpu
             report: flax_cpu
-          - name: Fast ONNXRuntime CPU tests on Ubuntu
-            framework: onnxruntime
+          - name: PyTorch Example CPU tests on Ubuntu
+            framework: pytorch_examples
             runner: docker-cpu
-            image: diffusers/diffusers-onnxruntime-cpu
-            report: onnx_cpu
+            image: diffusers/diffusers-pytorch-cpu
+            report: torch_cpu
 
     name: ${{ matrix.config.name }}
 
@@ -59,8 +59,8 @@ jobs:
       run: |
         apt-get update && apt-get install libsndfile1-dev -y
         python -m pip install -e .[quality,test]
-        python -m pip install git+https://github.com/huggingface/accelerate
         python -m pip install -U git+https://github.com/huggingface/transformers
+        python -m pip install git+https://github.com/huggingface/accelerate
 
     - name: Environment
       run: |
@@ -89,6 +89,13 @@ jobs:
           -s -v -k "Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/
+
+    - name: Run example PyTorch CPU tests
+      if: ${{ matrix.config.framework == 'pytorch_examples' }}
+      run: |
+        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+          --make-reports=tests_${{ matrix.config.report }} \
+          examples/test_examples.py 
 
     - name: Failure short reports
       if: ${{ failure() }}

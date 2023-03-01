@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import numpy as np
 import torch
 
 from diffusers import VersatileDiffusionTextToImagePipeline
-from diffusers.utils.testing_utils import require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import nightly, require_torch_gpu, torch_device
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -31,7 +31,7 @@ class VersatileDiffusionTextToImagePipelineFastTests(unittest.TestCase):
     pass
 
 
-@slow
+@nightly
 @require_torch_gpu
 class VersatileDiffusionTextToImagePipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
@@ -48,7 +48,7 @@ class VersatileDiffusionTextToImagePipelineIntegrationTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger "
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         image = pipe(
             prompt=prompt, generator=generator, guidance_scale=7.5, num_inference_steps=2, output_type="numpy"
         ).images
@@ -67,12 +67,14 @@ class VersatileDiffusionTextToImagePipelineIntegrationTests(unittest.TestCase):
         assert np.abs(image - new_image).sum() < 1e-5, "Models don't have the same forward pass"
 
     def test_inference_text2img(self):
-        pipe = VersatileDiffusionTextToImagePipeline.from_pretrained("shi-labs/versatile-diffusion")
+        pipe = VersatileDiffusionTextToImagePipeline.from_pretrained(
+            "shi-labs/versatile-diffusion", torch_dtype=torch.float16
+        )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger "
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         image = pipe(
             prompt=prompt, generator=generator, guidance_scale=7.5, num_inference_steps=50, output_type="numpy"
         ).images
@@ -80,5 +82,6 @@ class VersatileDiffusionTextToImagePipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.0408, 0.0181, 0.0, 0.0388, 0.0046, 0.0461, 0.0411, 0.0, 0.0222])
+        expected_slice = np.array([0.3367, 0.3169, 0.2656, 0.3870, 0.4790, 0.3796, 0.4009, 0.4878, 0.4778])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

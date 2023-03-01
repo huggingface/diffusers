@@ -124,3 +124,6 @@ python textual_inversion_flax.py \
   --output_dir="textual_inversion_cat"
 ```
 It should be at least 70% faster than the PyTorch script with the same configuration.
+
+### Training with xformers:
+You can enable memory efficient attention by [installing xFormers](https://github.com/facebookresearch/xformers#installing-xformers) and padding the `--enable_xformers_memory_efficient_attention` argument to the script. This is not available with the Flax/JAX implementation.

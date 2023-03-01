@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,15 +16,13 @@ import inspect
 from typing import Callable, List, Optional, Union
 
 import torch
-
-from diffusers.utils import is_accelerate_available
 from packaging import version
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
-from ...configuration_utils import FrozenDict
-from ...models import AutoencoderKL, UNet2DConditionModel
-from ...pipeline_utils import DiffusionPipeline
-from ...schedulers import (
+from diffusers import DiffusionPipeline
+from diffusers.configuration_utils import FrozenDict
+from diffusers.models import AutoencoderKL, UNet2DConditionModel
+from diffusers.schedulers import (
     DDIMScheduler,
     DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
@@ -32,6 +30,8 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
+from diffusers.utils import is_accelerate_available
+
 from ...utils import deprecate, logging
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
@@ -340,7 +340,7 @@ class ComposableStableDiffusionPipeline(DiffusionPipeline):
         latents = 1 / 0.18215 * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
@@ -409,7 +409,7 @@ class ComposableStableDiffusionPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
         weights: Optional[str] = "",
     ):
         r"""

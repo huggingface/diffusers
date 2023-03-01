@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The HuggingFace Inc. team.
+# Copyright 2023 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,6 +18,12 @@ import argparse
 from argparse import Namespace
 
 import torch
+from transformers import (
+    CLIPFeatureExtractor,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    CLIPVisionModelWithProjection,
+)
 
 from diffusers import (
     AutoencoderKL,
@@ -31,12 +37,6 @@ from diffusers import (
     VersatileDiffusionPipeline,
 )
 from diffusers.pipelines.versatile_diffusion.modeling_text_unet import UNetFlatConditionModel
-from transformers import (
-    CLIPFeatureExtractor,
-    CLIPTextModelWithProjection,
-    CLIPTokenizer,
-    CLIPVisionModelWithProjection,
-)
 
 
 SCHEDULER_CONFIG = Namespace(

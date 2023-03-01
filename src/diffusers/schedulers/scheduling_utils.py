@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
 import importlib
 import os
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Dict, Optional, Union
 
 import torch
@@ -22,6 +23,26 @@ from ..utils import BaseOutput
 
 
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
+
+
+# NOTE: We make this type an enum because it simplifies usage in docs and prevents
+# circular imports when used for `_compatibles` within the schedulers module.
+# When it's used as a type in pipelines, it really is a Union because the actual
+# scheduler instance is passed in.
+class KarrasDiffusionSchedulers(Enum):
+    DDIMScheduler = 1
+    DDPMScheduler = 2
+    PNDMScheduler = 3
+    LMSDiscreteScheduler = 4
+    EulerDiscreteScheduler = 5
+    HeunDiscreteScheduler = 6
+    EulerAncestralDiscreteScheduler = 7
+    DPMSolverMultistepScheduler = 8
+    DPMSolverSinglestepScheduler = 9
+    KDPM2DiscreteScheduler = 10
+    KDPM2AncestralDiscreteScheduler = 11
+    DEISMultistepScheduler = 12
+    UniPCMultistepScheduler = 13
 
 
 @dataclass

@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,11 +14,11 @@
 
 import numpy as np
 import torch
-
 import tqdm
 
 from ...models.unet_1d import UNet1DModel
-from ...pipeline_utils import DiffusionPipeline
+from ...pipelines import DiffusionPipeline
+from ...utils import randn_tensor
 from ...utils.dummy_pt_objects import DDPMScheduler
 
 
@@ -56,13 +56,13 @@ class ValueGuidedRLPipeline(DiffusionPipeline):
         for key in self.data.keys():
             try:
                 self.means[key] = self.data[key].mean()
-            except:
+            except:  # noqa: E722
                 pass
         self.stds = dict()
         for key in self.data.keys():
             try:
                 self.stds[key] = self.data[key].std()
-            except:
+            except:  # noqa: E722
                 pass
         self.state_dim = env.observation_space.shape[0]
         self.action_dim = env.action_space.shape[0]
@@ -127,7 +127,7 @@ class ValueGuidedRLPipeline(DiffusionPipeline):
         shape = (batch_size, planning_horizon, self.state_dim + self.action_dim)
 
         # generate initial noise and apply our conditions (to make the trajectories start at current state)
-        x1 = torch.randn(shape, device=self.unet.device)
+        x1 = randn_tensor(shape, device=self.unet.device)
         x = self.reset_x0(x1, conditions, self.action_dim)
         x = self.to_torch(x)
 

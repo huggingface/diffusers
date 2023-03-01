@@ -1,0 +1,130 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+# Quicktour
+
+Get up and running with 🧨 Diffusers quickly!
+Whether you're a developer or an everyday user, this quick tour will help you get started and show you how to use [`DiffusionPipeline`] for inference.
+
+Before you begin, make sure you have all the necessary libraries installed:
+
+```bash
+pip install --upgrade diffusers accelerate transformers
+```
+
+- [`accelerate`](https://huggingface.co/docs/accelerate/index) speeds up model loading for inference and training
+- [`transformers`](https://huggingface.co/docs/transformers/index) is required to run the most popular diffusion models, such as [Stable Diffusion](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/overview)
+
+## DiffusionPipeline
+
+The [`DiffusionPipeline`] is the easiest way to use a pre-trained diffusion system for inference. You can use the [`DiffusionPipeline`] out-of-the-box for many tasks across different modalities. Take a look at the table below for some supported tasks:
+
+| **Task**                     | **Description**                                                                                              | **Pipeline**
+|------------------------------|--------------------------------------------------------------------------------------------------------------|-----------------|
+| Unconditional Image Generation          | generate an image from gaussian noise | [unconditional_image_generation](./using-diffusers/unconditional_image_generation) |
+| Text-Guided Image Generation | generate an image given a text prompt | [conditional_image_generation](./using-diffusers/conditional_image_generation) |
+| Text-Guided Image-to-Image Translation     | adapt an image guided by a text prompt | [img2img](./using-diffusers/img2img) |
+| Text-Guided Image-Inpainting          | fill the masked part of an image given the image, the mask and a text prompt | [inpaint](./using-diffusers/inpaint) |
+| Text-Guided Depth-to-Image Translation | adapt parts of an image guided by a text prompt while preserving structure via depth estimation | [depth2img](./using-diffusers/depth2img) |
+
+For more in-detail information on how diffusion pipelines function for the different tasks, please have a look at the [**Using Diffusers**](./using-diffusers/overview) section.
+
+As an example, start by creating an instance of [`DiffusionPipeline`] and specify which pipeline checkpoint you would like to download.
+You can use the [`DiffusionPipeline`] for any [Diffusers' checkpoint](https://huggingface.co/models?library=diffusers&sort=downloads).
+In this guide though, you'll use [`DiffusionPipeline`] for text-to-image generation with [Stable Diffusion](https://huggingface.co/CompVis/stable-diffusion).
+
+For [Stable Diffusion](https://huggingface.co/CompVis/stable-diffusion), please carefully read its [license](https://huggingface.co/spaces/CompVis/stable-diffusion-license) before running the model.
+This is due to the improved image generation capabilities of the model and the potentially harmful content that could be produced with it.
+Please, head over to your stable diffusion model of choice, *e.g.*  [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5), and read the license.
+
+You can load the model as follows:
+
+```python
+>>> from diffusers import DiffusionPipeline
+
+>>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+```
+
+The [`DiffusionPipeline`] downloads and caches all modeling, tokenization, and scheduling components. 
+Because the model consists of roughly 1.4 billion parameters, we strongly recommend running it on GPU.
+You can move the generator object to GPU, just like you would in PyTorch.
+
+```python
+>>> pipeline.to("cuda")
+```
+
+Now you can use the `pipeline` on your text prompt:
+
+```python
+>>> image = pipeline("An image of a squirrel in Picasso style").images[0]
+```
+
+The output is by default wrapped into a [PIL Image object](https://pillow.readthedocs.io/en/stable/reference/Image.html?highlight=image#the-image-class).
+
+You can save the image by simply calling:
+
+```python
+>>> image.save("image_of_squirrel_painting.png")
+```
+
+**Note**: You can also use the pipeline locally by downloading the weights via:
+
+```
+git lfs install
+git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
+```
+
+and then loading the saved weights into the pipeline. 
+
+```python
+>>> pipeline = DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5")
+```
+
+Running the pipeline is then identical to the code above as it's the same model architecture.
+
+```python
+>>> generator.to("cuda")
+>>> image = generator("An image of a squirrel in Picasso style").images[0]
+>>> image.save("image_of_squirrel_painting.png")
+```
+
+Diffusion systems can be used with multiple different [schedulers](./api/schedulers/overview) each with their
+pros and cons. By default, Stable Diffusion runs with [`PNDMScheduler`], but it's very simple to 
+use a different scheduler. *E.g.* if you would instead like to use the [`EulerDiscreteScheduler`] scheduler,
+you could use it as follows:
+
+```python
+>>> from diffusers import EulerDiscreteScheduler
+
+>>> pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+
+>>> # change scheduler to Euler
+>>> pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
+```
+
+For more in-detail information on how to change between schedulers, please refer to the [Using Schedulers](./using-diffusers/schedulers) guide.
+
+[Stability AI's](https://stability.ai/) Stable Diffusion model is an impressive image generation model
+and can do much more than just generating images from text. We have dedicated a whole documentation page,
+just for Stable Diffusion [here](./conceptual/stable_diffusion).
+
+If you want to know how to optimize Stable Diffusion to run on less memory, higher inference speeds, on specific hardware, such as Mac, or with [ONNX Runtime](https://onnxruntime.ai/), please have a look at our 
+optimization pages:
+
+- [Optimized PyTorch on GPU](./optimization/fp16)
+- [Mac OS with PyTorch](./optimization/mps)
+- [ONNX](./optimization/onnx)
+- [OpenVINO](./optimization/open_vino)
+
+If you want to fine-tune or train your diffusion model, please have a look at the [**training section**](./training/overview)
+
+Finally, please be considerate when distributing generated images publicly 🤗.

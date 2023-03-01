@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,23 +18,32 @@ import unittest
 
 import numpy as np
 import torch
+from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import PriorTransformer, UnCLIPPipeline, UnCLIPScheduler, UNet2DConditionModel, UNet2DModel
 from diffusers.pipelines.unclip.text_proj import UnCLIPTextProjModel
-from diffusers.utils import load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu
-from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
+from diffusers.utils import load_numpy, nightly, slow, torch_device
+from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
+
+from ...test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+class UnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = UnCLIPPipeline
+    test_xformers_attention = False
 
-
-class UnCLIPPipelineFastTests(unittest.TestCase):
-    def tearDown(self):
-        # clean up the VRAM after each test
-        super().tearDown()
-        gc.collect()
-        torch.cuda.empty_cache()
+    required_optional_params = [
+        "generator",
+        "return_dict",
+        "prior_num_inference_steps",
+        "decoder_num_inference_steps",
+        "super_res_num_inference_steps",
+    ]
+    num_inference_steps_args = [
+        "prior_num_inference_steps",
+        "decoder_num_inference_steps",
+        "super_res_num_inference_steps",
+    ]
 
     @property
     def text_embedder_hidden_size(self):
@@ -110,7 +119,7 @@ class UnCLIPPipelineFastTests(unittest.TestCase):
         torch.manual_seed(0)
 
         model_kwargs = {
-            "sample_size": 64,
+            "sample_size": 32,
             # RGB in channels
             "in_channels": 3,
             # Out channels is double in channels because predicts mean and variance
@@ -132,7 +141,7 @@ class UnCLIPPipelineFastTests(unittest.TestCase):
     @property
     def dummy_super_res_kwargs(self):
         return {
-            "sample_size": 128,
+            "sample_size": 64,
             "layers_per_block": 1,
             "down_block_types": ("ResnetDownsampleBlock2D", "ResnetDownsampleBlock2D"),
             "up_block_types": ("ResnetUpsampleBlock2D", "ResnetUpsampleBlock2D"),
@@ -156,9 +165,7 @@ class UnCLIPPipelineFastTests(unittest.TestCase):
         model = UNet2DModel(**self.dummy_super_res_kwargs)
         return model
 
-    def test_unclip(self):
-        device = "cpu"
-
+    def get_dummy_components(self):
         prior = self.dummy_prior
         decoder = self.dummy_decoder
         text_proj = self.dummy_text_proj
@@ -186,23 +193,119 @@ class UnCLIPPipelineFastTests(unittest.TestCase):
             num_train_timesteps=1000,
         )
 
-        pipe = UnCLIPPipeline(
-            prior=prior,
-            decoder=decoder,
-            text_proj=text_proj,
-            text_encoder=text_encoder,
-            tokenizer=tokenizer,
-            super_res_first=super_res_first,
-            super_res_last=super_res_last,
-            prior_scheduler=prior_scheduler,
-            decoder_scheduler=decoder_scheduler,
-            super_res_scheduler=super_res_scheduler,
-        )
+        components = {
+            "prior": prior,
+            "decoder": decoder,
+            "text_proj": text_proj,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+            "super_res_first": super_res_first,
+            "super_res_last": super_res_last,
+            "prior_scheduler": prior_scheduler,
+            "decoder_scheduler": decoder_scheduler,
+            "super_res_scheduler": super_res_scheduler,
+        }
+
+        return components
+
+    def get_dummy_inputs(self, device, seed=0):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
+        inputs = {
+            "prompt": "horse",
+            "generator": generator,
+            "prior_num_inference_steps": 2,
+            "decoder_num_inference_steps": 2,
+            "super_res_num_inference_steps": 2,
+            "output_type": "numpy",
+        }
+        return inputs
+
+    def test_unclip(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+
+        pipe = self.pipeline_class(**components)
         pipe = pipe.to(device)
 
         pipe.set_progress_bar_config(disable=None)
 
-        prompt = "horse"
+        output = pipe(**self.get_dummy_inputs(device))
+        image = output.images
+
+        image_from_tuple = pipe(
+            **self.get_dummy_inputs(device),
+            return_dict=False,
+        )[0]
+
+        image_slice = image[0, -3:, -3:, -1]
+        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 64, 64, 3)
+
+        expected_slice = np.array(
+            [
+                0.9997,
+                0.9988,
+                0.0028,
+                0.9997,
+                0.9984,
+                0.9965,
+                0.0029,
+                0.9986,
+                0.0025,
+            ]
+        )
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_unclip_passed_text_embed(self):
+        device = torch.device("cpu")
+
+        class DummyScheduler:
+            init_noise_sigma = 1
+
+        components = self.get_dummy_components()
+
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+
+        prior = components["prior"]
+        decoder = components["decoder"]
+        super_res_first = components["super_res_first"]
+        tokenizer = components["tokenizer"]
+        text_encoder = components["text_encoder"]
+
+        generator = torch.Generator(device=device).manual_seed(0)
+        dtype = prior.dtype
+        batch_size = 1
+
+        shape = (batch_size, prior.config.embedding_dim)
+        prior_latents = pipe.prepare_latents(
+            shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler()
+        )
+        shape = (batch_size, decoder.in_channels, decoder.sample_size, decoder.sample_size)
+        decoder_latents = pipe.prepare_latents(
+            shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler()
+        )
+
+        shape = (
+            batch_size,
+            super_res_first.in_channels // 2,
+            super_res_first.sample_size,
+            super_res_first.sample_size,
+        )
+        super_res_latents = pipe.prepare_latents(
+            shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler()
+        )
+
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt = "this is a prompt example"
 
         generator = torch.Generator(device=device).manual_seed(0)
         output = pipe(
@@ -211,42 +314,108 @@ class UnCLIPPipelineFastTests(unittest.TestCase):
             prior_num_inference_steps=2,
             decoder_num_inference_steps=2,
             super_res_num_inference_steps=2,
+            prior_latents=prior_latents,
+            decoder_latents=decoder_latents,
+            super_res_latents=super_res_latents,
             output_type="np",
         )
         image = output.images
 
+        text_inputs = tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=tokenizer.model_max_length,
+            return_tensors="pt",
+        )
+        text_model_output = text_encoder(text_inputs.input_ids)
+        text_attention_mask = text_inputs.attention_mask
+
         generator = torch.Generator(device=device).manual_seed(0)
-        image_from_tuple = pipe(
-            [prompt],
+        image_from_text = pipe(
             generator=generator,
             prior_num_inference_steps=2,
             decoder_num_inference_steps=2,
             super_res_num_inference_steps=2,
+            prior_latents=prior_latents,
+            decoder_latents=decoder_latents,
+            super_res_latents=super_res_latents,
+            text_model_output=text_model_output,
+            text_attention_mask=text_attention_mask,
             output_type="np",
-            return_dict=False,
         )[0]
 
-        image_slice = image[0, -3:, -3:, -1]
-        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
+        # make sure passing text embeddings manually is identical
+        assert np.abs(image - image_from_text).max() < 1e-4
 
-        assert image.shape == (1, 128, 128, 3)
+    # Overriding PipelineTesterMixin::test_attention_slicing_forward_pass
+    # because UnCLIP GPU undeterminism requires a looser check.
+    @skip_mps
+    def test_attention_slicing_forward_pass(self):
+        test_max_difference = torch_device == "cpu"
 
-        expected_slice = np.array(
-            [
-                0.0011,
-                0.0002,
-                0.9962,
-                0.9940,
-                0.0002,
-                0.9997,
-                0.0003,
-                0.9987,
-                0.9989,
-            ]
+        self._test_attention_slicing_forward_pass(test_max_difference=test_max_difference)
+
+    # Overriding PipelineTesterMixin::test_inference_batch_single_identical
+    # because UnCLIP undeterminism requires a looser check.
+    @skip_mps
+    def test_inference_batch_single_identical(self):
+        test_max_difference = torch_device == "cpu"
+        relax_max_difference = True
+
+        self._test_inference_batch_single_identical(
+            test_max_difference=test_max_difference, relax_max_difference=relax_max_difference
         )
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+    def test_inference_batch_consistent(self):
+        if torch_device == "mps":
+            # TODO: MPS errors with larger batch sizes
+            batch_sizes = [2, 3]
+            self._test_inference_batch_consistent(batch_sizes=batch_sizes)
+        else:
+            self._test_inference_batch_consistent()
+
+    @skip_mps
+    def test_dict_tuple_outputs_equivalent(self):
+        return super().test_dict_tuple_outputs_equivalent()
+
+    @skip_mps
+    def test_save_load_local(self):
+        return super().test_save_load_local()
+
+    @skip_mps
+    def test_save_load_optional_components(self):
+        return super().test_save_load_optional_components()
+
+
+@nightly
+class UnCLIPPipelineCPUIntegrationTests(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_unclip_karlo_cpu_fp32(self):
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/unclip/karlo_v1_alpha_horse_cpu.npy"
+        )
+
+        pipeline = UnCLIPPipeline.from_pretrained("kakaobrain/karlo-v1-alpha")
+        pipeline.set_progress_bar_config(disable=None)
+
+        generator = torch.manual_seed(0)
+        output = pipeline(
+            "horse",
+            num_images_per_prompt=1,
+            generator=generator,
+            output_type="np",
+        )
+
+        image = output.images[0]
+
+        assert image.shape == (256, 256, 3)
+        assert np.abs(expected_image - image).max() < 1e-1
 
 
 @slow
@@ -268,10 +437,9 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
         pipeline = pipeline.to(torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.Generator(device="cpu").manual_seed(0)
         output = pipeline(
             "horse",
-            num_images_per_prompt=1,
             generator=generator,
             output_type="np",
         )
@@ -279,9 +447,10 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (256, 256, 3)
-        assert np.abs(expected_image - image).max() < 1e-2
 
-    def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
+        assert_mean_pixel_difference(image, expected_image)
+
+    def test_unclip_pipeline_with_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()
@@ -292,11 +461,9 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
         pipe.enable_attention_slicing()
         pipe.enable_sequential_cpu_offload()
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
         _ = pipe(
             "horse",
             num_images_per_prompt=1,
-            generator=generator,
             prior_num_inference_steps=2,
             decoder_num_inference_steps=2,
             super_res_num_inference_steps=2,

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2020 The HuggingFace Inc. team.
+# Copyright 2023 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -342,7 +342,7 @@ def get_model_test_files():
             path = os.path.join(target_dir, file_or_dir)
             if os.path.isfile(path):
                 filename = os.path.split(path)[-1]
-                if "test_modeling" in filename and not os.path.splitext(filename)[0] in _ignore_files:
+                if "test_modeling" in filename and os.path.splitext(filename)[0] not in _ignore_files:
                     file = os.path.join(*path.split(os.sep)[1:])
                     test_files.append(file)
 

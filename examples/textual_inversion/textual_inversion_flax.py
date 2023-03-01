@@ -6,16 +6,27 @@ import random
 from pathlib import Path
 from typing import Optional
 
-import numpy as np
-import torch
-import torch.utils.checkpoint
-from torch.utils.data import Dataset
-
 import jax
 import jax.numpy as jnp
+import numpy as np
 import optax
 import PIL
+import torch
+import torch.utils.checkpoint
 import transformers
+from flax import jax_utils
+from flax.training import train_state
+from flax.training.common_utils import shard
+from huggingface_hub import HfFolder, Repository, create_repo, whoami
+
+# TODO: remove and import from diffusers.utils when the new version of diffusers is released
+from packaging import version
+from PIL import Image
+from torch.utils.data import Dataset
+from torchvision import transforms
+from tqdm.auto import tqdm
+from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel, set_seed
+
 from diffusers import (
     FlaxAutoencoderKL,
     FlaxDDPMScheduler,
@@ -25,17 +36,6 @@ from diffusers import (
 )
 from diffusers.pipelines.stable_diffusion import FlaxStableDiffusionSafetyChecker
 from diffusers.utils import check_min_version
-from flax import jax_utils
-from flax.training import train_state
-from flax.training.common_utils import shard
-from huggingface_hub import HfFolder, Repository, whoami
-
-# TODO: remove and import from diffusers.utils when the new version of diffusers is released
-from packaging import version
-from PIL import Image
-from torchvision import transforms
-from tqdm.auto import tqdm
-from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel, set_seed
 
 
 if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
@@ -57,7 +57,7 @@ else:
 # ------------------------------------------------------------------------------
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.10.0.dev0")
+check_min_version("0.14.0.dev0")
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +109,7 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution"
+        "--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution."
     )
     parser.add_argument(
         "--train_batch_size", type=int, default=16, help="Batch size (per device) for the training dataloader."
@@ -372,7 +372,8 @@ def main():
                 repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
             else:
                 repo_name = args.hub_model_id
-            repo = Repository(args.output_dir, clone_from=repo_name)
+            create_repo(repo_name, exist_ok=True, token=args.hub_token)
+            repo = Repository(args.output_dir, clone_from=repo_name, token=args.hub_token)
 
             with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
                 if "step_*" not in gitignore:
@@ -508,6 +509,7 @@ def main():
     noise_scheduler = FlaxDDPMScheduler(
         beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000
     )
+    noise_scheduler_state = noise_scheduler.create_state()
 
     # Initialize our training
     train_rngs = jax.random.split(rng, jax.local_device_count())
@@ -523,7 +525,7 @@ def main():
             latents = vae_outputs.latent_dist.sample(sample_rng)
             # (NHWC) -> (NCHW)
             latents = jnp.transpose(latents, (0, 3, 1, 2))
-            latents = latents * 0.18215
+            latents = latents * vae.config.scaling_factor
 
             noise_rng, timestep_rng = jax.random.split(sample_rng)
             noise = jax.random.normal(noise_rng, latents.shape)
@@ -534,15 +536,24 @@ def main():
                 0,
                 noise_scheduler.config.num_train_timesteps,
             )
-            noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+            noisy_latents = noise_scheduler.add_noise(noise_scheduler_state, latents, noise, timesteps)
             encoder_hidden_states = state.apply_fn(
                 batch["input_ids"], params=params, dropout_rng=dropout_rng, train=True
             )[0]
-            unet_outputs = unet.apply(
+            # Predict the noise residual and compute loss
+            model_pred = unet.apply(
                 {"params": unet_params}, noisy_latents, timesteps, encoder_hidden_states, train=False
-            )
-            noise_pred = unet_outputs.sample
-            loss = (noise - noise_pred) ** 2
+            ).sample
+
+            # Get the target for loss depending on the prediction type
+            if noise_scheduler.config.prediction_type == "epsilon":
+                target = noise
+            elif noise_scheduler.config.prediction_type == "v_prediction":
+                target = noise_scheduler.get_velocity(noise_scheduler_state, latents, noise, timesteps)
+            else:
+                raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+
+            loss = (target - model_pred) ** 2
             loss = loss.mean()
 
             return loss

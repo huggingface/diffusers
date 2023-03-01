@@ -6,10 +6,10 @@ import torch.nn.functional as F
 from torch import nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..modeling_utils import ModelMixin
 from ..utils import BaseOutput
 from .attention import BasicTransformerBlock
 from .embeddings import TimestepEmbedding, Timesteps
+from .modeling_utils import ModelMixin
 
 
 @dataclass
@@ -95,7 +95,7 @@ class PriorTransformer(ModelMixin, ConfigMixin):
         self.proj_to_clip_embeddings = nn.Linear(inner_dim, embedding_dim)
 
         causal_attention_mask = torch.full(
-            [num_embeddings + additional_embeddings, num_embeddings + additional_embeddings], float("-inf")
+            [num_embeddings + additional_embeddings, num_embeddings + additional_embeddings], -10000.0
         )
         causal_attention_mask.triu_(1)
         causal_attention_mask = causal_attention_mask[None, ...]

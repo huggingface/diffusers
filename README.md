@@ -1,6 +1,6 @@
 <p align="center">
     <br>
-    <img src="https://github.com/huggingface/diffusers/raw/main/docs/source/imgs/diffusers_library.jpg" width="400"/>
+    <img src="./docs/source/en/imgs/diffusers_library.jpg" width="400"/>
     <br>
 <p>
 <p align="center">
@@ -232,6 +232,102 @@ prng_seed = jax.random.split(prng_seed, jax.device_count())
 prompt_ids = shard(prompt_ids)
 
 images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).images
+images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
+```
+
+Diffusers also has a Image-to-Image generation pipeline with Flax/Jax
+```python
+import jax
+import numpy as np
+import jax.numpy as jnp
+from flax.jax_utils import replicate
+from flax.training.common_utils import shard
+import requests
+from io import BytesIO
+from PIL import Image
+from diffusers import FlaxStableDiffusionImg2ImgPipeline
+
+def create_key(seed=0):
+    return jax.random.PRNGKey(seed)
+rng = create_key(0)
+
+url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
+response = requests.get(url)
+init_img = Image.open(BytesIO(response.content)).convert("RGB")
+init_img = init_img.resize((768, 512))
+
+prompts = "A fantasy landscape, trending on artstation"
+
+pipeline, params = FlaxStableDiffusionImg2ImgPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4", revision="flax",
+    dtype=jnp.bfloat16,
+)
+
+num_samples = jax.device_count()
+rng = jax.random.split(rng, jax.device_count())
+prompt_ids, processed_image = pipeline.prepare_inputs(prompt=[prompts]*num_samples, image = [init_img]*num_samples)
+p_params = replicate(params)
+prompt_ids = shard(prompt_ids)
+processed_image = shard(processed_image)
+
+output = pipeline(
+    prompt_ids=prompt_ids, 
+    image=processed_image, 
+    params=p_params, 
+    prng_seed=rng, 
+    strength=0.75, 
+    num_inference_steps=50, 
+    jit=True, 
+    height=512,
+    width=768).images
+
+output_images = pipeline.numpy_to_pil(np.asarray(output.reshape((num_samples,) + output.shape[-3:])))
+```
+
+Diffusers also has a Text-guided inpainting pipeline with Flax/Jax
+
+```python
+import jax
+import numpy as np
+from flax.jax_utils import replicate
+from flax.training.common_utils import shard
+import PIL
+import requests
+from io import BytesIO
+
+
+from diffusers import FlaxStableDiffusionInpaintPipeline
+
+def download_image(url):
+    response = requests.get(url)
+    return PIL.Image.open(BytesIO(response.content)).convert("RGB")
+img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
+mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+
+init_image = download_image(img_url).resize((512, 512))
+mask_image = download_image(mask_url).resize((512, 512))
+
+pipeline, params = FlaxStableDiffusionInpaintPipeline.from_pretrained("xvjiarui/stable-diffusion-2-inpainting")
+
+prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
+prng_seed = jax.random.PRNGKey(0)
+num_inference_steps = 50
+
+num_samples = jax.device_count()
+prompt = num_samples * [prompt]
+init_image = num_samples * [init_image]
+mask_image = num_samples * [mask_image]
+prompt_ids, processed_masked_images, processed_masks = pipeline.prepare_inputs(prompt, init_image, mask_image)
+
+
+# shard inputs and rng
+params = replicate(params)
+prng_seed = jax.random.split(prng_seed, jax.device_count())
+prompt_ids = shard(prompt_ids)
+processed_masked_images = shard(processed_masked_images)
+processed_masks = shard(processed_masks)
+
+images = pipeline(prompt_ids, processed_masks, processed_masked_images, params, prng_seed, num_inference_steps, jit=True).images
 images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
 ```
 

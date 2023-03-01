@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,6 @@
 # limitations under the License.
 import torch
 from torch import nn
-
 from transformers import CLIPPreTrainedModel, CLIPVisionModel
 
 from ...models.attention import BasicTransformerBlock
@@ -34,14 +33,17 @@ class PaintByExampleImageEncoder(CLIPPreTrainedModel):
         self.proj_out = nn.Linear(config.hidden_size, self.proj_size)
 
         # uncondition for scaling
-        self.uncond_vector = nn.Parameter(torch.rand((1, 1, self.proj_size)))
+        self.uncond_vector = nn.Parameter(torch.randn((1, 1, self.proj_size)))
 
-    def forward(self, pixel_values):
+    def forward(self, pixel_values, return_uncond_vector=False):
         clip_output = self.model(pixel_values=pixel_values)
         latent_states = clip_output.pooler_output
         latent_states = self.mapper(latent_states[:, None])
         latent_states = self.final_layer_norm(latent_states)
         latent_states = self.proj_out(latent_states)
+        if return_uncond_vector:
+            return latent_states, self.uncond_vector
+
         return latent_states
 
 

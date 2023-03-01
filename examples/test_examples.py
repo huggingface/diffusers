@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc..
+# Copyright 2023 HuggingFace Inc..
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,7 +24,8 @@ import unittest
 from typing import List
 
 from accelerate.utils import write_basic_config
-from diffusers.utils import slow
+
+from diffusers import DiffusionPipeline, UNet2DConditionModel
 
 
 logging.basicConfig(level=logging.DEBUG)
@@ -73,51 +74,335 @@ class ExamplesTestsAccelerate(unittest.TestCase):
         super().tearDownClass()
         shutil.rmtree(cls._tmpdir)
 
-    @slow
     def test_train_unconditional(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 examples/unconditional_image_generation/train_unconditional.py
-                --dataset_name huggan/few-shot-aurora
+                --dataset_name hf-internal-testing/dummy_image_class_data
+                --model_config_name_or_path diffusers/ddpm_dummy
                 --resolution 64
                 --output_dir {tmpdir}
-                --train_batch_size 4
+                --train_batch_size 2
                 --num_epochs 1
                 --gradient_accumulation_steps 1
+                --ddpm_num_inference_steps 2
                 --learning_rate 1e-3
                 --lr_warmup_steps 5
-                --mixed_precision fp16
                 """.split()
 
             run_command(self._launch_args + test_args, return_stdout=True)
             # save_pretrained smoke test
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.bin")))
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
-            # logging test
-            self.assertTrue(len(os.listdir(os.path.join(tmpdir, "logs", "train_unconditional"))) > 0)
 
-    @slow
     def test_textual_inversion(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 examples/textual_inversion/textual_inversion.py
-                --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5
-                --train_data_dir docs/source/imgs
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
+                --train_data_dir docs/source/en/imgs
                 --learnable_property object
                 --placeholder_token <cat-toy>
-                --initializer_token toy
+                --initializer_token a
                 --resolution 64
                 --train_batch_size 1
-                --gradient_accumulation_steps 2
-                --max_train_steps 10
+                --gradient_accumulation_steps 1
+                --max_train_steps 2
                 --learning_rate 5.0e-04
                 --scale_lr
                 --lr_scheduler constant
                 --lr_warmup_steps 0
                 --output_dir {tmpdir}
-                --mixed_precision fp16
                 """.split()
 
             run_command(self._launch_args + test_args)
             # save_pretrained smoke test
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "learned_embeds.bin")))
+
+    def test_dreambooth(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+                examples/dreambooth/train_dreambooth.py
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
+                --instance_data_dir docs/source/en/imgs
+                --instance_prompt photo
+                --resolution 64
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 2
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                """.split()
+
+            run_command(self._launch_args + test_args)
+            # save_pretrained smoke test
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
+
+    def test_dreambooth_checkpointing(self):
+        instance_prompt = "photo"
+        pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-pipe"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Run training script with checkpointing
+            # max_train_steps == 5, checkpointing_steps == 2
+            # Should create checkpoints at steps 2, 4
+
+            initial_run_args = f"""
+                examples/dreambooth/train_dreambooth.py
+                --pretrained_model_name_or_path {pretrained_model_name_or_path}
+                --instance_data_dir docs/source/en/imgs
+                --instance_prompt {instance_prompt}
+                --resolution 64
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 5
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                --checkpointing_steps=2
+                --seed=0
+                """.split()
+
+            run_command(self._launch_args + initial_run_args)
+
+            # check can run the original fully trained output pipeline
+            pipe = DiffusionPipeline.from_pretrained(tmpdir, safety_checker=None)
+            pipe(instance_prompt, num_inference_steps=2)
+
+            # check checkpoint directories exist
+            self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-2")))
+            self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-4")))
+
+            # check can run an intermediate checkpoint
+            unet = UNet2DConditionModel.from_pretrained(tmpdir, subfolder="checkpoint-2/unet")
+            pipe = DiffusionPipeline.from_pretrained(pretrained_model_name_or_path, unet=unet, safety_checker=None)
+            pipe(instance_prompt, num_inference_steps=2)
+
+            # Remove checkpoint 2 so that we can check only later checkpoints exist after resuming
+            shutil.rmtree(os.path.join(tmpdir, "checkpoint-2"))
+
+            # Run training script for 7 total steps resuming from checkpoint 4
+
+            resume_run_args = f"""
+                examples/dreambooth/train_dreambooth.py
+                --pretrained_model_name_or_path {pretrained_model_name_or_path}
+                --instance_data_dir docs/source/en/imgs
+                --instance_prompt {instance_prompt}
+                --resolution 64
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 7
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                --checkpointing_steps=2
+                --resume_from_checkpoint=checkpoint-4
+                --seed=0
+                """.split()
+
+            run_command(self._launch_args + resume_run_args)
+
+            # check can run new fully trained pipeline
+            pipe = DiffusionPipeline.from_pretrained(tmpdir, safety_checker=None)
+            pipe(instance_prompt, num_inference_steps=2)
+
+            # check old checkpoints do not exist
+            self.assertFalse(os.path.isdir(os.path.join(tmpdir, "checkpoint-2")))
+
+            # check new checkpoints exist
+            self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-4")))
+            self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-6")))
+
+    def test_text_to_image(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+                examples/text_to_image/train_text_to_image.py
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
+                --dataset_name hf-internal-testing/dummy_image_text_data
+                --resolution 64
+                --center_crop
+                --random_flip
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 2
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                """.split()
+
+            run_command(self._launch_args + test_args)
+            # save_pretrained smoke test
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
+
+    def test_text_to_image_checkpointing(self):
+        pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-pipe"
+        prompt = "a prompt"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Run training script with checkpointing
+            # max_train_steps == 5, checkpointing_steps == 2
+            # Should create checkpoints at steps 2, 4
+
+            initial_run_args = f"""
+                examples/text_to_image/train_text_to_image.py
+                --pretrained_model_name_or_path {pretrained_model_name_or_path}
+                --dataset_name hf-internal-testing/dummy_image_text_data
+                --resolution 64
+                --center_crop
+                --random_flip
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 5
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                --checkpointing_steps=2
+                --seed=0
+                """.split()
+
+            run_command(self._launch_args + initial_run_args)
+
+            pipe = DiffusionPipeline.from_pretrained(tmpdir, safety_checker=None)
+            pipe(prompt, num_inference_steps=2)
+
+            # check checkpoint directories exist
+            self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-2")))
+            self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-4")))
+
+            # check can run an intermediate checkpoint
+            unet = UNet2DConditionModel.from_pretrained(tmpdir, subfolder="checkpoint-2/unet")
+            pipe = DiffusionPipeline.from_pretrained(pretrained_model_name_or_path, unet=unet, safety_checker=None)
+            pipe(prompt, num_inference_steps=2)
+
+            # Remove checkpoint 2 so that we can check only later checkpoints exist after resuming
+            shutil.rmtree(os.path.join(tmpdir, "checkpoint-2"))
+
+            # Run training script for 7 total steps resuming from checkpoint 4
+
+            resume_run_args = f"""
+                examples/text_to_image/train_text_to_image.py
+                --pretrained_model_name_or_path {pretrained_model_name_or_path}
+                --dataset_name hf-internal-testing/dummy_image_text_data
+                --resolution 64
+                --center_crop
+                --random_flip
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 7
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                --checkpointing_steps=2
+                --resume_from_checkpoint=checkpoint-4
+                --seed=0
+                """.split()
+
+            run_command(self._launch_args + resume_run_args)
+
+            # check can run new fully trained pipeline
+            pipe = DiffusionPipeline.from_pretrained(tmpdir, safety_checker=None)
+            pipe(prompt, num_inference_steps=2)
+
+            # check old checkpoints do not exist
+            self.assertFalse(os.path.isdir(os.path.join(tmpdir, "checkpoint-2")))
+
+            # check new checkpoints exist
+            self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-4")))
+            self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-6")))
+
+    def test_text_to_image_checkpointing_use_ema(self):
+        pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-pipe"
+        prompt = "a prompt"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Run training script with checkpointing
+            # max_train_steps == 5, checkpointing_steps == 2
+            # Should create checkpoints at steps 2, 4
+
+            initial_run_args = f"""
+                examples/text_to_image/train_text_to_image.py
+                --pretrained_model_name_or_path {pretrained_model_name_or_path}
+                --dataset_name hf-internal-testing/dummy_image_text_data
+                --resolution 64
+                --center_crop
+                --random_flip
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 5
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                --checkpointing_steps=2
+                --use_ema
+                --seed=0
+                """.split()
+
+            run_command(self._launch_args + initial_run_args)
+
+            pipe = DiffusionPipeline.from_pretrained(tmpdir, safety_checker=None)
+            pipe(prompt, num_inference_steps=2)
+
+            # check checkpoint directories exist
+            self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-2")))
+            self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-4")))
+
+            # check can run an intermediate checkpoint
+            unet = UNet2DConditionModel.from_pretrained(tmpdir, subfolder="checkpoint-2/unet")
+            pipe = DiffusionPipeline.from_pretrained(pretrained_model_name_or_path, unet=unet, safety_checker=None)
+            pipe(prompt, num_inference_steps=2)
+
+            # Remove checkpoint 2 so that we can check only later checkpoints exist after resuming
+            shutil.rmtree(os.path.join(tmpdir, "checkpoint-2"))
+
+            # Run training script for 7 total steps resuming from checkpoint 4
+
+            resume_run_args = f"""
+                examples/text_to_image/train_text_to_image.py
+                --pretrained_model_name_or_path {pretrained_model_name_or_path}
+                --dataset_name hf-internal-testing/dummy_image_text_data
+                --resolution 64
+                --center_crop
+                --random_flip
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 7
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                --checkpointing_steps=2
+                --resume_from_checkpoint=checkpoint-4
+                --use_ema
+                --seed=0
+                """.split()
+
+            run_command(self._launch_args + resume_run_args)
+
+            # check can run new fully trained pipeline
+            pipe = DiffusionPipeline.from_pretrained(tmpdir, safety_checker=None)
+            pipe(prompt, num_inference_steps=2)
+
+            # check old checkpoints do not exist
+            self.assertFalse(os.path.isdir(os.path.join(tmpdir, "checkpoint-2")))
+
+            # check new checkpoints exist
+            self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-4")))
+            self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-6")))

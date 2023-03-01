@@ -1,4 +1,4 @@
-# Copyright 2022 Katherine Crowson, The HuggingFace Team and hlky. All rights reserved.
+# Copyright 2023 Katherine Crowson, The HuggingFace Team and hlky. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,14 +12,44 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS
-from .scheduling_utils import SchedulerMixin, SchedulerOutput
+from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SchedulerOutput
+
+
+# Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
+def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> torch.Tensor:
+    """
+    Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
+    (1-beta) over time from t = [0,1].
+
+    Contains a function alpha_bar that takes an argument t and transforms it to the cumulative product of (1-beta) up
+    to that part of the diffusion process.
+
+
+    Args:
+        num_diffusion_timesteps (`int`): the number of betas to produce.
+        max_beta (`float`): the maximum beta to use; use values lower than 1 to
+                     prevent singularities.
+
+    Returns:
+        betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
+    """
+
+    def alpha_bar(time_step):
+        return math.cos((time_step + 0.008) / 1.008 * math.pi / 2) ** 2
+
+    betas = []
+    for i in range(num_diffusion_timesteps):
+        t1 = i / num_diffusion_timesteps
+        t2 = (i + 1) / num_diffusion_timesteps
+        betas.append(min(1 - alpha_bar(t2) / alpha_bar(t1), max_beta))
+    return torch.tensor(betas, dtype=torch.float32)
 
 
 class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
@@ -48,7 +78,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             https://imagen.research.google/video/paper.pdf)
     """
 
-    _compatibles = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
+    _compatibles = [e.name for e in KarrasDiffusionSchedulers]
     order = 2
 
     @register_to_config
@@ -70,6 +100,9 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.betas = (
                 torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
             )
+        elif beta_schedule == "squaredcos_cap_v2":
+            # Glide cosine schedule
+            self.betas = betas_for_alpha_bar(num_train_timesteps)
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
@@ -198,6 +231,8 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             pred_original_sample = model_output * (-sigma_input / (sigma_input**2 + 1) ** 0.5) + (
                 sample / (sigma_input**2 + 1)
             )
+        elif self.config.prediction_type == "sample":
+            raise NotImplementedError("prediction_type not implemented yet: sample")
         else:
             raise ValueError(
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"

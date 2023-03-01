@@ -6,29 +6,29 @@ import random
 from pathlib import Path
 from typing import Optional
 
+import intel_extension_for_pytorch as ipex
 import numpy as np
+import PIL
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-from torch.utils.data import Dataset
-
-import intel_extension_for_pytorch as ipex
-import PIL
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
-from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, StableDiffusionPipeline, UNet2DConditionModel
-from diffusers.optimization import get_scheduler
-from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
-from diffusers.utils import check_min_version
-from huggingface_hub import HfFolder, Repository, whoami
+from huggingface_hub import HfFolder, Repository, create_repo, whoami
 
 # TODO: remove and import from diffusers.utils when the new version of diffusers is released
 from packaging import version
 from PIL import Image
+from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+
+from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, StableDiffusionPipeline, UNet2DConditionModel
+from diffusers.optimization import get_scheduler
+from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
+from diffusers.utils import check_min_version
 
 
 if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
@@ -51,7 +51,7 @@ else:
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.10.0.dev0")
+check_min_version("0.13.0.dev0")
 
 
 logger = get_logger(__name__)
@@ -130,7 +130,7 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution"
+        "--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution."
     )
     parser.add_argument(
         "--train_batch_size", type=int, default=16, help="Batch size (per device) for the training dataloader."
@@ -393,7 +393,8 @@ def main():
                 repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
             else:
                 repo_name = args.hub_model_id
-            repo = Repository(args.output_dir, clone_from=repo_name)
+            create_repo(repo_name, exist_ok=True, token=args.hub_token)
+            repo = Repository(args.output_dir, clone_from=repo_name, token=args.hub_token)
 
             with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
                 if "step_*" not in gitignore:
@@ -554,7 +555,7 @@ def main():
                 with accelerator.accumulate(text_encoder):
                     # Convert images to latent space
                     latents = vae.encode(batch["pixel_values"]).latent_dist.sample().detach()
-                    latents = latents * 0.18215
+                    latents = latents * vae.config.scaling_factor
 
                     # Sample noise that we'll add to the latents
                     noise = torch.randn(latents.shape).to(latents.device)

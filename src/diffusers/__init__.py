@@ -1,12 +1,12 @@
-__version__ = "0.12.0.dev0"
+__version__ = "0.14.0.dev0"
 
 from .configuration_utils import ConfigMixin
-from .onnx_utils import OnnxRuntimeModel
 from .utils import (
     OptionalDependencyNotAvailable,
     is_flax_available,
     is_inflect_available,
     is_k_diffusion_available,
+    is_k_diffusion_version,
     is_librosa_available,
     is_onnx_available,
     is_scipy_available,
@@ -19,14 +19,22 @@ from .utils import (
 
 
 try:
+    if not is_onnx_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils.dummy_onnx_objects import *  # noqa F403
+else:
+    from .pipelines import OnnxRuntimeModel
+
+try:
     if not is_torch_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from .utils.dummy_pt_objects import *  # noqa F403
 else:
-    from .modeling_utils import ModelMixin
     from .models import (
         AutoencoderKL,
+        ModelMixin,
         PriorTransformer,
         Transformer2DModel,
         UNet1DModel,
@@ -43,11 +51,14 @@ else:
         get_polynomial_decay_schedule_with_warmup,
         get_scheduler,
     )
-    from .pipeline_utils import DiffusionPipeline
     from .pipelines import (
+        AudioPipelineOutput,
         DanceDiffusionPipeline,
         DDIMPipeline,
         DDPMPipeline,
+        DiffusionPipeline,
+        DiTPipeline,
+        ImagePipelineOutput,
         KarrasVePipeline,
         LDMPipeline,
         LDMSuperResolutionPipeline,
@@ -56,8 +67,10 @@ else:
         ScoreSdeVePipeline,
     )
     from .schedulers import (
+        DDIMInverseScheduler,
         DDIMScheduler,
         DDPMScheduler,
+        DEISMultistepScheduler,
         DPMSolverMultistepScheduler,
         DPMSolverSinglestepScheduler,
         EulerAncestralDiscreteScheduler,
@@ -72,6 +85,7 @@ else:
         SchedulerMixin,
         ScoreSdeVeScheduler,
         UnCLIPScheduler,
+        UniPCMultistepScheduler,
         VQDiffusionScheduler,
     )
     from .training_utils import EMAModel
@@ -97,14 +111,24 @@ else:
         CycleDiffusionPipeline,
         LDMTextToImagePipeline,
         PaintByExamplePipeline,
+        SemanticStableDiffusionPipeline,
+        StableDiffusionAttendAndExcitePipeline,
         StableDiffusionDepth2ImgPipeline,
         StableDiffusionImageVariationPipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
         StableDiffusionInpaintPipelineLegacy,
+        StableDiffusionInstructPix2PixPipeline,
+        StableDiffusionLatentUpscalePipeline,
+        StableDiffusionPanoramaPipeline,
         StableDiffusionPipeline,
         StableDiffusionPipelineSafe,
+        StableDiffusionPix2PixZeroPipeline,
+        StableDiffusionSAGPipeline,
         StableDiffusionUpscalePipeline,
+        StableUnCLIPImg2ImgPipeline,
+        StableUnCLIPPipeline,
+        UnCLIPImageVariationPipeline,
         UnCLIPPipeline,
         VersatileDiffusionDualGuidedPipeline,
         VersatileDiffusionImageVariationPipeline,
@@ -149,10 +173,10 @@ try:
 except OptionalDependencyNotAvailable:
     from .utils.dummy_flax_objects import *  # noqa F403
 else:
-    from .modeling_flax_utils import FlaxModelMixin
+    from .models.modeling_flax_utils import FlaxModelMixin
     from .models.unet_2d_condition_flax import FlaxUNet2DConditionModel
     from .models.vae_flax import FlaxAutoencoderKL
-    from .pipeline_flax_utils import FlaxDiffusionPipeline
+    from .pipelines import FlaxDiffusionPipeline
     from .schedulers import (
         FlaxDDIMScheduler,
         FlaxDDPMScheduler,
@@ -164,10 +188,15 @@ else:
         FlaxScoreSdeVeScheduler,
     )
 
+
 try:
     if not (is_flax_available() and is_transformers_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from .utils.dummy_flax_and_transformers_objects import *  # noqa F403
 else:
-    from .pipelines import FlaxStableDiffusionPipeline
+    from .pipelines import (
+        FlaxStableDiffusionImg2ImgPipeline,
+        FlaxStableDiffusionInpaintPipeline,
+        FlaxStableDiffusionPipeline,
+    )

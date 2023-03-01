@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,12 +19,12 @@ import unittest
 
 import numpy as np
 import torch
+from PIL import Image
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, PNDMScheduler, StableDiffusionInpaintPipeline, UNet2DConditionModel
 from diffusers.utils import floats_tensor, load_image, load_numpy, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu, slow
-from PIL import Image
-from transformers import CLIPImageProcessor, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from ...test_pipelines_common import PipelineTesterMixin
 
@@ -47,7 +47,7 @@ class StableDiffusion2InpaintPipelineFastTests(PipelineTesterMixin, unittest.Tes
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=32,
             # SD2-specific config below
-            attention_head_dim=(2, 4, 8, 8),
+            attention_head_dim=(2, 4),
             use_linear_projection=True,
         )
         scheduler = PNDMScheduler(skip_prk_steps=True)
@@ -78,7 +78,6 @@ class StableDiffusion2InpaintPipelineFastTests(PipelineTesterMixin, unittest.Tes
         )
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
-        feature_extractor = CLIPImageProcessor(crop_size=32, size=32)
 
         components = {
             "unet": unet,
@@ -87,7 +86,7 @@ class StableDiffusion2InpaintPipelineFastTests(PipelineTesterMixin, unittest.Tes
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
             "safety_checker": None,
-            "feature_extractor": feature_extractor,
+            "feature_extractor": None,
         }
         return components
 
@@ -159,7 +158,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
 
         prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         output = pipe(
             prompt=prompt,
             image=init_image,
@@ -197,7 +196,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
 
         prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         output = pipe(
             prompt=prompt,
             image=init_image,
@@ -229,7 +228,6 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             model_id,
             safety_checker=None,
             scheduler=pndm,
-            device_map="auto",
             torch_dtype=torch.float16,
         )
         pipe.to(torch_device)
@@ -239,13 +237,13 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
 
         prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         _ = pipe(
             prompt=prompt,
             image=init_image,
             mask_image=mask_image,
             generator=generator,
-            num_inference_steps=5,
+            num_inference_steps=2,
             output_type="np",
         )
 
