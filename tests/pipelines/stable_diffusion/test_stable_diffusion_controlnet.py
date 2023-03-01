@@ -57,11 +57,9 @@ class StableDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.T
         controlnet = ControlNetModel(
             block_out_channels=(32, 64),
             layers_per_block=2,
-            sample_size=32,
             in_channels=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             cross_attention_dim=32,
-            controlnet_conditioning_channels=3,
         )
         torch.manual_seed(0)
         scheduler = DDIMScheduler(

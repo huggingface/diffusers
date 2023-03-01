@@ -1226,6 +1226,8 @@ def load_pipeline_from_original_stable_diffusion_ckpt(
             ctrlnet_config = create_unet_diffusers_config(original_config, image_size=image_size, controlnet=True)
             ctrlnet_config["upcast_attention"] = upcast_attention
 
+            ctrlnet_config.pop("sample_size")
+
             controlnet_model = ControlNetModel(**ctrlnet_config)
 
             converted_ctrl_checkpoint = convert_ldm_unet_checkpoint(
