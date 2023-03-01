@@ -525,7 +525,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
             elif isinstance(image, torch.Tensor):
                 height = image.shape[3]
 
-            height = (height + 7) & (-8) # round to nearest multiple of 8
+            height = (height + 7) & (-8)  # round to nearest multiple of 8
 
         if width is None:
             if isinstance(image, PIL.Image.Image):
@@ -533,7 +533,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
             elif isinstance(image, torch.Tensor):
                 width = image.shape[2]
 
-            width = (width + 7) & (-8) # round to nearest multiple of 8
+            width = (width + 7) & (-8)  # round to nearest multiple of 8
 
         return height, width
 
