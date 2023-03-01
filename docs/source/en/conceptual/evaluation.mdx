@@ -393,7 +393,7 @@ We can use these metrics for similar pipelines such as the[`StableDiffusionPix2P
 
 > Both CLIP score and CLIP direction similarity rely on the CLIP model, which can make the evaluations biased.
 
-***Extending metrics like IS, FID, or KID can be difficult*** w***hen the model under evaluation was pre-trained on a large image-captioning dataset (such as the [LAION-5B dataset](https://laion.ai/blog/laion-5b/)). This is because underlying these metrics is an InceptionNet (pre-trained on the ImageNet-1k dataset) used for extracting intermediate image features. The pre-training dataset of Stable Diffusion may have limited overlap with the pre-training dataset of InceptionNet, so it is not a good candidate here for feature extraction.***
+***Extending metrics like IS, FID, or KID can be difficult*** when the model under evaluation was pre-trained on a large image-captioning dataset (such as the [LAION-5B dataset](https://laion.ai/blog/laion-5b/)). This is because underlying these metrics is an InceptionNet (pre-trained on the ImageNet-1k dataset) used for extracting intermediate image features. The pre-training dataset of Stable Diffusion may have limited overlap with the pre-training dataset of InceptionNet, so it is not a good candidate here for feature extraction.
 
 ***Using the above metrics helps evaluate models that are class-conditioned. For example, [DiT](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/overview). It was pre-trained being conditioned on the ImageNet-1k classes.***
 
