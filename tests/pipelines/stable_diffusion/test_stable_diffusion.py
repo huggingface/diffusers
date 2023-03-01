@@ -422,7 +422,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_stable_diffusion_vae_tiling(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet
-        scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
+        scheduler = LMSDiscreteScheduler.from_pretrained("CompVis/stable-diffusion-v1-4")
         vae = self.dummy_vae
         bert = self.dummy_text_encoder
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")

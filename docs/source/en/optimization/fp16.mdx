@@ -162,9 +162,7 @@ images = pipe([prompt], width=3840, height=2224).images
 The output image will have some tile-to-tile tone variation from the tiles having separate decoders, but you shouldn't see sharp seams between the tiles. The tiling is turned off for images that are 512x512 or smaller.
 
 
-=======
 <a name="sequential_offloading"></a>
->>>>>>> 664b4de9e22a825875b6bad45867f8f77cdf95d6:docs/source/en/optimization/fp16.mdx
 ## Offloading to CPU with accelerate for memory savings
 
 For additional memory savings, you can offload the weights to CPU and only load them to GPU when performing the forward pass.
