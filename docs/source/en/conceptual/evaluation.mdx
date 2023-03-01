@@ -176,7 +176,7 @@ It seems like the [v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) 
 
 ## Image-conditioned text-to-image generation
 
-In this case, we condition the generation pipeline with an input image as well as a text prompt. Let's take the `[StableDiffusionInstructPix2PixPipeline]`, as an example. It takes an edit instruction as an input prompt and an input image to be edited.
+In this case, we condition the generation pipeline with an input image as well as a text prompt. Let's take the [`StableDiffusionInstructPix2PixPipeline`], as an example. It takes an edit instruction as an input prompt and an input image to be edited.
 
 Here is one example:
 
@@ -381,7 +381,7 @@ It should be noted that the `StableDiffusionInstructPix2PixPipeline` exposes t
 
 We can extend the idea of this metric to measure how similar the original image and edited version are. To do that, we can just do `F.cosine_similarity(img_feat_two, img_feat_one)`. For these kinds of edits, we would still want the primary semantics of the images to be preserved as much as possible, i.e., a high similarity score.
 
-We can use these metrics for similar pipelines such as the`[StableDiffusionPix2PixZeroPipeline](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/pix2pix_zero#diffusers.StableDiffusionPix2PixZeroPipeline)`.
+We can use these metrics for similar pipelines such as the[`StableDiffusionPix2PixZeroPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/pix2pix_zero#diffusers.StableDiffusionPix2PixZeroPipeline)`.
 
 > Both CLIP score and CLIP direction similarity rely on the CLIP model, which can make the evaluations biased.
 
@@ -391,7 +391,7 @@ We can use these metrics for similar pipelines such as the`[StableDiffusionPix2P
 
 ## Class-conditioned image generation
 
-Class-conditioned generative models are usually pre-trained on a class-labeled dataset such as [ImageNet-1k](https://huggingface.co/datasets/imagenet-1k). Popular metrics for evaluating these models include Fréchet Inception Distance (FID), Kernel Inception Distance (KID), and Inception Score (IS). In this document, we focus on FID ([Heusel et al.](https://arxiv.org/abs/1706.08500)). We show how to compute it with the `[DiTPipeline]`, which uses the [DiT model](https://arxiv.org/abs/2212.09748) under the hood.
+Class-conditioned generative models are usually pre-trained on a class-labeled dataset such as [ImageNet-1k](https://huggingface.co/datasets/imagenet-1k). Popular metrics for evaluating these models include Fréchet Inception Distance (FID), Kernel Inception Distance (KID), and Inception Score (IS). In this document, we focus on FID ([Heusel et al.](https://arxiv.org/abs/1706.08500)). We show how to compute it with the [`DiTPipeline`], which uses the [DiT model](https://arxiv.org/abs/2212.09748) under the hood.
 
 FID aims to measure how similar are two datasets of images. As per [this resource](https://mmgeneration.readthedocs.io/en/latest/quick_run.html#fid):
 
@@ -481,7 +481,7 @@ print(fake_images.shape)
 # torch.Size([10, 3, 256, 256])
 ```
 
-Now, we can compute the FID using `[torchmetrics](https://torchmetrics.readthedocs.io/)`.
+Now, we can compute the FID using [`torchmetrics`](https://torchmetrics.readthedocs.io/).
 
 The lower the FID, the better it is. Several things can influence FID here:
 
