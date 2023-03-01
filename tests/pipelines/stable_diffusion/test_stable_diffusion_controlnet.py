@@ -157,19 +157,19 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        prompt = "pig in barn"
+        prompt = "bird"
         image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/pig_canny.png"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
         )
 
         output = pipe(prompt, image, generator=generator, output_type="np")
 
         image = output.images[0]
 
-        assert image.shape == (512, 512, 3)
+        assert image.shape == (768, 512, 3)
 
         expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/pig_canny_out.npy"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny_out.npy"
         )
 
         assert np.abs(expected_image - image).max() < 1e-4
@@ -220,7 +220,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
 
         image = output.images[0]
 
-        assert image.shape == (768, 512, 3)
+        assert image.shape == (704, 512, 3)
 
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/man_hed_out.npy"
@@ -247,7 +247,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
 
         image = output.images[0]
 
-        assert image.shape == (768, 512, 3)
+        assert image.shape == (704, 512, 3)
 
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/room_mlsd_out.npy"
