@@ -50,7 +50,7 @@ EXAMPLE_DOC_STRING = """
         ...     "https://huggingface.co/takuma104/controlnet_dev/resolve/main/vermeer_canny_edged.png"
         ... )
         >>> pipe = StableDiffusionControlNetPipeline.from_pretrained("takuma104/control_sd15_canny").to("cuda")
-        >>> image = pipe(prompt="best quality, extremely detailed", controlnet_hint=canny_edged_image).images[0]
+        >>> image = pipe(prompt="best quality, extremely detailed", image=canny_edged_image).images[0]
         ```
 """
 
