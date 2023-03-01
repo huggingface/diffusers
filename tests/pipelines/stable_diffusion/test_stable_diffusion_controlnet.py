@@ -216,7 +216,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/man_hed.png"
         )
 
-        output = pipe(prompt, image, generator=generator, height=768, output_type="np")
+        output = pipe(prompt, image, generator=generator, output_type="np")
 
         image = output.images[0]
 
@@ -243,7 +243,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/room_mlsd.png"
         )
 
-        output = pipe(prompt, image, generator=generator, height=768, output_type="np")
+        output = pipe(prompt, image, generator=generator, output_type="np")
 
         image = output.images[0]
 
@@ -297,7 +297,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/pose.png"
         )
 
-        output = pipe(prompt, image, generator=generator, height=768, output_type="np")
+        output = pipe(prompt, image, generator=generator, output_type="np")
 
         image = output.images[0]
 
@@ -324,7 +324,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bag_scribble.png"
         )
 
-        output = pipe(prompt, image, generator=generator, height=640, output_type="np")
+        output = pipe(prompt, image, generator=generator, output_type="np")
 
         image = output.images[0]
 
@@ -337,4 +337,28 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
         assert np.abs(expected_image - image).max() < 1e-4
 
     def test_seg(self):
-        ...
+        controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-seg")
+
+        pipe = StableDiffusionControlNetPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
+        )
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device="cpu").manual_seed(5)
+        prompt = "house"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/house_seg.png"
+        )
+
+        output = pipe(prompt, image, generator=generator, output_type="np")
+
+        image = output.images[0]
+
+        assert image.shape == (512, 512, 3)
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/house_seg_out.npy"
+        )
+
+        assert np.abs(expected_image - image).max() < 1e-4
