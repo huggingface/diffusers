@@ -111,9 +111,14 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         self.use_slicing = False
         self.use_tiling = False
 
-        # only relevant if tiling is enabled
+        # only relevant if vae tiling is enabled
         self.tile_sample_min_size = self.config.sample_size
-        self.tile_latent_min_size = self.config.sample_size / (2 ** len(self.block_out_channels))
+        sample_size = (
+            self.config.sample_size[0]
+            if isinstance(self.config.sample_size, (list, tuple))
+            else self.config.sample_size
+        )
+        self.tile_latent_min_size = int(sample_size / (2 ** (len(self.block_out_channels) - 1)))
         self.tile_overlap_factor = 0.25
 
     def enable_tiling(self, use_tiling: bool = True):
@@ -206,7 +211,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
                 Whether or not to return a [`AutoencoderKLOutput`] instead of a plain tuple.
         """
         overlap_size = int(self.tile_sample_min_size * (1 - self.tile_overlap_factor))
-        blend_width = int(self.tile_sample_min_size * self.tile_overlap_factor)
+        blend_width = int(self.tile_latent_min_size * self.tile_overlap_factor)
         row_limit = self.tile_latent_min_size - blend_width
 
         # Split the image into 512x512 tiles and encode them separately.
@@ -253,7 +258,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
                 Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
         """
         overlap_size = int(self.tile_latent_min_size * (1 - self.tile_overlap_factor))
-        blend_width = int(self.tile_latent_min_size * self.tile_overlap_factor)
+        blend_width = int(self.tile_sample_min_size * self.tile_overlap_factor)
         row_limit = self.tile_sample_min_size - blend_width
 
         # Split z into overlapping 64x64 tiles and decode them separately.

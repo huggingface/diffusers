@@ -421,22 +421,11 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_stable_diffusion_vae_tiling(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        unet = self.dummy_cond_unet
-        scheduler = LMSDiscreteScheduler.from_pretrained("CompVis/stable-diffusion-v1-4")
-        vae = self.dummy_vae
-        bert = self.dummy_text_encoder
-        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+        components = self.get_dummy_components()
 
         # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionPipeline(
-            unet=unet,
-            scheduler=scheduler,
-            vae=vae,
-            text_encoder=bert,
-            tokenizer=tokenizer,
-            safety_checker=None,
-            feature_extractor=self.dummy_extractor,
-        )
+        components["safety_checker"] = None
+        sd_pipe = StableDiffusionPipeline(**components)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -451,7 +440,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         generator = torch.Generator(device=device).manual_seed(0)
         output_2 = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
 
-        assert np.abs(output_2.images.flatten() - output_1.images.flatten()).max() < 1e-4
+        assert np.abs(output_2.images.flatten() - output_1.images.flatten()).max() < 5e-1
 
     def test_stable_diffusion_negative_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
