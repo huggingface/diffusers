@@ -56,6 +56,7 @@ class StableDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.T
             in_channels=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             cross_attention_dim=32,
+            conditioning_embedding_out_channels=(16, 32),
         )
         torch.manual_seed(0)
         scheduler = DDIMScheduler(
@@ -107,7 +108,7 @@ class StableDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.T
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
 
-        controlnet_embedder_scale_factor = 8
+        controlnet_embedder_scale_factor = 2
         image = randn_tensor(
             (1, 3, 32 * controlnet_embedder_scale_factor, 32 * controlnet_embedder_scale_factor),
             generator=generator,

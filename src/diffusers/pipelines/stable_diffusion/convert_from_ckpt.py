@@ -527,12 +527,17 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
 
     if controlnet:
         # conditioning embedding
-        # NOTE: `8` is hardcoded based off of the number of blocks in `ControlNetConditioningDefaultEmbedding`
-        for i in range(8):
-            new_checkpoint[f"controlnet_cond_embedding.conditioning_embedder.{i*2}.weight"] = unet_state_dict.pop(
+        new_checkpoint["controlnet_cond_embedding.conv_in.weight"] = unet_state_dict.pop("input_hint_block.0.weight")
+        new_checkpoint["controlnet_cond_embedding.conv_in.bias"] = unet_state_dict.pop("input_hint_block.0.bias")
+
+        new_checkpoint["controlnet_cond_embedding.conv_out.weight"] = unet_state_dict.pop("input_hint_block.7.weight")
+        new_checkpoint["controlnet_cond_embedding.conv_out.bias"] = unet_state_dict.pop("input_hint_block.7.bias")
+
+        for i in range(1, 7):
+            new_checkpoint[f"controlnet_cond_embedding.blocks.{i*2}.weight"] = unet_state_dict.pop(
                 f"input_hint_block.{i*2}.weight"
             )
-            new_checkpoint[f"controlnet_cond_embedding.conditioning_embedder.{i*2}.bias"] = unet_state_dict.pop(
+            new_checkpoint[f"controlnet_cond_embedding.blocks.{i*2}.bias"] = unet_state_dict.pop(
                 f"input_hint_block.{i*2}.bias"
             )
 

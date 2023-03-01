@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, logging
@@ -39,7 +40,7 @@ class ControlNetOutput(BaseOutput):
     mid_block_res_sample: torch.Tensor
 
 
-class ControlNetConditioningDefaultEmbedding(nn.Module):
+class ControlNetConditioningEmbedding(nn.Module):
     """
     "Stable Diffusion uses a pre-processing method similar to VQ-GAN [11] to convert the entire dataset of 512 × 512
     images into smaller 64 × 64 “latent images” for stabilized training. This requires ControlNets to convert
@@ -49,29 +50,38 @@ class ControlNetConditioningDefaultEmbedding(nn.Module):
     feature maps ..."
     """
 
-    def __init__(self, conditioning_embedding_channels: int, conditioning_channels: int = 3):
+    def __init__(
+        self,
+        conditioning_embedding_channels: int,
+        conditioning_channels: int = 3,
+        block_out_channels: Tuple[int] = (16, 32, 96, 256),
+    ):
         super().__init__()
 
-        self.conditioning_embedder = nn.Sequential(
-            nn.Conv2d(conditioning_channels, 16, kernel_size=3, padding=1),
-            nn.SiLU(),
-            nn.Conv2d(16, 16, kernel_size=3, padding=1),
-            nn.SiLU(),
-            nn.Conv2d(16, 32, kernel_size=3, padding=1, stride=2),
-            nn.SiLU(),
-            nn.Conv2d(32, 32, kernel_size=3, padding=1),
-            nn.SiLU(),
-            nn.Conv2d(32, 96, kernel_size=3, padding=1, stride=2),
-            nn.SiLU(),
-            nn.Conv2d(96, 96, kernel_size=3, padding=1),
-            nn.SiLU(),
-            nn.Conv2d(96, 256, kernel_size=3, padding=1, stride=2),
-            nn.SiLU(),
-            zero_module(nn.Conv2d(256, conditioning_embedding_channels, kernel_size=3, padding=1)),
+        self.conv_in = nn.Conv2d(conditioning_channels, block_out_channels[0], kernel_size=3, padding=1)
+
+        self.blocks = nn.ModuleList([])
+
+        for i in range(len(block_out_channels) - 1):
+            channel_in = block_out_channels[i]
+            channel_out = block_out_channels[i + 1]
+            self.blocks.append(nn.Conv2d(channel_in, channel_in, kernel_size=3, padding=1))
+            self.blocks.append(nn.Conv2d(channel_in, channel_out, kernel_size=3, padding=1, stride=2))
+
+        self.conv_out = zero_module(
+            nn.Conv2d(block_out_channels[-1], conditioning_embedding_channels, kernel_size=3, padding=1)
         )
 
     def forward(self, conditioning):
-        embedding = self.conditioning_embedder(conditioning)
+        embedding = self.conv_in(conditioning)
+        embedding = F.silu(embedding)
+
+        for block in self.blocks:
+            embedding = block(embedding)
+            embedding = F.silu(embedding)
+
+        embedding = self.conv_out(embedding)
+
         return embedding
 
 
@@ -107,6 +117,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         resnet_time_scale_shift: str = "default",
         projection_class_embeddings_input_dim: Optional[int] = None,
         controlnet_conditioning_channel_order: str = "rgb",
+        conditioning_embedding_out_channels: Optional[Tuple[int]] = (16, 32, 96, 256),
     ):
         super().__init__()
 
@@ -169,8 +180,9 @@ class ControlNetModel(ModelMixin, ConfigMixin):
             self.class_embedding = None
 
         # control net conditioning embedding
-        self.controlnet_cond_embedding = ControlNetConditioningDefaultEmbedding(
+        self.controlnet_cond_embedding = ControlNetConditioningEmbedding(
             conditioning_embedding_channels=block_out_channels[0],
+            block_out_channels=conditioning_embedding_out_channels,
         )
 
         self.down_blocks = nn.ModuleList([])
