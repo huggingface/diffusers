@@ -148,18 +148,16 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_canny(self):
-        controlnet = ControlNetModel.from_pretrained(
-            "fusing/stable-diffusion-v1-5-controlnet-seg", torch_dtype=torch.float16
-        )
+        controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-canny")
 
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, safety_checker=None, controlnet=controlnet
+            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        prompt = "pig with skyscrapers in background"
+        prompt = "pig in barn"
         image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/pig_canny.png"
         )
