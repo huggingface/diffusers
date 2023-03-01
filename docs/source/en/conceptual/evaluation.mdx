@@ -243,9 +243,8 @@ Let's first load the [`StableDiffusionInstructPix2PixPipeline`]:
 ```python
 from diffusers import StableDiffusionInstructPix2PixPipeline
 
-instruct_pix2pix_model_id = "timbrooks/instruct-pix2pix"
-instruct_pix2pix_pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained("timbrooks/instruct-pix2pix", torch_dtype=torch.float16)
-    instruct_pix2pix_model_id, torch_dtype=weight_dtype
+instruct_pix2pix_pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
+    "timbrooks/instruct-pix2pix", torch_dtype=torch.float16
 ).to(device)
 ```
 
