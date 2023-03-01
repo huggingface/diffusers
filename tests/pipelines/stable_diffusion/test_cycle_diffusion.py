@@ -25,6 +25,7 @@ from diffusers import AutoencoderKL, CycleDiffusionPipeline, DDIMScheduler, UNet
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
 
+from ...pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin
 
 
@@ -33,6 +34,14 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 class CycleDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = CycleDiffusionPipeline
+    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {
+        "negative_prompt",
+        "height",
+        "width",
+        "negative_prompt_embeds",
+    }
+    required_optional_params = PipelineTesterMixin.required_optional_params - {"latents"}
+    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)

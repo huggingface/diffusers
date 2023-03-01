@@ -28,17 +28,21 @@ class PipelineTesterMixin:
     equivalence of dict and tuple outputs, etc.
     """
 
-    allowed_required_args = [
-        "source_prompt",
-        "prompt",
-        "image",
-        "mask_image",
-        "example_image",
-        "class_labels",
-        "token_indices",
-    ]
-    required_optional_params = ["generator", "num_inference_steps", "return_dict"]
-    num_inference_steps_args = ["num_inference_steps"]
+    # Canonical parameters that are passed to `__call__` regardless
+    # of the type of pipeline. They are always optional and have common
+    # sense default values.
+    required_optional_params = frozenset(
+        [
+            "num_inference_steps",
+            "num_images_per_prompt",
+            "generator",
+            "latents",
+            "output_type",
+            "return_dict",
+            "callback",
+            "callback_steps",
+        ]
+    )
 
     # set these parameters to False in the child class if the pipeline does not support the corresponding functionality
     test_attention_slicing = True
@@ -66,6 +70,35 @@ class PipelineTesterMixin:
     def get_dummy_inputs(self, device, seed=0):
         raise NotImplementedError(
             "You need to implement `get_dummy_inputs(self, device, seed)` in the child test class. "
+            "See existing pipeline tests for reference."
+        )
+
+    @property
+    def params(self) -> frozenset:
+        raise NotImplementedError(
+            "You need to set the attribute `params` in the child test class. "
+            "`params` are checked for if all values are present in `__call__`'s signature."
+            " You can set `params` using one of the common set of parameters defined in`pipeline_params.py`"
+            " e.g., `TEXT_TO_IMAGE_PARAMS` defines the common parameters used in text to  "
+            "image pipelines, including prompts and prompt embedding overrides."
+            "If your pipeline's set of arguments has minor changes from one of the common sets of arguments, "
+            "do not make modifications to the existing common sets of arguments. I.e. a text to image pipeline "
+            "with non-configurable height and width arguments should set the attribute as "
+            "`params = TEXT_TO_IMAGE_PARAMS - {'height', 'width'}`. "
+            "See existing pipeline tests for reference."
+        )
+
+    @property
+    def batch_params(self) -> frozenset:
+        raise NotImplementedError(
+            "You need to set the attribute `batch_params` in the child test class. "
+            "`batch_params` are the parameters required to be batched when passed to the pipeline's "
+            "`__call__` method. `pipeline_params.py` provides some common sets of parameters such as "
+            "`TEXT_TO_IMAGE_BATCH_PARAMS`, `IMAGE_VARIATION_BATCH_PARAMS`, etc... If your pipeline's "
+            "set of batch arguments has minor changes from one of the common sets of batch arguments, "
+            "do not make modifications to the existing common sets of batch arguments. I.e. a text to "
+            "image pipeline `negative_prompt` is not batched should set the attribute as "
+            "`batch_params = TEXT_TO_IMAGE_BATCH_PARAMS - {'negative_prompt'}`. "
             "See existing pipeline tests for reference."
         )
 
@@ -100,29 +133,51 @@ class PipelineTesterMixin:
         max_diff = np.abs(output - output_loaded).max()
         self.assertLess(max_diff, 1e-4)
 
-    def test_pipeline_call_implements_required_args(self):
-        assert hasattr(self.pipeline_class, "__call__"), f"{self.pipeline_class} should have a `__call__` method"
+    def test_pipeline_call_signature(self):
+        self.assertTrue(
+            hasattr(self.pipeline_class, "__call__"), f"{self.pipeline_class} should have a `__call__` method"
+        )
+
         parameters = inspect.signature(self.pipeline_class.__call__).parameters
-        required_parameters = {k: v for k, v in parameters.items() if v.default == inspect._empty}
-        required_parameters.pop("self")
-        required_parameters = set(required_parameters)
-        optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
 
-        for param in required_parameters:
-            if param == "kwargs":
-                # kwargs can be added if arguments of pipeline call function are deprecated
-                continue
-            assert param in self.allowed_required_args
+        optional_parameters = set()
 
-        optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
+        for k, v in parameters.items():
+            if v.default != inspect._empty:
+                optional_parameters.add(k)
+
+        parameters = set(parameters.keys())
+        parameters.remove("self")
+        parameters.discard("kwargs")  # kwargs can be added if arguments of pipeline call function are deprecated
+
+        remaining_required_parameters = set()
+
+        for param in self.params:
+            if param not in parameters:
+                remaining_required_parameters.add(param)
+
+        self.assertTrue(
+            len(remaining_required_parameters) == 0,
+            f"Required parameters not present: {remaining_required_parameters}",
+        )
+
+        remaining_required_optional_parameters = set()
 
         for param in self.required_optional_params:
-            assert param in optional_parameters
+            if param not in optional_parameters:
+                remaining_required_optional_parameters.add(param)
+
+        self.assertTrue(
+            len(remaining_required_optional_parameters) == 0,
+            f"Required optional parameters not present: {remaining_required_optional_parameters}",
+        )
 
     def test_inference_batch_consistent(self):
         self._test_inference_batch_consistent()
 
-    def _test_inference_batch_consistent(self, batch_sizes=[2, 4, 13]):
+    def _test_inference_batch_consistent(
+        self, batch_sizes=[2, 4, 13], additional_params_copy_to_batched_inputs=["num_inference_steps"]
+    ):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
@@ -137,7 +192,7 @@ class PipelineTesterMixin:
         for batch_size in batch_sizes:
             batched_inputs = {}
             for name, value in inputs.items():
-                if name in self.allowed_required_args:
+                if name in self.batch_params:
                     # prompt is string
                     if name == "prompt":
                         len_prompt = len(value)
@@ -154,7 +209,7 @@ class PipelineTesterMixin:
                 else:
                     batched_inputs[name] = value
 
-            for arg in self.num_inference_steps_args:
+            for arg in additional_params_copy_to_batched_inputs:
                 batched_inputs[arg] = inputs[arg]
 
             batched_inputs["output_type"] = None
@@ -181,7 +236,11 @@ class PipelineTesterMixin:
         self._test_inference_batch_single_identical()
 
     def _test_inference_batch_single_identical(
-        self, test_max_difference=None, test_mean_pixel_difference=None, relax_max_difference=False
+        self,
+        test_max_difference=None,
+        test_mean_pixel_difference=None,
+        relax_max_difference=False,
+        additional_params_copy_to_batched_inputs=["num_inference_steps"],
     ):
         if test_max_difference is None:
             # TODO(Pedro) - not sure why, but not at all reproducible at the moment it seems
@@ -206,7 +265,7 @@ class PipelineTesterMixin:
         batched_inputs = {}
         batch_size = 3
         for name, value in inputs.items():
-            if name in self.allowed_required_args:
+            if name in self.batch_params:
                 # prompt is string
                 if name == "prompt":
                     len_prompt = len(value)
@@ -225,7 +284,7 @@ class PipelineTesterMixin:
             else:
                 batched_inputs[name] = value
 
-        for arg in self.num_inference_steps_args:
+        for arg in additional_params_copy_to_batched_inputs:
             batched_inputs[arg] = inputs[arg]
 
         if self.pipeline_class.__name__ != "DanceDiffusionPipeline":

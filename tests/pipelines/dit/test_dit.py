@@ -23,6 +23,10 @@ from diffusers import AutoencoderKL, DDIMScheduler, DiTPipeline, DPMSolverMultis
 from diffusers.utils import load_numpy, slow
 from diffusers.utils.testing_utils import require_torch_gpu
 
+from ...pipeline_params import (
+    CLASS_CONDITIONED_IMAGE_GENERATION_BATCH_PARAMS,
+    CLASS_CONDITIONED_IMAGE_GENERATION_PARAMS,
+)
 from ...test_pipelines_common import PipelineTesterMixin
 
 
@@ -31,6 +35,14 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = DiTPipeline
+    params = CLASS_CONDITIONED_IMAGE_GENERATION_PARAMS
+    required_optional_params = PipelineTesterMixin.required_optional_params - {
+        "latents",
+        "num_images_per_prompt",
+        "callback",
+        "callback_steps",
+    }
+    batch_params = CLASS_CONDITIONED_IMAGE_GENERATION_BATCH_PARAMS
     test_cpu_offload = False
 
     def get_dummy_components(self):

@@ -29,6 +29,7 @@ from diffusers import (
 from diffusers.utils import load_numpy, skip_mps, slow
 from diffusers.utils.testing_utils import require_torch_gpu
 
+from ...pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin
 
 
@@ -36,6 +37,8 @@ from ...test_pipelines_common import PipelineTesterMixin
 class StableDiffusionAttendAndExcitePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionAttendAndExcitePipeline
     test_attention_slicing = False
+    params = TEXT_TO_IMAGE_PARAMS
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS.union({"token_indices"})
 
     def get_dummy_components(self):
         torch.manual_seed(0)

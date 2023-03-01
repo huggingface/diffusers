@@ -26,6 +26,7 @@ from diffusers import AutoencoderKL, PNDMScheduler, StableDiffusionInpaintPipeli
 from diffusers.utils import floats_tensor, load_image, load_numpy, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu, slow
 
+from ...pipeline_params import TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin
 
 
@@ -34,6 +35,8 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 class StableDiffusion2InpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionInpaintPipeline
+    params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
+    batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)

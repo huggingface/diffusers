@@ -33,6 +33,7 @@ from diffusers import (
 from diffusers.utils import load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import load_image, load_pt, require_torch_gpu, skip_mps
 
+from ...pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin
 
 
@@ -42,6 +43,8 @@ torch.backends.cuda.matmul.allow_tf32 = False
 @skip_mps
 class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionPix2PixZeroPipeline
+    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
+    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
 
     @classmethod
     def setUpClass(cls):
