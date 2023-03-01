@@ -13,11 +13,10 @@
 # limitations under the License.
 import os
 
+from huggingface_hub.constants import HUGGINGFACE_HUB_CACHE, hf_cache_home
 
-hf_cache_home = os.path.expanduser(
-    os.getenv("HF_HOME", os.path.join(os.getenv("XDG_CACHE_HOME", "~/.cache"), "huggingface"))
-)
-default_cache_path = os.path.join(hf_cache_home, "diffusers")
+
+default_cache_path = HUGGINGFACE_HUB_CACHE
 
 
 CONFIG_NAME = "config.json"
