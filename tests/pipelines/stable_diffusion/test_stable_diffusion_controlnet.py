@@ -175,7 +175,31 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
         assert np.abs(expected_image - image).max() < 1e-4
 
     def test_depth(self):
-        ...
+        controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-depth")
+
+        pipe = StableDiffusionControlNetPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet, revision="non-ema"
+        )
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device="cpu").manual_seed(5)
+        prompt = "Stormtrooper's lecture"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth.png"
+        )
+
+        output = pipe(prompt, image, generator=generator, output_type="pt")
+
+        image = output.images[0]
+
+        assert image.shape == (512, 512, 3)
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth_out.npy"
+        )
+
+        assert np.abs(expected_image - image).max() < 1e-4
 
     def test_hed(self):
         ...
