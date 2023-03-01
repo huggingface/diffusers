@@ -23,7 +23,7 @@ from uuid import uuid4
 from huggingface_hub import HfFolder, whoami
 
 from . import __version__
-from .utils import ENV_VARS_TRUE_VALUES, logging
+from .utils import ENV_VARS_TRUE_VALUES, HUGGINGFACE_CO_RESOLVE_ENDPOINT, logging
 from .utils.import_utils import (
     _flax_version,
     _jax_version,
@@ -45,7 +45,9 @@ logger = logging.get_logger(__name__)
 
 MODEL_CARD_TEMPLATE_PATH = Path(__file__).parent / "utils" / "model_card_template.md"
 SESSION_ID = uuid4().hex
+HF_HUB_OFFLINE = os.getenv("HF_HUB_OFFLINE", "").upper() in ENV_VARS_TRUE_VALUES
 DISABLE_TELEMETRY = os.getenv("DISABLE_TELEMETRY", "").upper() in ENV_VARS_TRUE_VALUES
+HUGGINGFACE_CO_TELEMETRY = HUGGINGFACE_CO_RESOLVE_ENDPOINT + "/api/telemetry/"
 
 
 def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
@@ -53,7 +55,7 @@ def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
     Formats a user-agent string with basic info about a request.
     """
     ua = f"diffusers/{__version__}; python/{sys.version.split()[0]}; session_id/{SESSION_ID}"
-    if DISABLE_TELEMETRY:
+    if DISABLE_TELEMETRY or HF_HUB_OFFLINE:
         return ua + "; telemetry/off"
     if is_torch_available():
         ua += f"; torch/{_torch_version}"
@@ -111,9 +113,9 @@ def create_model_card(args, model_name):
         learning_rate=args.learning_rate,
         train_batch_size=args.train_batch_size,
         eval_batch_size=args.eval_batch_size,
-        gradient_accumulation_steps=args.gradient_accumulation_steps
-        if hasattr(args, "gradient_accumulation_steps")
-        else None,
+        gradient_accumulation_steps=(
+            args.gradient_accumulation_steps if hasattr(args, "gradient_accumulation_steps") else None
+        ),
         adam_beta1=args.adam_beta1 if hasattr(args, "adam_beta1") else None,
         adam_beta2=args.adam_beta2 if hasattr(args, "adam_beta2") else None,
         adam_weight_decay=args.adam_weight_decay if hasattr(args, "adam_weight_decay") else None,

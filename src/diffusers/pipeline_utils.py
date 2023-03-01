@@ -375,6 +375,10 @@ class DiffusionPipeline(ConfigMixin):
                 The specific model version to use. It can be a branch name, a tag name, or a commit id, since we use a
                 git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
                 identifier allowed by git.
+            custom_revision (`str`, *optional*, defaults to `"main"` when loading from the Hub and to local version of `diffusers` when loading from GitHub):
+                The specific model version to use. It can be a branch name, a tag name, or a commit id similar to
+                `revision` when loading a custom pipeline from the Hub. It can be a diffusers version when loading a
+                custom pipeline from GitHub.
             mirror (`str`, *optional*):
                 Mirror source to accelerate downloads in China. If you are from China and have an accessibility
                 problem, you can set this option to resolve it. Note that we do not guarantee the timeliness or safety.
@@ -442,6 +446,7 @@ class DiffusionPipeline(ConfigMixin):
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
         custom_pipeline = kwargs.pop("custom_pipeline", None)
+        custom_revision = kwargs.pop("custom_revision", None)
         provider = kwargs.pop("provider", None)
         sess_options = kwargs.pop("sess_options", None)
         device_map = kwargs.pop("device_map", None)
@@ -477,8 +482,9 @@ class DiffusionPipeline(ConfigMixin):
             else:
                 requested_pipeline_class = config_dict.get("_class_name", cls.__name__)
             user_agent = {"pipeline_class": requested_pipeline_class}
-            if custom_pipeline is not None:
+            if custom_pipeline is not None and not custom_pipeline.endswith(".py"):
                 user_agent["custom_pipeline"] = custom_pipeline
+
             user_agent = http_user_agent(user_agent)
 
             if is_safetensors_available():
@@ -520,7 +526,7 @@ class DiffusionPipeline(ConfigMixin):
                 file_name = CUSTOM_PIPELINE_FILE_NAME
 
             pipeline_class = get_class_from_dynamic_module(
-                custom_pipeline, module_file=file_name, cache_dir=custom_pipeline
+                custom_pipeline, module_file=file_name, cache_dir=cache_dir, revision=custom_revision
             )
         elif cls != DiffusionPipeline:
             pipeline_class = cls
@@ -839,3 +845,34 @@ class DiffusionPipeline(ConfigMixin):
             module = getattr(self, module_name)
             if isinstance(module, torch.nn.Module):
                 fn_recursive_set_mem_eff(module)
+
+    def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
+        r"""
+        Enable sliced attention computation.
+
+        When this option is enabled, the attention module will split the input tensor in slices, to compute attention
+        in several steps. This is useful to save some memory in exchange for a small speed decrease.
+
+        Args:
+            slice_size (`str` or `int`, *optional*, defaults to `"auto"`):
+                When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
+                `"max"`, maxium amount of memory will be saved by running only one slice at a time. If a number is
+                provided, uses as many slices as `attention_head_dim // slice_size`. In this case, `attention_head_dim`
+                must be a multiple of `slice_size`.
+        """
+        self.set_attention_slice(slice_size)
+
+    def disable_attention_slicing(self):
+        r"""
+        Disable sliced attention computation. If `enable_attention_slicing` was previously invoked, this method will go
+        back to computing attention in one step.
+        """
+        # set slice_size = `None` to disable `attention slicing`
+        self.enable_attention_slicing(None)
+
+    def set_attention_slice(self, slice_size: Optional[int]):
+        module_names, _, _ = self.extract_init_dict(dict(self.config))
+        for module_name in module_names:
+            module = getattr(self, module_name)
+            if isinstance(module, torch.nn.Module) and hasattr(module, "set_attention_slice"):
+                module.set_attention_slice(slice_size)

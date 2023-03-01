@@ -24,9 +24,9 @@ from diffusers import StableDiffusionImg2ImgPipeline
 
 # load the pipeline
 device = "cuda"
-pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", revision="fp16", torch_dtype=torch.float16
-).to(device)
+pipe = StableDiffusionImg2ImgPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to(
+    device
+)
 
 # let's download an initial image
 url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"

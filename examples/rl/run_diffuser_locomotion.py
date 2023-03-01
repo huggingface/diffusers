@@ -8,7 +8,7 @@ config = dict(
     n_samples=64,
     horizon=32,
     num_inference_steps=20,
-    n_guide_steps=2,
+    n_guide_steps=2,  # can set to 0 for faster sampling, does not use value network
     scale_grad_by_std=True,
     scale=0.1,
     eta=0.0,
@@ -40,6 +40,7 @@ if __name__ == "__main__":
             # execute action in environment
             next_observation, reward, terminal, _ = env.step(denorm_actions)
             score = env.get_normalized_score(total_reward)
+
             # update return
             total_reward += reward
             total_score += score
@@ -47,6 +48,7 @@ if __name__ == "__main__":
                 f"Step: {t}, Reward: {reward}, Total Reward: {total_reward}, Score: {score}, Total Score:"
                 f" {total_score}"
             )
+
             # save observations for rendering
             rollout.append(next_observation.copy())
 

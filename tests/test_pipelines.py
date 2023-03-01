@@ -18,6 +18,7 @@ import json
 import os
 import random
 import shutil
+import sys
 import tempfile
 import unittest
 
@@ -26,7 +27,6 @@ import torch
 
 import PIL
 import safetensors.torch
-import transformers
 from diffusers import (
     AutoencoderKL,
     DDIMPipeline,
@@ -47,7 +47,7 @@ from diffusers import (
 )
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
-from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, slow, torch_device
+from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, nightly, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir, require_torch_gpu
 from parameterized import parameterized
 from PIL import Image
@@ -55,29 +55,6 @@ from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextConfig, CLIPTe
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
-
-
-def test_progress_bar(capsys):
-    model = UNet2DModel(
-        block_out_channels=(32, 64),
-        layers_per_block=2,
-        sample_size=32,
-        in_channels=3,
-        out_channels=3,
-        down_block_types=("DownBlock2D", "AttnDownBlock2D"),
-        up_block_types=("AttnUpBlock2D", "UpBlock2D"),
-    )
-    scheduler = DDPMScheduler(num_train_timesteps=10)
-
-    ddpm = DDPMPipeline(model, scheduler).to(torch_device)
-    ddpm(output_type="numpy").images
-    captured = capsys.readouterr()
-    assert "10/10" in captured.err, "Progress bar has to be displayed"
-
-    ddpm.set_progress_bar_config(disable=True)
-    ddpm(output_type="numpy").images
-    captured = capsys.readouterr()
-    assert captured.err == "", "Progress bar should be disabled"
 
 
 class DownloadTests(unittest.TestCase):
@@ -108,7 +85,7 @@ class DownloadTests(unittest.TestCase):
         pipe_2 = StableDiffusionPipeline.from_pretrained(local_path)
 
         pipe = pipe.to(torch_device)
-        pipe_2 = pipe.to(torch_device)
+        pipe_2 = pipe_2.to(torch_device)
         if torch_device == "mps":
             # device type MPS is not supported for torch.Generator() api.
             generator = torch.manual_seed(0)
@@ -231,6 +208,31 @@ class CustomPipelineTests(unittest.TestCase):
         # under https://huggingface.co/hf-internal-testing/diffusers-dummy-pipeline/blob/main/pipeline.py#L24
         assert pipeline.__class__.__name__ == "CustomPipeline"
 
+    def test_load_custom_github(self):
+        pipeline = DiffusionPipeline.from_pretrained(
+            "google/ddpm-cifar10-32", custom_pipeline="one_step_unet", custom_revision="main"
+        )
+
+        # make sure that on "main" pipeline gives only ones because of: https://github.com/huggingface/diffusers/pull/1690
+        with torch.no_grad():
+            output = pipeline()
+
+        assert output.numel() == output.sum()
+
+        # hack since Python doesn't like overwriting modules: https://stackoverflow.com/questions/3105801/unload-a-module-in-python
+        # Could in the future work with hashes instead.
+        del sys.modules["diffusers_modules.git.one_step_unet"]
+
+        pipeline = DiffusionPipeline.from_pretrained(
+            "google/ddpm-cifar10-32", custom_pipeline="one_step_unet", custom_revision="0.10.2"
+        )
+        with torch.no_grad():
+            output = pipeline()
+
+        assert output.numel() != output.sum()
+
+        assert pipeline.__class__.__name__ == "UnetSchedulerOneForwardPipeline"
+
     def test_run_custom_pipeline(self):
         pipeline = DiffusionPipeline.from_pretrained(
             "google/ddpm-cifar10-32", custom_pipeline="hf-internal-testing/diffusers-dummy-pipeline"
@@ -284,7 +286,6 @@ class CustomPipelineTests(unittest.TestCase):
             clip_model=clip_model,
             feature_extractor=feature_extractor,
             torch_dtype=torch.float16,
-            revision="fp16",
         )
         pipeline.enable_attention_slicing()
         pipeline = pipeline.to(torch_device)
@@ -556,9 +557,8 @@ class PipelineFastTests(unittest.TestCase):
 
             # Validate that the text encoder safetensor exists and are of the correct format
             text_encoder_path = os.path.join(tmpdirname, "text_encoder", "model.safetensors")
-            if transformers.__version__ >= "4.25.1":
-                assert os.path.exists(text_encoder_path), f"Could not find {text_encoder_path}"
-                _ = safetensors.torch.load_file(text_encoder_path)
+            assert os.path.exists(text_encoder_path), f"Could not find {text_encoder_path}"
+            _ = safetensors.torch.load_file(text_encoder_path)
 
             pipeline = StableDiffusionPipeline.from_pretrained(tmpdirname)
             assert pipeline.unet is not None
@@ -673,6 +673,7 @@ class PipelineFastTests(unittest.TestCase):
 
 
 @slow
+@require_torch_gpu
 class PipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
@@ -814,6 +815,16 @@ class PipelineSlowTests(unittest.TestCase):
         images = pipe(generator=generator, num_inference_steps=4).images
         assert isinstance(images, list)
         assert isinstance(images[0], PIL.Image.Image)
+
+
+@nightly
+@require_torch_gpu
+class PipelineNightlyTests(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
 
     def test_ddpm_ddim_equality_batched(self):
         seed = 0

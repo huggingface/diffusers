@@ -18,8 +18,11 @@ Whether you're a developer or an everyday user, this quick tour will help you ge
 Before you begin, make sure you have all the necessary libraries installed:
 
 ```bash
-pip install --upgrade diffusers
+pip install --upgrade diffusers accelerate transformers
 ```
+
+- [`accelerate`](https://huggingface.co/docs/accelerate/index) speeds up model loading for inference and training
+- [`transformers`](https://huggingface.co/docs/transformers/index) is required to run the most popular diffusion models, such as [Stable Diffusion](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion)
 
 ## DiffusionPipeline
 
@@ -29,19 +32,26 @@ The [`DiffusionPipeline`] is the easiest way to use a pre-trained diffusion syst
 |------------------------------|--------------------------------------------------------------------------------------------------------------|-----------------|
 | Unconditional Image Generation          | generate an image from gaussian noise | [unconditional_image_generation](./using-diffusers/unconditional_image_generation`) |
 | Text-Guided Image Generation | generate an image given a text prompt | [conditional_image_generation](./using-diffusers/conditional_image_generation) |
-| Text-Guided Image-to-Image Translation     | generate an image given an original image and a text prompt | [img2img](./using-diffusers/img2img) |
+| Text-Guided Image-to-Image Translation     | adapt an image guided by a text prompt | [img2img](./using-diffusers/img2img) |
 | Text-Guided Image-Inpainting          | fill the masked part of an image given the image, the mask and a text prompt | [inpaint](./using-diffusers/inpaint) |
+| Text-Guided Depth-to-Image Translation | adapt parts of an image guided by a text prompt while preserving structure via depth estimation | [depth2image](./using-diffusers/depth2image) |
 
 For more in-detail information on how diffusion pipelines function for the different tasks, please have a look at the [**Using Diffusers**](./using-diffusers/overview) section.
 
 As an example, start by creating an instance of [`DiffusionPipeline`] and specify which pipeline checkpoint you would like to download.
 You can use the [`DiffusionPipeline`] for any [Diffusers' checkpoint](https://huggingface.co/models?library=diffusers&sort=downloads).
-In this guide though, you'll use [`DiffusionPipeline`] for text-to-image generation with [Latent Diffusion](https://huggingface.co/CompVis/ldm-text2im-large-256):
+In this guide though, you'll use [`DiffusionPipeline`] for text-to-image generation with [Stable Diffusion](https://huggingface.co/CompVis/stable-diffusion).
+
+For [Stable Diffusion](https://huggingface.co/CompVis/stable-diffusion), please carefully read its [license](https://huggingface.co/spaces/CompVis/stable-diffusion-license) before running the model.
+This is due to the improved image generation capabilities of the model and the potentially harmful content that could be produced with it.
+Please, head over to your stable diffusion model of choice, *e.g.*  [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5), and read the license.
+
+You can load the model as follows:
 
 ```python
 >>> from diffusers import DiffusionPipeline
 
->>> pipeline = DiffusionPipeline.from_pretrained("CompVis/ldm-text2im-large-256")
+>>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
 ```
 
 The [`DiffusionPipeline`] downloads and caches all modeling, tokenization, and scheduling components. 
@@ -66,40 +76,14 @@ You can save the image by simply calling:
 >>> image.save("image_of_squirrel_painting.png")
 ```
 
-More advanced models, like [Stable Diffusion](https://huggingface.co/CompVis/stable-diffusion) require you to accept a [license](https://huggingface.co/spaces/CompVis/stable-diffusion-license) before running the model.
-This is due to the improved image generation capabilities of the model and the potentially harmful content that could be produced with it.
-Please, head over to your stable diffusion model of choice, *e.g.*  [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5), read the license carefully and tick the checkbox if you agree.
-You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section of the documentation](https://huggingface.co/docs/hub/security-tokens).
-Having "click-accepted" the license, you can save your token:
-
-```python
-AUTH_TOKEN = "<please-fill-with-your-token>"
-```
-
-You can then load [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5)
-just like we did before only that now you need to pass your `AUTH_TOKEN`:
-
-```python
->>> from diffusers import DiffusionPipeline
-
->>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", use_auth_token=AUTH_TOKEN)
-```
-
-If you do not pass your authentication token you will see that the diffusion system will not be correctly 
-downloaded. Forcing the user to pass an authentication token ensures that it can be verified that the 
-user has indeed read and accepted the license, which also means that an internet connection is required.
-
-**Note**: If you do not want to be forced to pass an authentication token, you can also simply download 
-the weights locally via:
+**Note**: You can also use the pipeline locally by downloading the weights via:
 
 ```
 git lfs install
 git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
 ```
 
-and then load locally saved weights into the pipeline. This way, you do not need to pass an authentication
-token. Assuming that `"./stable-diffusion-v1-5"` is the local path to the cloned stable-diffusion-v1-5 repo,
-you can also load the pipeline as follows:
+and then loading the saved weights into the pipeline. 
 
 ```python
 >>> pipeline = DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5")
@@ -113,7 +97,7 @@ Running the pipeline is then identical to the code above as it's the same model 
 >>> image.save("image_of_squirrel_painting.png")
 ```
 
-Diffusion systems can be used with multiple different [schedulers](./api/schedulers) each with their
+Diffusion systems can be used with multiple different [schedulers](./api/schedulers/overview) each with their
 pros and cons. By default, Stable Diffusion runs with [`PNDMScheduler`], but it's very simple to 
 use a different scheduler. *E.g.* if you would instead like to use the [`EulerDiscreteScheduler`] scheduler,
 you could use it as follows:
@@ -121,7 +105,7 @@ you could use it as follows:
 ```python
 >>> from diffusers import EulerDiscreteScheduler
 
->>> pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", use_auth_token=AUTH_TOKEN)
+>>> pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
 
 >>> # change scheduler to Euler
 >>> pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)

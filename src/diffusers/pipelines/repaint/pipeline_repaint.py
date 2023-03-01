@@ -13,33 +13,61 @@
 # limitations under the License.
 
 
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 
 import PIL
-from tqdm.auto import tqdm
 
 from ...models import UNet2DModel
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import RePaintScheduler
+from ...utils import PIL_INTERPOLATION, deprecate, logging
 
 
-def _preprocess_image(image: PIL.Image.Image):
-    image = np.array(image.convert("RGB"))
-    image = image[None].transpose(0, 3, 1, 2)
-    image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.preprocess
+def _preprocess_image(image: Union[List, PIL.Image.Image, torch.Tensor]):
+    if isinstance(image, torch.Tensor):
+        return image
+    elif isinstance(image, PIL.Image.Image):
+        image = [image]
+
+    if isinstance(image[0], PIL.Image.Image):
+        w, h = image[0].size
+        w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
+
+        image = [np.array(i.resize((w, h), resample=PIL_INTERPOLATION["lanczos"]))[None, :] for i in image]
+        image = np.concatenate(image, axis=0)
+        image = np.array(image).astype(np.float32) / 255.0
+        image = image.transpose(0, 3, 1, 2)
+        image = 2.0 * image - 1.0
+        image = torch.from_numpy(image)
+    elif isinstance(image[0], torch.Tensor):
+        image = torch.cat(image, dim=0)
     return image
 
 
-def _preprocess_mask(mask: PIL.Image.Image):
-    mask = np.array(mask.convert("L"))
-    mask = mask.astype(np.float32) / 255.0
-    mask = mask[None, None]
-    mask[mask < 0.5] = 0
-    mask[mask >= 0.5] = 1
-    mask = torch.from_numpy(mask)
+def _preprocess_mask(mask: Union[List, PIL.Image.Image, torch.Tensor]):
+    if isinstance(mask, torch.Tensor):
+        return mask
+    elif isinstance(mask, PIL.Image.Image):
+        mask = [mask]
+
+    if isinstance(mask[0], PIL.Image.Image):
+        w, h = mask[0].size
+        w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
+        mask = [np.array(m.convert("L").resize((w, h), resample=PIL_INTERPOLATION["nearest"]))[None, :] for m in mask]
+        mask = np.concatenate(mask, axis=0)
+        mask = mask.astype(np.float32) / 255.0
+        mask[mask < 0.5] = 0
+        mask[mask >= 0.5] = 1
+        mask = torch.from_numpy(mask)
+    elif isinstance(mask[0], torch.Tensor):
+        mask = torch.cat(mask, dim=0)
     return mask
 
 
@@ -54,19 +82,20 @@ class RePaintPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        original_image: Union[torch.FloatTensor, PIL.Image.Image],
-        mask_image: Union[torch.FloatTensor, PIL.Image.Image],
+        image: Union[torch.Tensor, PIL.Image.Image],
+        mask_image: Union[torch.Tensor, PIL.Image.Image],
         num_inference_steps: int = 250,
         eta: float = 0.0,
         jump_length: int = 10,
         jump_n_sample: int = 10,
-        generator: Optional[torch.Generator] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
+        **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""
         Args:
-            original_image (`torch.FloatTensor` or `PIL.Image.Image`):
+            image (`torch.FloatTensor` or `PIL.Image.Image`):
                 The original image to inpaint on.
             mask_image (`torch.FloatTensor` or `PIL.Image.Image`):
                 The mask_image where 0.0 values define which part of the original image to inpaint (change).
@@ -83,8 +112,8 @@ class RePaintPipeline(DiffusionPipeline):
                 The number of times we will make forward time jump for a given chosen time sample. Take a look at
                 Figure 9 and 10 in https://arxiv.org/pdf/2201.09865.pdf.
             generator (`torch.Generator`, *optional*):
-                A [torch generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
-                deterministic.
+                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
+                to make generation deterministic.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -97,27 +126,44 @@ class RePaintPipeline(DiffusionPipeline):
             generated images.
         """
 
-        if not isinstance(original_image, torch.FloatTensor):
-            original_image = _preprocess_image(original_image)
-        original_image = original_image.to(self.device)
-        if not isinstance(mask_image, torch.FloatTensor):
-            mask_image = _preprocess_mask(mask_image)
-        mask_image = mask_image.to(self.device)
+        message = "Please use `image` instead of `original_image`."
+        original_image = deprecate("original_image", "0.15.0", message, take_from=kwargs)
+        original_image = original_image or image
+
+        original_image = _preprocess_image(original_image)
+        original_image = original_image.to(device=self.device, dtype=self.unet.dtype)
+        mask_image = _preprocess_mask(mask_image)
+        mask_image = mask_image.to(device=self.device, dtype=self.unet.dtype)
+
+        batch_size = original_image.shape[0]
 
         # sample gaussian noise to begin the loop
-        image = torch.randn(
-            original_image.shape,
-            generator=generator,
-            device=self.device,
-        )
-        image = image.to(self.device)
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+
+        rand_device = "cpu" if self.device.type == "mps" else self.device
+        image_shape = original_image.shape
+        if isinstance(generator, list):
+            shape = (1,) + image_shape[1:]
+            image = [
+                torch.randn(shape, generator=generator[i], device=rand_device, dtype=self.unet.dtype)
+                for i in range(batch_size)
+            ]
+            image = torch.cat(image, dim=0).to(self.device)
+        else:
+            image = torch.randn(image_shape, generator=generator, device=rand_device, dtype=self.unet.dtype)
+            image = image.to(self.device)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps, jump_length, jump_n_sample, self.device)
         self.scheduler.eta = eta
 
         t_last = self.scheduler.timesteps[0] + 1
-        for i, t in enumerate(tqdm(self.scheduler.timesteps)):
+        generator = generator[0] if isinstance(generator, list) else generator
+        for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
             if t < t_last:
                 # predict the noise residual
                 model_output = self.unet(image, t).sample

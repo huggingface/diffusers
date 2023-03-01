@@ -198,9 +198,11 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             or isinstance(timestep, torch.LongTensor)
         ):
             raise ValueError(
-                "Passing integer indices (e.g. from `enumerate(timesteps)`) as timesteps to"
-                " `EulerDiscreteScheduler.step()` is not supported. Make sure to pass"
-                " one of the `scheduler.timesteps` as a timestep.",
+                (
+                    "Passing integer indices (e.g. from `enumerate(timesteps)`) as timesteps to"
+                    " `EulerDiscreteScheduler.step()` is not supported. Make sure to pass"
+                    " one of the `scheduler.timesteps` as a timestep."
+                ),
             )
 
         if not self.is_scale_input_called:

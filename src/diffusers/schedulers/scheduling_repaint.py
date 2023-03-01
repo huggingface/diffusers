@@ -270,9 +270,13 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
         # been observed.
 
         # 5. Add noise
-        noise = torch.randn(
-            model_output.shape, dtype=model_output.dtype, generator=generator, device=model_output.device
-        )
+        device = model_output.device
+        if device.type == "mps":
+            # randn does not work reproducibly on mps
+            noise = torch.randn(model_output.shape, dtype=model_output.dtype, generator=generator)
+            noise = noise.to(device)
+        else:
+            noise = torch.randn(model_output.shape, generator=generator, device=device, dtype=model_output.dtype)
         std_dev_t = self.eta * self._get_variance(timestep) ** 0.5
 
         variance = 0
@@ -287,7 +291,7 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
         prev_unknown_part = alpha_prod_t_prev**0.5 * pred_original_sample + pred_sample_direction + variance
 
         # 8. Algorithm 1 Line 5 https://arxiv.org/pdf/2201.09865.pdf
-        prev_known_part = (alpha_prod_t**0.5) * original_image + ((1 - alpha_prod_t) ** 0.5) * noise
+        prev_known_part = (alpha_prod_t_prev**0.5) * original_image + ((1 - alpha_prod_t_prev) ** 0.5) * noise
 
         # 9. Algorithm 1 Line 8 https://arxiv.org/pdf/2201.09865.pdf
         pred_prev_sample = mask * prev_known_part + (1.0 - mask) * prev_unknown_part
@@ -305,7 +309,12 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
 
         for i in range(n):
             beta = self.betas[timestep + i]
-            noise = torch.randn(sample.shape, generator=generator, device=sample.device)
+            if sample.device.type == "mps":
+                # randn does not work reproducibly on mps
+                noise = torch.randn(sample.shape, dtype=sample.dtype, generator=generator)
+                noise = noise.to(sample.device)
+            else:
+                noise = torch.randn(sample.shape, generator=generator, device=sample.device, dtype=sample.dtype)
 
             # 10. Algorithm 1 Line 10 https://arxiv.org/pdf/2201.09865.pdf
             sample = (1 - beta) ** 0.5 * sample + beta**0.5 * noise

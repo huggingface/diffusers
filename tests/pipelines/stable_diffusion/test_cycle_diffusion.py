@@ -20,7 +20,7 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import AutoencoderKL, CycleDiffusionPipeline, DDIMScheduler, UNet2DConditionModel, UNet2DModel, VQModel
+from diffusers import AutoencoderKL, CycleDiffusionPipeline, DDIMScheduler, UNet2DConditionModel
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
@@ -32,39 +32,11 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 
 class CycleDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    def tearDown(self):
-        # clean up the VRAM after each test
-        super().tearDown()
-        gc.collect()
-        torch.cuda.empty_cache()
+    pipeline_class = CycleDiffusionPipeline
 
-    @property
-    def dummy_image(self):
-        batch_size = 1
-        num_channels = 3
-        sizes = (32, 32)
-
-        image = floats_tensor((batch_size, num_channels) + sizes, rng=random.Random(0)).to(torch_device)
-        return image
-
-    @property
-    def dummy_uncond_unet(self):
+    def get_dummy_components(self):
         torch.manual_seed(0)
-        model = UNet2DModel(
-            block_out_channels=(32, 64),
-            layers_per_block=2,
-            sample_size=32,
-            in_channels=3,
-            out_channels=3,
-            down_block_types=("DownBlock2D", "AttnDownBlock2D"),
-            up_block_types=("AttnUpBlock2D", "UpBlock2D"),
-        )
-        return model
-
-    @property
-    def dummy_cond_unet(self):
-        torch.manual_seed(0)
-        model = UNet2DConditionModel(
+        unet = UNet2DConditionModel(
             block_out_channels=(32, 64),
             layers_per_block=2,
             sample_size=32,
@@ -74,40 +46,16 @@ class CycleDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=32,
         )
-        return model
-
-    @property
-    def dummy_cond_unet_inpaint(self):
-        torch.manual_seed(0)
-        model = UNet2DConditionModel(
-            block_out_channels=(32, 64),
-            layers_per_block=2,
-            sample_size=32,
-            in_channels=9,
-            out_channels=4,
-            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
-            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
-            cross_attention_dim=32,
+        scheduler = DDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            num_train_timesteps=1000,
+            clip_sample=False,
+            set_alpha_to_one=False,
         )
-        return model
-
-    @property
-    def dummy_vq_model(self):
         torch.manual_seed(0)
-        model = VQModel(
-            block_out_channels=[32, 64],
-            in_channels=3,
-            out_channels=3,
-            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
-            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
-            latent_channels=3,
-        )
-        return model
-
-    @property
-    def dummy_vae(self):
-        torch.manual_seed(0)
-        model = AutoencoderKL(
+        vae = AutoencoderKL(
             block_out_channels=[32, 64],
             in_channels=3,
             out_channels=3,
@@ -115,12 +63,8 @@ class CycleDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
             latent_channels=4,
         )
-        return model
-
-    @property
-    def dummy_text_encoder(self):
         torch.manual_seed(0)
-        config = CLIPTextConfig(
+        text_encoder_config = CLIPTextConfig(
             bos_token_id=0,
             eos_token_id=2,
             hidden_size=32,
@@ -131,68 +75,50 @@ class CycleDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             pad_token_id=1,
             vocab_size=1000,
         )
-        return CLIPTextModel(config)
+        text_encoder = CLIPTextModel(text_encoder_config)
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
-    @property
-    def dummy_extractor(self):
-        def extract(*args, **kwargs):
-            class Out:
-                def __init__(self):
-                    self.pixel_values = torch.ones([0])
+        components = {
+            "unet": unet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+            "safety_checker": None,
+            "feature_extractor": None,
+        }
+        return components
 
-                def to(self, device):
-                    self.pixel_values.to(device)
-                    return self
-
-            return Out()
-
-        return extract
+    def get_dummy_inputs(self, device, seed=0):
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
+        inputs = {
+            "prompt": "An astronaut riding an elephant",
+            "source_prompt": "An astronaut riding a horse",
+            "image": image,
+            "generator": generator,
+            "num_inference_steps": 2,
+            "eta": 0.1,
+            "strength": 0.8,
+            "guidance_scale": 3,
+            "source_guidance_scale": 1,
+            "output_type": "numpy",
+        }
+        return inputs
 
     def test_stable_diffusion_cycle(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        unet = self.dummy_cond_unet
-        scheduler = DDIMScheduler(
-            beta_start=0.00085,
-            beta_end=0.012,
-            beta_schedule="scaled_linear",
-            num_train_timesteps=1000,
-            clip_sample=False,
-            set_alpha_to_one=False,
-        )
-        vae = self.dummy_vae
-        bert = self.dummy_text_encoder
-        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
-        # make sure here that pndm scheduler skips prk
-        sd_pipe = CycleDiffusionPipeline(
-            unet=unet,
-            scheduler=scheduler,
-            vae=vae,
-            text_encoder=bert,
-            tokenizer=tokenizer,
-            safety_checker=None,
-            feature_extractor=self.dummy_extractor,
-        )
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        components = self.get_dummy_components()
+        pipe = CycleDiffusionPipeline(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
 
-        source_prompt = "An astronaut riding a horse"
-        prompt = "An astronaut riding an elephant"
-        init_image = self.dummy_image.to(device)
-
-        generator = torch.Generator(device=device).manual_seed(0)
-        output = sd_pipe(
-            prompt=prompt,
-            source_prompt=source_prompt,
-            generator=generator,
-            num_inference_steps=2,
-            image=init_image,
-            eta=0.1,
-            strength=0.8,
-            guidance_scale=3,
-            source_guidance_scale=1,
-            output_type="np",
-        )
+        inputs = self.get_dummy_inputs(device)
+        output = pipe(**inputs)
         images = output.images
 
         image_slice = images[0, -3:, -3:, -1]
@@ -204,53 +130,16 @@ class CycleDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     @unittest.skipIf(torch_device != "cuda", "This test requires a GPU")
     def test_stable_diffusion_cycle_fp16(self):
-        unet = self.dummy_cond_unet
-        scheduler = DDIMScheduler(
-            beta_start=0.00085,
-            beta_end=0.012,
-            beta_schedule="scaled_linear",
-            num_train_timesteps=1000,
-            clip_sample=False,
-            set_alpha_to_one=False,
-        )
-        vae = self.dummy_vae
-        bert = self.dummy_text_encoder
-        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+        components = self.get_dummy_components()
+        for name, module in components.items():
+            if hasattr(module, "half"):
+                components[name] = module.half()
+        pipe = CycleDiffusionPipeline(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
 
-        unet = unet.half()
-        vae = vae.half()
-        bert = bert.half()
-
-        # make sure here that pndm scheduler skips prk
-        sd_pipe = CycleDiffusionPipeline(
-            unet=unet,
-            scheduler=scheduler,
-            vae=vae,
-            text_encoder=bert,
-            tokenizer=tokenizer,
-            safety_checker=None,
-            feature_extractor=self.dummy_extractor,
-        )
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        source_prompt = "An astronaut riding a horse"
-        prompt = "An astronaut riding an elephant"
-        init_image = self.dummy_image.to(torch_device)
-
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        output = sd_pipe(
-            prompt=prompt,
-            source_prompt=source_prompt,
-            generator=generator,
-            num_inference_steps=2,
-            image=init_image,
-            eta=0.1,
-            strength=0.8,
-            guidance_scale=3,
-            source_guidance_scale=1,
-            output_type="np",
-        )
+        inputs = self.get_dummy_inputs(torch_device)
+        output = pipe(**inputs)
         images = output.images
 
         image_slice = images[0, -3:, -3:, -1]
