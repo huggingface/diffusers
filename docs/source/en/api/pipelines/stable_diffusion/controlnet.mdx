@@ -115,55 +115,20 @@ Finally, we can run the pipeline:
 ```py
 generator = torch.manual_seed(0)
 
-out_image = pipe("colorful painting of woman", num_inference_steps=20, generator=generator).images[0]
+out_image = pipe(
+    "disco dancer with colorful lights", num_inference_steps=20, generator=generator, image=canny_image
+).images[0]
 ```
 
 This should take only around 3-4 seconds on GPU (depending on hardware). The output image then looks as follows:
 
+![img](https://huggingface.co/datasets/huggingface/documentation-images/blob/main/diffusers/vermeer_disco_dancing.png)
 
-The conditioning image is an outline of the image edges, as detected by a Canny filter. This is the example we'll use to control the generation
 
-![White on black edges detected on Vermeer's Girl with a Pearl Earring portrait](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/vermeer_canny_edged.png)
-
-In the following example, note that the text prompt does not make any reference to the structure or contents of the image we are generating. Stable Diffusion interprets the control image as an additional input that controls what to generate.
-
-```python
-from diffusers import StableDiffusionControlNetPipeline
-from diffusers.utils import load_image
-
-# Canny edged image for control
-canny_edged_image = load_image(
-    "https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/vermeer_canny_edged.png"
-)
-
-pipe = StableDiffusionControlNetPipeline.from_pretrained("takuma104/control_sd15_canny").to("cuda")
-image = pipe(prompt="best quality, extremely detailed", image=canny_edged_image).images[0]
-image.save("generated.png")
-```
-
-- Controlling custom Stable Diffusion 1.5 models
-
-In the following example we use PromptHero's [Openjourney model](https://huggingface.co/prompthero/openjourney), which was fine-tuned from the base Stable Diffusion v1.5 model on images from Midjourney. This model has the same structure as Stable Diffusion 1.5 but is capable of producing outputs in a different style.
-
-```py
-from diffusers import StableDiffusionControlNetPipeline, AutoencoderKL, UNet2DConditionModel
-from diffusers.utils import load_image
-
-# Canny edged image for control
-canny_edged_image = load_image(
-    "https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/vermeer_canny_edged.png"
-)
-
-base_model_id = "prompthero/openjourney"  # an example: openjourney model
-vae = AutoencoderKL.from_pretrained(base_model_id, subfolder="vae").to("cuda")
-unet = UNet2DConditionModel.from_pretrained(base_model_id, subfolder="unet").to("cuda")
-
-pipe = StableDiffusionControlNetPipeline.from_pretrained("takuma104/control_sd15_canny", unet=unet, vae=vae).to("cuda")
-image = pipe(prompt="best quality, extremely detailed", image=canny_edged_image, width=512, height=512).images[0]
-image.save("generated.png")
-```
+**Note**: To see how to run all other ControlNet checkpoints, please have a look at [ControlNet with Stable Diffusion 1.5](#controlnet-with-stable-diffusion-1.5)
 
 <!-- TODO: add space -->
+
 ## Available checkpoints
 
 ControlNet requires a *control image* in addition to the text-to-image *prompt*. 
@@ -187,3 +152,9 @@ All checkpoints can be found under the authors' namespace [lllyasviel](https://h
 [[autodoc]] StableDiffusionControlNetPipeline
 	- all
 	- __call__
+	- enable_attention_slicing
+	- disable_attention_slicing
+	- enable_vae_slicing
+	- disable_vae_slicing
+	- enable_xformers_memory_efficient_attention
+	- disable_xformers_memory_efficient_attention

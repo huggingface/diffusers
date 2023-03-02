@@ -447,7 +447,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
 
         if not image_is_pil and not image_is_tensor and not image_is_pil_list and not image_is_tensor_list:
             raise TypeError(
-                "image must be one of PIL image, torch tensor, list of PIL images, or list of torch tensors"
+                "image must be passed and be one of PIL image, torch tensor, list of PIL images, or list of torch tensors"
             )
 
         if image_is_pil:
@@ -641,7 +641,10 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
-        # 0. Default height and width to image
+        # 0. Default height and width to unet
+        height = height or self.unet.config.sample_size * self.vae_scale_factor
+        width = width or self.unet.config.sample_size * self.vae_scale_factor
+
         height, width = self._default_height_width(height, width, image)
 
         # 1. Check inputs. Raise error if not correct
