@@ -15,11 +15,14 @@ from diffusers import (
 from diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 from diffusers.utils.testing_utils import load_numpy, require_torch_gpu, slow, torch_device
 
+from ...pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 
 
 class StableUnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableUnCLIPPipeline
+    params = TEXT_TO_IMAGE_PARAMS
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
 
     # TODO(will) Expected attn_bias.stride(1) == 0 to be true, but got false
     test_xformers_attention = False
@@ -189,6 +192,10 @@ class StableUnCLIPPipelineIntegrationTests(unittest.TestCase):
         pipe = StableUnCLIPPipeline.from_pretrained("fusing/stable-unclip-2-1-l", torch_dtype=torch.float16)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
+        # stable unclip will oom when integration tests are run on a V100,
+        # so turn on memory savings
+        pipe.enable_attention_slicing()
+        pipe.enable_sequential_cpu_offload()
 
         generator = torch.Generator(device="cpu").manual_seed(0)
         output = pipe("anime turle", generator=generator, output_type="np")

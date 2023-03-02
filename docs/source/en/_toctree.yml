@@ -32,6 +32,8 @@
       title: Text-Guided Image-Inpainting
     - local: using-diffusers/depth2img
       title: Text-Guided Depth-to-Image
+    - local: using-diffusers/controlling_generation
+      title: Controlling generation
     - local: using-diffusers/reusing_seeds
       title: Reusing seeds for deterministic generation
     - local: using-diffusers/reproducibility
@@ -55,6 +57,8 @@
 - sections:
   - local: optimization/fp16
     title: Memory and Speed
+  - local: optimization/torch2.0
+    title: Torch2.0 support
   - local: optimization/xformers
     title: xFormers
   - local: optimization/onnx
@@ -132,6 +136,8 @@
       title: Safe Stable Diffusion
     - local: api/pipelines/score_sde_ve
       title: Score SDE VE
+    - local: api/pipelines/semantic_stable_diffusion
+      title: Semantic Guidance
     - local: api/pipelines/spectrogram_diffusion
       title: "Spectrogram Diffusion"
     - sections:
@@ -150,9 +156,19 @@
       - local: api/pipelines/stable_diffusion/upscale
         title: Super-Resolution
       - local: api/pipelines/stable_diffusion/latent_upscale
-        title: Stable-Diffusion-Latent-Upscaler  
+        title: Stable-Diffusion-Latent-Upscaler
       - local: api/pipelines/stable_diffusion/pix2pix
         title: InstructPix2Pix
+      - local: api/pipelines/stable_diffusion/attend_and_excite
+        title: Attend and Excite
+      - local: api/pipelines/stable_diffusion/pix2pix_zero
+        title: Pix2Pix Zero
+      - local: api/pipelines/stable_diffusion/self_attention_guidance
+        title: Self-Attention Guidance
+      - local: api/pipelines/stable_diffusion/panorama
+        title: MultiDiffusion Panorama
+      - local: api/pipelines/stable_diffusion/controlnet
+        title: Text-to-Image Generation with ControlNet Conditioning
       title: Stable Diffusion
     - local: api/pipelines/stable_diffusion_2
       title: Stable Diffusion 2
@@ -174,6 +190,8 @@
       title: Overview
     - local: api/schedulers/ddim
       title: DDIM
+    - local: api/schedulers/ddim_inverse
+      title: DDIMInverse
     - local: api/schedulers/ddpm
       title: DDPM
     - local: api/schedulers/deis
@@ -202,6 +220,8 @@
       title: Singlestep DPM-Solver
     - local: api/schedulers/stochastic_karras_ve
       title: Stochastic Kerras VE
+    - local: api/schedulers/unipc
+      title: UniPCMultistepScheduler
     - local: api/schedulers/score_sde_ve
       title: VE-SDE
     - local: api/schedulers/score_sde_vp

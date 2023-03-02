@@ -12,6 +12,7 @@ import torch
 import torch.nn.functional as F
 from accelerate import Accelerator
 from accelerate.logging import get_logger
+from accelerate.utils import ProjectConfiguration
 from datasets import load_dataset
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from packaging import version
@@ -22,11 +23,11 @@ import diffusers
 from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
-from diffusers.utils import check_min_version, is_tensorboard_available, is_wandb_available
+from diffusers.utils import check_min_version, is_accelerate_version, is_tensorboard_available, is_wandb_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.13.0.dev0")
+check_min_version("0.14.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -240,6 +241,16 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--checkpoints_total_limit",
+        type=int,
+        default=None,
+        help=(
+            "Max number of checkpoints to store. Passed as `total_limit` to the `Accelerator` `ProjectConfiguration`."
+            " See Accelerator::save_state https://huggingface.co/docs/accelerate/package_reference/accelerator#accelerate.Accelerator.save_state"
+            " for more docs"
+        ),
+    )
+    parser.add_argument(
         "--resume_from_checkpoint",
         type=str,
         default=None,
@@ -273,11 +284,14 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 def main(args):
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
 
+    accelerator_project_config = ProjectConfiguration(total_limit=args.checkpoints_total_limit)
+
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.logger,
         logging_dir=logging_dir,
+        project_config=accelerator_project_config,
     )
 
     if args.logger == "tensorboard":
@@ -614,10 +628,13 @@ def main(args):
                 images_processed = (images * 255).round().astype("uint8")
 
                 if args.logger == "tensorboard":
-                    accelerator.get_tracker("tensorboard").add_images(
-                        "test_samples", images_processed.transpose(0, 3, 1, 2), epoch
-                    )
+                    if is_accelerate_version(">=", "0.17.0.dev0"):
+                        tracker = accelerator.get_tracker("tensorboard", unwrap=True)
+                    else:
+                        tracker = accelerator.get_tracker()
+                    tracker.add_images("test_samples", images_processed.transpose(0, 3, 1, 2), epoch)
                 elif args.logger == "wandb":
+                    # Upcoming `log_images` helper coming in https://github.com/huggingface/accelerate/pull/962/files
                     accelerator.get_tracker("wandb").log(
                         {"test_samples": [wandb.Image(img) for img in images_processed], "epoch": epoch},
                         step=global_step,

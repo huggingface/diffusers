@@ -1,4 +1,4 @@
-__version__ = "0.13.0.dev0"
+__version__ = "0.14.0.dev0"
 
 from .configuration_utils import ConfigMixin
 from .utils import (
@@ -35,6 +35,7 @@ except OptionalDependencyNotAvailable:
 else:
     from .models import (
         AutoencoderKL,
+        ControlNetModel,
         ModelMixin,
         PriorTransformer,
         Transformer2DModel,
@@ -69,6 +70,7 @@ else:
         ScoreSdeVePipeline,
     )
     from .schedulers import (
+        DDIMInverseScheduler,
         DDIMScheduler,
         DDPMScheduler,
         DEISMultistepScheduler,
@@ -86,6 +88,7 @@ else:
         SchedulerMixin,
         ScoreSdeVeScheduler,
         UnCLIPScheduler,
+        UniPCMultistepScheduler,
         VQDiffusionScheduler,
     )
     from .training_utils import EMAModel
@@ -111,6 +114,9 @@ else:
         CycleDiffusionPipeline,
         LDMTextToImagePipeline,
         PaintByExamplePipeline,
+        SemanticStableDiffusionPipeline,
+        StableDiffusionAttendAndExcitePipeline,
+        StableDiffusionControlNetPipeline,
         StableDiffusionDepth2ImgPipeline,
         StableDiffusionImageVariationPipeline,
         StableDiffusionImg2ImgPipeline,
@@ -118,8 +124,11 @@ else:
         StableDiffusionInpaintPipelineLegacy,
         StableDiffusionInstructPix2PixPipeline,
         StableDiffusionLatentUpscalePipeline,
+        StableDiffusionPanoramaPipeline,
         StableDiffusionPipeline,
         StableDiffusionPipelineSafe,
+        StableDiffusionPix2PixZeroPipeline,
+        StableDiffusionSAGPipeline,
         StableDiffusionUpscalePipeline,
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
