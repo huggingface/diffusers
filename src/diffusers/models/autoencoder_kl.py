@@ -189,14 +189,14 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
 
         return DecoderOutput(sample=decoded)
 
-    def blend_v(self, a, b, blend_width):
-        for y in range(blend_width):
-            b[:, :, y, :] = a[:, :, -blend_width + y, :] * (1 - y / blend_width) + b[:, :, y, :] * (y / blend_width)
+    def blend_v(self, a, b, blend_extent):
+        for y in range(blend_extent):
+            b[:, :, y, :] = a[:, :, -blend_extent + y, :] * (1 - y / blend_extent) + b[:, :, y, :] * (y / blend_extent)
         return b
 
-    def blend_h(self, a, b, blend_width):
-        for x in range(blend_width):
-            b[:, :, :, x] = a[:, :, :, -blend_width + x] * (1 - x / blend_width) + b[:, :, :, x] * (x / blend_width)
+    def blend_h(self, a, b, blend_extent):
+        for x in range(blend_extent):
+            b[:, :, :, x] = a[:, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, x] * (x / blend_extent)
         return b
 
     def tiled_encode(self, x: torch.FloatTensor, return_dict: bool = True) -> AutoencoderKLOutput:
@@ -211,8 +211,8 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
                 Whether or not to return a [`AutoencoderKLOutput`] instead of a plain tuple.
         """
         overlap_size = int(self.tile_sample_min_size * (1 - self.tile_overlap_factor))
-        blend_width = int(self.tile_latent_min_size * self.tile_overlap_factor)
-        row_limit = self.tile_latent_min_size - blend_width
+        blend_extent = int(self.tile_latent_min_size * self.tile_overlap_factor)
+        row_limit = self.tile_latent_min_size - blend_extent
 
         # Split the image into 512x512 tiles and encode them separately.
         rows = []
@@ -231,9 +231,9 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
                 # blend the above tile and the left tile
                 # to the current tile and add the current tile to the result row
                 if i > 0:
-                    tile = self.blend_v(rows[i - 1][j], tile, blend_width)
+                    tile = self.blend_v(rows[i - 1][j], tile, blend_extent)
                 if j > 0:
-                    tile = self.blend_h(row[j - 1], tile, blend_width)
+                    tile = self.blend_h(row[j - 1], tile, blend_extent)
                 result_row.append(tile[:, :, :row_limit, :row_limit])
             result_rows.append(torch.cat(result_row, dim=3))
 
@@ -258,8 +258,8 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
                 Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
         """
         overlap_size = int(self.tile_latent_min_size * (1 - self.tile_overlap_factor))
-        blend_width = int(self.tile_sample_min_size * self.tile_overlap_factor)
-        row_limit = self.tile_sample_min_size - blend_width
+        blend_extent = int(self.tile_sample_min_size * self.tile_overlap_factor)
+        row_limit = self.tile_sample_min_size - blend_extent
 
         # Split z into overlapping 64x64 tiles and decode them separately.
         # The tiles have an overlap to avoid seams between tiles.
@@ -279,9 +279,9 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
                 # blend the above tile and the left tile
                 # to the current tile and add the current tile to the result row
                 if i > 0:
-                    tile = self.blend_v(rows[i - 1][j], tile, blend_width)
+                    tile = self.blend_v(rows[i - 1][j], tile, blend_extent)
                 if j > 0:
-                    tile = self.blend_h(row[j - 1], tile, blend_width)
+                    tile = self.blend_h(row[j - 1], tile, blend_extent)
                 result_row.append(tile[:, :, :row_limit, :row_limit])
             result_rows.append(torch.cat(result_row, dim=3))
 
