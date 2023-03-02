@@ -165,6 +165,8 @@
         title: Self-Attention Guidance
       - local: api/pipelines/stable_diffusion/panorama
         title: MultiDiffusion Panorama
+      - local: api/pipelines/stable_diffusion/controlnet
+        title: Text-to-Image Generation with ControlNet Conditioning
       title: Stable Diffusion
     - local: api/pipelines/stable_diffusion_2
       title: Stable Diffusion 2

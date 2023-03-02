@@ -35,6 +35,7 @@ Unless otherwise mentioned, these are techniques that work with existing models 
 7. [MultiDiffusion Panorama](#multidiffusion-panorama)
 8. [DreamBooth](#dreambooth)
 9. [Textual Inversion](#textual-inversion)
+10. [ControlNet](#controlnet)
 
 ## Instruct Pix2Pix
 
@@ -146,3 +147,14 @@ See [here](../training/dreambooth) for more information on how to use it.
 [Textual Inversion](../training/text_inversion) fine-tunes a model to teach it about a new concept. I.e. a few pictures of a style of artwork can be used to generate images in that style.
 
 See [here](../training/text_inversion) for more information on how to use it.
+
+## ControlNet
+
+[Paper](https://arxiv.org/abs/2302.05543)
+
+[ControlNet](../api/pipelines/stable_diffusion/controlnet) is an auxiliary network which adds an extra condition.
+There are 8 canonical pre-trained ControlNets trained on different conditionings such as edge detection, scribbles, 
+depth maps, and semantic segmentations.
+
+See [here](../api/pipelines/stable_diffusion/controlnet) for more information on how to use it.
+
