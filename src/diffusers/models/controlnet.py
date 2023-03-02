@@ -42,6 +42,7 @@ class ControlNetOutput(BaseOutput):
 
 class ControlNetConditioningEmbedding(nn.Module):
     """
+    Quoting from https://arxiv.org/abs/2302.05543:
     "Stable Diffusion uses a pre-processing method similar to VQ-GAN [11] to convert the entire dataset of 512 × 512
     images into smaller 64 × 64 “latent images” for stabilized training. This requires ControlNets to convert
     image-based conditions to 64 × 64 feature space to match the convolution size. We use a tiny network E(·) of four
