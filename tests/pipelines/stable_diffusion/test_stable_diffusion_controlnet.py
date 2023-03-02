@@ -152,7 +152,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_canny(self):
-        controlnet = ControlNetModel.from_pretrained("fusing/sd-controlnet-canny")
+        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny")
 
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
@@ -179,7 +179,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
         assert np.abs(expected_image - image).max() < 5e-3
 
     def test_depth(self):
-        controlnet = ControlNetModel.from_pretrained("fusing/sd-controlnet-depth")
+        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-depth")
 
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
@@ -206,7 +206,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
         assert np.abs(expected_image - image).max() < 5e-3
 
     def test_hed(self):
-        controlnet = ControlNetModel.from_pretrained("fusing/sd-controlnet-hed")
+        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-hed")
 
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
@@ -233,7 +233,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
         assert np.abs(expected_image - image).max() < 5e-3
 
     def test_mlsd(self):
-        controlnet = ControlNetModel.from_pretrained("fusing/sd-controlnet-mlsd")
+        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-mlsd")
 
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
@@ -260,7 +260,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
         assert np.abs(expected_image - image).max() < 5e-3
 
     def test_normal(self):
-        controlnet = ControlNetModel.from_pretrained("fusing/sd-controlnet-normal")
+        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-normal")
 
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
@@ -287,7 +287,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
         assert np.abs(expected_image - image).max() < 5e-3
 
     def test_openpose(self):
-        controlnet = ControlNetModel.from_pretrained("fusing/sd-controlnet-openpose")
+        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-openpose")
 
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
@@ -314,7 +314,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
         assert np.abs(expected_image - image).max() < 5e-3
 
     def test_scribble(self):
-        controlnet = ControlNetModel.from_pretrained("fusing/sd-controlnet-scribble")
+        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-scribble")
 
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
@@ -341,7 +341,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
         assert np.abs(expected_image - image).max() < 5e-3
 
     def test_seg(self):
-        controlnet = ControlNetModel.from_pretrained("fusing/sd-controlnet-seg")
+        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-seg")
 
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
@@ -372,7 +372,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
         torch.cuda.reset_max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()
 
-        controlnet = ControlNetModel.from_pretrained("fusing/sd-controlnet-seg")
+        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-seg")
 
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet

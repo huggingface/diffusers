@@ -642,9 +642,6 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
             (nsfw) content, according to the `safety_checker`.
         """
         # 0. Default height and width to unet
-        height = height or self.unet.config.sample_size * self.vae_scale_factor
-        width = width or self.unet.config.sample_size * self.vae_scale_factor
-
         height, width = self._default_height_width(height, width, image)
 
         # 1. Check inputs. Raise error if not correct
