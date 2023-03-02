@@ -99,7 +99,7 @@ _deps = [
     "pytest-timeout",
     "pytest-xdist",
     "ruff>=0.0.241",
-    "safetensors",
+    "safetensors==0.3.0rc1",
     "sentencepiece>=0.1.91,!=0.1.92",
     "scipy",
     "regex!=2019.12.17",
