@@ -12,13 +12,15 @@ specific language governing permissions and limitations under the License.
 
 # Low-Rank Adaptation of Large Language Models (LoRA)
 
+[[open-in-colab]]
+
 <Tip warning={true}>
 
 Currently, LoRA is only supported for the attention layers of the [`UNet2DConditionalModel`].
 
 </Tip>
 
-[Low-Rank Adaptation of Large Language Models (LoRA)](https://arxiv.org/abs/2106.09685) is a training technique that speeds up training large models by being more memory-efficient. It adds pairs of rank-decomposition weight matrices (called **update matrices**) to existing weights and **only** training those newly added weights. This has a couple of advantages:
+[Low-Rank Adaptation of Large Language Models (LoRA)](https://arxiv.org/abs/2106.09685) is a training method that accelerates the training of large models while consuming less memory. It adds pairs of rank-decomposition weight matrices (called **update matrices**) to existing weights, and **only** trains those newly added weights. This has a couple of advantages:
 
 - Previous pretrained weights are kept frozen so the model is not as prone to [catastrophic forgetting](https://www.pnas.org/doi/10.1073/pnas.1611835114).
 - Rank-decomposition matrices have significantly fewer parameters than the original model, which means that trained LoRA weights are easily portable.
@@ -32,11 +34,9 @@ the attention layers of a language model is sufficient to obtain good downstream
 
 </Tip>
 
-[cloneofsimo](https://github.com/cloneofsimo) was the first to try out LoRA training for Stable Diffusion in the popular [lora](https://github.com/cloneofsimo/lora) GitHub repository.
+[cloneofsimo](https://github.com/cloneofsimo) was the first to try out LoRA training for Stable Diffusion in the popular [lora](https://github.com/cloneofsimo/lora) GitHub repository. 🧨 Diffusers now supports finetuning with LoRA for [text-to-image generation](https://github.com/huggingface/diffusers/tree/main/examples/text_to_image#training-with-lora) and [DreamBooth](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth#training-with-low-rank-adaptation-of-large-language-models-lora). This guide will show you how to do both.
 
-🧨 Diffusers supports finetuning with LoRA for [text-to-image generation](https://github.com/huggingface/diffusers/tree/main/examples/text_to_image#training-with-lora) and [DreamBooth](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth#training-with-low-rank-adaptation-of-large-language-models-lora). This guide will show you how to do both.
-
-If you'd like to store or share your model with the community, login to your Hugging Face account (create one at hf.co/join if you don't have one already):
+If you'd like to store or share your model with the community, login to your Hugging Face account (create [one](hf.co/join) if you don't have one already):
 
 ```bash
 huggingface-cli login
@@ -44,7 +44,7 @@ huggingface-cli login
 
 ## Text-to-image
 
-Finetuning a model like Stable Diffusion, which has billions of parameters, can be slow and difficult. With LoRA, it is much easier and faster to finetune a diffusion model and it can run on hardware with as little as 11GB of GPU RAM without resorting to tricks such as 8-bit optimizers.
+Finetuning a model like Stable Diffusion, which has billions of parameters, can be slow and difficult. With LoRA, it is much easier and faster to finetune a diffusion model. It can run on hardware with as little as 11GB of GPU RAM without resorting to tricks such as 8-bit optimizers.
 
 ### Training[[text-to-image-training]]
 
@@ -62,7 +62,7 @@ export DATASET_NAME="lambdalabs/pokemon-blip-captions"
 There are some flags to be aware of before you start training:
 
 * `--push_to_hub` stores the trained LoRA embeddings on the Hub.
-* `--report_to=wandb` reports and logs the training results to your Weights & Biases dashboard (take a look at this [example report](https://wandb.ai/pcuenq/text2image-fine-tune/runs/b4k1w0tn?workspace=user-pcuenq)).
+* `--report_to=wandb` reports and logs the training results to your Weights & Biases dashboard (as an example, take a look at this [report](https://wandb.ai/pcuenq/text2image-fine-tune/runs/b4k1w0tn?workspace=user-pcuenq)).
 * `--learning_rate=1e-04`, you can afford to use a higher learning rate than you normally would with LoRA.
 
 Now you're ready to launch the training (you can find the full training script [here](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora.py)):
@@ -106,7 +106,7 @@ Load the LoRA weights from your finetuned model *on top of the base model weight
 
 <Tip>
 
-A `scale` value of `0` is the same as not using your LoRA weights and you're only using the base model weights, and a `scale` value of `1` means you're only using the fully finetuned LoRA weights. Values between `0` and `1` interpolates between the two weights.
+💡 A `scale` value of `0` is the same as not using your LoRA weights and you're only using the base model weights, and a `scale` value of `1` means you're only using the fully finetuned LoRA weights. Values between `0` and `1` interpolates between the two weights.
 
 </Tip>
 
@@ -126,7 +126,7 @@ A `scale` value of `0` is the same as not using your LoRA weights and you're onl
 
 ## DreamBooth
 
-[DreamBooth](https://arxiv.org/abs/2208.12242) is a finetuning technique for personalizing a text-to-image model like Stable Diffusion to generate photorealistic images of a subject in different contexts, given a few images of the subject. However, DreamBooth is very sensitive to hyperparameters and it is easy to overfit. Some important hyperparameters to consider include: training time (learning rate, number of training steps), and inference time (number of steps, scheduler type).
+[DreamBooth](https://arxiv.org/abs/2208.12242) is a finetuning technique for personalizing a text-to-image model like Stable Diffusion to generate photorealistic images of a subject in different contexts, given a few images of the subject. However, DreamBooth is very sensitive to hyperparameters and it is easy to overfit. Some important hyperparameters to consider include those that affect the training time (learning rate, number of training steps), and inference time (number of steps, scheduler type).
 
 <Tip>
 
@@ -138,7 +138,7 @@ A `scale` value of `0` is the same as not using your LoRA weights and you're onl
 
 Let's finetune [`stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) with DreamBooth and LoRA with some 🐶 [dog images](https://drive.google.com/drive/folders/1BO_dyz-p65qhBRRMRA4TbZ8qW4rB99JZ). Download and save these images to a directory.
 
-To start, make sure you have the `MODEL_NAME` and `INSTANCE_DIR` (path to your dog images) environment variables set. The `OUTPUT_DIR` variables is optional and specifies where to save the model to on the Hub:
+To start, make sure you have the `MODEL_NAME` and `INSTANCE_DIR` (path to directory containing images) environment variables set. The `OUTPUT_DIR` variables is optional and specifies where to save the model to on the Hub:
 
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
@@ -149,7 +149,7 @@ export OUTPUT_DIR="path-to-save-model"
 There are some flags to be aware of before you start training:
 
 * `--push_to_hub` stores the trained LoRA embeddings on the Hub.
-* `--report_to=wandb` reports and logs the training results to your Weights & Biases dashboard (take a look at this [example report](https://wandb.ai/pcuenq/text2image-fine-tune/runs/b4k1w0tn?workspace=user-pcuenq)).
+* `--report_to=wandb` reports and logs the training results to your Weights & Biases dashboard (as an example, take a look at this [report](https://wandb.ai/pcuenq/text2image-fine-tune/runs/b4k1w0tn?workspace=user-pcuenq)).
 * `--learning_rate=1e-04`, you can afford to use a higher learning rate than you normally would with LoRA.
 
 Now you're ready to launch the training (you can find the full training script [here](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth_lora.py)):
@@ -192,7 +192,7 @@ Load the LoRA weights from your finetuned DreamBooth model *on top of the base m
 
 <Tip>
 
-A `scale` value of `0` is the same as not using your LoRA weights and you're only using the base model weights, and a `scale` value of `1` means you're only using the fully finetuned LoRA weights. Values between `0` and `1` interpolates between the two weights.
+💡 A `scale` value of `0` is the same as not using your LoRA weights and you're only using the base model weights, and a `scale` value of `1` means you're only using the fully finetuned LoRA weights. Values between `0` and `1` interpolates between the two weights.
 
 </Tip>
 
