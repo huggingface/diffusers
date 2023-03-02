@@ -248,33 +248,36 @@ def get_class_obj_and_candidates(library_name, class_name, importable_classes, p
 
 
 def load_sub_model(
-    library_name,
-    class_name,
-    importable_classes,
-    pipelines,
-    is_pipeline_module,
-    pipeline_class,
-    torch_dtype,
-    provider,
-    sess_options,
-    device_map,
-    model_variants,
-    name,
-    from_flax,
-    variant,
-    low_cpu_mem_usage,
-    cached_folder,
+    library_name: str,
+    class_name: str,
+    importable_classes: List[Any],
+    pipelines: Any,
+    is_pipeline_module: bool,
+    pipeline_class: Any,
+    torch_dtype: torch.dtype,
+    provider: Any,
+    sess_options: Any,
+    device_map: Optional[Union[Dict[str, torch.device], str]],
+    model_variants: Dict[str, str],
+    name: str,
+    from_flax: bool,
+    variant: str,
+    low_cpu_mem_usage: bool,
+    cached_folder: Union[str, os.PathLike],
 ):
     """Helper method to load the module `name` from `library_name` and `class_name`"""
+    # retrieve class candidates
     class_obj, class_candidates = get_class_obj_and_candidates(
         library_name, class_name, importable_classes, pipelines, is_pipeline_module
     )
 
     load_method_name = None
+    # retrive load method name
     for class_name, class_candidate in class_candidates.items():
         if class_candidate is not None and issubclass(class_obj, class_candidate):
             load_method_name = importable_classes[class_name][1]
 
+    # if load method name is None, then we have a dummy module -> raise Error
     if load_method_name is None:
         none_module = class_obj.__module__
         is_dummy_path = none_module.startswith(DUMMY_MODULES_FOLDER) or none_module.startswith(
@@ -290,8 +293,9 @@ def load_sub_model(
         )
 
     load_method = getattr(class_obj, load_method_name)
-    loading_kwargs = {}
 
+    # add kwargs to loading method
+    loading_kwargs = {}
     if issubclass(class_obj, torch.nn.Module):
         loading_kwargs["torch_dtype"] = torch_dtype
     if issubclass(class_obj, diffusers.OnnxRuntimeModel):
