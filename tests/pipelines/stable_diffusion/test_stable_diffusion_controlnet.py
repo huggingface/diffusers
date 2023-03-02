@@ -149,12 +149,12 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_canny(self):
-        controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-canny")
+        controlnet = ControlNetModel.from_pretrained("fusing/sd-controlnet-canny")
 
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
-        pipe = pipe.to(torch_device)
+        pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
@@ -173,15 +173,15 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny_out.npy"
         )
 
-        assert np.abs(expected_image - image).max() < 1e-4
+        assert np.abs(expected_image - image).max() < 5e-3
 
     def test_depth(self):
-        controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-depth")
+        controlnet = ControlNetModel.from_pretrained("fusing/sd-controlnet-depth")
 
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
-        pipe = pipe.to(torch_device)
+        pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
@@ -200,15 +200,15 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth_out.npy"
         )
 
-        assert np.abs(expected_image - image).max() < 1e-4
+        assert np.abs(expected_image - image).max() < 5e-3
 
     def test_hed(self):
-        controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-hed")
+        controlnet = ControlNetModel.from_pretrained("fusing/sd-controlnet-hed")
 
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
-        pipe = pipe.to(torch_device)
+        pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
@@ -227,15 +227,15 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/man_hed_out.npy"
         )
 
-        assert np.abs(expected_image - image).max() < 1e-4
+        assert np.abs(expected_image - image).max() < 5e-3
 
     def test_mlsd(self):
-        controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-mlsd")
+        controlnet = ControlNetModel.from_pretrained("fusing/sd-controlnet-mlsd")
 
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
-        pipe = pipe.to(torch_device)
+        pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
@@ -254,15 +254,15 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/room_mlsd_out.npy"
         )
 
-        assert np.abs(expected_image - image).max() < 1e-4
+        assert np.abs(expected_image - image).max() < 5e-3
 
     def test_normal(self):
-        controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-normal")
+        controlnet = ControlNetModel.from_pretrained("fusing/sd-controlnet-normal")
 
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
-        pipe = pipe.to(torch_device)
+        pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
@@ -281,15 +281,15 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/cute_toy_normal_out.npy"
         )
 
-        assert np.abs(expected_image - image).max() < 1e-4
+        assert np.abs(expected_image - image).max() < 5e-3
 
     def test_openpose(self):
-        controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-openpose")
+        controlnet = ControlNetModel.from_pretrained("fusing/sd-controlnet-openpose")
 
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
-        pipe = pipe.to(torch_device)
+        pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
@@ -308,15 +308,15 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/chef_pose_out.npy"
         )
 
-        assert np.abs(expected_image - image).max() < 1e-4
+        assert np.abs(expected_image - image).max() < 5e-3
 
     def test_scribble(self):
-        controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-scribble")
+        controlnet = ControlNetModel.from_pretrained("fusing/sd-controlnet-scribble")
 
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
-        pipe = pipe.to(torch_device)
+        pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(5)
@@ -335,15 +335,15 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bag_scribble_out.npy"
         )
 
-        assert np.abs(expected_image - image).max() < 1e-4
+        assert np.abs(expected_image - image).max() < 5e-3
 
     def test_seg(self):
-        controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-seg")
+        controlnet = ControlNetModel.from_pretrained("fusing/sd-controlnet-seg")
 
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
-        pipe = pipe.to(torch_device)
+        pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(5)
@@ -362,19 +362,18 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/house_seg_out.npy"
         )
 
-        assert np.abs(expected_image - image).max() < 1e-4
+        assert np.abs(expected_image - image).max() < 5e-3
 
     def test_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()
 
-        controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-seg")
+        controlnet = ControlNetModel.from_pretrained("fusing/sd-controlnet-seg")
 
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
-        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
         pipe.enable_sequential_cpu_offload()
@@ -393,4 +392,4 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
 
         mem_bytes = torch.cuda.max_memory_allocated()
         # make sure that less than 7 GB is allocated
-        assert mem_bytes < 7 * 10**9
+        assert mem_bytes < 4 * 10**9

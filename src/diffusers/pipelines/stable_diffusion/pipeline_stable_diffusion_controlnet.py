@@ -183,11 +183,15 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         device = torch.device(f"cuda:{gpu_id}")
 
         hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae, self.controlnet]:
+        for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae]:
             _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
 
         if self.safety_checker is not None:
+            # the safety checker can offload the vae again
             _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
+
+        # control net hook has be manually offloaded as it alternates with unet
+        cpu_offload_with_hook(self.controlnet, device)
 
         # We'll offload the last model manually.
         self.final_offload_hook = hook
@@ -749,6 +753,13 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
+
+        # If we do sequential model offloading, let's offload unet and controlnet
+        # manually for max memory savings
+        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
+            self.unet.to("cpu")
+            self.controlnet.to("cpu")
+            torch.cuda.empty_cache()
 
         if output_type == "latent":
             image = latents
