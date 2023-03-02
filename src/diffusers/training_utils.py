@@ -200,6 +200,7 @@ class EMAModel:
 
         for s_param, param in zip(self.shadow_params, parameters):
             if param.requires_grad:
+                print(f"Subtraction quantity: {one_minus_decay * (s_param - param)}")
                 s_param.sub_(one_minus_decay * (s_param - param))
             else:
                 s_param.copy_(param)
