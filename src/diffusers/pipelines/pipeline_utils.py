@@ -619,8 +619,6 @@ class DiffusionPipeline(ConfigMixin):
                 also tries to not use more than 1x model size in CPU memory (including peak memory) while loading the
                 model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
                 setting this argument to `True` will raise an error.
-            return_cached_folder (`bool`, *optional*, defaults to `False`):
-                If set to `True`, path to downloaded cached folder will be returned in addition to loaded pipeline.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load - and saveable variables - *i.e.* the pipeline components - of the
                 specific pipeline class. The overwritten components are then directly passed to the pipelines
@@ -678,7 +676,6 @@ class DiffusionPipeline(ConfigMixin):
         sess_options = kwargs.pop("sess_options", None)
         device_map = kwargs.pop("device_map", None)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
-        return_cached_folder = kwargs.pop("return_cached_folder", False)
         variant = kwargs.pop("variant", None)
 
         # 1. Download the checkpoints and configs
@@ -882,8 +879,12 @@ class DiffusionPipeline(ConfigMixin):
         # 8. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)
 
+        return_cached_folder = kwargs.pop("return_cached_folder", False)
         if return_cached_folder:
+            message = f"Passing `return_cached_folder=True` is deprecated and will be removed in `diffusers=0.17.0`. Please do the following instead: \n 1. Load the cached_folder via `cached_folder={cls}.load_pipeline({pretrained_model_name_or_path})`. \n 2. Load the pipeline by loading from the cached folder: `pipeline={cls}.from_pretrained(cached_folder)`."
+            deprecate("return_cached_folder", "0.17.0", message, take_from=kwargs)
             return model, cached_folder
+
         return model
 
     @classmethod
