@@ -51,26 +51,51 @@ from packaging import version
 from torch.distributions import Gamma
 
 
-# Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.14.0.dev0")
+prompts_with_size = [
+    {"prompt": "Solid White Ice", "size": (768, 768)},
+    {"prompt": "Solid Black Mountain", "size": (768, 768)},
+    {
+        "prompt": "Incredibly Dark Alley",
+        "size": (768, 768),
+    },
+    {
+        "prompt": "Incredibly Dark Cave",
+        "size": (768, 768),
+    },
+    {"prompt": "Shadowy Portal lit by a dim torch", "size": (1024, 768)},
+]
+
+
+print("Test Set")
+print(prompts_with_size)
+
 
 logger = get_logger(__name__)
 
+import math
 
-def make_noise(latents, freq):
-    # calculate the size of the random noise tensor
-    noise_size = (latents.shape[0], latents.shape[1], int(latents.shape[2] * freq), int(latents.shape[3] * freq))
-    # generate random noise tensor
-    if freq == 1:
-        noise = torch.randn_like(latents, device=latents.device)
-    elif freq == 0:
-        noise = torch.randn(latents.shape[0], latents.shape[1], 1, 1, device=latents.device)
-    else:
-        noise = torch.randn(*noise_size, device=latents.device)
-        # upsample the noise tensor to match the original size
-        noise = torch.nn.functional.interpolate(
-            noise, size=(latents.shape[2], latents.shape[3]), mode="bicubic", align_corners=False
-        )
+from dctorch import functional as DF
+import torch
+
+
+def sqrtm(x):
+    vals, vecs = torch.linalg.eigh(x)
+    return vecs * vals.sqrt() @ vecs.T
+
+
+def colored_noise(shape, power=2.0, mean=None, color=None, device="cpu", dtype=torch.float32):
+    mean = torch.zeros([shape[-3]]) if mean is None else mean
+    color = torch.eye(shape[-3]) if color is None else color
+    f_h = math.pi * torch.arange(shape[-2], device=device, dtype=dtype) / shape[-2]
+    f_w = math.pi * torch.arange(shape[-1], device=device, dtype=dtype) / shape[-1]
+    freqs_sq = f_h[:, None] ** 2 + f_w[None, :] ** 2
+    freqs_sq[..., 0, 0] = freqs_sq[..., 0, 1]
+    spd = freqs_sq ** -(power / 2)
+    spd /= spd.mean()
+    noise = torch.randn(shape, device=device, dtype=dtype)
+    noise = torch.einsum("...chw,cd->...dhw", noise, color.to(device, dtype))
+    noise = DF.idct2(noise * spd.sqrt())
+    noise = noise + mean.to(device, dtype)[..., None, None]
     return noise
 
 
@@ -82,17 +107,28 @@ def random_gamma(shape, alpha, beta=1.0):
     return gamma_distribution.sample()
 
 
+def make_pink_noise(latents):
+    power = 2.4477
+    mean = torch.tensor([0.4811, 0.4575, 0.4078], device=latents.device)
+    cov = torch.tensor(
+        [[0.0802, 0.0700, 0.0631], [0.0700, 0.0763, 0.0721], [0.0631, 0.0721, 0.0839]], device=latents.device
+    )
+
+    x = colored_noise(latents.shape, power, device=latents.device)
+    return x
+
+
 # Takes the ideas from offset noise(1) and adds uses two gamma distributions to
 # alter the noise schedule adding different amounts of offset noise at different frequencies
 # [1] https://www.crosslabs.org/blog/diffusion-with-offset-noise
 def offset_gamma_noise(latents):
     device = latents.device
-    g1 = torch.clamp(random_gamma((1), alpha=4.5, beta=10), 0, 1).to(device)
     g2 = torch.clamp(random_gamma((latents.shape[0], latents.shape[1], 1, 1), alpha=0.5, beta=10), 0, 1).to(device)
 
     # g1 is the random freq
     # g2 is the proportion to shift the noise
-    return make_noise(latents, 1) + g2 * make_noise(latents, g1[0].item())
+    noise = torch.randn_like(latents, device=latents.device)
+    return noise + g2 * make_pink_noise(latents)
 
 
 def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision: str):
@@ -395,6 +431,8 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument("--save_model_every_n_steps", type=int)
+    parser.add_argument("--sample_model_every_n_steps", type=int)
+    parser.add_argument("--pink_noise", type=bool, default=False)
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -434,6 +472,16 @@ def get_label_from_txt(path):
         return ""
 
 
+def all_images(image_dir):
+    image_path = Path(image_dir)
+    return (
+        list(image_path.glob("*.jpg"))
+        + list(image_path.glob("*.png"))
+        + list(image_path.glob("*.webp"))
+        + list(image_path.glob("*.jpeg"))
+    )
+
+
 class DreamBoothDataset(Dataset):
     """
     A dataset to prepare the instance and class images with the prompts for fine-tuning the model.
@@ -460,9 +508,7 @@ class DreamBoothDataset(Dataset):
         if not self.instance_data_root.exists():
             raise ValueError(f"Instance {self.instance_data_root} images root doesn't exists.")
 
-        self.instance_images_path = list(self.instance_data_root.glob("*.jpg")) + list(
-            self.instance_data_root.glob("*.png")
-        )  # get all the images in the instance data root
+        self.instance_images_path = all_images(self.instance_data_root)
         self.num_instance_images = len(self.instance_images_path)
         self.instance_prompt = instance_prompt
         self.use_filename_as_label = use_filename_as_label
@@ -497,7 +543,9 @@ class DreamBoothDataset(Dataset):
         prompt = get_filename(path) if self.use_filename_as_label else self.instance_prompt
         prompt = get_label_from_txt(path) if self.use_txt_as_label else prompt
 
-        instance_image = Image.open(path)
+        real_path = os.path.abspath(path)
+
+        instance_image = Image.open(real_path)
         if not instance_image.mode == "RGB":
             instance_image = instance_image.convert("RGB")
         example["instance_images"] = self.image_transforms(instance_image)
@@ -599,6 +647,39 @@ def save_model(accelerator, unet, text_encoder, args, step=None):
 
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
+
+
+import wandb
+
+PHOTO_COUNT = 2
+
+
+def sample_model(accelerator, unet, text_encoder, args, step=None):
+    pipeline = StableDiffusionPipeline.from_pretrained(
+        args.pretrained_model_name_or_path,
+        unet=unet,
+        text_encoder=text_encoder,
+        revision=args.revision,
+    )
+    pipeline.to(accelerator.device)
+
+    for prompt in prompts_with_size:
+        for guidance_scale in [12]:
+            # Reset Seed
+            seed = 123123
+            generator = torch.Generator("cuda").manual_seed(seed)
+
+            size = prompt["size"]
+            text = prompt["prompt"]
+            width = size[0]
+            height = size[1]
+
+            images = pipeline(
+                [text] * PHOTO_COUNT, num_inference_steps=50, guidance_scale=guidance_scale, width=width, height=height
+            ).images
+            caption = "scale: " + str(guidance_scale)
+            label = caption + ", " + text[0:160]
+            wandb.log({label: [wandb.Image(image, caption=caption) for image in images]}, step=step)
 
 
 def main(args):
@@ -967,9 +1048,10 @@ def main(args):
                 latents = latents * vae.config.scaling_factor
 
                 # Sample noise that we'll add to the latents
-                # noise = torch.randn_like(latents)
-                # offset noise
-                noise = offset_gamma_noise(latents)
+                if args.pink_noise:
+                    noise = offset_gamma_noise(latents)
+                else:
+                    noise = torch.randn_like(latents)
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
                 timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
@@ -1039,8 +1121,12 @@ def main(args):
             if global_step >= args.max_train_steps:
                 break
 
-            if args.save_model_every_n_steps != None and (global_step % args.save_model_every_n_steps) == 0:
-                save_model(accelerator, unet, text_encoder, args, global_step)
+            if accelerator.is_main_process:
+                if args.save_model_every_n_steps != None and (global_step % args.save_model_every_n_steps) == 0:
+                    save_model(accelerator, unet, text_encoder, args, global_step)
+
+                if args.sample_model_every_n_steps != None and (global_step % args.sample_model_every_n_steps) == 0:
+                    sample_model(accelerator, unet, text_encoder, args, global_step)
 
         accelerator.wait_for_everyone()
 
