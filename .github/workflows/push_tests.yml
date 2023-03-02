@@ -1,6 +1,7 @@
 name: Slow tests on main
 
 on:
+  pull_request: # TODO: only for debugging, remove before merging!
   push:
     branches:
       - main
