@@ -45,6 +45,11 @@ EXAMPLE_DOC_STRING = """
         >>> # !pip install opencv-python transformers accelerate
         >>> from diffusers import StableDiffusionControlNetPipeline
         >>> from diffusers.utils import load_image
+        >>> import numpy as np
+        >>> import torch
+
+        >>> import cv2
+        >>> from PIL import Image
 
         >>> # download an image
         >>> image = load_image(
