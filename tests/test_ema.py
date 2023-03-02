@@ -13,32 +13,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import unittest
 
-import gc
-import numpy as np
 import torch
-from torch import nn
 
-from diffusers.models.attention import GEGLU, AdaLayerNorm, ApproximateGELU, AttentionBlock
-from diffusers.models.embeddings import get_timestep_embedding
-from diffusers.models.resnet import Downsample2D, ResnetBlock2D, Upsample2D
-from diffusers.models.transformer_2d import Transformer2DModel
 from diffusers import UNet2DConditionModel
-from diffusers.utils import torch_device
 from diffusers.training_utils import EMAModel
+
 
 class EMAModelTests(unittest.TestCase):
     model_id = "hf-internal-testing/tiny-stable-diffusion-pipe"
 
-    def get_models(self):
+    def get_models(self, decay=0.9999):
         unet = UNet2DConditionModel.from_pretrained(self.model_id, subfolder="unet")
         ema_unet = UNet2DConditionModel.from_pretrained(self.model_id, subfolder="unet")
         ema_unet = EMAModel(
-            ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config
+            ema_unet.parameters(), decay=decay, model_cls=UNet2DConditionModel, model_config=ema_unet.config
         )
-        return unet, ema_unet 
-    
+        return unet, ema_unet
+
+    def similuate_backprop(self, unet):
+        updated_state_dict = {}
+        for k, param in unet.state_dict().items():
+            updated_param = torch.randn_like(param) + (param * torch.randn_like(param))
+            updated_state_dict.update({k: updated_param})
+        unet.load_state_dict(updated_state_dict)
+        return unet
+
     def test_optimization_steps_updated(self):
         unet, ema_unet = self.get_models()
         # Take the first (hypothetical) EMA step.
@@ -68,7 +70,7 @@ class EMAModelTests(unittest.TestCase):
             ema_unet.step(unet.parameters())
         for s_param, param in zip(ema_unet.shadow_params, orig_params):
             assert torch.allclose(s_param, param)
-        
+
         del unet, ema_unet
 
     def test_shadow_params_updated(self):
@@ -76,21 +78,13 @@ class EMAModelTests(unittest.TestCase):
         # Here we simulate the parameter updates for `unet`. Since there might
         # be some parameters which are initialized to zero we take extra care to
         # initialize their values to something non-zero before the multiplication.
-        updated_params = []
-        for param in unet.parameters(): 
-            updated_params.append(torch.randn_like(param) + (param * torch.randn_like(param)))
-
-        # Load the updated parameters into `unet`.
-        updated_state_dict = {}
-        for i, k in enumerate(unet.state_dict().keys()):
-            updated_state_dict.update({k: updated_params[i]})
-        unet.load_state_dict(updated_state_dict)
+        unet_pseudo_updated_step_one = self.similuate_backprop(unet)
 
         # Take the EMA step.
-        ema_unet.step(unet.parameters())
+        ema_unet.step(unet_pseudo_updated_step_one.parameters())
 
         # Now the EMA'd parameters won't be equal to the original model parameters.
-        orig_params = list(unet.parameters())
+        orig_params = list(unet_pseudo_updated_step_one.parameters())
         for s_param, param in zip(ema_unet.shadow_params, orig_params):
             assert ~torch.allclose(s_param, param)
 
@@ -100,16 +94,43 @@ class EMAModelTests(unittest.TestCase):
         for s_param, param in zip(ema_unet.shadow_params, orig_params):
             assert ~torch.allclose(s_param, param)
 
-    def test_consecutive_shadow_params_not_updated(self):
-        # EMA steps are supposed to be taken after we have taken a backprop step.
-        # If that is not the case shadown params after two consecutive steps should
-        # be one and the same
-        pass
-
     def test_consecutive_shadow_params_updated(self):
-        pass
+        # If we call EMA step after a backpropagation consecutively for two times,
+        # the shadow params from those two steps should be different.
+        unet, ema_unet = self.get_models()
 
+        # First backprop + EMA
+        unet_step_one = self.similuate_backprop(unet)
+        ema_unet.step(unet_step_one.parameters())
+        step_one_shadow_params = ema_unet.shadow_params
 
+        # Second backprop + EMA
+        unet_step_two = self.similuate_backprop(unet_step_one)
+        ema_unet.step(unet_step_two.parameters())
+        step_two_shadow_params = ema_unet.shadow_params
+
+        for step_one, step_two in zip(step_one_shadow_params, step_two_shadow_params):
+            assert ~torch.allclose(step_one, step_two)
+
+        del unet, ema_unet
+
+    def test_zero_decay(self):
+        # If there's no decay even if there are backprops, EMA steps
+        # won't take any effect i.e., the shadow params would remain the
+        # same.
+        unet, ema_unet = self.get_models(decay=0.0)
+        unet_step_one = self.similuate_backprop(unet)
+        ema_unet.step(unet_step_one.parameters())
+        step_one_shadow_params = ema_unet.shadow_params
+
+        unet_step_two = self.similuate_backprop(unet_step_one)
+        ema_unet.step(unet_step_two.parameters())
+        step_two_shadow_params = ema_unet.shadow_params
+
+        for step_one, step_two in zip(step_one_shadow_params, step_two_shadow_params):
+            assert torch.allclose(step_one, step_two)
+
+        del unet, ema_unet
 
     def tearDown(self):
         super().tearDown()

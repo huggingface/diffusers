@@ -196,11 +196,9 @@ class EMAModel:
         decay = self.get_decay(self.optimization_step)
         self.cur_decay_value = decay
         one_minus_decay = 1 - decay
-        print(f"step() has been called with one_minus_decay: {one_minus_decay}, decay: {decay}.")
 
         for s_param, param in zip(self.shadow_params, parameters):
             if param.requires_grad:
-                print(f"Subtraction quantity: {one_minus_decay * (s_param - param)}")
                 s_param.sub_(one_minus_decay * (s_param - param))
             else:
                 s_param.copy_(param)
