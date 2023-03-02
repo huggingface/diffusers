@@ -841,7 +841,10 @@ def convert_open_clip_checkpoint(checkpoint):
 
     text_model_dict = {}
 
-    d_model = int(checkpoint["cond_stage_model.model.text_projection"].shape[0])
+    if "cond_stage_model.model.text_projection" in checkpoint:
+        d_model = int(checkpoint["cond_stage_model.model.text_projection"].shape[0])
+    else:
+        d_model = 1024
 
     text_model_dict["text_model.embeddings.position_ids"] = text_model.text_model.embeddings.get_buffer("position_ids")
 
