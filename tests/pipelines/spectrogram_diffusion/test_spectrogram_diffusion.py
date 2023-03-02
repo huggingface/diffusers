@@ -42,7 +42,7 @@ class PipelineIntegrationTests(unittest.TestCase):
     def test_spectrogram_fast(self):
         device = torch_device
 
-        pipe = SpectrogramDiffusionPipeline.from_pretrained("/home/patrick_huggingface_co/music-spectrogram-diffusion")
+        pipe = SpectrogramDiffusionPipeline.from_pretrained("kashif/music-spectrogram-diffusion", torch_dtype=torch.float16)
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -58,7 +58,7 @@ class PipelineIntegrationTests(unittest.TestCase):
     def test_spectrogram(self):
         device = torch_device
 
-        pipe = SpectrogramDiffusionPipeline.from_pretrained("/home/patrick_huggingface_co/music-spectrogram-diffusion", torch_dtype=torch.float16)
+        pipe = SpectrogramDiffusionPipeline.from_pretrained("kashif/music-spectrogram-diffusion", torch_dtype=torch.float16)
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
