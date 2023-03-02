@@ -204,6 +204,151 @@ def warn_deprecated_model_variant(pretrained_model_name_or_path, use_auth_token,
         )
 
 
+def maybe_raise_or_warn(
+    library_name, library, class_name, importable_classes, passed_class_obj, name, is_pipeline_module
+):
+    """Simple helper method to raise or warn in case incorrect module has been passed"""
+    if not is_pipeline_module:
+        library = importlib.import_module(library_name)
+        class_obj = getattr(library, class_name)
+        class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
+
+        expected_class_obj = None
+        for class_name, class_candidate in class_candidates.items():
+            if class_candidate is not None and issubclass(class_obj, class_candidate):
+                expected_class_obj = class_candidate
+
+        if not issubclass(passed_class_obj[name].__class__, expected_class_obj):
+            raise ValueError(
+                f"{passed_class_obj[name]} is of type: {type(passed_class_obj[name])}, but should be"
+                f" {expected_class_obj}"
+            )
+    else:
+        logger.warning(
+            f"You have passed a non-standard module {passed_class_obj[name]}. We cannot verify whether it"
+            " has the correct type"
+        )
+
+
+def get_class_obj_and_candidates(library_name, class_name, importable_classes, pipelines, is_pipeline_module):
+    """Simple helper method to retrieve class object of module as well as potential parent class objects"""
+    if is_pipeline_module:
+        pipeline_module = getattr(pipelines, library_name)
+
+        class_obj = getattr(pipeline_module, class_name)
+        class_candidates = {c: class_obj for c in importable_classes.keys()}
+    else:
+        # else we just import it from the library.
+        library = importlib.import_module(library_name)
+
+        class_obj = getattr(library, class_name)
+        class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
+
+    return class_obj, class_candidates
+
+
+def load_sub_model(
+    library_name,
+    class_name,
+    importable_classes,
+    pipelines,
+    is_pipeline_module,
+    pipeline_class,
+    torch_dtype,
+    provider,
+    sess_options,
+    device_map,
+    model_variants,
+    name,
+    from_flax,
+    variant,
+    low_cpu_mem_usage,
+    cached_folder,
+):
+    """Helper method to load the module `name` from `library_name` and `class_name`"""
+    class_obj, class_candidates = get_class_obj_and_candidates(
+        library_name, class_name, importable_classes, pipelines, is_pipeline_module
+    )
+
+    load_method_name = None
+    for class_name, class_candidate in class_candidates.items():
+        if class_candidate is not None and issubclass(class_obj, class_candidate):
+            load_method_name = importable_classes[class_name][1]
+
+    if load_method_name is None:
+        none_module = class_obj.__module__
+        is_dummy_path = none_module.startswith(DUMMY_MODULES_FOLDER) or none_module.startswith(
+            TRANSFORMERS_DUMMY_MODULES_FOLDER
+        )
+        if is_dummy_path and "dummy" in none_module:
+            # call class_obj for nice error message of missing requirements
+            class_obj()
+
+        raise ValueError(
+            f"The component {class_obj} of {pipeline_class} cannot be loaded as it does not seem to have"
+            f" any of the loading methods defined in {ALL_IMPORTABLE_CLASSES}."
+        )
+
+    load_method = getattr(class_obj, load_method_name)
+    loading_kwargs = {}
+
+    if issubclass(class_obj, torch.nn.Module):
+        loading_kwargs["torch_dtype"] = torch_dtype
+    if issubclass(class_obj, diffusers.OnnxRuntimeModel):
+        loading_kwargs["provider"] = provider
+        loading_kwargs["sess_options"] = sess_options
+
+    is_diffusers_model = issubclass(class_obj, diffusers.ModelMixin)
+
+    if is_transformers_available():
+        transformers_version = version.parse(version.parse(transformers.__version__).base_version)
+    else:
+        transformers_version = "N/A"
+
+    is_transformers_model = (
+        is_transformers_available()
+        and issubclass(class_obj, PreTrainedModel)
+        and transformers_version >= version.parse("4.20.0")
+    )
+
+    # When loading a transformers model, if the device_map is None, the weights will be initialized as opposed to diffusers.
+    # To make default loading faster we set the `low_cpu_mem_usage=low_cpu_mem_usage` flag which is `True` by default.
+    # This makes sure that the weights won't be initialized which significantly speeds up loading.
+    if is_diffusers_model or is_transformers_model:
+        loading_kwargs["device_map"] = device_map
+        loading_kwargs["variant"] = model_variants.pop(name, None)
+        if from_flax:
+            loading_kwargs["from_flax"] = True
+
+        # the following can be deleted once the minimum required `transformers` version
+        # is higher than 4.27
+        if (
+            is_transformers_model
+            and loading_kwargs["variant"] is not None
+            and transformers_version < version.parse("4.27.0")
+        ):
+            raise ImportError(
+                f"When passing `variant='{variant}'`, please make sure to upgrade your `transformers` version to at least 4.27.0.dev0"
+            )
+        elif is_transformers_model and loading_kwargs["variant"] is None:
+            loading_kwargs.pop("variant")
+
+        # if `from_flax` and model is transformer model, can currently not load with `low_cpu_mem_usage`
+        if not (from_flax and is_transformers_model):
+            loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
+        else:
+            loading_kwargs["low_cpu_mem_usage"] = False
+
+    # check if the module is in a subdirectory
+    if os.path.isdir(os.path.join(cached_folder, name)):
+        loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
+    else:
+        # else load from the root directory
+        loaded_sub_model = load_method(cached_folder, **loading_kwargs)
+
+    return loaded_sub_model
+
+
 class DiffusionPipeline(ConfigMixin):
     r"""
     Base class for all models.
@@ -553,7 +698,9 @@ class DiffusionPipeline(ConfigMixin):
 
         config_dict = cls.load_config(cached_folder)
 
-        # retrieve which subfolders should load variants
+        # 2. Define which model components should load variants
+        # We retrieve the information by matching whether variant
+        # model checkpoints exist in the subfolders
         model_variants = {}
         if variant is not None:
             for folder in os.listdir(cached_folder):
@@ -563,7 +710,7 @@ class DiffusionPipeline(ConfigMixin):
                 if variant_exists:
                     model_variants[folder] = variant
 
-        # 2. Load the pipeline class, if using custom module then load it from the hub
+        # 3. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
         if custom_pipeline is not None:
             if custom_pipeline.endswith(".py"):
@@ -583,7 +730,7 @@ class DiffusionPipeline(ConfigMixin):
             diffusers_module = importlib.import_module(cls.__module__.split(".")[0])
             pipeline_class = getattr(diffusers_module, config_dict["_class_name"])
 
-        # To be removed in 1.0.0
+        # DEPRECATED: To be removed in 1.0.0
         if pipeline_class.__name__ == "StableDiffusionInpaintPipeline" and version.parse(
             version.parse(config_dict["_diffusers_version"]).base_version
         ) <= version.parse("0.5.1"):
@@ -601,6 +748,9 @@ class DiffusionPipeline(ConfigMixin):
                 " the {StableDiffusionInpaintPipelineLegacy} class and will likely remove it in version 1.0.0."
             )
             deprecate("StableDiffusionInpaintPipelineLegacy", "1.0.0", deprecation_message, standard_warn=False)
+
+        # 4. Define expected modules given pipeline signature
+        # and define non-None initialized modules (=`init_kwargs`)
 
         # some modules can be passed directly to the init
         # in this case they are already instantiated in `kwargs`
@@ -633,6 +783,7 @@ class DiffusionPipeline(ConfigMixin):
                 " separately if you need it."
             )
 
+        # 5. Throw nice warnings / errors for fast accelerate loading
         if len(unused_kwargs) > 0:
             logger.warning(
                 f"Keyword arguments {unused_kwargs} are not expected by {pipeline_class.__name__} and will be ignored."
@@ -668,135 +819,50 @@ class DiffusionPipeline(ConfigMixin):
         # import it here to avoid circular import
         from diffusers import pipelines
 
-        # 3. Load each module in the pipeline
+        # 6. Load each module in the pipeline
         for name, (library_name, class_name) in init_dict.items():
-            # 3.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
+            # 6.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
             if class_name.startswith("Flax"):
                 class_name = class_name[4:]
 
+            # 6.2 Define all importable classes
             is_pipeline_module = hasattr(pipelines, library_name)
+            importable_classes = ALL_IMPORTABLE_CLASSES if is_pipeline_module else LOADABLE_CLASSES[library_name]
             loaded_sub_model = None
 
-            # if the model is in a pipeline module, then we load it from the pipeline
+            # 6.3 Use passed sub model or load class_name from library_name
             if name in passed_class_obj:
-                # 1. check that passed_class_obj has correct parent class
-                if not is_pipeline_module:
-                    library = importlib.import_module(library_name)
-                    class_obj = getattr(library, class_name)
-                    importable_classes = LOADABLE_CLASSES[library_name]
-                    class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
-
-                    expected_class_obj = None
-                    for class_name, class_candidate in class_candidates.items():
-                        if class_candidate is not None and issubclass(class_obj, class_candidate):
-                            expected_class_obj = class_candidate
-
-                    if not issubclass(passed_class_obj[name].__class__, expected_class_obj):
-                        raise ValueError(
-                            f"{passed_class_obj[name]} is of type: {type(passed_class_obj[name])}, but should be"
-                            f" {expected_class_obj}"
-                        )
-                else:
-                    logger.warning(
-                        f"You have passed a non-standard module {passed_class_obj[name]}. We cannot verify whether it"
-                        " has the correct type"
-                    )
-
-                # set passed class object
-                loaded_sub_model = passed_class_obj[name]
-            elif is_pipeline_module:
-                pipeline_module = getattr(pipelines, library_name)
-                class_obj = getattr(pipeline_module, class_name)
-                importable_classes = ALL_IMPORTABLE_CLASSES
-                class_candidates = {c: class_obj for c in importable_classes.keys()}
-            else:
-                # else we just import it from the library.
-                library = importlib.import_module(library_name)
-
-                class_obj = getattr(library, class_name)
-                importable_classes = LOADABLE_CLASSES[library_name]
-                class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
-
-            if loaded_sub_model is None:
-                load_method_name = None
-                for class_name, class_candidate in class_candidates.items():
-                    if class_candidate is not None and issubclass(class_obj, class_candidate):
-                        load_method_name = importable_classes[class_name][1]
-
-                if load_method_name is None:
-                    none_module = class_obj.__module__
-                    is_dummy_path = none_module.startswith(DUMMY_MODULES_FOLDER) or none_module.startswith(
-                        TRANSFORMERS_DUMMY_MODULES_FOLDER
-                    )
-                    if is_dummy_path and "dummy" in none_module:
-                        # call class_obj for nice error message of missing requirements
-                        class_obj()
-
-                    raise ValueError(
-                        f"The component {class_obj} of {pipeline_class} cannot be loaded as it does not seem to have"
-                        f" any of the loading methods defined in {ALL_IMPORTABLE_CLASSES}."
-                    )
-
-                load_method = getattr(class_obj, load_method_name)
-                loading_kwargs = {}
-
-                if issubclass(class_obj, torch.nn.Module):
-                    loading_kwargs["torch_dtype"] = torch_dtype
-                if issubclass(class_obj, diffusers.OnnxRuntimeModel):
-                    loading_kwargs["provider"] = provider
-                    loading_kwargs["sess_options"] = sess_options
-
-                is_diffusers_model = issubclass(class_obj, diffusers.ModelMixin)
-
-                if is_transformers_available():
-                    transformers_version = version.parse(version.parse(transformers.__version__).base_version)
-                else:
-                    transformers_version = "N/A"
-
-                is_transformers_model = (
-                    is_transformers_available()
-                    and issubclass(class_obj, PreTrainedModel)
-                    and transformers_version >= version.parse("4.20.0")
+                # if the model is in a pipeline module, then we load it from the pipeline
+                # check that passed_class_obj has correct parent class
+                maybe_raise_or_warn(
+                    library_name, library, class_name, importable_classes, passed_class_obj, name, is_pipeline_module
                 )
 
-                # When loading a transformers model, if the device_map is None, the weights will be initialized as opposed to diffusers.
-                # To make default loading faster we set the `low_cpu_mem_usage=low_cpu_mem_usage` flag which is `True` by default.
-                # This makes sure that the weights won't be initialized which significantly speeds up loading.
-                if is_diffusers_model or is_transformers_model:
-                    loading_kwargs["device_map"] = device_map
-                    loading_kwargs["variant"] = model_variants.pop(name, None)
-                    if from_flax:
-                        loading_kwargs["from_flax"] = True
-
-                    # the following can be deleted once the minimum required `transformers` version
-                    # is higher than 4.27
-                    if (
-                        is_transformers_model
-                        and loading_kwargs["variant"] is not None
-                        and transformers_version < version.parse("4.27.0")
-                    ):
-                        raise ImportError(
-                            f"When passing `variant='{variant}'`, please make sure to upgrade your `transformers` version to at least 4.27.0.dev0"
-                        )
-                    elif is_transformers_model and loading_kwargs["variant"] is None:
-                        loading_kwargs.pop("variant")
-
-                    # if `from_flax` and model is transformer model, can currently not load with `low_cpu_mem_usage`
-                    if not (from_flax and is_transformers_model):
-                        loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
-                    else:
-                        loading_kwargs["low_cpu_mem_usage"] = False
-
-                # check if the module is in a subdirectory
-                if os.path.isdir(os.path.join(cached_folder, name)):
-                    loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
-                else:
-                    # else load from the root directory
-                    loaded_sub_model = load_method(cached_folder, **loading_kwargs)
+                loaded_sub_model = passed_class_obj[name]
+            else:
+                # load sub model
+                loaded_sub_model = load_sub_model(
+                    library_name=library_name,
+                    class_name=class_name,
+                    importable_classes=importable_classes,
+                    pipelines=pipelines,
+                    is_pipeline_module=is_pipeline_module,
+                    pipeline_class=pipeline_class,
+                    torch_dtype=torch_dtype,
+                    provider=provider,
+                    sess_options=sess_options,
+                    device_map=device_map,
+                    model_variants=model_variants,
+                    name=name,
+                    from_flax=from_flax,
+                    variant=variant,
+                    low_cpu_mem_usage=low_cpu_mem_usage,
+                    cached_folder=cached_folder,
+                )
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
-        # 4. Potentially add passed objects if expected
+        # 7. Potentially add passed objects if expected
         missing_modules = set(expected_modules) - set(init_kwargs.keys())
         passed_modules = list(passed_class_obj.keys())
         optional_modules = pipeline_class._optional_components
@@ -809,7 +875,7 @@ class DiffusionPipeline(ConfigMixin):
                 f"Pipeline {pipeline_class} expected {expected_modules}, but only {passed_modules} were passed."
             )
 
-        # 5. Instantiate the pipeline
+        # 8. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)
 
         if return_cached_folder:
