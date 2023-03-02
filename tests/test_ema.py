@@ -45,12 +45,12 @@ class EMAModelTests(unittest.TestCase):
         unet, ema_unet = self.get_models()
         # Take the first (hypothetical) EMA step.
         ema_unet.step(unet.parameters())
-        assert ema_unet.optimization == 1
+        assert ema_unet.optimization_step == 1
 
         # Take two more.
         for _ in range(2):
             ema_unet.step(unet.parameters())
-        assert ema_unet.optimization == 3
+        assert ema_unet.optimization_step == 3
 
         del unet, ema_unet
 
