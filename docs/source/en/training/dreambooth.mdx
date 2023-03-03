@@ -168,10 +168,6 @@ python train_dreambooth_flax.py \
 </jax>
 </frameworkcontent>
 
-## Finetuning with LoRA
-
-You can also use Low-Rank Adaptation of Large Language Models (LoRA), a fine-tuning technique for accelerating training large models, on DreamBooth. For more details, take a look at the [LoRA training](training/lora#dreambooth) guide.
-
 ## Finetuning the text encoder and UNet
 
 The script also allows you to finetune the `text_encoder` along with the `unet`. In our experiments (check out the [Training Stable Diffusion with DreamBooth using 🧨 Diffusers](https://huggingface.co/blog/dreambooth) post for more details), this yields much better results, especially when generating images of faces.
@@ -236,6 +232,10 @@ python train_dreambooth_flax.py \
 ```
 </jax>
 </frameworkcontent>
+
+## Finetuning with LoRA
+
+You can also use Low-Rank Adaptation of Large Language Models (LoRA), a fine-tuning technique for accelerating training large models, on DreamBooth. For more details, take a look at the [LoRA training](training/lora#dreambooth) guide.
 
 ## Saving checkpoints while training
 
