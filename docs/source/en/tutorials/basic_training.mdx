@@ -14,9 +14,9 @@ specific language governing permissions and limitations under the License.
 
 # Train a diffusion model
 
-A popular application of diffusion models is unconditional image generation. The model generates an image that resembles the dataset it was trained on. Typically, the best results are obtained from finetuning a pretrained model on a specific dataset. You can find many of these checkpoints on the [Hub](https://huggingface.co/search/full-text?q=unconditional-image-generation&type=model), but if you can't find one you like, you can always train your own!
+Unconditional image generation is a popular application of diffusion models that generates images that look like those in the dataset used for training. Typically, the best results are obtained from finetuning a pretrained model on a specific dataset. You can find many of these checkpoints on the [Hub](https://huggingface.co/search/full-text?q=unconditional-image-generation&type=model), but if you can't find one you like, you can always train your own!
 
-This tutorial will show you how to train a [`UNet2DModel`] from scratch on a subset of the [Smithsonian Butterflies](https://huggingface.co/datasets/huggan/smithsonian_butterflies_subset) dataset to generate your own 🦋 butterflies 🦋.
+This tutorial will teach you how to train a [`UNet2DModel`] from scratch on a subset of the [Smithsonian Butterflies](https://huggingface.co/datasets/huggan/smithsonian_butterflies_subset) dataset to generate your own 🦋 butterflies 🦋.
 
 <Tip>
 
@@ -24,10 +24,10 @@ This tutorial will show you how to train a [`UNet2DModel`] from scratch on a sub
 
 </Tip>
 
-Before you begin, make sure you have 🤗 Datasets installed to load and preprocess image datasets and 🤗 Accelerate to simplify training on any number of GPUs. The following command will also install [TensorBoard](https://www.tensorflow.org/tensorboard) to visualize training metrics (you can also use [Weights & Biases](https://docs.wandb.ai/) to track your training).
+Before you begin, make sure you have 🤗 Datasets installed to load and preprocess image datasets, and 🤗 Accelerate, to simplify training on any number of GPUs. The following command will also install [TensorBoard](https://www.tensorflow.org/tensorboard) to visualize training metrics (you can also use [Weights & Biases](https://docs.wandb.ai/) to track your training).
 
 ```bash
-!pip install diffusers[training]==0.13.0
+!pip install diffusers[training]
 ```
 
 We encourage you to share your model with the community, and in order to do that, you'll need to login to your Hugging Face account (create one [here](https://hf.co/join) if you don't already have one!). You can login from a notebook and enter your token when prompted:
@@ -119,7 +119,7 @@ The images are all different sizes though, so you'll need to preprocess them fir
 
 * `Resize` changes the image size to the one defined in `config.image_size`.
 * `RandomHorizontalFlip` augments the dataset by randomly mirroring the images.
-* `Normalize` is important to rescale the pixel values into a [-1, 1] range (which our model will expect).
+* `Normalize` is important to rescale the pixel values into a [-1, 1] range, which is what the model expects.
 
 ```py
 >>> from torchvision import transforms
@@ -196,7 +196,7 @@ Input shape: torch.Size([1, 3, 128, 128])
 Output shape: torch.Size([1, 3, 128, 128])
 ```
 
-Great! Next, you'll need a scheduler to add some noise to an image.
+Great! Next, you'll need a scheduler to add some noise to the image.
 
 ## Create a scheduler
 
@@ -232,7 +232,7 @@ The training objective of the model is to predict the noise added to the image. 
 
 ## Train the model
 
-By now, you have most of the pieces to start training the model and all that's missing is putting everything together.
+By now, you have most of the pieces to start training the model and all that's left is putting everything together.
 
 First, you'll need an optimizer and a learning rate scheduler:
 
@@ -279,11 +279,11 @@ Then, you'll need a way to evaluate the model. For evaluation, you can use the [
 ...     image_grid.save(f"{test_dir}/{epoch:04d}.png")
 ```
 
-Wrap all these components together and write a training function with 🤗 Accelerate for easy TensorBoard logging, gradient accumulation, and mixed precision training. To upload the model to the Hub, you can also write a function to get your repository name and information and then push it to the Hub.
+Now you can wrap all these components together in a training loop with 🤗 Accelerate for easy TensorBoard logging, gradient accumulation, and mixed precision training. To upload the model to the Hub, write a function to get your repository name and information and then push it to the Hub.
 
 <Tip>
 
-💡 The training loop below may look intimidating and long, but it'll be worth it later when you launch your training in just one line of code! If you can't wait and want to start generating images, feel free to copy and run the code below. You can always come back and examine the training loop more in-depth later, like when you're waiting for your model to finish training. 🤗
+💡 The training loop below may look intimidating and long, but it'll be worth it later when you launch your training in just one line of code! If you can't wait and want to start generating images, feel free to copy and run the code below. You can always come back and examine the training loop more closely later, like when you're waiting for your model to finish training. 🤗
 
 </Tip>
 
@@ -406,9 +406,9 @@ Once training is complete, take a look at the final 🦋 images 🦋 generated b
 
 ## Next steps
 
-Unconditional image generation is one example of a task that can be trained by diffusion models. You can explore other tasks and training techniques by visiting the [🧨 Diffusers Training Examples](./training/overview) page. Here are some examples of what you can learn:
+Unconditional image generation is one example of a task that can be trained. You can explore other tasks and training techniques by visiting the [🧨 Diffusers Training Examples](./training/overview) page. Here are some examples of what you can learn:
 
 * [Textual Inversion](./training/text_inversion), an algorithm that teaches a model a specific visual concept and integrates it into the generated image.
-* [Dreambooth](./training/dreambooth), a technique for generating personalized images of a subject given several input images of the subject.
+* [DreamBooth](./training/dreambooth), a technique for generating personalized images of a subject given several input images of the subject.
 * [Guide](./training/text2image) to finetuning a Stable Diffusion model on your own dataset.
 * [Guide](./training/lora) to using LoRA, a memory-efficient technique for finetuning really large models faster.
