@@ -196,6 +196,7 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
     def test_inference_batch_single_identical(self):
         return super().test_inference_batch_single_identical()
 
+
 @slow
 @require_torch_gpu
 class StableDiffusionPix2PixZeroPipelineSlowTests(unittest.TestCase):

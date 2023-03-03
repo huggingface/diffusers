@@ -197,6 +197,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
     def test_attention_slicing_forward_pass(self):
         return super().test_attention_slicing_forward_pass()
 
+
 @slow
 @require_torch_gpu
 class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
