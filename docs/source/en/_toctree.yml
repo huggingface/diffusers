@@ -9,6 +9,10 @@
     title: Installation
   title: Get started
 - sections:
+  - local: tutorials/basic_training
+    title: Train a diffusion model
+  title: Tutorials
+- sections:
   - sections:
     - local: using-diffusers/loading
       title: Loading Pipelines, Models, and Schedulers
