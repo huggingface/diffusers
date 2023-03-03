@@ -19,14 +19,12 @@ from typing import Optional, Tuple, Union
 import numpy as np
 import torch
 
-from .notes_encoder import SpectrogramNotesEncoder
-from .continous_encoder import SpectrogramContEncoder
+from ...models import T5FilmDecoder
 from ...schedulers import DDPMScheduler
 from ...utils import is_note_seq_available, randn_tensor
 from ..onnx_utils import OnnxRuntimeModel
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
-from ...models import T5FilmDecoder
-
+from .continous_encoder import SpectrogramContEncoder
 from .midi_utils import (
     DEFAULT_MAX_SHIFT_SECONDS,
     DEFAULT_NUM_VELOCITY_BINS,
@@ -48,6 +46,7 @@ from .midi_utils import (
     note_sequence_to_onsets_and_offsets_and_programs,
     program_to_slakh_program,
 )
+from .notes_encoder import SpectrogramNotesEncoder
 
 
 if is_note_seq_available():

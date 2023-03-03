@@ -17,11 +17,11 @@ import gc
 import unittest
 
 import numpy as np
+import scipy
 import torch
 
 from diffusers import SpectrogramDiffusionPipeline
-from diffusers.utils import slow, require_torch_gpu, torch_device
-import scipy
+from diffusers.utils import require_torch_gpu, slow, torch_device
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -58,7 +58,9 @@ class PipelineIntegrationTests(unittest.TestCase):
     def test_spectrogram(self):
         device = torch_device
 
-        pipe = SpectrogramDiffusionPipeline.from_pretrained("kashif/music-spectrogram-diffusion", torch_dtype=torch.float16)
+        pipe = SpectrogramDiffusionPipeline.from_pretrained(
+            "kashif/music-spectrogram-diffusion", torch_dtype=torch.float16
+        )
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 

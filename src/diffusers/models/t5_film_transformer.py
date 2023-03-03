@@ -11,13 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import math
+
 import torch
 from torch import nn
-import math
+
 from ..configuration_utils import ConfigMixin, register_to_config
-from .modeling_utils import ModelMixin
-from .embeddings import get_timestep_embedding
 from .cross_attention import CrossAttention
+from .embeddings import get_timestep_embedding
+from .modeling_utils import ModelMixin
 
 
 class T5FilmDecoder(ModelMixin, ConfigMixin):
@@ -96,7 +98,9 @@ class T5FilmDecoder(ModelMixin, ConfigMixin):
         y = self.dropout(inputs)
 
         # decoder: No padding present.
-        decoder_mask = torch.ones(decoder_input_tokens.shape[:2], device=decoder_input_tokens.device, dtype=inputs.dtype)
+        decoder_mask = torch.ones(
+            decoder_input_tokens.shape[:2], device=decoder_input_tokens.device, dtype=inputs.dtype
+        )
 
         # Translate encoding masks to encoder-decoder masks.
         encodings_and_encdec_masks = [(x, self.encoder_decoder_mask(decoder_mask, y)) for x, y in encodings_and_masks]
@@ -126,13 +130,25 @@ class DecoderLayer(nn.Module):
         self.layer = nn.ModuleList()
 
         # cond self attention: layer 0
-        self.layer.append(T5LayerSelfAttentionCond(d_model=d_model, d_kv=d_kv, num_heads=num_heads, dropout_rate=dropout_rate))
+        self.layer.append(
+            T5LayerSelfAttentionCond(d_model=d_model, d_kv=d_kv, num_heads=num_heads, dropout_rate=dropout_rate)
+        )
 
         # cross attention: layer 1
-        self.layer.append(T5LayerCrossAttention(d_model=d_model, d_kv=d_kv, num_heads=num_heads, dropout_rate=dropout_rate, layer_norm_epsilon=layer_norm_epsilon))
+        self.layer.append(
+            T5LayerCrossAttention(
+                d_model=d_model,
+                d_kv=d_kv,
+                num_heads=num_heads,
+                dropout_rate=dropout_rate,
+                layer_norm_epsilon=layer_norm_epsilon,
+            )
+        )
 
         # Film Cond MLP + dropout: last layer
-        self.layer.append(T5LayerFFCond(d_model=d_model, d_ff=d_ff, dropout_rate=dropout_rate, layer_norm_epsilon=layer_norm_epsilon))
+        self.layer.append(
+            T5LayerFFCond(d_model=d_model, d_ff=d_ff, dropout_rate=dropout_rate, layer_norm_epsilon=layer_norm_epsilon)
+        )
 
     def forward(
         self,
@@ -150,7 +166,9 @@ class DecoderLayer(nn.Module):
         )
 
         if encoder_hidden_states is not None:
-            encoder_extended_attention_mask = torch.where(encoder_attention_mask > 0, 0, -1e10).to(encoder_hidden_states.dtype)
+            encoder_extended_attention_mask = torch.where(encoder_attention_mask > 0, 0, -1e10).to(
+                encoder_hidden_states.dtype
+            )
 
             hidden_states = self.layer[1](
                 hidden_states,
@@ -169,7 +187,9 @@ class T5LayerSelfAttentionCond(nn.Module):
         super().__init__()
         self.layer_norm = T5LayerNorm(d_model)
         self.FiLMLayer = T5FiLMLayer(in_features=d_model * 4, out_features=d_model)
-        self.attention = CrossAttention(query_dim=d_model, heads=num_heads, dim_head=d_kv, out_bias=False, scale_qk=False)
+        self.attention = CrossAttention(
+            query_dim=d_model, heads=num_heads, dim_head=d_kv, out_bias=False, scale_qk=False
+        )
         self.dropout = nn.Dropout(dropout_rate)
 
     def forward(
@@ -195,7 +215,9 @@ class T5LayerSelfAttentionCond(nn.Module):
 class T5LayerCrossAttention(nn.Module):
     def __init__(self, d_model, d_kv, num_heads, dropout_rate, layer_norm_epsilon):
         super().__init__()
-        self.attention = CrossAttention(query_dim=d_model, heads=num_heads, dim_head=d_kv, out_bias=False, scale_qk=False)
+        self.attention = CrossAttention(
+            query_dim=d_model, heads=num_heads, dim_head=d_kv, out_bias=False, scale_qk=False
+        )
         self.layer_norm = T5LayerNorm(d_model, eps=layer_norm_epsilon)
         self.dropout = nn.Dropout(dropout_rate)
 
