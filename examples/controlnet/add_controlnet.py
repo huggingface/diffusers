@@ -17,6 +17,7 @@ import argparse
 import os
 from diffusers import UNet2DConditionModel, ControlNetModel, StableDiffusionControlNetPipeline
 
+
 def parse_args(input_args=None):
     parser = argparse.ArgumentParser(description="Add controlnet to existing model by copying unet weights.")
     parser.add_argument(
@@ -46,9 +47,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--controlnet_only",
         action="store_true",
-        help=(
-            "Save only the controlnet weights."
-        ),
+        help=("Save only the controlnet weights."),
     )
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -61,8 +60,9 @@ def parse_args(input_args=None):
 
     return args
 
+
 def main(args):
-    device_map = 'cpu'
+    device_map = "cpu"
 
     try:
         config, unused_kwargs = ControlNetModel.load_config(
@@ -85,7 +85,7 @@ def main(args):
         device_map=device_map,
     )
 
-    config["_class_name"] = 'ControlNetModel'
+    config["_class_name"] = "ControlNetModel"
     config.pop("conv_out_kernel", None)
     config.pop("out_channels", None)
     config.pop("up_block_types", None)
@@ -111,12 +111,12 @@ def main(args):
         if k in unet:
             temp_state[k] = unet[k].clone()
         else:
-            if 'controlnet' not in k:
-                print('Not found in unet:', k)
+            if "controlnet" not in k:
+                print("Not found in unet:", k)
 
     controlnet.load_state_dict(temp_state, strict=True)
     if args.controlnet_only:
-        controlnet.save_pretrained(os.path.join(args.output_dir, 'controlnet'))
+        controlnet.save_pretrained(os.path.join(args.output_dir, "controlnet"))
     else:
         pipeline = StableDiffusionControlNetPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
@@ -125,7 +125,8 @@ def main(args):
         )
         pipeline.save_pretrained(args.output_dir)
 
-    print('Done')
+    print("Done")
+
 
 if __name__ == "__main__":
     args = parse_args()

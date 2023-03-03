@@ -41,7 +41,13 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
 import diffusers
-from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionControlNetPipeline, UNet2DConditionModel, ControlNetModel
+from diffusers import (
+    AutoencoderKL,
+    DDPMScheduler,
+    StableDiffusionControlNetPipeline,
+    UNet2DConditionModel,
+    ControlNetModel,
+)
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
 from diffusers.utils.import_utils import is_xformers_available
@@ -315,7 +321,7 @@ class ControlnetDataset(Dataset):
             raise ValueError(f"Instance {self.instance_data_root} images root doesn't exists.")
 
         self.data = []
-        with open(self.instance_data_root / 'prompt.json', 'rt') as f:
+        with open(self.instance_data_root / "prompt.json", "rt") as f:
             for line in f:
                 self.data.append(json.loads(line))
 
@@ -336,7 +342,7 @@ class ControlnetDataset(Dataset):
             [
                 transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
                 transforms.CenterCrop(size),
-                transforms.ToTensor()
+                transforms.ToTensor(),
             ]
         )
 
@@ -347,9 +353,9 @@ class ControlnetDataset(Dataset):
         example = {}
         item = self.data[idx % self._length]
 
-        source_filename = item['source']
-        target_filename = item['target']
-        prompt = item['prompt']
+        source_filename = item["source"]
+        target_filename = item["target"]
+        prompt = item["prompt"]
 
         source = Image.open(self.instance_data_root / source_filename)
         if not source.mode == "RGB":
@@ -570,9 +576,7 @@ def main(args):
 
     # Dataset and DataLoaders creation:
     train_dataset = ControlnetDataset(
-        instance_data_root=args.instance_data_dir,
-        tokenizer=tokenizer,
-        size=args.resolution
+        instance_data_root=args.instance_data_dir, tokenizer=tokenizer, size=args.resolution
     )
 
     train_dataloader = torch.utils.data.DataLoader(
@@ -672,7 +676,6 @@ def main(args):
     progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
     progress_bar.set_description("Steps")
 
-    #torch.autograd.set_detect_anomaly(True)
     for epoch in range(first_epoch, args.num_train_epochs):
         controlnet.train()
         for step, batch in enumerate(train_dataloader):
