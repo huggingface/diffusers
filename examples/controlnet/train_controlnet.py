@@ -486,7 +486,8 @@ def main(args):
     if args.controlnet_from_model:
         print("Loading controlnet weights from model")
         controlnet = ControlNetModel.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="controlnet", revision=args.revision)
+            args.pretrained_model_name_or_path, subfolder="controlnet", revision=args.revision
+        )
     else:
         print("Copying unet weight to controlnet")
         # Create controlnet from unet weights.
