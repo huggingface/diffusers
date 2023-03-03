@@ -376,10 +376,16 @@ class DiffusionPipeline(ConfigMixin):
             )
 
         module_names, _, _ = self.extract_init_dict(dict(self.config))
+        is_offloaded = pipeline_is_offloaded or pipeline_is_sequentially_offloaded
         for name in module_names.keys():
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
-                if module.dtype == torch.float16 and str(torch_device) in ["cpu"] and not silence_dtype_warnings:
+                if (
+                    module.dtype == torch.float16
+                    and str(torch_device) in ["cpu"]
+                    and not silence_dtype_warnings
+                    and not is_offloaded
+                ):
                     logger.warning(
                         "Pipelines loaded with `torch_dtype=torch.float16` cannot run with `cpu` device. It"
                         " is not recommended to move them to `cpu` as running them will fail. Please make"
