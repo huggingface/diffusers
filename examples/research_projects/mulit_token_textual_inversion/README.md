@@ -1,4 +1,5 @@
-## This project
+## Multi Token Textual Inversion
+The author of this project is [Isamu Isozaki](https://github.com/isamu-isozaki) - please make sure to tag the author for issue and PRs as well as @patrickvonplaten.
 
 We add multi token support to textual inversion. I added
 1. num_vec_per_token for the number of used to reference that token
