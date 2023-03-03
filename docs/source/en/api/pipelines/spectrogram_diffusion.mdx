@@ -20,6 +20,12 @@ An ideal music synthesizer should be both interactive and expressive, generating
 
 The original codebase of this implementation can be found at [magenta/music-spectrogram-diffusion)](https://github.com/magenta/music-spectrogram-diffusion).
 
+## Model
+
+![img](https://storage.googleapis.com/music-synthesis-with-spectrogram-diffusion/architecture.png)
+
+As depicted above the model takes as input a MIDI file and tokenizes it into a sequence of 5 second intervals. Each tokenized interval then together with positional encodings is passed through the Note Encoder and its representation is concatenated with the previous window's generated Spectrogram representation obtained via the Context Encoder. For the initial 5 second window this is set to zero. The resulting context is then used as conditioning to generate the resulting spectrogram from the MIDI window and we concatenate this spectrogram to the final output spectrogram as well as use it for the context of the next MIDI window. The process repeats till we have gone over all the MIDI inputs. Finally a MelGAN decoder converts the resulting spectrogram to audio which is the final result of this pipeline. 
+
 ## Available Pipelines:
 
 | Pipeline | Tasks | Colab
