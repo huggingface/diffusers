@@ -143,9 +143,6 @@ class StableDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unitte
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
-    def test_num_images_per_prompt(self):
-        self._test_num_images_per_prompt(prompt_key="image")
-
 
 @slow
 @require_torch_gpu

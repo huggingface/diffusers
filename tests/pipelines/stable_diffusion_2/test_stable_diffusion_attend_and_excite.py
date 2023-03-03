@@ -142,9 +142,6 @@ class StableDiffusionAttendAndExcitePipelineFastTests(PipelineTesterMixin, unitt
         # NOTE: Larger batch sizes cause this test to timeout, only test on smaller batches
         self._test_inference_batch_consistent(batch_sizes=[2, 4])
 
-    def test_num_images_per_prompt(self):
-        self._test_num_images_per_prompt(prompt_key=["prompt", "token_indices"])
-
 
 @require_torch_gpu
 @slow

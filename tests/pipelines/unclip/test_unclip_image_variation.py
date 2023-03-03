@@ -361,9 +361,6 @@ class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
-    def test_num_images_per_prompt(self):
-        self._test_num_images_per_prompt(prompt_key="image")
-
     def test_unclip_passed_image_embed(self):
         device = torch.device("cpu")
 

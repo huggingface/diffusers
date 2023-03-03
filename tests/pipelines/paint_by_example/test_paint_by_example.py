@@ -160,9 +160,6 @@ class PaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert out_1.shape == (1, 64, 64, 3)
         assert np.abs(out_1.flatten() - out_2.flatten()).max() < 5e-2
 
-    def test_num_images_per_prompt(self):
-        self._test_num_images_per_prompt(prompt_key=["image", "example_image", "mask_image"])
-
 
 @slow
 @require_torch_gpu

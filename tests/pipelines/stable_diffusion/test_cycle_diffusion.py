@@ -41,7 +41,7 @@ class CycleDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "negative_prompt_embeds",
     }
     required_optional_params = PipelineTesterMixin.required_optional_params - {"latents"}
-    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
+    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS.union({"source_prompt"})
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -157,9 +157,6 @@ class CycleDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         expected_slice = np.array([0.3506, 0.4543, 0.446, 0.4575, 0.5195, 0.4155, 0.5273, 0.518, 0.4116])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-
-    def test_num_images_per_prompt(self):
-        self._test_num_images_per_prompt(prompt_key=["prompt", "source_prompt", "image"])
 
     @skip_mps
     def test_save_load_local(self):
