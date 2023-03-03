@@ -19,13 +19,18 @@ import torch
 
 from .models.cross_attention import LoRACrossAttnProcessor
 from .models.modeling_utils import _get_model_file
-from .utils import DIFFUSERS_CACHE, HF_HUB_OFFLINE, logging
+from .utils import DIFFUSERS_CACHE, HF_HUB_OFFLINE, is_safetensors_available, logging
+
+
+if is_safetensors_available():
+    import safetensors
 
 
 logger = logging.get_logger(__name__)
 
 
 LORA_WEIGHT_NAME = "pytorch_lora_weights.bin"
+LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
 
 
 class AttnProcsLayers(torch.nn.Module):
@@ -136,28 +141,53 @@ class UNet2DConditionLoadersMixin:
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
         subfolder = kwargs.pop("subfolder", None)
-        weight_name = kwargs.pop("weight_name", LORA_WEIGHT_NAME)
+        weight_name = kwargs.pop("weight_name", None)
 
         user_agent = {
             "file_type": "attn_procs_weights",
             "framework": "pytorch",
         }
 
+        model_file = None
         if not isinstance(pretrained_model_name_or_path_or_dict, dict):
-            model_file = _get_model_file(
-                pretrained_model_name_or_path_or_dict,
-                weights_name=weight_name,
-                cache_dir=cache_dir,
-                force_download=force_download,
-                resume_download=resume_download,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
-                revision=revision,
-                subfolder=subfolder,
-                user_agent=user_agent,
-            )
-            state_dict = torch.load(model_file, map_location="cpu")
+            if is_safetensors_available():
+                if weight_name is None:
+                    weight_name = LORA_WEIGHT_NAME_SAFE
+                try:
+                    model_file = _get_model_file(
+                        pretrained_model_name_or_path_or_dict,
+                        weights_name=weight_name,
+                        cache_dir=cache_dir,
+                        force_download=force_download,
+                        resume_download=resume_download,
+                        proxies=proxies,
+                        local_files_only=local_files_only,
+                        use_auth_token=use_auth_token,
+                        revision=revision,
+                        subfolder=subfolder,
+                        user_agent=user_agent,
+                    )
+                    state_dict = safetensors.torch.load_file(model_file, device="cpu")
+                except EnvironmentError:
+                    if weight_name == LORA_WEIGHT_NAME_SAFE:
+                        weight_name = None
+            if model_file is None:
+                if weight_name is None:
+                    weight_name = LORA_WEIGHT_NAME
+                model_file = _get_model_file(
+                    pretrained_model_name_or_path_or_dict,
+                    weights_name=weight_name,
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    resume_download=resume_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    use_auth_token=use_auth_token,
+                    revision=revision,
+                    subfolder=subfolder,
+                    user_agent=user_agent,
+                )
+                state_dict = torch.load(model_file, map_location="cpu")
         else:
             state_dict = pretrained_model_name_or_path_or_dict
 
@@ -195,8 +225,9 @@ class UNet2DConditionLoadersMixin:
         self,
         save_directory: Union[str, os.PathLike],
         is_main_process: bool = True,
-        weights_name: str = LORA_WEIGHT_NAME,
+        weights_name: str = None,
         save_function: Callable = None,
+        safe_serialization: bool = False,
     ):
         r"""
         Save an attention processor to a directory, so that it can be re-loaded using the
@@ -219,7 +250,13 @@ class UNet2DConditionLoadersMixin:
             return
 
         if save_function is None:
-            save_function = torch.save
+            if safe_serialization:
+
+                def save_function(weights, filename):
+                    return safetensors.torch.save_file(weights, filename, metadata={"format": "pt"})
+
+            else:
+                save_function = torch.save
 
         os.makedirs(save_directory, exist_ok=True)
 
@@ -236,6 +273,12 @@ class UNet2DConditionLoadersMixin:
             weights_no_suffix = weights_name.replace(".bin", "")
             if filename.startswith(weights_no_suffix) and os.path.isfile(full_filename) and is_main_process:
                 os.remove(full_filename)
+
+        if weights_name is None:
+            if safe_serialization:
+                weights_name = LORA_WEIGHT_NAME_SAFE
+            else:
+                weights_name = LORA_WEIGHT_NAME
 
         # Save the model
         save_function(state_dict, os.path.join(save_directory, weights_name))
