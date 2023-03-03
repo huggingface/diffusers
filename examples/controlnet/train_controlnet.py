@@ -86,6 +86,12 @@ def parse_args(input_args=None):
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
+        "--controlnet_from_model",
+        action="store_true",
+        default=False,
+        help="Load controlnet weights from model instead of copying unet weights.",
+    )
+    parser.add_argument(
         "--revision",
         type=str,
         default=None,
@@ -476,9 +482,44 @@ def main(args):
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
-    controlnet = ControlNetModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="controlnet", revision=args.revision
-    )
+
+    if args.controlnet_from_model:
+        print("Loading controlnet weights from model")
+        controlnet = ControlNetModel.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="controlnet", revision=args.revision)
+    else:
+        print("Copying unet weight to controlnet")
+        # Create controlnet from unet weights.
+        config = dict(unet.config)
+
+        config["_class_name"] = "ControlNetModel"
+        config.pop("conv_out_kernel", None)
+        config.pop("out_channels", None)
+        config.pop("up_block_types", None)
+        config.pop("center_input_sample", None)
+        config.pop("conv_in_kernel", None)
+        config.pop("dual_cross_attention", None)
+        config.pop("mid_block_type", None)
+        config.pop("sample_size", None)
+        config.pop("time_cond_proj_dim", None)
+        config.pop("time_embedding_type", None)
+        config.pop("timestep_post_act", None)
+
+        controlnet = ControlNetModel.from_config(config)
+
+        unet_dict = unet.state_dict()
+        temp_state = controlnet.state_dict()
+
+        for k in temp_state.keys():
+            if k in unet_dict:
+                temp_state[k] = unet_dict[k].clone()
+            else:
+                if "controlnet" not in k:
+                    print("Not found in unet:", k)
+
+        controlnet.load_state_dict(temp_state, strict=True)
+        del unet_dict
+        del temp_state
 
     # `accelerate` 0.16.0 will have better support for customized saving
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):

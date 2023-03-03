@@ -47,33 +47,19 @@ write_basic_config()
 
 Download the fill50k dataset from [huggingface page](https://huggingface.co/lllyasviel/ControlNet) and extract it. You should have a json file with the prompts and two directories, source and target, with training images.
 
-## Initializing the model
-
-Next, you should have a Stable Diffusion checkpoint without an existing controlnet. For example [Stable diffusion 1.5](https://huggingface.co/runwayml/stable-diffusion-v1-5/tree/main). You should download the diffusers weights in the folders or convert ckpt or safetensor with `scripts/convert_original_stable_diffusion_to_diffusers.py`.
-
-Empty controlnet can be added to an existing model with
-`examples/controlnet/add_controlnet.py` script.
-
-```bash
-export MODEL_NAME="path to model or model identifier from huggingface.co/models"
-export OUTPUT_DIR="path to save model"
-
-python examples/controlnet/add_controlnet.py --pretrained_model_name_or_path=$MODEL_NAME --output_dir=$OUTPUT_DIR
-```
-
 ## Training
 
-After having set up the dataset and initializing a controlnet model training can be started.
+After having set up the dataset training can be started.
 
 ```bash
-export MODEL_DIR="path to model"
+export MODEL_DIR="runwayml/stable-diffusion-v1-5"
 export DATASET_DIR="path to extracted fill50k dataset"
 export OUTPUT_DIR="path to save model"
 
 accelerate launch examples/controlnet/train_controlnet.py \
- --pretrained_model_name_or_path=MODEL_DIR \
- --instance_data_dir=DATASET_DIR  \
- --output_dir=OUTPUT_DIR \
+ --pretrained_model_name_or_path=$MODEL_DIR \
+ --instance_data_dir=$DATASET_DIR  \
+ --output_dir=$OUTPUT_DIR \
  --resolution=512 \
  --train_batch_size=1 \
  --gradient_accumulation_steps=4 \
