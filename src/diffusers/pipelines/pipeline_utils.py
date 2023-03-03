@@ -49,6 +49,7 @@ from ..utils import (
     get_class_from_dynamic_module,
     http_user_agent,
     is_accelerate_available,
+    is_accelerate_version,
     is_safetensors_available,
     is_torch_version,
     is_transformers_available,
@@ -64,6 +65,10 @@ if is_transformers_available():
     from transformers.utils import WEIGHTS_NAME as TRANSFORMERS_WEIGHTS_NAME
 
 from ..utils import FLAX_WEIGHTS_NAME, ONNX_WEIGHTS_NAME
+
+
+if is_accelerate_available():
+    import accelerate
 
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
@@ -334,6 +339,20 @@ class DiffusionPipeline(ConfigMixin):
     def to(self, torch_device: Optional[Union[str, torch.device]] = None):
         if torch_device is None:
             return self
+
+        # throw warning if pipeline is in "offloaded"-mode but user tries to manually set to GPU.
+        def module_is_offloaded(module):
+            if not is_accelerate_available() or is_accelerate_version("<", "0.17.0.dev0"):
+                return False
+
+            return hasattr(module, "_hf_hook") and isinstance(module._hf_hook, accelerate.hooks.CpuOffload)
+
+        pipeline_is_offloaded = any(module_is_offloaded(module) for _, module in self.components.items())
+
+        if pipeline_is_offloaded and torch.device(torch_device).type == "cuda":
+            logger.warn(
+                f"It seems like you have activated model offloading by calling `enable_model_offload` or `enable_model_cpu_offload`, but are now manually moving the pipeline to GPU. It is strongly recommended against doing so as memory gains from offloading are likely to be lost. Offloading automatically takes care of moving the individual components {', '.join(self.components.keys())} to GPU when needed. To make sure offloading works as expected, you should consider moving the pipeline back to CPU: `pipeline.to('cpu')`."
+            )
 
         module_names, _, _ = self.extract_init_dict(dict(self.config))
         for name in module_names.keys():
