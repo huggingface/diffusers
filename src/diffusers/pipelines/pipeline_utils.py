@@ -49,6 +49,7 @@ from ..utils import (
     get_class_from_dynamic_module,
     http_user_agent,
     is_accelerate_available,
+    is_accelerate_version,
     is_safetensors_available,
     is_torch_version,
     is_transformers_available,
@@ -64,6 +65,10 @@ if is_transformers_available():
     from transformers.utils import WEIGHTS_NAME as TRANSFORMERS_WEIGHTS_NAME
 
 from ..utils import FLAX_WEIGHTS_NAME, ONNX_EXTERNAL_WEIGHTS_NAME, ONNX_WEIGHTS_NAME
+
+
+if is_accelerate_available():
+    import accelerate
 
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
@@ -337,15 +342,50 @@ class DiffusionPipeline(ConfigMixin):
 
             save_method(os.path.join(save_directory, pipeline_component_name), **save_kwargs)
 
-    def to(self, torch_device: Optional[Union[str, torch.device]] = None):
+    def to(self, torch_device: Optional[Union[str, torch.device]] = None, silence_dtype_warnings: bool = False):
         if torch_device is None:
             return self
 
+        # throw warning if pipeline is in "offloaded"-mode but user tries to manually set to GPU.
+        def module_is_sequentially_offloaded(module):
+            if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
+                return False
+
+            return hasattr(module, "_hf_hook") and not isinstance(module._hf_hook, accelerate.hooks.CpuOffload)
+
+        def module_is_offloaded(module):
+            if not is_accelerate_available() or is_accelerate_version("<", "0.17.0.dev0"):
+                return False
+
+            return hasattr(module, "_hf_hook") and isinstance(module._hf_hook, accelerate.hooks.CpuOffload)
+
+        # .to("cuda") would raise an error if the pipeline is sequentially offloaded, so we raise our own to make it clearer
+        pipeline_is_sequentially_offloaded = any(
+            module_is_sequentially_offloaded(module) for _, module in self.components.items()
+        )
+        if pipeline_is_sequentially_offloaded and torch.device(torch_device).type == "cuda":
+            raise ValueError(
+                "It seems like you have activated sequential model offloading by calling `enable_sequential_cpu_offload`, but are now attempting to move the pipeline to GPU. This is not compatible with offloading. Please, move your pipeline `.to('cpu')` or consider removing the move altogether if you use sequential offloading."
+            )
+
+        # Display a warning in this case (the operation succeeds but the benefits are lost)
+        pipeline_is_offloaded = any(module_is_offloaded(module) for _, module in self.components.items())
+        if pipeline_is_offloaded and torch.device(torch_device).type == "cuda":
+            logger.warning(
+                f"It seems like you have activated model offloading by calling `enable_model_cpu_offload`, but are now manually moving the pipeline to GPU. It is strongly recommended against doing so as memory gains from offloading are likely to be lost. Offloading automatically takes care of moving the individual components {', '.join(self.components.keys())} to GPU when needed. To make sure offloading works as expected, you should consider moving the pipeline back to CPU: `pipeline.to('cpu')` or removing the move altogether if you use offloading."
+            )
+
         module_names, _, _ = self.extract_init_dict(dict(self.config))
+        is_offloaded = pipeline_is_offloaded or pipeline_is_sequentially_offloaded
         for name in module_names.keys():
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
-                if module.dtype == torch.float16 and str(torch_device) in ["cpu"]:
+                if (
+                    module.dtype == torch.float16
+                    and str(torch_device) in ["cpu"]
+                    and not silence_dtype_warnings
+                    and not is_offloaded
+                ):
                     logger.warning(
                         "Pipelines loaded with `torch_dtype=torch.float16` cannot run with `cpu` device. It"
                         " is not recommended to move them to `cpu` as running them will fail. Please make"
