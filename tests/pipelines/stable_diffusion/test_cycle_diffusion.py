@@ -41,7 +41,7 @@ class CycleDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "negative_prompt_embeds",
     }
     required_optional_params = PipelineTesterMixin.required_optional_params - {"latents"}
-    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
+    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS.union({"source_prompt"})
 
     def get_dummy_components(self):
         torch.manual_seed(0)

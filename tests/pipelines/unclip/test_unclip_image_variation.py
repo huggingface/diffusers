@@ -361,59 +361,6 @@ class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
-    def test_unclip_image_variation_input_num_images_per_prompt(self):
-        device = "cpu"
-
-        components = self.get_dummy_components()
-
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-
-        pipe.set_progress_bar_config(disable=None)
-
-        pipeline_inputs = self.get_dummy_inputs(device, pil_image=True)
-        pipeline_inputs["image"] = [
-            pipeline_inputs["image"],
-            pipeline_inputs["image"],
-        ]
-
-        output = pipe(**pipeline_inputs, num_images_per_prompt=2)
-        image = output.images
-
-        tuple_pipeline_inputs = self.get_dummy_inputs(device, pil_image=True)
-        tuple_pipeline_inputs["image"] = [
-            tuple_pipeline_inputs["image"],
-            tuple_pipeline_inputs["image"],
-        ]
-
-        image_from_tuple = pipe(
-            **tuple_pipeline_inputs,
-            num_images_per_prompt=2,
-            return_dict=False,
-        )[0]
-
-        image_slice = image[0, -3:, -3:, -1]
-        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
-
-        assert image.shape == (4, 64, 64, 3)
-
-        expected_slice = np.array(
-            [
-                0.9980,
-                0.9997,
-                0.0023,
-                0.0029,
-                0.9997,
-                0.9985,
-                0.9997,
-                0.0010,
-                0.9995,
-            ]
-        )
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
-
     def test_unclip_passed_image_embed(self):
         device = torch.device("cpu")
 
