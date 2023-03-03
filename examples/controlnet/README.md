@@ -55,9 +55,10 @@ Empty controlnet can be added to an existing model with
 `examples/controlnet/add_controlnet.py` script.
 
 ```bash
-export MODEL_DIR="path to model"
+export MODEL_NAME="path to model or model identifier from huggingface.co/models"
+export OUTPUT_DIR="path to save model"
 
-python examples/controlnet/add_controlnet.py --pretrained_model_path=MODEL_DIR
+python examples/controlnet/add_controlnet.py --pretrained_model_name_or_path=$MODEL_NAME --output_dir=$OUTPUT_DIR
 ```
 
 ## Training

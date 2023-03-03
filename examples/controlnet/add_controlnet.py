@@ -15,16 +15,23 @@
 
 import argparse
 import os
-from diffusers import UNet2DConditionModel, ControlNetModel
+from diffusers import UNet2DConditionModel, ControlNetModel, StableDiffusionControlNetPipeline
 
 def parse_args(input_args=None):
     parser = argparse.ArgumentParser(description="Add controlnet to existing model by copying unet weights.")
     parser.add_argument(
-        "--pretrained_model_path",
+        "--pretrained_model_name_or_path",
         type=str,
         default=None,
         required=True,
-        help="Path to pretrained model.",
+        help="Path to pretrained model or model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default=None,
+        required=True,
+        help="The output directory where the model will be written.",
     )
     parser.add_argument(
         "--revision",
@@ -34,6 +41,13 @@ def parse_args(input_args=None):
         help=(
             "Revision of pretrained model identifier from huggingface.co/models. Trainable model components should be"
             " float32 precision."
+        ),
+    )
+    parser.add_argument(
+        "--controlnet_only",
+        action="store_true",
+        help=(
+            "Save only the controlnet weights."
         ),
     )
     if input_args is not None:
@@ -52,9 +66,8 @@ def main(args):
 
     try:
         config, unused_kwargs = ControlNetModel.load_config(
-            args.pretrained_model_path,
+            args.pretrained_model_name_or_path,
             return_unused_kwargs=True,
-            local_files_only=True,
             revision=args.revision,
             subfolder="controlnet",
             device_map=device_map,
@@ -65,9 +78,8 @@ def main(args):
         pass
 
     config, unused_kwargs = UNet2DConditionModel.load_config(
-        args.pretrained_model_path,
+        args.pretrained_model_name_or_path,
         return_unused_kwargs=True,
-        local_files_only=True,
         revision=args.revision,
         subfolder="unet",
         device_map=device_map,
@@ -89,7 +101,7 @@ def main(args):
     controlnet = ControlNetModel.from_config(config, **unused_kwargs)
 
     unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_path, subfolder="unet", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
 
     unet = unet.state_dict()
@@ -103,7 +115,16 @@ def main(args):
                 print('Not found in unet:', k)
 
     controlnet.load_state_dict(temp_state, strict=True)
-    controlnet.save_pretrained(os.path.join(args.pretrained_model_path, 'controlnet'))
+    if args.controlnet_only:
+        controlnet.save_pretrained(os.path.join(args.output_dir, 'controlnet'))
+    else:
+        pipeline = StableDiffusionControlNetPipeline.from_pretrained(
+            args.pretrained_model_name_or_path,
+            controlnet=controlnet,
+            revision=args.revision,
+        )
+        pipeline.save_pretrained(args.output_dir)
+
     print('Done')
 
 if __name__ == "__main__":
