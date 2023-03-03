@@ -604,7 +604,7 @@ class DiffusionPipeline(ConfigMixin):
                 ]
 
                 if from_flax:
-                    ignore_patterns = ["*.bin", "*.safetensors", "*.onnx"]
+                    ignore_patterns = ["*.bin", "*.safetensors", "*.onnx", "*.pb"]
                 elif is_safetensors_available() and is_safetensors_compatible(model_filenames, variant=variant):
                     ignore_patterns = ["*.bin", "*.msgpack"]
 
