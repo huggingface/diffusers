@@ -12,12 +12,24 @@ specific language governing permissions and limitations under the License.
 
 # DreamBooth
 
+[[open-in-colab]]
+
 [DreamBooth](https://arxiv.org/abs/2208.12242) is a method to personalize text-to-image models like Stable Diffusion given just a few (3-5) images of a subject. It allows the model to generate contextualized images of the subject in different scenes, poses, and views.
 
 ![Dreambooth examples from the project's blog](https://dreambooth.github.io/DreamBooth_files/teaser_static.jpg)
 <small>Dreambooth examples from the <a href="https://dreambooth.github.io">project's blog.</a></small>
 
 This guide will show you how to finetune DreamBooth with a Stable Diffusion model for various GPU sizes, and in Flax. All the training scripts for DreamBooth used in this guide can be found [here](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth) if you're interested in going deeper.
+
+<Tip>
+
+If you prefer to train and run DreamBooth from a notebook, take a look at the following:
+
+| Training  | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/sd_dreambooth_training.ipynb)  |
+|-----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Inference | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/sd_dreambooth_inference.ipynb) |
+
+</Tip>
 
 Before running the scripts, make sure you install the library's training dependencies. We also recommend installing 🧨 Diffusers from the `main` GitHub branch:
 
