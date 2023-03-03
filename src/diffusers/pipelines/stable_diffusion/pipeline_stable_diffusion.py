@@ -219,13 +219,13 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         if self.device.type != "cpu":
             self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()    # otherwise we don't see the memory savings (but they probably exist)
+            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
             cpu_offload(cpu_offloaded_model, device)
 
         if self.safety_checker is not None:
-            cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)        
+            cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
 
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
@@ -243,7 +243,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         if self.device.type != "cpu":
             self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()    # otherwise we don't see the memory savings (but they probably exist)
+            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         hook = None
         for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae]:

@@ -354,12 +354,14 @@ class DiffusionPipeline(ConfigMixin):
             return hasattr(module, "_hf_hook") and isinstance(module._hf_hook, accelerate.hooks.CpuOffload)
 
         # .to("cuda") would raise an error if the pipeline is sequentially offloaded, so we raise our own to make it clearer
-        pipeline_is_sequentially_offloaded = any(module_is_sequentially_offloaded(module) for _, module in self.components.items())
+        pipeline_is_sequentially_offloaded = any(
+            module_is_sequentially_offloaded(module) for _, module in self.components.items()
+        )
         if pipeline_is_sequentially_offloaded and torch.device(torch_device).type == "cuda":
             raise ValueError(
                 "It seems like you have activated sequential model offloading by calling `enable_sequential_cpu_offload`, but are now attempting to move the pipeline to GPU. This is not compatible with offloading. Please, move your pipeline `.to('cpu')` or consider removing the move altogether if you use sequential offloading."
             )
-        
+
         # Display a warning in this case (the operation succeeds but the benefits are lost)
         pipeline_is_offloaded = any(module_is_offloaded(module) for _, module in self.components.items())
         if pipeline_is_offloaded and torch.device(torch_device).type == "cuda":
