@@ -24,7 +24,7 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.cross_attention import CrossAttention
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import is_accelerate_available, logging, randn_tensor, replace_example_docstring
+from ...utils import is_accelerate_available, is_accelerate_version, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
@@ -47,6 +47,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> # use get_indices function to find out indices of the tokens you want to alter
         >>> pipe.get_indices(prompt)
+        {0: '<|startoftext|>', 1: 'a</w>', 2: 'cat</w>', 3: 'and</w>', 4: 'a</w>', 5: 'frog</w>', 6: '<|endoftext|>'}
 
         >>> token_indices = [2, 5]
         >>> seed = 6141
@@ -255,10 +256,10 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
         Note that offloading happens on a submodule basis. Memory savings are higher than with
         `enable_model_cpu_offload`, but performance is lower.
         """
-        if is_accelerate_available():
+        if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
             from accelerate import cpu_offload
         else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
+            raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
 
         device = torch.device(f"cuda:{gpu_id}")
 
@@ -662,7 +663,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
     def get_indices(self, prompt: str) -> Dict[str, int]:
         """Utility function to list the indices of the tokens you wish to alte"""
         ids = self.tokenizer(prompt).input_ids
-        indices = {tok: i for tok, i in zip(self.tokenizer.convert_ids_to_tokens(ids), range(len(ids)))}
+        indices = {i: tok for tok, i in zip(self.tokenizer.convert_ids_to_tokens(ids), range(len(ids)))}
         return indices
 
     @torch.no_grad()

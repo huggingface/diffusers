@@ -34,6 +34,7 @@ except OptionalDependencyNotAvailable:
 else:
     from .models import (
         AutoencoderKL,
+        ControlNetModel,
         ModelMixin,
         PriorTransformer,
         Transformer2DModel,
@@ -113,6 +114,7 @@ else:
         PaintByExamplePipeline,
         SemanticStableDiffusionPipeline,
         StableDiffusionAttendAndExcitePipeline,
+        StableDiffusionControlNetPipeline,
         StableDiffusionDepth2ImgPipeline,
         StableDiffusionImageVariationPipeline,
         StableDiffusionImg2ImgPipeline,

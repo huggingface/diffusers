@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,8 +31,9 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
 
+from ...pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin
 
 
@@ -41,6 +42,9 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionImg2ImgPipeline
+    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width"}
+    required_optional_params = PipelineTesterMixin.required_optional_params - {"latents"}
+    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -212,6 +216,22 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         images = sd_pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
 
         assert images.shape == (batch_size * num_images_per_prompt, 32, 32, 3)
+
+    @skip_mps
+    def test_save_load_local(self):
+        return super().test_save_load_local()
+
+    @skip_mps
+    def test_dict_tuple_outputs_equivalent(self):
+        return super().test_dict_tuple_outputs_equivalent()
+
+    @skip_mps
+    def test_save_load_optional_components(self):
+        return super().test_save_load_optional_components()
+
+    @skip_mps
+    def test_attention_slicing_forward_pass(self):
+        return super().test_attention_slicing_forward_pass()
 
 
 @slow
