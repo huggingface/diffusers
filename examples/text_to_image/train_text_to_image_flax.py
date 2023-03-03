@@ -34,7 +34,7 @@ from diffusers.utils import check_min_version
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.14.0")
+check_min_version("0.15.0.dev0")
 
 logger = logging.getLogger(__name__)
 
