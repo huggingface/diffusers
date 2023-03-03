@@ -177,7 +177,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
         full_pred_mel = np.zeros([1, 0, self.n_dims], np.float32)
         ones = torch.ones((1, TARGET_FEATURE_LENGTH), dtype=np.bool, device=self.device)
 
-        for i, encoder_input_tokens in enumerate(input_tokens[:2]):
+        for i, encoder_input_tokens in enumerate(input_tokens):
             if i == 0:
                 encoder_continuous_inputs = torch.from_numpy(pred_mel[:1].copy()).to(
                     device=self.device, dtype=self.decoder.dtype
