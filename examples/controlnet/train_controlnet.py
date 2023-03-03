@@ -14,15 +14,12 @@
 # See the License for the specific language governing permissions and
 
 import argparse
-import hashlib
-import itertools
+import json
 import logging
 import math
 import os
-import warnings
 from pathlib import Path
 from typing import Optional
-import json
 
 import accelerate
 import torch
@@ -43,10 +40,10 @@ from transformers import AutoTokenizer, PretrainedConfig
 import diffusers
 from diffusers import (
     AutoencoderKL,
+    ControlNetModel,
     DDPMScheduler,
     StableDiffusionControlNetPipeline,
     UNet2DConditionModel,
-    ControlNetModel,
 )
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version

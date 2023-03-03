@@ -15,7 +15,8 @@
 
 import argparse
 import os
-from diffusers import UNet2DConditionModel, ControlNetModel, StableDiffusionControlNetPipeline
+
+from diffusers import ControlNetModel, StableDiffusionControlNetPipeline, UNet2DConditionModel
 
 
 def parse_args(input_args=None):
