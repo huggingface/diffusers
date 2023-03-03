@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,8 +23,9 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, CycleDiffusionPipeline, DDIMScheduler, UNet2DConditionModel
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
 
+from ...pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin
 
 
@@ -33,6 +34,14 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 class CycleDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = CycleDiffusionPipeline
+    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {
+        "negative_prompt",
+        "height",
+        "width",
+        "negative_prompt_embeds",
+    }
+    required_optional_params = PipelineTesterMixin.required_optional_params - {"latents"}
+    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -151,6 +160,26 @@ class CycleDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_num_images_per_prompt(self):
         self._test_num_images_per_prompt(prompt_key=["prompt", "source_prompt", "image"])
+
+    @skip_mps
+    def test_save_load_local(self):
+        return super().test_save_load_local()
+
+    @unittest.skip("non-deterministic pipeline")
+    def test_inference_batch_single_identical(self):
+        return super().test_inference_batch_single_identical()
+
+    @skip_mps
+    def test_dict_tuple_outputs_equivalent(self):
+        return super().test_dict_tuple_outputs_equivalent()
+
+    @skip_mps
+    def test_save_load_optional_components(self):
+        return super().test_save_load_optional_components()
+
+    @skip_mps
+    def test_attention_slicing_forward_pass(self):
+        return super().test_attention_slicing_forward_pass()
 
 
 @slow
