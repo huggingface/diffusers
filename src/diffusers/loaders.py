@@ -251,7 +251,10 @@ class UNet2DConditionLoadersMixin:
 
         if save_function is None:
             if safe_serialization:
-                save_function = safetensors.torch.save_file
+
+                def save_function(weights, filename):
+                    return safetensors.torch.save_file(weights, filename, metadata={"format": "pt"})
+
             else:
                 save_function = torch.save
 
