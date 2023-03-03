@@ -26,7 +26,7 @@ The quicktour will show you how to use the [`DiffusionPipeline`] for inference, 
 
 <Tip>
 
-The quicktour is a simplified version of the introductory 🧨 Diffusers [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb) to help you get started quickly. If you're curious to learn more about 🧨 Diffusers goal, design philosophy, and additional details about it's core API, check out the notebook!
+The quicktour is a simplified version of the introductory 🧨 Diffusers [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb) to help you get started quickly. If you want to learn more about 🧨 Diffusers goal, design philosophy, and additional details about it's core API, check out the notebook!
 
 </Tip>
 
@@ -51,9 +51,9 @@ The [`DiffusionPipeline`] is the easiest way to use a pretrained diffusion syste
 | Text-Guided Image-Inpainting          | fill the masked part of an image given the image, the mask and a text prompt | [inpaint](./using-diffusers/inpaint) |
 | Text-Guided Depth-to-Image Translation | adapt parts of an image guided by a text prompt while preserving structure via depth estimation | [depth2img](./using-diffusers/depth2img) |
 
-Start by creating an instance of [`DiffusionPipeline`] and specify which pipeline checkpoint you would like to download.
+Start by creating an instance of a [`DiffusionPipeline`] and specify which pipeline checkpoint you would like to download.
 You can use the [`DiffusionPipeline`] for any [checkpoint](https://huggingface.co/models?library=diffusers&sort=downloads) stored on the Hugging Face Hub.
-In this quicktour, you'll load the [Stable Diffusion](https://huggingface.co/CompVis/stable-diffusion) checkpoint in the [`DiffusionPipeline`] for text-to-image generation. More specifically, you'll use the [`stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) checkpoint.
+In this quicktour, you'll load the [`stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) checkpoint for text-to-image generation.
 
 <Tip warning={true}>
 
@@ -69,7 +69,7 @@ Load the model with the [`~DiffusionPipeline.from_pretrained`] method:
 >>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
 ```
 
-The [`DiffusionPipeline`] downloads and caches all modeling, tokenization, and scheduling components. You'll see that the Stable Diffusion pipeline is composed of the [`UNet2DConditionModel`] and [`PNDMScheduler`]:
+The [`DiffusionPipeline`] downloads and caches all modeling, tokenization, and scheduling components. You'll see that the Stable Diffusion pipeline is composed of the [`UNet2DConditionModel`] and [`PNDMScheduler`] among other things:
 
 ```py
 >>> pipeline
@@ -100,7 +100,7 @@ You can move the generator object to a GPU, just like you would in PyTorch:
 >>> pipeline.to("cuda")
 ```
 
-Now you can pass a text prompt to the `pipeline` to generate an image, and then access the denoised image. By default, the image output is wrapped in a [PIL Image object](https://pillow.readthedocs.io/en/stable/reference/Image.html?highlight=image#the-image-class).
+Now you can pass a text prompt to the `pipeline` to generate an image, and then access the denoised image. By default, the image output is wrapped in a [`PIL.Image`](https://pillow.readthedocs.io/en/stable/reference/Image.html?highlight=image#the-image-class) object.
 
 ```python
 >>> image = pipeline("An image of a squirrel in Picasso style").images[0]
@@ -136,7 +136,7 @@ Now you can run the pipeline as you would in the section above.
 
 ### Swapping schedulers
 
-Different schedulers have different denoising speed and quality trade-offs. The best way to find out which one works best for you is to try them out! One of the main features of 🧨 Diffusers is to allow you to easily switch between schedulers. For example, to replace the default [`PNDMScheduler`] with the [`EulerDiscreteScheduler`], load it with the [`~diffusers.ConfigMixin.from_config`] method:
+Different schedulers come with different denoising speeds and quality trade-offs. The best way to find out which one works best for you is to try them out! One of the main features of 🧨 Diffusers is to allow you to easily switch between schedulers. For example, to replace the default [`PNDMScheduler`] with the [`EulerDiscreteScheduler`], load it with the [`~diffusers.ConfigMixin.from_config`] method:
 
 ```py
 >>> from diffusers import EulerDiscreteScheduler
@@ -151,9 +151,9 @@ In the next section, you'll take a closer look at the components - the model and
 
 ## Models
 
-Models take a noisy sample, and at each timestep it predicts the *noise residual*, the difference between a less noisy image and the input image. This is just one objective though. Other models can make different predictions like the gradient between two timesteps or predict the slightly less noisy image directly. You can mix and match models to create other diffusion systems.
+Most models take a noisy sample, and at each timestep it predicts the *noise residual* (other models learn to predict the previous sample directly or the velocity or [`v-prediction`](https://github.com/huggingface/diffusers/blob/5e5ce13e2f89ac45a0066cb3f369462a3cf1d9ef/src/diffusers/schedulers/scheduling_ddim.py#L110)), the difference between a less noisy image and the input image. You can mix and match models to create other diffusion systems.
 
-Models are initiated with the [`~ModelMixin.from_pretrained`] method which'll also locally cache the model weights so it is faster the next time you load the model. For the quicktour, you'll load the [`UNet2DModel`], a basic unconditional image generation model with a checkpoint trained on cat images:
+Models are initiated with the [`~ModelMixin.from_pretrained`] method which also locally caches the model weights so it is faster the next time you load the model. For the quicktour, you'll load the [`UNet2DModel`], a basic unconditional image generation model with a checkpoint trained on cat images:
 
 ```py
 >>> from diffusers import UNet2DModel
@@ -175,10 +175,10 @@ Some of the most important parameters are:
 * `sample_size`: the height and width dimension of the input sample.
 * `in_channels`: the number of input channels of the input sample.
 * `down_block_types` and `up_block_types`: the type of down- and upsampling blocks used to create the UNet architecture.
-* `block_out_channels`: the number of output channels of the downsampling blocks; also used in reversed order for the number of input channels of the upsampling blocks.
+* `block_out_channels`: the number of output channels of the downsampling blocks; also used in reverse order for the number of input channels of the upsampling blocks.
 * `layers_per_block`: the number of ResNet blocks present in each UNet block.
 
-To use the model for inference, create the shape of an image with random Gaussian noise. It should have a `batch` axis because the model can receive multiple random noises, a `channel` axis corresponding to the number of input channels, and a `sample_size` axis for the height and width of the image:
+To use the model for inference, create the image shape with random Gaussian noise. It should have a `batch` axis because the model can receive multiple random noises, a `channel` axis corresponding to the number of input channels, and a `sample_size` axis for the height and width of the image:
 
 ```py
 >>> import torch
@@ -190,7 +190,7 @@ To use the model for inference, create the shape of an image with random Gaussia
 torch.Size([1, 3, 256, 256])
 ```
 
-For inference, pass the noisy image to the model and a `timestep`. The `timestep` indicates how noisy the input image is, with more noise at the beginning and less at the end. This helps the model determine its position in the diffusion process, whether it is closer to the start or the end. Use the [`~UNet2DOutput.sample`] method to get the model output:
+For inference, pass the noisy image to the model and a `timestep`. The `timestep` indicates how noisy the input image is, with more noise at the beginning and less at the end. This helps the model determine its position in the diffusion process, whether it is closer to the start or the end. Use the `sample` method to get the model output:
 
 ```py
 >>> with torch.no_grad():
@@ -296,7 +296,7 @@ Now create a denoising loop that predicts the residual of the less noisy sample,
 ...         display_sample(sample, i + 1)
 ```
 
-Sit back and watch as an image of a cat is generated from nothing but noise! 😻
+Sit back and watch as a cat is generated from nothing but noise! 😻
 
 <div class="flex justify-center">
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/diffusion-quicktour.png"/>
@@ -306,7 +306,7 @@ Sit back and watch as an image of a cat is generated from nothing but noise! �
 
 Hopefully you generated some cool images with 🧨 Diffusers in this quicktour! For your next steps, you can:
 
-* Train or finetune a model to generate your own images with the [training](./tutorials/basic_training) tutorial.
+* Train or finetune a model to generate your own images in the [training](./tutorials/basic_training) tutorial.
 * See example official and community [training or finetuning scripts](https://github.com/huggingface/diffusers/tree/main/examples#-diffusers-examples) for a variety of use cases.
 * Learn more about loading, accessing, changing and comparing schedulers in the [Using different Schedulers](./using-diffusers/schedulers) guide.
 * Explore prompt engineering, speed and memory optimizations, and tips and tricks for generating higher quality images with the [Stable Diffusion](./stable_diffusion) guide.
