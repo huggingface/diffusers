@@ -295,9 +295,9 @@ def parse_args(input_args=None):
     return args
 
 
-class DreamBoothDataset(Dataset):
+class ControlnetDataset(Dataset):
     """
-    A dataset to prepare the instance and class images with the prompts for fine-tuning the model.
+    A dataset to prepare the training and control images with the prompts.
     It pre-processes the images and the tokenizes prompts.
     """
 
@@ -569,7 +569,7 @@ def main(args):
     )
 
     # Dataset and DataLoaders creation:
-    train_dataset = DreamBoothDataset(
+    train_dataset = ControlnetDataset(
         instance_data_root=args.instance_data_dir,
         tokenizer=tokenizer,
         size=args.resolution
@@ -715,7 +715,7 @@ def main(args):
                 model_pred = unet(
                     noisy_latents,
                     timesteps,
-                    encoder_hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
                     down_block_additional_residuals=down_block_res_samples,
                     mid_block_additional_residual=mid_block_res_sample,
                 ).sample
