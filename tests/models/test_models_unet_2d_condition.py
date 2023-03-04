@@ -19,6 +19,7 @@ import tempfile
 import unittest
 
 import torch
+from parameterized import parameterized
 
 from diffusers import UNet2DConditionModel
 from diffusers.models.cross_attention import CrossAttnProcessor, LoRACrossAttnProcessor
@@ -32,7 +33,6 @@ from diffusers.utils import (
     torch_device,
 )
 from diffusers.utils.import_utils import is_xformers_available
-from parameterized import parameterized
 
 from ..test_modeling_common import ModelTesterMixin
 
