@@ -11,7 +11,7 @@ specific language governing permissions and limitations under the License.
 -->
 
 
-# Text-to-image fine-tuning
+# Text-to-image
 
 <Tip warning={true}>
 
@@ -19,7 +19,7 @@ The text-to-image fine-tuning script is experimental. It's easy to overfit and r
 
 </Tip>
 
-Text-to-image models like Stable Diffusion generate an image from a text prompt. This guide will show you how to finetune a Stable Diffusion model on your own dataset with PyTorch and Flax. All the training scripts for text-to-image finetuning used in this guide can be found in this [repository](https://github.com/huggingface/diffusers/tree/main/examples/text_to_image) if you're interested in taking a closer look.
+Text-to-image models like Stable Diffusion generate an image from a text prompt. This guide will show you how to finetune the [`CompVis/stable-diffusion-v1-4`](https://huggingface.co/CompVis/stable-diffusion-v1-4) model on your own dataset with PyTorch and Flax. All the training scripts for text-to-image finetuning used in this guide can be found in this [repository](https://github.com/huggingface/diffusers/tree/main/examples/text_to_image) if you're interested in taking a closer look.
 
 Before running the scripts, make sure to install the library's training dependencies:
 
@@ -34,31 +34,39 @@ And initialize an [🤗 Accelerate](https://github.com/huggingface/accelerate/) 
 accelerate config
 ```
 
-You'll need to accept the model license before downloading or using the weights. In this guide, you'll use the `CompVis/stable-diffusion-v1-4` model, so you'll need to visit the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-4), read the license, and tick the checkbox if you agree. 
-
-You have to have a 🤗 Hugging Face account, and you'll also need an access token. For more information on access tokens, please refer to the [User access tokens](https://huggingface.co/docs/hub/security-tokens) guide.
-
-Run the following command to login and authenticate your token:
-
-```bash
-huggingface-cli login
-```
-
 If you have already cloned the repo, then you won't need to go through these steps. Instead, you can pass the path to your local checkout to the training script and it will be loaded from there.
 
 ## Hardware requirements
 
 Using `gradient_checkpointing` and `mixed_precision`, it should be possible to finetune the model on a single 24GB GPU. For higher `batch_size`'s and faster training, it's better to use GPUs with more than 30GB of GPU memory. You can also use JAX/Flax for fine-tuning on TPUs or GPUs, which will be covered [below](#flax-jax-finetuning).
 
-## xFormers
-
-You can enable memory efficient attention by [installing xFormers](./optimization/xformers) and passing the `--enable_xformers_memory_efficient_attention` flag to the training script.
+You can reduce your memory footprint even more by enabling memory efficient attention with xFormers. Make sure you have [xFormers installed](./optimization/xformers) and pass the `--enable_xformers_memory_efficient_attention` flag to the training script.
 
 xFormers is not available for Flax.
 
-## LoRA
+## Upload model to Hub
 
-You can also use Low-Rank Adaptation of Large Language Models (LoRA), a fine-tuning technique for accelerating training large models, for fine-tuning text-to-image models. For more details, take a look at the [LoRA training](lora#text-to-image) guide.
+Store your model on the Hub by adding the following argument to the training script:
+
+```bash
+  --push_to_hub
+```
+
+## Save and load checkpoints
+
+It is a good idea to regularly save checkpoints in case anything happens during training. To save a checkpoint, pass the following argument to the training script:
+
+```bash
+  --checkpointing_steps=500
+```
+
+Every 500 steps, the full training state is saved in a subfolder in the `output_dir`. The checkpoint has the format `checkpoint-` followed by the number of steps trained so far. For example, `checkpoint-1500` is a checkpoint saved after 1500 training steps.
+
+To load a checkpoint to resume training, pass the argument `--resume_from_checkpoint` to the training script and specify the checkpoint you want to resume from. For example, the following argument resumes training from the checkpoint saved after 1500 training steps:
+
+```bash
+  --resume_from_checkpoint="checkpoint-1500"
+```
 
 ## Fine-tuning
 
@@ -158,6 +166,10 @@ python train_text_to_image_flax.py \
 ```
 </jax>
 </frameworkcontent>
+
+## LoRA
+
+You can also use Low-Rank Adaptation of Large Language Models (LoRA), a fine-tuning technique for accelerating training large models, for fine-tuning text-to-image models. For more details, take a look at the [LoRA training](lora#text-to-image) guide.
 
 ## Inference
 
