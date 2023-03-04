@@ -150,7 +150,7 @@ class UNet2DConditionLoadersMixin:
 
         model_file = None
         if not isinstance(pretrained_model_name_or_path_or_dict, dict):
-            if is_safetensors_available():
+            if (is_safetensors_available() and weight_name is None) or weight_name.endswith(".safetensors"):
                 if weight_name is None:
                     weight_name = LORA_WEIGHT_NAME_SAFE
                 try:
