@@ -193,20 +193,23 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
         # get prompt text embeddings
         prompt_embeds = self.text_encoder(prompt_ids, params=params["text_encoder"])[0]
 
-        # TODO: currently it is assumed `do_classifier_free_guidance = guidance_scale > 1.0`
-        # implement this conditional `do_classifier_free_guidance = guidance_scale > 1.0`
+        do_classifier_free_guidance = guidance_scale > 1.0
+
         batch_size = prompt_ids.shape[0]
 
         max_length = prompt_ids.shape[-1]
 
-        if neg_prompt_ids is None:
+        if do_classifier_free_guidance and neg_prompt_ids is None:
             uncond_input = self.tokenizer(
                 [""] * batch_size, padding="max_length", max_length=max_length, return_tensors="np"
             ).input_ids
         else:
             uncond_input = neg_prompt_ids
+
         negative_prompt_embeds = self.text_encoder(uncond_input, params=params["text_encoder"])[0]
-        context = jnp.concatenate([negative_prompt_embeds, prompt_embeds])
+        context = (
+            jnp.concatenate([negative_prompt_embeds, prompt_embeds]) if do_classifier_free_guidance else prompt_embeds
+        )
 
         latents_shape = (
             batch_size,
@@ -225,12 +228,12 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
         init_latents = init_latent_dist.sample(key=prng_seed).transpose((0, 3, 1, 2))
         init_latents = self.vae.config.scaling_factor * init_latents
 
-        def loop_body(step, args):
+        def loop_body(step, do_classifier_free_guidance, args):
             latents, scheduler_state = args
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
-            latents_input = jnp.concatenate([latents] * 2)
+            latents_input = jnp.concatenate([latents] * 2) if do_classifier_free_guidance else latents
 
             t = jnp.array(scheduler_state.timesteps, dtype=jnp.int32)[step]
             timestep = jnp.broadcast_to(t, latents_input.shape[0])
@@ -244,9 +247,11 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
                 jnp.array(timestep, dtype=jnp.int32),
                 encoder_hidden_states=context,
             ).sample
-            # perform guidance
-            noise_pred_uncond, noise_prediction_text = jnp.split(noise_pred, 2, axis=0)
-            noise_pred = noise_pred_uncond + guidance_scale * (noise_prediction_text - noise_pred_uncond)
+
+            if do_classifier_free_guidance:
+                # perform guidance
+                noise_pred_uncond, noise_prediction_text = jnp.split(noise_pred, 2, axis=0)
+                noise_pred = noise_pred_uncond + guidance_scale * (noise_prediction_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
             latents, scheduler_state = self.scheduler.step(scheduler_state, noise_pred, t, latents).to_tuple()
@@ -266,7 +271,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
         if DEBUG:
             # run with python for loop
             for i in range(start_timestep, num_inference_steps):
-                latents, scheduler_state = loop_body(i, (latents, scheduler_state))
+                latents, scheduler_state = loop_body(i, do_classifier_free_guidance, (latents, scheduler_state))
         else:
             latents, _ = jax.lax.fori_loop(start_timestep, num_inference_steps, loop_body, (latents, scheduler_state))
 
