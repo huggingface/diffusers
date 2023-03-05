@@ -23,6 +23,7 @@ import warnings
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 import accelerate
 import torch
 import torch.nn.functional as F
