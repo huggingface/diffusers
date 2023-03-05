@@ -741,10 +741,10 @@ class TuneAVideoCrossAttnProcessor:
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
-        hidden_states = self.to_out[0](hidden_states)
+        hidden_states = attn.to_out[0](hidden_states)
 
         # dropout
-        hidden_states = self.to_out[1](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
         return hidden_states
 
 AttnProcessor = Union[
