@@ -25,7 +25,7 @@ from ...schedulers import (
 )
 from ...utils import BaseOutput, deprecate, logging, is_accelerate_available
 from ..pipeline_utils import DiffusionPipeline
-
+from . import TuneAVideoPipelineOutput
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
