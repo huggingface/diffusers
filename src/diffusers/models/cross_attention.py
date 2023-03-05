@@ -699,7 +699,8 @@ class TuneAVideoCrossAttnProcessor:
 
         former_frame_index = torch.arange(video_length) - 1
         former_frame_index[0] = 0
-
+        
+        print(f"Debug: key, value shapes before reshaping {key.shape}, {value.shape}")
         #TODO(Abhinay) Verify
         # key = rearrange(key, "(b f) d c -> b f d c", f=video_length)
         key = key.reshape([-1, video_length, *key.shape[1:]])
@@ -712,6 +713,8 @@ class TuneAVideoCrossAttnProcessor:
         value = torch.cat([value[:, [0] * video_length], value[:, former_frame_index]], dim=2)
         # value = rearrange(value, "b f d c -> (b f) d c")
         value.flatten(0,1)
+
+        print(f"Debug: key, value shapes {key.shape}, {value.shape}")
 
         key = attn.head_to_batch_dim(key)
         value = attn.head_to_batch_dim(value)
