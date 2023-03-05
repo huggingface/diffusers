@@ -23,7 +23,7 @@ from torch import nn
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
 from ..utils.import_utils import is_xformers_available
-from .cross_attention import CrossAttention
+from .cross_attention import CrossAttention, TuneAVideoCrossAttnProcessor
 from .embeddings import CombinedTimestepLabelEmbeddings
 from .modeling_utils import ModelMixin
 
@@ -530,13 +530,6 @@ class Transformer3DModelOutput(BaseOutput):
     sample: torch.FloatTensor
 
 
-if is_xformers_available():
-    import xformers
-    import xformers.ops
-else:
-    xformers = None
-
-
 class Transformer3DModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
@@ -664,9 +657,10 @@ class BasicSparseTransformerBlock(nn.Module):
         super().__init__()
         self.only_cross_attention = only_cross_attention
         self.use_ada_layer_norm = num_embeds_ada_norm is not None
-
+        
+        #Maybe instead of defining a new class here. I can use cross attention with a custom processor.
         # SC-Attn
-        self.attn1 = SparseCausalAttention(
+        self.attn1 = CrossAttention(
             query_dim=dim,
             heads=num_attention_heads,
             dim_head=attention_head_dim,
@@ -674,6 +668,7 @@ class BasicSparseTransformerBlock(nn.Module):
             bias=attention_bias,
             cross_attention_dim=cross_attention_dim if only_cross_attention else None,
             upcast_attention=upcast_attention,
+            processor=TuneAVideoCrossAttnProcessor()
         )
         self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
 
@@ -735,9 +730,9 @@ class BasicSparseTransformerBlock(nn.Module):
                 )
             except Exception as e:
                 raise e
-            self.attn1._use_memory_efficient_attention_xformers = use_memory_efficient_attention_xformers
+            self.attn1.set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
             if self.attn2 is not None:
-                self.attn2._use_memory_efficient_attention_xformers = use_memory_efficient_attention_xformers
+                self.attn2.set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
             # self.attn_temp._use_memory_efficient_attention_xformers = use_memory_efficient_attention_xformers
 
     def forward(
@@ -794,79 +789,67 @@ class BasicSparseTransformerBlock(nn.Module):
         return hidden_states
 
 
-class SparseCausalAttention(CrossAttention):
-    def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None, video_length=None):
-        batch_size, sequence_length, _ = hidden_states.shape
+# class SparseCausalAttention(CrossAttention):
+#     def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None, video_length=None):
+#         batch_size, sequence_length, _ = hidden_states.shape
 
-        encoder_hidden_states = encoder_hidden_states
+#         encoder_hidden_states = encoder_hidden_states
 
-        if self.group_norm is not None:
-            hidden_states = self.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+#         if self.group_norm is not None:
+#             hidden_states = self.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = self.to_q(hidden_states)
-        dim = query.shape[-1]
-        query = self.reshape_heads_to_batch_dim(query)
+#         query = self.to_q(hidden_states)
+#         dim = query.shape[-1]
+#         query = self.head_to_batch_dim(query)
 
-        if self.added_kv_proj_dim is not None:
-            raise NotImplementedError
+#         if self.added_kv_proj_dim is not None:
+#             raise NotImplementedError
 
-        encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
-        key = self.to_k(encoder_hidden_states)
-        value = self.to_v(encoder_hidden_states)
+#         encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
+#         key = self.to_k(encoder_hidden_states)
+#         value = self.to_v(encoder_hidden_states)
 
-        former_frame_index = torch.arange(video_length) - 1
-        former_frame_index[0] = 0
+#         former_frame_index = torch.arange(video_length) - 1
+#         former_frame_index[0] = 0
 
-        #TODO(Abhinay) Verify
-        # key = rearrange(key, "(b f) d c -> b f d c", f=video_length)
-        key = key.reshape([-1, video_length, *key.shape[1:]])
-        key = torch.cat([key[:, [0] * video_length], key[:, former_frame_index]], dim=2)
-        # key = rearrange(key, "b f d c -> (b f) d c")
-        key.flatten(0,1)
+#         #TODO(Abhinay) Verify
+#         # key = rearrange(key, "(b f) d c -> b f d c", f=video_length)
+#         key = key.reshape([-1, video_length, *key.shape[1:]])
+#         key = torch.cat([key[:, [0] * video_length], key[:, former_frame_index]], dim=2)
+#         # key = rearrange(key, "b f d c -> (b f) d c")
+#         key.flatten(0,1)
         
-        # value = rearrange(value, "(b f) d c -> b f d c", f=video_length)
-        value = value.reshape([-1, video_length, *value.shape[1:]])
-        value = torch.cat([value[:, [0] * video_length], value[:, former_frame_index]], dim=2)
-        # value = rearrange(value, "b f d c -> (b f) d c")
-        value.flatten(0,1)
+#         # value = rearrange(value, "(b f) d c -> b f d c", f=video_length)
+#         value = value.reshape([-1, video_length, *value.shape[1:]])
+#         value = torch.cat([value[:, [0] * video_length], value[:, former_frame_index]], dim=2)
+#         # value = rearrange(value, "b f d c -> (b f) d c")
+#         value.flatten(0,1)
 
-        key = self.reshape_heads_to_batch_dim(key)
-        value = self.reshape_heads_to_batch_dim(value)
+#         key = self.head_to_batch_dim(key)
+#         value = self.head_to_batch_dim(value)
 
-        if attention_mask is not None:
-            if attention_mask.shape[-1] != query.shape[1]:
-                target_length = query.shape[1]
-                attention_mask = F.pad(attention_mask, (0, target_length), value=0.0)
-                attention_mask = attention_mask.repeat_interleave(self.heads, dim=0)
+#         if attention_mask is not None:
+#             if attention_mask.shape[-1] != query.shape[1]:
+#                 target_length = query.shape[1]
+#                 attention_mask = F.pad(attention_mask, (0, target_length), value=0.0)
+#                 attention_mask = attention_mask.repeat_interleave(self.heads, dim=0)
 
-        # attention, what we cannot get enough of
-        if self._use_memory_efficient_attention_xformers:
-            hidden_states = self._memory_efficient_attention_xformers(query, key, value, attention_mask)
-            # Some versions of xformers return output in fp32, cast it back to the dtype of the input
-            hidden_states = hidden_states.to(query.dtype)
-        else:
-            if self._slice_size is None or query.shape[0] // self._slice_size == 1:
-                hidden_states = self._attention(query, key, value, attention_mask)
-            else:
-                hidden_states = self._sliced_attention(query, key, value, sequence_length, dim, attention_mask)
+#         # attention, what we cannot get enough of
+#         if self._use_memory_efficient_attention_xformers:
+#             hidden_states = self._memory_efficient_attention_xformers(query, key, value, attention_mask)
+#             # Some versions of xformers return output in fp32, cast it back to the dtype of the input
+#             hidden_states = hidden_states.to(query.dtype)
+#         else:
+#             if self._slice_size is None or query.shape[0] // self._slice_size == 1:
+#                 hidden_states = self._attention(query, key, value, attention_mask)
+#             else:
+#                 hidden_states = self._sliced_attention(query, key, value, sequence_length, dim, attention_mask)
 
-        # linear proj
-        hidden_states = self.to_out[0](hidden_states)
+#         # linear proj
+#         hidden_states = self.to_out[0](hidden_states)
 
-        # dropout
-        hidden_states = self.to_out[1](hidden_states)
-        return hidden_states
-    
-    def reshape_heads_to_batch_dim(self, tensor):
-        batch_size, seq_len, dim = tensor.shape
-        head_size = self.num_heads
-        tensor = tensor.reshape(batch_size, seq_len, head_size, dim // head_size)
-        tensor = tensor.permute(0, 2, 1, 3).reshape(batch_size * head_size, seq_len, dim // head_size)
-        return tensor
+#         # dropout
+#         hidden_states = self.to_out[1](hidden_states)
+#         return hidden_states
 
-    def reshape_batch_dim_to_heads(self, tensor):
-        batch_size, seq_len, dim = tensor.shape
-        head_size = self.num_heads
-        tensor = tensor.reshape(batch_size // head_size, head_size, seq_len, dim)
-        tensor = tensor.permute(0, 2, 1, 3).reshape(batch_size // head_size, seq_len, dim * head_size)
-        return tensor
+
