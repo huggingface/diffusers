@@ -1,4 +1,4 @@
-# Copyright 2022 UC Berkeley Team and The HuggingFace Team. All rights reserved.
+# Copyright 2023 UC Berkeley Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -119,6 +119,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         variance_type: str = "fixed_small",
         clip_sample: bool = True,
         prediction_type: str = "epsilon",
+        clip_sample_range: Optional[float] = 1.0,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -218,8 +219,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         elif variance_type == "learned":
             return predicted_variance
         elif variance_type == "learned_range":
-            min_log = variance
-            max_log = self.betas[t]
+            min_log = torch.log(variance)
+            max_log = torch.log(self.betas[t])
             frac = (predicted_variance + 1) / 2
             variance = frac * max_log + (1 - frac) * min_log
 
@@ -284,7 +285,9 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         # 3. Clip "predicted x_0"
         if self.config.clip_sample:
-            pred_original_sample = torch.clamp(pred_original_sample, -1, 1)
+            pred_original_sample = torch.clamp(
+                pred_original_sample, -self.config.clip_sample_range, self.config.clip_sample_range
+            )
 
         # 4. Compute coefficients for pred_original_sample x_0 and current sample x_t
         # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
@@ -304,6 +307,9 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             )
             if self.variance_type == "fixed_small_log":
                 variance = self._get_variance(t, predicted_variance=predicted_variance) * variance_noise
+            elif self.variance_type == "learned_range":
+                variance = self._get_variance(t, predicted_variance=predicted_variance)
+                variance = torch.exp(0.5 * variance) * variance_noise
             else:
                 variance = (self._get_variance(t, predicted_variance=predicted_variance) ** 0.5) * variance_noise
 

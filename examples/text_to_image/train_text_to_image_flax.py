@@ -6,15 +6,22 @@ import random
 from pathlib import Path
 from typing import Optional
 
-import numpy as np
-import torch
-import torch.utils.checkpoint
-
 import jax
 import jax.numpy as jnp
+import numpy as np
 import optax
+import torch
+import torch.utils.checkpoint
 import transformers
 from datasets import load_dataset
+from flax import jax_utils
+from flax.training import train_state
+from flax.training.common_utils import shard
+from huggingface_hub import HfFolder, Repository, create_repo, whoami
+from torchvision import transforms
+from tqdm.auto import tqdm
+from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel, set_seed
+
 from diffusers import (
     FlaxAutoencoderKL,
     FlaxDDPMScheduler,
@@ -24,17 +31,10 @@ from diffusers import (
 )
 from diffusers.pipelines.stable_diffusion import FlaxStableDiffusionSafetyChecker
 from diffusers.utils import check_min_version
-from flax import jax_utils
-from flax.training import train_state
-from flax.training.common_utils import shard
-from huggingface_hub import HfFolder, Repository, create_repo, whoami
-from torchvision import transforms
-from tqdm.auto import tqdm
-from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel, set_seed
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.13.0.dev0")
+check_min_version("0.15.0.dev0")
 
 logger = logging.getLogger(__name__)
 

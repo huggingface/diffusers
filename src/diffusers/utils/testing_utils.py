@@ -11,30 +11,42 @@ from pathlib import Path
 from typing import Optional, Union
 
 import numpy as np
-
 import PIL.Image
 import PIL.ImageOps
 import requests
 from packaging import version
 
 from .import_utils import is_flax_available, is_onnx_available, is_torch_available
+from .logging import get_logger
 
 
 global_rng = random.Random()
 
+logger = get_logger(__name__)
 
 if is_torch_available():
     import torch
 
-    torch_device = "cuda" if torch.cuda.is_available() else "cpu"
-    is_torch_higher_equal_than_1_12 = version.parse(version.parse(torch.__version__).base_version) >= version.parse(
-        "1.12"
-    )
+    if "DIFFUSERS_TEST_DEVICE" in os.environ:
+        torch_device = os.environ["DIFFUSERS_TEST_DEVICE"]
 
-    if is_torch_higher_equal_than_1_12:
-        # Some builds of torch 1.12 don't have the mps backend registered. See #892 for more details
-        mps_backend_registered = hasattr(torch.backends, "mps")
-        torch_device = "mps" if (mps_backend_registered and torch.backends.mps.is_available()) else torch_device
+        available_backends = ["cuda", "cpu", "mps"]
+        if torch_device not in available_backends:
+            raise ValueError(
+                f"unknown torch backend for diffusers tests: {torch_device}. Available backends are:"
+                f" {available_backends}"
+            )
+        logger.info(f"torch_device overrode to {torch_device}")
+    else:
+        torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+        is_torch_higher_equal_than_1_12 = version.parse(
+            version.parse(torch.__version__).base_version
+        ) >= version.parse("1.12")
+
+        if is_torch_higher_equal_than_1_12:
+            # Some builds of torch 1.12 don't have the mps backend registered. See #892 for more details
+            mps_backend_registered = hasattr(torch.backends, "mps")
+            torch_device = "mps" if (mps_backend_registered and torch.backends.mps.is_available()) else torch_device
 
 
 def torch_all_close(a, b, *args, **kwargs):
@@ -151,6 +163,11 @@ def require_torch_gpu(test_case):
     )
 
 
+def skip_mps(test_case):
+    """Decorator marking a test to skip if torch_device is 'mps'"""
+    return unittest.skipUnless(torch_device != "mps", "test requires non 'mps' device")(test_case)
+
+
 def require_flax(test_case):
     """
     Decorator marking a test that requires JAX & Flax. These tests are skipped when one / both are not installed
@@ -189,6 +206,13 @@ def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -
             " ndarray."
         )
 
+    return arry
+
+
+def load_pt(url: str):
+    response = requests.get(url)
+    response.raise_for_status()
+    arry = torch.load(BytesIO(response.content))
     return arry
 
 

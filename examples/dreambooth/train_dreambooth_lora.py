@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2022 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,14 +26,19 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-from torch.utils.data import Dataset
-
-import datasets
-import diffusers
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
-from accelerate.utils import set_seed
+from accelerate.utils import ProjectConfiguration, set_seed
+from huggingface_hub import HfFolder, Repository, create_repo, whoami
+from packaging import version
+from PIL import Image
+from torch.utils.data import Dataset
+from torchvision import transforms
+from tqdm.auto import tqdm
+from transformers import AutoTokenizer, PretrainedConfig
+
+import diffusers
 from diffusers import (
     AutoencoderKL,
     DDPMScheduler,
@@ -46,15 +51,10 @@ from diffusers.models.cross_attention import LoRACrossAttnProcessor
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
-from huggingface_hub import HfFolder, Repository, create_repo, whoami
-from PIL import Image
-from torchvision import transforms
-from tqdm.auto import tqdm
-from transformers import AutoTokenizer, PretrainedConfig
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.13.0.dev0")
+check_min_version("0.15.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -241,6 +241,16 @@ def parse_args(input_args=None):
             "Save a checkpoint of the training state every X updates. These checkpoints can be used both as final"
             " checkpoints in case they are better than the last checkpoint, and are also suitable for resuming"
             " training using `--resume_from_checkpoint`."
+        ),
+    )
+    parser.add_argument(
+        "--checkpoints_total_limit",
+        type=int,
+        default=None,
+        help=(
+            "Max number of checkpoints to store. Passed as `total_limit` to the `Accelerator` `ProjectConfiguration`."
+            " See Accelerator::save_state https://huggingface.co/docs/accelerate/package_reference/accelerator#accelerate.Accelerator.save_state"
+            " for more docs"
         ),
     )
     parser.add_argument(
@@ -527,11 +537,14 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
 
+    accelerator_project_config = ProjectConfiguration(total_limit=args.checkpoints_total_limit)
+
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
         logging_dir=logging_dir,
+        project_config=accelerator_project_config,
     )
 
     if args.report_to == "wandb":
@@ -550,11 +563,9 @@ def main(args):
     )
     logger.info(accelerator.state, main_process_only=False)
     if accelerator.is_local_main_process:
-        datasets.utils.logging.set_verbosity_warning()
         transformers.utils.logging.set_verbosity_warning()
         diffusers.utils.logging.set_verbosity_info()
     else:
-        datasets.utils.logging.set_verbosity_error()
         transformers.utils.logging.set_verbosity_error()
         diffusers.utils.logging.set_verbosity_error()
 
@@ -671,6 +682,13 @@ def main(args):
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
+            import xformers
+
+            xformers_version = version.parse(xformers.__version__)
+            if xformers_version == version.parse("0.0.16"):
+                logger.warn(
+                    "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
+                )
             unet.enable_xformers_memory_efficient_attention()
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
@@ -923,44 +941,47 @@ def main(args):
             if global_step >= args.max_train_steps:
                 break
 
-        if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
-            logger.info(
-                f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
-                f" {args.validation_prompt}."
-            )
-            # create pipeline
-            pipeline = DiffusionPipeline.from_pretrained(
-                args.pretrained_model_name_or_path,
-                unet=accelerator.unwrap_model(unet),
-                text_encoder=accelerator.unwrap_model(text_encoder),
-                revision=args.revision,
-                torch_dtype=weight_dtype,
-            )
-            pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
-            pipeline = pipeline.to(accelerator.device)
-            pipeline.set_progress_bar_config(disable=True)
+        if accelerator.is_main_process:
+            if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
+                logger.info(
+                    f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+                    f" {args.validation_prompt}."
+                )
+                # create pipeline
+                pipeline = DiffusionPipeline.from_pretrained(
+                    args.pretrained_model_name_or_path,
+                    unet=accelerator.unwrap_model(unet),
+                    text_encoder=accelerator.unwrap_model(text_encoder),
+                    revision=args.revision,
+                    torch_dtype=weight_dtype,
+                )
+                pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
+                pipeline = pipeline.to(accelerator.device)
+                pipeline.set_progress_bar_config(disable=True)
 
-            # run inference
-            generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
-            prompt = args.num_validation_images * [args.validation_prompt]
-            images = pipeline(prompt, num_inference_steps=25, generator=generator).images
+                # run inference
+                generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+                images = [
+                    pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
+                    for _ in range(args.num_validation_images)
+                ]
 
-            for tracker in accelerator.trackers:
-                if tracker.name == "tensorboard":
-                    np_images = np.stack([np.asarray(img) for img in images])
-                    tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
-                if tracker.name == "wandb":
-                    tracker.log(
-                        {
-                            "validation": [
-                                wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                                for i, image in enumerate(images)
-                            ]
-                        }
-                    )
+                for tracker in accelerator.trackers:
+                    if tracker.name == "tensorboard":
+                        np_images = np.stack([np.asarray(img) for img in images])
+                        tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+                    if tracker.name == "wandb":
+                        tracker.log(
+                            {
+                                "validation": [
+                                    wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                    for i, image in enumerate(images)
+                                ]
+                            }
+                        )
 
-            del pipeline
-            torch.cuda.empty_cache()
+                del pipeline
+                torch.cuda.empty_cache()
 
     # Save the lora layers
     accelerator.wait_for_everyone()
@@ -982,8 +1003,10 @@ def main(args):
         # run inference
         if args.validation_prompt and args.num_validation_images > 0:
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
-            prompt = args.num_validation_images * [args.validation_prompt]
-            images = pipeline(prompt, num_inference_steps=25, generator=generator).images
+            images = [
+                pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
+                for _ in range(args.num_validation_images)
+            ]
 
             for tracker in accelerator.trackers:
                 if tracker.name == "tensorboard":

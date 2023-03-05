@@ -6,16 +6,27 @@ import random
 from pathlib import Path
 from typing import Optional
 
-import numpy as np
-import torch
-import torch.utils.checkpoint
-from torch.utils.data import Dataset
-
 import jax
 import jax.numpy as jnp
+import numpy as np
 import optax
 import PIL
+import torch
+import torch.utils.checkpoint
 import transformers
+from flax import jax_utils
+from flax.training import train_state
+from flax.training.common_utils import shard
+from huggingface_hub import HfFolder, Repository, create_repo, whoami
+
+# TODO: remove and import from diffusers.utils when the new version of diffusers is released
+from packaging import version
+from PIL import Image
+from torch.utils.data import Dataset
+from torchvision import transforms
+from tqdm.auto import tqdm
+from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel, set_seed
+
 from diffusers import (
     FlaxAutoencoderKL,
     FlaxDDPMScheduler,
@@ -25,17 +36,6 @@ from diffusers import (
 )
 from diffusers.pipelines.stable_diffusion import FlaxStableDiffusionSafetyChecker
 from diffusers.utils import check_min_version
-from flax import jax_utils
-from flax.training import train_state
-from flax.training.common_utils import shard
-from huggingface_hub import HfFolder, Repository, create_repo, whoami
-
-# TODO: remove and import from diffusers.utils when the new version of diffusers is released
-from packaging import version
-from PIL import Image
-from torchvision import transforms
-from tqdm.auto import tqdm
-from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel, set_seed
 
 
 if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
@@ -57,7 +57,7 @@ else:
 # ------------------------------------------------------------------------------
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.13.0.dev0")
+check_min_version("0.15.0.dev0")
 
 logger = logging.getLogger(__name__)
 

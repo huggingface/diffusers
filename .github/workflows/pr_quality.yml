@@ -27,9 +27,8 @@ jobs:
           pip install .[quality]
       - name: Check quality
         run: |
-          black  --check --preview examples tests src utils scripts
-          isort --check-only examples tests src utils scripts
-          flake8 examples tests src utils scripts
+          black --check examples tests src utils scripts
+          ruff examples tests src utils scripts
           doc-builder style src/diffusers docs/source --max_len 119 --check_only --path_to_docs docs/source
 
   check_repository_consistency:

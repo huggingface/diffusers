@@ -1,4 +1,4 @@
-# Copyright 2022 UC Berkeley Team and The HuggingFace Team. All rights reserved.
+# Copyright 2023 UC Berkeley Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -198,7 +198,7 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         model_output: jnp.ndarray,
         timestep: int,
         sample: jnp.ndarray,
-        key: jax.random.KeyArray,
+        key: Optional[jax.random.KeyArray] = None,
         return_dict: bool = True,
     ) -> Union[FlaxDDPMSchedulerOutput, Tuple]:
         """
@@ -220,6 +220,9 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
 
         """
         t = timestep
+
+        if key is None:
+            key = jax.random.PRNGKey(0)
 
         if model_output.shape[1] == sample.shape[1] * 2 and self.config.variance_type in ["learned", "learned_range"]:
             model_output, predicted_variance = jnp.split(model_output, sample.shape[1], axis=1)
