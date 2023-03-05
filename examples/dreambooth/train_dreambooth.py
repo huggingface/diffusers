@@ -40,7 +40,13 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
 import diffusers
-from diffusers import AutoencoderKL, DDPMScheduler, DPMSolverMultistepScheduler, DiffusionPipeline, UNet2DConditionModel
+from diffusers import (
+    AutoencoderKL,
+    DDPMScheduler,
+    DiffusionPipeline,
+    DPMSolverMultistepScheduler,
+    UNet2DConditionModel,
+)
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
@@ -374,7 +380,7 @@ def parse_args(input_args=None):
             " `args.validation_prompt` multiple times: `args.num_validation_images`"
             " and logging the images."
         ),
-    ) 
+    )
     parser.add_argument(
         "--mixed_precision",
         type=str,
