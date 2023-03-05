@@ -9,6 +9,10 @@
     title: Installation
   title: Get started
 - sections:
+  - local: tutorials/basic_training
+    title: Train a diffusion model
+  title: Tutorials
+- sections:
   - sections:
     - local: using-diffusers/loading
       title: Loading Pipelines, Models, and Schedulers
@@ -165,6 +169,8 @@
         title: Self-Attention Guidance
       - local: api/pipelines/stable_diffusion/panorama
         title: MultiDiffusion Panorama
+      - local: api/pipelines/stable_diffusion/controlnet
+        title: Text-to-Image Generation with ControlNet Conditioning
       title: Stable Diffusion
     - local: api/pipelines/stable_diffusion_2
       title: Stable Diffusion 2

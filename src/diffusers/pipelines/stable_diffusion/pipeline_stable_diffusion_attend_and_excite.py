@@ -24,7 +24,7 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.cross_attention import CrossAttention
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import is_accelerate_available, logging, randn_tensor, replace_example_docstring
+from ...utils import is_accelerate_available, is_accelerate_version, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
@@ -256,12 +256,16 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
         Note that offloading happens on a submodule basis. Memory savings are higher than with
         `enable_model_cpu_offload`, but performance is lower.
         """
-        if is_accelerate_available():
+        if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
             from accelerate import cpu_offload
         else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
+            raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
 
         device = torch.device(f"cuda:{gpu_id}")
+
+        if self.device.type != "cpu":
+            self.to("cpu", silence_dtype_warnings=True)
+            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
             cpu_offload(cpu_offloaded_model, device)
@@ -513,8 +517,30 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
                     f" {negative_prompt_embeds.shape}."
                 )
 
-        if (indices is None) or (indices is not None and not isinstance(indices, List)):
-            raise ValueError(f"`indices` has to be a list but is {type(indices)}")
+        indices_is_list_ints = isinstance(indices, list) and isinstance(indices[0], int)
+        indices_is_list_list_ints = (
+            isinstance(indices, list) and isinstance(indices[0], list) and isinstance(indices[0][0], int)
+        )
+
+        if not indices_is_list_ints and not indices_is_list_list_ints:
+            raise TypeError("`indices` must be a list of ints or a list of a list of ints")
+
+        if indices_is_list_ints:
+            indices_batch_size = 1
+        elif indices_is_list_list_ints:
+            indices_batch_size = len(indices)
+
+        if prompt is not None and isinstance(prompt, str):
+            prompt_batch_size = 1
+        elif prompt is not None and isinstance(prompt, list):
+            prompt_batch_size = len(prompt)
+        elif prompt_embeds is not None:
+            prompt_batch_size = prompt_embeds.shape[0]
+
+        if indices_batch_size != prompt_batch_size:
+            raise ValueError(
+                f"indices batch size must be same as prompt batch size. indices batch size: {indices_batch_size}, prompt batch size: {prompt_batch_size}"
+            )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
@@ -671,7 +697,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        token_indices: List[int],
+        token_indices: Union[List[int], List[List[int]]],
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -847,7 +873,9 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
 
         if isinstance(token_indices[0], int):
             token_indices = [token_indices]
+
         indices = []
+
         for ind in token_indices:
             indices = indices + [ind] * num_images_per_prompt
 
