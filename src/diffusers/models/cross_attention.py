@@ -706,13 +706,13 @@ class TuneAVideoCrossAttnProcessor:
         key = key.reshape([-1, video_length, *key.shape[1:]])
         key = torch.cat([key[:, [0] * video_length], key[:, former_frame_index]], dim=2)
         # key = rearrange(key, "b f d c -> (b f) d c")
-        key.flatten(0,1)
+        key = key.flatten(0,1)
         
         # value = rearrange(value, "(b f) d c -> b f d c", f=video_length)
         value = value.reshape([-1, video_length, *value.shape[1:]])
         value = torch.cat([value[:, [0] * video_length], value[:, former_frame_index]], dim=2)
         # value = rearrange(value, "b f d c -> (b f) d c")
-        value.flatten(0,1)
+        value = value.flatten(0,1)
 
         print(f"Debug: key, value shapes {key.shape}, {value.shape}")
 
