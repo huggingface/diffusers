@@ -648,7 +648,7 @@ def main(args):
                     if is_accelerate_version(">=", "0.17.0.dev0"):
                         tracker = accelerator.get_tracker("tensorboard", unwrap=True)
                     else:
-                        tracker = accelerator.get_tracker()
+                        tracker = accelerator.get_tracker("tensorboard")
                     tracker.add_images("test_samples", images_processed.transpose(0, 3, 1, 2), epoch)
                 elif args.logger == "wandb":
                     # Upcoming `log_images` helper coming in https://github.com/huggingface/accelerate/pull/962/files
