@@ -86,7 +86,7 @@
   - local: training/text2image
     title: Text-to-image
   - local: training/lora
-    title: LoRA Support in Diffusers
+    title: Low-Rank Adaptation of Large Language Models (LoRA)
   title: Training
 - sections:
   - local: conceptual/philosophy
