@@ -717,6 +717,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
         max_iter_to_alter: int = 25,
         thresholds: dict = {0: 0.05, 10: 0.5, 20: 0.8},
         scale_factor: int = 20,
+        attn_res: int = 16,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -788,6 +789,8 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
                 Dictionary defining the iterations and desired thresholds to apply iterative latent refinement in.
             scale_factor (`int`, *optional*, default to 20):
                 Scale factor that controls the step size of each Attend and Excite update.
+            attn_res (`int`, *optional*, default to 16):
+                The resolution of most semantic attention map.
 
         Examples:
 
@@ -860,7 +863,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        self.attention_store = AttentionStore()
+        self.attention_store = AttentionStore(attn_res=attn_res)
         self.register_attention_control()
 
         # default config for step size from original repo
