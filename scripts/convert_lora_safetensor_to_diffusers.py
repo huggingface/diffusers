@@ -24,7 +24,6 @@ from diffusers import StableDiffusionPipeline
 
 
 def convert(base_model_path, checkpoint_path, LORA_PREFIX_UNET, LORA_PREFIX_TEXT_ENCODER, alpha):
-
     # load base model
     pipeline = StableDiffusionPipeline.from_pretrained(base_model_path, torch_dtype=torch.float32)
 
@@ -35,7 +34,6 @@ def convert(base_model_path, checkpoint_path, LORA_PREFIX_UNET, LORA_PREFIX_TEXT
 
     # directly update weight in diffusers model
     for key in state_dict:
-
         # it is suggested to print out the key, it usually will be something like below
         # "lora_te_text_model_encoder_layers_0_self_attn_k_proj.lora_down.weight"
 
