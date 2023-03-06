@@ -13,7 +13,7 @@ jobs:
     with:
       commit_sha: ${{ github.sha }}
       package: diffusers
-      notebook_folder: diffusers_doc
+      notebook_folder: diffusers
       languages: en ko
     secrets:
       token: ${{ secrets.HUGGINGFACE_PUSH }}
