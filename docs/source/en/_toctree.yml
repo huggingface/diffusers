@@ -82,7 +82,7 @@
   - local: training/text_inversion
     title: Textual Inversion
   - local: training/dreambooth
-    title: Dreambooth
+    title: DreamBooth
   - local: training/text2image
     title: Text-to-image
   - local: training/lora
