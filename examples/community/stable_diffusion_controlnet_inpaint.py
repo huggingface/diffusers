@@ -1,3 +1,5 @@
+# Inspired by: https://github.com/haofanwang/ControlNet-for-Diffusers/
+
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -216,6 +218,10 @@ def prepare_controlnet_conditioning_image(
 
 
 class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline):
+    """
+    Inspired by: https://github.com/haofanwang/ControlNet-for-Diffusers/
+    """
+
     _optional_components = ["safety_checker", "feature_extractor"]
 
     def __init__(
