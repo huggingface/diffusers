@@ -709,7 +709,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         if output_type == "latent":
             image = latents
             has_nsfw_concept = None
-        else:
+        elif output_type == "pil":
             # 9. Post-processing
             image = self.decode_latents(latents)
 
@@ -717,8 +717,13 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
             # 11. Convert to PIL
-            if output_type == "pil":
-                image = self.numpy_to_pil(image)
+            image = self.numpy_to_pil(image)
+        else:
+            # 9. Post-processing
+            image = self.decode_latents(latents)
+
+            # 10. Run safety checker
+            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
