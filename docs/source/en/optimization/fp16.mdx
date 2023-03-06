@@ -1,4 +1,4 @@
-<!--Copyright 2022 The HuggingFace Team. All rights reserved.
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -133,6 +133,35 @@ images = pipe([prompt] * 32).images
 You may see a small performance boost in VAE decode on multi-image batches. There should be no performance impact on single-image batches.
 
 
+## Tiled VAE decode and encode for large images
+
+Tiled VAE processing makes it possible to work with large images on limited VRAM. For example, generating 4k images in 8GB of VRAM. Tiled VAE decoder splits the image into overlapping tiles, decodes the tiles, and blends the outputs to make the final image.
+
+You want to couple this with [`~StableDiffusionPipeline.enable_attention_slicing`] or [`~StableDiffusionPipeline.enable_xformers_memory_efficient_attention`] to further minimize memory use.
+
+To use tiled VAE processing, invoke [`~StableDiffusionPipeline.enable_vae_tiling`] in your pipeline before inference. For example:
+
+```python
+import torch
+from diffusers import StableDiffusionPipeline, UniPCMultistepScheduler
+
+pipe = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    torch_dtype=torch.float16,
+)
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+pipe = pipe.to("cuda")
+prompt = "a beautiful landscape photograph"
+pipe.enable_vae_tiling()
+pipe.enable_xformers_memory_efficient_attention()
+
+image = pipe([prompt], width=3840, height=2224, num_inference_steps=20).images[0]
+```
+
+The output image will have some tile-to-tile tone variation from the tiles having separate decoders, but you shouldn't see sharp seams between the tiles. The tiling is turned off for images that are 512x512 or smaller.
+
+
+<a name="sequential_offloading"></a>
 ## Offloading to CPU with accelerate for memory savings
 
 For additional memory savings, you can offload the weights to CPU and only load them to GPU when performing the forward pass.
@@ -156,7 +185,13 @@ image = pipe(prompt).images[0]
 
 And you can get the memory consumption to < 3GB.
 
-If is also possible to chain it with attention slicing for minimal memory consumption (< 2GB).
+Note that this method works at the submodule level, not on whole models. This is the best way to minimize memory consumption, but inference is much slower due to the iterative nature of the process. The UNet component of the pipeline runs several times (as many as `num_inference_steps`); each time, the different submodules of the UNet are sequentially onloaded and then offloaded as they are needed, so the number of memory transfers is large.
+
+<Tip>
+Consider using <a href="#model_offloading">model offloading</a> as another point in the optimization space: it will be much faster, but memory savings won't be as large.
+</Tip>
+
+It is also possible to chain offloading with attention slicing for minimal memory consumption (< 2GB).
 
 ```Python
 import torch
@@ -176,6 +211,55 @@ image = pipe(prompt).images[0]
 ```
 
 **Note**: When using `enable_sequential_cpu_offload()`, it is important to **not** move the pipeline to CUDA beforehand or else the gain in memory consumption will only be minimal. See [this issue](https://github.com/huggingface/diffusers/issues/1934) for more information.
+
+
+<a name="model_offloading"></a>
+## Model offloading for fast inference and memory savings
+
+[Sequential CPU offloading](#sequential_offloading), as discussed in the previous section, preserves a lot of memory but makes inference slower, because submodules are moved to GPU as needed, and immediately returned to CPU when a new module runs.
+
+Full-model offloading is an alternative that moves whole models to the GPU, instead of handling each model's constituent _modules_. This results in a negligible impact on inference time (compared with moving the pipeline to `cuda`), while still providing some memory savings.
+
+In this scenario, only one of the main components of the pipeline (typically: text encoder, unet and vae)
+will be in the GPU while the others wait in the CPU. Compoments like the UNet that run for multiple iterations will stay on GPU until they are no longer needed.
+
+This feature can be enabled by invoking `enable_model_cpu_offload()` on the pipeline, as shown below.
+
+```Python
+import torch
+from diffusers import StableDiffusionPipeline
+
+pipe = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",  
+    torch_dtype=torch.float16,
+)
+
+prompt = "a photo of an astronaut riding a horse on mars"
+pipe.enable_model_cpu_offload()
+image = pipe(prompt).images[0]
+```
+
+This is also compatible with attention slicing for additional memory savings.
+
+```Python
+import torch
+from diffusers import StableDiffusionPipeline
+
+pipe = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    torch_dtype=torch.float16,
+)
+
+prompt = "a photo of an astronaut riding a horse on mars"
+pipe.enable_model_cpu_offload()
+pipe.enable_attention_slicing(1)
+
+image = pipe(prompt).images[0]
+```
+
+<Tip>
+This feature requires `accelerate` version 0.17.0 or larger.
+</Tip>
 
 ## Using Channels Last memory format
 

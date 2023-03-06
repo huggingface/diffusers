@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -408,9 +408,9 @@ def requires_backends(obj, backends):
             " --upgrade transformers \n```"
         )
 
-    if name in [
-        "StableDiffusionDepth2ImgPipeline",
-    ] and is_transformers_version("<", "4.26.0"):
+    if name in ["StableDiffusionDepth2ImgPipeline", "StableDiffusionPix2PixZeroPipeline"] and is_transformers_version(
+        "<", "4.26.0"
+    ):
         raise ImportError(
             f"You need to install `transformers>=4.26` in order to use {name}: \n```\n pip install"
             " --upgrade transformers \n```"
@@ -474,6 +474,20 @@ def is_transformers_version(operation: str, version: str):
     if not _transformers_available:
         return False
     return compare_versions(parse(_transformers_version), operation, version)
+
+
+def is_accelerate_version(operation: str, version: str):
+    """
+    Args:
+    Compares the current Accelerate version to a given reference with an operation.
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _accelerate_available:
+        return False
+    return compare_versions(parse(_accelerate_version), operation, version)
 
 
 def is_k_diffusion_version(operation: str, version: str):

@@ -170,7 +170,7 @@ class WildcardStableDiffusionPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
         wildcard_option_dict: Dict[str, List[str]] = {},
         wildcard_files: List[str] = [],
         num_prompt_samples: Optional[int] = 1,

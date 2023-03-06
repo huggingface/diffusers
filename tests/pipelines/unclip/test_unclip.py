@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,15 +23,24 @@ from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokeni
 from diffusers import PriorTransformer, UnCLIPPipeline, UnCLIPScheduler, UNet2DConditionModel, UNet2DModel
 from diffusers.pipelines.unclip.text_proj import UnCLIPTextProjModel
 from diffusers.utils import load_numpy, nightly, slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
 
+from ...pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 
 
 class UnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = UnCLIPPipeline
-    test_xformers_attention = False
-
+    params = TEXT_TO_IMAGE_PARAMS - {
+        "negative_prompt",
+        "height",
+        "width",
+        "negative_prompt_embeds",
+        "guidance_scale",
+        "prompt_embeds",
+        "cross_attention_kwargs",
+    }
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     required_optional_params = [
         "generator",
         "return_dict",
@@ -39,11 +48,7 @@ class UnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "decoder_num_inference_steps",
         "super_res_num_inference_steps",
     ]
-    num_inference_steps_args = [
-        "prior_num_inference_steps",
-        "decoder_num_inference_steps",
-        "super_res_num_inference_steps",
-    ]
+    test_xformers_attention = False
 
     @property
     def text_embedder_hidden_size(self):
@@ -349,7 +354,7 @@ class UnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     # Overriding PipelineTesterMixin::test_attention_slicing_forward_pass
     # because UnCLIP GPU undeterminism requires a looser check.
-    @unittest.skipIf(torch_device == "mps", reason="MPS inconsistent")
+    @skip_mps
     def test_attention_slicing_forward_pass(self):
         test_max_difference = torch_device == "cpu"
 
@@ -357,32 +362,50 @@ class UnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     # Overriding PipelineTesterMixin::test_inference_batch_single_identical
     # because UnCLIP undeterminism requires a looser check.
-    @unittest.skipIf(torch_device == "mps", reason="MPS inconsistent")
+    @skip_mps
     def test_inference_batch_single_identical(self):
         test_max_difference = torch_device == "cpu"
         relax_max_difference = True
+        additional_params_copy_to_batched_inputs = [
+            "prior_num_inference_steps",
+            "decoder_num_inference_steps",
+            "super_res_num_inference_steps",
+        ]
 
         self._test_inference_batch_single_identical(
-            test_max_difference=test_max_difference, relax_max_difference=relax_max_difference
+            test_max_difference=test_max_difference,
+            relax_max_difference=relax_max_difference,
+            additional_params_copy_to_batched_inputs=additional_params_copy_to_batched_inputs,
         )
 
     def test_inference_batch_consistent(self):
+        additional_params_copy_to_batched_inputs = [
+            "prior_num_inference_steps",
+            "decoder_num_inference_steps",
+            "super_res_num_inference_steps",
+        ]
+
         if torch_device == "mps":
             # TODO: MPS errors with larger batch sizes
             batch_sizes = [2, 3]
-            self._test_inference_batch_consistent(batch_sizes=batch_sizes)
+            self._test_inference_batch_consistent(
+                batch_sizes=batch_sizes,
+                additional_params_copy_to_batched_inputs=additional_params_copy_to_batched_inputs,
+            )
         else:
-            self._test_inference_batch_consistent()
+            self._test_inference_batch_consistent(
+                additional_params_copy_to_batched_inputs=additional_params_copy_to_batched_inputs
+            )
 
-    @unittest.skipIf(torch_device == "mps", reason="MPS inconsistent")
+    @skip_mps
     def test_dict_tuple_outputs_equivalent(self):
         return super().test_dict_tuple_outputs_equivalent()
 
-    @unittest.skipIf(torch_device == "mps", reason="MPS inconsistent")
+    @skip_mps
     def test_save_load_local(self):
         return super().test_save_load_local()
 
-    @unittest.skipIf(torch_device == "mps", reason="MPS inconsistent")
+    @skip_mps
     def test_save_load_optional_components(self):
         return super().test_save_load_optional_components()
 

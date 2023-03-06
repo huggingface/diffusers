@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,8 +18,10 @@ import os
 from packaging import version
 
 from .. import __version__
+from .accelerate_utils import apply_forward_hook
 from .constants import (
     CONFIG_NAME,
+    DEPRECATED_REVISION_ARGS,
     DIFFUSERS_CACHE,
     DIFFUSERS_DYNAMIC_MODULE_NAME,
     FLAX_WEIGHTS_NAME,
@@ -43,6 +45,7 @@ from .import_utils import (
     DummyObject,
     OptionalDependencyNotAvailable,
     is_accelerate_available,
+    is_accelerate_version,
     is_flax_available,
     is_inflect_available,
     is_k_diffusion_available,
@@ -79,6 +82,7 @@ if is_torch_available():
         parse_flag_from_env,
         print_tensor_test,
         require_torch_gpu,
+        skip_mps,
         slow,
         torch_all_close,
         torch_device,

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The HuggingFace Inc. team.
+# Copyright 2023 The HuggingFace Inc. team.
 # Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,8 @@
 import importlib
 import inspect
 import os
+import re
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -31,21 +33,23 @@ from tqdm.auto import tqdm
 
 import diffusers
 
+from .. import __version__
 from ..configuration_utils import ConfigMixin
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
 from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
     CONFIG_NAME,
+    DEPRECATED_REVISION_ARGS,
     DIFFUSERS_CACHE,
-    FLAX_WEIGHTS_NAME,
     HF_HUB_OFFLINE,
-    ONNX_WEIGHTS_NAME,
+    SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
     BaseOutput,
     deprecate,
     get_class_from_dynamic_module,
     http_user_agent,
     is_accelerate_available,
+    is_accelerate_version,
     is_safetensors_available,
     is_torch_version,
     is_transformers_available,
@@ -56,6 +60,15 @@ from ..utils import (
 if is_transformers_available():
     import transformers
     from transformers import PreTrainedModel
+    from transformers.utils import FLAX_WEIGHTS_NAME as TRANSFORMERS_FLAX_WEIGHTS_NAME
+    from transformers.utils import SAFE_WEIGHTS_NAME as TRANSFORMERS_SAFE_WEIGHTS_NAME
+    from transformers.utils import WEIGHTS_NAME as TRANSFORMERS_WEIGHTS_NAME
+
+from ..utils import FLAX_WEIGHTS_NAME, ONNX_EXTERNAL_WEIGHTS_NAME, ONNX_WEIGHTS_NAME
+
+
+if is_accelerate_available():
+    import accelerate
 
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
@@ -120,21 +133,91 @@ class AudioPipelineOutput(BaseOutput):
     audios: np.ndarray
 
 
-def is_safetensors_compatible(info) -> bool:
-    filenames = set(sibling.rfilename for sibling in info.siblings)
-    pt_filenames = set(filename for filename in filenames if filename.endswith(".bin"))
-    is_safetensors_compatible = any(file.endswith(".safetensors") for file in filenames)
-    for pt_filename in pt_filenames:
-        prefix, raw = os.path.split(pt_filename)
-        if raw == "pytorch_model.bin":
-            # transformers specific
-            sf_filename = os.path.join(prefix, "model.safetensors")
+def is_safetensors_compatible(filenames, variant=None) -> bool:
+    """
+    Checking for safetensors compatibility:
+    - By default, all models are saved with the default pytorch serialization, so we use the list of default pytorch
+      files to know which safetensors files are needed.
+    - The model is safetensors compatible only if there is a matching safetensors file for every default pytorch file.
+
+    Converting default pytorch serialized filenames to safetensors serialized filenames:
+    - For models from the diffusers library, just replace the ".bin" extension with ".safetensors"
+    - For models from the transformers library, the filename changes from "pytorch_model" to "model", and the ".bin"
+      extension is replaced with ".safetensors"
+    """
+    pt_filenames = []
+
+    sf_filenames = set()
+
+    for filename in filenames:
+        _, extension = os.path.splitext(filename)
+
+        if extension == ".bin":
+            pt_filenames.append(filename)
+        elif extension == ".safetensors":
+            sf_filenames.add(filename)
+
+    for filename in pt_filenames:
+        #  filename = 'foo/bar/baz.bam' -> path = 'foo/bar', filename = 'baz', extention = '.bam'
+        path, filename = os.path.split(filename)
+        filename, extension = os.path.splitext(filename)
+
+        if filename == "pytorch_model":
+            filename = "model"
+        elif filename == f"pytorch_model.{variant}":
+            filename = f"model.{variant}"
         else:
-            sf_filename = pt_filename[: -len(".bin")] + ".safetensors"
-        if is_safetensors_compatible and sf_filename not in filenames:
-            logger.warning(f"{sf_filename} not found")
-            is_safetensors_compatible = False
-    return is_safetensors_compatible
+            filename = filename
+
+        expected_sf_filename = os.path.join(path, filename)
+        expected_sf_filename = f"{expected_sf_filename}.safetensors"
+
+        if expected_sf_filename not in sf_filenames:
+            logger.warning(f"{expected_sf_filename} not found")
+            return False
+
+    return True
+
+
+def variant_compatible_siblings(info, variant=None) -> Union[List[os.PathLike], str]:
+    filenames = set(sibling.rfilename for sibling in info.siblings)
+    weight_names = [
+        WEIGHTS_NAME,
+        SAFETENSORS_WEIGHTS_NAME,
+        FLAX_WEIGHTS_NAME,
+        ONNX_WEIGHTS_NAME,
+        ONNX_EXTERNAL_WEIGHTS_NAME,
+    ]
+
+    if is_transformers_available():
+        weight_names += [TRANSFORMERS_WEIGHTS_NAME, TRANSFORMERS_SAFE_WEIGHTS_NAME, TRANSFORMERS_FLAX_WEIGHTS_NAME]
+
+    # model_pytorch, diffusion_model_pytorch, ...
+    weight_prefixes = [w.split(".")[0] for w in weight_names]
+    # .bin, .safetensors, ...
+    weight_suffixs = [w.split(".")[-1] for w in weight_names]
+
+    variant_file_regex = (
+        re.compile(f"({'|'.join(weight_prefixes)})(.{variant}.)({'|'.join(weight_suffixs)})")
+        if variant is not None
+        else None
+    )
+    non_variant_file_regex = re.compile(f"{'|'.join(weight_names)}")
+
+    if variant is not None:
+        variant_filenames = set(f for f in filenames if variant_file_regex.match(f.split("/")[-1]) is not None)
+    else:
+        variant_filenames = set()
+
+    non_variant_filenames = set(f for f in filenames if non_variant_file_regex.match(f.split("/")[-1]) is not None)
+
+    usable_filenames = set(variant_filenames)
+    for f in non_variant_filenames:
+        variant_filename = f"{f.split('.')[0]}.{variant}.{f.split('.')[1]}"
+        if variant_filename not in usable_filenames:
+            usable_filenames.add(f)
+
+    return usable_filenames, variant_filenames
 
 
 class DiffusionPipeline(ConfigMixin):
@@ -194,6 +277,7 @@ class DiffusionPipeline(ConfigMixin):
         self,
         save_directory: Union[str, os.PathLike],
         safe_serialization: bool = False,
+        variant: Optional[str] = None,
     ):
         """
         Save all variables of the pipeline that can be saved and loaded as well as the pipelines configuration file to
@@ -205,6 +289,8 @@ class DiffusionPipeline(ConfigMixin):
                 Directory to which to save. Will be created if it doesn't exist.
             safe_serialization (`bool`, *optional*, defaults to `False`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way (that uses `pickle`).
+            variant (`str`, *optional*):
+                If specified, weights are saved in the format pytorch_model.<variant>.bin.
         """
         self.save_config(save_directory)
 
@@ -246,22 +332,60 @@ class DiffusionPipeline(ConfigMixin):
             # Call the save method with the argument safe_serialization only if it's supported
             save_method_signature = inspect.signature(save_method)
             save_method_accept_safe = "safe_serialization" in save_method_signature.parameters
-            if save_method_accept_safe:
-                save_method(
-                    os.path.join(save_directory, pipeline_component_name), safe_serialization=safe_serialization
-                )
-            else:
-                save_method(os.path.join(save_directory, pipeline_component_name))
+            save_method_accept_variant = "variant" in save_method_signature.parameters
 
-    def to(self, torch_device: Optional[Union[str, torch.device]] = None):
+            save_kwargs = {}
+            if save_method_accept_safe:
+                save_kwargs["safe_serialization"] = safe_serialization
+            if save_method_accept_variant:
+                save_kwargs["variant"] = variant
+
+            save_method(os.path.join(save_directory, pipeline_component_name), **save_kwargs)
+
+    def to(self, torch_device: Optional[Union[str, torch.device]] = None, silence_dtype_warnings: bool = False):
         if torch_device is None:
             return self
 
+        # throw warning if pipeline is in "offloaded"-mode but user tries to manually set to GPU.
+        def module_is_sequentially_offloaded(module):
+            if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
+                return False
+
+            return hasattr(module, "_hf_hook") and not isinstance(module._hf_hook, accelerate.hooks.CpuOffload)
+
+        def module_is_offloaded(module):
+            if not is_accelerate_available() or is_accelerate_version("<", "0.17.0.dev0"):
+                return False
+
+            return hasattr(module, "_hf_hook") and isinstance(module._hf_hook, accelerate.hooks.CpuOffload)
+
+        # .to("cuda") would raise an error if the pipeline is sequentially offloaded, so we raise our own to make it clearer
+        pipeline_is_sequentially_offloaded = any(
+            module_is_sequentially_offloaded(module) for _, module in self.components.items()
+        )
+        if pipeline_is_sequentially_offloaded and torch.device(torch_device).type == "cuda":
+            raise ValueError(
+                "It seems like you have activated sequential model offloading by calling `enable_sequential_cpu_offload`, but are now attempting to move the pipeline to GPU. This is not compatible with offloading. Please, move your pipeline `.to('cpu')` or consider removing the move altogether if you use sequential offloading."
+            )
+
+        # Display a warning in this case (the operation succeeds but the benefits are lost)
+        pipeline_is_offloaded = any(module_is_offloaded(module) for _, module in self.components.items())
+        if pipeline_is_offloaded and torch.device(torch_device).type == "cuda":
+            logger.warning(
+                f"It seems like you have activated model offloading by calling `enable_model_cpu_offload`, but are now manually moving the pipeline to GPU. It is strongly recommended against doing so as memory gains from offloading are likely to be lost. Offloading automatically takes care of moving the individual components {', '.join(self.components.keys())} to GPU when needed. To make sure offloading works as expected, you should consider moving the pipeline back to CPU: `pipeline.to('cpu')` or removing the move altogether if you use offloading."
+            )
+
         module_names, _, _ = self.extract_init_dict(dict(self.config))
+        is_offloaded = pipeline_is_offloaded or pipeline_is_sequentially_offloaded
         for name in module_names.keys():
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
-                if module.dtype == torch.float16 and str(torch_device) in ["cpu"]:
+                if (
+                    module.dtype == torch.float16
+                    and str(torch_device) in ["cpu"]
+                    and not silence_dtype_warnings
+                    and not is_offloaded
+                ):
                     logger.warning(
                         "Pipelines loaded with `torch_dtype=torch.float16` cannot run with `cpu` device. It"
                         " is not recommended to move them to `cpu` as running them will fail. Please make"
@@ -403,6 +527,9 @@ class DiffusionPipeline(ConfigMixin):
                 Can be used to overwrite load - and saveable variables - *i.e.* the pipeline components - of the
                 specific pipeline class. The overwritten components are then directly passed to the pipelines
                 `__init__` method. See example below for more information.
+            variant (`str`, *optional*):
+                If specified load weights from `variant` filename, *e.g.* pytorch_model.<variant>.bin. `variant` is
+                ignored when using `from_flax`.
 
         <Tip>
 
@@ -454,6 +581,7 @@ class DiffusionPipeline(ConfigMixin):
         device_map = kwargs.pop("device_map", None)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         return_cached_folder = kwargs.pop("return_cached_folder", False)
+        variant = kwargs.pop("variant", None)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -468,28 +596,87 @@ class DiffusionPipeline(ConfigMixin):
                 use_auth_token=use_auth_token,
                 revision=revision,
             )
-            # make sure we only download sub-folders and `diffusers` filenames
-            folder_names = [k for k in config_dict.keys() if not k.startswith("_")]
-            allow_patterns = [os.path.join(k, "*") for k in folder_names]
-            allow_patterns += [
-                WEIGHTS_NAME,
-                SCHEDULER_CONFIG_NAME,
-                CONFIG_NAME,
-                ONNX_WEIGHTS_NAME,
-                cls.config_name,
-            ]
 
-            # make sure we don't download flax weights
-            ignore_patterns = ["*.msgpack"]
+            # retrieve all folder_names that contain relevant files
+            folder_names = [k for k, v in config_dict.items() if isinstance(v, list)]
 
-            if from_flax:
-                ignore_patterns = ["*.bin", "*.safetensors"]
+            if not local_files_only:
+                info = model_info(
+                    pretrained_model_name_or_path,
+                    use_auth_token=use_auth_token,
+                    revision=revision,
+                )
+                model_filenames, variant_filenames = variant_compatible_siblings(info, variant=variant)
+                model_folder_names = set([os.path.split(f)[0] for f in model_filenames])
+
+                if revision in DEPRECATED_REVISION_ARGS and version.parse(
+                    version.parse(__version__).base_version
+                ) >= version.parse("0.15.0"):
+                    info = model_info(
+                        pretrained_model_name_or_path,
+                        use_auth_token=use_auth_token,
+                        revision=None,
+                    )
+                    comp_model_filenames, _ = variant_compatible_siblings(info, variant=revision)
+                    comp_model_filenames = [
+                        ".".join(f.split(".")[:1] + f.split(".")[2:]) for f in comp_model_filenames
+                    ]
+
+                    if set(comp_model_filenames) == set(model_filenames):
+                        warnings.warn(
+                            f"You are loading the variant {revision} from {pretrained_model_name_or_path} via `revision='{revision}'` even though you can load it via `variant=`{revision}`. Loading model variants via `revision='{variant}'` is deprecated and will be removed in diffusers v1. Please use `variant='{revision}'` instead.",
+                            FutureWarning,
+                        )
+                    else:
+                        warnings.warn(
+                            f"You are loading the variant {revision} from {pretrained_model_name_or_path} via `revision='{revision}'`. This behavior is deprecated and will be removed in diffusers v1. One should use `variant='{revision}'` instead. However, it appears that {pretrained_model_name_or_path} currently does not have the required variant filenames in the 'main' branch. \n The Diffusers team and community would be very grateful if you could open an issue: https://github.com/huggingface/diffusers/issues/new with the title '{pretrained_model_name_or_path} is missing {revision} files' so that the correct variant file can be added.",
+                            FutureWarning,
+                        )
+
+                # all filenames compatible with variant will be added
+                allow_patterns = list(model_filenames)
+
+                # allow all patterns from non-model folders
+                # this enables downloading schedulers, tokenizers, ...
+                allow_patterns += [os.path.join(k, "*") for k in folder_names if k not in model_folder_names]
+                # also allow downloading config.jsons with the model
+                allow_patterns += [os.path.join(k, "*.json") for k in model_folder_names]
+
                 allow_patterns += [
-                    FLAX_WEIGHTS_NAME,
+                    SCHEDULER_CONFIG_NAME,
+                    CONFIG_NAME,
+                    cls.config_name,
+                    CUSTOM_PIPELINE_FILE_NAME,
                 ]
 
-            if custom_pipeline is not None:
-                allow_patterns += [CUSTOM_PIPELINE_FILE_NAME]
+                if from_flax:
+                    ignore_patterns = ["*.bin", "*.safetensors", "*.onnx", "*.pb"]
+                elif is_safetensors_available() and is_safetensors_compatible(model_filenames, variant=variant):
+                    ignore_patterns = ["*.bin", "*.msgpack"]
+
+                    safetensors_variant_filenames = set([f for f in variant_filenames if f.endswith(".safetensors")])
+                    safetensors_model_filenames = set([f for f in model_filenames if f.endswith(".safetensors")])
+                    if (
+                        len(safetensors_variant_filenames) > 0
+                        and safetensors_model_filenames != safetensors_variant_filenames
+                    ):
+                        logger.warn(
+                            f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(safetensors_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(safetensors_model_filenames - safetensors_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
+                        )
+
+                else:
+                    ignore_patterns = ["*.safetensors", "*.msgpack"]
+
+                    bin_variant_filenames = set([f for f in variant_filenames if f.endswith(".bin")])
+                    bin_model_filenames = set([f for f in model_filenames if f.endswith(".bin")])
+                    if len(bin_variant_filenames) > 0 and bin_model_filenames != bin_variant_filenames:
+                        logger.warn(
+                            f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(bin_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(bin_model_filenames - bin_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
+                        )
+
+            else:
+                # allow everything since it has to be downloaded anyways
+                ignore_patterns = allow_patterns = None
 
             if cls != DiffusionPipeline:
                 requested_pipeline_class = cls.__name__
@@ -500,21 +687,6 @@ class DiffusionPipeline(ConfigMixin):
                 user_agent["custom_pipeline"] = custom_pipeline
 
             user_agent = http_user_agent(user_agent)
-
-            if is_safetensors_available() and not local_files_only:
-                info = model_info(
-                    pretrained_model_name_or_path,
-                    use_auth_token=use_auth_token,
-                    revision=revision,
-                )
-                if is_safetensors_compatible(info):
-                    ignore_patterns.append("*.bin")
-                else:
-                    # as a safety mechanism we also don't download safetensors if
-                    # not all safetensors files are there
-                    ignore_patterns.append("*.safetensors")
-            else:
-                ignore_patterns.append("*.safetensors")
 
             # download all allow_patterns
             cached_folder = snapshot_download(
@@ -532,6 +704,16 @@ class DiffusionPipeline(ConfigMixin):
         else:
             cached_folder = pretrained_model_name_or_path
             config_dict = cls.load_config(cached_folder)
+
+        # retrieve which subfolders should load variants
+        model_variants = {}
+        if variant is not None:
+            for folder in os.listdir(cached_folder):
+                folder_path = os.path.join(cached_folder, folder)
+                is_folder = os.path.isdir(folder_path) and folder in config_dict
+                variant_exists = is_folder and any(path.split(".")[1] == variant for path in os.listdir(folder_path))
+                if variant_exists:
+                    model_variants[folder] = variant
 
         # 2. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
@@ -717,10 +899,16 @@ class DiffusionPipeline(ConfigMixin):
                     loading_kwargs["sess_options"] = sess_options
 
                 is_diffusers_model = issubclass(class_obj, diffusers.ModelMixin)
+
+                if is_transformers_available():
+                    transformers_version = version.parse(version.parse(transformers.__version__).base_version)
+                else:
+                    transformers_version = "N/A"
+
                 is_transformers_model = (
                     is_transformers_available()
                     and issubclass(class_obj, PreTrainedModel)
-                    and version.parse(version.parse(transformers.__version__).base_version) >= version.parse("4.20.0")
+                    and transformers_version >= version.parse("4.20.0")
                 )
 
                 # When loading a transformers model, if the device_map is None, the weights will be initialized as opposed to diffusers.
@@ -728,8 +916,22 @@ class DiffusionPipeline(ConfigMixin):
                 # This makes sure that the weights won't be initialized which significantly speeds up loading.
                 if is_diffusers_model or is_transformers_model:
                     loading_kwargs["device_map"] = device_map
+                    loading_kwargs["variant"] = model_variants.pop(name, None)
                     if from_flax:
                         loading_kwargs["from_flax"] = True
+
+                    # the following can be deleted once the minimum required `transformers` version
+                    # is higher than 4.27
+                    if (
+                        is_transformers_model
+                        and loading_kwargs["variant"] is not None
+                        and transformers_version < version.parse("4.27.0")
+                    ):
+                        raise ImportError(
+                            f"When passing `variant='{variant}'`, please make sure to upgrade your `transformers` version to at least 4.27.0.dev0"
+                        )
+                    elif is_transformers_model and loading_kwargs["variant"] is None:
+                        loading_kwargs.pop("variant")
 
                     # if `from_flax` and model is transformer model, can currently not load with `low_cpu_mem_usage`
                     if not (from_flax and is_transformers_model):
@@ -806,7 +1008,7 @@ class DiffusionPipeline(ConfigMixin):
         if set(components.keys()) != expected_modules:
             raise ValueError(
                 f"{self} has been incorrectly initialized or {self.__class__} is incorrectly implemented. Expected"
-                f" {expected_modules} to be defined, but {components} are defined."
+                f" {expected_modules} to be defined, but {components.keys()} are defined."
             )
 
         return components

@@ -117,7 +117,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
         hooks.
         """
-        if self.device != torch.device("meta") or not hasattr(self.unet, "_hf_hook"):
+        if not hasattr(self.unet, "_hf_hook"):
             return self.device
         for module in self.unet.modules():
             if (
@@ -227,7 +227,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
-    def check_inputs(self, prompt, image, noise_level, callback_steps):
+    def check_inputs(self, prompt, image, callback_steps):
         if not isinstance(prompt, str) and not isinstance(prompt, list):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
@@ -285,14 +285,13 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         image: Union[torch.FloatTensor, PIL.Image.Image, List[PIL.Image.Image]],
         num_inference_steps: int = 75,
         guidance_scale: float = 9.0,
-        noise_level: int = 0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -386,7 +385,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         """
 
         # 1. Check inputs
-        self.check_inputs(prompt, image, noise_level, callback_steps)
+        self.check_inputs(prompt, image, callback_steps)
 
         # 2. Define call parameters
         batch_size = 1 if isinstance(prompt, str) else len(prompt)

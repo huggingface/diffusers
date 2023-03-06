@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ except OptionalDependencyNotAvailable:
     from ..utils.dummy_pt_objects import *  # noqa F403
 else:
     from .scheduling_ddim import DDIMScheduler
+    from .scheduling_ddim_inverse import DDIMInverseScheduler
     from .scheduling_ddpm import DDPMScheduler
     from .scheduling_deis_multistep import DEISMultistepScheduler
     from .scheduling_dpmsolver_multistep import DPMSolverMultistepScheduler
@@ -39,6 +40,7 @@ else:
     from .scheduling_sde_ve import ScoreSdeVeScheduler
     from .scheduling_sde_vp import ScoreSdeVpScheduler
     from .scheduling_unclip import UnCLIPScheduler
+    from .scheduling_unipc_multistep import UniPCMultistepScheduler
     from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
     from .scheduling_vq_diffusion import VQDiffusionScheduler
 
