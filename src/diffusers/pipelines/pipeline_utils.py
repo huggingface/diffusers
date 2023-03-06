@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The HuggingFace Inc. team.
+# Copyright 2023 The HuggingFace Inc. team.
 # Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -49,6 +49,7 @@ from ..utils import (
     get_class_from_dynamic_module,
     http_user_agent,
     is_accelerate_available,
+    is_accelerate_version,
     is_safetensors_available,
     is_torch_version,
     is_transformers_available,
@@ -63,7 +64,11 @@ if is_transformers_available():
     from transformers.utils import SAFE_WEIGHTS_NAME as TRANSFORMERS_SAFE_WEIGHTS_NAME
     from transformers.utils import WEIGHTS_NAME as TRANSFORMERS_WEIGHTS_NAME
 
-from ..utils import FLAX_WEIGHTS_NAME, ONNX_WEIGHTS_NAME
+from ..utils import FLAX_WEIGHTS_NAME, ONNX_EXTERNAL_WEIGHTS_NAME, ONNX_WEIGHTS_NAME
+
+
+if is_accelerate_available():
+    import accelerate
 
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
@@ -129,26 +134,60 @@ class AudioPipelineOutput(BaseOutput):
 
 
 def is_safetensors_compatible(filenames, variant=None) -> bool:
-    pt_filenames = set(filename for filename in filenames if filename.endswith(".bin"))
-    is_safetensors_compatible = any(file.endswith(".safetensors") for file in filenames)
+    """
+    Checking for safetensors compatibility:
+    - By default, all models are saved with the default pytorch serialization, so we use the list of default pytorch
+      files to know which safetensors files are needed.
+    - The model is safetensors compatible only if there is a matching safetensors file for every default pytorch file.
 
-    for pt_filename in pt_filenames:
-        _variant = f".{variant}" if (variant is not None and variant in pt_filename) else ""
-        prefix, raw = os.path.split(pt_filename)
-        if raw == f"pytorch_model{_variant}.bin":
-            # transformers specific
-            sf_filename = os.path.join(prefix, f"model{_variant}.safetensors")
+    Converting default pytorch serialized filenames to safetensors serialized filenames:
+    - For models from the diffusers library, just replace the ".bin" extension with ".safetensors"
+    - For models from the transformers library, the filename changes from "pytorch_model" to "model", and the ".bin"
+      extension is replaced with ".safetensors"
+    """
+    pt_filenames = []
+
+    sf_filenames = set()
+
+    for filename in filenames:
+        _, extension = os.path.splitext(filename)
+
+        if extension == ".bin":
+            pt_filenames.append(filename)
+        elif extension == ".safetensors":
+            sf_filenames.add(filename)
+
+    for filename in pt_filenames:
+        #  filename = 'foo/bar/baz.bam' -> path = 'foo/bar', filename = 'baz', extention = '.bam'
+        path, filename = os.path.split(filename)
+        filename, extension = os.path.splitext(filename)
+
+        if filename == "pytorch_model":
+            filename = "model"
+        elif filename == f"pytorch_model.{variant}":
+            filename = f"model.{variant}"
         else:
-            sf_filename = pt_filename[: -len(".bin")] + ".safetensors"
-        if is_safetensors_compatible and sf_filename not in filenames:
-            logger.warning(f"{sf_filename} not found")
-            is_safetensors_compatible = False
-    return is_safetensors_compatible
+            filename = filename
+
+        expected_sf_filename = os.path.join(path, filename)
+        expected_sf_filename = f"{expected_sf_filename}.safetensors"
+
+        if expected_sf_filename not in sf_filenames:
+            logger.warning(f"{expected_sf_filename} not found")
+            return False
+
+    return True
 
 
 def variant_compatible_siblings(info, variant=None) -> Union[List[os.PathLike], str]:
     filenames = set(sibling.rfilename for sibling in info.siblings)
-    weight_names = [WEIGHTS_NAME, SAFETENSORS_WEIGHTS_NAME, FLAX_WEIGHTS_NAME, ONNX_WEIGHTS_NAME]
+    weight_names = [
+        WEIGHTS_NAME,
+        SAFETENSORS_WEIGHTS_NAME,
+        FLAX_WEIGHTS_NAME,
+        ONNX_WEIGHTS_NAME,
+        ONNX_EXTERNAL_WEIGHTS_NAME,
+    ]
 
     if is_transformers_available():
         weight_names += [TRANSFORMERS_WEIGHTS_NAME, TRANSFORMERS_SAFE_WEIGHTS_NAME, TRANSFORMERS_FLAX_WEIGHTS_NAME]
@@ -303,15 +342,50 @@ class DiffusionPipeline(ConfigMixin):
 
             save_method(os.path.join(save_directory, pipeline_component_name), **save_kwargs)
 
-    def to(self, torch_device: Optional[Union[str, torch.device]] = None):
+    def to(self, torch_device: Optional[Union[str, torch.device]] = None, silence_dtype_warnings: bool = False):
         if torch_device is None:
             return self
 
+        # throw warning if pipeline is in "offloaded"-mode but user tries to manually set to GPU.
+        def module_is_sequentially_offloaded(module):
+            if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
+                return False
+
+            return hasattr(module, "_hf_hook") and not isinstance(module._hf_hook, accelerate.hooks.CpuOffload)
+
+        def module_is_offloaded(module):
+            if not is_accelerate_available() or is_accelerate_version("<", "0.17.0.dev0"):
+                return False
+
+            return hasattr(module, "_hf_hook") and isinstance(module._hf_hook, accelerate.hooks.CpuOffload)
+
+        # .to("cuda") would raise an error if the pipeline is sequentially offloaded, so we raise our own to make it clearer
+        pipeline_is_sequentially_offloaded = any(
+            module_is_sequentially_offloaded(module) for _, module in self.components.items()
+        )
+        if pipeline_is_sequentially_offloaded and torch.device(torch_device).type == "cuda":
+            raise ValueError(
+                "It seems like you have activated sequential model offloading by calling `enable_sequential_cpu_offload`, but are now attempting to move the pipeline to GPU. This is not compatible with offloading. Please, move your pipeline `.to('cpu')` or consider removing the move altogether if you use sequential offloading."
+            )
+
+        # Display a warning in this case (the operation succeeds but the benefits are lost)
+        pipeline_is_offloaded = any(module_is_offloaded(module) for _, module in self.components.items())
+        if pipeline_is_offloaded and torch.device(torch_device).type == "cuda":
+            logger.warning(
+                f"It seems like you have activated model offloading by calling `enable_model_cpu_offload`, but are now manually moving the pipeline to GPU. It is strongly recommended against doing so as memory gains from offloading are likely to be lost. Offloading automatically takes care of moving the individual components {', '.join(self.components.keys())} to GPU when needed. To make sure offloading works as expected, you should consider moving the pipeline back to CPU: `pipeline.to('cpu')` or removing the move altogether if you use offloading."
+            )
+
         module_names, _, _ = self.extract_init_dict(dict(self.config))
+        is_offloaded = pipeline_is_offloaded or pipeline_is_sequentially_offloaded
         for name in module_names.keys():
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
-                if module.dtype == torch.float16 and str(torch_device) in ["cpu"]:
+                if (
+                    module.dtype == torch.float16
+                    and str(torch_device) in ["cpu"]
+                    and not silence_dtype_warnings
+                    and not is_offloaded
+                ):
                     logger.warning(
                         "Pipelines loaded with `torch_dtype=torch.float16` cannot run with `cpu` device. It"
                         " is not recommended to move them to `cpu` as running them will fail. Please make"
@@ -537,7 +611,7 @@ class DiffusionPipeline(ConfigMixin):
 
                 if revision in DEPRECATED_REVISION_ARGS and version.parse(
                     version.parse(__version__).base_version
-                ) >= version.parse("0.10.0"):
+                ) >= version.parse("0.15.0"):
                     info = model_info(
                         pretrained_model_name_or_path,
                         use_auth_token=use_auth_token,
@@ -576,7 +650,7 @@ class DiffusionPipeline(ConfigMixin):
                 ]
 
                 if from_flax:
-                    ignore_patterns = ["*.bin", "*.safetensors", ".onnx"]
+                    ignore_patterns = ["*.bin", "*.safetensors", "*.onnx", "*.pb"]
                 elif is_safetensors_available() and is_safetensors_compatible(model_filenames, variant=variant):
                     ignore_patterns = ["*.bin", "*.msgpack"]
 
@@ -825,7 +899,12 @@ class DiffusionPipeline(ConfigMixin):
                     loading_kwargs["sess_options"] = sess_options
 
                 is_diffusers_model = issubclass(class_obj, diffusers.ModelMixin)
-                transformers_version = version.parse(version.parse(transformers.__version__).base_version)
+
+                if is_transformers_available():
+                    transformers_version = version.parse(version.parse(transformers.__version__).base_version)
+                else:
+                    transformers_version = "N/A"
+
                 is_transformers_model = (
                     is_transformers_available()
                     and issubclass(class_obj, PreTrainedModel)

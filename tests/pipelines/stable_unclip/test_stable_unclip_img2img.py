@@ -18,11 +18,17 @@ from diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer import 
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import floats_tensor, load_image, load_numpy, require_torch_gpu, slow, torch_device
 
-from ...test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
+from ...pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
+from ...test_pipelines_common import (
+    PipelineTesterMixin,
+    assert_mean_pixel_difference,
+)
 
 
 class StableUnCLIPImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableUnCLIPImg2ImgPipeline
+    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
+    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
 
     def get_dummy_components(self):
         embedder_hidden_size = 32
@@ -185,6 +191,10 @@ class StableUnCLIPImg2ImgPipelineIntegrationTests(unittest.TestCase):
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
+        # stable unclip will oom when integration tests are run on a V100,
+        # so turn on memory savings
+        pipe.enable_attention_slicing()
+        pipe.enable_sequential_cpu_offload()
 
         generator = torch.Generator(device="cpu").manual_seed(0)
         output = pipe("anime turle", image=input_image, generator=generator, output_type="np")
@@ -209,6 +219,10 @@ class StableUnCLIPImg2ImgPipelineIntegrationTests(unittest.TestCase):
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
+        # stable unclip will oom when integration tests are run on a V100,
+        # so turn on memory savings
+        pipe.enable_attention_slicing()
+        pipe.enable_sequential_cpu_offload()
 
         generator = torch.Generator(device="cpu").manual_seed(0)
         output = pipe("anime turle", image=input_image, generator=generator, output_type="np")

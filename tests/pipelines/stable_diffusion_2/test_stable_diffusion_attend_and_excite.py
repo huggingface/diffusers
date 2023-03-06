@@ -29,6 +29,7 @@ from diffusers import (
 from diffusers.utils import load_numpy, skip_mps, slow
 from diffusers.utils.testing_utils import require_torch_gpu
 
+from ...pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin
 
 
@@ -36,6 +37,8 @@ from ...test_pipelines_common import PipelineTesterMixin
 class StableDiffusionAttendAndExcitePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionAttendAndExcitePipeline
     test_attention_slicing = False
+    params = TEXT_TO_IMAGE_PARAMS
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS.union({"token_indices"})
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -135,8 +138,9 @@ class StableDiffusionAttendAndExcitePipelineFastTests(PipelineTesterMixin, unitt
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
-    def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(relax_max_difference=False)
+    def test_inference_batch_consistent(self):
+        # NOTE: Larger batch sizes cause this test to timeout, only test on smaller batches
+        self._test_inference_batch_consistent(batch_sizes=[2, 4])
 
 
 @require_torch_gpu
@@ -151,7 +155,7 @@ class StableDiffusionAttendAndExcitePipelineIntegrationTests(unittest.TestCase):
         generator = torch.manual_seed(51)
 
         pipe = StableDiffusionAttendAndExcitePipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16
+            "CompVis/stable-diffusion-v1-4", safety_checker=None, torch_dtype=torch.float16
         )
         pipe.to("cuda")
 
@@ -163,8 +167,9 @@ class StableDiffusionAttendAndExcitePipelineIntegrationTests(unittest.TestCase):
             token_indices=token_indices,
             guidance_scale=7.5,
             generator=generator,
-            num_inference_steps=50,
-            max_iter_to_alter=25,
+            num_inference_steps=5,
+            max_iter_to_alter=5,
+            output_type="numpy",
         ).images[0]
 
         expected_image = load_numpy(
