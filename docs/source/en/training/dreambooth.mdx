@@ -19,18 +19,7 @@ specific language governing permissions and limitations under the License.
 ![Dreambooth examples from the project's blog](https://dreambooth.github.io/DreamBooth_files/teaser_static.jpg)
 <small>Dreambooth examples from the <a href="https://dreambooth.github.io">project's blog.</a></small>
 
-This guide will show you how to finetune DreamBooth with a Stable Diffusion model for various GPU sizes, and in Flax. All the training scripts for DreamBooth used in this guide can be found [here](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth) if you're interested in going deeper.
-
-<Tip>
-
-If you prefer to train and run DreamBooth from a notebook, take a look at the following notebooks:
-
-| **Notebook**         | **Colab**                                                                                                                                                                                      |
-|----------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| DreamBooth training  | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/sd_dreambooth_training.ipynb)  |
-| DreamBooth inference | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/sd_dreambooth_inference.ipynb) |
-
-</Tip>
+This guide will show you how to finetune DreamBooth with the [`CompVis/stable-diffusion-v1-4`](https://huggingface.co/CompVis/stable-diffusion-v1-4) model for various GPU sizes, and with Flax. All the training scripts for DreamBooth used in this guide can be found [here](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth) if you're interested in digging deeper and seeing how things work.
 
 Before running the scripts, make sure you install the library's training dependencies. We also recommend installing 🧨 Diffusers from the `main` GitHub branch:
 
@@ -47,7 +36,18 @@ After all the dependencies have been set up, initialize a [🤗 Accelerate](http
 accelerate config
 ```
 
-In this example, you'll use the `CompVis/stable-diffusion-v1-4` model. Head over to the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-4) and carefully read and accept the license before proceeding.
+To setup a default 🤗 Accelerate environment without choosing any configurations:
+
+```bash
+accelerate config default
+```
+
+Or if your environment doesn't support an interactive shell like a notebook, you can use:
+
+```py
+from accelerate.utils import write_basic_config
+write_basic_config()
+```
 
 ## Finetuning
 
@@ -179,7 +179,7 @@ Training the text encoder requires additional memory and it won't fit on a 16GB 
 
 </Tip>
 
-Pass the `--train_text_encoder` argument to the training script to enable finetuning them:
+Pass the `--train_text_encoder` argument to the training script to enable finetuning the `text_encoder` and `unet`:
 
 <frameworkcontent>
 <pt>
@@ -240,7 +240,7 @@ You can also use Low-Rank Adaptation of Large Language Models (LoRA), a fine-tun
 
 ## Saving checkpoints while training
 
-It's easy to overfit while training with Dreambooth, so sometimes it's useful to save regular checkpoints during the process. One of the intermediate checkpoints might actually work better than the final model! Pass the following argument to the training script to enable saving checkpoints:
+It's easy to overfit while training with Dreambooth, so sometimes it's useful to save regular checkpoints during the training process. One of the intermediate checkpoints might actually work better than the final model! Pass the following argument to the training script to enable saving checkpoints:
 
 ```bash
   --checkpointing_steps=500
@@ -316,14 +316,14 @@ pipeline.save_pretrained("dreambooth-pipeline")
 
 ## Optimizations for different GPU sizes
 
-Depending on your hardware, there are a few different ways to optimize DreamBooth on GPUs from 16GB to just 8GB!
+Depending on your hardware, there are a few different ways to optimize DreamBooth on GPUs from 16GB to just 8GB! 
 
 ### xFormers
 
 [xFormers](https://github.com/facebookresearch/xformers) is a toolbox for optimizing Transformers, and it include a [memory-efficient attention](https://facebookresearch.github.io/xformers/components/ops.html#module-xformers.ops) mechanism that is used in 🧨 Diffusers. You'll need to [install xFormers](./optimization/xformers) and then add the following argument to your training script:
 
 ```bash
-  --enable_xformers_memory_efficient_attention
+  --enable_xformers_memory_efficient_attention🤏
 ```
 
 xFormers is not available in Flax.
