@@ -84,7 +84,7 @@
   - local: training/dreambooth
     title: Dreambooth
   - local: training/text2image
-    title: Text-to-image fine-tuning
+    title: Text-to-image
   - local: training/lora
     title: LoRA Support in Diffusers
   title: Training
