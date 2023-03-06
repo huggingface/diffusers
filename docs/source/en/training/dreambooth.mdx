@@ -324,7 +324,7 @@ Depending on your hardware, there are a few different ways to optimize DreamBoot
 [xFormers](https://github.com/facebookresearch/xformers) is a toolbox for optimizing Transformers, and it include a [memory-efficient attention](https://facebookresearch.github.io/xformers/components/ops.html#module-xformers.ops) mechanism that is used in 🧨 Diffusers. You'll need to [install xFormers](./optimization/xformers) and then add the following argument to your training script:
 
 ```bash
-  --enable_xformers_memory_efficient_attention🤏
+  --enable_xformers_memory_efficient_attention
 ```
 
 xFormers is not available in Flax.
