@@ -12,24 +12,21 @@ specific language governing permissions and limitations under the License.
 
 # Weighting prompts
 
-Text-guided diffusion models generate images based on a given text prompt. Often, the text prompt
-can include multiple concepts that the model should generate and it's often desireable to weight
+Text-guided diffusion models generate images based on a given text prompt. The text prompt
+can include multiple concepts that the model should generate and it's often desirable to weight
 certain parts of the prompt more or less. 
 
-Diffusion models function by conditioning the cross attention layers of the diffusion model with contextualized text embeddings via the cross attention layers (see the [Stable Diffusion Guide for more information](./stable-diffusion)).
-Thus a simple way to emphasize (or de-emphasize) certain parts of the prompt is by increasing or reducing the scale of the text embedding vector that correspond to the part of the prompt.
+Diffusion models work by conditioning the cross attention layers of the diffusion model with contextualized text embeddings (see the [Stable Diffusion Guide for more information](../stable-diffusion)).
+Thus a simple way to emphasize (or de-emphasize) certain parts of the prompt is by increasing or reducing the scale of the text embedding vector that corresponds to the relevant part of the prompt.
 This is called "prompt-weighting" and has been a highly demanded feature by the community (see issue [here](https://github.com/huggingface/diffusers/issues/2431)).
 
 ## How to do prompt-weighting in Diffusers
 
-Generally speaking, we do not consider prompt weighting as a core feature of diffusers since the philosophy of diffusers 
-is to be a toolbox that enables other libraries, such as [InvokeAI](https://github.com/invoke-ai/InvokeAI) or [diffuzers](https://github.com/abhishekkrthakur/diffuzers) to build powerful UIs. Therefore, `diffusers` 
-simply exposes a [`prompt_embeds`](https://huggingface.co/docs/diffusers/v0.14.0/en/api/pipelines/stable_diffusion/text2img#diffusers.StableDiffusionPipeline.__call__.prompt_embeds) function argument to many pipelines such as [`StableDiffusionPipeline`] allowing to directly pass the "prompt-weighted"/scaled text embeddings to the pipeline.
+We believe the role of `diffusers` is to be a toolbox that provides essential features that enable other projects, such as [InvokeAI](https://github.com/invoke-ai/InvokeAI) or [diffuzers](https://github.com/abhishekkrthakur/diffuzers), to build powerful UIs. In order to support arbitrary methods to manipulate prompts, `diffusers` exposes a [`prompt_embeds`](https://huggingface.co/docs/diffusers/v0.14.0/en/api/pipelines/stable_diffusion/text2img#diffusers.StableDiffusionPipeline.__call__.prompt_embeds) function argument to many pipelines such as [`StableDiffusionPipeline`], allowing to directly pass the "prompt-weighted"/scaled text embeddings to the pipeline.
 
-As it's not super simple to process text embeddings to example or de-emphasize certain parts of the prompt,
-we strongly recommend to rely on the [compel library](https://github.com/damian0815/compel) to handle the prompt-weighting for you.
+The [compel library](https://github.com/damian0815/compel) provides an easy way to emphasize or de-emphasize portions of the prompt for you. We strongly recommend it instead of preparing the embeddings yourself.
 
-Let's look at a simply example. Imagine you want to generate an image of `"a red cat playing with a ball"` as 
+Let's look at a simple example. Imagine you want to generate an image of `"a red cat playing with a ball"` as 
 follows:
 
 ```py
@@ -50,7 +47,7 @@ This gives you:
 
 ![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/compel/forest_0.png)
 
-As one can see, there is no "ball" in the image. Let's emphasize this part!
+As you can see, there is no "ball" in the image. Let's emphasize this part!
 
 For this we should install the `compel` library:
 
