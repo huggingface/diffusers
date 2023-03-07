@@ -266,13 +266,13 @@ class ControlNetModel(ModelMixin, ConfigMixin):
 
         Parameters:
             unet (`UNet2DConditionModel`):
-                UNet model which weights are copied to the ControlNet. Note that
-                all configuration options are also copied where applicable.
+                UNet model which weights are copied to the ControlNet. Note that all configuration options are also
+                copied where applicable.
 
             kwargs (dictionary of keyword arguments, *optional*):
                 Can be used to update the configuration object (after it being loaded) and initiate the Python class.
-                `**kwargs` will be directly passed to the `ControlNet.__init__` method and eventually
-                overwrite same named arguments of `unet.config`.
+                `**kwargs` will be directly passed to the `ControlNet.__init__` method and eventually overwrite same
+                named arguments of `unet.config`.
         """
         config = dict(unet.config)
         config["_class_name"] = "ControlNetModel"
