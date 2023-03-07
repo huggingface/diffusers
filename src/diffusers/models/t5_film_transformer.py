@@ -231,7 +231,7 @@ class T5LayerCrossAttention(nn.Module):
         attention_output = self.attention(
             normed_hidden_states,
             encoder_hidden_states=key_value_states,
-            attention_mask=attention_mask.squeeze(),
+            attention_mask=attention_mask.squeeze(1),
         )
         layer_output = hidden_states + self.dropout(attention_output)
         return layer_output
