@@ -16,41 +16,41 @@ specific language governing permissions and limitations under the License.
 
 训练扩散模型，是为了对随机高斯噪声进行逐步去噪，以生成令人感兴趣的样本，比如图像或者语音。
 
-这引起了人们对生成式人工智能的极大兴趣，你可能已经在网上见过扩散生成的图像了。🧨 Diffusers库的目的是让大家更易上手扩散模型。
+扩散模型的发展引起了人们对生成式人工智能的极大兴趣，你可能已经在网上见过扩散生成的图像了。🧨 Diffusers库的目的是让大家更易上手扩散模型。
 
 无论你是开发人员还是普通用户，本文将向你介绍🧨 Diffusers 并帮助你快速开始生成内容！
 
 🧨 Diffusers 库的三个主要组件：
 
 
-无论你是开发者还是普通用户，这个快速指南将向你介绍🧨 Diffusers，并帮助你快速使用和生成！该库有三个主要部分如下：
+无论你是开发者还是普通用户，这个快速指南将向你介绍🧨 Diffusers，并帮助你快速使用和生成！该库三个主要部分如下：
 
 * [`DiffusionPipeline`]是一个高级的端到端类，旨在通过预训练的扩散模型快速生成样本进行推理。
-* 可以作为创建扩散系统的构建模块的流行的预训练[模型](./api/models)架构和模块。
-* 许多不同的[调度器](./api/schedulers/overview) - 控制如何在训练过程中添加噪声的算法，以及如何在推理过程中生成去噪图像的算法。
+* 作为创建扩散系统做组件的流行的预训练[模型](./api/models)框架和模块。
+* 许多不同的[调度器](./api/schedulers/overview)：控制如何在训练过程中添加噪声的算法，以及如何在推理过程中生成去噪图像的算法。
 
-快速浏览将告诉你如何使用[`DiffusionPipeline`]进行推理，然后指导你如何结合模型和调度器以复制[`DiffusionPipeline`]内部发生的事情。
+快速入门将告诉你如何使用[`DiffusionPipeline`]进行推理，然后指导你如何结合模型和调度器以复现[`DiffusionPipeline`]内部发生的事情。
 
 <Tip>
 
-快速入门是🧨[Diffusers入门](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb)的简化版，可以帮助你快速上手。如果你想了解更多关于🧨 Diffusers的目标、设计理念以及关于它的核心API的更多细节，可以点击链接查看。
+快速入门是🧨[Diffusers入门](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb)的简化版，可以帮助你快速上手。如果你想了解更多关于🧨 Diffusers的目标、设计理念以及关于它的核心API的更多细节，可以点击🧨[Diffusers入门](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb)查看。
 
 </Tip>
 
-在开始之前，确认一下你已经安装好了所有需要的库：
+在开始之前，确认一下你已经安装好了所需要的库：
 
 ```bash
 pip install --upgrade diffusers accelerate transformers
 ```
 
-- [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) 在推理和训练过程中加速模型加载。speeds up model loading for inference and training.
+- [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) 在推理和训练过程中加速模型加载。
 - [🤗 Transformers](https://huggingface.co/docs/transformers/index) 是运行最流行的扩散模型所必须的库，比如[Stable Diffusion](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/overview).
 
-## 扩散模型管道
+## 扩散模型pipelines
 
-[`DiffusionPipeline`]是使用预训练的扩散系统进行推理的最简单方法。它是一个包含模型和调度器的端到端系统。你可以直接使用[DiffusionPipeline]完成许多任务。请查看下面的表格以了解一些支持的任务，要获取完整的支持任务列表，请查看[🧨 Diffusers Summary](./api/pipelines/overview#diffusers-summary) 。
+[`DiffusionPipeline`]是用预训练的扩散系统进行推理的最简单方法。它是一个包含模型和调度器的端到端系统。你可以直接使用[`DiffusionPipeline`]完成许多任务。请查看下面的表格以了解一些支持的任务，要获取完整的支持任务列表，请查看[🧨 Diffusers 总结](./api/pipelines/overview#diffusers-summary) 。
 
-| **任务**                     | **描述**                                                                                              | **管道**
+| **任务**                     | **描述**                                                                                              | **pipeline**
 |------------------------------|--------------------------------------------------------------------------------------------------------------|-----------------|
 | Unconditional Image Generation          | 从高斯噪声中生成图片 | [unconditional_image_generation](./using-diffusers/unconditional_image_generation) |
 | Text-Guided Image Generation | 给定文本提示生成图像 | [conditional_image_generation](./using-diffusers/conditional_image_generation) |
@@ -58,7 +58,7 @@ pip install --upgrade diffusers accelerate transformers
 | Text-Guided Image-Inpainting          | 给出图像、遮罩和文本提示，填充图像的遮罩部分 | [inpaint](./using-diffusers/inpaint) |
 | Text-Guided Depth-to-Image Translation | 在文本提示的指导下调整图像的部分内容，同时通过深度估计保留其结构 | [depth2img](./using-diffusers/depth2img) |
 
-首先创建一个[`DiffusionPipeline`]的实例，并指定要下载的管道检查点。
+首先创建一个[`DiffusionPipeline`]的实例，并指定要下载的pipeline检查点。
 你可以使用存储在Hugging Face Hub上的任何[`DiffusionPipeline`][检查点](https://huggingface.co/models?library=diffusers&sort=downloads)。
 在教程中，你将加载[`stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5)检查点，用于文本到图像的生成。
 
@@ -66,9 +66,9 @@ pip install --upgrade diffusers accelerate transformers
 您可以在Hugging Face Hub上使用[DiffusionPipeline]的任何检查点。
 在本快速入门中，您将加载stable-diffusion-v1-5检查点，用于文本到图像生成。
 
-<提示警告={true}>。
+<Tip={true}>。
 
-对于[Stable Diffusion](https://huggingface.co/CompVis/stable-diffusion)模型，在运行该模型之前，请先仔细阅读[许可证](https://huggingface.co/spaces/CompVis/stable-diffusion-license)。🧨 Diffusers实现了一个[`safety_checker`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/safety_checker.py)，以防止有攻击性的或有害的内容，但该模型改进图像的生成能力仍可能产生潜在的有害内容。
+对于[Stable Diffusion](https://huggingface.co/CompVis/stable-diffusion)模型，在运行该模型之前，请先仔细阅读[许可证](https://huggingface.co/spaces/CompVis/stable-diffusion-license)。🧨 Diffusers实现了一个[`safety_checker`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/safety_checker.py)，以防止有攻击性的或有害的内容，但Stable Diffusion模型改进图像的生成能力仍有可能产生潜在的有害内容。
 
 </Tip>
 
@@ -79,7 +79,7 @@ pip install --upgrade diffusers accelerate transformers
 
 >>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
 ```
-[DiffusionPipeline]会下载并缓存所有的建模、标记化和调度组件。你可以看到Stable Diffusion管道是由[UNet2DConditionModel]和[PNDMScheduler]等组件组成的：
+[`DiffusionPipeline`]会下载并缓存所有的建模、标记化和调度组件。你可以看到Stable Diffusion的pipeline是由[`UNet2DConditionModel`]和[`PNDMScheduler`]等组件组成的：
 
 ```py
 >>> pipeline
@@ -103,14 +103,15 @@ StableDiffusionPipeline {
 }
 ```
 
-我们强烈建议在GPU上运行这个管道，因为该模型由大约14亿个参数组成。
-你可以像使用Pytorch那样把生成器对象移到GPU上：
+我们强烈建议你在GPU上运行这个pipeline，因为该模型由大约14亿个参数组成。
+
+你可以像在Pytorch里那样把生成器对象移到GPU上：
 
 ```python
 >>> pipeline.to("cuda")
 ```
 
-现在你可以向`管道`传递一个文本提示来生成图像，然后获得去噪的图像。默认情况下，图像输出被放在一个[`PIL.Image`](https://pillow.readthedocs.io/en/stable/reference/Image.html?highlight=image#the-image-class)对象中。
+现在你可以向`pipeline`传递一个文本提示来生成图像，然后获得去噪的图像。默认情况下，图像输出被放在一个[`PIL.Image`](https://pillow.readthedocs.io/en/stable/reference/Image.html?highlight=image#the-image-class)对象中。
 
 ```python
 >>> image = pipeline("An image of a squirrel in Picasso style").images[0]
@@ -121,22 +122,23 @@ StableDiffusionPipeline {
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/image_of_squirrel_painting.png"/>
 </div>
 
+
 调用`save`保存图像:
 
 ```python
 >>> image.save("image_of_squirrel_painting.png")
 ```
 
-### 本地管道
+### 本地pipeline
 
-你也可以在本地使用该管道。唯一的区别是你需要先下载权重：
+你也可以在本地使用pipeline。唯一的区别是你需提前下载权重：
 
 ```
 git lfs install
 git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
 ```
 
-然后将下载好的权重加载到管道中:
+将下载好的权重加载到pipeline中:
 
 ```python
 >>> pipeline = DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5")
@@ -156,15 +158,15 @@ git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
 ```
 
 
-试着用新的调度器生成一个图像，看看你能否注意到不同之处。
+试着用新的调度器生成一个图像，看看你能否发现不同之处。
 
 在下一节中，你将仔细观察组成[`DiffusionPipeline`]的组件——模型和调度器，并学习如何使用这些组件来生成猫咪的图像。
 
 ## 模型
 
-大多数模型取一个噪声样本，在每个时间点预测*噪声残差*（其他模型则直接学习预测前一个样本或速度或[`v-prediction`](https://github.com/huggingface/diffusers/blob/5e5ce13e2f89ac45a0066cb3f369462a3cf1d9ef/src/diffusers/schedulers/scheduling_ddim.py#L110)），即噪声较小的图像与输入图像的差异。你可以混合和匹配模型创建其他扩散系统。
+大多数模型取一个噪声样本，在每个时间点预测*噪声残差*（其他模型则直接学习预测前一个样本或速度或[`v-prediction`](https://github.com/huggingface/diffusers/blob/5e5ce13e2f89ac45a0066cb3f369462a3cf1d9ef/src/diffusers/schedulers/scheduling_ddim.py#L110)），即噪声较小的图像与输入图像的差异。你可以混搭模型创建其他扩散系统。
 
-模型是用[`~ModelMixin.from_pretrained`]方法启动的，该方法还本地缓存了模型权重，所以下次加载模型时更快。对于快速入门，你加载的是[`UNet2DModel`]，这是一个基础的无条件图像生成模型，该模型有一个在猫咪图像上训练的检查点：
+模型是用[`~ModelMixin.from_pretrained`]方法启动的，该方法还在本地缓存了模型权重，所以下次加载模型时更快。对于快速入门，你默认加载的是[`UNet2DModel`]，这是一个基础的无条件图像生成模型，该模型有一个在猫咪图像上训练的检查点：
 
 
 ```py
@@ -211,21 +213,21 @@ torch.Size([1, 3, 256, 256])
 ...     noisy_residual = model(sample=noisy_sample, timestep=2).sample
 ```
 
-想生成实际的样本，你需要一个调度器来指导去噪过程。在下一节中，你将学习如何把模型与调度器结合起来。
+想生成实际的样本，你需要一个调度器指导去噪过程。在下一节中，你将学习如何把模型与调度器结合起来。
 
-## ## 调度器
+## 调度器
 
-调度器管理从一个噪声样本到一个噪声较小的样本的过程，给出模型输出——在这种情况下，它是`noisy_residual`。
+调度器管理一个噪声样本到一个噪声较小的样本的处理过程，给出模型输出 —— 在这种情况下，它是`noisy_residual`。
 
 
 
 <Tip>
 
-🧨 Diffusers是一个用于构建扩散系统的工具箱。预定义好的扩散系统[`DiffusionPipeline`]是快速上手使用的便捷方法，你也可以单独选择自己的模型和调度器组件来建立一个自定义的扩散系统。
+🧨 Diffusers是一个用于构建扩散系统的工具箱。预定义好的扩散系统[`DiffusionPipeline`]能方便你快速试用，你也可以单独选择自己的模型和调度器组件来建立一个自定义的扩散系统。
 
 </Tip>
 
-对于快速浏览，你将用它的[`~diffusers.ConfigMixin.from_config`]方法实例化[`DDPMScheduler`]：
+在快速入门教程中，你将用它的[`~diffusers.ConfigMixin.from_config`]方法实例化[`DDPMScheduler`]：
 
 ```py
 >>> from diffusers import DDPMScheduler
@@ -258,7 +260,7 @@ DDPMScheduler {
 * `beta_schedule`：用于推理和训练的噪声表。
 * `beta_start`和`beta_end`：噪声表的开始和结束噪声值。
 
-要预测一个噪音稍小的图像，请将以下内容传递给调度器的[`~diffusers.DDPMScheduler.step`]方法：模型输出、`timestep`和当前`sample`。
+要预测一个噪音稍小的图像，请将 模型输出、`timestep`和当前`sample` 传递给调度器的[`~diffusers.DDPMScheduler.step`]方法：
 
 
 ```py
@@ -266,7 +268,7 @@ DDPMScheduler {
 >>> less_noisy_sample.shape
 ```
 
-这个 " `less_noisy_sample` 去噪样本 "可以被传递到下一个`timestep` ，处理后会将变得噪声更小。现在让我们把所有步骤合起来，可视化整个去噪过程。
+这个 `less_noisy_sample` 去噪样本 可以被传递到下一个`timestep` ，处理后会将变得噪声更小。现在让我们把所有步骤合起来，可视化整个去噪过程。
 
 首先，创建一个函数，对去噪后的图像进行后处理并显示为`PIL.Image`：
 
@@ -285,7 +287,7 @@ DDPMScheduler {
 ...     display(image_pil)
 ```
 
-加速去噪过程，将输入和模型移到GPU上：
+将输入和模型移到GPU上加速去噪过程：
 
 ```py
 >>> model.to("cuda")
@@ -326,4 +328,4 @@ DDPMScheduler {
 * 查看官方和社区的[训练或微调脚本](https://github.com/huggingface/diffusers/tree/main/examples#-diffusers-examples)的例子，了解更多使用情况。
 * 在[使用不同的调度器](./using-diffusers/schedulers)指南中了解更多关于加载、访问、更改和比较调度器的信息。
 * 在[Stable Diffusion](./stable_diffusion)教程中探索提示工程、速度和内存优化，以及生成更高质量图像的技巧。
-* 通过[在GPU上优化PyTorch](./optimization/fp16)指南，以及运行[在Apple (M1/M2)上的Stable Diffusion](./optimization/mps)和[ONNX Runtime](./optimization/onnx)的教程，更深入地了解如何加快🧨Diffuser。
+* 通过[在GPU上优化PyTorch](./optimization/fp16)指南，以及运行[Apple (M1/M2)上的Stable Diffusion](./optimization/mps)和[ONNX Runtime](./optimization/onnx)的教程，更深入地了解如何加速🧨Diffuser。
