@@ -82,20 +82,23 @@ Using all the above options it should be possible to be able to train with 8 GB 
 
 ## Testing the trained model
 
-The trained model can be tested with the following code. Change `model` and `control_image_path` to proper values.
+The trained model can be tested with the following code. Change `model`, `controlnet_folder` and `control_image_path` to proper values.
 
 ```python
-from diffusers import StableDiffusionControlNetPipeline
+from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
 from diffusers.utils import load_image
 import torch
 
 model = "path to model"
+controlnet_folder = "path to controlnet"
 control_image_path = "path to control image"
 
 control_image = load_image(control_image_path)
 prompt = "pale golden rod circle with old lace background"
 
-pipe = StableDiffusionControlNetPipeline.from_pretrained(model, safety_checker=None, torch_dtype=torch.float16).to("cuda")
+controlnet = ControlNetModel.from_pretrained(controlnet_folder)
+pipe = StableDiffusionControlNetPipeline.from_pretrained(model, controlnet=controlnet)
+pipe = pipe.to("cuda")
 with torch.inference_mode():
     image = pipe(prompt=prompt, image=control_image).images[0]
 image.save("./output.png")

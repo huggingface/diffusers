@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import inspect
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -29,6 +30,7 @@ from .unet_2d_blocks import (
     UNetMidBlock2DCrossAttn,
     get_down_block,
 )
+from .unet_2d_condition import UNet2DConditionModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -256,6 +258,48 @@ class ControlNetModel(ModelMixin, ConfigMixin):
             use_linear_projection=use_linear_projection,
             upcast_attention=upcast_attention,
         )
+
+    @classmethod
+    def from_unet(cls, unet: UNet2DConditionModel, **kwargs):
+        r"""
+        Instantiate Controlnet class from UNet2DConditionModel by copying its weights.
+
+        Parameters:
+            unet (`UNet2DConditionModel`):
+                UNet model which weights are copied to the ControlNet. Note that
+                all configuration options are also copied where applicable.
+
+            kwargs (dictionary of keyword arguments, *optional*):
+                Can be used to update the configuration object (after it being loaded) and initiate the Python class.
+                `**kwargs` will be directly passed to the `ControlNet.__init__` method and eventually
+                overwrite same named arguments of `unet.config`.
+        """
+        config = dict(unet.config)
+        config["_class_name"] = "ControlNetModel"
+
+        init_keys = set(dict(inspect.signature(cls.__init__).parameters).keys())
+
+        # Delete UNet config keys that ControlNet doesn't need. Done also in
+        # `from_config` but done here beforehand to avoid printing a warning
+        # about unused keys.
+        for k in list(config.keys()):
+            if k not in init_keys:
+                del config[k]
+
+        for k in kwargs:
+            config[k] = kwargs[k]
+
+        controlnet = cls.from_config(config)
+
+        unet_dict = unet.state_dict()
+        temp_state = controlnet.state_dict()
+
+        for k in temp_state.keys():
+            if k in unet_dict:
+                temp_state[k] = unet_dict[k].clone()
+
+        controlnet.load_state_dict(temp_state, strict=True)
+        return controlnet
 
     @property
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.attn_processors
