@@ -164,12 +164,12 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         # settings for DPM-Solver
         if algorithm_type not in ["dpmsolver", "dpmsolver++"]:
             if algorithm_type == "deis":
-                algorithm_type = "dpmsolver++"
+                self.register_to_config(algorithm_type="dpmsolver++")
             else:
                 raise NotImplementedError(f"{algorithm_type} does is not implemented for {self.__class__}")
         if solver_type not in ["midpoint", "heun"]:
             if solver_type in ["logrho", "bh1", "bh2"]:
-                solver_type = "midpoint"
+                self.register_to_config(solver_type="midpoint")
             else:
                 raise NotImplementedError(f"{solver_type} does is not implemented for {self.__class__}")
 

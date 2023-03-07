@@ -154,13 +154,13 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
         # settings for DEIS
         if algorithm_type not in ["deis"]:
             if algorithm_type in ["dpmsolver", "dpmsolver++"]:
-                algorithm_type = "deis"
+                self.register_to_config(algorithm_type="deis")
             else:
                 raise NotImplementedError(f"{algorithm_type} does is not implemented for {self.__class__}")
 
         if solver_type not in ["logrho"]:
             if solver_type in ["midpoint", "heun", "bh1", "bh2"]:
-                solver_type = "logrho"
+                self.register_to_config(solver_type="logrho")
             else:
                 raise NotImplementedError(f"solver type {solver_type} does is not implemented for {self.__class__}")
 
