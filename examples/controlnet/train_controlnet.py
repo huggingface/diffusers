@@ -320,7 +320,13 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--image_column", type=str, default="image", help="The column of the dataset containing an image."
+        "--image_column", type=str, default="image", help="The column of the dataset containing the target image."
+    )
+    parser.add_argument(
+        "--conditioning_image_column",
+        type=str,
+        default="conditioning_image",
+        help="The column of the dataset containing the controlnet conditioning image.",
     )
     parser.add_argument(
         "--caption_column",
@@ -415,8 +421,16 @@ def make_train_dataset(args, tokenizer, accelerator):
                 f"`--caption_column` value '{args.caption_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
             )
 
-    # Preprocessing the datasets.
-    # We need to tokenize input captions and transform the images.
+    if args.conditioning_image_column is None:
+        conditioning_image_column = column_names[2]
+        logger.info(f"conditioning image column defaulting to {caption_column}")
+    else:
+        conditioning_image_column = args.conditioning_image_column
+        if conditioning_image_column not in column_names:
+            raise ValueError(
+                f"`--conditioning_image_column` value '{args.conditioning_image_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
+            )
+
     def tokenize_captions(examples, is_train=True):
         captions = []
         for caption in examples[caption_column]:
@@ -436,12 +450,9 @@ def make_train_dataset(args, tokenizer, accelerator):
         )
         return inputs.input_ids
 
-    # Preprocessing the datasets.
     train_transforms = transforms.Compose(
         [
             transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
-            transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x),
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5]),
         ]
@@ -449,8 +460,15 @@ def make_train_dataset(args, tokenizer, accelerator):
 
     def preprocess_train(examples):
         images = [image.convert("RGB") for image in examples[image_column]]
-        examples["pixel_values"] = [train_transforms(image) for image in images]
+        images = [train_transforms(image) for image in images]
+
+        conditioning_images = [image.convert("RGB") for image in examples[conditioning_image_column]]
+        conditioning_images = [train_transforms(image) for image in conditioning_images]
+
+        examples["pixel_values"] = images
+        examples["conditioning_pixel_values"] = conditioning_images
         examples["input_ids"] = tokenize_captions(examples)
+
         return examples
 
     with accelerator.main_process_first():
@@ -465,8 +483,17 @@ def make_train_dataset(args, tokenizer, accelerator):
 def collate_fn(examples):
     pixel_values = torch.stack([example["pixel_values"] for example in examples])
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
+
+    conditioning_pixel_values = torch.stack([example["conditioning_pixel_values"] for example in examples])
+    conditioning_pixel_values = conditioning_pixel_values.to(memory_format=torch.contiguous_format).float()
+
     input_ids = torch.stack([example["input_ids"] for example in examples])
-    return {"pixel_values": pixel_values, "input_ids": input_ids}
+
+    return {
+        "pixel_values": pixel_values,
+        "conditioning_pixel_values": conditioning_pixel_values,
+        "input_ids": input_ids,
+    }
 
 
 def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
