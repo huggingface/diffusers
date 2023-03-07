@@ -177,42 +177,6 @@ class StableDiffusionPanoramaPipelineFastTests(PipelineTesterMixin, unittest.Tes
         with self.assertRaises(ValueError):
             _ = sd_pipe(**inputs).images
 
-    def test_stable_diffusion_panorama_num_images_per_prompt(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPanoramaPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        # test num_images_per_prompt=1 (default)
-        inputs = self.get_dummy_inputs(device)
-        images = sd_pipe(**inputs).images
-
-        assert images.shape == (1, 64, 64, 3)
-
-        # test num_images_per_prompt=1 (default) for batch of prompts
-        batch_size = 2
-        inputs = self.get_dummy_inputs(device)
-        inputs["prompt"] = [inputs["prompt"]] * batch_size
-        images = sd_pipe(**inputs).images
-
-        assert images.shape == (batch_size, 64, 64, 3)
-
-        # test num_images_per_prompt for single prompt
-        num_images_per_prompt = 2
-        inputs = self.get_dummy_inputs(device)
-        images = sd_pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
-
-        assert images.shape == (num_images_per_prompt, 64, 64, 3)
-
-        # test num_images_per_prompt for batch of prompts
-        batch_size = 2
-        inputs = self.get_dummy_inputs(device)
-        inputs["prompt"] = [inputs["prompt"]] * batch_size
-        images = sd_pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
-
-        assert images.shape == (batch_size * num_images_per_prompt, 64, 64, 3)
-
 
 @slow
 @require_torch_gpu

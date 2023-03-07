@@ -151,19 +151,6 @@ class StableDiffusionInpaintPipelineFastTests(PipelineTesterMixin, unittest.Test
         assert out_pil.shape == (1, 64, 64, 3)
         assert np.abs(out_pil.flatten() - out_tensor.flatten()).max() < 5e-2
 
-    def test_stable_diffusion_inpaint_with_num_images_per_prompt(self):
-        device = "cpu"
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionInpaintPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        images = sd_pipe(**inputs, num_images_per_prompt=2).images
-
-        # check if the output is a list of 2 images
-        assert len(images) == 2
-
 
 @slow
 @require_torch_gpu

@@ -477,43 +477,6 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    def test_stable_diffusion_num_images_per_prompt(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        components["scheduler"] = PNDMScheduler(skip_prk_steps=True)
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        prompt = "A painting of a squirrel eating a burger"
-
-        # test num_images_per_prompt=1 (default)
-        images = sd_pipe(prompt, num_inference_steps=2, output_type="np").images
-
-        assert images.shape == (1, 64, 64, 3)
-
-        # test num_images_per_prompt=1 (default) for batch of prompts
-        batch_size = 2
-        images = sd_pipe([prompt] * batch_size, num_inference_steps=2, output_type="np").images
-
-        assert images.shape == (batch_size, 64, 64, 3)
-
-        # test num_images_per_prompt for single prompt
-        num_images_per_prompt = 2
-        images = sd_pipe(
-            prompt, num_inference_steps=2, output_type="np", num_images_per_prompt=num_images_per_prompt
-        ).images
-
-        assert images.shape == (num_images_per_prompt, 64, 64, 3)
-
-        # test num_images_per_prompt for batch of prompts
-        batch_size = 2
-        images = sd_pipe(
-            [prompt] * batch_size, num_inference_steps=2, output_type="np", num_images_per_prompt=num_images_per_prompt
-        ).images
-
-        assert images.shape == (batch_size * num_images_per_prompt, 64, 64, 3)
-
     def test_stable_diffusion_long_prompt(self):
         components = self.get_dummy_components()
         components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)

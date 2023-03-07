@@ -450,7 +450,9 @@ class PipelineTesterMixin:
     def test_attention_slicing_forward_pass(self):
         self._test_attention_slicing_forward_pass()
 
-    def _test_attention_slicing_forward_pass(self, test_max_difference=True, expected_max_diff=1e-3):
+    def _test_attention_slicing_forward_pass(
+        self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-3
+    ):
         if not self.test_attention_slicing:
             return
 
@@ -474,7 +476,8 @@ class PipelineTesterMixin:
             max_diff = np.abs(output_with_slicing - output_without_slicing).max()
             self.assertLess(max_diff, expected_max_diff, "Attention slicing should not affect the inference results")
 
-        assert_mean_pixel_difference(output_with_slicing[0], output_without_slicing[0])
+        if test_mean_pixel_difference:
+            assert_mean_pixel_difference(output_with_slicing[0], output_without_slicing[0])
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
@@ -549,6 +552,32 @@ class PipelineTesterMixin:
         with io.StringIO() as stderr, contextlib.redirect_stderr(stderr):
             _ = pipe(**inputs)
             self.assertTrue(stderr.getvalue() == "", "Progress bar should be disabled")
+
+    def test_num_images_per_prompt(self):
+        sig = inspect.signature(self.pipeline_class.__call__)
+
+        if "num_images_per_prompt" not in sig.parameters:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        batch_sizes = [1, 2]
+        num_images_per_prompts = [1, 2]
+
+        for batch_size in batch_sizes:
+            for num_images_per_prompt in num_images_per_prompts:
+                inputs = self.get_dummy_inputs(torch_device)
+
+                for key in inputs.keys():
+                    if key in self.batch_params:
+                        inputs[key] = batch_size * [inputs[key]]
+
+                images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
+
+                assert images.shape[0] == batch_size * num_images_per_prompt
 
 
 # Some models (e.g. unCLIP) are extremely likely to significantly deviate depending on which hardware is used.

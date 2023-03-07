@@ -80,6 +80,7 @@ from setuptools import find_packages, setup
 _deps = [
     "Pillow",  # keep the PIL.Image.Resampling deprecation away
     "accelerate>=0.11.0",
+    "compel==0.1.8",
     "black~=23.1",
     "datasets",
     "filelock",
@@ -182,6 +183,7 @@ extras["quality"] = deps_list("black", "isort", "ruff", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "Jinja2")
 extras["test"] = deps_list(
+    "compel",
     "datasets",
     "Jinja2",
     "k-diffusion",
@@ -219,7 +221,7 @@ install_requires = [
 
 setup(
     name="diffusers",
-    version="0.14.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.15.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="Diffusers",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
