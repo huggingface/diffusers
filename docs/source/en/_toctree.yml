@@ -84,11 +84,11 @@
   - local: training/text_inversion
     title: Textual Inversion
   - local: training/dreambooth
-    title: Dreambooth
+    title: DreamBooth
   - local: training/text2image
-    title: Text-to-image fine-tuning
+    title: Text-to-image
   - local: training/lora
-    title: LoRA Support in Diffusers
+    title: Low-Rank Adaptation of Large Language Models (LoRA)
   title: Training
 - sections:
   - local: conceptual/philosophy
