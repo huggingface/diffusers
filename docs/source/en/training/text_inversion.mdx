@@ -14,74 +14,85 @@ specific language governing permissions and limitations under the License.
 
 # Textual Inversion
 
-Textual Inversion is a technique for capturing novel concepts from a small number of example images in a way that can later be used to control text-to-image pipelines. It does so by learning new 'words' in the embedding space of the pipeline's text encoder. These special words can then be used within text prompts to achieve very fine-grained control of the resulting images. 
+[[open-in-colab]]
+
+[Textual Inversion](https://arxiv.org/abs/2208.01618) is a technique for capturing novel concepts from a small number of example images. While the technique was originally demonstrated with a [latent diffusion model](https://github.com/CompVis/latent-diffusion), it has since been applied to other model variants like [Stable Diffusion](https://huggingface.co/docs/diffusers/main/en/conceptual/stable_diffusion). The learned concepts can be used to better control the images generated from text-to-image pipelines. It learns new "words" in the text encoder's embedding space, which are used within text prompts for personalized image generation.
 
 ![Textual Inversion example](https://textual-inversion.github.io/static/images/editing/colorful_teapot.JPG)
-_By using just 3-5 images you can teach new concepts to a model such as Stable Diffusion for personalized image generation ([image source](https://github.com/rinongal/textual_inversion))._
+<small>By using just 3-5 images you can teach new concepts to a model such as Stable Diffusion for personalized image generation <a href="https://github.com/rinongal/textual_inversion">(image source)</a></small>
 
-This technique was introduced in [An Image is Worth One Word: Personalizing Text-to-Image Generation using Textual Inversion](https://arxiv.org/abs/2208.01618). The paper demonstrated the concept using a [latent diffusion model](https://github.com/CompVis/latent-diffusion) but the idea has since been applied to other variants such as [Stable Diffusion](https://huggingface.co/docs/diffusers/main/en/conceptual/stable_diffusion).
+This guide will show you how to train a [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) model with Textual Inversion. All the training scripts for Textual Inversion used in this guide can be found [here](https://github.com/huggingface/diffusers/tree/main/examples/textual_inversion) if you're interested in taking a closer look at how things work under the hood.
 
+<Tip>
 
-## How It Works
+There is a community-created collection of trained Textual Inversion models in the [Stable Diffusion Textual Inversion Concepts Library](https://huggingface.co/sd-concepts-library) which are readily available for inference. Over time, this'll hopefully grow into a useful resource as more concepts are added!
 
-![Diagram from the paper showing overview](https://textual-inversion.github.io/static/images/training/training.JPG)
-_Architecture Overview from the [textual inversion blog post](https://textual-inversion.github.io/)_
+</Tip>
 
-Before a text prompt can be used in a diffusion model, it must first be processed into a numerical representation. This typically involves tokenizing the text, converting each token to an embedding and then feeding those embeddings through a model (typically a transformer) whose output will be used as the conditioning for the diffusion model. 
-
-Textual inversion learns a new token embedding (v* in the diagram above). A prompt (that includes a token which will be mapped to this new embedding) is used in conjunction with a noised version of one or more training images as inputs to the generator model, which attempts to predict the denoised version of the image. The embedding is optimized based on how well the model does at this task - an embedding that better captures the object or style shown by the training images will give more useful information to the diffusion model and thus result in a lower denoising loss. After many steps (typically several thousand) with a variety of prompt and image variants the learned embedding should hopefully capture the essence of the new concept being taught.
-
-## Usage
-
-To train your own textual inversions, see the [example script here](https://github.com/huggingface/diffusers/tree/main/examples/textual_inversion). 
-
-There is also a notebook for training:
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/sd_textual_inversion_training.ipynb)
-
-And one for inference:
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/stable_conceptualizer_inference.ipynb)
-
-In addition to using concepts you have trained yourself, there is a community-created collection of trained textual inversions in the new [Stable Diffusion public concepts library](https://huggingface.co/sd-concepts-library) which you can also use from the inference notebook above. Over time this will hopefully grow into a useful resource as more examples are added.
-
-## Example: Running locally 
-
-The `textual_inversion.py` script [here](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion) shows how to implement the training procedure and adapt it for stable diffusion.
-
-### Installing the dependencies
-
-Before running the scripts, make sure to install the library's training dependencies.
+Before you begin, make sure you install the library's training dependencies:
 
 ```bash
-pip install diffusers[training] accelerate transformers
+pip install diffusers accelerate transformers
 ```
 
-And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
+After all the dependencies have been set up, initialize a [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
 
 ```bash
 accelerate config
 ```
 
-
-### Cat toy example
-
-You need to accept the model license before downloading or using the weights. In this example we'll use model version `v1-4`, so you'll need to visit [its card](https://huggingface.co/CompVis/stable-diffusion-v1-4), read the license and tick the checkbox if you agree.
-
-You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section of the documentation](https://huggingface.co/docs/hub/security-tokens).
-
-Run the following command to authenticate your token
+To setup a default 🤗 Accelerate environment without choosing any configurations:
 
 ```bash
-huggingface-cli login
+accelerate config default
 ```
 
-If you have already cloned the repo, then you won't need to go through these steps.
+Or if your environment doesn't support an interactive shell like a notebook, you can use:
 
-<br>
+```bash
+from accelerate.utils import write_basic_config
 
-Now let's get our dataset.Download 3-4 images from [here](https://drive.google.com/drive/folders/1fmJMs25nxS_rSNqS5hTcRdLem_YQXbq5) and save them in a directory. This will be our training data.
+write_basic_config()
+```
 
-And launch the training using
+Finally, you try and [install xFormers](https://huggingface.co/docs/diffusers/main/en/training/optimization/xformers) to reduce your memory footprint with xFormers memory-efficient attention. Once you have xFormers installed, add the `--enable_xformers_memory_efficient_attention` argument to the training script. xFormers is not supported for Flax.
 
+## Upload model to Hub
+
+If you want to store your model on the Hub, add the following argument to the training script:
+
+```bash
+--push_to_hub
+```
+
+## Save and load checkpoints
+
+It is often a good idea to regularly save checkpoints of your model during training. This way, you can resume training from a saved checkpoint if your training is interrupted for any reason. To save a checkpoint, pass the following argument to the training script to save the full training state in a subfolder in `output_dir` every 500 steps:
+
+```bash
+--checkpointing_steps=500
+```
+
+To resume training from a saved checkpoint, pass the following argument to the training script and the specific checkpoint you'd like to resume from:
+
+```bash
+--resume_from_checkpoint="checkpoint-1500"
+```
+
+## Finetuning
+
+For your training dataset, download these [images of a cat statue](https://drive.google.com/drive/folders/1fmJMs25nxS_rSNqS5hTcRdLem_YQXbq5) and store them in a directory. 
+
+Set the `MODEL_NAME` environment variable to the model repository id, and the `DATA_DIR` environment variable to the path of the directory containing the images. Now you can launch the [training script](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion.py):
+
+<Tip>
+
+💡 A full training run takes ~1 hour on one V100 GPU. While you're waiting for the training to complete, feel free to check out [how Textual Inversion works](#how-it-works) in the section below if you're curious!
+
+</Tip>
+
+<frameworkcontent>
+<pt>
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
 export DATA_DIR="path-to-dir-containing-images"
@@ -100,14 +111,56 @@ accelerate launch textual_inversion.py \
   --lr_warmup_steps=0 \
   --output_dir="textual_inversion_cat"
 ```
+</pt>
+<jax>
+If you have access to TPUs, try out the [Flax training script](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion_flax.py) to train even faster (this'll also work for GPUs). With the same configuration settings, the Flax training script should be at least 70% faster than the PyTorch training script! ⚡️
 
-A full training run takes ~1 hour on one V100 GPU.
+Before you begin, make sure you install the Flax specific dependencies:
 
+```bash
+pip install -U -r requirements_flax.txt
+```
 
-### Inference
+Then you can launch the [training script](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion_flax.py):
 
-Once you have trained a model using above command, the inference can be done simply using the `StableDiffusionPipeline`. Make sure to include the `placeholder_token` in your prompt.
+```bash
+export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
+export DATA_DIR="path-to-dir-containing-images"
 
+python textual_inversion_flax.py \
+  --pretrained_model_name_or_path=$MODEL_NAME \
+  --train_data_dir=$DATA_DIR \
+  --learnable_property="object" \
+  --placeholder_token="<cat-toy>" --initializer_token="toy" \
+  --resolution=512 \
+  --train_batch_size=1 \
+  --max_train_steps=3000 \
+  --learning_rate=5.0e-04 --scale_lr \
+  --output_dir="textual_inversion_cat"
+```
+</jax>
+</frameworkcontent>
+
+### Intermediate logging
+
+If you're interested in following along with your model training progress, you can save the generated images from the training process. Add the following arguments to the training script to enable intermediate logging:
+
+- `validation_prompt`, the prompt used to generate samples (this is set to `None` by default and intermediate logging is disabled)
+- `num_validation_images`, the number of sample images to generate
+- `validation_steps`, the number of steps before generating `num_validation_images` from the `validation_prompt`
+
+```bash
+--validation_prompt="A <cat-toy> backpack"
+--num_validation_images=4
+--validation_steps=100
+```
+
+## Inference
+
+Once you have trained a model, you can use it for inference with the [`StableDiffusionPipeline]. Make sure you include the `placeholder_token` in your prompt, in this case, it is `<cat-toy>`.
+
+<frameworkcontent>
+<pt>
 ```python
 from diffusers import StableDiffusionPipeline
 
@@ -120,3 +173,43 @@ image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
 
 image.save("cat-backpack.png")
 ```
+</pt>
+<jax>
+```python
+import jax
+import numpy as np
+from flax.jax_utils import replicate
+from flax.training.common_utils import shard
+from diffusers import FlaxStableDiffusionPipeline
+
+model_path = "path-to-your-trained-model"
+pipe, params = FlaxStableDiffusionPipeline.from_pretrained(model_path, dtype=jax.numpy.bfloat16)
+
+prompt = "A <cat-toy> backpack"
+prng_seed = jax.random.PRNGKey(0)
+num_inference_steps = 50
+
+num_samples = jax.device_count()
+prompt = num_samples * [prompt]
+prompt_ids = pipeline.prepare_inputs(prompt)
+
+# shard inputs and rng
+params = replicate(params)
+prng_seed = jax.random.split(prng_seed, jax.device_count())
+prompt_ids = shard(prompt_ids)
+
+images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).images
+images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
+image.save("cat-backpack.png")
+```
+</jax>
+</frameworkcontent>
+
+## How it works
+
+![Diagram from the paper showing overview](https://textual-inversion.github.io/static/images/training/training.JPG)
+<small>Architecture overview from the Textual Inversion <a href="https://textual-inversion.github.io/">blog post.</a></small>
+
+Usually, text prompts are tokenized into an embedding before being passed to a model, which is often a transformer. Textual Inversion does something similar, but it learns a new token embedding, `v*`, from a special token `S*` in the diagram above. The model output is used to condition the diffusion model, which helps the diffusion model understand the prompt and new concepts from just a few example images.
+
+To do this, Textual Inversion uses a generator model and noisy versions of the training images. The generator tries to predict less noisy versions of the images, and the token embedding `v*` is optimized based on how well the generator does. If the token embedding successfully captures the new concept, it gives more useful information to the diffusion model and helps create clearer images with less noise. This optimization process typically occurs after several thousand steps of exposure to a variety of prompt and image variants.
