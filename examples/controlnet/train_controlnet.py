@@ -14,14 +14,15 @@
 # See the License for the specific language governing permissions and
 
 import argparse
-import json
 import logging
 import math
 import os
+import random
 from pathlib import Path
 from typing import Optional
 
 import accelerate
+import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
@@ -29,10 +30,9 @@ import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
+from datasets import load_dataset
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from packaging import version
-from PIL import Image
-from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
@@ -119,6 +119,12 @@ def parse_args(input_args=None):
         type=str,
         default="text-inversion-model",
         help="The output directory where the model predictions and checkpoints will be written.",
+    )
+    parser.add_argument(
+        "--cache_dir",
+        type=str,
+        default=None,
+        help="The directory where the downloaded models and datasets will be stored.",
     )
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
     parser.add_argument(
@@ -287,6 +293,50 @@ def parse_args(input_args=None):
             " https://pytorch.org/docs/stable/generated/torch.optim.Optimizer.zero_grad.html"
         ),
     )
+    parser.add_argument(
+        "--dataset_name",
+        type=str,
+        default=None,
+        help=(
+            "The name of the Dataset (from the HuggingFace hub) to train on (could be your own, possibly private,"
+            " dataset). It can also be a path pointing to a local copy of a dataset in your filesystem,"
+            " or to a folder containing files that 🤗 Datasets can understand."
+        ),
+    )
+    parser.add_argument(
+        "--dataset_config_name",
+        type=str,
+        default=None,
+        help="The config of the Dataset, leave as None if there's only one config.",
+    )
+    parser.add_argument(
+        "--train_data_dir",
+        type=str,
+        default=None,
+        help=(
+            "A folder containing the training data. Folder contents must follow the structure described in"
+            " https://huggingface.co/docs/datasets/image_dataset#imagefolder. In particular, a `metadata.jsonl` file"
+            " must exist to provide the captions for the images. Ignored if `dataset_name` is specified."
+        ),
+    )
+    parser.add_argument(
+        "--image_column", type=str, default="image", help="The column of the dataset containing an image."
+    )
+    parser.add_argument(
+        "--caption_column",
+        type=str,
+        default="text",
+        help="The column of the dataset containing a caption or a list of captions.",
+    )
+    parser.add_argument(
+        "--max_train_samples",
+        type=int,
+        default=None,
+        help=(
+            "For debugging purposes or quicker training, truncate the number of training examples to this "
+            "value if set."
+        ),
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -297,103 +347,115 @@ def parse_args(input_args=None):
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
 
+    if args.dataset_name is None and args.train_data_dir is None:
+        raise ValueError("Specify either `--dataset_name` or `--train_data_dir`")
+
+    if args.dataset_name is not None and args.train_data_dir is not None:
+        raise ValueError("Specify only one of `--dataset_name` or `--train_data_dir`")
+
     return args
 
 
-class ControlnetDataset(Dataset):
-    """
-    A dataset to prepare the training and control images with the prompts.
-    It pre-processes the images and the tokenizes prompts.
-    """
+def make_train_dataset(args, tokenizer, accelerator):
+    # Get the datasets: you can either provide your own training and evaluation files (see below)
+    # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).
 
-    def __init__(
-        self,
-        instance_data_root,
-        tokenizer,
-        size=512,
-    ):
-        self.size = size
-        self.tokenizer = tokenizer
-
-        self.instance_data_root = Path(instance_data_root)
-        if not self.instance_data_root.exists():
-            raise ValueError(f"Instance {self.instance_data_root} images root doesn't exists.")
-
-        self.data = []
-        with open(self.instance_data_root / "prompt.json", "rt") as f:
-            for line in f:
-                self.data.append(json.loads(line))
-
-        self._length = len(self.data)
-
-        # RandomCrop is not supported since the crop should be the same for both images.
-
-        self.target_transforms = transforms.Compose(
-            [
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
-                transforms.CenterCrop(size),
-                transforms.ToTensor(),
-                transforms.Normalize([0.5], [0.5]),
-            ]
+    # In distributed training, the load_dataset function guarantees that only one local process can concurrently
+    # download the dataset.
+    if args.dataset_name is not None:
+        # Downloading and loading a dataset from the hub.
+        dataset = load_dataset(
+            args.dataset_name,
+            args.dataset_config_name,
+            cache_dir=args.cache_dir,
         )
-
-        self.source_transforms = transforms.Compose(
-            [
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
-                transforms.CenterCrop(size),
-                transforms.ToTensor(),
-            ]
+    else:
+        data_files = {}
+        if args.train_data_dir is not None:
+            data_files["train"] = os.path.join(args.train_data_dir, "**")
+        dataset = load_dataset(
+            "imagefolder",
+            data_files=data_files,
+            cache_dir=args.cache_dir,
         )
+        # See more about loading custom images at
+        # https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder
 
-    def __len__(self):
-        return self._length
+    # Preprocessing the datasets.
+    # We need to tokenize inputs and targets.
+    column_names = dataset["train"].column_names
 
-    def __getitem__(self, idx):
-        example = {}
-        item = self.data[idx % self._length]
+    # 6. Get the column names for input/target.
+    if args.image_column is None:
+        image_column = column_names[0]
+        logger.info(f"image column defaulting to {image_column}")
+    else:
+        image_column = args.image_column
+        if image_column not in column_names:
+            raise ValueError(
+                f"`--image_column` value '{args.image_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
+            )
 
-        source_filename = item["source"]
-        target_filename = item["target"]
-        prompt = item["prompt"]
+    if args.caption_column is None:
+        caption_column = column_names[1]
+        logger.info(f"caption column defaulting to {caption_column}")
+    else:
+        caption_column = args.caption_column
+        if caption_column not in column_names:
+            raise ValueError(
+                f"`--caption_column` value '{args.caption_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
+            )
 
-        source = Image.open(self.instance_data_root / source_filename)
-        if not source.mode == "RGB":
-            source = source.convert("RGB")
-        target = Image.open(self.instance_data_root / target_filename)
-        if not target.mode == "RGB":
-            target = target.convert("RGB")
+    # Preprocessing the datasets.
+    # We need to tokenize input captions and transform the images.
+    def tokenize_captions(examples, is_train=True):
+        captions = []
+        for caption in examples[caption_column]:
+            if isinstance(caption, str):
+                captions.append(caption)
+            elif isinstance(caption, (list, np.ndarray)):
+                # take a random caption if there are multiple
+                captions.append(random.choice(caption) if is_train else caption[0])
+            else:
+                raise ValueError(
+                    f"Caption column `{caption_column}` should contain either strings or lists of strings."
+                )
+        inputs = tokenizer(
+            captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
+        )
+        return inputs.input_ids
 
-        example["source_images"] = self.source_transforms(source)
-        example["target_images"] = self.target_transforms(target)
-        example["prompt_ids"] = self.tokenizer(
-            prompt,
-            truncation=True,
-            padding="max_length",
-            max_length=self.tokenizer.model_max_length,
-            return_tensors="pt",
-        ).input_ids
+    # Preprocessing the datasets.
+    train_transforms = transforms.Compose(
+        [
+            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
+            transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
+            transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x),
+            transforms.ToTensor(),
+            transforms.Normalize([0.5], [0.5]),
+        ]
+    )
 
-        return example
+    def preprocess_train(examples):
+        images = [image.convert("RGB") for image in examples[image_column]]
+        examples["pixel_values"] = [train_transforms(image) for image in images]
+        examples["input_ids"] = tokenize_captions(examples)
+        return examples
+
+    with accelerator.main_process_first():
+        if args.max_train_samples is not None:
+            dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
+        # Set the training transforms
+        train_dataset = dataset["train"].with_transform(preprocess_train)
+
+    return train_dataset
 
 
 def collate_fn(examples):
-    input_ids = [example["prompt_ids"] for example in examples]
-    source = [example["source_images"] for example in examples]
-    target = [example["target_images"] for example in examples]
-
-    source = torch.stack(source)
-    source = source.to(memory_format=torch.contiguous_format).float()
-    target = torch.stack(target)
-    target = target.to(memory_format=torch.contiguous_format).float()
-
-    input_ids = torch.cat(input_ids, dim=0)
-
-    batch = {
-        "input_ids": input_ids,
-        "source_images": source,
-        "target_images": target,
-    }
-    return batch
+    pixel_values = torch.stack([example["pixel_values"] for example in examples])
+    pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
+    input_ids = torch.stack([example["input_ids"] for example in examples])
+    return {"pixel_values": pixel_values, "input_ids": input_ids}
 
 
 def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
@@ -577,16 +639,13 @@ def main(args):
         eps=args.adam_epsilon,
     )
 
-    # Dataset and DataLoaders creation:
-    train_dataset = ControlnetDataset(
-        instance_data_root=args.instance_data_dir, tokenizer=tokenizer, size=args.resolution
-    )
+    train_dataset = make_train_dataset(args, tokenizer, accelerator)
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
-        batch_size=args.train_batch_size,
         shuffle=True,
-        collate_fn=lambda examples: collate_fn(examples),
+        collate_fn=collate_fn,
+        batch_size=args.train_batch_size,
         num_workers=args.dataloader_num_workers,
     )
 
