@@ -4,8 +4,11 @@ import os
 
 import torch
 import torch.nn as nn
+
 from music_spectrogram_diffusion import inference
 from t5x import checkpoints
+import jax as jnp
+import numpy as onp
 
 from diffusers import DDPMScheduler, OnnxRuntimeModel, SpectrogramDiffusionPipeline
 from diffusers.pipelines.spectrogram_diffusion import SpectrogramContEncoder, SpectrogramNotesEncoder, T5FilmDecoder
@@ -124,6 +127,7 @@ def load_decoder(weights, model):
 
 def main(args):
     t5_checkpoint = checkpoints.load_t5x_checkpoint(args.checkpoint_path)
+    t5_checkpoint = jnp.tree_util.tree_map(onp.array, t5_checkpoint)
 
     gin_overrides = [
         "from __gin__ import dynamic_registration",
@@ -172,7 +176,6 @@ def main(args):
         d_kv=synth_model.model.module.config.head_dim,
         d_ff=synth_model.model.module.config.mlp_dim,
         dropout_rate=synth_model.model.module.config.dropout_rate,
-        feed_forward_proj="gated-gelu",
     )
 
     notes_encoder = load_notes_encoder(t5_checkpoint["target"]["token_encoder"], notes_encoder)
