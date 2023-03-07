@@ -120,6 +120,9 @@ if __name__ == "__main__":
         help="Path to the clip stats file. Only required if the stable unclip model's config specifies `model.params.noise_aug_config.params.clip_stats_path`.",
         required=False,
     )
+    parser.add_argument(
+        "--controlnet", action="store_true", default=None, help="Set flag if this is a controlnet checkpoint."
+    )
     args = parser.parse_args()
 
     pipe = load_pipeline_from_original_stable_diffusion_ckpt(
@@ -137,5 +140,11 @@ if __name__ == "__main__":
         stable_unclip=args.stable_unclip,
         stable_unclip_prior=args.stable_unclip_prior,
         clip_stats_path=args.clip_stats_path,
+        controlnet=args.controlnet,
     )
-    pipe.save_pretrained(args.dump_path, safe_serialization=args.to_safetensors)
+
+    if args.controlnet:
+        # only save the controlnet model
+        pipe.controlnet.save_pretrained(args.dump_path, safe_serialization=args.to_safetensors)
+    else:
+        pipe.save_pretrained(args.dump_path, safe_serialization=args.to_safetensors)
