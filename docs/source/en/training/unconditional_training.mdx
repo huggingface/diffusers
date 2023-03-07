@@ -18,7 +18,7 @@ Unconditional image generation is not conditioned on any text or images, unlike 
 	src="https://stevhliu-ddpm-butterflies-128.hf.space"
 	frameborder="0"
 	width="850"
-	height="450"
+	height="550"
 ></iframe>
 
 
@@ -98,7 +98,9 @@ accelerate launch train_unconditional.py \
   --push_to_hub
 ```
 
-<img src="https://user-images.githubusercontent.com/26864830/180248660-a0b143d0-b89a-42c5-8656-2ebf6ece7e52.png" width="700" />
+<div class="flex justify-center">
+    <img src="https://user-images.githubusercontent.com/26864830/180248660-a0b143d0-b89a-42c5-8656-2ebf6ece7e52.png"/>
+</div>
 
 Or if you want to train your model on the [Pokemon](https://huggingface.co/datasets/huggan/pokemon) dataset:
 
@@ -116,7 +118,9 @@ accelerate launch train_unconditional.py \
   --push_to_hub
 ```
 
-<img src="https://user-images.githubusercontent.com/26864830/180248200-928953b4-db38-48db-b0c6-8b740fe6786f.png" width="700" />
+<div class="flex justify-center">
+    <img src="https://user-images.githubusercontent.com/26864830/180248200-928953b4-db38-48db-b0c6-8b740fe6786f.png"/>
+</div>
 
 ## Finetuning with your own data
 
