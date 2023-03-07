@@ -337,6 +337,12 @@ def parse_args(input_args=None):
             "value if set."
         ),
     )
+    parser.add_argument(
+        "--proportion_empty_prompts",
+        type=float,
+        default=0.5,
+        help="Proportion of image prompts to be replaced with empty strings. Defaults to 0.5. Set to 0 to disable empty prompt replacement.",
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -352,6 +358,9 @@ def parse_args(input_args=None):
 
     if args.dataset_name is not None and args.train_data_dir is not None:
         raise ValueError("Specify only one of `--dataset_name` or `--train_data_dir`")
+
+    if args.proportion_empty_prompts < 0 or args.proportion_empty_promps > 1:
+        raise ValueError("`--proportion_empty_prompts` must be in the range [0, 1].")
 
     return args
 
@@ -411,7 +420,9 @@ def make_train_dataset(args, tokenizer, accelerator):
     def tokenize_captions(examples, is_train=True):
         captions = []
         for caption in examples[caption_column]:
-            if isinstance(caption, str):
+            if random.random() < args.proportion_empty_prompts:
+                captions.append("")
+            elif isinstance(caption, str):
                 captions.append(caption)
             elif isinstance(caption, (list, np.ndarray)):
                 # take a random caption if there are multiple
