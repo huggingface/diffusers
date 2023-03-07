@@ -17,19 +17,19 @@ can include multiple concepts that the model should generate and it's often desi
 certain parts of the prompt more or less. 
 
 Diffusion models function by conditioning the cross attention layers of the diffusion model with contextualized text embeddings via the cross attention layers (see the [Stable Diffusion Guide for more information](./stable-diffusion)).
-Thus a simply way to emphasize (or de-emphasize) certain parts of the prompt is by increasing or reducing the scale of the text embedding vector that correspond to the part of the prompt).
+Thus a simple way to emphasize (or de-emphasize) certain parts of the prompt is by increasing or reducing the scale of the text embedding vector that correspond to the part of the prompt.
 This is called "prompt-weighting" and has been a highly demanded feature by the community (see issue [here](https://github.com/huggingface/diffusers/issues/2431)).
 
 ## How to do prompt-weighting in Diffusers
 
-Generally speaking, prompt weighting is not a core feature of diffusers since the philosophy of diffusers 
+Generally speaking, we do not consider prompt weighting as a core feature of diffusers since the philosophy of diffusers 
 is to be a toolbox that enables other libraries, such as [InvokeAI](https://github.com/invoke-ai/InvokeAI) or [diffuzers](https://github.com/abhishekkrthakur/diffuzers) to build powerful UIs. Therefore, `diffusers` 
 simply exposes a [`prompt_embeds`](https://huggingface.co/docs/diffusers/v0.14.0/en/api/pipelines/stable_diffusion/text2img#diffusers.StableDiffusionPipeline.__call__.prompt_embeds) function argument to many pipelines such as [`StableDiffusionPipeline`] allowing to directly pass the "prompt-weighted"/scaled text embeddings to the pipeline.
 
-As it's not super simply to process text embeddings to example or de-emphasize certain parts of the library,
+As it's not super simple to process text embeddings to example or de-emphasize certain parts of the prompt,
 we strongly recommend to rely on the [compel library](https://github.com/damian0815/compel) to handle the prompt-weighting for you.
 
-Let's look at a simply examle. Image you want to generate an image of `"a red cat playing with a ball"` as 
+Let's look at a simply example. Imagine you want to generate an image of `"a red cat playing with a ball"` as 
 follows:
 
 ```py
@@ -91,7 +91,7 @@ We now get the following image which has a "ball"!
 
 ![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/compel/forest_1.png)
 
-Similarly, one de-emphasizes parts of the sentence by using the `--` suffix for words, feel free to give it 
+Similarly, we de-emphasize parts of the sentence by using the `--` suffix for words, feel free to give it 
 a try!
 
 If your favorite pipeline does not have a `prompt_embeds` input, please make sure to open an issue, the 

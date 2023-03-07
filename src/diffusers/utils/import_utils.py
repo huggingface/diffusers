@@ -383,7 +383,7 @@ install tensorboard`
 
 # docstyle-ignore
 COMPEL_IMPORT_ERROR = """
-{0} requires the tensorboard library but it was not found in your environment. You can install it with pip: `pip install compel`
+{0} requires the compel library but it was not found in your environment. You can install it with pip: `pip install compel`
 """
 
 BACKENDS_MAPPING = OrderedDict(
