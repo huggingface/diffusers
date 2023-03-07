@@ -30,6 +30,10 @@ A pipeline is a quick and easy way to run a model for inference, requiring no mo
 >>> image
 ```
 
+<div class="flex justify-center">
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ddpm-cat.png" alt="Image of cat created from DDPMPipeline"/>
+</div>
+
 That was super easy, but how did the pipeline do that? Let's breakdown the pipeline and take a look at what's happening under the hood.
 
 In the example above, the pipeline contains a UNet model and a DDPM scheduler. The pipeline denoises an image by taking random noise the size of the desired output and passing it through the model several times. At each timestep, the model predicts the *noise residual* and the scheduler uses it to predict a less noisy image. The pipeline repeats this process until it reaches the end of the specified number of inference steps. 
@@ -51,7 +55,17 @@ To recreate the pipeline with the model and scheduler separately, let's write ou
     >>> scheduler.set_timesteps(50)
     ```
 
-3. Create some random noise with the same shape as the desired output:
+3. Setting the scheduler timesteps creates a tensor with evenly spaced elements in it, 50 in this example. Each element corresponds to a timestep at which the model denoises an image. When you create the denoising loop later, you'll iterate over this tensor to denoise an image:
+
+    ```py
+    >>> scheduler.timesteps
+    tensor([980, 960, 940, 920, 900, 880, 860, 840, 820, 800, 780, 760, 740, 720,
+        700, 680, 660, 640, 620, 600, 580, 560, 540, 520, 500, 480, 460, 440,
+        420, 400, 380, 360, 340, 320, 300, 280, 260, 240, 220, 200, 180, 160,
+        140, 120, 100,  80,  60,  40,  20,   0])
+    ```
+
+4. Create some random noise with the same shape as the desired output:
 
     ```py
     >>> import torch
@@ -60,7 +74,7 @@ To recreate the pipeline with the model and scheduler separately, let's write ou
     >>> noise = torch.randn((1, 3, sample_size, sample_size)).to("cuda")
     ```
 
-4. Now write a loop to iterate over the number of timesteps. At each timestep, the model does a [~`UNet2DModel.forward`] pass and returns the noisy residual. The scheduler's [`~DDPMScheduler.step`] method takes the noisy residual, timestep, and input and it predicts the image at the previous timestep. This output becomes the next input to the model in the denoising loop, and it'll repeat until it reaches the end of the `set_timesteps`.
+4. Now write a loop to iterate over the timesteps. At each timestep, the model does a [`UNet2DModel.forward`] pass and returns the noisy residual. The scheduler's [`~DDPMScheduler.step`] method takes the noisy residual, timestep, and input and it predicts the image at the previous timestep. This output becomes the next input to the model in the denoising loop, and it'll repeat until it reaches the end of the `timesteps` array.
 
     ```py
     >>> input = noise
@@ -86,7 +100,9 @@ To recreate the pipeline with the model and scheduler separately, let's write ou
     >>> image
     ```
 
-In the next section, you'll put your skills to the test and breakdown the more complex Stable Diffusion pipeline, but it's still built from the same components and follows the same denoising pattern.
+In the next section, you'll put your skills to the test and breakdown the more complex Stable Diffusion pipeline. The steps are more or less the same. You'll initialize the necessary components, and set the number of timesteps to create a `timestep` array. The `timestep` array is used in the denoising loop, and for each element in this array, the model predicts a less noisy image. The denoising loop iterates over the `timestep`'s, and at each timestep, it outputs a noisy residual and the scheduler uses it to predict a less noisy image at the previous timestep. This process is repeated until you reach the end of the `timestep` array.
+
+Let's try it out!
 
 ## Deconstruct the Stable Diffusion pipeline
 
@@ -109,19 +125,17 @@ Now that you know what you need for the Stable Diffusion pipeline, load all thes
 >>> from diffusers import AutoencoderKL, UNet2DConditionModel, PNDMScheduler
 
 >>> vae = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae")
->>> tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
->>> text_encoder = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14")
+>>> tokenizer = CLIPTokenizer.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="tokenizer")
+>>> text_encoder = CLIPTextModel.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="text_encoder")
 >>> unet = UNet2DConditionModel.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="unet")
 ```
 
-Instead of the default [`PNDMScheduler`], exchange it for the [`LMSDiscreteScheduler`] to see how easy it is to plug a different scheduler in:
+Instead of the default [`PNDMScheduler`], exchange it for the [`UniPCMultistepScheduler`] to see how easy it is to plug a different scheduler in:
 
 ```py
->>> from diffusers import LMSDiscreteScheduler
+>>> from diffusers import UniPCMultistepScheduler
 
->>> scheduler = LMSDiscreteScheduler(
-...     beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000
-... )
+>>> scheduler = UniPCMultistepScheduler.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
 ```
 
 To speed up inference, move the models to a GPU since, unlike the scheduler, they have trainable weights:
@@ -149,7 +163,7 @@ Feel free to choose any prompt you like if you want to generate something else!
 >>> prompt = ["a photograph of an astronaut riding a horse"]
 >>> height = 512  # default height of Stable Diffusion
 >>> width = 512  # default width of Stable Diffusion
->>> num_inference_steps = 100  # Number of denoising steps
+>>> num_inference_steps = 25  # Number of denoising steps
 >>> guidance_scale = 7.5  # Scale for classifier-free guidance
 >>> generator = torch.manual_seed(0)  # Seed generator to create the inital latent noise
 >>> batch_size = len(prompt)
@@ -162,7 +176,8 @@ Tokenize the text and generate the embeddings from the prompt:
 ...     prompt, padding="max_length", max_length=tokenizer.model_max_length, truncation=True, return_tensors="pt"
 ... )
 
->>> text_embeddings = text_encoder(text_input.input_ids.to(torch_device))[0]
+>>> with torch.no_grad():
+...     text_embeddings = text_encoder(text_input.input_ids.to(torch_device))[0]
 ```
 
 You'll also need to generate the *unconditional text embeddings* which are the embeddings for the padding token. These need to have the same shape (`batch_size` and `seq_length`) as the conditional `text_embeddings`:
@@ -173,7 +188,7 @@ You'll also need to generate the *unconditional text embeddings* which are the e
 >>> uncond_embeddings = text_encoder(uncond_input.input_ids.to(torch_device))[0]
 ```
 
-For unconditional image generation, you typically do two forward passes, one for each of the embeddings. But in practice, it is better to concatenate the embeddings into a single batch to avoid doing two forward passes:
+Let's concatenate the conditional and unconditional embeddings into a batch to avoid doing two forward passes:
 
 ```py
 >>> text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
@@ -182,6 +197,16 @@ For unconditional image generation, you typically do two forward passes, one for
 ### Create random noise
 
 Next, generate some initial random noise as a starting point for the diffusion process. This is the latent representation of the image, and it'll be gradually denoised. At this point, the `latent` image is smaller than the final image size but that's okay though because the model will transform it into the final 512x512 image dimensions later.
+
+<Tip>
+
+💡 The height and width are divided by 8 because the `vae` model has 3 down-sampling layers. You can check by running the following:
+
+```py
+2 ** (len(vae.config.block_out_channels) - 1) == 8
+```
+
+</Tip>
 
 ```py
 >>> latents = torch.randn(
@@ -193,10 +218,9 @@ Next, generate some initial random noise as a starting point for the diffusion p
 
 ### Denoise the image
 
-Start by scaling the input with the initial noise distribution, *sigma*, the noise scale value:
+Start by scaling the input with the initial noise distribution, *sigma*, the noise scale value, which is required for improved schedulers like [`UniPCMultistepScheduler`]:
 
 ```py
->>> scheduler.set_timesteps(num_inference_steps)
 >>> latents = latents * scheduler.init_noise_sigma
 ```
 
