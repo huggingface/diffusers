@@ -1,0 +1,433 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+# Memory and speed
+
+We present some techniques and ideas to optimize 🤗 Diffusers _inference_ for memory or speed. As a general rule, we recommend the use of [xFormers](https://github.com/facebookresearch/xformers) for memory efficient attention, please see the recommended [installation instructions](xformers).
+
+We'll discuss how the following settings impact performance and memory.
+
+|                  | Latency | Speedup |
+| ---------------- | ------- | ------- |
+| original         | 9.50s   | x1      |
+| cuDNN auto-tuner | 9.37s   | x1.01   |
+| fp16             | 3.61s   | x2.63   |
+| channels last    | 3.30s   | x2.88   |
+| traced UNet      | 3.21s   | x2.96   |
+| memory efficient attention  | 2.63s  | x3.61   |
+
+<em>
+  obtained on NVIDIA TITAN RTX by generating a single image of size 512x512 from
+  the prompt "a photo of an astronaut riding a horse on mars" with 50 DDIM
+  steps.
+</em>
+
+## Enable cuDNN auto-tuner
+
+[NVIDIA cuDNN](https://developer.nvidia.com/cudnn) supports many algorithms to compute a convolution. Autotuner runs a short benchmark and selects the kernel with the best performance on a given hardware for a given input size.
+
+Since we’re using **convolutional networks** (other types currently not supported), we can enable cuDNN autotuner before launching the inference by setting:
+
+```python
+import torch
+
+torch.backends.cudnn.benchmark = True
+```
+
+### Use tf32 instead of fp32 (on Ampere and later CUDA devices)
+
+On Ampere and later CUDA devices matrix multiplications and convolutions can use the TensorFloat32 (TF32) mode for faster but slightly less accurate computations. By default PyTorch enables TF32 mode for convolutions but not matrix multiplications, and unless a network requires full float32 precision we recommend enabling this setting for matrix multiplications, too. It can significantly speed up computations with typically negligible loss of numerical accuracy. You can read more about it [here](https://huggingface.co/docs/transformers/v4.18.0/en/performance#tf32). All you need to do is to add this before your inference:
+
+```python
+import torch
+
+torch.backends.cuda.matmul.allow_tf32 = True
+```
+
+## Half precision weights
+
+To save more GPU memory and get more speed, you can load and run the model weights directly in half precision. This involves loading the float16 version of the weights, which was saved to a branch named `fp16`, and telling PyTorch to use the `float16` type when loading them:
+
+```Python
+pipe = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    
+    torch_dtype=torch.float16,
+)
+pipe = pipe.to("cuda")
+
+prompt = "a photo of an astronaut riding a horse on mars"
+image = pipe(prompt).images[0]
+```
+
+<Tip warning={true}>
+  It is strongly discouraged to make use of [`torch.autocast`](https://pytorch.org/docs/stable/amp.html#torch.autocast) in any of the pipelines as it can lead to black images and is always slower than using pure 
+  float16 precision.
+</Tip>
+
+## Sliced attention for additional memory savings
+
+For even additional memory savings, you can use a sliced version of attention that performs the computation in steps instead of all at once.
+
+<Tip>
+  Attention slicing is useful even if a batch size of just 1 is used - as long
+  as the model uses more than one attention head. If there is more than one
+  attention head the *QK^T* attention matrix can be computed sequentially for
+  each head which can save a significant amount of memory.
+</Tip>
+
+To perform the attention computation sequentially over each head, you only need to invoke [`~StableDiffusionPipeline.enable_attention_slicing`] in your pipeline before inference, like here:
+
+```Python
+import torch
+from diffusers import StableDiffusionPipeline
+
+pipe = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    
+    torch_dtype=torch.float16,
+)
+pipe = pipe.to("cuda")
+
+prompt = "a photo of an astronaut riding a horse on mars"
+pipe.enable_attention_slicing()
+image = pipe(prompt).images[0]
+```
+
+There's a small performance penalty of about 10% slower inference times, but this method allows you to use Stable Diffusion in as little as 3.2 GB of VRAM!
+
+
+## Sliced VAE decode for larger batches
+
+To decode large batches of images with limited VRAM, or to enable batches with 32 images or more, you can use sliced VAE decode that decodes the batch latents one image at a time.
+
+You likely want to couple this with [`~StableDiffusionPipeline.enable_attention_slicing`] or [`~StableDiffusionPipeline.enable_xformers_memory_efficient_attention`] to further minimize memory use.
+
+To perform the VAE decode one image at a time, invoke [`~StableDiffusionPipeline.enable_vae_slicing`] in your pipeline before inference. For example:
+
+```Python
+import torch
+from diffusers import StableDiffusionPipeline
+
+pipe = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    
+    torch_dtype=torch.float16,
+)
+pipe = pipe.to("cuda")
+
+prompt = "a photo of an astronaut riding a horse on mars"
+pipe.enable_vae_slicing()
+images = pipe([prompt] * 32).images
+```
+
+You may see a small performance boost in VAE decode on multi-image batches. There should be no performance impact on single-image batches.
+
+
+## Tiled VAE decode and encode for large images
+
+Tiled VAE processing makes it possible to work with large images on limited VRAM. For example, generating 4k images in 8GB of VRAM. Tiled VAE decoder splits the image into overlapping tiles, decodes the tiles, and blends the outputs to make the final image.
+
+You want to couple this with [`~StableDiffusionPipeline.enable_attention_slicing`] or [`~StableDiffusionPipeline.enable_xformers_memory_efficient_attention`] to further minimize memory use.
+
+To use tiled VAE processing, invoke [`~StableDiffusionPipeline.enable_vae_tiling`] in your pipeline before inference. For example:
+
+```python
+import torch
+from diffusers import StableDiffusionPipeline, UniPCMultistepScheduler
+
+pipe = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    torch_dtype=torch.float16,
+)
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+pipe = pipe.to("cuda")
+prompt = "a beautiful landscape photograph"
+pipe.enable_vae_tiling()
+pipe.enable_xformers_memory_efficient_attention()
+
+image = pipe([prompt], width=3840, height=2224, num_inference_steps=20).images[0]
+```
+
+The output image will have some tile-to-tile tone variation from the tiles having separate decoders, but you shouldn't see sharp seams between the tiles. The tiling is turned off for images that are 512x512 or smaller.
+
+
+<a name="sequential_offloading"></a>
+## Offloading to CPU with accelerate for memory savings
+
+For additional memory savings, you can offload the weights to CPU and only load them to GPU when performing the forward pass.
+
+To perform CPU offloading, all you have to do is invoke [`~StableDiffusionPipeline.enable_sequential_cpu_offload`]:
+
+```Python
+import torch
+from diffusers import StableDiffusionPipeline
+
+pipe = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    
+    torch_dtype=torch.float16,
+)
+
+prompt = "a photo of an astronaut riding a horse on mars"
+pipe.enable_sequential_cpu_offload()
+image = pipe(prompt).images[0]
+```
+
+And you can get the memory consumption to < 3GB.
+
+Note that this method works at the submodule level, not on whole models. This is the best way to minimize memory consumption, but inference is much slower due to the iterative nature of the process. The UNet component of the pipeline runs several times (as many as `num_inference_steps`); each time, the different submodules of the UNet are sequentially onloaded and then offloaded as they are needed, so the number of memory transfers is large.
+
+<Tip>
+Consider using <a href="#model_offloading">model offloading</a> as another point in the optimization space: it will be much faster, but memory savings won't be as large.
+</Tip>
+
+It is also possible to chain offloading with attention slicing for minimal memory consumption (< 2GB).
+
+```Python
+import torch
+from diffusers import StableDiffusionPipeline
+
+pipe = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    
+    torch_dtype=torch.float16,
+)
+
+prompt = "a photo of an astronaut riding a horse on mars"
+pipe.enable_sequential_cpu_offload()
+pipe.enable_attention_slicing(1)
+
+image = pipe(prompt).images[0]
+```
+
+**Note**: When using `enable_sequential_cpu_offload()`, it is important to **not** move the pipeline to CUDA beforehand or else the gain in memory consumption will only be minimal. See [this issue](https://github.com/huggingface/diffusers/issues/1934) for more information.
+
+
+<a name="model_offloading"></a>
+## Model offloading for fast inference and memory savings
+
+[Sequential CPU offloading](#sequential_offloading), as discussed in the previous section, preserves a lot of memory but makes inference slower, because submodules are moved to GPU as needed, and immediately returned to CPU when a new module runs.
+
+Full-model offloading is an alternative that moves whole models to the GPU, instead of handling each model's constituent _modules_. This results in a negligible impact on inference time (compared with moving the pipeline to `cuda`), while still providing some memory savings.
+
+In this scenario, only one of the main components of the pipeline (typically: text encoder, unet and vae)
+will be in the GPU while the others wait in the CPU. Compoments like the UNet that run for multiple iterations will stay on GPU until they are no longer needed.
+
+This feature can be enabled by invoking `enable_model_cpu_offload()` on the pipeline, as shown below.
+
+```Python
+import torch
+from diffusers import StableDiffusionPipeline
+
+pipe = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",  
+    torch_dtype=torch.float16,
+)
+
+prompt = "a photo of an astronaut riding a horse on mars"
+pipe.enable_model_cpu_offload()
+image = pipe(prompt).images[0]
+```
+
+This is also compatible with attention slicing for additional memory savings.
+
+```Python
+import torch
+from diffusers import StableDiffusionPipeline
+
+pipe = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    torch_dtype=torch.float16,
+)
+
+prompt = "a photo of an astronaut riding a horse on mars"
+pipe.enable_model_cpu_offload()
+pipe.enable_attention_slicing(1)
+
+image = pipe(prompt).images[0]
+```
+
+<Tip>
+This feature requires `accelerate` version 0.17.0 or larger.
+</Tip>
+
+## Using Channels Last memory format
+
+Channels last memory format is an alternative way of ordering NCHW tensors in memory preserving dimensions ordering. Channels last tensors ordered in such a way that channels become the densest dimension (aka storing images pixel-per-pixel). Since not all operators currently support channels last format it may result in a worst performance, so it's better to try it and see if it works for your model.
+
+For example, in order to set the UNet model in our pipeline to use channels last format, we can use the following:
+
+```python
+print(pipe.unet.conv_out.state_dict()["weight"].stride())  # (2880, 9, 3, 1)
+pipe.unet.to(memory_format=torch.channels_last)  # in-place operation
+print(
+    pipe.unet.conv_out.state_dict()["weight"].stride()
+)  # (2880, 1, 960, 320) having a stride of 1 for the 2nd dimension proves that it works
+```
+
+## Tracing
+
+Tracing runs an example input tensor through your model, and captures the operations that are invoked as that input makes its way through the model's layers so that an executable or `ScriptFunction` is returned that will be optimized using just-in-time compilation.
+
+To trace our UNet model, we can use the following:
+
+```python
+import time
+import torch
+from diffusers import StableDiffusionPipeline
+import functools
+
+# torch disable grad
+torch.set_grad_enabled(False)
+
+# set variables
+n_experiments = 2
+unet_runs_per_experiment = 50
+
+
+# load inputs
+def generate_inputs():
+    sample = torch.randn(2, 4, 64, 64).half().cuda()
+    timestep = torch.rand(1).half().cuda() * 999
+    encoder_hidden_states = torch.randn(2, 77, 768).half().cuda()
+    return sample, timestep, encoder_hidden_states
+
+
+pipe = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    torch_dtype=torch.float16,
+).to("cuda")
+unet = pipe.unet
+unet.eval()
+unet.to(memory_format=torch.channels_last)  # use channels_last memory format
+unet.forward = functools.partial(unet.forward, return_dict=False)  # set return_dict=False as default
+
+# warmup
+for _ in range(3):
+    with torch.inference_mode():
+        inputs = generate_inputs()
+        orig_output = unet(*inputs)
+
+# trace
+print("tracing..")
+unet_traced = torch.jit.trace(unet, inputs)
+unet_traced.eval()
+print("done tracing")
+
+
+# warmup and optimize graph
+for _ in range(5):
+    with torch.inference_mode():
+        inputs = generate_inputs()
+        orig_output = unet_traced(*inputs)
+
+
+# benchmarking
+with torch.inference_mode():
+    for _ in range(n_experiments):
+        torch.cuda.synchronize()
+        start_time = time.time()
+        for _ in range(unet_runs_per_experiment):
+            orig_output = unet_traced(*inputs)
+        torch.cuda.synchronize()
+        print(f"unet traced inference took {time.time() - start_time:.2f} seconds")
+    for _ in range(n_experiments):
+        torch.cuda.synchronize()
+        start_time = time.time()
+        for _ in range(unet_runs_per_experiment):
+            orig_output = unet(*inputs)
+        torch.cuda.synchronize()
+        print(f"unet inference took {time.time() - start_time:.2f} seconds")
+
+# save the model
+unet_traced.save("unet_traced.pt")
+```
+
+Then we can replace the `unet` attribute of the pipeline with the traced model like the following
+
+```python
+from diffusers import StableDiffusionPipeline
+import torch
+from dataclasses import dataclass
+
+
+@dataclass
+class UNet2DConditionOutput:
+    sample: torch.FloatTensor
+
+
+pipe = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    torch_dtype=torch.float16,
+).to("cuda")
+
+# use jitted unet
+unet_traced = torch.jit.load("unet_traced.pt")
+
+
+# del pipe.unet
+class TracedUNet(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.in_channels = pipe.unet.in_channels
+        self.device = pipe.unet.device
+
+    def forward(self, latent_model_input, t, encoder_hidden_states):
+        sample = unet_traced(latent_model_input, t, encoder_hidden_states)[0]
+        return UNet2DConditionOutput(sample=sample)
+
+
+pipe.unet = TracedUNet()
+
+with torch.inference_mode():
+    image = pipe([prompt] * 1, num_inference_steps=50).images[0]
+```
+
+
+## Memory Efficient Attention
+
+Recent work on optimizing the bandwitdh in the attention block has generated huge speed ups and gains in GPU memory usage. The most recent being Flash Attention from @tridao: [code](https://github.com/HazyResearch/flash-attention), [paper](https://arxiv.org/pdf/2205.14135.pdf).
+
+Here are the speedups we obtain on a few Nvidia GPUs when running the inference at 512x512 with a batch size of 1 (one prompt):
+
+| GPU              	| Base Attention FP16 	| Memory Efficient Attention FP16 	|
+|------------------	|---------------------	|---------------------------------	|
+| NVIDIA Tesla T4  	| 3.5it/s             	| 5.5it/s                         	|
+| NVIDIA 3060 RTX  	| 4.6it/s             	| 7.8it/s                         	|
+| NVIDIA A10G      	| 8.88it/s            	| 15.6it/s                        	|
+| NVIDIA RTX A6000 	| 11.7it/s            	| 21.09it/s                       	|
+| NVIDIA TITAN RTX  | 12.51it/s         	| 18.22it/s                       	|
+| A100-SXM4-40GB    	| 18.6it/s            	| 29.it/s                        	|
+| A100-SXM-80GB    	| 18.7it/s            	| 29.5it/s                        	|
+
+To leverage it just make sure you have: 
+ - PyTorch > 1.12
+ - Cuda available
+ - [Installed the xformers library](xformers).
+```python
+from diffusers import StableDiffusionPipeline
+import torch
+
+pipe = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    torch_dtype=torch.float16,
+).to("cuda")
+
+pipe.enable_xformers_memory_efficient_attention()
+
+with torch.inference_mode():
+    sample = pipe("a small cat")
+
+# optional: You can disable it via
+# pipe.disable_xformers_memory_efficient_attention()
+```

@@ -12,133 +12,136 @@ specific language governing permissions and limitations under the License.
 
 # Installation
 
-Install 🤗 Diffusers for whichever deep learning library you’re working with.
+安装🤗 Diffusers 到你正在使用的任何深度学习框架中。
 
-🤗 Diffusers is tested on Python 3.7+, PyTorch 1.7.0+ and flax. Follow the installation instructions below for the deep learning library you are using:
+🤗 Diffusers已在Python 3.7+、PyTorch 1.7.0+和Flax上进行了测试。按照下面的安装说明，针对你正在使用的深度学习框架进行安装：
 
 - [PyTorch](https://pytorch.org/get-started/locally/) installation instructions.
 - [Flax](https://flax.readthedocs.io/en/latest/) installation instructions.
 
-## Install with pip
+## 使用pip安装
 
-You should install 🤗 Diffusers in a [virtual environment](https://docs.python.org/3/library/venv.html).
-If you're unfamiliar with Python virtual environments, take a look at this [guide](https://packaging.python.org/guides/installing-using-pip-and-virtual-environments/).
-A virtual environment makes it easier to manage different projects, and avoid compatibility issues between dependencies.
+你需要在[虚拟环境](https://docs.python.org/3/library/venv.html)中安装🤗 Diffusers 。
 
-Start by creating a virtual environment in your project directory:
+如果你对 Python 虚拟环境不熟悉，可以看看这个[教程](https://packaging.python.org/guides/installing-using-pip-and-virtual-environments/).
+
+使用虚拟环境你可以轻松管理不同的项目，避免了依赖项之间的兼容性问题。
+
+首先，在你的项目目录下创建一个虚拟环境：
 
 ```bash
 python -m venv .env
 ```
 
-Activate the virtual environment:
+激活虚拟环境：
 
 ```bash
 source .env/bin/activate
 ```
 
-Now you're ready to install 🤗 Diffusers with the following command:
+现在你就可以安装 🤗 Diffusers了！使用下边这个命令：
 
-**For PyTorch**
+**PyTorch**
 
 ```bash
 pip install diffusers["torch"]
 ```
 
-**For Flax**
+**Flax**
 
 ```bash
 pip install diffusers["flax"]
 ```
 
-## Install from source
+## 从源代码安装
 
-Before intsalling `diffusers` from source, make sure you have `torch` and `accelerate` installed.
+在从源代码安装 `diffusers` 之前，你先确定你已经安装了 `torch` 和 `accelerate`。
 
-For `torch` installation refer to the `torch` [docs](https://pytorch.org/get-started/locally/#start-locally).
+`torch`的安装教程可以看 `torch` [文档](https://pytorch.org/get-started/locally/#start-locally).
 
-To install `accelerate`
+安装 `accelerate`
 
 ```bash
 pip install accelerate
 ```
 
-Install 🤗 Diffusers from source with the following command:
+从源码安装 🤗 Diffusers 使用以下命令:
 
 ```bash
 pip install git+https://github.com/huggingface/diffusers
 ```
 
-This command installs the bleeding edge `main` version rather than the latest `stable` version.
-The `main` version is useful for staying up-to-date with the latest developments.
-For instance, if a bug has been fixed since the last official release but a new release hasn't been rolled out yet.
-However, this means the `main` version may not always be stable.
-We strive to keep the `main` version operational, and most issues are usually resolved within a few hours or a day.
-If you run into a problem, please open an [Issue](https://github.com/huggingface/transformers/issues), so we can fix it even sooner!
+这个命令安装的是最新的 `main`版本，而不是最近的`stable`版。
+`main`是一直和最新进展保持一致的。比如，上次正式版发布了，有bug，新的正式版还没推出，但是`main`中可以看到这个bug被修复了。
+但是这也意味着 `main`版本并不总是稳定的。
 
-## Editable install
+我们努力保持`main`版本正常运行,大多数问题都能在几个小时或一天之内解决
 
-You will need an editable install if you'd like to:
+如果你遇到了问题，可以提 [Issue](https://github.com/huggingface/transformers/issues)，这样我们就能更快修复问题了。
 
-* Use the `main` version of the source code.
-* Contribute to 🤗 Diffusers and need to test changes in the code.
+## 可修改安装
 
-Clone the repository and install 🤗 Diffusers with the following commands:
+如果你想做以下两件事，那你可能需要一个可修改代码的安装方式：
+
+* 使用 `main`版本的源代码。
+* 为 🤗 Diffusers 贡献，需要测试代码中的变化。
+
+使用以下命令克隆并安装 🤗 Diffusers:
 
 ```bash
 git clone https://github.com/huggingface/diffusers.git
 cd diffusers
 ```
 
-**For PyTorch**
+**PyTorch**
 
 ```
 pip install -e ".[torch]"
 ```
 
-**For Flax**
+**Flax**
 
 ```
 pip install -e ".[flax]"
 ```
 
-These commands will link the folder you cloned the repository to and your Python library paths.
-Python will now look inside the folder you cloned to in addition to the normal library paths.
-For example, if your Python packages are typically installed in `~/anaconda3/envs/main/lib/python3.7/site-packages/`, Python will also search the folder you cloned to: `~/diffusers/`.
+这些命令将连接你克隆的版本库和你的 Python 库路径。
+现在，除了正常的库路径外，Python 还会在你克隆的文件夹内寻找。
+例如，如果你的 Python 包通常安装在 `~/anaconda3/envs/main/lib/python3.7/Site-packages/`，Python 也会搜索你克隆到的文件夹。`~/diffusers/`。
 
 <Tip warning={true}>
 
-You must keep the `diffusers` folder if you want to keep using the library.
+如果你想继续使用这个库，你必须保留 `diffusers` 文件夹。
 
 </Tip>
 
-Now you can easily update your clone to the latest version of 🤗 Diffusers with the following command:
+
+现在你可以用下面的命令轻松地将你克隆的🤗Diffusers仓库更新到最新版本。
 
 ```bash
 cd ~/diffusers/
 git pull
 ```
 
-Your Python environment will find the `main` version of 🤗 Diffusers on the next run.
+你的Python环境将在下次运行时找到`main`版本的🤗 Diffusers。
 
-## Notice on telemetry logging
+## 注意遥测日志
 
-Our library gathers telemetry information during `from_pretrained()` requests.
-This data includes the version of Diffusers and PyTorch/Flax, the requested model or pipeline class,
-and the path to a pretrained checkpoint if it is hosted on the Hub.
-This usage data helps us debug issues and prioritize new features.
-Telemetry is only sent when loading models and pipelines from the HuggingFace Hub,
-and is not collected during local usage.
+我们的库会在使用`from_pretrained()`请求期间收集信息。这些数据包括Diffusers和PyTorch/Flax的版本，请求的模型或管道，以及预训练检查点的路径（如果它被托管在Hub上）。
 
-We understand that not everyone wants to share additional information, and we respect your privacy,
-so you can disable telemetry collection by setting the `DISABLE_TELEMETRY` environment variable from your terminal:
+这些使用数据有助于我们调试问题并优先考虑新功能。
+当从HuggingFace Hub加载模型和管道时才会发送遥测数据，并且在本地使用时不会收集数据。
 
-On Linux/MacOS:
+我们知道并不是每个人都想分享这些的信息，我们尊重您的隐私，
+因此您可以通过在终端中设置“DISABLE_TELEMETRY”环境变量来禁用遥测数据的收集：
+
+
+在Linux/MacOS中:
 ```bash
 export DISABLE_TELEMETRY=YES
 ```
 
-On Windows:
+在Windows中:
 ```bash
 set DISABLE_TELEMETRY=YES
 ```

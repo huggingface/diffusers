@@ -1,0 +1,41 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+# Text-to-Image Generation
+
+## StableDiffusionPipeline
+
+The Stable Diffusion model was created by the researchers and engineers from [CompVis](https://github.com/CompVis), [Stability AI](https://stability.ai/), [runway](https://github.com/runwayml), and [LAION](https://laion.ai/). The [`StableDiffusionPipeline`] is capable of generating photo-realistic images given any text input using Stable Diffusion.
+
+The original codebase can be found here: 
+- *Stable Diffusion V1*: [CompVis/stable-diffusion](https://github.com/CompVis/stable-diffusion)
+- *Stable Diffusion v2*: [Stability-AI/stablediffusion](https://github.com/Stability-AI/stablediffusion)
+
+Available Checkpoints are:
+- *stable-diffusion-v1-4 (512x512 resolution)* [CompVis/stable-diffusion-v1-4](https://huggingface.co/CompVis/stable-diffusion-v1-4)
+- *stable-diffusion-v1-5 (512x512 resolution)* [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5)
+- *stable-diffusion-2-base (512x512 resolution)*: [stabilityai/stable-diffusion-2-base](https://huggingface.co/stabilityai/stable-diffusion-2-base)
+- *stable-diffusion-2 (768x768 resolution)*: [stabilityai/stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 
+- *stable-diffusion-2-1-base (512x512 resolution)* [stabilityai/stable-diffusion-2-1-base](https://huggingface.co/stabilityai/stable-diffusion-2-1-base)
+- *stable-diffusion-2-1 (768x768 resolution)*: [stabilityai/stable-diffusion-2-1](https://huggingface.co/stabilityai/stable-diffusion-2-1)
+
+[[autodoc]] StableDiffusionPipeline
+	- all
+	- __call__
+	- enable_attention_slicing
+	- disable_attention_slicing
+	- enable_vae_slicing
+	- disable_vae_slicing
+	- enable_xformers_memory_efficient_attention
+	- disable_xformers_memory_efficient_attention
+	- enable_vae_tiling
+	- disable_vae_tiling

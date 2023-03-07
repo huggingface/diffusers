@@ -1,0 +1,59 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+# Scalable Diffusion Models with Transformers (DiT)
+
+## Overview
+
+[Scalable Diffusion Models with Transformers](https://arxiv.org/abs/2212.09748) (DiT) by William Peebles and Saining Xie.
+
+The abstract of the paper is the following:
+
+*We explore a new class of diffusion models based on the transformer architecture. We train latent diffusion models of images, replacing the commonly-used U-Net backbone with a transformer that operates on latent patches. We analyze the scalability of our Diffusion Transformers (DiTs) through the lens of forward pass complexity as measured by Gflops. We find that DiTs with higher Gflops -- through increased transformer depth/width or increased number of input tokens -- consistently have lower FID. In addition to possessing good scalability properties, our largest DiT-XL/2 models outperform all prior diffusion models on the class-conditional ImageNet 512x512 and 256x256 benchmarks, achieving a state-of-the-art FID of 2.27 on the latter.*
+
+The original codebase of this paper can be found here: [facebookresearch/dit](https://github.com/facebookresearch/dit).
+
+## Available Pipelines:
+
+| Pipeline | Tasks | Colab
+|---|---|:---:|
+| [pipeline_dit.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/dit/pipeline_dit.py) | *Conditional Image Generation* | - |
+
+
+## Usage example
+
+```python
+from diffusers import DiTPipeline, DPMSolverMultistepScheduler
+import torch
+
+pipe = DiTPipeline.from_pretrained("facebook/DiT-XL-2-256", torch_dtype=torch.float16)
+pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+pipe = pipe.to("cuda")
+
+# pick words from Imagenet class labels
+pipe.labels  # to print all available words
+
+# pick words that exist in ImageNet
+words = ["white shark", "umbrella"]
+
+class_ids = pipe.get_label_ids(words)
+
+generator = torch.manual_seed(33)
+output = pipe(class_labels=class_ids, num_inference_steps=25, generator=generator)
+
+image = output.images[0]  # label 'white shark'
+```
+
+## DiTPipeline
+[[autodoc]] DiTPipeline
+	- all
+	- __call__

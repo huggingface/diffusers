@@ -1,0 +1,47 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+# Pipelines
+
+The [`DiffusionPipeline`] is the easiest way to load any pretrained diffusion pipeline from the [Hub](https://huggingface.co/models?library=diffusers) and to use it in inference.
+
+<Tip>
+	
+	One should not use the Diffusion Pipeline class for training or fine-tuning a diffusion model. Individual 
+	components of diffusion pipelines are usually trained individually, so we suggest to directly work 
+	with [`UNetModel`] and [`UNetConditionModel`].
+
+</Tip>
+
+Any diffusion pipeline that is loaded with [`~DiffusionPipeline.from_pretrained`] will automatically 
+detect the pipeline type, *e.g.* [`StableDiffusionPipeline`] and consequently load each component of the 
+pipeline and pass them into the `__init__` function of the pipeline, *e.g.* [`~StableDiffusionPipeline.__init__`].
+
+Any pipeline object can be saved locally with [`~DiffusionPipeline.save_pretrained`].
+
+## DiffusionPipeline
+[[autodoc]] DiffusionPipeline
+	- all
+	- __call__
+	- device
+	- to
+	- components
+
+## ImagePipelineOutput
+By default diffusion pipelines return an object of class
+
+[[autodoc]] pipelines.ImagePipelineOutput
+
+## AudioPipelineOutput
+By default diffusion pipelines return an object of class
+
+[[autodoc]] pipelines.AudioPipelineOutput

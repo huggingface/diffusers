@@ -1,0 +1,31 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+# Image Variation
+
+## StableDiffusionImageVariationPipeline
+
+[`StableDiffusionImageVariationPipeline`] lets you generate variations from an input image using Stable Diffusion. It uses a fine-tuned version of Stable Diffusion model, trained by  [Justin Pinkney](https://www.justinpinkney.com/) (@Buntworthy) at [Lambda](https://lambdalabs.com/)
+
+The original codebase can be found here:
+[Stable Diffusion Image Variations](https://github.com/LambdaLabsML/lambda-diffusers#stable-diffusion-image-variations)
+
+Available Checkpoints are:
+- *sd-image-variations-diffusers*: [lambdalabs/sd-image-variations-diffusers](https://huggingface.co/lambdalabs/sd-image-variations-diffusers)
+
+[[autodoc]] StableDiffusionImageVariationPipeline
+	- all
+	- __call__
+	- enable_attention_slicing
+	- disable_attention_slicing
+	- enable_xformers_memory_efficient_attention
+	- disable_xformers_memory_efficient_attention

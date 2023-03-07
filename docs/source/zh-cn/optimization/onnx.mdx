@@ -1,0 +1,73 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+
+# How to use the ONNX Runtime for inference
+
+🤗 Diffusers provides a Stable Diffusion pipeline compatible with the ONNX Runtime. This allows you to run Stable Diffusion on any hardware that supports ONNX (including CPUs), and where an accelerated version of PyTorch is not available.
+
+## Installation
+
+- TODO
+
+## Stable Diffusion Inference
+
+The snippet below demonstrates how to use the ONNX runtime. You need to use `OnnxStableDiffusionPipeline` instead of `StableDiffusionPipeline`. You also need to download the weights from the `onnx` branch of the repository, and indicate the runtime provider you want to use.
+
+```python
+# make sure you're logged in with `huggingface-cli login`
+from diffusers import OnnxStableDiffusionPipeline
+
+pipe = OnnxStableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    revision="onnx",
+    provider="CUDAExecutionProvider",
+)
+
+prompt = "a photo of an astronaut riding a horse on mars"
+image = pipe(prompt).images[0]
+```
+
+The snippet below demonstrates how to use the ONNX runtime with the Stable Diffusion upscaling pipeline.
+
+```python
+from diffusers import OnnxStableDiffusionPipeline, OnnxStableDiffusionUpscalePipeline
+
+prompt = "a photo of an astronaut riding a horse on mars"
+steps = 50
+
+txt2img = OnnxStableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    revision="onnx",
+    provider="CUDAExecutionProvider",
+)
+small_image = txt2img(
+    prompt,
+    num_inference_steps=steps,
+).images[0]
+
+generator = torch.manual_seed(0)
+upscale = OnnxStableDiffusionUpscalePipeline.from_pretrained(
+    "ssube/stable-diffusion-x4-upscaler-onnx",
+    provider="CUDAExecutionProvider",
+)
+large_image = upscale(
+    prompt,
+    small_image,
+    generator=generator,
+    num_inference_steps=steps,
+).images[0]
+```
+
+## Known Issues
+
+- Generating multiple prompts in a batch seems to take too much memory. While we look into it, you may need to iterate instead of batching.
