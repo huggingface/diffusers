@@ -96,6 +96,7 @@ class PipelineFastTests(unittest.TestCase):
         )
         return vqvae, unet
 
+    @slow
     def test_audio_diffusion(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         mel = Mel()

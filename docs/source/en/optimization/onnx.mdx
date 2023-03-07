@@ -21,13 +21,13 @@ specific language governing permissions and limitations under the License.
 
 ## Stable Diffusion Inference
 
-The snippet below demonstrates how to use the ONNX runtime. You need to use `StableDiffusionOnnxPipeline` instead of `StableDiffusionPipeline`. You also need to download the weights from the `onnx` branch of the repository, and indicate the runtime provider you want to use.
+The snippet below demonstrates how to use the ONNX runtime. You need to use `OnnxStableDiffusionPipeline` instead of `StableDiffusionPipeline`. You also need to download the weights from the `onnx` branch of the repository, and indicate the runtime provider you want to use.
 
 ```python
 # make sure you're logged in with `huggingface-cli login`
-from diffusers import StableDiffusionOnnxPipeline
+from diffusers import OnnxStableDiffusionPipeline
 
-pipe = StableDiffusionOnnxPipeline.from_pretrained(
+pipe = OnnxStableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
     revision="onnx",
     provider="CUDAExecutionProvider",
@@ -35,6 +35,37 @@ pipe = StableDiffusionOnnxPipeline.from_pretrained(
 
 prompt = "a photo of an astronaut riding a horse on mars"
 image = pipe(prompt).images[0]
+```
+
+The snippet below demonstrates how to use the ONNX runtime with the Stable Diffusion upscaling pipeline.
+
+```python
+from diffusers import OnnxStableDiffusionPipeline, OnnxStableDiffusionUpscalePipeline
+
+prompt = "a photo of an astronaut riding a horse on mars"
+steps = 50
+
+txt2img = OnnxStableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    revision="onnx",
+    provider="CUDAExecutionProvider",
+)
+small_image = txt2img(
+    prompt,
+    num_inference_steps=steps,
+).images[0]
+
+generator = torch.manual_seed(0)
+upscale = OnnxStableDiffusionUpscalePipeline.from_pretrained(
+    "ssube/stable-diffusion-x4-upscaler-onnx",
+    provider="CUDAExecutionProvider",
+)
+large_image = upscale(
+    prompt,
+    small_image,
+    generator=generator,
+    num_inference_steps=steps,
+).images[0]
 ```
 
 ## Known Issues

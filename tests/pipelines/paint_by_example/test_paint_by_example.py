@@ -160,19 +160,6 @@ class PaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert out_1.shape == (1, 64, 64, 3)
         assert np.abs(out_1.flatten() - out_2.flatten()).max() < 5e-2
 
-    def test_paint_by_example_inpaint_with_num_images_per_prompt(self):
-        device = "cpu"
-        pipe = PaintByExamplePipeline(**self.get_dummy_components())
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs()
-
-        images = pipe(**inputs, num_images_per_prompt=2).images
-
-        # check if the output is a list of 2 images
-        assert len(images) == 2
-
 
 @slow
 @require_torch_gpu

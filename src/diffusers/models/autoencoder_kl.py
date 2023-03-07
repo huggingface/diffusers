@@ -107,10 +107,54 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
 
         self.quant_conv = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1)
         self.post_quant_conv = nn.Conv2d(latent_channels, latent_channels, 1)
+
+        self.use_slicing = False
+        self.use_tiling = False
+
+        # only relevant if vae tiling is enabled
+        self.tile_sample_min_size = self.config.sample_size
+        sample_size = (
+            self.config.sample_size[0]
+            if isinstance(self.config.sample_size, (list, tuple))
+            else self.config.sample_size
+        )
+        self.tile_latent_min_size = int(sample_size / (2 ** (len(self.block_out_channels) - 1)))
+        self.tile_overlap_factor = 0.25
+
+    def enable_tiling(self, use_tiling: bool = True):
+        r"""
+        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
+        compute decoding and encoding in several steps. This is useful to save a large amount of memory and to allow
+        the processing of larger images.
+        """
+        self.use_tiling = use_tiling
+
+    def disable_tiling(self):
+        r"""
+        Disable tiled VAE decoding. If `enable_vae_tiling` was previously invoked, this method will go back to
+        computing decoding in one step.
+        """
+        self.enable_tiling(False)
+
+    def enable_slicing(self):
+        r"""
+        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
+        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
+        """
+        self.use_slicing = True
+
+    def disable_slicing(self):
+        r"""
+        Disable sliced VAE decoding. If `enable_slicing` was previously invoked, this method will go back to computing
+        decoding in one step.
+        """
         self.use_slicing = False
 
     @apply_forward_hook
     def encode(self, x: torch.FloatTensor, return_dict: bool = True) -> AutoencoderKLOutput:
+        if self.use_tiling and (x.shape[-1] > self.tile_sample_min_size or x.shape[-2] > self.tile_sample_min_size):
+            return self.tiled_encode(x, return_dict=return_dict)
+
         h = self.encoder(x)
         moments = self.quant_conv(h)
         posterior = DiagonalGaussianDistribution(moments)
@@ -121,6 +165,9 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         return AutoencoderKLOutput(latent_dist=posterior)
 
     def _decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
+        if self.use_tiling and (z.shape[-1] > self.tile_latent_min_size or z.shape[-2] > self.tile_latent_min_size):
+            return self.tiled_decode(z, return_dict=return_dict)
+
         z = self.post_quant_conv(z)
         dec = self.decoder(z)
 
@@ -128,22 +175,6 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
             return (dec,)
 
         return DecoderOutput(sample=dec)
-
-    def enable_slicing(self):
-        r"""
-        Enable sliced VAE decoding.
-
-        When this option is enabled, the VAE will split the input tensor in slices to compute decoding in several
-        steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.use_slicing = True
-
-    def disable_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_slicing` was previously invoked, this method will go back to computing
-        decoding in one step.
-        """
-        self.use_slicing = False
 
     @apply_forward_hook
     def decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
@@ -157,6 +188,108 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
             return (decoded,)
 
         return DecoderOutput(sample=decoded)
+
+    def blend_v(self, a, b, blend_extent):
+        for y in range(blend_extent):
+            b[:, :, y, :] = a[:, :, -blend_extent + y, :] * (1 - y / blend_extent) + b[:, :, y, :] * (y / blend_extent)
+        return b
+
+    def blend_h(self, a, b, blend_extent):
+        for x in range(blend_extent):
+            b[:, :, :, x] = a[:, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, x] * (x / blend_extent)
+        return b
+
+    def tiled_encode(self, x: torch.FloatTensor, return_dict: bool = True) -> AutoencoderKLOutput:
+        r"""Encode a batch of images using a tiled encoder.
+        Args:
+        When this option is enabled, the VAE will split the input tensor into tiles to compute encoding in several
+        steps. This is useful to keep memory use constant regardless of image size. The end result of tiled encoding is:
+        different from non-tiled encoding due to each tile using a different encoder. To avoid tiling artifacts, the
+        tiles overlap and are blended together to form a smooth output. You may still see tile-sized changes in the
+        look of the output, but they should be much less noticeable.
+            x (`torch.FloatTensor`): Input batch of images. return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`AutoencoderKLOutput`] instead of a plain tuple.
+        """
+        overlap_size = int(self.tile_sample_min_size * (1 - self.tile_overlap_factor))
+        blend_extent = int(self.tile_latent_min_size * self.tile_overlap_factor)
+        row_limit = self.tile_latent_min_size - blend_extent
+
+        # Split the image into 512x512 tiles and encode them separately.
+        rows = []
+        for i in range(0, x.shape[2], overlap_size):
+            row = []
+            for j in range(0, x.shape[3], overlap_size):
+                tile = x[:, :, i : i + self.tile_sample_min_size, j : j + self.tile_sample_min_size]
+                tile = self.encoder(tile)
+                tile = self.quant_conv(tile)
+                row.append(tile)
+            rows.append(row)
+        result_rows = []
+        for i, row in enumerate(rows):
+            result_row = []
+            for j, tile in enumerate(row):
+                # blend the above tile and the left tile
+                # to the current tile and add the current tile to the result row
+                if i > 0:
+                    tile = self.blend_v(rows[i - 1][j], tile, blend_extent)
+                if j > 0:
+                    tile = self.blend_h(row[j - 1], tile, blend_extent)
+                result_row.append(tile[:, :, :row_limit, :row_limit])
+            result_rows.append(torch.cat(result_row, dim=3))
+
+        moments = torch.cat(result_rows, dim=2)
+        posterior = DiagonalGaussianDistribution(moments)
+
+        if not return_dict:
+            return (posterior,)
+
+        return AutoencoderKLOutput(latent_dist=posterior)
+
+    def tiled_decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
+        r"""Decode a batch of images using a tiled decoder.
+        Args:
+        When this option is enabled, the VAE will split the input tensor into tiles to compute decoding in several
+        steps. This is useful to keep memory use constant regardless of image size. The end result of tiled decoding is:
+        different from non-tiled decoding due to each tile using a different decoder. To avoid tiling artifacts, the
+        tiles overlap and are blended together to form a smooth output. You may still see tile-sized changes in the
+        look of the output, but they should be much less noticeable.
+            z (`torch.FloatTensor`): Input batch of latent vectors. return_dict (`bool`, *optional*, defaults to
+            `True`):
+                Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
+        """
+        overlap_size = int(self.tile_latent_min_size * (1 - self.tile_overlap_factor))
+        blend_extent = int(self.tile_sample_min_size * self.tile_overlap_factor)
+        row_limit = self.tile_sample_min_size - blend_extent
+
+        # Split z into overlapping 64x64 tiles and decode them separately.
+        # The tiles have an overlap to avoid seams between tiles.
+        rows = []
+        for i in range(0, z.shape[2], overlap_size):
+            row = []
+            for j in range(0, z.shape[3], overlap_size):
+                tile = z[:, :, i : i + self.tile_latent_min_size, j : j + self.tile_latent_min_size]
+                tile = self.post_quant_conv(tile)
+                decoded = self.decoder(tile)
+                row.append(decoded)
+            rows.append(row)
+        result_rows = []
+        for i, row in enumerate(rows):
+            result_row = []
+            for j, tile in enumerate(row):
+                # blend the above tile and the left tile
+                # to the current tile and add the current tile to the result row
+                if i > 0:
+                    tile = self.blend_v(rows[i - 1][j], tile, blend_extent)
+                if j > 0:
+                    tile = self.blend_h(row[j - 1], tile, blend_extent)
+                result_row.append(tile[:, :, :row_limit, :row_limit])
+            result_rows.append(torch.cat(result_row, dim=3))
+
+        dec = torch.cat(result_rows, dim=2)
+        if not return_dict:
+            return (dec,)
+
+        return DecoderOutput(sample=dec)
 
     def forward(
         self,
