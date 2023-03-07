@@ -1,0 +1,8 @@
+transformers>=4.25.1
+flax
+optax
+torch
+torchvision
+ftfy
+tensorboard
+Jinja2
