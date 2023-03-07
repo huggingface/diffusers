@@ -37,7 +37,7 @@ else:
     from .audio_diffusion import AudioDiffusionPipeline, Mel
 
 try:
-    if not (is_torch_available() and is_note_seq_available()):
+    if not (is_torch_available() and is_note_seq_available()) and is_onnx_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from ..utils.dummy_torch_and_note_seq_objects import *  # noqa F403
