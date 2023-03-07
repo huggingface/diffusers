@@ -30,7 +30,7 @@ There is a community-created collection of trained Textual Inversion models in t
 Before you begin, make sure you install the library's training dependencies:
 
 ```bash
-pip install diffusers[training] accelerate transformers
+pip install diffusers accelerate transformers
 ```
 
 After all the dependencies have been set up, initialize a [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
@@ -138,6 +138,20 @@ python textual_inversion_flax.py \
 ```
 </jax>
 </frameworkcontent>
+
+### Intermediate logging
+
+If you're interested in following along with your model training progress, you can save the generated images from the training process. Add the following arguments to the training script to enable intermediate logging:
+
+- `validation_prompt`, the prompt used to generate samples (this is set to `None` by default and intermediate logging is disabled)
+- `num_validation_images`, the number of sample images to generate
+- `validation_steps`, the number of steps before generating `num_validation_images` from the `validation_prompt`
+
+```bash
+--validation_prompt="A <cat-toy> backpack"
+--num_validation_images=4
+--validation_steps=100
+```
 
 ## Inference
 
