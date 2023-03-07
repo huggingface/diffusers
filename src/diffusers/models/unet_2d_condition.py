@@ -597,6 +597,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             for down_block_res_sample, down_block_additional_residual in zip(
                 down_block_res_samples, down_block_additional_residuals
             ):
+                down_block_res_sample = down_block_res_sample.clone() # make sure we don't modify the original in place
                 down_block_res_sample += down_block_additional_residual
                 new_down_block_res_samples += (down_block_res_sample,)
 
