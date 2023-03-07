@@ -62,7 +62,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
         continuous_encoder: SpectrogramContEncoder,
         decoder: T5FilmDecoder,
         scheduler: DDPMScheduler,
-        melgan: OnnxRuntimeModel,
+        melgan: OnnxRuntimeModel if is_onnx_available() else Any,
     ) -> None:
         super().__init__()
 
