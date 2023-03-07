@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ from ..utils import is_flax_available, is_torch_available
 
 if is_torch_available():
     from .autoencoder_kl import AutoencoderKL
+    from .controlnet import ControlNetModel
     from .dual_transformer_2d import DualTransformer2DModel
     from .modeling_utils import ModelMixin
     from .prior_transformer import PriorTransformer

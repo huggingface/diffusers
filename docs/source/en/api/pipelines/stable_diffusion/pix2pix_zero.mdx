@@ -25,6 +25,7 @@ Resources:
 * [Project Page](https://pix2pixzero.github.io/).
 * [Paper](https://arxiv.org/abs/2302.03027).
 * [Original Code](https://github.com/pix2pixzero/pix2pix-zero).
+* [Demo](https://huggingface.co/spaces/pix2pix-zero-library/pix2pix-zero-demo).
 
 ## Tips 
 
@@ -41,12 +42,13 @@ the above example, a valid input prompt would be: "a high resolution painting of
     * Change the input prompt to include "dog".  
 * To learn more about how the source and target embeddings are generated, refer to the [original 
 paper](https://arxiv.org/abs/2302.03027). Below, we also provide some directions on how to generate the embeddings.
+* Note that the quality of the outputs generated with this pipeline is dependent on how good the `source_embeds` and `target_embeds` are. Please, refer to [this discussion](#generating-source-and-target-embeddings) for some suggestions on the topic.
 
 ## Available Pipelines:
 
 | Pipeline | Tasks | Demo
 |---|---|:---:|
-| [StableDiffusionPix2PixZeroPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_pix2pix_zero.py) | *Text-Based Image Editing* | [🤗 Space] (soon) |
+| [StableDiffusionPix2PixZeroPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_pix2pix_zero.py) | *Text-Based Image Editing* | [🤗 Space](https://huggingface.co/spaces/pix2pix-zero-library/pix2pix-zero-demo) |
 
 <!-- TODO: add Colab -->
 
@@ -74,7 +76,7 @@ pipeline = StableDiffusionPix2PixZeroPipeline.from_pretrained(
 pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
 pipeline.to("cuda")
 
-prompt = "a high resolution painting of a cat in the style of van gough"
+prompt = "a high resolution painting of a cat in the style of van gogh"
 src_embs_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/embeddings_sd_1.4/cat.pt"
 target_embs_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/embeddings_sd_1.4/dog.pt"
 
