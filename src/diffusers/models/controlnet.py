@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import inspect
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -260,45 +259,57 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         )
 
     @classmethod
-    def from_unet(cls, unet: UNet2DConditionModel, **kwargs):
+    def from_unet(
+        cls,
+        unet: UNet2DConditionModel,
+        controlnet_conditioning_channel_order: str = "rgb",
+        conditioning_embedding_out_channels: Optional[Tuple[int]] = (16, 32, 96, 256),
+        load_weights_from_unet: bool = True,
+    ):
         r"""
-        Instantiate Controlnet class from UNet2DConditionModel by copying its weights.
+        Instantiate Controlnet class from UNet2DConditionModel.
 
         Parameters:
             unet (`UNet2DConditionModel`):
                 UNet model which weights are copied to the ControlNet. Note that all configuration options are also
                 copied where applicable.
-
-            kwargs (dictionary of keyword arguments, *optional*):
-                Can be used to update the configuration object (after it being loaded) and initiate the Python class.
-                `**kwargs` will be directly passed to the `ControlNet.__init__` method and eventually overwrite same
-                named arguments of `unet.config`.
         """
-        config = dict(unet.config)
-        config["_class_name"] = "ControlNetModel"
+        controlnet = cls(
+            in_channels=unet.config.in_channels,
+            flip_sin_to_cos=unet.config.flip_sin_to_cos,
+            freq_shift=unet.config.freq_shift,
+            down_block_types=unet.config.down_block_types,
+            only_cross_attention=unet.config.only_cross_attention,
+            block_out_channels=unet.config.block_out_channels,
+            layers_per_block=unet.config.layers_per_block,
+            downsample_padding=unet.config.downsample_padding,
+            mid_block_scale_factor=unet.config.mid_block_scale_factor,
+            act_fn=unet.config.act_fn,
+            norm_num_groups=unet.config.norm_num_groups,
+            norm_eps=unet.config.norm_eps,
+            cross_attention_dim=unet.config.cross_attention_dim,
+            attention_head_dim=unet.config.attention_head_dim,
+            use_linear_projection=unet.config.use_linear_projection,
+            class_embed_type=unet.config.class_embed_type,
+            num_class_embeds=unet.config.num_class_embeds,
+            upcast_attention=unet.config.upcast_attention,
+            resnet_time_scale_shift=unet.config.resnet_time_scale_shift,
+            projection_class_embeddings_input_dim=unet.config.projection_class_embeddings_input_dim,
+            controlnet_conditioning_channel_order=controlnet_conditioning_channel_order,
+            conditioning_embedding_out_channels=conditioning_embedding_out_channels,
+        )
 
-        init_keys = set(dict(inspect.signature(cls.__init__).parameters).keys())
+        if load_weights_from_unet:
+            controlnet.conv_in.load_state_dict(unet.conv_in.state_dict)
+            controlnet.timesteps.load_state_dict(unet.timesteps.state_dict)
+            controlnet.time_embedding.load_state_dict(unet.time_embedding.state_dict)
 
-        # Delete UNet config keys that ControlNet doesn't need. Done also in
-        # `from_config` but done here beforehand to avoid printing a warning
-        # about unused keys.
-        for k in list(config.keys()):
-            if k not in init_keys:
-                del config[k]
+            if controlnet.class_embedding:
+                controlnet.class_embedding.load_state_dict(unet.class_embedding.state_dict)
 
-        for k in kwargs:
-            config[k] = kwargs[k]
+            controlnet.down_blocks.load_state_dict(unet.down_blocks.state_dict)
+            controlnet.mid_block.load_state_dict(unet.mid_block.state_dict)
 
-        controlnet = cls.from_config(config)
-
-        unet_dict = unet.state_dict()
-        temp_state = controlnet.state_dict()
-
-        for k in temp_state.keys():
-            if k in unet_dict:
-                temp_state[k] = unet_dict[k].clone()
-
-        controlnet.load_state_dict(temp_state, strict=True)
         return controlnet
 
     @property
