@@ -89,10 +89,10 @@ class ControlNetCondition:
     def __init__(
         self,
         image: Union[torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]],
-        conditioning_scale: float = 1.0,
+        scale: float = 1.0,
     ):
         self.image_original = image
-        self.conditioning_scale = conditioning_scale
+        self.scale = scale
 
     def _default_height_width(self, height, width, image):
         if isinstance(image, list):
@@ -722,9 +722,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         """
 
         if controlnet_conditions is None:
-            controlnet_conditions = [
-                ControlNetCondition(image=image, conditioning_scale=controlnet_conditioning_scale)
-            ]
+            controlnet_conditions = [ControlNetCondition(image=image, scale=controlnet_conditioning_scale)]
 
         if len(controlnet_conditions) != len(self._controlnets()):
             raise ValueError(
@@ -824,10 +822,10 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                         mid_block_res_sample = mid_block_res_sample + mid_sample
 
                     down_block_res_samples = [
-                        down_block_res_sample * controlnet_cond.conditioning_scale
+                        down_block_res_sample * controlnet_cond.scale
                         for down_block_res_sample in down_block_res_samples
                     ]
-                    mid_block_res_sample *= controlnet_cond.conditioning_scale
+                    mid_block_res_sample *= controlnet_cond.scale
 
                 # predict the noise residual
                 noise_pred = self.unet(
