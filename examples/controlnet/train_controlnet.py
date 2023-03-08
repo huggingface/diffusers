@@ -443,7 +443,7 @@ def make_train_dataset(args, tokenizer, accelerator):
         )
         return inputs.input_ids
 
-    train_transforms = transforms.Compose(
+    image_transforms = transforms.Compose(
         [
             transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
             transforms.ToTensor(),
@@ -451,12 +451,19 @@ def make_train_dataset(args, tokenizer, accelerator):
         ]
     )
 
+    conditioning_image_transforms = transforms.Compose(
+        [
+            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
+            transforms.ToTensor(),
+        ]
+    )
+
     def preprocess_train(examples):
         images = [image.convert("RGB") for image in examples[image_column]]
-        images = [train_transforms(image) for image in images]
+        images = [image_transforms(image) for image in images]
 
         conditioning_images = [image.convert("RGB") for image in examples[conditioning_image_column]]
-        conditioning_images = [train_transforms(image) for image in conditioning_images]
+        conditioning_images = [conditioning_image_transforms(image) for image in conditioning_images]
 
         examples["pixel_values"] = images
         examples["conditioning_pixel_values"] = conditioning_images
