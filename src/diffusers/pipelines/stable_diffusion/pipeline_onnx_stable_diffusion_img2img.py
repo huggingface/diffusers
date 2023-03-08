@@ -264,6 +264,48 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
         return prompt_embeds
 
+    def check_inputs(
+        self,
+        prompt,
+        callback_steps,
+        negative_prompt=None,
+        prompt_embeds=None,
+        negative_prompt_embeds=None,
+    ):
+        if (callback_steps is None) or (
+            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+        ):
+            raise ValueError(
+                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
+                f" {type(callback_steps)}."
+            )
+
+        if prompt is not None and prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        elif prompt is None and prompt_embeds is None:
+            raise ValueError(
+                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
+            )
+        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+        if negative_prompt is not None and negative_prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
+                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
+            )
+
+        if prompt_embeds is not None and negative_prompt_embeds is not None:
+            if prompt_embeds.shape != negative_prompt_embeds.shape:
+                raise ValueError(
+                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
+                    f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
+                    f" {negative_prompt_embeds.shape}."
+                )
+
     def __call__(
         self,
         prompt: Union[str, List[str]],
@@ -275,6 +317,8 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         num_images_per_prompt: Optional[int] = 1,
         eta: Optional[float] = 0.0,
         generator: Optional[np.random.RandomState] = None,
+        prompt_embeds: Optional[np.ndarray] = None,
+        negative_prompt_embeds: Optional[np.ndarray] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, np.ndarray], None]] = None,
@@ -314,6 +358,13 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 [`schedulers.DDIMScheduler`], will be ignored for others.
             generator (`np.random.RandomState`, *optional*):
                 A np.random.RandomState to make generation deterministic.
+            prompt_embeds (`np.ndarray`, *optional*):
+                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
+                provided, text embeddings will be generated from `prompt` input argument.
+            negative_prompt_embeds (`np.ndarray`, *optional*):
+                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
+                argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -334,23 +385,20 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
-        if isinstance(prompt, str):
+
+        # check inputs. Raise error if not correct
+        self.check_inputs(prompt, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
+
+        # define call parameters
+        if prompt is not None and isinstance(prompt, str):
             batch_size = 1
-        elif isinstance(prompt, list):
+        elif prompt is not None and isinstance(prompt, list):
             batch_size = len(prompt)
         else:
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+            batch_size = prompt_embeds.shape[0]
 
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
-
-        if (callback_steps is None) or (
-            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
-        ):
-            raise ValueError(
-                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                f" {type(callback_steps)}."
-            )
 
         if generator is None:
             generator = np.random
@@ -366,7 +414,12 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         prompt_embeds = self._encode_prompt(
-            prompt, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+            prompt,
+            num_images_per_prompt,
+            do_classifier_free_guidance,
+            negative_prompt,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
         )
 
         latents_dtype = prompt_embeds.dtype
