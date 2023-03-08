@@ -19,13 +19,13 @@ import os
 import random
 import shutil
 import sys
-import requests_mock
 import tempfile
 import unittest
 import unittest.mock as mock
 
 import numpy as np
 import PIL
+import requests_mock
 import safetensors.torch
 import torch
 from parameterized import parameterized
@@ -70,10 +70,11 @@ class DownloadTests(unittest.TestCase):
                 )
 
             download_requests = [r.method for r in m.request_history]
-            download_requests.count("HEAD")
-            download_requests.count("GET")
-            len(download_requests) == 33
-            # assert len(download_requests) == 33, "2 calls per file (15 files) + load_config, model_info and send_telemetry"
+            assert download_requests.count("HEAD") == 16, "15 calls to files + send_telemetry"
+            assert download_requests.count("GET") == 17, "15 calls to files + model_info + model_index.json"
+            assert (
+                len(download_requests) == 33
+            ), "2 calls per file (15 files) + send_telemetry, model_info and model_index.json"
 
             with requests_mock.mock(real_http=True) as m:
                 DiffusionPipeline.load_pipeline(
@@ -81,10 +82,11 @@ class DownloadTests(unittest.TestCase):
                 )
 
             cache_requests = [r.method for r in m.request_history]
-            # assert len(cache_requests) == 2, "We should call only `model_info` to check for _commit hash and `send_telemetry`"
-            import ipdb; ipdb.set_trace()
-
-            print("hey")
+            assert cache_requests.count("HEAD") == 1, "send_telemetry is only HEAD"
+            assert cache_requests.count("GET") == 1, "model info is only GET"
+            assert (
+                len(cache_requests) == 2
+            ), "We should call only `model_info` to check for _commit hash and `send_telemetry`"
 
     def test_download_only_pytorch(self):
         with tempfile.TemporaryDirectory() as tmpdirname:

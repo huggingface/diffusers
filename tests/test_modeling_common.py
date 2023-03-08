@@ -19,9 +19,9 @@ import tempfile
 import unittest
 import unittest.mock as mock
 from typing import Dict, List, Tuple
-import requests_mock
 
 import numpy as np
+import requests_mock
 import torch
 from requests.exceptions import HTTPError
 
@@ -93,7 +93,9 @@ class ModelUtilsTest(unittest.TestCase):
                 )
 
             cache_requests = [r.method for r in m.request_history]
-            assert "HEAD" == cache_requests[0] and len(cache_requests) == 1, "We should call only `model_info` to check for _commit hash and `send_telemetry`"
+            assert (
+                "HEAD" == cache_requests[0] and len(cache_requests) == 1
+            ), "We should call only `model_info` to check for _commit hash and `send_telemetry`"
 
         diffusers.utils.import_utils._safetensors_available = True
 
