@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -90,8 +90,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
         resnet_time_scale_shift (`str`, *optional*, defaults to `"default"`): Time scale shift config
             for resnet blocks, see [`~models.resnet.ResnetBlock2D`]. Choose from `default` or `scale_shift`.
-        class_embed_type (`str`, *optional*, defaults to None): The type of class embedding to use which is ultimately
-            summed with the time embeddings. Choose from `None`, `"timestep"`, `"identity"`, or `"projection"`.
+        class_embed_type (`str`, *optional*, defaults to None):
+            The type of class embedding to use which is ultimately summed with the time embeddings. Choose from `None`,
+            `"timestep"`, `"identity"`, or `"projection"`.
         num_class_embeds (`int`, *optional*, defaults to None):
             Input dimension of the learnable embedding matrix to be projected to `time_embed_dim`, when performing
             class conditioning with `class_embed_type` equal to `None`.
@@ -142,7 +143,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         num_class_embeds: Optional[int] = None,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
-        time_embedding_type: str = "positional",  # fourier, positional
+        time_embedding_type: str = "positional",
         timestep_post_act: Optional[str] = None,
         time_cond_proj_dim: Optional[int] = None,
         conv_in_kernel: int = 3,
@@ -492,6 +493,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        down_block_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
+        mid_block_additional_residual: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> Union[UNet2DConditionOutput, Tuple]:
         r"""
@@ -589,6 +592,17 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
             down_block_res_samples += res_samples
 
+        if down_block_additional_residuals is not None:
+            new_down_block_res_samples = ()
+
+            for down_block_res_sample, down_block_additional_residual in zip(
+                down_block_res_samples, down_block_additional_residuals
+            ):
+                down_block_res_sample += down_block_additional_residual
+                new_down_block_res_samples += (down_block_res_sample,)
+
+            down_block_res_samples = new_down_block_res_samples
+
         # 4. mid
         if self.mid_block is not None:
             sample = self.mid_block(
@@ -598,6 +612,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 attention_mask=attention_mask,
                 cross_attention_kwargs=cross_attention_kwargs,
             )
+
+        if mid_block_additional_residual is not None:
+            sample += mid_block_additional_residual
 
         # 5. up
         for i, upsample_block in enumerate(self.up_blocks):
@@ -625,6 +642,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 sample = upsample_block(
                     hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size
                 )
+
         # 6. post-process
         if self.conv_norm_out:
             sample = self.conv_norm_out(sample)
