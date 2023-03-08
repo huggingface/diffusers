@@ -21,6 +21,7 @@ from functools import partial
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
+from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from packaging import version
 from requests import HTTPError
@@ -40,7 +41,6 @@ from ..utils import (
     is_safetensors_available,
     is_torch_version,
     logging,
-    try_cache_hub_download,
 )
 
 
@@ -808,7 +808,10 @@ def _get_model_file(
             and version.parse(version.parse(__version__).base_version) >= version.parse("0.15.0")
         ):
             try:
-                model_file = try_cache_hub_download(
+                if _commit_hash is not None and revision is None:
+                    revision = _commit_hash
+
+                model_file = hf_hub_download(
                     pretrained_model_name_or_path,
                     filename=_add_variant(weights_name, revision),
                     cache_dir=cache_dir,
@@ -820,7 +823,6 @@ def _get_model_file(
                     user_agent=user_agent,
                     subfolder=subfolder,
                     revision=revision,
-                    _commit_hash=_commit_hash,
                 )
                 warnings.warn(
                     f"Loading the variant {revision} from {pretrained_model_name_or_path} via `revision='{revision}'` is deprecated. Loading instead from `revision='main'` with `variant={revision}`. Loading model variants via `revision='{revision}'` will be removed in diffusers v1. Please use `variant='{revision}'` instead.",
@@ -833,8 +835,11 @@ def _get_model_file(
                     FutureWarning,
                 )
         try:
+            if _commit_hash is not None and revision is None:
+                revision = _commit_hash
+
             # 2. Load model file as usual
-            model_file = try_cache_hub_download(
+            model_file = hf_hub_download(
                 pretrained_model_name_or_path,
                 filename=weights_name,
                 cache_dir=cache_dir,
@@ -846,7 +851,6 @@ def _get_model_file(
                 user_agent=user_agent,
                 subfolder=subfolder,
                 revision=revision,
-                _commit_hash=_commit_hash,
             )
             return model_file
 

@@ -26,6 +26,7 @@ from pathlib import PosixPath
 from typing import Any, Dict, Tuple, Union
 
 import numpy as np
+from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
 
@@ -38,7 +39,6 @@ from .utils import (
     extract_commit_hash,
     http_user_agent,
     logging,
-    try_cache_hub_download,
 )
 
 
@@ -333,7 +333,7 @@ class ConfigMixin:
         else:
             try:
                 # Load from URL or cache if already cached
-                config_file = try_cache_hub_download(
+                config_file = hf_hub_download(
                     pretrained_model_name_or_path,
                     filename=cls.config_name,
                     cache_dir=cache_dir,

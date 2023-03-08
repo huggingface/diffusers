@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Dict, Optional, Union
 from uuid import uuid4
 
-from huggingface_hub import HfFolder, ModelCard, ModelCardData, hf_hub_download, whoami
+from huggingface_hub import HfFolder, ModelCard, ModelCardData, whoami
 from huggingface_hub.file_download import REGEX_COMMIT_HASH
 from huggingface_hub.utils import is_jinja_available
 
@@ -151,109 +151,6 @@ def extract_commit_hash(resolved_file: Optional[str], commit_hash: Optional[str]
     return commit_hash if REGEX_COMMIT_HASH.match(commit_hash) else None
 
 
-def try_cache_hub_download(
-    repo_id: str,
-    filename: str,
-    *args,
-    cache_dir: Union[str, Path, None] = None,
-    subfolder: Union[str, Path, None] = None,
-    _commit_hash: Optional[str] = None,
-    **kwargs,
-) -> Union[os.PathLike, str]:
-    """Wrapper method around hf_hub_download:
-    https://huggingface.co/docs/huggingface_hub/main/en/package_reference/file_download#huggingface_hub.hf_hub_download
-    that first tries to load from cache before pinging the Hub"""
-    if _commit_hash is not None:
-        # If the file is cached under that commit hash, we return it directly.
-        resolved_file = try_to_load_from_cache(
-            repo_id, filename, cache_dir=cache_dir, subfolder=subfolder, revision=_commit_hash
-        )
-        if resolved_file is not None:
-            if resolved_file is not _CACHED_NO_EXIST:
-                return resolved_file
-            else:
-                raise EnvironmentError(f"Could not locate {filename} inside {repo_id}.")
-
-    return hf_hub_download(repo_id, filename, *args, cache_dir=cache_dir, subfolder=subfolder, **kwargs)
-
-
-def try_to_load_from_cache(
-    repo_id: str,
-    filename: Union[str, Path, None] = None,
-    cache_dir: Union[str, Path, None] = None,
-    revision: Optional[str] = None,
-    subfolder: Optional[str] = None,
-) -> Optional[str]:
-    """
-    Explores the cache to return the latest cached folder or file for a given revision if found.
-
-    This function will not raise any exception if the folder or file in not cached.
-
-    Args:
-        cache_dir (`str` or `os.PathLike`):
-            The folder where the cached files lie.
-        repo_id (`str`):
-            The ID of the repo on huggingface.co.
-        filename (`str`, *optional*):
-            The filename to look for inside `repo_id`.
-        revision (`str`, *optional*):
-            The specific model version to use. Will default to `"main"` if it's not provided and no `commit_hash` is
-            provided either.
-
-    Returns:
-        `Optional[str]` or `_CACHED_NO_EXIST`:
-            Will return `None` if the folder or file was not cached. Otherwise:
-            - The exact path to the cached folder or file if it's found in the cache
-            - A special value `_CACHED_NO_EXIST` if the file does not exist at the given commit hash and this fact was
-              cached.
-    """
-    if revision is None:
-        revision = "main"
-
-    if subfolder is None:
-        subfolder = ""
-
-    if cache_dir is None:
-        cache_dir = DIFFUSERS_CACHE
-
-    object_id = repo_id.replace("/", "--")
-    repo_cache = os.path.join(cache_dir, f"models--{object_id}")
-    if not os.path.isdir(repo_cache):
-        # No cache for this model
-        return None
-    for folder in ["refs", "snapshots"]:
-        if not os.path.isdir(os.path.join(repo_cache, folder)):
-            return None
-
-    # Resolve refs (for instance to convert main to the associated commit sha)
-    cached_refs = os.listdir(os.path.join(repo_cache, "refs"))
-    if revision in cached_refs:
-        with open(os.path.join(repo_cache, "refs", revision)) as f:
-            revision = f.read()
-
-    cached_shas = os.listdir(os.path.join(repo_cache, "snapshots"))
-    if revision not in cached_shas:
-        # No cache for this revision and we won't try to return a random revision
-        return None
-
-    cached_folder = os.path.join(repo_cache, "snapshots", revision, subfolder)
-    cached_folder = cached_folder if os.path.isdir(cached_folder) else None
-
-    if filename is None:
-        # return cached folder if filename is None
-        return cached_folder
-
-    if os.path.isfile(os.path.join(repo_cache, ".no_exist", revision, filename)):
-        return _CACHED_NO_EXIST
-
-    cached_file = os.path.join(cached_folder, filename)
-
-    if os.path.isfile(cached_file):
-        return cached_file
-
-    return None
-
-
 # Old default cache path, potentially to be migrated.
 # This logic was more or less taken from `transformers`, with the following differences:
 # - Diffusers doesn't use custom environment variables to specify the cache path.
@@ -272,7 +169,7 @@ def move_cache(old_cache_dir: Optional[str] = None, new_cache_dir: Optional[str]
 
     old_cache_dir = Path(old_cache_dir).expanduser()
     new_cache_dir = Path(new_cache_dir).expanduser()
-    for old_blob_path in old_cache_dir.glob("**/blobs/*"):  #  move file blob by blob
+    for old_blob_path in old_cache_dir.glob("**/blobs/*"):
         if old_blob_path.is_file() and not old_blob_path.is_symlink():
             new_blob_path = new_cache_dir / old_blob_path.relative_to(old_cache_dir)
             new_blob_path.parent.mkdir(parents=True, exist_ok=True)

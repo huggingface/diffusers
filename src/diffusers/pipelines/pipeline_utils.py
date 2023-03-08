@@ -27,7 +27,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import numpy as np
 import PIL
 import torch
-from huggingface_hub import model_info, snapshot_download
+from huggingface_hub import hf_hub_download, model_info, snapshot_download
 from huggingface_hub.utils import send_telemetry
 from packaging import version
 from PIL import Image
@@ -55,7 +55,6 @@ from ..utils import (
     is_torch_version,
     is_transformers_available,
     logging,
-    try_to_load_from_cache,
 )
 
 
@@ -1097,7 +1096,7 @@ class DiffusionPipeline(ConfigMixin):
             _commit_hash = info.sha
 
             # try loading the config file
-            config_file = try_to_load_from_cache(
+            config_file = hf_hub_download(
                 pretrained_model_name_or_path, cls.config_name, cache_dir=cache_dir, revision=_commit_hash
             )
 
@@ -1180,9 +1179,10 @@ class DiffusionPipeline(ConfigMixin):
 
                 expected_files = [f for f in filenames if not any(p.match(f) for p in re_ignore_pattern)]
                 expected_files = [f for f in expected_files if any(p.match(f) for p in re_allow_pattern)]
-                cached_pipeline = try_to_load_from_cache(
-                    pretrained_model_name_or_path, cache_dir=cache_dir, revision=_commit_hash
-                )
+
+                folder_name = f"models--{'--'.join(pretrained_model_name_or_path.split('/'))}"
+                cached_pipeline = os.path.join(cache_dir, folder_name, "snapshots", _commit_hash)
+
                 pipeline_is_cached = all(os.path.isfile(os.path.join(cached_pipeline, f)) for f in expected_files)
 
                 if pipeline_is_cached:
