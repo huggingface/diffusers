@@ -12,7 +12,17 @@ specific language governing permissions and limitations under the License.
 
 # Text-Guided Image-to-Image Generation
 
-The [`StableDiffusionImg2ImgPipeline`] lets you pass a text prompt and an initial image to condition the generation of new images.
+[[open-in-colab]]
+
+The [`StableDiffusionImg2ImgPipeline`] lets you pass a text prompt and an initial image to condition the generation of new images. This tutorial shows how to use it for text-guided image-to-image generation with Stable Diffusion model.
+
+Before you begin, make sure you have all the necessary libraries installed:
+
+```bash
+!pip install diffusers transformers ftfy accelerate
+```
+
+Get started by creating a [`StableDiffusionImg2ImgPipeline`] with a pretrained Stable Diffusion model.
 
 ```python
 import torch
@@ -21,25 +31,83 @@ from PIL import Image
 from io import BytesIO
 
 from diffusers import StableDiffusionImg2ImgPipeline
+```
 
-# load the pipeline
+Load the pipeline
+
+```python
 device = "cuda"
 pipe = StableDiffusionImg2ImgPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to(
     device
 )
+```
 
-# let's download an initial image
+Download an initial image and preprocess it so we can pass it to the pipeline.
+
+```python
 url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
 
 response = requests.get(url)
 init_image = Image.open(BytesIO(response.content)).convert("RGB")
 init_image.thumbnail((768, 768))
-
-prompt = "A fantasy landscape, trending on artstation"
-
-images = pipe(prompt=prompt, image=init_image, strength=0.75, guidance_scale=7.5).images
-
-images[0].save("fantasy_landscape.png")
+init_image
 ```
-You can also run this example on colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/image_2_image_using_diffusers.ipynb)
+
+![img](https://huggingface.co/datasets/YiYiXu/test-doc-assets/resolve/main/image_2_image_using_diffusers_cell_8_output_0.jpeg)
+
+Define the prompt and run the pipeline.
+
+```python
+prompt = "A fantasy landscape, trending on artstation"
+```
+
+<Tip>
+
+`strength` is a value between 0.0 and 1.0, that controls the amount of noise that is added to the input image. Values that approach 1.0 allow for lots of variations but will also produce images that are not semantically consistent with the input.
+
+</Tip>
+
+Let's generate two images with same pipeline and seed, but with different values for `strength`
+
+```python
+generator = torch.Generator(device=device).manual_seed(1024)
+image = pipe(prompt=prompt, image=init_image, strength=0.75, guidance_scale=7.5, generator=generator).images[0]
+```
+
+```python
+image
+```
+
+![img](https://huggingface.co/datasets/YiYiXu/test-doc-assets/resolve/main/image_2_image_using_diffusers_cell_13_output_0.jpeg)
+
+
+```python
+image = pipe(prompt=prompt, image=init_image, strength=0.5, guidance_scale=7.5, generator=generator).images[0]
+image
+```
+
+![img](https://huggingface.co/datasets/YiYiXu/test-doc-assets/resolve/main/image_2_image_using_diffusers_cell_14_output_1.jpeg)
+
+
+As you can see, when using a lower value for `strength`, the generated image is more closer to the original `image`
+
+Now let's use a different scheduler - [LMSDiscreteScheduler](https://huggingface.co/docs/diffusers/api/schedulers#diffusers.LMSDiscreteScheduler)
+
+```python
+from diffusers import LMSDiscreteScheduler
+
+lms = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
+pipe.scheduler = lms
+```
+
+```python
+generator = torch.Generator(device=device).manual_seed(1024)
+image = pipe(prompt=prompt, image=init_image, strength=0.75, guidance_scale=7.5, generator=generator).images[0]
+```
+
+```python
+image
+```
+
+![img](https://huggingface.co/datasets/YiYiXu/test-doc-assets/resolve/main/image_2_image_using_diffusers_cell_19_output_0.jpeg)
 

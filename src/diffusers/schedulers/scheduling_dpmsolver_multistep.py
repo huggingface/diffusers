@@ -204,6 +204,18 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         ] * self.config.solver_order
         self.lower_order_nums = 0
 
+    # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
+    def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
+        # Dynamic thresholding in https://arxiv.org/abs/2205.11487
+        dynamic_max_val = (
+            sample.flatten(1)
+            .abs()
+            .quantile(self.config.dynamic_thresholding_ratio, dim=1)
+            .clamp_min(self.config.sample_max_value)
+            .view(-1, *([1] * (sample.ndim - 1)))
+        )
+        return sample.clamp(-dynamic_max_val, dynamic_max_val) / dynamic_max_val
+
     def convert_model_output(
         self, model_output: torch.FloatTensor, timestep: int, sample: torch.FloatTensor
     ) -> torch.FloatTensor:
@@ -247,15 +259,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 orig_dtype = x0_pred.dtype
                 if orig_dtype not in [torch.float, torch.double]:
                     x0_pred = x0_pred.float()
-                dynamic_max_val = torch.quantile(
-                    torch.abs(x0_pred).reshape((x0_pred.shape[0], -1)), self.config.dynamic_thresholding_ratio, dim=1
-                )
-                dynamic_max_val = torch.maximum(
-                    dynamic_max_val,
-                    self.config.sample_max_value * torch.ones_like(dynamic_max_val).to(dynamic_max_val.device),
-                )[(...,) + (None,) * (x0_pred.ndim - 1)]
-                x0_pred = torch.clamp(x0_pred, -dynamic_max_val, dynamic_max_val) / dynamic_max_val
-                x0_pred = x0_pred.type(orig_dtype)
+                x0_pred = self._threshold_sample(x0_pred).type(orig_dtype)
             return x0_pred
         # DPM-Solver needs to solve an integral of the noise prediction model.
         elif self.config.algorithm_type == "dpmsolver":
