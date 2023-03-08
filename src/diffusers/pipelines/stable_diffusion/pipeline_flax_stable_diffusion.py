@@ -24,6 +24,7 @@ from flax.jax_utils import unreplicate
 from flax.training.common_utils import shard
 from packaging import version
 from PIL import Image
+
 from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel
 
 from ...models import FlaxAutoencoderKL, FlaxUNet2DConditionModel
@@ -66,8 +67,8 @@ EXAMPLE_DOC_STRING = """
         >>> num_samples = jax.device_count()
         >>> prompt = num_samples * [prompt]
         >>> prompt_ids = pipeline.prepare_inputs(prompt)
-
         # shard inputs and rng
+
         >>> params = replicate(params)
         >>> prng_seed = jax.random.split(prng_seed, jax.device_count())
         >>> prompt_ids = shard(prompt_ids)
@@ -304,7 +305,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
 
         image = (image / 2 + 0.5).clip(0, 1).transpose(0, 2, 3, 1)
         return image
-   
+
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
@@ -349,7 +350,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.FlaxStableDiffusionPipelineOutput`] instead of
                 a plain tuple.
-        
+
         Examples:
 
         Returns:

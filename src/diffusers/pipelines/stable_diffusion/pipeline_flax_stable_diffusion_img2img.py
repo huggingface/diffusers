@@ -23,6 +23,7 @@ from flax.core.frozen_dict import FrozenDict
 from flax.jax_utils import unreplicate
 from flax.training.common_utils import shard
 from PIL import Image
+
 from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel
 
 from ...models import FlaxAutoencoderKL, FlaxUNet2DConditionModel
@@ -56,8 +57,11 @@ EXAMPLE_DOC_STRING = """
         >>> from PIL import Image
         >>> from diffusers import FlaxStableDiffusionImg2ImgPipeline
 
+
         >>> def create_key(seed=0):
-        >>>    return jax.random.PRNGKey(seed)
+        ...     return jax.random.PRNGKey(seed)
+
+
         >>> rng = create_key(0)
 
         >>> url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
@@ -68,31 +72,36 @@ EXAMPLE_DOC_STRING = """
         >>> prompts = "A fantasy landscape, trending on artstation"
 
         >>> pipeline, params = FlaxStableDiffusionImg2ImgPipeline.from_pretrained(
-        ...     "CompVis/stable-diffusion-v1-4", revision="flax",
+        ...     "CompVis/stable-diffusion-v1-4",
+        ...     revision="flax",
         ...     dtype=jnp.bfloat16,
         ... )
 
         >>> num_samples = jax.device_count()
         >>> rng = jax.random.split(rng, jax.device_count())
-        >>> prompt_ids, processed_image = pipeline.prepare_inputs(prompt=[prompts]*num_samples, image = [init_img]*num_samples)
+        >>> prompt_ids, processed_image = pipeline.prepare_inputs(
+        ...     prompt=[prompts] * num_samples, image=[init_img] * num_samples
+        ... )
         >>> p_params = replicate(params)
         >>> prompt_ids = shard(prompt_ids)
         >>> processed_image = shard(processed_image)
 
         >>> output = pipeline(
-        ...     prompt_ids=prompt_ids, 
-        ...     image=processed_image, 
-        ...     params=p_params, 
-        ...     prng_seed=rng, 
-        ...     strength=0.75, 
-        ...     num_inference_steps=50, 
-        ...     jit=True, 
+        ...     prompt_ids=prompt_ids,
+        ...     image=processed_image,
+        ...     params=p_params,
+        ...     prng_seed=rng,
+        ...     strength=0.75,
+        ...     num_inference_steps=50,
+        ...     jit=True,
         ...     height=512,
-        ...     width=768).images
+        ...     width=768,
+        ... ).images
 
         >>> output_images = pipeline.numpy_to_pil(np.asarray(output.reshape((num_samples,) + output.shape[-3:])))
         ```
 """
+
 
 class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
     r"""
@@ -326,7 +335,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
 
         image = (image / 2 + 0.5).clip(0, 1).transpose(0, 2, 3, 1)
         return image
-    
+
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
@@ -382,7 +391,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
             jit (`bool`, defaults to `False`):
                 Whether to run `pmap` versions of the generation and safety scoring functions. NOTE: This argument
                 exists because `__call__` is not yet end-to-end pmap-able. It will be removed in a future release.
-        
+
         Examples:
 
         Returns:
