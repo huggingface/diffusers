@@ -207,7 +207,7 @@ class DownloadTests(unittest.TestCase):
                 tmpdirname = StableDiffusionPipeline.load_pipeline(
                     "hf-internal-testing/stable-diffusion-all-variants", cache_dir=tmpdirname
                 )
-                all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
+                all_root_files = [t[-1] for t in os.walk(tmpdirname)]
                 files = [item for sublist in all_root_files for item in sublist]
 
                 # None of the downloaded files should be a variant file even if we have some here:
@@ -233,7 +233,7 @@ class DownloadTests(unittest.TestCase):
                 tmpdirname = StableDiffusionPipeline.load_pipeline(
                     "hf-internal-testing/stable-diffusion-all-variants", cache_dir=tmpdirname, variant=variant
                 )
-                all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
+                all_root_files = [t[-1] for t in os.walk(tmpdirname)]
                 files = [item for sublist in all_root_files for item in sublist]
 
                 # None of the downloaded files should be a non-variant file even if we have some here:
@@ -261,11 +261,10 @@ class DownloadTests(unittest.TestCase):
                 tmpdirname = StableDiffusionPipeline.load_pipeline(
                     "hf-internal-testing/stable-diffusion-all-variants", cache_dir=tmpdirname, variant=variant
                 )
-                snapshots = os.path.join(tmpdirname, os.listdir(tmpdirname)[0], "snapshots")
-                all_root_files = [t[-1] for t in os.walk(snapshots)]
+                all_root_files = [t[-1] for t in os.walk(tmpdirname)]
                 files = [item for sublist in all_root_files for item in sublist]
 
-                unet_files = os.listdir(os.path.join(snapshots, os.listdir(snapshots)[0], "unet"))
+                unet_files = os.listdir(os.path.join(tmpdirname, "unet"))
 
                 # Some of the downloaded files should be a non-variant file, check:
                 # https://huggingface.co/hf-internal-testing/stable-diffusion-all-variants/tree/main/unet
@@ -288,7 +287,7 @@ class DownloadTests(unittest.TestCase):
             for variant in [None, "no_ema"]:
                 with self.assertRaises(OSError) as error_context:
                     with tempfile.TemporaryDirectory() as tmpdirname:
-                        tmpdirname = StableDiffusionPipeline.load_pipeline(
+                        tmpdirname = StableDiffusionPipeline.from_pretrained(
                             "hf-internal-testing/stable-diffusion-broken-variants",
                             cache_dir=tmpdirname,
                             variant=variant,
@@ -298,13 +297,11 @@ class DownloadTests(unittest.TestCase):
 
             # text encoder has fp16 variants so we can load it
             with tempfile.TemporaryDirectory() as tmpdirname:
-                pipe = StableDiffusionPipeline.from_pretrained(
+                tmpdirname = StableDiffusionPipeline.load_pipeline(
                     "hf-internal-testing/stable-diffusion-broken-variants", cache_dir=tmpdirname, variant="fp16"
                 )
-                assert pipe is not None
 
-                snapshots = os.path.join(tmpdirname, os.listdir(tmpdirname)[0], "snapshots")
-                all_root_files = [t[-1] for t in os.walk(snapshots)]
+                all_root_files = [t[-1] for t in os.walk(tmpdirname)]
                 files = [item for sublist in all_root_files for item in sublist]
 
                 # None of the downloaded files should be a non-variant file even if we have some here:
