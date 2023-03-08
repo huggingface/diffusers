@@ -93,7 +93,7 @@ class KarrasVePipeline(DiffusionPipeline):
 
             # 1. Select temporarily increased noise level sigma_hat
             # 2. Add new noise to move from sample_i to sample_hat
-            sample_hat, sigma_hat = self.scheduler.add_noise_to_input(sample, sigma, generator=generator)
+            sample_hat, sigma_hat = self.scheduler.add_noise_to_input(sample, sigma, generator=generator, device=self.device)
 
             # 3. Predict the noise residual given the noise magnitude `sigma_hat`
             # The model inputs and output are adjusted by following eq. (213) in [1].
