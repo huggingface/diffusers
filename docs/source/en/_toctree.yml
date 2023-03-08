@@ -48,6 +48,8 @@
       title: How to contribute a Pipeline
     - local: using-diffusers/using_safetensors
       title: Using safetensors
+    - local: using-diffusers/weighted_prompts
+      title: Weighting Prompts
     title: Pipelines for Inference
   - sections:
     - local: using-diffusers/rl

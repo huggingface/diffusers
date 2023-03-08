@@ -80,6 +80,7 @@ from setuptools import find_packages, setup
 _deps = [
     "Pillow",  # keep the PIL.Image.Resampling deprecation away
     "accelerate>=0.11.0",
+    "compel==0.1.8",
     "black~=23.1",
     "datasets",
     "filelock",
@@ -182,6 +183,7 @@ extras["quality"] = deps_list("black", "isort", "ruff", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "Jinja2")
 extras["test"] = deps_list(
+    "compel",
     "datasets",
     "Jinja2",
     "k-diffusion",
