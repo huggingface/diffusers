@@ -133,7 +133,7 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         self.schedule = torch.tensor(schedule, dtype=torch.float32, device=device)
 
     def add_noise_to_input(
-        self, sample: torch.FloatTensor, sigma: float, generator: Optional[torch.Generator] = None, device: Optional[torch.device] = None
+        self, sample: torch.FloatTensor, sigma: float, generator: Optional[torch.Generator] = None, 
     ) -> Tuple[torch.FloatTensor, float]:
         """
         Explicit Langevin-like "churn" step of adding noise to the sample according to a factor gamma_i ≥ 0 to reach a
@@ -147,7 +147,7 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
             gamma = 0
 
         # sample eps ~ N(0, S_noise^2 * I)
-        eps = self.config.s_noise * randn_tensor(sample.shape, generator=generator, device=device).to(sample.device)
+        eps = self.config.s_noise * randn_tensor(sample.shape, generator=generator).to(sample.device)
         sigma_hat = sigma + gamma * sigma
         sample_hat = sample + ((sigma_hat**2 - sigma**2) ** 0.5 * eps)
 
