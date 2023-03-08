@@ -1,5 +1,5 @@
 # Stable Diffusion text-to-image fine-tuning
-
+This extended LoRA training script was authored by [haofanwang](https://github.com/haofanwang).
 This is an experimental LoRA extension of [this example](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora.py). We further support add LoRA layers for text encoder.
 
 ## Training with LoRA
