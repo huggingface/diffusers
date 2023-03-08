@@ -86,7 +86,7 @@ _deps = [
     "filelock",
     "flax>=0.4.1",
     "hf-doc-builder>=0.3.0",
-    "huggingface-hub==0.13.0.rc0",
+    "huggingface-hub==0.13.0.rc1",
     "importlib_metadata",
     "isort>=5.5.4",
     "jax>=0.2.8,!=0.3.2",
