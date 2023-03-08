@@ -122,7 +122,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        controlnet: ControlNetModel,
+        controlnet: Union[ControlNetModel, List[ControlNetModel]],
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
@@ -146,18 +146,38 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                 " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
             )
 
-        self.register_modules(
+        modules = dict(
             vae=vae,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
             unet=unet,
-            controlnet=controlnet,
             scheduler=scheduler,
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
+
+        if isinstance(controlnet, list):
+            for i, module in enumerate(controlnet):
+                if i == 0:
+                    modules["controlnet"] = module
+                else:
+                    modules[f"_controlnet_{i}"] = module
+        else:
+            modules["controlnet"] = controlnet
+
+        self.register_modules(**modules)
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
+
+    def _controlnets(self):
+        keys = sorted(list(filter(lambda key: key.startswith("_controlnet_"), self.__dict__.keys())))
+        return [self.controlnet] + [getattr(self, key) for key in keys]
+
+    def to(self, torch_device: Optional[Union[str, torch.device]] = None, silence_dtype_warnings: bool = False):
+        super().to(torch_device, silence_dtype_warnings)
+        for module in self._controlnets():
+            module.to(torch_device)
+        return self
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
@@ -192,7 +212,8 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.controlnet]:
+        modules = [self.unet, self.text_encoder, self.vae] + self._controlnets()
+        for cpu_offloaded_model in modules:
             cpu_offload(cpu_offloaded_model, device)
 
         if self.safety_checker is not None:
@@ -221,7 +242,8 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
             _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
 
         # control net hook has be manually offloaded as it alternates with unet
-        cpu_offload_with_hook(self.controlnet, device)
+        for controlnet in self._controlnets():
+            cpu_offload_with_hook(controlnet, device)
 
         # We'll offload the last model manually.
         self.final_offload_hook = hook
@@ -712,7 +734,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
             batch_size * num_images_per_prompt,
             num_images_per_prompt,
             device,
-            self.controlnet.dtype,
+            self._controlnets()[0].dtype,
         )
 
         if do_classifier_free_guidance:
@@ -746,13 +768,22 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                down_block_res_samples, mid_block_res_sample = self.controlnet(
-                    latent_model_input,
-                    t,
-                    encoder_hidden_states=prompt_embeds,
-                    controlnet_cond=image,
-                    return_dict=False,
-                )
+                # controlnet(s) inference
+                for i, controlnet in enumerate(self._controlnets()):
+                    down_samples, mid_sample = controlnet(
+                        latent_model_input,
+                        t,
+                        encoder_hidden_states=prompt_embeds,
+                        controlnet_cond=image,
+                        return_dict=False,
+                    )
+                    if i == 0:
+                        down_block_res_samples, mid_block_res_sample = down_samples, mid_sample
+                    else:
+                        down_block_res_samples = [
+                            d_prev + d_curr for d_prev, d_curr in zip(down_block_res_samples, down_samples)
+                        ]
+                        mid_block_res_sample = mid_block_res_sample + mid_sample
 
                 down_block_res_samples = [
                     down_block_res_sample * controlnet_conditioning_scale
@@ -788,7 +819,8 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         # manually for max memory savings
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.unet.to("cpu")
-            self.controlnet.to("cpu")
+            for module in self._controlnets():
+                module.to("cpu")
             torch.cuda.empty_cache()
 
         if output_type == "latent":
