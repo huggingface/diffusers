@@ -1093,11 +1093,11 @@ class DiffusionPipeline(ConfigMixin):
             )
             user_agent["pretrained_model_name_or_path"] = pretrained_model_name_or_path
             send_telemetry("pipelines", library_name="diffusers", library_version=__version__, user_agent=user_agent)
-            _commit_hash = info.sha
+            commit_hash = info.sha
 
             # try loading the config file
             config_file = hf_hub_download(
-                pretrained_model_name_or_path, cls.config_name, cache_dir=cache_dir, revision=_commit_hash
+                pretrained_model_name_or_path, cls.config_name, cache_dir=cache_dir, revision=commit_hash
             )
 
             if config_file is None:
@@ -1181,7 +1181,7 @@ class DiffusionPipeline(ConfigMixin):
                 expected_files = [f for f in expected_files if any(p.match(f) for p in re_allow_pattern)]
 
                 folder_name = f"models--{'--'.join(pretrained_model_name_or_path.split('/'))}"
-                cached_pipeline = os.path.join(cache_dir, folder_name, "snapshots", _commit_hash)
+                cached_pipeline = os.path.join(cache_dir, folder_name, "snapshots", commit_hash)
 
                 pipeline_is_cached = all(os.path.isfile(os.path.join(cached_pipeline, f)) for f in expected_files)
 

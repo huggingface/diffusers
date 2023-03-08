@@ -483,7 +483,7 @@ class ModelMixin(torch.nn.Module):
             user_agent=user_agent,
             **kwargs,
         )
-        _commit_hash = config.pop("_commit_hash", None)
+        commit_hash = config.pop("_commit_hash", None)
 
         # This variable will flag if we're loading a sharded checkpoint. In this case the archive file is just the
         # Load model
@@ -501,7 +501,7 @@ class ModelMixin(torch.nn.Module):
                 revision=revision,
                 subfolder=subfolder,
                 user_agent=user_agent,
-                _commit_hash=_commit_hash,
+                commit_hash=commit_hash,
             )
             model = cls.from_config(config, **unused_kwargs)
 
@@ -524,7 +524,7 @@ class ModelMixin(torch.nn.Module):
                         revision=revision,
                         subfolder=subfolder,
                         user_agent=user_agent,
-                        _commit_hash=_commit_hash,
+                        commit_hash=commit_hash,
                     )
                 except:  # noqa: E722
                     pass
@@ -541,7 +541,7 @@ class ModelMixin(torch.nn.Module):
                     revision=revision,
                     subfolder=subfolder,
                     user_agent=user_agent,
-                    _commit_hash=_commit_hash,
+                    commit_hash=commit_hash,
                 )
 
             if low_cpu_mem_usage:
@@ -781,7 +781,7 @@ def _get_model_file(
     use_auth_token,
     user_agent,
     revision,
-    _commit_hash=None,
+    commit_hash=None,
 ):
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
     if os.path.isfile(pretrained_model_name_or_path):
@@ -808,8 +808,8 @@ def _get_model_file(
             and version.parse(version.parse(__version__).base_version) >= version.parse("0.15.0")
         ):
             try:
-                if _commit_hash is not None and revision is None:
-                    revision = _commit_hash
+                if commit_hash is not None and revision is None:
+                    revision = commit_hash
 
                 model_file = hf_hub_download(
                     pretrained_model_name_or_path,
@@ -835,8 +835,8 @@ def _get_model_file(
                     FutureWarning,
                 )
         try:
-            if _commit_hash is not None and revision is None:
-                revision = _commit_hash
+            if commit_hash is not None and revision is None:
+                revision = commit_hash
 
             # 2. Load model file as usual
             model_file = hf_hub_download(
