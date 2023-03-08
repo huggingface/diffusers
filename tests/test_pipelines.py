@@ -65,7 +65,7 @@ class DownloadTests(unittest.TestCase):
     def test_one_request_upon_cached(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
             with requests_mock.mock(real_http=True) as m:
-                DiffusionPipeline.load_pipeline(
+                DiffusionPipeline.download(
                     "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
                 )
 
@@ -77,7 +77,7 @@ class DownloadTests(unittest.TestCase):
             ), "2 calls per file (15 files) + send_telemetry, model_info and model_index.json"
 
             with requests_mock.mock(real_http=True) as m:
-                DiffusionPipeline.load_pipeline(
+                DiffusionPipeline.download(
                     "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
                 )
 
@@ -91,7 +91,7 @@ class DownloadTests(unittest.TestCase):
     def test_download_only_pytorch(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
             # pipeline has Flax weights
-            tmpdirname = DiffusionPipeline.load_pipeline(
+            tmpdirname = DiffusionPipeline.download(
                 "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
             )
 
@@ -128,7 +128,7 @@ class DownloadTests(unittest.TestCase):
     def test_download_safetensors(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
             # pipeline has Flax weights
-            tmpdirname = DiffusionPipeline.load_pipeline(
+            tmpdirname = DiffusionPipeline.download(
                 "hf-internal-testing/tiny-stable-diffusion-pipe-safetensors",
                 safety_checker=None,
                 cache_dir=tmpdirname,
@@ -231,7 +231,7 @@ class DownloadTests(unittest.TestCase):
 
             other_format = ".bin" if safe_avail else ".safetensors"
             with tempfile.TemporaryDirectory() as tmpdirname:
-                tmpdirname = StableDiffusionPipeline.load_pipeline(
+                tmpdirname = StableDiffusionPipeline.download(
                     "hf-internal-testing/stable-diffusion-all-variants", cache_dir=tmpdirname
                 )
                 all_root_files = [t[-1] for t in os.walk(tmpdirname)]
@@ -257,7 +257,7 @@ class DownloadTests(unittest.TestCase):
             variant = "fp16"
 
             with tempfile.TemporaryDirectory() as tmpdirname:
-                tmpdirname = StableDiffusionPipeline.load_pipeline(
+                tmpdirname = StableDiffusionPipeline.download(
                     "hf-internal-testing/stable-diffusion-all-variants", cache_dir=tmpdirname, variant=variant
                 )
                 all_root_files = [t[-1] for t in os.walk(tmpdirname)]
@@ -285,7 +285,7 @@ class DownloadTests(unittest.TestCase):
             variant = "no_ema"
 
             with tempfile.TemporaryDirectory() as tmpdirname:
-                tmpdirname = StableDiffusionPipeline.load_pipeline(
+                tmpdirname = StableDiffusionPipeline.download(
                     "hf-internal-testing/stable-diffusion-all-variants", cache_dir=tmpdirname, variant=variant
                 )
                 all_root_files = [t[-1] for t in os.walk(tmpdirname)]
@@ -324,7 +324,7 @@ class DownloadTests(unittest.TestCase):
 
             # text encoder has fp16 variants so we can load it
             with tempfile.TemporaryDirectory() as tmpdirname:
-                tmpdirname = StableDiffusionPipeline.load_pipeline(
+                tmpdirname = StableDiffusionPipeline.download(
                     "hf-internal-testing/stable-diffusion-broken-variants", cache_dir=tmpdirname, variant="fp16"
                 )
 
@@ -415,7 +415,7 @@ class CustomPipelineTests(unittest.TestCase):
 
     @slow
     @require_torch_gpu
-    def test_load_pipeline_from_git(self):
+    def test_download_from_git(self):
         clip_model_id = "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 
         feature_extractor = CLIPFeatureExtractor.from_pretrained(clip_model_id)
