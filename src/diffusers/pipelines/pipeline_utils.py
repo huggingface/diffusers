@@ -1092,7 +1092,6 @@ class DiffusionPipeline(ConfigMixin):
                 use_auth_token=use_auth_token,
                 revision=revision,
             )
-
             send_telemetry("pipelines", library_name="diffusers", library_version=__version__, user_agent=user_agent)
             _commit_hash = info.sha
 

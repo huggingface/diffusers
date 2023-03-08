@@ -13,11 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import inspect
 import tempfile
 import unittest
 import unittest.mock as mock
 from typing import Dict, List, Tuple
+import requests_mock
 
 import numpy as np
 import torch
@@ -29,6 +31,16 @@ from diffusers.utils import torch_device
 
 
 class ModelUtilsTest(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        import diffusers
+
+        diffusers.utils.import_utils._safetensors_available = True
+
     def test_accelerate_loading_error_message(self):
         with self.assertRaises(ValueError) as error_context:
             UNet2DConditionModel.from_pretrained("hf-internal-testing/stable-diffusion-broken", subfolder="unet")
@@ -59,6 +71,31 @@ class ModelUtilsTest(unittest.TestCase):
         for p1, p2 in zip(orig_model.parameters(), model.parameters()):
             if p1.data.ne(p2.data).sum() > 0:
                 assert False, "Parameters not the same!"
+
+    def test_one_request_upon_cached(self):
+        import diffusers
+
+        diffusers.utils.import_utils._safetensors_available = False
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with requests_mock.mock(real_http=True) as m:
+                UNet2DConditionModel.from_pretrained(
+                    "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="unet", cache_dir=tmpdirname
+                )
+
+            download_requests = [r.method for r in m.request_history]
+            assert download_requests.count("HEAD") == 2, "2 HEAD requests one for config, one for model"
+            assert download_requests.count("GET") == 2, "2 GET requests one for config, one for model"
+
+            with requests_mock.mock(real_http=True) as m:
+                UNet2DConditionModel.from_pretrained(
+                    "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="unet", cache_dir=tmpdirname
+                )
+
+            cache_requests = [r.method for r in m.request_history]
+            assert "HEAD" == cache_requests[0] and len(cache_requests) == 1, "We should call only `model_info` to check for _commit hash and `send_telemetry`"
+
+        diffusers.utils.import_utils._safetensors_available = True
 
 
 class ModelTesterMixin:

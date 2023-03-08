@@ -247,7 +247,11 @@ def try_to_load_from_cache(
         return _CACHED_NO_EXIST
 
     cached_file = os.path.join(cached_folder, filename)
-    return cached_file if os.path.isfile(cached_file) else None
+
+    if os.path.isfile(cached_file):
+        return cached_file
+
+    return None
 
 
 # Old default cache path, potentially to be migrated.

@@ -19,6 +19,7 @@ import os
 import random
 import shutil
 import sys
+import requests_mock
 import tempfile
 import unittest
 import unittest.mock as mock
@@ -61,6 +62,30 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 
 class DownloadTests(unittest.TestCase):
+    def test_one_request_upon_cached(self):
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with requests_mock.mock(real_http=True) as m:
+                DiffusionPipeline.load_pipeline(
+                    "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
+                )
+
+            download_requests = [r.method for r in m.request_history]
+            download_requests.count("HEAD")
+            download_requests.count("GET")
+            len(download_requests) == 33
+            # assert len(download_requests) == 33, "2 calls per file (15 files) + load_config, model_info and send_telemetry"
+
+            with requests_mock.mock(real_http=True) as m:
+                DiffusionPipeline.load_pipeline(
+                    "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
+                )
+
+            cache_requests = [r.method for r in m.request_history]
+            # assert len(cache_requests) == 2, "We should call only `model_info` to check for _commit hash and `send_telemetry`"
+            import ipdb; ipdb.set_trace()
+
+            print("hey")
+
     def test_download_only_pytorch(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
             # pipeline has Flax weights
