@@ -1082,16 +1082,16 @@ class DiffusionPipeline(ConfigMixin):
         allow_patterns = None
         ignore_patterns = None
 
+        user_agent = {"pipeline_class": cls.__name__}
+        if custom_pipeline is not None and not custom_pipeline.endswith(".py"):
+            user_agent["custom_pipeline"] = custom_pipeline
+
         if not local_files_only:
             info = model_info(
                 pretrained_model_name_or_path,
                 use_auth_token=use_auth_token,
                 revision=revision,
             )
-
-            user_agent = {"pipeline_class": cls.__name__}
-            if custom_pipeline is not None and not custom_pipeline.endswith(".py"):
-                user_agent["custom_pipeline"] = custom_pipeline
 
             send_telemetry("pipelines", library_name="diffusers", library_version=__version__, user_agent=user_agent)
             _commit_hash = info.sha
@@ -1151,7 +1151,7 @@ class DiffusionPipeline(ConfigMixin):
             ]
 
             if from_flax:
-                ignore_patterns = ["*.bin", "*.safetensors", ".onnx"]
+                ignore_patterns = ["*.bin", "*.safetensors", "*.onnx", "*.pb"]
             elif is_safetensors_available() and is_safetensors_compatible(model_filenames, variant=variant):
                 ignore_patterns = ["*.bin", "*.msgpack"]
 
@@ -1164,32 +1164,31 @@ class DiffusionPipeline(ConfigMixin):
                     logger.warn(
                         f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(safetensors_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(safetensors_model_filenames - safetensors_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
                     )
+            else:
+                ignore_patterns = ["*.safetensors", "*.msgpack"]
 
-                else:
-                    ignore_patterns = ["*.safetensors", "*.msgpack"]
-
-                    bin_variant_filenames = set([f for f in variant_filenames if f.endswith(".bin")])
-                    bin_model_filenames = set([f for f in model_filenames if f.endswith(".bin")])
-                    if len(bin_variant_filenames) > 0 and bin_model_filenames != bin_variant_filenames:
-                        logger.warn(
-                            f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(bin_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(bin_model_filenames - bin_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
-                        )
-
-                if config_is_cached:
-                    re_ignore_pattern = [re.compile(fnmatch.translate(p)) for p in ignore_patterns]
-                    re_allow_pattern = [re.compile(fnmatch.translate(p)) for p in allow_patterns]
-
-                    expected_files = [f for f in filenames if not any(p.match(f) for p in re_ignore_pattern)]
-                    expected_files = [f for f in expected_files if any(p.match(f) for p in re_allow_pattern)]
-                    cached_pipeline = try_to_load_from_cache(
-                        pretrained_model_name_or_path, cache_dir=cache_dir, revision=_commit_hash
+                bin_variant_filenames = set([f for f in variant_filenames if f.endswith(".bin")])
+                bin_model_filenames = set([f for f in model_filenames if f.endswith(".bin")])
+                if len(bin_variant_filenames) > 0 and bin_model_filenames != bin_variant_filenames:
+                    logger.warn(
+                        f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(bin_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(bin_model_filenames - bin_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
                     )
-                    pipeline_is_cached = all(os.path.isfile(os.path.join(cached_pipeline, f)) for f in expected_files)
 
-                    if pipeline_is_cached:
-                        # if the pipeline is cached, we can directly return it
-                        # else call snapshot_download
-                        return cached_pipeline
+            if config_is_cached:
+                re_ignore_pattern = [re.compile(fnmatch.translate(p)) for p in ignore_patterns]
+                re_allow_pattern = [re.compile(fnmatch.translate(p)) for p in allow_patterns]
+
+                expected_files = [f for f in filenames if not any(p.match(f) for p in re_ignore_pattern)]
+                expected_files = [f for f in expected_files if any(p.match(f) for p in re_allow_pattern)]
+                cached_pipeline = try_to_load_from_cache(
+                    pretrained_model_name_or_path, cache_dir=cache_dir, revision=_commit_hash
+                )
+                pipeline_is_cached = all(os.path.isfile(os.path.join(cached_pipeline, f)) for f in expected_files)
+
+                if pipeline_is_cached:
+                    # if the pipeline is cached, we can directly return it
+                    # else call snapshot_download
+                    return cached_pipeline
 
         # download all allow_patterns - ignore_patterns
         cached_folder = snapshot_download(

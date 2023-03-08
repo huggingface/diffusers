@@ -137,6 +137,7 @@ class ConfigTester(unittest.TestCase):
 
         assert config.pop("c") == (2, 5)  # instantiated as tuple
         assert new_config.pop("c") == [2, 5]  # saved & loaded as list because of json
+        assert new_config.pop("_commit_hash") is None  # commit hash is None
         assert config == new_config
 
     def test_load_ddim_from_pndm(self):

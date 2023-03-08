@@ -142,6 +142,8 @@ class SchedulerMixin:
             return_unused_kwargs=True,
             **kwargs,
         )
+        # _commit_hash
+        config.pop("_commit_hash", None)
         return cls.from_config(config, return_unused_kwargs=return_unused_kwargs, **kwargs)
 
     def save_pretrained(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):

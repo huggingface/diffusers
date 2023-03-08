@@ -64,11 +64,11 @@ class DownloadTests(unittest.TestCase):
     def test_download_only_pytorch(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
             # pipeline has Flax weights
-            _ = DiffusionPipeline.from_pretrained(
+            tmpdirname = DiffusionPipeline.load_pipeline(
                 "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
             )
 
-            all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname, os.listdir(tmpdirname)[0], "snapshots"))]
+            all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
             files = [item for sublist in all_root_files for item in sublist]
 
             # None of the downloaded files should be a flax file even if we have some here:
@@ -101,13 +101,13 @@ class DownloadTests(unittest.TestCase):
     def test_download_safetensors(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
             # pipeline has Flax weights
-            _ = DiffusionPipeline.from_pretrained(
+            tmpdirname = DiffusionPipeline.load_pipeline(
                 "hf-internal-testing/tiny-stable-diffusion-pipe-safetensors",
                 safety_checker=None,
                 cache_dir=tmpdirname,
             )
 
-            all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname, os.listdir(tmpdirname)[0], "snapshots"))]
+            all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
             files = [item for sublist in all_root_files for item in sublist]
 
             # None of the downloaded files should be a pytorch file even if we have some here:
@@ -204,12 +204,10 @@ class DownloadTests(unittest.TestCase):
 
             other_format = ".bin" if safe_avail else ".safetensors"
             with tempfile.TemporaryDirectory() as tmpdirname:
-                StableDiffusionPipeline.from_pretrained(
+                tmpdirname = StableDiffusionPipeline.load_pipeline(
                     "hf-internal-testing/stable-diffusion-all-variants", cache_dir=tmpdirname
                 )
-                all_root_files = [
-                    t[-1] for t in os.walk(os.path.join(tmpdirname, os.listdir(tmpdirname)[0], "snapshots"))
-                ]
+                all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
                 files = [item for sublist in all_root_files for item in sublist]
 
                 # None of the downloaded files should be a variant file even if we have some here:
@@ -232,12 +230,10 @@ class DownloadTests(unittest.TestCase):
             variant = "fp16"
 
             with tempfile.TemporaryDirectory() as tmpdirname:
-                StableDiffusionPipeline.from_pretrained(
+                tmpdirname = StableDiffusionPipeline.load_pipeline(
                     "hf-internal-testing/stable-diffusion-all-variants", cache_dir=tmpdirname, variant=variant
                 )
-                all_root_files = [
-                    t[-1] for t in os.walk(os.path.join(tmpdirname, os.listdir(tmpdirname)[0], "snapshots"))
-                ]
+                all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
                 files = [item for sublist in all_root_files for item in sublist]
 
                 # None of the downloaded files should be a non-variant file even if we have some here:
@@ -262,7 +258,7 @@ class DownloadTests(unittest.TestCase):
             variant = "no_ema"
 
             with tempfile.TemporaryDirectory() as tmpdirname:
-                StableDiffusionPipeline.from_pretrained(
+                tmpdirname = StableDiffusionPipeline.load_pipeline(
                     "hf-internal-testing/stable-diffusion-all-variants", cache_dir=tmpdirname, variant=variant
                 )
                 snapshots = os.path.join(tmpdirname, os.listdir(tmpdirname)[0], "snapshots")
@@ -292,7 +288,7 @@ class DownloadTests(unittest.TestCase):
             for variant in [None, "no_ema"]:
                 with self.assertRaises(OSError) as error_context:
                     with tempfile.TemporaryDirectory() as tmpdirname:
-                        StableDiffusionPipeline.from_pretrained(
+                        tmpdirname = StableDiffusionPipeline.load_pipeline(
                             "hf-internal-testing/stable-diffusion-broken-variants",
                             cache_dir=tmpdirname,
                             variant=variant,
