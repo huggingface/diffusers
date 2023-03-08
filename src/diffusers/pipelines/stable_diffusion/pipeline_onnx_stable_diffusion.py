@@ -113,10 +113,10 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
 
     def _encode_prompt(
         self,
-        prompt,
-        num_images_per_prompt,
-        do_classifier_free_guidance,
-        negative_prompt,
+        prompt: Union[str, List[str]],
+        num_images_per_prompt: Optional[int],
+        do_classifier_free_guidance: bool,
+        negative_prompt: Optional[str],
         prompt_embeds: Optional[np.ndarray] = None,
         negative_prompt_embeds: Optional[np.ndarray] = None,
     ):
@@ -216,13 +216,13 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
 
     def check_inputs(
         self,
-        prompt,
-        height,
-        width,
-        callback_steps,
-        negative_prompt=None,
-        prompt_embeds=None,
-        negative_prompt_embeds=None,
+        prompt: Union[str, List[str]],
+        height: Optional[int],
+        width: Optional[int],
+        callback_steps: int,
+        negative_prompt: Optional[str] = None,
+        prompt_embeds: Optional[np.ndarray] = None,
+        negative_prompt_embeds: Optional[np.ndarray] = None,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
