@@ -11,7 +11,7 @@ deps = {
     "flax": "flax>=0.4.1",
     "hf-doc-builder": "hf-doc-builder>=0.3.0",
     "huggingface-hub": "huggingface-hub>=0.13.0",
-    "requests-mock": "requests-mock==0.10.0",
+    "requests-mock": "requests-mock==1.10.0",
     "importlib_metadata": "importlib_metadata",
     "isort": "isort>=5.5.4",
     "jax": "jax>=0.2.8,!=0.3.2",
