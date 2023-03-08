@@ -16,7 +16,7 @@ from .utils import (
     is_unidecode_available,
     logging,
 )
-
+from .image_processor import VaeImageProcessor
 
 try:
     if not is_onnx_available():

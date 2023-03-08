@@ -36,6 +36,7 @@ from ...utils import (
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
+from ...image_processor import VaeImageProcessor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -67,27 +68,6 @@ EXAMPLE_DOC_STRING = """
         >>> images[0].save("fantasy_landscape.png")
         ```
 """
-
-
-def preprocess(image):
-    if isinstance(image, torch.Tensor):
-        return image
-    elif isinstance(image, PIL.Image.Image):
-        image = [image]
-
-    if isinstance(image[0], PIL.Image.Image):
-        w, h = image[0].size
-        w, h = map(lambda x: x - x % 8, (w, h))  # resize to integer multiple of 8
-
-        image = [np.array(i.resize((w, h), resample=PIL_INTERPOLATION["lanczos"]))[None, :] for i in image]
-        image = np.concatenate(image, axis=0)
-        image = np.array(image).astype(np.float32) / 255.0
-        image = image.transpose(0, 3, 1, 2)
-        image = 2.0 * image - 1.0
-        image = torch.from_numpy(image)
-    elif isinstance(image[0], torch.Tensor):
-        image = torch.cat(image, dim=0)
-    return image
 
 
 class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
@@ -195,8 +175,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             deprecate("sample_size<64", "1.0.0", deprecation_message, standard_warn=False)
             new_config = dict(unet.config)
             new_config["sample_size"] = 64
-            unet._internal_dict = FrozenDict(new_config)
-
+            unet._internal_dict = FrozenDict(new_config)      
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -207,7 +186,12 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             feature_extractor=feature_extractor,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.register_to_config(requires_safety_checker=requires_safety_checker)
+
+        vae_feature_extractor = VaeImageProcessor(
+            vae_scale_factor =self.vae_scale_factor)
+        self.register_to_config(
+            requires_safety_checker=requires_safety_checker,
+            vae_feature_extractor = vae_feature_extractor)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
     def enable_sequential_cpu_offload(self, gpu_id=0):
@@ -674,7 +658,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         )
 
         # 4. Preprocess image
-        image = preprocess(image)
+        image = self.vae_feature_extractor.encode(image)
 
         # 5. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -713,7 +697,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
-
+        
         # 9. Post-processing
         image = self.decode_latents(latents)
 
