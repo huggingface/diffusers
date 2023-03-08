@@ -813,6 +813,11 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                         controlnet_cond=controlnet_cond.image,
                         return_dict=False,
                     )
+                    # scaling
+                    down_samples = [sample * controlnet_cond.scale for sample in down_samples]
+                    mid_sample *= controlnet_cond.scale
+
+                    # merge samples
                     if i == 0:
                         down_block_res_samples, mid_block_res_sample = down_samples, mid_sample
                     else:
@@ -820,12 +825,6 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                             d_prev + d_curr for d_prev, d_curr in zip(down_block_res_samples, down_samples)
                         ]
                         mid_block_res_sample = mid_block_res_sample + mid_sample
-
-                    down_block_res_samples = [
-                        down_block_res_sample * controlnet_cond.scale
-                        for down_block_res_sample in down_block_res_samples
-                    ]
-                    mid_block_res_sample *= controlnet_cond.scale
 
                 # predict the noise residual
                 noise_pred = self.unet(
