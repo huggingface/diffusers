@@ -8,5 +8,6 @@ from .pipeline_spectrogram_diffusion import (
     SpectrogramDiffusionPipeline,
     T5FilmDecoder,
 )
+
 if is_note_seq_available():
     from .midi_utils import MidiProcessor

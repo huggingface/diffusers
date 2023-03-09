@@ -15,15 +15,15 @@
 
 import dataclasses
 import math
-from typing import Any, Callable, List, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
 import os
-from .pipeline_spectrogram_diffusion import TARGET_FEATURE_LENGTH
+from typing import Any, Callable, List, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 
 from ...utils import is_note_seq_available
+from .pipeline_spectrogram_diffusion import TARGET_FEATURE_LENGTH
 
 
 if is_note_seq_available():
@@ -634,7 +634,7 @@ class MidiProcessor:
 
     def __call__(self, midi: Union[bytes, os.PathLike, str]):
         if not isinstance(midi, bytes):
-            with open(midi, 'rb') as f:
+            with open(midi, "rb") as f:
                 midi = f.read()
 
         ns = note_seq.midi_to_note_sequence(midi)
@@ -659,7 +659,9 @@ class MidiProcessor:
             encoding_state_to_events_fn=note_encoding_state_to_events,
         )
 
-        events = [note_representation_processor_chain(event, self.codec, self.note_representation_config) for event in events]
+        events = [
+            note_representation_processor_chain(event, self.codec, self.note_representation_config) for event in events
+        ]
         input_tokens = [self.tokenizer.encode(event["inputs"]) for event in events]
 
         return input_tokens

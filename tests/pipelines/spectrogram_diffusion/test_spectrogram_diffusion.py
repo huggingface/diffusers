@@ -20,8 +20,9 @@ import numpy as np
 import scipy
 import torch
 
-from diffusers import SpectrogramDiffusionPipeline, MidiProcessor
+from diffusers import MidiProcessor, SpectrogramDiffusionPipeline
 from diffusers.utils import require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import require_note_seq, require_onnxruntime
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -30,14 +31,42 @@ torch.backends.cuda.matmul.allow_tf32 = False
 MIDI_FILE = "./tests/fixtures/elise_format0.mid"
 
 
+# Add more fast tests without MidiProcessor and onnx melgan, so that just PyTorch is needed
+
+
 @slow
 @require_torch_gpu
+@require_onnxruntime
+@require_note_seq
 class PipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
+
+    def test_callback(self):
+        # TODO - test that pipeline can decode tokens in a callback
+        # so that music can be played live
+        device = torch_device
+
+        pipe = SpectrogramDiffusionPipeline.from_pretrained("kashif/music-spectrogram-diffusion", melgan=None)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        def callback(step, mel_output):
+            # TODO - decode tokens to audio
+            # ... melgan(...)
+            # simulate that audio is played
+            pass
+
+        processor = MidiProcessor()
+
+        input_tokens = processor(MIDI_FILE)
+        input_tokens = input_tokens[:3]
+        generator = torch.manual_seed(0)
+
+        pipe(input_tokens, num_inference_steps=5, generator=generator, callback=callback)
 
     def test_spectrogram_fast(self):
         device = torch_device
@@ -69,13 +98,14 @@ class PipelineIntegrationTests(unittest.TestCase):
 
         input_tokens = processor(MIDI_FILE)
 
-        # just run 5 denoising loops
-        input_tokens = input_tokens[:5]
+        # just run 4 denoising loops
+        input_tokens = input_tokens[:4]
 
-        output = pipe(input_tokens, num_inference_steps=100)
+        generator = torch.manual_seed(0)
+        output = pipe(input_tokens, num_inference_steps=100, generator=generator)
 
         audio = output.audios[0]
-        assert abs(np.abs(audio).sum() - 21340.146) < 5e-2
+        assert abs(np.abs(audio).sum() - 9389.1111) < 5e-2
 
         audio = output.audios[0]
         rate = 16_000

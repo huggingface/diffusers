@@ -14,15 +14,15 @@
 # limitations under the License.
 
 import math
-from typing import Optional, Tuple, Union, Any, Callable, List
+from typing import Any, Callable, List, Optional, Tuple, Union
+
 import numpy as np
 import torch
 
 from ...models import T5FilmDecoder
 from ...schedulers import DDPMScheduler
-from ...utils import randn_tensor, is_onnx_available, logging
+from ...utils import is_onnx_available, logging, randn_tensor
 
-TARGET_FEATURE_LENGTH = 256
 
 if is_onnx_available():
     from ..onnx_utils import OnnxRuntimeModel
@@ -34,8 +34,12 @@ from .notes_encoder import SpectrogramNotesEncoder
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+TARGET_FEATURE_LENGTH = 256
+
 
 class SpectrogramDiffusionPipeline(DiffusionPipeline):
+    _optional_components = ["melgan"]
+
     def __init__(
         self,
         notes_encoder: SpectrogramNotesEncoder,
@@ -116,7 +120,6 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
     ) -> Union[AudioPipelineOutput, Tuple]:
-
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):
@@ -182,8 +185,8 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
             full_pred_mel = np.concatenate([full_pred_mel, pred_mel[:1]], axis=1)
 
             # call the callback, if provided
-            if callback is not None and j % callback_steps == 0:
-                callback(j, t, x)
+            if callback is not None and i % callback_steps == 0:
+                callback(i, full_pred_mel)
 
             logger.info("Generated segment", i)
 
