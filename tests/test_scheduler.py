@@ -647,6 +647,16 @@ class DDPMSchedulerTest(SchedulerCommonTest):
         for clip_sample in [True, False]:
             self.check_over_configs(clip_sample=clip_sample)
 
+    def test_thresholding(self):
+        self.check_over_configs(thresholding=False)
+        for threshold in [0.5, 1.0, 2.0]:
+            for prediction_type in ["epsilon", "sample", "v_prediction"]:
+                self.check_over_configs(
+                    thresholding=True,
+                    prediction_type=prediction_type,
+                    sample_max_value=threshold,
+                )
+
     def test_prediction_type(self):
         for prediction_type in ["epsilon", "sample", "v_prediction"]:
             self.check_over_configs(prediction_type=prediction_type)
@@ -791,6 +801,16 @@ class DDIMSchedulerTest(SchedulerCommonTest):
         for clip_sample in [True, False]:
             self.check_over_configs(clip_sample=clip_sample)
 
+    def test_thresholding(self):
+        self.check_over_configs(thresholding=False)
+        for threshold in [0.5, 1.0, 2.0]:
+            for prediction_type in ["epsilon", "v_prediction"]:
+                self.check_over_configs(
+                    thresholding=True,
+                    prediction_type=prediction_type,
+                    sample_max_value=threshold,
+                )
+
     def test_time_indices(self):
         for t in [1, 10, 49]:
             self.check_over_forward(time_step=t)
@@ -933,7 +953,12 @@ class DPMSolverSinglestepSchedulerTest(SchedulerCommonTest):
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
-    def full_loop(self, **config):
+    def full_loop(self, scheduler=None, **config):
+        if scheduler is None:
+            scheduler_class = self.scheduler_classes[0]
+            scheduler_config = self.get_scheduler_config(**config)
+            scheduler = scheduler_class(**scheduler_config)
+
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config(**config)
         scheduler = scheduler_class(**scheduler_config)
@@ -952,6 +977,25 @@ class DPMSolverSinglestepSchedulerTest(SchedulerCommonTest):
     def test_timesteps(self):
         for timesteps in [25, 50, 100, 999, 1000]:
             self.check_over_configs(num_train_timesteps=timesteps)
+
+    def test_switch(self):
+        # make sure that iterating over schedulers with same config names gives same results
+        # for defaults
+        scheduler = DPMSolverSinglestepScheduler(**self.get_scheduler_config())
+        sample = self.full_loop(scheduler=scheduler)
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.2791) < 1e-3
+
+        scheduler = DEISMultistepScheduler.from_config(scheduler.config)
+        scheduler = DPMSolverMultistepScheduler.from_config(scheduler.config)
+        scheduler = UniPCMultistepScheduler.from_config(scheduler.config)
+        scheduler = DPMSolverSinglestepScheduler.from_config(scheduler.config)
+
+        sample = self.full_loop(scheduler=scheduler)
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.2791) < 1e-3
 
     def test_thresholding(self):
         self.check_over_configs(thresholding=False)
@@ -1110,10 +1154,11 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
-    def full_loop(self, **config):
-        scheduler_class = self.scheduler_classes[0]
-        scheduler_config = self.get_scheduler_config(**config)
-        scheduler = scheduler_class(**scheduler_config)
+    def full_loop(self, scheduler=None, **config):
+        if scheduler is None:
+            scheduler_class = self.scheduler_classes[0]
+            scheduler_config = self.get_scheduler_config(**config)
+            scheduler = scheduler_class(**scheduler_config)
 
         num_inference_steps = 10
         model = self.dummy_model()
@@ -1212,11 +1257,36 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_mean.item() - 0.3301) < 1e-3
 
+    def test_full_loop_no_noise_thres(self):
+        sample = self.full_loop(thresholding=True, dynamic_thresholding_ratio=0.87, sample_max_value=0.5)
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.6405) < 1e-3
+
     def test_full_loop_with_v_prediction(self):
         sample = self.full_loop(prediction_type="v_prediction")
         result_mean = torch.mean(torch.abs(sample))
 
         assert abs(result_mean.item() - 0.2251) < 1e-3
+
+    def test_switch(self):
+        # make sure that iterating over schedulers with same config names gives same results
+        # for defaults
+        scheduler = DPMSolverMultistepScheduler(**self.get_scheduler_config())
+        sample = self.full_loop(scheduler=scheduler)
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.3301) < 1e-3
+
+        scheduler = DPMSolverSinglestepScheduler.from_config(scheduler.config)
+        scheduler = UniPCMultistepScheduler.from_config(scheduler.config)
+        scheduler = DEISMultistepScheduler.from_config(scheduler.config)
+        scheduler = DPMSolverMultistepScheduler.from_config(scheduler.config)
+
+        sample = self.full_loop(scheduler=scheduler)
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.3301) < 1e-3
 
     def test_fp16_support(self):
         scheduler_class = self.scheduler_classes[0]
@@ -2517,7 +2587,12 @@ class DEISMultistepSchedulerTest(SchedulerCommonTest):
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
-    def full_loop(self, **config):
+    def full_loop(self, scheduler=None, **config):
+        if scheduler is None:
+            scheduler_class = self.scheduler_classes[0]
+            scheduler_config = self.get_scheduler_config(**config)
+            scheduler = scheduler_class(**scheduler_config)
+
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config(**config)
         scheduler = scheduler_class(**scheduler_config)
@@ -2562,6 +2637,25 @@ class DEISMultistepSchedulerTest(SchedulerCommonTest):
 
             self.assertEqual(output_0.shape, sample.shape)
             self.assertEqual(output_0.shape, output_1.shape)
+
+    def test_switch(self):
+        # make sure that iterating over schedulers with same config names gives same results
+        # for defaults
+        scheduler = DEISMultistepScheduler(**self.get_scheduler_config())
+        sample = self.full_loop(scheduler=scheduler)
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.23916) < 1e-3
+
+        scheduler = DPMSolverSinglestepScheduler.from_config(scheduler.config)
+        scheduler = DPMSolverMultistepScheduler.from_config(scheduler.config)
+        scheduler = UniPCMultistepScheduler.from_config(scheduler.config)
+        scheduler = DEISMultistepScheduler.from_config(scheduler.config)
+
+        sample = self.full_loop(scheduler=scheduler)
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.23916) < 1e-3
 
     def test_timesteps(self):
         for timesteps in [25, 50, 100, 999, 1000]:
@@ -2716,7 +2810,12 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
-    def full_loop(self, **config):
+    def full_loop(self, scheduler=None, **config):
+        if scheduler is None:
+            scheduler_class = self.scheduler_classes[0]
+            scheduler_config = self.get_scheduler_config(**config)
+            scheduler = scheduler_class(**scheduler_config)
+
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config(**config)
         scheduler = scheduler_class(**scheduler_config)
@@ -2761,6 +2860,25 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
 
             self.assertEqual(output_0.shape, sample.shape)
             self.assertEqual(output_0.shape, output_1.shape)
+
+    def test_switch(self):
+        # make sure that iterating over schedulers with same config names gives same results
+        # for defaults
+        scheduler = UniPCMultistepScheduler(**self.get_scheduler_config())
+        sample = self.full_loop(scheduler=scheduler)
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.2521) < 1e-3
+
+        scheduler = DPMSolverSinglestepScheduler.from_config(scheduler.config)
+        scheduler = DEISMultistepScheduler.from_config(scheduler.config)
+        scheduler = DPMSolverMultistepScheduler.from_config(scheduler.config)
+        scheduler = UniPCMultistepScheduler.from_config(scheduler.config)
+
+        sample = self.full_loop(scheduler=scheduler)
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.2521) < 1e-3
 
     def test_timesteps(self):
         for timesteps in [25, 50, 100, 999, 1000]:
