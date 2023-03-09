@@ -15,17 +15,16 @@
 import inspect
 from typing import Callable, List, Optional, Union
 
-import numpy as np
 import PIL
 import torch
 from packaging import version
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
+from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
-    PIL_INTERPOLATION,
     deprecate,
     is_accelerate_available,
     is_accelerate_version,
@@ -36,7 +35,6 @@ from ...utils import (
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
-from ...image_processor import VaeImageProcessor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -175,7 +173,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             deprecate("sample_size<64", "1.0.0", deprecation_message, standard_warn=False)
             new_config = dict(unet.config)
             new_config["sample_size"] = 64
-            unet._internal_dict = FrozenDict(new_config)      
+            unet._internal_dict = FrozenDict(new_config)
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -187,11 +185,10 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
-        vae_feature_extractor = VaeImageProcessor(
-            vae_scale_factor =self.vae_scale_factor)
+        VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(
             requires_safety_checker=requires_safety_checker,
-            )
+        )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
     def enable_sequential_cpu_offload(self, gpu_id=0):
@@ -697,7 +694,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
-        
+
         # 9. Post-processing
         image = self.decode_latents(latents)
 

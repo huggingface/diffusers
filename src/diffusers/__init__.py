@@ -1,6 +1,7 @@
 __version__ = "0.15.0.dev0"
 
 from .configuration_utils import ConfigMixin
+from .image_processor import VaeImageProcessor
 from .utils import (
     OptionalDependencyNotAvailable,
     is_flax_available,
@@ -16,7 +17,7 @@ from .utils import (
     is_unidecode_available,
     logging,
 )
-from .image_processor import VaeImageProcessor
+
 
 try:
     if not is_onnx_available():
