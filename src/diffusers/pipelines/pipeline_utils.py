@@ -961,20 +961,14 @@ class DiffusionPipeline(ConfigMixin):
         return model
 
     @classmethod
-    def download(cls, pretrained_model_name_or_path, **kwargs) -> Union[str, os.PathLike]:
+    def download(cls, pretrained_model_name, **kwargs) -> Union[str, os.PathLike]:
         r"""
         Download and cache a PyTorch diffusion pipeline from pre-trained pipeline weights. are already downloaded,
         simply load return folder from cache.
 
         Parameters:
-            pretrained_model_name_or_path (`str` or `os.PathLike`, *optional*):
-                Can be either:
-
-                    - A string, the *repo id* of a pretrained pipeline hosted inside a model repo on
-                      https://huggingface.co/ Valid repo ids have to be located under a user or organization name, like
-                      `CompVis/ldm-text2im-large-256`.
-                    - A path to a *directory* containing pipeline weights saved using
-                      [`~DiffusionPipeline.save_pretrained`], e.g., `./my_pipeline_directory/`.
+             pretrained_model_name (`str` or `os.PathLike`, *optional*):
+                Should be a string, the *repo id* of a pretrained pipeline hosted inside a model repo on https://huggingface.co/ Valid repo ids have to be located under a user or organization name, like `CompVis/ldm-text2im-large-256`.
             custom_pipeline (`str`, *optional*):
 
                 <Tip warning={true}>
@@ -1087,22 +1081,22 @@ class DiffusionPipeline(ConfigMixin):
 
         if not local_files_only:
             info = model_info(
-                pretrained_model_name_or_path,
+                pretrained_model_name,
                 use_auth_token=use_auth_token,
                 revision=revision,
             )
-            user_agent["pretrained_model_name_or_path"] = pretrained_model_name_or_path
+            user_agent["pretrained_model_name"] = pretrained_model_name
             send_telemetry("pipelines", library_name="diffusers", library_version=__version__, user_agent=user_agent)
             commit_hash = info.sha
 
             # try loading the config file
             config_file = hf_hub_download(
-                pretrained_model_name_or_path, cls.config_name, cache_dir=cache_dir, revision=commit_hash
+                pretrained_model_name, cls.config_name, cache_dir=cache_dir, revision=commit_hash
             )
 
             if config_file is None:
                 config_dict = cls.load_config(
-                    pretrained_model_name_or_path,
+                    pretrained_model_name,
                     cache_dir=cache_dir,
                     resume_download=resume_download,
                     force_download=force_download,
@@ -1128,7 +1122,7 @@ class DiffusionPipeline(ConfigMixin):
                 version.parse(__version__).base_version
             ) >= version.parse("0.15.0"):
                 warn_deprecated_model_variant(
-                    pretrained_model_name_or_path, use_auth_token, variant, revision, model_filenames
+                    pretrained_model_name, use_auth_token, variant, revision, model_filenames
                 )
 
             model_folder_names = set([os.path.split(f)[0] for f in model_filenames])
@@ -1180,7 +1174,7 @@ class DiffusionPipeline(ConfigMixin):
                 expected_files = [f for f in filenames if not any(p.match(f) for p in re_ignore_pattern)]
                 expected_files = [f for f in expected_files if any(p.match(f) for p in re_allow_pattern)]
 
-                folder_name = f"models--{'--'.join(pretrained_model_name_or_path.split('/'))}"
+                folder_name = f"models--{'--'.join(pretrained_model_name.split('/'))}"
                 cached_pipeline = os.path.join(cache_dir, folder_name, "snapshots", commit_hash)
 
                 pipeline_is_cached = all(os.path.isfile(os.path.join(cached_pipeline, f)) for f in expected_files)
@@ -1192,7 +1186,7 @@ class DiffusionPipeline(ConfigMixin):
 
         # download all allow_patterns - ignore_patterns
         cached_folder = snapshot_download(
-            pretrained_model_name_or_path,
+            pretrained_model_name,
             cache_dir=cache_dir,
             resume_download=resume_download,
             proxies=proxies,
