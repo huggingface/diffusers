@@ -696,16 +696,15 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
-        if output_type is None:
-            output_type = "np"
-
         if output_type == "latent":
             image = latents
             has_nsfw_concept = None
+
         elif output_type == "pt":
             # 8. Post-processing
             image = self.decode_latents(latents)
             has_nsfw_concept = None
+
         elif output_type == "np":
             # 8. Post-processing
             image = self.decode_latents(latents)
