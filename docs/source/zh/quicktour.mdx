@@ -46,11 +46,11 @@ pip install --upgrade diffusers accelerate transformers
 - [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) 在推理和训练过程中加速模型加载。
 - [🤗 Transformers](https://huggingface.co/docs/transformers/index) 是运行最流行的扩散模型所必须的库，比如[Stable Diffusion](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/overview).
 
-## 扩散模型pipelines
+## 扩散模型管道
 
 [`DiffusionPipeline`]是用预训练的扩散系统进行推理的最简单方法。它是一个包含模型和调度器的端到端系统。你可以直接使用[`DiffusionPipeline`]完成许多任务。请查看下面的表格以了解一些支持的任务，要获取完整的支持任务列表，请查看[🧨 Diffusers 总结](./api/pipelines/overview#diffusers-summary) 。
 
-| **任务**                     | **描述**                                                                                              | **pipeline**
+| **任务**                     | **描述**                                                                                              | **管道**
 |------------------------------|--------------------------------------------------------------------------------------------------------------|-----------------|
 | Unconditional Image Generation          | 从高斯噪声中生成图片 | [unconditional_image_generation](./using-diffusers/unconditional_image_generation) |
 | Text-Guided Image Generation | 给定文本提示生成图像 | [conditional_image_generation](./using-diffusers/conditional_image_generation) |
@@ -66,7 +66,7 @@ pip install --upgrade diffusers accelerate transformers
 您可以在Hugging Face Hub上使用[DiffusionPipeline]的任何检查点。
 在本快速入门中，您将加载stable-diffusion-v1-5检查点，用于文本到图像生成。
 
-<Tip={true}>。
+<Tip warning={true}>。
 
 对于[Stable Diffusion](https://huggingface.co/CompVis/stable-diffusion)模型，在运行该模型之前，请先仔细阅读[许可证](https://huggingface.co/spaces/CompVis/stable-diffusion-license)。🧨 Diffusers实现了一个[`safety_checker`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/safety_checker.py)，以防止有攻击性的或有害的内容，但Stable Diffusion模型改进图像的生成能力仍有可能产生潜在的有害内容。
 
@@ -129,16 +129,16 @@ StableDiffusionPipeline {
 >>> image.save("image_of_squirrel_painting.png")
 ```
 
-### 本地pipeline
+### 本地管道
 
-你也可以在本地使用pipeline。唯一的区别是你需提前下载权重：
+你也可以在本地使用管道。唯一的区别是你需提前下载权重：
 
 ```
 git lfs install
 git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
 ```
 
-将下载好的权重加载到pipeline中:
+将下载好的权重加载到管道中:
 
 ```python
 >>> pipeline = DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5")
