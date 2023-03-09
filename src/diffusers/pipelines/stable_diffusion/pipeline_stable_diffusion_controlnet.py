@@ -14,15 +14,17 @@
 
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Union, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL.Image
 import torch
-from torch import nn
+from torch import device, nn
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
-from ...models import AutoencoderKL, ControlNetModel, UNet2DConditionModel, ControlNetOutput
+from ...models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
+from ...models.controlnet import ControlNetOutput
+from ...models.modeling_utils import get_parameter_device, get_parameter_dtype
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     PIL_INTERPOLATION,
@@ -88,7 +90,23 @@ EXAMPLE_DOC_STRING = """
 
 class MultiControlNet(nn.Module):
     def __init__(self, controlnets: List[ControlNetModel]):
+        super().__init__()
         self.nets = nn.ModuleList(controlnets)
+
+    @property
+    def device(self) -> device:
+        """
+        `torch.device`: The device on which the module is (assuming that all the module parameters are on the same
+        device).
+        """
+        return get_parameter_device(self)
+
+    @property
+    def dtype(self) -> torch.dtype:
+        """
+        `torch.dtype`: The dtype of the module (assuming that all the module parameters have the same dtype).
+        """
+        return get_parameter_dtype(self)
 
     def forward(
         self,
@@ -102,13 +120,22 @@ class MultiControlNet(nn.Module):
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[ControlNetOutput, Tuple]:
-        down_block_res_samples, mid_block_res_sample = 0
-
         num_images_per_net = controlnet_cond.shape[0] // len(self.nets)
         conds = controlnet_cond[None, :].reshape((num_images_per_net, -1) + controlnet_cond.shape[1:])
 
+        down_block_res_samples, mid_block_res_sample = 0
         for cond, controlnet in zip(conds, self.nets):
-            down, mid = self.controlnet(sample, timestep, encoder_hidden_states, cond, class_labels, timestep_cond, attention_mask, cross_attention_kwargs, return_dict)
+            down, mid = self.controlnet(
+                sample,
+                timestep,
+                encoder_hidden_states,
+                cond,
+                class_labels,
+                timestep_cond,
+                attention_mask,
+                cross_attention_kwargs,
+                return_dict,
+            )
             down_block_res_samples += down
             mid_block_res_sample += mid
 
@@ -175,6 +202,9 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                 "Make sure to define a feature extractor when loading {self.__class__} if you want to use the safety"
                 " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
             )
+
+        if isinstance(controlnet, (list, tuple)):
+            controlnet = MultiControlNet(controlnet)
 
         self.register_modules(
             vae=vae,
