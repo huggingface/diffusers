@@ -14,14 +14,17 @@
 
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL.Image
 import torch
+from torch import device, nn
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
+from ...models.controlnet import ControlNetOutput
+from ...models.modeling_utils import get_parameter_device, get_parameter_dtype
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     PIL_INTERPOLATION,
@@ -195,6 +198,78 @@ class ControlNetCondition:
         self.image = image  # .clone()
 
 
+# Multi controlnet draft #2621
+
+
+class MultiControlNet(nn.Module):
+    def __init__(self, controlnets: List[ControlNetModel]):
+        super().__init__()
+        self.nets = nn.ModuleList(controlnets)
+
+    @property
+    def device(self) -> device:
+        """
+        `torch.device`: The device on which the module is (assuming that all the module parameters are on the same
+        device).
+        """
+        return get_parameter_device(self)
+
+    @property
+    def dtype(self) -> torch.dtype:
+        """
+        `torch.dtype`: The dtype of the module (assuming that all the module parameters have the same dtype).
+        """
+        return get_parameter_dtype(self)
+
+    def forward(
+        self,
+        sample: torch.FloatTensor,
+        timestep: Union[torch.Tensor, float, int],
+        encoder_hidden_states: torch.Tensor,
+        controlnet_conditions: List[ControlNetCondition],
+        class_labels: Optional[torch.Tensor] = None,
+        timestep_cond: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        return_dict: bool = True,
+    ) -> Union[ControlNetOutput, Tuple]:
+        if len(controlnet_conditions) != len(self.nets):
+            raise ValueError(
+                f"The number of specified `ControlNetCondition` does not match the number of `ControlNetModel`."
+                f"There are {len(self.nets)} ControlNetModel(s), "
+                f"but there are {len(controlnet_conditions)} `ControlNetCondition` in `controlnet_conditions`."
+            )
+
+        for i, (cond, controlnet) in enumerate(zip(controlnet_conditions, self.nets)):
+            down_samples, mid_sample = controlnet(
+                sample,
+                timestep,
+                encoder_hidden_states,
+                cond.image,
+                class_labels,
+                timestep_cond,
+                attention_mask,
+                cross_attention_kwargs,
+                return_dict,
+            )
+
+            # scaling
+            down_samples = [sample * cond.scale for sample in down_samples]
+            mid_sample *= cond.scale
+
+            # merge samples
+            if i == 0:
+                down_block_res_samples, mid_block_res_sample = down_samples, mid_sample
+            else:
+                down_block_res_samples = [
+                    samples_prev + samples_curr
+                    for samples_prev, samples_curr in zip(down_block_res_samples, down_samples)
+                ]
+                mid_block_res_sample += mid_sample
+
+        return down_block_res_samples, mid_block_res_sample
+
+
 class StableDiffusionControlNetPipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion with ControlNet guidance.
@@ -256,38 +331,23 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                 " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
             )
 
-        modules = dict(
+        if isinstance(controlnet, (list, tuple)):
+            controlnet = MultiControlNet(controlnet)
+        else:
+            controlnet = MultiControlNet([controlnet])
+
+        self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
             unet=unet,
+            controlnet=controlnet,
             scheduler=scheduler,
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
-
-        if isinstance(controlnet, list):
-            for i, module in enumerate(controlnet):
-                if i == 0:
-                    modules["controlnet"] = module
-                else:
-                    modules[f"_controlnet_{i}"] = module
-        else:
-            modules["controlnet"] = controlnet
-
-        self.register_modules(**modules)
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
-
-    def _controlnets(self):
-        keys = sorted(list(filter(lambda key: key.startswith("_controlnet_"), self.__dict__.keys())))
-        return [self.controlnet] + [getattr(self, key) for key in keys]
-
-    def to(self, torch_device: Optional[Union[str, torch.device]] = None, silence_dtype_warnings: bool = False):
-        super().to(torch_device, silence_dtype_warnings)
-        for module in self._controlnets():
-            module.to(torch_device)
-        return self
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
@@ -322,8 +382,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        modules = [self.unet, self.text_encoder, self.vae] + self._controlnets()
-        for cpu_offloaded_model in modules:
+        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.controlnet]:
             cpu_offload(cpu_offloaded_model, device)
 
         if self.safety_checker is not None:
@@ -352,8 +411,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
             _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
 
         # control net hook has be manually offloaded as it alternates with unet
-        for controlnet in self._controlnets():
-            cpu_offload_with_hook(controlnet, device)
+        cpu_offload_with_hook(self.controlnet, device)
 
         # We'll offload the last model manually.
         self.final_offload_hook = hook
@@ -721,13 +779,9 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
             (nsfw) content, according to the `safety_checker`.
         """
 
+        # TODO: add conversion image array to ControlNetConditions
         if controlnet_conditions is None:
             controlnet_conditions = [ControlNetCondition(image=image, scale=controlnet_conditioning_scale)]
-
-        if len(controlnet_conditions) != len(self._controlnets()):
-            raise ValueError(
-                f"The number of specified `ControlNetCondition` does not match the number of `ControlNetModel`. There are {len(self._controlnets())} ControlNetModel(s), but there are {len(controlnet_conditions)} `ControlNetCondition` in `controlnet_conditions`."
-            )
 
         # 0. Default height and width to unet
         height, width = controlnet_conditions[0].default_height_width(height, width)
@@ -765,7 +819,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         )
 
         # 4. Prepare image
-        for cond, controlnet in zip(controlnet_conditions, self._controlnets()):
+        for cond, controlnet in zip(controlnet_conditions, self.controlnet.nets):
             cond.prepare_image(
                 width=width,
                 height=height,
@@ -805,26 +859,13 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # controlnet(s) inference
-                for i, (controlnet, controlnet_cond) in enumerate(zip(self._controlnets(), controlnet_conditions)):
-                    down_samples, mid_sample = controlnet(
-                        latent_model_input,
-                        t,
-                        encoder_hidden_states=prompt_embeds,
-                        controlnet_cond=controlnet_cond.image,
-                        return_dict=False,
-                    )
-                    # scaling
-                    down_samples = [sample * controlnet_cond.scale for sample in down_samples]
-                    mid_sample *= controlnet_cond.scale
-
-                    # merge samples
-                    if i == 0:
-                        down_block_res_samples, mid_block_res_sample = down_samples, mid_sample
-                    else:
-                        down_block_res_samples = [
-                            d_prev + d_curr for d_prev, d_curr in zip(down_block_res_samples, down_samples)
-                        ]
-                        mid_block_res_sample = mid_block_res_sample + mid_sample
+                down_block_res_samples, mid_block_res_sample = self.controlnet(
+                    latent_model_input,
+                    t,
+                    encoder_hidden_states=prompt_embeds,
+                    controlnet_conditions=controlnet_conditions,
+                    return_dict=False,
+                )
 
                 # predict the noise residual
                 noise_pred = self.unet(
@@ -854,8 +895,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         # manually for max memory savings
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.unet.to("cpu")
-            for module in self._controlnets():
-                module.to("cpu")
+            self.controlnet.to("cpu")
             torch.cuda.empty_cache()
 
         if output_type == "latent":
