@@ -577,9 +577,11 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
         max_indices_list = []
         for i in indices:
             image = attention_for_text[:, :, i]
+            head, total_pixel = image.shape
+            image = image.reshape(head, int(total_pixel**0.5), int(total_pixel**0.5))
             smoothing = GaussianSmoothing().to(attention_maps.device)
-            input = F.pad(image.unsqueeze(0).unsqueeze(0), (1, 1, 1, 1), mode="reflect")
-            image = smoothing(input).squeeze(0).squeeze(0)
+            input = F.pad(image.unsqueeze(0), (1, 1, 1, 1), mode="reflect")
+            image = smoothing(input).squeeze(0)
             max_indices_list.append(image.max())
         return max_indices_list
 
