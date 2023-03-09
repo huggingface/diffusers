@@ -1096,7 +1096,14 @@ class DiffusionPipeline(ConfigMixin):
 
             # try loading the config file
             config_file = hf_hub_download(
-                pretrained_model_name, cls.config_name, cache_dir=cache_dir, revision=commit_hash
+                pretrained_model_name,
+                cls.config_name,
+                cache_dir=cache_dir,
+                revision=commit_hash,
+                proxies=proxies,
+                force_download=force_download,
+                resume_download=resume_download,
+                use_auth_token=use_auth_token,
             )
 
             config_dict = cls._dict_from_json_file(config_file)
@@ -1181,7 +1188,6 @@ class DiffusionPipeline(ConfigMixin):
             proxies=proxies,
             local_files_only=local_files_only,
             use_auth_token=use_auth_token,
-            force_download=force_download,
             revision=revision,
             allow_patterns=allow_patterns,
             ignore_patterns=ignore_patterns,
