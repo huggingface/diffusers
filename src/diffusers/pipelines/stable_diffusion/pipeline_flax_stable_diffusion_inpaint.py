@@ -24,6 +24,7 @@ from flax.jax_utils import unreplicate
 from flax.training.common_utils import shard
 from packaging import version
 from PIL import Image
+
 from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel
 
 from ...models import FlaxAutoencoderKL, FlaxUNet2DConditionModel
@@ -33,7 +34,7 @@ from ...schedulers import (
     FlaxLMSDiscreteScheduler,
     FlaxPNDMScheduler,
 )
-from ...utils import PIL_INTERPOLATION, deprecate, logging
+from ...utils import PIL_INTERPOLATION, deprecate, logging, replace_example_docstring
 from ..pipeline_flax_utils import FlaxDiffusionPipeline
 from . import FlaxStableDiffusionPipelineOutput
 from .safety_checker_flax import FlaxStableDiffusionSafetyChecker
@@ -43,6 +44,60 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 # Set to True to use python for loop instead of jax.fori_loop for easier debugging
 DEBUG = False
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> import jax
+        >>> import numpy as np
+        >>> from flax.jax_utils import replicate
+        >>> from flax.training.common_utils import shard
+        >>> import PIL
+        >>> import requests
+        >>> from io import BytesIO
+        >>> from diffusers import FlaxStableDiffusionInpaintPipeline
+
+
+        >>> def download_image(url):
+        ...     response = requests.get(url)
+        ...     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
+
+
+        >>> img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
+        >>> mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+
+        >>> init_image = download_image(img_url).resize((512, 512))
+        >>> mask_image = download_image(mask_url).resize((512, 512))
+
+        >>> pipeline, params = FlaxStableDiffusionInpaintPipeline.from_pretrained(
+        ...     "xvjiarui/stable-diffusion-2-inpainting"
+        ... )
+
+        >>> prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
+        >>> prng_seed = jax.random.PRNGKey(0)
+        >>> num_inference_steps = 50
+
+        >>> num_samples = jax.device_count()
+        >>> prompt = num_samples * [prompt]
+        >>> init_image = num_samples * [init_image]
+        >>> mask_image = num_samples * [mask_image]
+        >>> prompt_ids, processed_masked_images, processed_masks = pipeline.prepare_inputs(
+        ...     prompt, init_image, mask_image
+        ... )
+        # shard inputs and rng
+
+        >>> params = replicate(params)
+        >>> prng_seed = jax.random.split(prng_seed, jax.device_count())
+        >>> prompt_ids = shard(prompt_ids)
+        >>> processed_masked_images = shard(processed_masked_images)
+        >>> processed_masks = shard(processed_masks)
+
+        >>> images = pipeline(
+        ...     prompt_ids, processed_masks, processed_masked_images, params, prng_seed, num_inference_steps, jit=True
+        ... ).images
+        >>> images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
+        ```
+"""
 
 
 class FlaxStableDiffusionInpaintPipeline(FlaxDiffusionPipeline):
@@ -332,6 +387,7 @@ class FlaxStableDiffusionInpaintPipeline(FlaxDiffusionPipeline):
         image = (image / 2 + 0.5).clip(0, 1).transpose(0, 2, 3, 1)
         return image
 
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt_ids: jnp.array,
@@ -377,6 +433,8 @@ class FlaxStableDiffusionInpaintPipeline(FlaxDiffusionPipeline):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.FlaxStableDiffusionPipelineOutput`] instead of
                 a plain tuple.
+
+        Examples:
 
         Returns:
             [`~pipelines.stable_diffusion.FlaxStableDiffusionPipelineOutput`] or `tuple`:
