@@ -966,8 +966,7 @@ class DiffusionPipeline(ConfigMixin):
     @classmethod
     def download(cls, pretrained_model_name, **kwargs) -> Union[str, os.PathLike]:
         r"""
-        Download and cache a PyTorch diffusion pipeline from pre-trained pipeline weights. are already downloaded,
-        simply load return folder from cache.
+        Download and cache a PyTorch diffusion pipeline from pre-trained pipeline weights.
 
         Parameters:
              pretrained_model_name (`str` or `os.PathLike`, *optional*):
