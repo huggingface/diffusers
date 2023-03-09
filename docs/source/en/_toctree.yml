@@ -80,7 +80,7 @@
   - local: training/overview
     title: Overview
   - local: training/unconditional_training
-    title: Unconditional Image Generation
+    title: Unconditional image generation
   - local: training/text_inversion
     title: Textual Inversion
   - local: training/dreambooth
