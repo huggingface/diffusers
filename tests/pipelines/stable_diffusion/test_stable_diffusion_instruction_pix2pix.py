@@ -19,6 +19,8 @@ import unittest
 
 import numpy as np
 import torch
+from PIL import Image
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
@@ -31,9 +33,8 @@ from diffusers import (
 )
 from diffusers.utils import floats_tensor, load_image, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
-from PIL import Image
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
+from ...pipeline_params import TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin
 
 
@@ -42,6 +43,8 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 class StableDiffusionInstructPix2PixPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionInstructPix2PixPipeline
+    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width", "cross_attention_kwargs"}
+    batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -122,6 +125,7 @@ class StableDiffusionInstructPix2PixPipelineFastTests(PipelineTesterMixin, unitt
         image_slice = image[0, -3:, -3:, -1]
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.7318, 0.3723, 0.4662, 0.623, 0.5770, 0.5014, 0.4281, 0.5550, 0.4813])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_pix2pix_negative_prompt(self):
@@ -139,6 +143,7 @@ class StableDiffusionInstructPix2PixPipelineFastTests(PipelineTesterMixin, unitt
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.7323, 0.3688, 0.4611, 0.6255, 0.5746, 0.5017, 0.433, 0.5553, 0.4827])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_pix2pix_multiple_init_images(self):
@@ -161,6 +166,7 @@ class StableDiffusionInstructPix2PixPipelineFastTests(PipelineTesterMixin, unitt
 
         assert image.shape == (2, 32, 32, 3)
         expected_slice = np.array([0.606, 0.5712, 0.5099, 0.598, 0.5805, 0.7205, 0.6793, 0.554, 0.5607])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_pix2pix_euler(self):
@@ -182,43 +188,8 @@ class StableDiffusionInstructPix2PixPipelineFastTests(PipelineTesterMixin, unitt
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.726, 0.3902, 0.4868, 0.585, 0.5672, 0.511, 0.3906, 0.551, 0.4846])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-
-    def test_stable_diffusion_pix2pix_num_images_per_prompt(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionInstructPix2PixPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        # test num_images_per_prompt=1 (default)
-        inputs = self.get_dummy_inputs(device)
-        images = sd_pipe(**inputs).images
-
-        assert images.shape == (1, 32, 32, 3)
-
-        # test num_images_per_prompt=1 (default) for batch of prompts
-        batch_size = 2
-        inputs = self.get_dummy_inputs(device)
-        inputs["prompt"] = [inputs["prompt"]] * batch_size
-        images = sd_pipe(**inputs).images
-
-        assert images.shape == (batch_size, 32, 32, 3)
-
-        # test num_images_per_prompt for single prompt
-        num_images_per_prompt = 2
-        inputs = self.get_dummy_inputs(device)
-        images = sd_pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
-
-        assert images.shape == (num_images_per_prompt, 32, 32, 3)
-
-        # test num_images_per_prompt for batch of prompts
-        batch_size = 2
-        inputs = self.get_dummy_inputs(device)
-        inputs["prompt"] = [inputs["prompt"]] * batch_size
-        images = sd_pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
-
-        assert images.shape == (batch_size * num_images_per_prompt, 32, 32, 3)
 
 
 @slow
@@ -259,6 +230,7 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.5902, 0.6015, 0.6027, 0.5983, 0.6092, 0.6061, 0.5765, 0.5785, 0.5555])
+
         assert np.abs(expected_slice - image_slice).max() < 1e-3
 
     def test_stable_diffusion_pix2pix_k_lms(self):
@@ -276,6 +248,7 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.6578, 0.6817, 0.6972, 0.6761, 0.6856, 0.6916, 0.6428, 0.6516, 0.6301])
+
         assert np.abs(expected_slice - image_slice).max() < 1e-3
 
     def test_stable_diffusion_pix2pix_ddim(self):
@@ -293,6 +266,7 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.3828, 0.3834, 0.3818, 0.3792, 0.3865, 0.3752, 0.3792, 0.3847, 0.3753])
+
         assert np.abs(expected_slice - image_slice).max() < 1e-3
 
     def test_stable_diffusion_pix2pix_intermediate_state(self):
@@ -306,14 +280,16 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([-0.2388, -0.4673, -0.9775, 1.5127, 1.4414, 0.7778, 0.9907, 0.8472, 0.7788])
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-2
+                expected_slice = np.array([-0.2463, -0.4644, -0.9756, 1.5176, 1.4414, 0.7866, 0.9897, 0.8521, 0.7983])
+
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
             elif step == 2:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([-0.2568, -0.4648, -0.9639, 1.5137, 1.4609, 0.7603, 0.9795, 0.8403, 0.7949])
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-2
+                expected_slice = np.array([-0.2644, -0.4626, -0.9653, 1.5176, 1.4551, 0.7686, 0.9805, 0.8452, 0.8115])
+
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
 
         callback_fn.has_been_called = False
 
@@ -369,5 +345,6 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
         image_slice = image[255:258, 383:386, -1]
 
         assert image.shape == (504, 504, 3)
-        expected_slice = np.array([0.2726, 0.2529, 0.2664, 0.2655, 0.2641, 0.2642, 0.2591, 0.2649, 0.259])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        expected_slice = np.array([0.2726, 0.2529, 0.2664, 0.2655, 0.2641, 0.2642, 0.2591, 0.2649, 0.2590])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3

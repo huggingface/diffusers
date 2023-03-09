@@ -1,6 +1,10 @@
 from typing import Union
 
 import torch
+from PIL import Image
+from torchvision import transforms as tfms
+from tqdm.auto import tqdm
+from transformers import CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
@@ -10,10 +14,6 @@ from diffusers import (
     PNDMScheduler,
     UNet2DConditionModel,
 )
-from PIL import Image
-from torchvision import transforms as tfms
-from tqdm.auto import tqdm
-from transformers import CLIPTextModel, CLIPTokenizer
 
 
 class MagicMixPipeline(DiffusionPipeline):

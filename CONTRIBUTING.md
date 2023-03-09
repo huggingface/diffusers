@@ -1,5 +1,5 @@
 <!---
-Copyright 2022 The HuggingFace Team. All rights reserved.
+Copyright 2023 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -177,7 +177,7 @@ Follow these steps to start contributing ([supported Python versions](https://gi
    $ make style
    ```
 
-   🧨 Diffusers also uses `flake8` and a few custom scripts to check for coding mistakes. Quality
+   🧨 Diffusers also uses `ruff` and a few custom scripts to check for coding mistakes. Quality
    control runs in CI, however you can also run the same checks with:
 
    ```bash

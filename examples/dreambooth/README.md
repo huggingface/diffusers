@@ -279,7 +279,7 @@ Low-Rank Adaption of Large Language Models was first introduced by Microsoft in 
 In a nutshell, LoRA allows to adapt pretrained models by adding pairs of rank-decomposition matrices to existing weights and **only** training those newly added weights. This has a couple of advantages:
 - Previous pretrained weights are kept frozen so that the model is not prone to [catastrophic forgetting](https://www.pnas.org/doi/10.1073/pnas.1611835114)
 - Rank-decomposition matrices have significantly fewer parameters than the original model, which means that trained LoRA weights are easily portable.
-- LoRA attention layers allow to control to which extent the model is adapted torwards new training images via a `scale` parameter.
+- LoRA attention layers allow to control to which extent the model is adapted towards new training images via a `scale` parameter.
 
 [cloneofsimo](https://github.com/cloneofsimo) was the first to try out LoRA training for Stable Diffusion in 
 the popular [lora](https://github.com/cloneofsimo/lora) GitHub repository.

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The HuggingFace Inc. team.
+# Copyright 2023 The HuggingFace Inc. team.
 # Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,10 +22,10 @@ import json
 import os
 import re
 from collections import OrderedDict
+from pathlib import PosixPath
 from typing import Any, Dict, Tuple, Union
 
 import numpy as np
-
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
@@ -507,6 +507,8 @@ class ConfigMixin:
         def to_json_saveable(value):
             if isinstance(value, np.ndarray):
                 value = value.tolist()
+            elif isinstance(value, PosixPath):
+                value = str(value)
             return value
 
         config_dict = {k: to_json_saveable(v) for k, v in config_dict.items()}

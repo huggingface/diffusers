@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -82,6 +82,7 @@ class OnnxStableDiffusionImg2ImgPipelineFastTests(OnnxPipelineTesterMixin, unitt
 
         assert image.shape == (1, 128, 128, 3)
         expected_slice = np.array([0.61710, 0.53390, 0.49310, 0.55622, 0.50982, 0.58240, 0.50716, 0.38629, 0.46856])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-1
 
     def test_pipeline_lms(self):
@@ -98,6 +99,7 @@ class OnnxStableDiffusionImg2ImgPipelineFastTests(OnnxPipelineTesterMixin, unitt
 
         assert image.shape == (1, 128, 128, 3)
         expected_slice = np.array([0.52761, 0.59977, 0.49033, 0.49619, 0.54282, 0.50311, 0.47600, 0.40918, 0.45203])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-1
 
     def test_pipeline_euler(self):
@@ -111,6 +113,7 @@ class OnnxStableDiffusionImg2ImgPipelineFastTests(OnnxPipelineTesterMixin, unitt
 
         assert image.shape == (1, 128, 128, 3)
         expected_slice = np.array([0.52911, 0.60004, 0.49229, 0.49805, 0.54502, 0.50680, 0.47777, 0.41028, 0.45304])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-1
 
     def test_pipeline_euler_ancestral(self):
@@ -124,6 +127,7 @@ class OnnxStableDiffusionImg2ImgPipelineFastTests(OnnxPipelineTesterMixin, unitt
 
         assert image.shape == (1, 128, 128, 3)
         expected_slice = np.array([0.52911, 0.60004, 0.49229, 0.49805, 0.54502, 0.50680, 0.47777, 0.41028, 0.45304])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-1
 
     def test_pipeline_dpm_multistep(self):
@@ -137,6 +141,7 @@ class OnnxStableDiffusionImg2ImgPipelineFastTests(OnnxPipelineTesterMixin, unitt
 
         assert image.shape == (1, 128, 128, 3)
         expected_slice = np.array([0.65331, 0.58277, 0.48204, 0.56059, 0.53665, 0.56235, 0.50969, 0.40009, 0.46552])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-1
 
 
@@ -195,6 +200,7 @@ class OnnxStableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         assert images.shape == (1, 512, 768, 3)
         expected_slice = np.array([0.4909, 0.5059, 0.5372, 0.4623, 0.4876, 0.5049, 0.4820, 0.4956, 0.5019])
         # TODO: lower the tolerance after finding the cause of onnxruntime reproducibility issues
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 2e-2
 
     def test_inference_k_lms(self):
@@ -235,4 +241,5 @@ class OnnxStableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         assert images.shape == (1, 512, 768, 3)
         expected_slice = np.array([0.8043, 0.926, 0.9581, 0.8119, 0.8954, 0.913, 0.7209, 0.7463, 0.7431])
         # TODO: lower the tolerance after finding the cause of onnxruntime reproducibility issues
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 2e-2
