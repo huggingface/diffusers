@@ -1,6 +1,13 @@
+import tempfile
+
 import torch
 
-from diffusers import DEISMultistepScheduler
+from diffusers import (
+    DEISMultistepScheduler,
+    DPMSolverMultistepScheduler,
+    DPMSolverSinglestepScheduler,
+    UniPCMultistepScheduler,
+)
 
 from .test_schedulers import SchedulerCommonTest
 

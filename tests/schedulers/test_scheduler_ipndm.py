@@ -1,3 +1,5 @@
+import tempfile
+
 import torch
 
 from diffusers import IPNDMScheduler
