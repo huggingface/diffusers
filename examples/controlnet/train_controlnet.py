@@ -33,6 +33,7 @@ from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from packaging import version
+from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
@@ -42,17 +43,74 @@ from diffusers import (
     AutoencoderKL,
     ControlNetModel,
     DDPMScheduler,
+    StableDiffusionControlNetPipeline,
     UNet2DConditionModel,
+    UniPCMultistepScheduler,
 )
 from diffusers.optimization import get_scheduler
-from diffusers.utils import check_min_version
+from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
+
+if is_wandb_available():
+    import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.15.0.dev0")
 
 logger = get_logger(__name__)
+
+
+def log_validation(controlnet, args, accelerator, weight_dtype, epoch):
+    logger.info(
+        f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+        f" {args.validation_prompt}."
+    )
+
+    controlnet = accelerator.unwrap_model(controlnet)
+
+    validation_image = Image.open(args.validation_image)
+
+    pipeline = StableDiffusionControlNetPipeline.from_pretrained(
+        args.pretrained_model_name_or_path,
+        safety_checker=None,
+        controlnet=controlnet,
+        revision=args.revision,
+        torch_dtype=weight_dtype,
+    )
+    pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
+    pipeline = pipeline.to(accelerator.device)
+    pipeline.set_progress_bar_config(disable=True)
+
+    if args.enable_xformers_memory_efficient_attention:
+        pipeline.enable_xformers_memory_efficient_attention()
+
+    # run inference
+    generator = None if args.seed is None else torch.Generator(device=accelerator.device).manual_seed(args.seed)
+    images = []
+    for _ in range(args.num_validation_images):
+        with torch.autocast("cuda"):
+            image = pipeline(
+                args.validation_prompt, validation_image, num_inference_steps=20, generator=generator
+            ).images[0]
+        images.append(image)
+
+    for tracker in accelerator.trackers:
+        if tracker.name == "tensorboard":
+            np_images = np.stack([np.asarray(img) for img in images])
+            tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+        if tracker.name == "wandb":
+            tracker.log(
+                {
+                    "validation": [
+                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}") for i, image in enumerate(images)
+                    ]
+                }
+            )
+
+    # TODO should we actually call both of these?
+    del pipeline
+    torch.cuda.empty_cache()
 
 
 def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision: str):
@@ -341,6 +399,34 @@ def parse_args(input_args=None):
         default=0.5,
         help="Proportion of image prompts to be replaced with empty strings. Defaults to 0.5. Set to 0 to disable empty prompt replacement.",
     )
+    parser.add_argument(
+        "--validation_prompt",
+        type=str,
+        default=None,
+        help="A prompt that is used during validation to verify that the model is learning.",
+    )
+    parser.add_argument(
+        "--validation_image",
+        type=str,
+        default=None,
+        help="The path to the controlnet conditioning image to be used along with `--validation_prompt`.",
+    )
+    parser.add_argument(
+        "--num_validation_images",
+        type=int,
+        default=4,
+        help="Number of images that should be generated during validation with `validation_prompt`.",
+    )
+    parser.add_argument(
+        "--validation_steps",
+        type=int,
+        default=100,
+        help=(
+            "Run validation every X steps. Validation consists of running the prompt"
+            " `args.validation_prompt` multiple times: `args.num_validation_images`"
+            " and logging the images."
+        ),
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -355,6 +441,12 @@ def parse_args(input_args=None):
 
     if args.proportion_empty_prompts < 0 or args.proportion_empty_promps > 1:
         raise ValueError("`--proportion_empty_prompts` must be in the range [0, 1].")
+
+    if args.validation_prompt is not None and args.validation_image is None:
+        raise ValueError("`--validation_image` must be set if `--validation_prompt` is set")
+
+    if args.validation_prompt is None and args.validation_image is not None:
+        raise ValueError("`--validation_prompt` must be set if `--validation_image` is set")
 
     return args
 
@@ -840,11 +932,17 @@ def main(args):
                 progress_bar.update(1)
                 global_step += 1
 
-                if global_step % args.checkpointing_steps == 0:
-                    if accelerator.is_main_process:
-                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                        accelerator.save_state(save_path)
-                        logger.info(f"Saved state to {save_path}")
+                if accelerator.is_main_process:
+                    if global_step % args.checkpointing_steps == 0:
+                        if accelerator.is_main_process:
+                            save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                            accelerator.save_state(save_path)
+                            logger.info(f"Saved state to {save_path}")
+
+                    if args.validation_prompt is not None and global_step % args.validation_steps == 0:
+                        log_validation(
+                            text_encoder, tokenizer, unet, vae, controlnet, args, accelerator, weight_dtype, epoch
+                        )
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
