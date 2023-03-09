@@ -1,3 +1,9 @@
+import torch
+
+from diffusers import EulerDiscreteScheduler
+
+from .test_schedulers import SchedulerCommonTest
+
 
 class EulerDiscreteSchedulerTest(SchedulerCommonTest):
     scheduler_classes = (EulerDiscreteScheduler,)

@@ -1,6 +1,12 @@
+import torch
 
-class DPMSolverSinglestepSchedulerTest(SchedulerCommonTest):
-    scheduler_classes = (DPMSolverSinglestepScheduler,)
+from diffusers import DEISMultistepScheduler
+
+from .test_schedulers import SchedulerCommonTest
+
+
+class DEISMultistepSchedulerTest(SchedulerCommonTest):
+    scheduler_classes = (DEISMultistepScheduler,)
     forward_default_kwargs = (("num_inference_steps", 25),)
 
     def get_scheduler_config(self, **kwargs):
@@ -10,11 +16,6 @@ class DPMSolverSinglestepSchedulerTest(SchedulerCommonTest):
             "beta_end": 0.02,
             "beta_schedule": "linear",
             "solver_order": 2,
-            "prediction_type": "epsilon",
-            "thresholding": False,
-            "sample_max_value": 1.0,
-            "algorithm_type": "dpmsolver++",
-            "solver_type": "midpoint",
         }
 
         config.update(**kwargs)
@@ -101,40 +102,70 @@ class DPMSolverSinglestepSchedulerTest(SchedulerCommonTest):
 
         return sample
 
-    def test_timesteps(self):
-        for timesteps in [25, 50, 100, 999, 1000]:
-            self.check_over_configs(num_train_timesteps=timesteps)
+    def test_step_shape(self):
+        kwargs = dict(self.forward_default_kwargs)
+
+        num_inference_steps = kwargs.pop("num_inference_steps", None)
+
+        for scheduler_class in self.scheduler_classes:
+            scheduler_config = self.get_scheduler_config()
+            scheduler = scheduler_class(**scheduler_config)
+
+            sample = self.dummy_sample
+            residual = 0.1 * sample
+
+            if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
+                scheduler.set_timesteps(num_inference_steps)
+            elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
+                kwargs["num_inference_steps"] = num_inference_steps
+
+            # copy over dummy past residuals (must be done after set_timesteps)
+            dummy_past_residuals = [residual + 0.2, residual + 0.15, residual + 0.10]
+            scheduler.model_outputs = dummy_past_residuals[: scheduler.config.solver_order]
+
+            time_step_0 = scheduler.timesteps[5]
+            time_step_1 = scheduler.timesteps[6]
+
+            output_0 = scheduler.step(residual, time_step_0, sample, **kwargs).prev_sample
+            output_1 = scheduler.step(residual, time_step_1, sample, **kwargs).prev_sample
+
+            self.assertEqual(output_0.shape, sample.shape)
+            self.assertEqual(output_0.shape, output_1.shape)
 
     def test_switch(self):
         # make sure that iterating over schedulers with same config names gives same results
         # for defaults
-        scheduler = DPMSolverSinglestepScheduler(**self.get_scheduler_config())
+        scheduler = DEISMultistepScheduler(**self.get_scheduler_config())
         sample = self.full_loop(scheduler=scheduler)
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_mean.item() - 0.2791) < 1e-3
+        assert abs(result_mean.item() - 0.23916) < 1e-3
 
-        scheduler = DEISMultistepScheduler.from_config(scheduler.config)
+        scheduler = DPMSolverSinglestepScheduler.from_config(scheduler.config)
         scheduler = DPMSolverMultistepScheduler.from_config(scheduler.config)
         scheduler = UniPCMultistepScheduler.from_config(scheduler.config)
-        scheduler = DPMSolverSinglestepScheduler.from_config(scheduler.config)
+        scheduler = DEISMultistepScheduler.from_config(scheduler.config)
 
         sample = self.full_loop(scheduler=scheduler)
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_mean.item() - 0.2791) < 1e-3
+        assert abs(result_mean.item() - 0.23916) < 1e-3
+
+    def test_timesteps(self):
+        for timesteps in [25, 50, 100, 999, 1000]:
+            self.check_over_configs(num_train_timesteps=timesteps)
 
     def test_thresholding(self):
         self.check_over_configs(thresholding=False)
         for order in [1, 2, 3]:
-            for solver_type in ["midpoint", "heun"]:
+            for solver_type in ["logrho"]:
                 for threshold in [0.5, 1.0, 2.0]:
                     for prediction_type in ["epsilon", "sample"]:
                         self.check_over_configs(
                             thresholding=True,
                             prediction_type=prediction_type,
                             sample_max_value=threshold,
-                            algorithm_type="dpmsolver++",
+                            algorithm_type="deis",
                             solver_order=order,
                             solver_type=solver_type,
                         )
@@ -144,8 +175,8 @@ class DPMSolverSinglestepSchedulerTest(SchedulerCommonTest):
             self.check_over_configs(prediction_type=prediction_type)
 
     def test_solver_order_and_type(self):
-        for algorithm_type in ["dpmsolver", "dpmsolver++"]:
-            for solver_type in ["midpoint", "heun"]:
+        for algorithm_type in ["deis"]:
+            for solver_type in ["logrho"]:
                 for order in [1, 2, 3]:
                     for prediction_type in ["epsilon", "sample"]:
                         self.check_over_configs(
@@ -174,13 +205,13 @@ class DPMSolverSinglestepSchedulerTest(SchedulerCommonTest):
         sample = self.full_loop()
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_mean.item() - 0.2791) < 1e-3
+        assert abs(result_mean.item() - 0.23916) < 1e-3
 
     def test_full_loop_with_v_prediction(self):
         sample = self.full_loop(prediction_type="v_prediction")
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_mean.item() - 0.1453) < 1e-3
+        assert abs(result_mean.item() - 0.091) < 1e-3
 
     def test_fp16_support(self):
         scheduler_class = self.scheduler_classes[0]

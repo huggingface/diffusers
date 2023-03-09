@@ -21,26 +21,13 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 
 import diffusers
 from diffusers import (
-    DDIMScheduler,
-    DDPMScheduler,
-    DEISMultistepScheduler,
-    DPMSolverMultistepScheduler,
-    DPMSolverSinglestepScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
-    HeunDiscreteScheduler,
     IPNDMScheduler,
-    KDPM2AncestralDiscreteScheduler,
-    KDPM2DiscreteScheduler,
     LMSDiscreteScheduler,
-    PNDMScheduler,
-    ScoreSdeVeScheduler,
-    UnCLIPScheduler,
-    UniPCMultistepScheduler,
     VQDiffusionScheduler,
     logging,
 )

@@ -1,3 +1,9 @@
+import torch
+
+from diffusers import DPMSolverMultistepScheduler
+
+from .test_schedulers import SchedulerCommonTest
+
 
 class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
     scheduler_classes = (DPMSolverMultistepScheduler,)

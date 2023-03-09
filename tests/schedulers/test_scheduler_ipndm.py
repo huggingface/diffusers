@@ -1,3 +1,9 @@
+import torch
+
+from diffusers import IPNDMScheduler
+
+from .test_schedulers import SchedulerCommonTest
+
 
 class IPNDMSchedulerTest(SchedulerCommonTest):
     scheduler_classes = (IPNDMScheduler,)

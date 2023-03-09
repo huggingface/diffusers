@@ -1,3 +1,9 @@
+import torch
+
+from diffusers import DDIMScheduler
+
+from .test_schedulers import SchedulerCommonTest
+
 
 class DDIMSchedulerTest(SchedulerCommonTest):
     scheduler_classes = (DDIMScheduler,)

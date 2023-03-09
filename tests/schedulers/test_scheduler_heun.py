@@ -1,6 +1,12 @@
+import torch
 
-class KDPM2DiscreteSchedulerTest(SchedulerCommonTest):
-    scheduler_classes = (KDPM2DiscreteScheduler,)
+from diffusers import HeunDiscreteScheduler
+
+from .test_schedulers import SchedulerCommonTest
+
+
+class HeunDiscreteSchedulerTest(SchedulerCommonTest):
+    scheduler_classes = (HeunDiscreteScheduler,)
     num_inference_steps = 10
 
     def get_scheduler_config(self, **kwargs):
@@ -29,6 +35,36 @@ class KDPM2DiscreteSchedulerTest(SchedulerCommonTest):
     def test_prediction_type(self):
         for prediction_type in ["epsilon", "v_prediction"]:
             self.check_over_configs(prediction_type=prediction_type)
+
+    def test_full_loop_no_noise(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        scheduler.set_timesteps(self.num_inference_steps)
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
+        sample = sample.to(torch_device)
+
+        for i, t in enumerate(scheduler.timesteps):
+            sample = scheduler.scale_model_input(sample, t)
+
+            model_output = model(sample, t)
+
+            output = scheduler.step(model_output, t, sample)
+            sample = output.prev_sample
+
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        if torch_device in ["cpu", "mps"]:
+            assert abs(result_sum.item() - 0.1233) < 1e-2
+            assert abs(result_mean.item() - 0.0002) < 1e-3
+        else:
+            # CUDA
+            assert abs(result_sum.item() - 0.1233) < 1e-2
+            assert abs(result_mean.item() - 0.0002) < 1e-3
 
     def test_full_loop_with_v_prediction(self):
         scheduler_class = self.scheduler_classes[0]
@@ -60,41 +96,7 @@ class KDPM2DiscreteSchedulerTest(SchedulerCommonTest):
             assert abs(result_sum.item() - 4.693428650170972e-07) < 1e-2
             assert abs(result_mean.item() - 0.0002) < 1e-3
 
-    def test_full_loop_no_noise(self):
-        if torch_device == "mps":
-            return
-        scheduler_class = self.scheduler_classes[0]
-        scheduler_config = self.get_scheduler_config()
-        scheduler = scheduler_class(**scheduler_config)
-
-        scheduler.set_timesteps(self.num_inference_steps)
-
-        model = self.dummy_model()
-        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
-        sample = sample.to(torch_device)
-
-        for i, t in enumerate(scheduler.timesteps):
-            sample = scheduler.scale_model_input(sample, t)
-
-            model_output = model(sample, t)
-
-            output = scheduler.step(model_output, t, sample)
-            sample = output.prev_sample
-
-        result_sum = torch.sum(torch.abs(sample))
-        result_mean = torch.mean(torch.abs(sample))
-
-        if torch_device in ["cpu", "mps"]:
-            assert abs(result_sum.item() - 20.4125) < 1e-2
-            assert abs(result_mean.item() - 0.0266) < 1e-3
-        else:
-            # CUDA
-            assert abs(result_sum.item() - 20.4125) < 1e-2
-            assert abs(result_mean.item() - 0.0266) < 1e-3
-
     def test_full_loop_device(self):
-        if torch_device == "mps":
-            return
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
         scheduler = scheduler_class(**scheduler_config)
@@ -117,9 +119,12 @@ class KDPM2DiscreteSchedulerTest(SchedulerCommonTest):
 
         if str(torch_device).startswith("cpu"):
             # The following sum varies between 148 and 156 on mps. Why?
-            assert abs(result_sum.item() - 20.4125) < 1e-2
-            assert abs(result_mean.item() - 0.0266) < 1e-3
+            assert abs(result_sum.item() - 0.1233) < 1e-2
+            assert abs(result_mean.item() - 0.0002) < 1e-3
+        elif str(torch_device).startswith("mps"):
+            # Larger tolerance on mps
+            assert abs(result_mean.item() - 0.0002) < 1e-2
         else:
             # CUDA
-            assert abs(result_sum.item() - 20.4125) < 1e-2
-            assert abs(result_mean.item() - 0.0266) < 1e-3
+            assert abs(result_sum.item() - 0.1233) < 1e-2
+            assert abs(result_mean.item() - 0.0002) < 1e-3

@@ -1,6 +1,12 @@
+import torch
 
-class HeunDiscreteSchedulerTest(SchedulerCommonTest):
-    scheduler_classes = (HeunDiscreteScheduler,)
+from diffusers import KDPM2AncestralDiscreteScheduler
+
+from .test_schedulers import SchedulerCommonTest
+
+
+class KDPM2AncestralDiscreteSchedulerTest(SchedulerCommonTest):
+    scheduler_classes = (KDPM2AncestralDiscreteScheduler,)
     num_inference_steps = 10
 
     def get_scheduler_config(self, **kwargs):
@@ -26,16 +32,16 @@ class HeunDiscreteSchedulerTest(SchedulerCommonTest):
         for schedule in ["linear", "scaled_linear"]:
             self.check_over_configs(beta_schedule=schedule)
 
-    def test_prediction_type(self):
-        for prediction_type in ["epsilon", "v_prediction"]:
-            self.check_over_configs(prediction_type=prediction_type)
-
     def test_full_loop_no_noise(self):
+        if torch_device == "mps":
+            return
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
         scheduler = scheduler_class(**scheduler_config)
 
         scheduler.set_timesteps(self.num_inference_steps)
+
+        generator = torch.manual_seed(0)
 
         model = self.dummy_model()
         sample = self.dummy_sample_deter * scheduler.init_noise_sigma
@@ -46,21 +52,22 @@ class HeunDiscreteSchedulerTest(SchedulerCommonTest):
 
             model_output = model(sample, t)
 
-            output = scheduler.step(model_output, t, sample)
+            output = scheduler.step(model_output, t, sample, generator=generator)
             sample = output.prev_sample
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        if torch_device in ["cpu", "mps"]:
-            assert abs(result_sum.item() - 0.1233) < 1e-2
-            assert abs(result_mean.item() - 0.0002) < 1e-3
-        else:
-            # CUDA
-            assert abs(result_sum.item() - 0.1233) < 1e-2
-            assert abs(result_mean.item() - 0.0002) < 1e-3
+        assert abs(result_sum.item() - 13849.3877) < 1e-2
+        assert abs(result_mean.item() - 18.0331) < 5e-3
+
+    def test_prediction_type(self):
+        for prediction_type in ["epsilon", "v_prediction"]:
+            self.check_over_configs(prediction_type=prediction_type)
 
     def test_full_loop_with_v_prediction(self):
+        if torch_device == "mps":
+            return
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config(prediction_type="v_prediction")
         scheduler = scheduler_class(**scheduler_config)
@@ -71,31 +78,31 @@ class HeunDiscreteSchedulerTest(SchedulerCommonTest):
         sample = self.dummy_sample_deter * scheduler.init_noise_sigma
         sample = sample.to(torch_device)
 
+        generator = torch.manual_seed(0)
+
         for i, t in enumerate(scheduler.timesteps):
             sample = scheduler.scale_model_input(sample, t)
 
             model_output = model(sample, t)
 
-            output = scheduler.step(model_output, t, sample)
+            output = scheduler.step(model_output, t, sample, generator=generator)
             sample = output.prev_sample
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        if torch_device in ["cpu", "mps"]:
-            assert abs(result_sum.item() - 4.6934e-07) < 1e-2
-            assert abs(result_mean.item() - 6.1112e-10) < 1e-3
-        else:
-            # CUDA
-            assert abs(result_sum.item() - 4.693428650170972e-07) < 1e-2
-            assert abs(result_mean.item() - 0.0002) < 1e-3
+        assert abs(result_sum.item() - 328.9970) < 1e-2
+        assert abs(result_mean.item() - 0.4284) < 1e-3
 
     def test_full_loop_device(self):
+        if torch_device == "mps":
+            return
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
         scheduler = scheduler_class(**scheduler_config)
 
         scheduler.set_timesteps(self.num_inference_steps, device=torch_device)
+        generator = torch.manual_seed(0)
 
         model = self.dummy_model()
         sample = self.dummy_sample_deter.to(torch_device) * scheduler.init_noise_sigma
@@ -105,20 +112,11 @@ class HeunDiscreteSchedulerTest(SchedulerCommonTest):
 
             model_output = model(sample, t)
 
-            output = scheduler.step(model_output, t, sample)
+            output = scheduler.step(model_output, t, sample, generator=generator)
             sample = output.prev_sample
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        if str(torch_device).startswith("cpu"):
-            # The following sum varies between 148 and 156 on mps. Why?
-            assert abs(result_sum.item() - 0.1233) < 1e-2
-            assert abs(result_mean.item() - 0.0002) < 1e-3
-        elif str(torch_device).startswith("mps"):
-            # Larger tolerance on mps
-            assert abs(result_mean.item() - 0.0002) < 1e-2
-        else:
-            # CUDA
-            assert abs(result_sum.item() - 0.1233) < 1e-2
-            assert abs(result_mean.item() - 0.0002) < 1e-3
+        assert abs(result_sum.item() - 13849.3818) < 1e-1
+        assert abs(result_mean.item() - 18.0331) < 1e-3

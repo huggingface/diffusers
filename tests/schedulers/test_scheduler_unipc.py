@@ -1,3 +1,16 @@
+import tempfile
+
+import torch
+
+from diffusers import (
+    DEISMultistepScheduler,
+    DPMSolverMultistepScheduler,
+    DPMSolverSinglestepScheduler,
+    UniPCMultistepScheduler,
+)
+
+from .test_schedulers import SchedulerCommonTest
+
 
 class UniPCMultistepSchedulerTest(SchedulerCommonTest):
     scheduler_classes = (UniPCMultistepScheduler,)

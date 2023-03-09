@@ -1,3 +1,10 @@
+import torch
+
+from diffusers import VQDiffusionScheduler
+
+from .test_schedulers import SchedulerCommonTest
+
+
 class VQDiffusionSchedulerTest(SchedulerCommonTest):
     scheduler_classes = (VQDiffusionScheduler,)
 

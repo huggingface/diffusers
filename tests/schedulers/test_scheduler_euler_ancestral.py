@@ -1,6 +1,12 @@
+import torch
 
-class KDPM2AncestralDiscreteSchedulerTest(SchedulerCommonTest):
-    scheduler_classes = (KDPM2AncestralDiscreteScheduler,)
+from diffusers import EulerAncestralDiscreteScheduler
+
+from .test_schedulers import SchedulerCommonTest
+
+
+class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
+    scheduler_classes = (EulerAncestralDiscreteScheduler,)
     num_inference_steps = 10
 
     def get_scheduler_config(self, **kwargs):
@@ -26,9 +32,11 @@ class KDPM2AncestralDiscreteSchedulerTest(SchedulerCommonTest):
         for schedule in ["linear", "scaled_linear"]:
             self.check_over_configs(beta_schedule=schedule)
 
+    def test_prediction_type(self):
+        for prediction_type in ["epsilon", "v_prediction"]:
+            self.check_over_configs(prediction_type=prediction_type)
+
     def test_full_loop_no_noise(self):
-        if torch_device == "mps":
-            return
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
         scheduler = scheduler_class(**scheduler_config)
@@ -52,27 +60,21 @@ class KDPM2AncestralDiscreteSchedulerTest(SchedulerCommonTest):
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_sum.item() - 13849.3877) < 1e-2
-        assert abs(result_mean.item() - 18.0331) < 5e-3
-
-    def test_prediction_type(self):
-        for prediction_type in ["epsilon", "v_prediction"]:
-            self.check_over_configs(prediction_type=prediction_type)
+        assert abs(result_sum.item() - 152.3192) < 1e-2
+        assert abs(result_mean.item() - 0.1983) < 1e-3
 
     def test_full_loop_with_v_prediction(self):
-        if torch_device == "mps":
-            return
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config(prediction_type="v_prediction")
         scheduler = scheduler_class(**scheduler_config)
 
         scheduler.set_timesteps(self.num_inference_steps)
 
+        generator = torch.manual_seed(0)
+
         model = self.dummy_model()
         sample = self.dummy_sample_deter * scheduler.init_noise_sigma
         sample = sample.to(torch_device)
-
-        generator = torch.manual_seed(0)
 
         for i, t in enumerate(scheduler.timesteps):
             sample = scheduler.scale_model_input(sample, t)
@@ -85,12 +87,10 @@ class KDPM2AncestralDiscreteSchedulerTest(SchedulerCommonTest):
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_sum.item() - 328.9970) < 1e-2
-        assert abs(result_mean.item() - 0.4284) < 1e-3
+        assert abs(result_sum.item() - 108.4439) < 1e-2
+        assert abs(result_mean.item() - 0.1412) < 1e-3
 
     def test_full_loop_device(self):
-        if torch_device == "mps":
-            return
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
         scheduler = scheduler_class(**scheduler_config)
@@ -99,7 +99,8 @@ class KDPM2AncestralDiscreteSchedulerTest(SchedulerCommonTest):
         generator = torch.manual_seed(0)
 
         model = self.dummy_model()
-        sample = self.dummy_sample_deter.to(torch_device) * scheduler.init_noise_sigma
+        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
+        sample = sample.to(torch_device)
 
         for t in scheduler.timesteps:
             sample = scheduler.scale_model_input(sample, t)
@@ -112,5 +113,5 @@ class KDPM2AncestralDiscreteSchedulerTest(SchedulerCommonTest):
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_sum.item() - 13849.3818) < 1e-1
-        assert abs(result_mean.item() - 18.0331) < 1e-3
+        assert abs(result_sum.item() - 152.3192) < 1e-2
+        assert abs(result_mean.item() - 0.1983) < 1e-3
