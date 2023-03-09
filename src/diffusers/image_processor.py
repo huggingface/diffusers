@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import warnings
 from typing import Union
 
 import numpy as np
@@ -27,15 +28,13 @@ class VaeImageProcessor(ConfigMixin):
     """
     Image Processor for VAE
 
-    [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
-    function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
-
     Args:
         do_resize (`bool`, *optional*, defaults to `True`):
-            Whether to resize the image's (height, width) dimensions to the specified `size`.
-            `do_resize` in the `preprocess` method.
+            Whether to resize the image's (height, width) dimensions to the specified `size`. `do_resize` in the
+            `preprocess` method.
         vae_scale_factor (`int`, *optional*, defaults to `8`):
-            scale factor in VAE, if do_resize is True, the image will be automatically resized to multipls of vae_scale_factor
+            scale factor in VAE, if do_resize is True, the image will be automatically resized to multipls of
+            vae_scale_factor
         resample (`str`, *optional*, defaults to `lanczos`):
             Resampling filter to use if resizing the image.
         do_normalize (`bool`, *optional*, defaults to `True`):
@@ -73,7 +72,7 @@ class VaeImageProcessor(ConfigMixin):
     @staticmethod
     def numpy_to_pt(images):
         """
-        Convert a numpy image  to a pytorch tensor
+        Convert a numpy image to a pytorch tensor
         """
         if images.ndim == 3:
             images = images[..., None]
@@ -85,7 +84,7 @@ class VaeImageProcessor(ConfigMixin):
     @staticmethod
     def pt_to_numpy(images):
         """
-        Convert a numpy image  to a pytorch tensor
+        Convert a numpy image to a pytorch tensor
         """
         images = images.cpu().numpy().transpose(0, 2, 3, 1)
         return images
