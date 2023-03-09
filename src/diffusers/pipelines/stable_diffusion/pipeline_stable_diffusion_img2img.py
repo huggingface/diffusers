@@ -191,7 +191,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             vae_scale_factor =self.vae_scale_factor)
         self.register_to_config(
             requires_safety_checker=requires_safety_checker,
-            vae_feature_extractor = vae_feature_extractor)
+            )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
     def enable_sequential_cpu_offload(self, gpu_id=0):

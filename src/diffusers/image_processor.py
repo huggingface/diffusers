@@ -50,7 +50,7 @@ class VaeImageProcessor(ConfigMixin):
         vae_scale_factor: int = 8,
         resample: str = "lanczos",
         do_normalize: bool = True,
-        ):
+    ):
         super().__init__()
 
     @staticmethod
@@ -110,31 +110,38 @@ class VaeImageProcessor(ConfigMixin):
         Preprocess the image input, accpet formats in PIL images, numpy arrays or pytorch tensors"
         """
         # convert PIL or list of PIL into numpy 
-        if isinstance(image, PIL.Image.Image):
+        supported_formats =  [PIL.Image.Image, np.ndarray, torch.Tensor]
+        if isinstance(image, supported_formats):
+            image = [image]
+        elif isinstance(image, list) and all(isinstance(i, supported_formats) for i in image):
+            image = image
+        else:
+            raise ValueError("Raise nice error messages here that incorrect format is used.")  
             image = [image]
 
         if isinstance(image[0], PIL.Image.Image):
             if self.do_resize:
                 image = [self.resize(i) for i in image]
             image = [np.array(i).astype(np.float32) / 255.0 for i in image]
+        elif self.do_resize:
+            # Currently we only support resizing for PIL so in case np or torch is used AND resizing is activating (which it is by default) then let's do the following: - 1. Check if the image sizes are not a multiple of `self.vae_scale_factor` => If it's not the case we throw a nice error
 
-        if isinstance(image, np.ndarray):
-            image = self.numpy_to_pt(image)
-        elif isinstance(image[0], np.ndarray):
+        if isinstance(image[0], np.ndarray):
             image = self.numpy_to_pt(np.stack(image, axis=0))
         elif not isinstance(image, torch.Tensor) and isinstance(image[0], torch.Tensor):
             image = torch.cat(image, dim=0)
         
         # expected range [0,1], normalize to [-1,1]
+        do_normalize = self.do_normalize
         if image.min() < 0: 
             warnings.warn(
                 "Passing `image` as torch tensor with value range in [-1,1] is deprecated. The expected value range for image tensor is [0,1] "
                 f"when passing as pytorch tensor or numpy Array. You passed `image` with value range [{image.min()},{image.max()}]",
                 FutureWarning,
                 )
-            self.do_normalize = False
+            do_normalize = False
         
-        if self.do_normalize:
+        if do_normalize:
             image = self.normalize(image)
 
         return image
