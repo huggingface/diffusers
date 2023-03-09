@@ -74,6 +74,10 @@ class VaeImageProcessor(ConfigMixin):
         """
         Convert a numpy image  to a pytorch tensor
         """
+        if images.ndim ==3:
+            images = images[...,None]
+        elif images.ndim==5:
+            images = images.squeeze(0)
         images = torch.from_numpy(images.transpose(0, 3, 1, 2))
         return images
 
@@ -109,28 +113,30 @@ class VaeImageProcessor(ConfigMixin):
         """
         Preprocess the image input, accpet formats in PIL images, numpy arrays or pytorch tensors"
         """
-        # convert PIL or list of PIL into numpy 
-        supported_formats =  [PIL.Image.Image, np.ndarray, torch.Tensor]
+        supported_formats =  (PIL.Image.Image, np.ndarray, torch.Tensor)
         if isinstance(image, supported_formats):
             image = [image]
         elif isinstance(image, list) and all(isinstance(i, supported_formats) for i in image):
             image = image
         else:
-            raise ValueError("Raise nice error messages here that incorrect format is used.")  
-            image = [image]
-
+            raise ValueError(f"incorrect image format is used - currently we only support PIL image, numpy array or pytorch tensor")  
+    
         if isinstance(image[0], PIL.Image.Image):
             if self.do_resize:
                 image = [self.resize(i) for i in image]
             image = [np.array(i).astype(np.float32) / 255.0 for i in image]
-        elif self.do_resize:
-            # Currently we only support resizing for PIL so in case np or torch is used AND resizing is activating (which it is by default) then let's do the following: - 1. Check if the image sizes are not a multiple of `self.vae_scale_factor` => If it's not the case we throw a nice error
 
         if isinstance(image[0], np.ndarray):
             image = self.numpy_to_pt(np.stack(image, axis=0))
         elif not isinstance(image, torch.Tensor) and isinstance(image[0], torch.Tensor):
             image = torch.cat(image, dim=0)
         
+        if image.ndim==5: 
+            image = image.squeeze(0)
+        _, _, height, width = image.shape
+        if self.do_resize and (height % self.vae_scale_factor != 0 or width % self.vae_scale_factor != 0):
+            raise ValueError(f"the height and width of image have to be divisible by {self.vae_scale_factor} but are {height} and {width}.")
+
         # expected range [0,1], normalize to [-1,1]
         do_normalize = self.do_normalize
         if image.min() < 0: 
