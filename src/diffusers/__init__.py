@@ -32,6 +32,7 @@ try:
 except OptionalDependencyNotAvailable:
     from .utils.dummy_pt_objects import *  # noqa F403
 else:
+    from .image_processor import VaeImageProcessor
     from .models import (
         AutoencoderKL,
         ControlNetModel,
@@ -90,7 +91,6 @@ else:
         VQDiffusionScheduler,
     )
     from .training_utils import EMAModel
-    from .image_processor import VaeImageProcessor
 
 try:
     if not (is_torch_available() and is_scipy_available()):

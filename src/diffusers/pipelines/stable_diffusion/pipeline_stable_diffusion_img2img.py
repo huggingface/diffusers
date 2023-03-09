@@ -405,7 +405,9 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is not None:
-            safety_checker_input = self.feature_extractor(self.vae_feature_extractor.numpy_to_pil(image), return_tensors="pt").to(device)
+            safety_checker_input = self.feature_extractor(
+                self.vae_feature_extractor.numpy_to_pil(image), return_tensors="pt"
+            ).to(device)
             image, has_nsfw_concept = self.safety_checker(
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
@@ -419,7 +421,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-        #image = image.cpu().permute(0, 2, 3, 1).float().numpy()
+        # image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
@@ -693,10 +695,10 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
-        
-        if output_type is None: 
-            output_type = 'np'
-            
+
+        if output_type is None:
+            output_type = "np"
+
         if output_type == "latent":
             image = latents
             has_nsfw_concept = None
@@ -709,20 +711,20 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             image = self.decode_latents(latents)
 
             # 9. Run safety checker
-            image = self.vae_feature_extractor.decode(image, output_type='np')
+            image = self.vae_feature_extractor.decode(image, output_type="np")
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
-        
-        elif output_type == 'pil':
+
+        elif output_type == "pil":
             # 8. Post-processing
             image = self.decode_latents(latents)
 
             # 9. Run safety checker
-            image = self.vae_feature_extractor.decode(image, output_type='np')
+            image = self.vae_feature_extractor.decode(image, output_type="np")
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
             # 10. Convert to PIL
             image = self.vae_feature_extractor.numpy_to_pil(image)
-        
+
         else:
             raise ValueError(f"Unsupported output_type {output_type} ")
 
