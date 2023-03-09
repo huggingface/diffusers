@@ -27,6 +27,7 @@ else:
     from .repaint import RePaintPipeline
     from .score_sde_ve import ScoreSdeVePipeline
     from .stochastic_karras_ve import KarrasVePipeline
+    from .spectrogram_diffusion import SpectrogramDiffusionPipeline
 
 try:
     if not (is_torch_available() and is_librosa_available()):
@@ -35,14 +36,6 @@ except OptionalDependencyNotAvailable:
     from ..utils.dummy_torch_and_librosa_objects import *  # noqa F403
 else:
     from .audio_diffusion import AudioDiffusionPipeline, Mel
-
-try:
-    if not (is_torch_available() and is_note_seq_available()):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from ..utils.dummy_torch_and_note_seq_objects import *  # noqa F403
-else:
-    from .spectrogram_diffusion import SpectrogramDiffusionPipeline
 
 try:
     if not (is_torch_available() and is_transformers_available()):
@@ -133,3 +126,10 @@ else:
         FlaxStableDiffusionInpaintPipeline,
         FlaxStableDiffusionPipeline,
     )
+try:
+    if not (is_note_seq_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils.dummy_note_seq_objects import *  # noqa F403
+else:
+    from .spectrogram_diffusion import MidiProcessor

@@ -14,47 +14,25 @@
 # limitations under the License.
 
 import math
-from typing import Optional, Tuple, Union, Any, Callable
-
+from typing import Optional, Tuple, Union, Any, Callable, List
 import numpy as np
 import torch
 
 from ...models import T5FilmDecoder
 from ...schedulers import DDPMScheduler
-from ...utils import is_note_seq_available, randn_tensor, is_onnx_available
+from ...utils import randn_tensor, is_onnx_available, logging
+
+TARGET_FEATURE_LENGTH = 256
 
 if is_onnx_available():
     from ..onnx_utils import OnnxRuntimeModel
+
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from .continous_encoder import SpectrogramContEncoder
-from .midi_utils import (
-    DEFAULT_MAX_SHIFT_SECONDS,
-    DEFAULT_NUM_VELOCITY_BINS,
-    DEFAULT_STEPS_PER_SECOND,
-    FRAME_RATE,
-    HOP_SIZE,
-    SAMPLE_RATE,
-    TARGET_FEATURE_LENGTH,
-    Codec,
-    EventRange,
-    NoteEncodingState,
-    NoteRepresentationConfig,
-    Tokenizer,
-    audio_to_frames,
-    encode_and_index_events,
-    note_encoding_state_to_events,
-    note_event_data_to_events,
-    note_representation_processor_chain,
-    note_sequence_to_onsets_and_offsets_and_programs,
-    program_to_slakh_program,
-)
 from .notes_encoder import SpectrogramNotesEncoder
 
 
-if is_note_seq_available():
-    import note_seq
-else:
-    raise ImportError("Please install note-seq via `pip install note-seq`")
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class SpectrogramDiffusionPipeline(DiffusionPipeline):
@@ -130,7 +108,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        midi_file,
+        input_tokens: List[List[int]],
         generator: Optional[torch.Generator] = None,
         num_inference_steps: int = 100,
         return_dict: bool = True,
@@ -138,6 +116,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
     ) -> Union[AudioPipelineOutput, Tuple]:
+
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):
@@ -145,45 +124,6 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
             )
-
-        ns = note_seq.midi_file_to_note_sequence(midi_file)
-        ns_sus = note_seq.apply_sustain_control_changes(ns)
-
-        for note in ns_sus.notes:
-            if not note.is_drum:
-                note.program = program_to_slakh_program(note.program)
-
-        samples = np.zeros(int(ns_sus.total_time * SAMPLE_RATE))
-
-        _, frame_times = audio_to_frames(samples, HOP_SIZE, FRAME_RATE)
-        times, values = note_sequence_to_onsets_and_offsets_and_programs(ns_sus)
-
-        codec = Codec(
-            max_shift_steps=DEFAULT_MAX_SHIFT_SECONDS * DEFAULT_STEPS_PER_SECOND,
-            steps_per_second=DEFAULT_STEPS_PER_SECOND,
-            event_ranges=[
-                EventRange("pitch", note_seq.MIN_MIDI_PITCH, note_seq.MAX_MIDI_PITCH),
-                EventRange("velocity", 0, DEFAULT_NUM_VELOCITY_BINS),
-                EventRange("tie", 0, 0),
-                EventRange("program", note_seq.MIN_MIDI_PROGRAM, note_seq.MAX_MIDI_PROGRAM),
-                EventRange("drum", note_seq.MIN_MIDI_PITCH, note_seq.MAX_MIDI_PITCH),
-            ],
-        )
-        tokenizer = Tokenizer(codec.num_classes)
-
-        events = encode_and_index_events(
-            state=NoteEncodingState(),
-            event_times=times,
-            event_values=values,
-            frame_times=frame_times,
-            codec=codec,
-            encode_event_fn=note_event_data_to_events,
-            encoding_state_to_events_fn=note_encoding_state_to_events,
-        )
-
-        note_representation_config = NoteRepresentationConfig(onsets_only=False, include_ties=True)
-        events = [note_representation_processor_chain(event, codec, note_representation_config) for event in events]
-        input_tokens = [tokenizer.encode(event["inputs"]) for event in events]
 
         pred_mel = np.zeros([1, TARGET_FEATURE_LENGTH, self.n_dims], dtype=np.float32)
         full_pred_mel = np.zeros([1, 0, self.n_dims], np.float32)
@@ -235,16 +175,17 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
                 # Compute previous output: x_t -> x_t-1
                 x = self.scheduler.step(output, t, x, generator=generator).prev_sample
 
-                # call the callback, if provided
-                if callback is not None and j % callback_steps == 0:
-                    callback(j, t, x)
-
             mel = self.scale_to_features(x, input_range=[-1.0, 1.0])
             encoder_continuous_inputs = mel[:1]
             pred_mel = mel.cpu().float().numpy()
 
             full_pred_mel = np.concatenate([full_pred_mel, pred_mel[:1]], axis=1)
-            print("Generated segment", i)
+
+            # call the callback, if provided
+            if callback is not None and j % callback_steps == 0:
+                callback(j, t, x)
+
+            logger.info("Generated segment", i)
 
         if output_type == "numpy" and not is_onnx_available():
             raise ValueError(

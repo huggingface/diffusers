@@ -212,3 +212,11 @@ else:
         FlaxStableDiffusionInpaintPipeline,
         FlaxStableDiffusionPipeline,
     )
+
+try:
+    if not (is_note_seq_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils.dummy_note_seq_objects import *  # noqa F403
+else:
+    from .pipelines import MidiProcessor

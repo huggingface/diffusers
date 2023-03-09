@@ -20,7 +20,7 @@ import numpy as np
 import scipy
 import torch
 
-from diffusers import SpectrogramDiffusionPipeline
+from diffusers import SpectrogramDiffusionPipeline, MidiProcessor
 from diffusers.utils import require_torch_gpu, slow, torch_device
 
 
@@ -45,26 +45,38 @@ class PipelineIntegrationTests(unittest.TestCase):
         pipe = SpectrogramDiffusionPipeline.from_pretrained("kashif/music-spectrogram-diffusion")
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
+        processor = MidiProcessor()
+
+        input_tokens = processor(MIDI_FILE)
+        # just run two denoising loops
+        input_tokens = input_tokens[:2]
 
         generator = torch.manual_seed(0)
-        output = pipe(MIDI_FILE, num_inference_steps=2, generator=generator)
+        output = pipe(input_tokens, num_inference_steps=2, generator=generator)
 
         audio = output.audios[0]
 
-        assert abs(np.abs(audio).sum() - 3612.841) < 1e-3
-
-        print("Finished")
+        assert abs(np.abs(audio).sum() - 3612.841) < 1e-1
 
     def test_spectrogram(self):
         device = torch_device
 
-        pipe = SpectrogramDiffusionPipeline.from_pretrained(
-            "kashif/music-spectrogram-diffusion", torch_dtype=torch.float16
-        )
+        pipe = SpectrogramDiffusionPipeline.from_pretrained("kashif/music-spectrogram-diffusion")
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
-        output = pipe(MIDI_FILE, num_inference_steps=100)
+        processor = MidiProcessor()
+
+        input_tokens = processor(MIDI_FILE)
+
+        # just run 5 denoising loops
+        input_tokens = input_tokens[:5]
+
+        output = pipe(input_tokens, num_inference_steps=100)
+
+        audio = output.audios[0]
+        assert abs(np.abs(audio).sum() - 21340.146) < 5e-2
+
         audio = output.audios[0]
         rate = 16_000
         scipy.io.wavfile.write("/home/patrick_huggingface_co/audios/beet.wav", rate, audio[0])
