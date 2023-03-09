@@ -51,7 +51,6 @@ DISABLE_TELEMETRY = os.getenv("DISABLE_TELEMETRY", "").upper() in ENV_VARS_TRUE_
 HUGGINGFACE_CO_TELEMETRY = HUGGINGFACE_CO_RESOLVE_ENDPOINT + "/api/telemetry/"
 
 
-_CACHED_NO_EXIST = object()
 
 
 def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:

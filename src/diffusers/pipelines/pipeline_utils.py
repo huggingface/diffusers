@@ -1103,22 +1103,8 @@ class DiffusionPipeline(ConfigMixin):
                 pretrained_model_name_or_path, cls.config_name, cache_dir=cache_dir, revision=commit_hash
             )
 
-            if config_file is None:
-                config_dict = cls.load_config(
-                    pretrained_model_name_or_path,
-                    cache_dir=cache_dir,
-                    resume_download=resume_download,
-                    force_download=force_download,
-                    proxies=proxies,
-                    local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
-                    revision=revision,
-                )
-                config_dict.pop("_commit_hash", None)
-                config_is_cached = False
-            else:
-                config_dict = cls._dict_from_json_file(config_file)
-                config_is_cached = True
+            config_dict = cls._dict_from_json_file(config_file)
+            config_is_cached = True
 
             # retrieve all folder_names that contain relevant files
             folder_names = [k for k, v in config_dict.items() if isinstance(v, list)]
@@ -1142,7 +1128,7 @@ class DiffusionPipeline(ConfigMixin):
             # allow all patterns from non-model folders
             # this enables downloading schedulers, tokenizers, ...
             allow_patterns += [os.path.join(k, "*") for k in folder_names if k not in model_folder_names]
-            # also allow downloading config.jsons with the model
+            # also allow downloading config.json files with the model
             allow_patterns += [os.path.join(k, "*.json") for k in model_folder_names]
 
             allow_patterns += [
@@ -1183,10 +1169,8 @@ class DiffusionPipeline(ConfigMixin):
                 expected_files = [f for f in filenames if not any(p.match(f) for p in re_ignore_pattern)]
                 expected_files = [f for f in expected_files if any(p.match(f) for p in re_allow_pattern)]
 
-                folder_name = f"models--{'--'.join(pretrained_model_name_or_path.split('/'))}"
-                cached_pipeline = os.path.join(cache_dir, folder_name, "snapshots", commit_hash)
-
-                pipeline_is_cached = all(os.path.isfile(os.path.join(cached_pipeline, f)) for f in expected_files)
+                snapshot_folder = Path(config_file).parent
+                pipeline_is_cached = all((snapshot_folder / f).is_file() for f in expected_files)
 
                 if pipeline_is_cached:
                     # if the pipeline is cached, we can directly return it
