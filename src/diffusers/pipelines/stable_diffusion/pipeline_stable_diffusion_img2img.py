@@ -185,7 +185,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
-        VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.vae_feature_extractor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(
             requires_safety_checker=requires_safety_checker,
         )
@@ -403,10 +403,9 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
         return prompt_embeds
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is not None:
-            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
+            safety_checker_input = self.feature_extractor(self.vae_feature_extractor.numpy_to_pil(image), return_tensors="pt").to(device)
             image, has_nsfw_concept = self.safety_checker(
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
@@ -420,7 +419,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
+        #image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
@@ -694,16 +693,38 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
+        
+        if output_type is None: 
+            output_type = 'np'
+            
+        if output_type == "latent":
+            image = latents
+            has_nsfw_concept = None
+        elif output_type == "pt":
+            # 8. Post-processing
+            image = self.decode_latents(latents)
+            has_nsfw_concept = None
+        elif output_type == "np":
+            # 8. Post-processing
+            image = self.decode_latents(latents)
 
-        # 9. Post-processing
-        image = self.decode_latents(latents)
+            # 9. Run safety checker
+            image = self.vae_feature_extractor.decode(image, output_type='np')
+            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+        
+        elif output_type == 'pil':
+            # 8. Post-processing
+            image = self.decode_latents(latents)
 
-        # 10. Run safety checker
-        image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+            # 9. Run safety checker
+            image = self.vae_feature_extractor.decode(image, output_type='np')
+            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
-        # 11. Convert to PIL
-        if output_type == "pil":
-            image = self.numpy_to_pil(image)
+            # 10. Convert to PIL
+            image = self.vae_feature_extractor.numpy_to_pil(image)
+        
+        else:
+            raise ValueError(f"Unsupported output_type {output_type} ")
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:

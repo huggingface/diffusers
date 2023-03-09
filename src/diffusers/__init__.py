@@ -1,7 +1,6 @@
 __version__ = "0.15.0.dev0"
 
 from .configuration_utils import ConfigMixin
-from .image_processor import VaeImageProcessor
 from .utils import (
     OptionalDependencyNotAvailable,
     is_flax_available,
@@ -91,6 +90,7 @@ else:
         VQDiffusionScheduler,
     )
     from .training_utils import EMAModel
+    from .image_processor import VaeImageProcessor
 
 try:
     if not (is_torch_available() and is_scipy_available()):
