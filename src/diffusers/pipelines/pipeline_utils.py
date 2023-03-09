@@ -1115,7 +1115,7 @@ class DiffusionPipeline(ConfigMixin):
             # if the whole pipeline is cached we don't have to ping the Hub
             if revision in DEPRECATED_REVISION_ARGS and version.parse(
                 version.parse(__version__).base_version
-            ) >= version.parse("0.15.0"):
+            ) >= version.parse("0.17.0"):
                 warn_deprecated_model_variant(
                     pretrained_model_name_or_path, use_auth_token, variant, revision, model_filenames
                 )
