@@ -10,29 +10,79 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Unconditional Image-Generation
+# Unconditional image generation
 
-In this section, we explain how one can train an unconditional image generation diffusion 
-model. "Unconditional" because the model is not conditioned on any context to generate an image - once trained the model will simply generate images that resemble its training data 
-distribution.
+Unconditional image generation is not conditioned on any text or images, unlike text- or image-to-image models. It only generates images that resemble its training data distribution.
 
-## Installing the dependencies
+<iframe
+	src="https://stevhliu-ddpm-butterflies-128.hf.space"
+	frameborder="0"
+	width="850"
+	height="550"
+></iframe>
 
-Before running the scripts, make sure to install the library's training dependencies:
+
+This guide will show you how to train an unconditional image generation model on existing datasets as well as your own custom dataset. All the training scripts for unconditional image generation can be found [here](https://github.com/huggingface/diffusers/tree/main/examples/unconditional_image_generation) if you're interested in learning more about the training details.
+
+Before running the script, make sure you install the library's training dependencies:
 
 ```bash
 pip install diffusers[training] accelerate datasets
 ```
 
-And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
+Next, initialize an 🤗 [Accelerate](https://github.com/huggingface/accelerate/) environment with:
 
 ```bash
 accelerate config
 ```
 
-## Unconditional Flowers  
+To setup a default 🤗 Accelerate environment without choosing any configurations:
 
-The command to train a DDPM UNet model on the Oxford Flowers dataset:
+```bash
+accelerate config default
+```
+
+Or if your environment doesn't support an interactive shell like a notebook, you can use:
+
+```bash
+from accelerate.utils import write_basic_config
+
+write_basic_config()
+```
+
+## Upload model to Hub
+
+You can upload your model on the Hub by adding the following argument to the training script:
+
+```bash
+--push_to_hub
+```
+
+## Save and load checkpoints
+
+It is a good idea to regularly save checkpoints in case anything happens during training. To save a checkpoint, pass the following argument to the training script:
+
+```bash
+--checkpointing_steps=500
+```
+
+The full training state is saved in a subfolder in the `output_dir` every 500 steps, which allows you to load a checkpoint and resume training if you pass the `--resume_from_checkpoint` argument to the training script:
+
+```bash
+--resume_from_checkpoint="checkpoint-1500"
+```
+
+## Finetuning
+
+You're ready to launch the [training script](https://github.com/huggingface/diffusers/blob/main/examples/unconditional_image_generation/train_unconditional.py) now! Specify the dataset name to finetune on with the `--dataset_name` argument and then save it to the path in `--output_dir`.
+
+<Tip>
+
+💡 A full training run takes 2 hours on 4xV100 GPUs.
+
+</Tip>
+
+For example, to finetune on the [Oxford Flowers](https://huggingface.co/datasets/huggan/flowers-102-categories) dataset:
 
 ```bash
 accelerate launch train_unconditional.py \
@@ -47,15 +97,12 @@ accelerate launch train_unconditional.py \
   --mixed_precision=no \
   --push_to_hub
 ```
-An example trained model: https://huggingface.co/anton-l/ddpm-ema-flowers-64
 
-A full training run takes 2 hours on 4xV100 GPUs.
+<div class="flex justify-center">
+    <img src="https://user-images.githubusercontent.com/26864830/180248660-a0b143d0-b89a-42c5-8656-2ebf6ece7e52.png"/>
+</div>
 
-<img src="https://user-images.githubusercontent.com/26864830/180248660-a0b143d0-b89a-42c5-8656-2ebf6ece7e52.png" width="700" />
-
-## Unconditional Pokemon 
-
-The command to train a DDPM UNet model on the Pokemon dataset:
+Or if you want to train your model on the [Pokemon](https://huggingface.co/datasets/huggan/pokemon) dataset:
 
 ```bash
 accelerate launch train_unconditional.py \
@@ -70,26 +117,29 @@ accelerate launch train_unconditional.py \
   --mixed_precision=no \
   --push_to_hub
 ```
-An example trained model: https://huggingface.co/anton-l/ddpm-ema-pokemon-64
 
-A full training run takes 2 hours on 4xV100 GPUs.
+<div class="flex justify-center">
+    <img src="https://user-images.githubusercontent.com/26864830/180248200-928953b4-db38-48db-b0c6-8b740fe6786f.png"/>
+</div>
 
-<img src="https://user-images.githubusercontent.com/26864830/180248200-928953b4-db38-48db-b0c6-8b740fe6786f.png" width="700" />
+## Finetuning with your own data
 
+There are two ways to finetune a model on your own dataset:
 
-## Using your own data
+- provide your own folder of images to the `--train_data_dir` argument
+- upload your dataset to the Hub and pass the dataset repository id to the `--dataset_name` argument.
 
-To use your own dataset, there are 2 ways:
-- you can either provide your own folder as `--train_data_dir`
-- or you can upload your dataset to the hub (possibly as a private repo, if you prefer so), and simply pass the `--dataset_name` argument.
+<Tip>
 
-**Note**: If you want to create your own training dataset please have a look at [this document](https://huggingface.co/docs/datasets/image_process#image-datasets).
+💡 Learn more about how to create an image dataset for training in the [Create an image dataset](https://huggingface.co/docs/datasets/image_dataset) guide. 
+
+</Tip>
 
 Below, we explain both in more detail.
 
 ### Provide the dataset as a folder
 
-If you provide your own folders with images, the script expects the following directory structure:
+If you provide your own dataset as a folder, the script expects the following directory structure:
 
 ```bash
 data_dir/xxx.png
@@ -97,7 +147,7 @@ data_dir/xxy.png
 data_dir/[...]/xxz.png
 ```
 
-In other words, the script will take care of gathering all images inside the folder. You can then run the script like this:
+Pass the path to the folder containing the images to the `--train_data_dir` argument and launch the training:
 
 ```bash
 accelerate launch train_unconditional.py \
@@ -105,11 +155,17 @@ accelerate launch train_unconditional.py \
     <other-arguments>
 ```
 
-Internally, the script will use the [`ImageFolder`](https://huggingface.co/docs/datasets/v2.0.0/en/image_process#imagefolder) feature which will automatically turn the folders into 🤗 Dataset objects.
+Internally, the script uses the [`ImageFolder`](https://huggingface.co/docs/datasets/image_load#imagefolder) to automatically build a dataset from the folder.
 
-### Upload your data to the hub, as a (possibly private) repo
+### Upload your data to the Hub
 
-It's very easy (and convenient) to upload your image dataset to the hub using the [`ImageFolder`](https://huggingface.co/docs/datasets/v2.0.0/en/image_process#imagefolder) feature available in 🤗 Datasets. Simply do the following:
+<Tip>
+
+💡 For more details and context about creating and uploading a dataset to the Hub, take a look at the [Image search with 🤗 Datasets](https://huggingface.co/blog/image-search-datasets) post.
+
+</Tip>
+
+To upload your dataset to the Hub, you can start by creating one with the [`ImageFolder`](https://huggingface.co/docs/datasets/image_load#imagefolder) feature, which creates an `image` column containing the PIL-encoded images, from 🤗 Datasets:
 
 ```python
 from datasets import load_dataset
@@ -132,9 +188,7 @@ dataset = load_dataset(
 )
 ```
 
-`ImageFolder` will create an `image` column containing the PIL-encoded images.
-
-Next, push it to the hub!
+Then you can use the [`~datasets.Dataset.push_to_hub`] method to upload it to the Hub:
 
 ```python
 # assuming you have ran the huggingface-cli login command in a terminal
@@ -144,6 +198,4 @@ dataset.push_to_hub("name_of_your_dataset")
 dataset.push_to_hub("name_of_your_dataset", private=True)
 ```
 
-and that's it! You can now train your model by simply setting the `--dataset_name` argument to the name of your dataset on the hub.
-
-More on this can also be found in [this blog post](https://huggingface.co/blog/image-search-datasets).
+Now train your model by simply setting the `--dataset_name` argument to the name of your dataset on the Hub.
