@@ -36,7 +36,7 @@ The command to train a DDPM UNet model on the Oxford Flowers dataset with onnxru
 ```bash
 accelerate launch train_unconditional_ort.py \
   --dataset_name="huggan/flowers-102-categories" \
-  --resolution=64 \
+  --resolution=64 --center_crop --random_flip \
   --output_dir="ddpm-ema-flowers-64" \
   --use_ema \
   --train_batch_size=16 \

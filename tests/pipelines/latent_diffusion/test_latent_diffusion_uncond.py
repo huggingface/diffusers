@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,10 +17,10 @@ import unittest
 
 import numpy as np
 import torch
+from transformers import CLIPTextConfig, CLIPTextModel
 
 from diffusers import DDIMScheduler, LDMPipeline, UNet2DModel, VQModel
 from diffusers.utils.testing_utils import require_torch, slow, torch_device
-from transformers import CLIPTextConfig, CLIPTextModel
 
 
 torch.backends.cuda.matmul.allow_tf32 = False

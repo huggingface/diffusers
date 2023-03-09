@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,6 @@
 # limitations under the License.
 import torch
 from torch import nn
-
 from transformers import CLIPPreTrainedModel, CLIPVisionModel
 
 from ...models.attention import BasicTransformerBlock

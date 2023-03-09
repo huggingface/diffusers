@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@ from typing import Callable, List, Optional, Union
 
 import numpy as np
 import torch
-
 from transformers import CLIPFeatureExtractor, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
@@ -204,7 +203,7 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, np.ndarray], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
     ):
         if isinstance(prompt, str):
             batch_size = 1
@@ -304,9 +303,6 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
                 self.numpy_to_pil(image), return_tensors="np"
             ).pixel_values.astype(image.dtype)
 
-            image, has_nsfw_concepts = self.safety_checker(clip_input=safety_checker_input, images=image)
-
-            # There will throw an error if use safety_checker batchsize>1
             images, has_nsfw_concept = [], []
             for i in range(image.shape[0]):
                 image_i, has_nsfw_concept_i = self.safety_checker(

@@ -1,4 +1,4 @@
-<!--Copyright 2022 The HuggingFace Team. All rights reserved.
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -43,11 +43,12 @@ To this end, the design of schedulers is such that:
 
 The following table summarizes all officially supported schedulers, their corresponding paper
 
-
 | Scheduler | Paper |
 |---|---|
 | [ddim](./ddim) | [**Denoising Diffusion Implicit Models**](https://arxiv.org/abs/2010.02502) |
+| [ddim_inverse](./ddim_inverse) | [**Denoising Diffusion Implicit Models**](https://arxiv.org/abs/2010.02502) |
 | [ddpm](./ddpm) | [**Denoising Diffusion Probabilistic Models**](https://arxiv.org/abs/2006.11239) |
+| [deis](./deis) | [**DEISMultistepScheduler**](https://arxiv.org/abs/2204.13902) |
 | [singlestep_dpm_solver](./singlestep_dpm_solver) | [**Singlestep DPM-Solver**](https://arxiv.org/abs/2206.00927) |
 | [multistep_dpm_solver](./multistep_dpm_solver) | [**Multistep DPM-Solver**](https://arxiv.org/abs/2206.00927) |
 | [heun](./heun) | [**Heun scheduler inspired by Karras et. al paper**](https://arxiv.org/abs/2206.00364) |
@@ -62,6 +63,7 @@ The following table summarizes all officially supported schedulers, their corres
 | [euler](./euler) | [**Euler scheduler**](https://arxiv.org/abs/2206.00364) |
 | [euler_ancestral](./euler_ancestral) | [**Euler Ancestral scheduler**](https://github.com/crowsonkb/k-diffusion/blob/481677d114f6ea445aa009cf5bd7a9cdee909e47/k_diffusion/sampling.py#L72) |
 | [vq_diffusion](./vq_diffusion) | [**VQDiffusionScheduler**](https://arxiv.org/abs/2111.14822) |
+| [unipc](./unipc) | [**UniPCMultistepScheduler**](https://arxiv.org/abs/2302.04867) |
 | [repaint](./repaint) | [**RePaint scheduler**](https://arxiv.org/abs/2201.09865) |
 
 ## API
@@ -82,5 +84,9 @@ The class [`SchedulerOutput`] contains the outputs from any schedulers `step(...
 [[autodoc]] schedulers.scheduling_utils.SchedulerOutput
 
 ### KarrasDiffusionSchedulers
+
+`KarrasDiffusionSchedulers` encompasses the main generalization of schedulers in Diffusers. The schedulers in this class are distinguished, at a high level, by their noise sampling strategy; the type of network and scaling; and finally the training strategy or how the loss is weighed.
+
+The different schedulers, depending on the type of ODE solver, fall into the above taxonomy and provide a good abstraction for the design of the main schedulers implemented in Diffusers. The schedulers in this class are given below:
 
 [[autodoc]] schedulers.scheduling_utils.KarrasDiffusionSchedulers

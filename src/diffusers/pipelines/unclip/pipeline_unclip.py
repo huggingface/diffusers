@@ -1,4 +1,4 @@
-# Copyright 2022 Kakao Brain and The HuggingFace Team. All rights reserved.
+# Copyright 2023 Kakao Brain and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 from torch.nn import functional as F
-
 from transformers import CLIPTextModelWithProjection, CLIPTokenizer
 from transformers.models.clip.modeling_clip import CLIPTextModelOutput
 

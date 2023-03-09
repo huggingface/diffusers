@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,10 +26,11 @@ from diffusers.utils.testing_utils import require_flax, slow
 if is_flax_available():
     import jax
     import jax.numpy as jnp
-    from diffusers import FlaxDDIMScheduler, FlaxDiffusionPipeline, FlaxStableDiffusionPipeline
     from flax.jax_utils import replicate
     from flax.training.common_utils import shard
     from jax import pmap
+
+    from diffusers import FlaxDDIMScheduler, FlaxDiffusionPipeline, FlaxStableDiffusionPipeline
 
 
 @require_flax

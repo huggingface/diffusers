@@ -1,7 +1,7 @@
 import copy
 import os
 import random
-from typing import Iterable, Union
+from typing import Any, Dict, Iterable, Optional, Union
 
 import numpy as np
 import torch
@@ -57,6 +57,8 @@ class EMAModel:
         use_ema_warmup: bool = False,
         inv_gamma: Union[float, int] = 1.0,
         power: Union[float, int] = 2 / 3,
+        model_cls: Optional[Any] = None,
+        model_config: Dict[str, Any] = None,
         **kwargs,
     ):
         """
@@ -113,7 +115,7 @@ class EMAModel:
             deprecate("device", "1.0.0", deprecation_message, standard_warn=False)
             self.to(device=kwargs["device"])
 
-        self.collected_params = None
+        self.temp_stored_params = None
 
         self.decay = decay
         self.min_decay = min_decay
@@ -122,6 +124,35 @@ class EMAModel:
         self.inv_gamma = inv_gamma
         self.power = power
         self.optimization_step = 0
+        self.cur_decay_value = None  # set in `step()`
+
+        self.model_cls = model_cls
+        self.model_config = model_config
+
+    @classmethod
+    def from_pretrained(cls, path, model_cls) -> "EMAModel":
+        _, ema_kwargs = model_cls.load_config(path, return_unused_kwargs=True)
+        model = model_cls.from_pretrained(path)
+
+        ema_model = cls(model.parameters(), model_cls=model_cls, model_config=model.config)
+
+        ema_model.load_state_dict(ema_kwargs)
+        return ema_model
+
+    def save_pretrained(self, path):
+        if self.model_cls is None:
+            raise ValueError("`save_pretrained` can only be used if `model_cls` was defined at __init__.")
+
+        if self.model_config is None:
+            raise ValueError("`save_pretrained` can only be used if `model_config` was defined at __init__.")
+
+        model = self.model_cls.from_config(self.model_config)
+        state_dict = self.state_dict()
+        state_dict.pop("shadow_params", None)
+
+        model.register_to_config(**state_dict)
+        self.copy_to(model.parameters())
+        model.save_pretrained(path)
 
     def get_decay(self, optimization_step: int) -> float:
         """
@@ -163,6 +194,7 @@ class EMAModel:
 
         # Compute the decay factor for the exponential moving average.
         decay = self.get_decay(self.optimization_step)
+        self.cur_decay_value = decay
         one_minus_decay = 1 - decay
 
         for s_param, param in zip(self.shadow_params, parameters):
@@ -170,8 +202,6 @@ class EMAModel:
                 s_param.sub_(one_minus_decay * (s_param - param))
             else:
                 s_param.copy_(param)
-
-        torch.cuda.empty_cache()
 
     def copy_to(self, parameters: Iterable[torch.nn.Parameter]) -> None:
         """
@@ -184,7 +214,7 @@ class EMAModel:
         """
         parameters = list(parameters)
         for s_param, param in zip(self.shadow_params, parameters):
-            param.data.copy_(s_param.data)
+            param.data.copy_(s_param.to(param.device).data)
 
     def to(self, device=None, dtype=None) -> None:
         r"""Move internal buffers of the ExponentialMovingAverage to `device`.
@@ -208,15 +238,41 @@ class EMAModel:
         # https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict
         return {
             "decay": self.decay,
-            "min_decay": self.decay,
+            "min_decay": self.min_decay,
             "optimization_step": self.optimization_step,
             "update_after_step": self.update_after_step,
             "use_ema_warmup": self.use_ema_warmup,
             "inv_gamma": self.inv_gamma,
             "power": self.power,
             "shadow_params": self.shadow_params,
-            "collected_params": self.collected_params,
         }
+
+    def store(self, parameters: Iterable[torch.nn.Parameter]) -> None:
+        r"""
+        Args:
+        Save the current parameters for restoring later.
+            parameters: Iterable of `torch.nn.Parameter`; the parameters to be
+                temporarily stored.
+        """
+        self.temp_stored_params = [param.detach().cpu().clone() for param in parameters]
+
+    def restore(self, parameters: Iterable[torch.nn.Parameter]) -> None:
+        r"""
+        Args:
+        Restore the parameters stored with the `store` method. Useful to validate the model with EMA parameters without:
+        affecting the original optimization process. Store the parameters before the `copy_to()` method. After
+        validation (or model saving), use this to restore the former parameters.
+            parameters: Iterable of `torch.nn.Parameter`; the parameters to be
+                updated with the stored parameters. If `None`, the parameters with which this
+                `ExponentialMovingAverage` was initialized will be used.
+        """
+        if self.temp_stored_params is None:
+            raise RuntimeError("This ExponentialMovingAverage has no `store()`ed weights " "to `restore()`")
+        for c_param, param in zip(self.temp_stored_params, parameters):
+            param.data.copy_(c_param.data)
+
+        # Better memory-wise.
+        self.temp_stored_params = None
 
     def load_state_dict(self, state_dict: dict) -> None:
         r"""
@@ -257,17 +313,10 @@ class EMAModel:
         if not isinstance(self.power, (float, int)):
             raise ValueError("Invalid power")
 
-        self.shadow_params = state_dict["shadow_params"]
-        if not isinstance(self.shadow_params, list):
-            raise ValueError("shadow_params must be a list")
-        if not all(isinstance(p, torch.Tensor) for p in self.shadow_params):
-            raise ValueError("shadow_params must all be Tensors")
-
-        self.collected_params = state_dict["collected_params"]
-        if self.collected_params is not None:
-            if not isinstance(self.collected_params, list):
-                raise ValueError("collected_params must be a list")
-            if not all(isinstance(p, torch.Tensor) for p in self.collected_params):
-                raise ValueError("collected_params must all be Tensors")
-            if len(self.collected_params) != len(self.shadow_params):
-                raise ValueError("collected_params and shadow_params must have the same length")
+        shadow_params = state_dict.get("shadow_params", None)
+        if shadow_params is not None:
+            self.shadow_params = shadow_params
+            if not isinstance(self.shadow_params, list):
+                raise ValueError("shadow_params must be a list")
+            if not all(isinstance(p, torch.Tensor) for p in self.shadow_params):
+                raise ValueError("shadow_params must all be Tensors")
