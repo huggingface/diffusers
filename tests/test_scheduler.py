@@ -647,6 +647,16 @@ class DDPMSchedulerTest(SchedulerCommonTest):
         for clip_sample in [True, False]:
             self.check_over_configs(clip_sample=clip_sample)
 
+    def test_thresholding(self):
+        self.check_over_configs(thresholding=False)
+        for threshold in [0.5, 1.0, 2.0]:
+            for prediction_type in ["epsilon", "sample", "v_prediction"]:
+                self.check_over_configs(
+                    thresholding=True,
+                    prediction_type=prediction_type,
+                    sample_max_value=threshold,
+                )
+
     def test_prediction_type(self):
         for prediction_type in ["epsilon", "sample", "v_prediction"]:
             self.check_over_configs(prediction_type=prediction_type)
@@ -790,6 +800,16 @@ class DDIMSchedulerTest(SchedulerCommonTest):
     def test_clip_sample(self):
         for clip_sample in [True, False]:
             self.check_over_configs(clip_sample=clip_sample)
+
+    def test_thresholding(self):
+        self.check_over_configs(thresholding=False)
+        for threshold in [0.5, 1.0, 2.0]:
+            for prediction_type in ["epsilon", "v_prediction"]:
+                self.check_over_configs(
+                    thresholding=True,
+                    prediction_type=prediction_type,
+                    sample_max_value=threshold,
+                )
 
     def test_time_indices(self):
         for t in [1, 10, 49]:
@@ -1211,6 +1231,12 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
         result_mean = torch.mean(torch.abs(sample))
 
         assert abs(result_mean.item() - 0.3301) < 1e-3
+
+    def test_full_loop_no_noise_thres(self):
+        sample = self.full_loop(thresholding=True, dynamic_thresholding_ratio=0.87, sample_max_value=0.5)
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.6405) < 1e-3
 
     def test_full_loop_with_v_prediction(self):
         sample = self.full_loop(prediction_type="v_prediction")

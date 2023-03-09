@@ -10,6 +10,30 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# OpenVINO
 
-Under construction 🚧
+# How to use OpenVINO for inference
+
+🤗 [Optimum](https://github.com/huggingface/optimum-intel) provides a Stable Diffusion pipeline compatible with OpenVINO. You can now easily perform inference with OpenVINO Runtime on a variety of Intel processors ([see](https://docs.openvino.ai/latest/openvino_docs_OV_UG_supported_plugins_Supported_Devices.html) the full list of supported devices).
+
+## Installation
+
+Install 🤗 Optimum Intel with the following command:
+
+```
+pip install optimum["openvino"]
+```
+
+## Stable Diffusion Inference
+
+To load an OpenVINO model and run inference with OpenVINO Runtime, you need to replace `StableDiffusionPipeline` with `OVStableDiffusionPipeline`. In case you want to load a PyTorch model and convert it to the OpenVINO format on-the-fly, you can set `export=True`.
+
+```python
+from optimum.intel.openvino import OVStableDiffusionPipeline
+
+model_id = "runwayml/stable-diffusion-v1-5"
+pipe = OVStableDiffusionPipeline.from_pretrained(model_id, export=True)
+prompt = "a photo of an astronaut riding a horse on mars"
+images = pipe(prompt).images[0]
+```
+
+You can find more examples in [optimum documentation](https://huggingface.co/docs/optimum/intel/inference#export-and-inference-of-stable-diffusion-models).

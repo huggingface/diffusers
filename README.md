@@ -235,7 +235,7 @@ images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).
 images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
 ```
 
-Diffusers also has a Image-to-Image generation pipeline with Flax/Jax
+Diffusers also has a Image-to-Image generation pipeline with Flax/Jax:
 ```python
 import jax
 import numpy as np
@@ -284,7 +284,7 @@ output = pipeline(
 output_images = pipeline.numpy_to_pil(np.asarray(output.reshape((num_samples,) + output.shape[-3:])))
 ```
 
-Diffusers also has a Text-guided inpainting pipeline with Flax/Jax
+Diffusers also has a Text-guided inpainting pipeline with Flax/Jax:
 
 ```python
 import jax

@@ -49,11 +49,12 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
     UNet2DModel,
+    UniPCMultistepScheduler,
     logging,
 )
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, is_flax_available, nightly, slow, torch_device
-from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir, require_torch_gpu
+from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir, load_numpy, require_compel, require_torch_gpu
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -1057,6 +1058,37 @@ class PipelineSlowTests(unittest.TestCase):
         ).images[0]
 
         assert np.abs(image_0 - image_1).sum() < 1e-5, "Models don't give the same forward pass"
+
+    @require_compel
+    def test_weighted_prompts_compel(self):
+        from compel import Compel
+
+        pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+        pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+        pipe.enable_model_cpu_offload()
+        pipe.enable_attention_slicing()
+
+        compel = Compel(tokenizer=pipe.tokenizer, text_encoder=pipe.text_encoder)
+
+        prompt = "a red cat playing with a ball{}"
+
+        prompts = [prompt.format(s) for s in ["", "++", "--"]]
+
+        prompt_embeds = compel(prompts)
+
+        generator = [torch.Generator(device="cpu").manual_seed(33) for _ in range(prompt_embeds.shape[0])]
+
+        images = pipe(
+            prompt_embeds=prompt_embeds, generator=generator, num_inference_steps=20, output_type="numpy"
+        ).images
+
+        for i, image in enumerate(images):
+            expected_image = load_numpy(
+                "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+                f"/compel/forest_{i}.npy"
+            )
+
+            assert np.abs(image - expected_image).max() < 1e-3
 
 
 @nightly
