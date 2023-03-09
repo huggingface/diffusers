@@ -654,6 +654,9 @@ class DiffusionPipeline(ConfigMixin):
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
+            cache_dir (`Union[str, os.PathLike]`, *optional*):
+                Path to a directory in which a downloaded pretrained model configuration should be cached if the
+                standard cache should not be used.
             resume_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to delete incompletely received files. Will attempt to resume the download if such a
                 file exists.
@@ -968,7 +971,9 @@ class DiffusionPipeline(ConfigMixin):
 
         Parameters:
              pretrained_model_name (`str` or `os.PathLike`, *optional*):
-                Should be a string, the *repo id* of a pretrained pipeline hosted inside a model repo on https://huggingface.co/ Valid repo ids have to be located under a user or organization name, like `CompVis/ldm-text2im-large-256`.
+                Should be a string, the *repo id* of a pretrained pipeline hosted inside a model repo on
+                https://huggingface.co/ Valid repo ids have to be located under a user or organization name, like
+                `CompVis/ldm-text2im-large-256`.
             custom_pipeline (`str`, *optional*):
 
                 <Tip warning={true}>
@@ -1034,7 +1039,8 @@ class DiffusionPipeline(ConfigMixin):
                 The specific model version to use. It can be a branch name, a tag name, or a commit id, since we use a
                 git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
                 identifier allowed by git.
-            custom_revision (`str`, *optional*, defaults to `"main"` when loading from the Hub and to local version of `diffusers` when loading from GitHub):
+            custom_revision (`str`, *optional*, defaults to `"main"` when loading from the Hub and to local version of
+            `diffusers` when loading from GitHub):
                 The specific model version to use. It can be a branch name, a tag name, or a commit id similar to
                 `revision` when loading a custom pipeline from the Hub. It can be a diffusers version when loading a
                 custom pipeline from GitHub.
@@ -1094,22 +1100,8 @@ class DiffusionPipeline(ConfigMixin):
                 pretrained_model_name, cls.config_name, cache_dir=cache_dir, revision=commit_hash
             )
 
-            if config_file is None:
-                config_dict = cls.load_config(
-                    pretrained_model_name,
-                    cache_dir=cache_dir,
-                    resume_download=resume_download,
-                    force_download=force_download,
-                    proxies=proxies,
-                    local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
-                    revision=revision,
-                )
-                config_dict.pop("_commit_hash", None)
-                config_is_cached = False
-            else:
-                config_dict = cls._dict_from_json_file(config_file)
-                config_is_cached = True
+            config_dict = cls._dict_from_json_file(config_file)
+            config_is_cached = True
 
             # retrieve all folder_names that contain relevant files
             folder_names = [k for k, v in config_dict.items() if isinstance(v, list)]
@@ -1120,7 +1112,7 @@ class DiffusionPipeline(ConfigMixin):
             # if the whole pipeline is cached we don't have to ping the Hub
             if revision in DEPRECATED_REVISION_ARGS and version.parse(
                 version.parse(__version__).base_version
-            ) >= version.parse("0.15.0"):
+            ) >= version.parse("0.17.0"):
                 warn_deprecated_model_variant(
                     pretrained_model_name, use_auth_token, variant, revision, model_filenames
                 )
@@ -1133,7 +1125,7 @@ class DiffusionPipeline(ConfigMixin):
             # allow all patterns from non-model folders
             # this enables downloading schedulers, tokenizers, ...
             allow_patterns += [os.path.join(k, "*") for k in folder_names if k not in model_folder_names]
-            # also allow downloading config.jsons with the model
+            # also allow downloading config.json files with the model
             allow_patterns += [os.path.join(k, "*.json") for k in model_folder_names]
 
             allow_patterns += [
@@ -1174,15 +1166,13 @@ class DiffusionPipeline(ConfigMixin):
                 expected_files = [f for f in filenames if not any(p.match(f) for p in re_ignore_pattern)]
                 expected_files = [f for f in expected_files if any(p.match(f) for p in re_allow_pattern)]
 
-                folder_name = f"models--{'--'.join(pretrained_model_name.split('/'))}"
-                cached_pipeline = os.path.join(cache_dir, folder_name, "snapshots", commit_hash)
-
-                pipeline_is_cached = all(os.path.isfile(os.path.join(cached_pipeline, f)) for f in expected_files)
+                snapshot_folder = Path(config_file).parent
+                pipeline_is_cached = all((snapshot_folder / f).is_file() for f in expected_files)
 
                 if pipeline_is_cached:
                     # if the pipeline is cached, we can directly return it
                     # else call snapshot_download
-                    return cached_pipeline
+                    return snapshot_folder
 
         # download all allow_patterns - ignore_patterns
         cached_folder = snapshot_download(
@@ -1192,6 +1182,7 @@ class DiffusionPipeline(ConfigMixin):
             proxies=proxies,
             local_files_only=local_files_only,
             use_auth_token=use_auth_token,
+            force_download=force_download,
             revision=revision,
             allow_patterns=allow_patterns,
             ignore_patterns=ignore_patterns,
