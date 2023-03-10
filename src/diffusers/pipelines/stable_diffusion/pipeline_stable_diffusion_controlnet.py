@@ -246,7 +246,7 @@ class MultiControlNet(nn.Module):
                 sample,
                 timestep,
                 encoder_hidden_states,
-                cond.image,
+                image,
                 class_labels,
                 timestep_cond,
                 attention_mask,
