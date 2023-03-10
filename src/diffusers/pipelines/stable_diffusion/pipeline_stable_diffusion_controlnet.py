@@ -782,7 +782,16 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
 
         # TODO: add conversion image array to ControlNetConditions
         if controlnet_conditions is None:
-            controlnet_conditions = [ControlNetCondition(image=image, scale=controlnet_conditioning_scale)]
+            # let's split images over controlnets
+            image_per_control = 1 if isinstance(self.controlnet, ControlNetModel) else len(self.controlnet.nets)
+            if image_per_control > 1 and not isinstance(image, list):
+                raise ValueError(...)
+                
+            if len(image) % image_per_control != 0:
+                raise ValueError(...)
+            
+            images = [image[i:i+num_image_per_control] for i in range(0, len(image), image_per_control)]
+            controlnet_conditions = [ControlNetCondition(image=image, scale=scale) for image, scale in zip(images,  controlnet_conditioning_scale)]
 
         # 0. Default height and width to unet
         height, width = controlnet_conditions[0].default_height_width(height, width)
