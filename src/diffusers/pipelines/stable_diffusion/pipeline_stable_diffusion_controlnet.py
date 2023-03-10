@@ -88,117 +88,6 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class ControlNetCondition:
-    def __init__(
-        self,
-        image: Union[torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]],
-    ):
-        self.image_original = image
-
-    def _default_height_width(self, height, width, image):
-        if isinstance(image, list):
-            image = image[0]
-
-        if height is None:
-            if isinstance(image, PIL.Image.Image):
-                height = image.height
-            elif isinstance(image, torch.Tensor):
-                height = image.shape[3]
-
-            height = (height // 8) * 8  # round down to nearest multiple of 8
-
-        if width is None:
-            if isinstance(image, PIL.Image.Image):
-                width = image.width
-            elif isinstance(image, torch.Tensor):
-                width = image.shape[2]
-
-            width = (width // 8) * 8  # round down to nearest multiple of 8
-
-        return height, width
-
-    def default_height_width(self, height, width):
-        return self._default_height_width(height, width, self.image_original)
-
-    def _check_inputs(self, image, prompt, prompt_embeds):
-        image_is_pil = isinstance(image, PIL.Image.Image)
-        image_is_tensor = isinstance(image, torch.Tensor)
-        image_is_pil_list = isinstance(image, list) and isinstance(image[0], PIL.Image.Image)
-        image_is_tensor_list = isinstance(image, list) and isinstance(image[0], torch.Tensor)
-
-        if not image_is_pil and not image_is_tensor and not image_is_pil_list and not image_is_tensor_list:
-            raise TypeError(
-                "image must be passed and be one of PIL image, torch tensor, list of PIL images, or list of torch tensors"
-            )
-
-        if image_is_pil:
-            image_batch_size = 1
-        elif image_is_tensor:
-            image_batch_size = image.shape[0]
-        elif image_is_pil_list:
-            image_batch_size = len(image)
-        elif image_is_tensor_list:
-            image_batch_size = len(image)
-
-        if prompt is not None and isinstance(prompt, str):
-            prompt_batch_size = 1
-        elif prompt is not None and isinstance(prompt, list):
-            prompt_batch_size = len(prompt)
-        elif prompt_embeds is not None:
-            prompt_batch_size = prompt_embeds.shape[0]
-
-        if image_batch_size != 1 and image_batch_size != prompt_batch_size:
-            raise ValueError(
-                f"If image batch size is not 1, image batch size must be same as prompt batch size. image batch size: {image_batch_size}, prompt batch size: {prompt_batch_size}"
-            )
-
-    def check_inputs(self, prompt, prompt_embeds):
-        self._check_inputs(self.image_original, prompt, prompt_embeds)
-
-    def _prepare_image(self, image, width, height, batch_size, num_images_per_prompt, device, dtype):
-        if not isinstance(image, torch.Tensor):
-            if isinstance(image, PIL.Image.Image):
-                image = [image]
-
-            if isinstance(image[0], PIL.Image.Image):
-                image = [
-                    np.array(i.resize((width, height), resample=PIL_INTERPOLATION["lanczos"]))[None, :] for i in image
-                ]
-                image = np.concatenate(image, axis=0)
-                image = np.array(image).astype(np.float32) / 255.0
-                image = image.transpose(0, 3, 1, 2)
-                image = torch.from_numpy(image)
-            elif isinstance(image[0], torch.Tensor):
-                image = torch.cat(image, dim=0)
-
-        image_batch_size = image.shape[0]
-
-        if image_batch_size == 1:
-            repeat_by = batch_size
-        else:
-            # image batch size is the same as prompt batch size
-            repeat_by = num_images_per_prompt
-
-        image = image.repeat_interleave(repeat_by, dim=0)
-
-        image = image.to(device=device, dtype=dtype)
-
-        return image
-
-    def prepare_image(
-        self, width, height, batch_size, num_images_per_prompt, device, dtype, do_classifier_free_guidance
-    ):
-        image = self._prepare_image(
-            self.image_original, width, height, batch_size, num_images_per_prompt, device, dtype
-        )
-        if do_classifier_free_guidance:
-            image = torch.cat([image] * 2)
-        self.image = image  # .clone()
-
-
-# Multi controlnet draft #2621
-
-
 class MultiControlNet(nn.Module):
     def __init__(self, controlnets: List[ControlNetModel]):
         super().__init__()
@@ -648,6 +537,73 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                     f" {negative_prompt_embeds.shape}."
                 )
 
+    def check_image(self, image, prompt, prompt_embeds):
+        image_is_pil = isinstance(image, PIL.Image.Image)
+        image_is_tensor = isinstance(image, torch.Tensor)
+        image_is_pil_list = isinstance(image, list) and isinstance(image[0], PIL.Image.Image)
+        image_is_tensor_list = isinstance(image, list) and isinstance(image[0], torch.Tensor)
+
+        if not image_is_pil and not image_is_tensor and not image_is_pil_list and not image_is_tensor_list:
+            raise TypeError(
+                "image must be passed and be one of PIL image, torch tensor, list of PIL images, or list of torch tensors"
+            )
+
+        if image_is_pil:
+            image_batch_size = 1
+        elif image_is_tensor:
+            image_batch_size = image.shape[0]
+        elif image_is_pil_list:
+            image_batch_size = len(image)
+        elif image_is_tensor_list:
+            image_batch_size = len(image)
+
+        if prompt is not None and isinstance(prompt, str):
+            prompt_batch_size = 1
+        elif prompt is not None and isinstance(prompt, list):
+            prompt_batch_size = len(prompt)
+        elif prompt_embeds is not None:
+            prompt_batch_size = prompt_embeds.shape[0]
+
+        if image_batch_size != 1 and image_batch_size != prompt_batch_size:
+            raise ValueError(
+                f"If image batch size is not 1, image batch size must be same as prompt batch size. image batch size: {image_batch_size}, prompt batch size: {prompt_batch_size}"
+            )
+
+    def prepare_image(
+        self, image, width, height, batch_size, num_images_per_prompt, device, dtype, do_classifier_free_guidance
+    ):
+        if not isinstance(image, torch.Tensor):
+            if isinstance(image, PIL.Image.Image):
+                image = [image]
+
+            if isinstance(image[0], PIL.Image.Image):
+                image = [
+                    np.array(i.resize((width, height), resample=PIL_INTERPOLATION["lanczos"]))[None, :] for i in image
+                ]
+                image = np.concatenate(image, axis=0)
+                image = np.array(image).astype(np.float32) / 255.0
+                image = image.transpose(0, 3, 1, 2)
+                image = torch.from_numpy(image)
+            elif isinstance(image[0], torch.Tensor):
+                image = torch.cat(image, dim=0)
+
+        image_batch_size = image.shape[0]
+
+        if image_batch_size == 1:
+            repeat_by = batch_size
+        else:
+            # image batch size is the same as prompt batch size
+            repeat_by = num_images_per_prompt
+
+        image = image.repeat_interleave(repeat_by, dim=0)
+
+        image = image.to(device=device, dtype=dtype)
+
+        if do_classifier_free_guidance:
+            image = torch.cat([image] * 2)
+
+        return image
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
@@ -665,6 +621,28 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
+
+    def _default_height_width(self, height, width, image):
+        if isinstance(image, list):
+            image = image[0]
+
+        if height is None:
+            if isinstance(image, PIL.Image.Image):
+                height = image.height
+            elif isinstance(image, torch.Tensor):
+                height = image.shape[3]
+
+            height = (height // 8) * 8  # round down to nearest multiple of 8
+
+        if width is None:
+            if isinstance(image, PIL.Image.Image):
+                width = image.width
+            elif isinstance(image, torch.Tensor):
+                width = image.shape[2]
+
+            width = (width // 8) * 8  # round down to nearest multiple of 8
+
+        return height, width
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -769,7 +747,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
 
         # TODO: refactoring
         if isinstance(self.controlnet, ControlNetModel):
-            controlnet_conditions = [ControlNetCondition(image=image)]
+            images = [image]
         elif isinstance(self.controlnet, MultiControlNet):
             # TODO: refactoring
             # let's split images over controlnets
@@ -788,17 +766,17 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
             num_controlnets = len(self.controlnet.nets)
             if num_controlnets > 1 and not isinstance(controlnet_conditioning_scale, list):
                 controlnet_conditioning_scale = [controlnet_conditioning_scale] * num_controlnets
-            controlnet_conditions = [ControlNetCondition(image=img) for img in image]
+            images = image
 
         # 0. Default height and width to unet
-        height, width = controlnet_conditions[0].default_height_width(height, width)
+        height, width = self._default_height_width(height, width, images[0])
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
         )
-        for cond in controlnet_conditions:
-            cond.check_inputs(prompt, prompt_embeds)
+        for image in images:
+            self.check_image(image, prompt, prompt_embeds)
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -826,8 +804,9 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         )
 
         # 4. Prepare image
-        for cond in controlnet_conditions:
-            cond.prepare_image(
+        images = [
+            self.prepare_image(
+                image=image,
                 width=width,
                 height=height,
                 batch_size=batch_size * num_images_per_prompt,
@@ -836,6 +815,8 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                 dtype=self.controlnet.dtype,
                 do_classifier_free_guidance=do_classifier_free_guidance,
             )
+            for image in images
+        ]
 
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -866,15 +847,11 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # controlnet(s) inference
-                if len(controlnet_conditions) > 1:
-                    controlnet_cond = [c.image for c in controlnet_conditions]
-                else:
-                    controlnet_cond = controlnet_conditions[0].image
                 down_block_res_samples, mid_block_res_sample = self.controlnet(
                     latent_model_input,
                     t,
                     encoder_hidden_states=prompt_embeds,
-                    controlnet_cond=controlnet_cond,
+                    controlnet_cond=images[0] if len(images) == 1 else images,
                     conditioning_scale=controlnet_conditioning_scale,
                     return_dict=False,
                 )
