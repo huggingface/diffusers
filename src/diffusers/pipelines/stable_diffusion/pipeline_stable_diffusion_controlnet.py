@@ -335,7 +335,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         if isinstance(controlnet, (list, tuple)):
             controlnet = MultiControlNet(controlnet)
         else:
-            controlnet = MultiControlNet([controlnet])
+            controlnet = controlnet
 
         self.register_modules(
             vae=vae,
