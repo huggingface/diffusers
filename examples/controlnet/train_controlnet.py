@@ -61,7 +61,7 @@ check_min_version("0.15.0.dev0")
 logger = get_logger(__name__)
 
 
-def log_validation(controlnet, args, accelerator, weight_dtype, epoch):
+def log_validation(controlnet, args, accelerator, weight_dtype, step):
     logger.info(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
         f" {args.validation_prompt}."
@@ -98,7 +98,7 @@ def log_validation(controlnet, args, accelerator, weight_dtype, epoch):
     for tracker in accelerator.trackers:
         if tracker.name == "tensorboard":
             np_images = np.stack([np.asarray(img) for img in images])
-            tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+            tracker.writer.add_images("validation", np_images, step, dataformats="NHWC")
         if tracker.name == "wandb":
             tracker.log(
                 {
@@ -940,7 +940,7 @@ def main(args):
                             logger.info(f"Saved state to {save_path}")
 
                     if args.validation_prompt is not None and global_step % args.validation_steps == 0:
-                        log_validation(controlnet, args, accelerator, weight_dtype, epoch)
+                        log_validation(controlnet, args, accelerator, weight_dtype, global_step)
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
