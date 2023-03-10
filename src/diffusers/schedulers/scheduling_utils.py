@@ -136,10 +136,11 @@ class SchedulerMixin:
         </Tip>
 
         """
-        config, kwargs = cls.load_config(
+        config, kwargs, commit_hash = cls.load_config(
             pretrained_model_name_or_path=pretrained_model_name_or_path,
             subfolder=subfolder,
             return_unused_kwargs=True,
+            return_commit_hash=True,
             **kwargs,
         )
         return cls.from_config(config, return_unused_kwargs=return_unused_kwargs, **kwargs)
