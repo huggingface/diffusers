@@ -954,7 +954,7 @@ def stable_unclip_image_noising_components(
     return image_normalizer, image_noising_scheduler
 
 
-def load_pipeline_from_original_stable_diffusion_ckpt(
+def download_from_original_stable_diffusion_ckpt(
     checkpoint_path: str,
     original_config_file: str = None,
     image_size: int = 512,
