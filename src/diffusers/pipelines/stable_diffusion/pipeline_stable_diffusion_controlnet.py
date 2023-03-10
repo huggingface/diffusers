@@ -644,6 +644,41 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
 
         return height, width
 
+    def _prepare_images(self, image):
+        if isinstance(self.controlnet, ControlNetModel):
+            return [image]  # convert to array for internal use
+        else:  # Multi-Controlnet
+            if not isinstance(image, list):
+                raise ValueError("The `image` argument needs to be specified in a `list`.")
+
+            num_controlnets = len(self.controlnet.nets)
+            if len(image) % num_controlnets != 0:
+                raise ValueError(
+                    "The length of the `image` argument list needs to be a multiple of the number of Multi-ControlNet."
+                )
+
+            image_per_control = len(image) // num_controlnets
+
+            # let's split images over controlnets
+            return [image[i : i + image_per_control] for i in range(0, len(image), image_per_control)]
+
+    def _prepare_controlnet_conditioning_scale(self, controlnet_conditioning_scale):
+        if isinstance(self.controlnet, ControlNetModel):
+            if not isinstance(controlnet_conditioning_scale, float):
+                raise ValueError("The `controlnet_conditioning_scale` argument needs to be specified as a `float`.")
+            return controlnet_conditioning_scale
+        else:  # Multi-Controlnet
+            num_controlnets = len(self.controlnet.nets)
+            if isinstance(controlnet_conditioning_scale, list):
+                if len(controlnet_conditioning_scale) != num_controlnets:
+                    raise ValueError(
+                        "The length of the `controlnet_conditioning_scale` list does not match the number of Multi-ControlNet. "
+                        "If specified in `list`, it needs to have the same length as the number of Multi-ControlNet."
+                    )
+            else:
+                controlnet_conditioning_scale = [controlnet_conditioning_scale] * num_controlnets
+            return controlnet_conditioning_scale
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -745,28 +780,9 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
             (nsfw) content, according to the `safety_checker`.
         """
 
-        # TODO: refactoring
-        if isinstance(self.controlnet, ControlNetModel):
-            images = [image]
-        elif isinstance(self.controlnet, MultiControlNet):
-            # TODO: refactoring
-            # let's split images over controlnets
-            # image_per_control = 1 if isinstance(self.controlnet, ControlNetModel) else len(self.controlnet.nets)
-            # if image_per_control > 1 and not isinstance(image, list):
-            #     raise ValueError(...)
-
-            # if len(image) % image_per_control != 0:
-            #     raise ValueError(...)
-
-            # if image_per_control > 1 and not isinstance(controlnet_conditioning_scale, list):
-            #     controlnet_conditioning_scale = [controlnet_conditioning_scale] * image_per_control
-
-            # images = [image[i:i+image_per_control] for i in range(0, len(image), image_per_control)]
-
-            num_controlnets = len(self.controlnet.nets)
-            if num_controlnets > 1 and not isinstance(controlnet_conditioning_scale, list):
-                controlnet_conditioning_scale = [controlnet_conditioning_scale] * num_controlnets
-            images = image
+        # prepare `images` and `controlnet_conditioning_scale` for both a ControlNet and Multi-Controlnet
+        images = self._prepare_images(image)
+        controlnet_conditioning_scale = self._prepare_controlnet_conditioning_scale(controlnet_conditioning_scale)
 
         # 0. Default height and width to unet
         height, width = self._default_height_width(height, width, images[0])
