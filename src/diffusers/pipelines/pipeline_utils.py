@@ -28,7 +28,6 @@ import numpy as np
 import PIL
 import torch
 from huggingface_hub import hf_hub_download, model_info, snapshot_download
-from huggingface_hub.utils import send_telemetry
 from packaging import version
 from PIL import Image
 from tqdm.auto import tqdm
@@ -1054,17 +1053,10 @@ class DiffusionPipeline(ConfigMixin):
         <Tip>
 
          It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
-         models](https://huggingface.co/docs/hub/models-gated#gated-models), *e.g.* `"runwayml/stable-diffusion-v1-5"`
+         models](https://huggingface.co/docs/hub/models-gated#gated-models)
 
         </Tip>
 
-        <Tip>
-
-        Activate the special
-        ["offline-mode"](https://huggingface.co/diffusers/installation.html#notice-on-telemetry-logging) to use this
-        method in a firewalled environment.
-
-        </Tip>
         """
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         resume_download = kwargs.pop("resume_download", False)
@@ -1081,35 +1073,24 @@ class DiffusionPipeline(ConfigMixin):
         allow_patterns = None
         ignore_patterns = None
 
-        user_agent = {"pipeline_class": cls.__name__}
-        if custom_pipeline is not None and not custom_pipeline.endswith(".py"):
-            user_agent["custom_pipeline"] = custom_pipeline
-
         if not local_files_only:
-            info = model_info(
-                pretrained_model_name,
-                use_auth_token=use_auth_token,
-                revision=revision,
-            )
-            user_agent["pretrained_model_name"] = pretrained_model_name
-            send_telemetry("pipelines", library_name="diffusers", library_version=__version__, user_agent=user_agent)
-            commit_hash = info.sha
-
-            # try loading the config file
             config_file = hf_hub_download(
                 pretrained_model_name,
                 cls.config_name,
                 cache_dir=cache_dir,
-                revision=commit_hash,
+                revision=revision,
                 proxies=proxies,
                 force_download=force_download,
                 resume_download=resume_download,
                 use_auth_token=use_auth_token,
             )
+            info = model_info(
+                pretrained_model_name,
+                use_auth_token=use_auth_token,
+                revision=revision,
+            )
 
             config_dict = cls._dict_from_json_file(config_file)
-            config_is_cached = True
-
             # retrieve all folder_names that contain relevant files
             folder_names = [k for k, v in config_dict.items() if isinstance(v, list)]
 
@@ -1166,20 +1147,23 @@ class DiffusionPipeline(ConfigMixin):
                         f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(bin_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(bin_model_filenames - bin_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
                     )
 
-            if config_is_cached:
-                re_ignore_pattern = [re.compile(fnmatch.translate(p)) for p in ignore_patterns]
-                re_allow_pattern = [re.compile(fnmatch.translate(p)) for p in allow_patterns]
+            re_ignore_pattern = [re.compile(fnmatch.translate(p)) for p in ignore_patterns]
+            re_allow_pattern = [re.compile(fnmatch.translate(p)) for p in allow_patterns]
 
-                expected_files = [f for f in filenames if not any(p.match(f) for p in re_ignore_pattern)]
-                expected_files = [f for f in expected_files if any(p.match(f) for p in re_allow_pattern)]
+            expected_files = [f for f in filenames if not any(p.match(f) for p in re_ignore_pattern)]
+            expected_files = [f for f in expected_files if any(p.match(f) for p in re_allow_pattern)]
 
-                snapshot_folder = Path(config_file).parent
-                pipeline_is_cached = all((snapshot_folder / f).is_file() for f in expected_files)
+            snapshot_folder = Path(config_file).parent
+            pipeline_is_cached = all((snapshot_folder / f).is_file() for f in expected_files)
 
-                if pipeline_is_cached:
-                    # if the pipeline is cached, we can directly return it
-                    # else call snapshot_download
-                    return snapshot_folder
+            if pipeline_is_cached:
+                # if the pipeline is cached, we can directly return it
+                # else call snapshot_download
+                return snapshot_folder
+
+        user_agent = {"pipeline_class": cls.__name__}
+        if custom_pipeline is not None and not custom_pipeline.endswith(".py"):
+            user_agent["custom_pipeline"] = custom_pipeline
 
         # download all allow_patterns - ignore_patterns
         cached_folder = snapshot_download(
