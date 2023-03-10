@@ -413,6 +413,47 @@ Textual Inversion is a technique for capturing novel concepts from a small numbe
 
 - Full Stable Diffusion fine-tuning. If you have a more sizable dataset with a specific look or style, you can fine-tune Stable Diffusion so that it outputs images following those examples. This was the approach taken to create [a Pokémon Stable Diffusion model](https://huggingface.co/justinpinkney/pokemon-stable-diffusion) (by Justing Pinkney / Lambda Labs), [a Japanese specific version of Stable Diffusion](https://huggingface.co/spaces/rinna/japanese-stable-diffusion) (by [Rinna Co.](https://github.com/rinnakk/japanese-stable-diffusion/) and others. You can start at [our text-to-image fine-tuning example](https://github.com/huggingface/diffusers/tree/main/examples/text_to_image) and go from there.
 
+## Quantizing Stable Diffusion
+
+Quantization is one of widey-used model compression techniques to accelerate the inference performance. There are two typical approaches: 1) post-training quantization (PTQ), and 2) during-training quantization (DTQ). PTQ is an effective approach to quantizing a model without additional training steps but requires an offline calibration process using a representative dataset to determinate the quantization parameters (e.g., scale and zero point) for the model. DTQ is designed to simulate the quantization error and get recovered as much as possible during training, and quantization-aware training is a well-known approach for DTQ. Optimum Intel provides the quantization support for Transformers library and aims to accelerate end-to-end pipelines on Intel architectures. Below is the sample code for your reference and the full code is available in [Optimum Intel examples](https://github.com/huggingface/optimum-intel/tree/main/examples/neural_compressor/text-to-image).
+
+```bash
+pip install optimum[neural-compressor]
+```
+
+```python
+# pip install diffusers["torch"] transformers
+
+from diffusers import StableDiffusionPipeline
+from optimum.intel.neural_compressor import IncQuantizer, IncOptimizer
+
+...
+pipe = StableDiffusionPipeline.from_pretrained('fp32_model')
+
+# prepare calibration and eval func
+quantizer = IncQuantizer(config,
+                eval_func=eval_func,
+                calib_dataloader=DataLoader(...),
+                calib_func=calibration_func
+            )
+
+# quantize model
+model = getattr(pipe, 'unet')
+optimizer = IncOptimizer(model, quantizer=quantizer)
+opt_model = optimizer.fit()
+
+# run pipeline using opt model 
+setattr(pipe, 'unet', opt_model)
+image = pipe('sample prompt',
+             guidance_scale=7.5,
+             num_inference_steps=50,
+             generator=generator,
+             num_images_per_prompt=1,
+             ).images[0]
+                   
+image.save("prompt.png")
+
+```
 
 ## Stable Diffusion Community Pipelines
 
