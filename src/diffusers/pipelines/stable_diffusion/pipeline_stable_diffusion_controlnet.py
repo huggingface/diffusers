@@ -781,6 +781,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         """
 
         # prepare `images` and `controlnet_conditioning_scale` for both a ControlNet and Multi-Controlnet
+        # `images` here is a list where each element is a conditioning image for each ControlNet.
         images = self._prepare_images(image)
         controlnet_conditioning_scale = self._prepare_controlnet_conditioning_scale(controlnet_conditioning_scale)
 
