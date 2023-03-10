@@ -232,7 +232,7 @@ def warn_deprecated_model_variant(pretrained_model_name_or_path, use_auth_token,
 
     if set(comp_model_filenames) == set(model_filenames):
         warnings.warn(
-            f"You are loading the variant {revision} from {pretrained_model_name_or_path} via `revision='{revision}'` even though you can load it via `variant=`{revision}`. Loading model variants via `revision='{variant}'` is deprecated and will be removed in diffusers v1. Please use `variant='{revision}'` instead.",
+            f"You are loading the variant {revision} from {pretrained_model_name_or_path} via `revision='{revision}'` even though you can load it via `variant=`{revision}`. Loading model variants via `revision='{revision}'` is deprecated and will be removed in diffusers v1. Please use `variant='{revision}'` instead.",
             FutureWarning,
         )
     else:
@@ -1060,7 +1060,7 @@ class DiffusionPipeline(ConfigMixin):
 
         <Tip>
 
-        Activate the special ["offline-mode"](https://huggingface.co/diffusers/installation.html#offline-mode) to use
+        Activate the special ["offline-mode"](https://huggingface.co/diffusers/installation.html#notice-on-telemetry-logging) to use
         this method in a firewalled environment.
 
         </Tip>

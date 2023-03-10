@@ -32,10 +32,7 @@ from diffusers.utils import torch_device
 
 class ModelUtilsTest(unittest.TestCase):
     def tearDown(self):
-        # clean up the VRAM after each test
         super().tearDown()
-        gc.collect()
-        torch.cuda.empty_cache()
 
         import diffusers
 
