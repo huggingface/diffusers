@@ -74,10 +74,10 @@ class DownloadTests(unittest.TestCase):
                 )
 
             download_requests = [r.method for r in m.request_history]
-            assert download_requests.count("HEAD") == 16, "15 calls to files + send_telemetry"
+            assert download_requests.count("HEAD") == 15, "15 calls to files"
             assert download_requests.count("GET") == 17, "15 calls to files + model_info + model_index.json"
             assert (
-                len(download_requests) == 33
+                len(download_requests) == 32
             ), "2 calls per file (15 files) + send_telemetry, model_info and model_index.json"
 
             with requests_mock.mock(real_http=True) as m:
@@ -86,7 +86,7 @@ class DownloadTests(unittest.TestCase):
                 )
 
             cache_requests = [r.method for r in m.request_history]
-            assert cache_requests.count("HEAD") == 1, "send_telemetry is only HEAD"
+            assert cache_requests.count("HEAD") == 1, "model_index.json is only HEAD"
             assert cache_requests.count("GET") == 1, "model info is only GET"
             assert (
                 len(cache_requests) == 2
