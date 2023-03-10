@@ -96,15 +96,17 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         trained_betas (`np.ndarray`, optional):
             option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
         clip_sample (`bool`, default `True`):
-            option to clip predicted sample between -1 and 1 for numerical stability.
-        set_alpha_to_one (`bool`, default `True`):
+            option to clip predicted sample for numerical stability.
+        clip_sample_range (`float`, default `1.0`):
+            the maximum magnitude for sample clipping. Valid only when `clip_sample=True`.
+        set_alpha_to_zero (`bool`, default `True`):
             each diffusion step uses the value of alphas product at that step and at the previous one. For the final
-            step there is no previous alpha. When this option is `True` the previous alpha product is fixed to `1`,
-            otherwise it uses the value of alpha at step 0.
+            step there is no previous alpha. When this option is `True` the previous alpha product is fixed to `0`,
+            otherwise it uses the value of alpha at step `num_train_timesteps - 1`.
         steps_offset (`int`, default `0`):
             an offset added to the inference steps. You can use a combination of `offset=1` and
-            `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
-            stable diffusion.
+            `set_alpha_to_zero=False`, to make the last step use step `num_train_timesteps - 1`
+            for the previous alpha product.
         prediction_type (`str`, default `epsilon`, optional):
             prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
             process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
@@ -125,7 +127,13 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         set_alpha_to_zero: bool = True,
         steps_offset: int = 0,
         prediction_type: str = "epsilon",
+        clip_sample_range: float = 1.0,
+        **kwargs
     ):
+        if kwargs.get("set_alpha_to_one", None) is not None:
+            deprecation_message = "The `set_alpha_to_one` argument is deprecated. Please use `set_alpha_to_zero` instead."
+            deprecate("set_alpha_to_one", "1.0.0", deprecation_message, standard_warn=False)
+            set_alpha_to_zero = kwargs["set_alpha_to_one"]
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
         elif beta_schedule == "linear":
@@ -147,7 +155,7 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         # At every step in inverted ddim, we are looking into the next alphas_cumprod
         # For the final step, there is no next alphas_cumprod, and the index is out of bounds
         # `set_alpha_to_zero` decides whether we set this parameter simply to zero
-        # in this case, self.step() just normalizes output by self.config.prediction_type
+        # in this case, self.step() just output the predicted noise
         # or whether we use the final alpha of the "non-previous" one.
         self.final_alpha_cumprod = torch.tensor(0.0) if set_alpha_to_zero else self.alphas_cumprod[-1]
 
@@ -237,10 +245,16 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
                 " `v_prediction`"
             )
 
-        # 4. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+        # 4. Clip or threshold "predicted x_0"
+        if self.config.clip_sample:
+            pred_original_sample = pred_original_sample.clamp(
+                -self.config.clip_sample_range, self.config.clip_sample_range
+            )
+
+        # 5. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
         pred_sample_direction = (1 - alpha_prod_t_prev) ** (0.5) * pred_epsilon
 
-        # 5. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+        # 6. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
         prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
 
         if not return_dict:
