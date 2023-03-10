@@ -14,9 +14,7 @@
 # limitations under the License.
 """ Conversion script for the Stable Diffusion checkpoints."""
 
-import os
 import re
-import tempfile
 from io import BytesIO
 from typing import Optional
 
@@ -1307,7 +1305,7 @@ def download_from_original_stable_diffusion_ckpt(
 
 def download_controlnet_from_original_ckpt(
     checkpoint_path: str,
-    original_config_file: str = None,
+    original_config_file: str,
     image_size: int = 512,
     extract_ema: bool = False,
     num_in_channels: Optional[int] = None,
@@ -1337,58 +1335,15 @@ def download_controlnet_from_original_ckpt(
         else:
             checkpoint = torch.load(checkpoint_path, map_location=device)
 
-    # Sometimes models don't have the global_step item
-    if "global_step" in checkpoint:
-        global_step = checkpoint["global_step"]
-    else:
-        print("global_step key not found in model")
-        global_step = None
-
     # NOTE: this while loop isn't great but this controlnet checkpoint has one additional
     # "state_dict" key https://huggingface.co/thibaud/controlnet-canny-sd21
     while "state_dict" in checkpoint:
         checkpoint = checkpoint["state_dict"]
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        if original_config_file is None:
-            key_name = "model.diffusion_model.input_blocks.2.1.transformer_blocks.0.attn2.to_k.weight"
-
-            original_config_file = os.path.join(tmpdir, "inference.yaml")
-            if key_name in checkpoint and checkpoint[key_name].shape[-1] == 1024:
-                if not os.path.isfile("v2-inference-v.yaml"):
-                    # model_type = "v2"
-                    r = requests.get(
-                        " https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/v2-inference-v.yaml"
-                    )
-                    open(original_config_file, "wb").write(r.content)
-
-                if global_step == 110000:
-                    # v2.1 needs to upcast attention
-                    upcast_attention = True
-            else:
-                if not os.path.isfile("v1-inference.yaml"):
-                    # model_type = "v1"
-                    r = requests.get(
-                        " https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml"
-                    )
-                    open(original_config_file, "wb").write(r.content)
-
-        original_config = OmegaConf.load(original_config_file)
+    original_config = OmegaConf.load(original_config_file)
 
     if num_in_channels is not None:
         original_config["model"]["params"]["unet_config"]["params"]["in_channels"] = num_in_channels
-
-    if (
-        "parameterization" in original_config["model"]["params"]
-        and original_config["model"]["params"]["parameterization"] == "v"
-    ):
-        if image_size is None:
-            # NOTE: For stable diffusion 2 base one has to pass `image_size==512`
-            # as it relies on a brittle global step parameter here
-            image_size = 512 if global_step == 875000 else 768
-    else:
-        if image_size is None:
-            image_size = 512
 
     if "control_stage_config" not in original_config.model.params:
         raise ValueError("`control_stage_config` not present in original config")

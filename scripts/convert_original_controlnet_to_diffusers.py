@@ -25,11 +25,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--checkpoint_path", default=None, type=str, required=True, help="Path to the checkpoint to convert."
     )
-    # !wget https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml
     parser.add_argument(
         "--original_config_file",
-        default=None,
         type=str,
+        required=True,
         help="The YAML config file corresponding to the original architecture.",
     )
     parser.add_argument(
@@ -40,7 +39,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--image_size",
-        default=None,
+        default=512,
         type=int,
         help=(
             "The image size that the model was trained on. Use 512 for Stable Diffusion v1.X and Stable Siffusion v2"
