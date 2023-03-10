@@ -1060,8 +1060,9 @@ class DiffusionPipeline(ConfigMixin):
 
         <Tip>
 
-        Activate the special ["offline-mode"](https://huggingface.co/diffusers/installation.html#notice-on-telemetry-logging) to use
-        this method in a firewalled environment.
+        Activate the special
+        ["offline-mode"](https://huggingface.co/diffusers/installation.html#notice-on-telemetry-logging) to use this
+        method in a firewalled environment.
 
         </Tip>
         """

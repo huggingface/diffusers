@@ -239,7 +239,11 @@ class ConfigMixin:
 
     @classmethod
     def load_config(
-        cls, pretrained_model_name_or_path: Union[str, os.PathLike], return_unused_kwargs=False, **kwargs
+        cls,
+        pretrained_model_name_or_path: Union[str, os.PathLike],
+        return_unused_kwargs=False,
+        return_commit_hash=False,
+        **kwargs,
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         r"""
         Instantiate a Python class from a config dictionary
@@ -279,6 +283,10 @@ class ConfigMixin:
             subfolder (`str`, *optional*, defaults to `""`):
                 In case the relevant files are located inside a subfolder of the model repo (either remote in
                 huggingface.co or downloaded locally), you can specify the folder name here.
+            return_unused_kwargs (`bool`, *optional*, defaults to `False):
+                Whether unused keyword arguments of the config shall be returned.
+            return_commit_hash (`bool`, *optional*, defaults to `False):
+                Whether the commit_hash of the loaded configuration shall be returned.
 
         <Tip>
 
@@ -389,14 +397,21 @@ class ConfigMixin:
             config_dict = cls._dict_from_json_file(config_file)
 
             commit_hash = extract_commit_hash(config_file)
-            config_dict["_commit_hash"] = commit_hash
         except (json.JSONDecodeError, UnicodeDecodeError):
             raise EnvironmentError(f"It looks like the config file at '{config_file}' is not a valid JSON file.")
 
-        if return_unused_kwargs:
-            return config_dict, kwargs
+        if not (return_unused_kwargs or return_commit_hash):
+            return config_dict
 
-        return config_dict
+        outputs = (config_dict,)
+
+        if return_unused_kwargs:
+            outputs += (kwargs,)
+
+        if return_commit_hash:
+            outputs += (commit_hash,)
+
+        return outputs
 
     @staticmethod
     def _get_init_keys(cls):

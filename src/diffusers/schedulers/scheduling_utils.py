@@ -136,14 +136,13 @@ class SchedulerMixin:
         </Tip>
 
         """
-        config, kwargs = cls.load_config(
+        config, kwargs, commit_hash = cls.load_config(
             pretrained_model_name_or_path=pretrained_model_name_or_path,
             subfolder=subfolder,
             return_unused_kwargs=True,
+            return_commit_hash=True,
             **kwargs,
         )
-        # _commit_hash
-        config.pop("_commit_hash", None)
         return cls.from_config(config, return_unused_kwargs=return_unused_kwargs, **kwargs)
 
     def save_pretrained(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):

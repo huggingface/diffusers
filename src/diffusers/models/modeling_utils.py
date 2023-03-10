@@ -468,10 +468,11 @@ class ModelMixin(torch.nn.Module):
         }
 
         # load config
-        config, unused_kwargs = cls.load_config(
+        config, unused_kwargs, commit_hash = cls.load_config(
             config_path,
             cache_dir=cache_dir,
             return_unused_kwargs=True,
+            return_commit_hash=True,
             force_download=force_download,
             resume_download=resume_download,
             proxies=proxies,
@@ -483,10 +484,8 @@ class ModelMixin(torch.nn.Module):
             user_agent=user_agent,
             **kwargs,
         )
-        commit_hash = config.pop("_commit_hash", None)
 
-        # This variable will flag if we're loading a sharded checkpoint. In this case the archive file is just the
-        # Load model
+        # load model
         model_file = None
         if from_flax:
             model_file = _get_model_file(
@@ -808,9 +807,6 @@ def _get_model_file(
             and version.parse(version.parse(__version__).base_version) >= version.parse("0.17.0")
         ):
             try:
-                if commit_hash is not None and revision is None:
-                    revision = commit_hash
-
                 model_file = hf_hub_download(
                     pretrained_model_name_or_path,
                     filename=_add_variant(weights_name, revision),
@@ -822,7 +818,7 @@ def _get_model_file(
                     use_auth_token=use_auth_token,
                     user_agent=user_agent,
                     subfolder=subfolder,
-                    revision=revision,
+                    revision=revision or commit_hash,
                 )
                 warnings.warn(
                     f"Loading the variant {revision} from {pretrained_model_name_or_path} via `revision='{revision}'` is deprecated. Loading instead from `revision='main'` with `variant={revision}`. Loading model variants via `revision='{revision}'` will be removed in diffusers v1. Please use `variant='{revision}'` instead.",
@@ -835,9 +831,6 @@ def _get_model_file(
                     FutureWarning,
                 )
         try:
-            if commit_hash is not None and revision is None:
-                revision = commit_hash
-
             # 2. Load model file as usual
             model_file = hf_hub_download(
                 pretrained_model_name_or_path,
@@ -850,7 +843,7 @@ def _get_model_file(
                 use_auth_token=use_auth_token,
                 user_agent=user_agent,
                 subfolder=subfolder,
-                revision=revision,
+                revision=revision or commit_hash,
             )
             return model_file
 
