@@ -700,7 +700,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        controlnet_conditioning_scale: float = 1.0,
+        controlnet_conditioning_scale: List[float] = 1.0,
         controlnet_conditions: Optional[List[ControlNetCondition]] = None,
     ):
         r"""
