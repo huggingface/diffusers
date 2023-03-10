@@ -23,7 +23,6 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
-    ControlNetCondition,
     ControlNetModel,
     DDIMScheduler,
     StableDiffusionControlNetPipeline,
@@ -232,20 +231,16 @@ class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unitt
 
         controlnet_embedder_scale_factor = 2
 
-        conditions = [
-            ControlNetCondition(
-                image=randn_tensor(
-                    (1, 3, 32 * controlnet_embedder_scale_factor, 32 * controlnet_embedder_scale_factor),
-                    generator=generator,
-                    device=torch.device(device),
-                )
+        images = [
+            randn_tensor(
+                (1, 3, 32 * controlnet_embedder_scale_factor, 32 * controlnet_embedder_scale_factor),
+                generator=generator,
+                device=torch.device(device),
             ),
-            ControlNetCondition(
-                image=randn_tensor(
-                    (1, 3, 32 * controlnet_embedder_scale_factor, 32 * controlnet_embedder_scale_factor),
-                    generator=generator,
-                    device=torch.device(device),
-                )
+            randn_tensor(
+                (1, 3, 32 * controlnet_embedder_scale_factor, 32 * controlnet_embedder_scale_factor),
+                generator=generator,
+                device=torch.device(device),
             ),
         ]
 
@@ -255,7 +250,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unitt
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
             "output_type": "numpy",
-            "controlnet_conditions": conditions,
+            "image": images,
         }
 
         return inputs

@@ -389,6 +389,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
         controlnet_cond: torch.FloatTensor,
+        conditioning_scale: float = 1.0,
         class_labels: Optional[torch.Tensor] = None,
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
@@ -491,6 +492,10 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         down_block_res_samples = controlnet_down_block_res_samples
 
         mid_block_res_sample = self.controlnet_mid_block(sample)
+
+        # 6. scaling
+        down_block_res_samples = [sample * conditioning_scale for sample in down_block_res_samples]
+        mid_block_res_sample *= conditioning_scale
 
         if not return_dict:
             return (down_block_res_samples, mid_block_res_sample)

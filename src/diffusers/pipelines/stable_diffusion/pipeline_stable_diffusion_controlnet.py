@@ -92,10 +92,8 @@ class ControlNetCondition:
     def __init__(
         self,
         image: Union[torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]],
-        scale: float = 1.0,
     ):
         self.image_original = image
-        self.scale = scale
 
     def _default_height_width(self, height, width, image):
         if isinstance(image, list):
@@ -226,37 +224,27 @@ class MultiControlNet(nn.Module):
         sample: torch.FloatTensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
-        images: List[torch.tensor],
-        cond_scales: List[int],
+        controlnet_cond: List[torch.tensor],
+        conditioning_scale: List[float],
         class_labels: Optional[torch.Tensor] = None,
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[ControlNetOutput, Tuple]:
-        if len(controlnet_conditions) != len(self.nets):
-            raise ValueError(
-                f"The number of specified `ControlNetCondition` does not match the number of `ControlNetModel`."
-                f"There are {len(self.nets)} ControlNetModel(s), "
-                f"but there are {len(controlnet_conditions)} `ControlNetCondition` in `controlnet_conditions`."
-            )
-
-        for i, (image, scale, controlnet) in enumerate(zip(images, scales, self.nets)):
+        for i, (image, scale, controlnet) in enumerate(zip(controlnet_cond, conditioning_scale, self.nets)):
             down_samples, mid_sample = controlnet(
                 sample,
                 timestep,
                 encoder_hidden_states,
                 image,
+                scale,
                 class_labels,
                 timestep_cond,
                 attention_mask,
                 cross_attention_kwargs,
                 return_dict,
             )
-
-            # scaling
-            down_samples = [sample * cond.scale for sample in down_samples]
-            mid_sample *= cond.scale
 
             # merge samples
             if i == 0:
@@ -700,8 +688,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        controlnet_conditioning_scale: List[float] = 1.0,
-        controlnet_conditions: Optional[List[ControlNetCondition]] = None,
+        controlnet_conditioning_scale: Union[float, List[float]] = 1.0,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -780,18 +767,28 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
             (nsfw) content, according to the `safety_checker`.
         """
 
-        # TODO: add conversion image array to ControlNetConditions
-        if controlnet_conditions is None:
+        # TODO: refactoring
+        if isinstance(self.controlnet, ControlNetModel):
+            controlnet_conditions = [ControlNetCondition(image=image)]
+        elif isinstance(self.controlnet, MultiControlNet):
+            # TODO: refactoring
             # let's split images over controlnets
-            image_per_control = 1 if isinstance(self.controlnet, ControlNetModel) else len(self.controlnet.nets)
-            if image_per_control > 1 and not isinstance(image, list):
-                raise ValueError(...)
-                
-            if len(image) % image_per_control != 0:
-                raise ValueError(...)
-            
-            images = [image[i:i+num_image_per_control] for i in range(0, len(image), image_per_control)]
-            controlnet_conditions = [ControlNetCondition(image=image, scale=scale) for image, scale in zip(images,  controlnet_conditioning_scale)]
+            # image_per_control = 1 if isinstance(self.controlnet, ControlNetModel) else len(self.controlnet.nets)
+            # if image_per_control > 1 and not isinstance(image, list):
+            #     raise ValueError(...)
+
+            # if len(image) % image_per_control != 0:
+            #     raise ValueError(...)
+
+            # if image_per_control > 1 and not isinstance(controlnet_conditioning_scale, list):
+            #     controlnet_conditioning_scale = [controlnet_conditioning_scale] * image_per_control
+
+            # images = [image[i:i+image_per_control] for i in range(0, len(image), image_per_control)]
+
+            num_controlnets = len(self.controlnet.nets)
+            if num_controlnets > 1 and not isinstance(controlnet_conditioning_scale, list):
+                controlnet_conditioning_scale = [controlnet_conditioning_scale] * num_controlnets
+            controlnet_conditions = [ControlNetCondition(image=img) for img in image]
 
         # 0. Default height and width to unet
         height, width = controlnet_conditions[0].default_height_width(height, width)
@@ -829,14 +826,14 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         )
 
         # 4. Prepare image
-        for cond, controlnet in zip(controlnet_conditions, self.controlnet.nets):
+        for cond in controlnet_conditions:
             cond.prepare_image(
                 width=width,
                 height=height,
                 batch_size=batch_size * num_images_per_prompt,
                 num_images_per_prompt=num_images_per_prompt,
                 device=device,
-                dtype=controlnet.dtype,
+                dtype=self.controlnet.dtype,
                 do_classifier_free_guidance=do_classifier_free_guidance,
             )
 
@@ -869,11 +866,16 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # controlnet(s) inference
+                if len(controlnet_conditions) > 1:
+                    controlnet_cond = [c.image for c in controlnet_conditions]
+                else:
+                    controlnet_cond = controlnet_conditions[0].image
                 down_block_res_samples, mid_block_res_sample = self.controlnet(
                     latent_model_input,
                     t,
                     encoder_hidden_states=prompt_embeds,
-                    controlnet_conditions=controlnet_conditions,
+                    controlnet_cond=controlnet_cond,
+                    conditioning_scale=controlnet_conditioning_scale,
                     return_dict=False,
                 )
 
