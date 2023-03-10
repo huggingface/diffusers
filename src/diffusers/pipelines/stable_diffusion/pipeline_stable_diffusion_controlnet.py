@@ -241,7 +241,7 @@ class MultiControlNet(nn.Module):
                 f"but there are {len(controlnet_conditions)} `ControlNetCondition` in `controlnet_conditions`."
             )
 
-        for i, (cond, controlnet) in enumerate(zip(controlnet_conditions, self.nets)):
+        for i, (image, scale, controlnet) in enumerate(zip(images, scales, self.nets)):
             down_samples, mid_sample = controlnet(
                 sample,
                 timestep,
