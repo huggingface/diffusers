@@ -69,8 +69,6 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step):
 
     controlnet = accelerator.unwrap_model(controlnet)
 
-    validation_image = Image.open(args.validation_image)
-
     pipeline = StableDiffusionControlNetPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
         safety_checker=None,
@@ -85,32 +83,80 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step):
     if args.enable_xformers_memory_efficient_attention:
         pipeline.enable_xformers_memory_efficient_attention()
 
-    # run inference
-    generator = None if args.seed is None else torch.Generator(device=accelerator.device).manual_seed(args.seed)
-    images = []
-    for _ in range(args.num_validation_images):
-        with torch.autocast("cuda"):
-            image = pipeline(
-                args.validation_prompt, validation_image, num_inference_steps=20, generator=generator
-            ).images[0]
-        images.append(image)
+    if args.seed is None:
+        generator = None
+    else:
+        generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+
+    if len(args.validation_image) == len(args.validation_prompt):
+        validation_images = args.validation_image
+        validation_prompts = args.validation_prompt
+    elif len(args.validation_image) == 1:
+        validation_images = args.validation_image * len(args.validation_prompt)
+        validation_prompts = args.validation_prompt
+    elif len(args.validation_prompt) == 1:
+        validation_images = args.validation_image
+        validation_prompts = args.validation_prompt * len(args.validation_image)
+    else:
+        assert (
+            False
+        ), "number of `args.validation_image` and `args.validation_prompt` should be checked in `parse_args`"
+
+    image_logs = []
+
+    for validation_prompt, validation_image in zip(validation_prompts, validation_images):
+        validation_image = Image.open(args.validation_image)
+
+        images = []
+
+        for _ in range(args.num_validation_images):
+            with torch.autocast("cuda"):
+                image = pipeline(
+                    args.validation_prompt, validation_image, num_inference_steps=20, generator=generator
+                ).images[0]
+
+            images.append(image)
+
+        image_logs.append(
+            {"validation_image": validation_image, "images": images, "validation_prompt": validation_prompt}
+        )
 
     for tracker in accelerator.trackers:
-        if tracker.name == "tensorboard":
-            np_images = np.stack([np.asarray(img) for img in images])
-            tracker.writer.add_images("validation", np_images, step, dataformats="NHWC")
-        if tracker.name == "wandb":
-            tracker.log(
-                {
-                    "validation": [
-                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}") for i, image in enumerate(images)
-                    ]
-                }
-            )
+        for log in image_logs:
+            images = log["images"]
+            validation_prompt = log["validation_prompt"]
+            validation_image = log["validation_image"]
 
-    # TODO should we actually call both of these?
-    del pipeline
-    torch.cuda.empty_cache()
+            if tracker.name == "tensorboard":
+                formatted_images = []
+
+                formatted_images.append(np.asarray(validation_image))
+
+                for image in images:
+                    formatted_images.append(np.asarray(image))
+
+                formatted_images = np.stack(formatted_images)
+
+                tracker.writer.add_images(validation_prompt, formatted_images, step, dataformats="NHWC")
+            elif tracker.name == "wandb":
+                formatted_images = []
+
+                formatted_images.append(wandb.Image(validation_image, caption="Controlnet conditioning"))
+
+                for image in images:
+                    image = wandb.Image(image)
+                    formatted_images.append(image)
+
+                tracker.log(
+                    {
+                        validation_prompt: [
+                            wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                            for i, image in enumerate(images)
+                        ]
+                    }
+                )
+            else:
+                logger.warn(f"image logging not implemented for {tracker.name}")
 
 
 def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision: str):
@@ -396,26 +442,37 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--proportion_empty_prompts",
         type=float,
-        default=0.5,
-        help="Proportion of image prompts to be replaced with empty strings. Defaults to 0.5. Set to 0 to disable empty prompt replacement.",
+        default=0,
+        help="Proportion of image prompts to be replaced with empty strings. Defaults to 0 (no prompt replacement).",
     )
     parser.add_argument(
         "--validation_prompt",
         type=str,
         default=None,
-        help="A prompt that is used during validation to verify that the model is learning.",
+        nargs="+",
+        help=(
+            "A set of prompts evaluated every `--validation_steps` and logged to `--report_to`."
+            " Provide either a matching number of `--validation_image`s, a single `--validation_image`"
+            " to be used with all prompts, or a single prompt that will be used with all `--validation_image`s."
+        ),
     )
     parser.add_argument(
         "--validation_image",
         type=str,
         default=None,
-        help="The path to the controlnet conditioning image to be used along with `--validation_prompt`.",
+        nargs="+",
+        help=(
+            "A set of paths to the controlnet conditioning image be evaluated every `--validation_steps`"
+            " and logged to `--report_to`. Provide either a matching number of `--validation_prompt`s, a"
+            " a single `--validation_prompt` to be used with all `--validation_image`s, or a single"
+            " `--validation_image` that will be used with all `--validation_prompt`s."
+        ),
     )
     parser.add_argument(
         "--num_validation_images",
         type=int,
         default=4,
-        help="Number of images that should be generated during validation with `validation_prompt`.",
+        help="Number of images to be generated for each `--validation_image`, `--validation_prompt` pair",
     )
     parser.add_argument(
         "--validation_steps",
@@ -447,6 +504,16 @@ def parse_args(input_args=None):
 
     if args.validation_prompt is None and args.validation_image is not None:
         raise ValueError("`--validation_prompt` must be set if `--validation_image` is set")
+
+    if (
+        len(args.validation_image) != 1
+        and len(args.validation_prompt) != 1
+        and len(args.validation_image) != len(args.validation_prompt)
+    ):
+        raise ValueError(
+            "Must provide either 1 `--validation_image`, 1 `--validation_prompt`,"
+            " or the same number of `--validation_prompt`s and `--validation_image`s"
+        )
 
     return args
 
