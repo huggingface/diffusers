@@ -147,14 +147,7 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step):
                     image = wandb.Image(image)
                     formatted_images.append(image)
 
-                tracker.log(
-                    {
-                        validation_prompt: [
-                            wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                            for i, image in enumerate(images)
-                        ]
-                    }
-                )
+                tracker.log({validation_prompt: formatted_images})
             else:
                 logger.warn(f"image logging not implemented for {tracker.name}")
 
