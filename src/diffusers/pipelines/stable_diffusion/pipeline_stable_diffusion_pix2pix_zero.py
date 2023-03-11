@@ -730,6 +730,23 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
         return latents
 
+    def get_epsilon(self, model_output: torch.Tensor, sample: torch.Tensor, timestep: int):
+        pred_type = self.inverse_scheduler.config.prediction_type
+        alpha_prod_t = self.inverse_scheduler.alphas_cumprod[timestep]
+
+        beta_prod_t = 1 - alpha_prod_t
+
+        if pred_type == "epsilon":
+            return model_output
+        elif pred_type == "sample":
+            return (sample - alpha_prod_t ** (0.5) * model_output) / beta_prod_t ** (0.5)
+        elif pred_type == "v_prediction":
+            return (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
+        else:
+            raise ValueError(
+                f"prediction_type given as {pred_type} must be one of `epsilon`, `sample`, or `v_prediction`"
+            )
+
     def auto_corr_loss(self, hidden_states, generator=None):
         batch_size, channel, height, width = hidden_states.shape
         if batch_size > 1:
@@ -1181,7 +1198,9 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                         if lambda_auto_corr > 0:
                             for _ in range(num_auto_corr_rolls):
                                 var = torch.autograd.Variable(noise_pred.detach().clone(), requires_grad=True)
-                                l_ac = self.auto_corr_loss(var, generator=generator)
+                                var_epsilon = self.get_epsilon(var, latent_model_input.detach(), t)
+
+                                l_ac = self.auto_corr_loss(var_epsilon, generator=generator)
                                 l_ac.backward()
 
                                 grad = var.grad.detach() / num_auto_corr_rolls
@@ -1189,8 +1208,9 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
                         if lambda_kl > 0:
                             var = torch.autograd.Variable(noise_pred.detach().clone(), requires_grad=True)
+                            var_epsilon = self.get_epsilon(var, latent_model_input.detach(), t)
 
-                            l_kld = self.kl_divergence(var)
+                            l_kld = self.kl_divergence(var_epsilon)
                             l_kld.backward()
 
                             grad = var.grad.detach()

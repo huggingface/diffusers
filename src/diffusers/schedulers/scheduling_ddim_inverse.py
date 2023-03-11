@@ -23,7 +23,7 @@ import torch
 
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.schedulers.scheduling_utils import SchedulerMixin
-from diffusers.utils import BaseOutput
+from diffusers.utils import BaseOutput, deprecate
 
 
 @dataclass
@@ -105,8 +105,8 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
             otherwise it uses the value of alpha at step `num_train_timesteps - 1`.
         steps_offset (`int`, default `0`):
             an offset added to the inference steps. You can use a combination of `offset=1` and
-            `set_alpha_to_zero=False`, to make the last step use step `num_train_timesteps - 1`
-            for the previous alpha product.
+            `set_alpha_to_zero=False`, to make the last step use step `num_train_timesteps - 1` for the previous alpha
+            product.
         prediction_type (`str`, default `epsilon`, optional):
             prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
             process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
@@ -128,10 +128,12 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         steps_offset: int = 0,
         prediction_type: str = "epsilon",
         clip_sample_range: float = 1.0,
-        **kwargs
+        **kwargs,
     ):
         if kwargs.get("set_alpha_to_one", None) is not None:
-            deprecation_message = "The `set_alpha_to_one` argument is deprecated. Please use `set_alpha_to_zero` instead."
+            deprecation_message = (
+                "The `set_alpha_to_one` argument is deprecated. Please use `set_alpha_to_zero` instead."
+            )
             deprecate("set_alpha_to_one", "1.0.0", deprecation_message, standard_warn=False)
             set_alpha_to_zero = kwargs["set_alpha_to_one"]
         if trained_betas is not None:
