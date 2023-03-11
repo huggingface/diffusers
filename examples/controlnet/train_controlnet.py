@@ -63,7 +63,7 @@ logger = get_logger(__name__)
 
 def log_validation(controlnet, args, accelerator, weight_dtype, step):
     logger.info(
-        f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+        f"Running validation... \n Generating {args.num_validation_images} images with prompt(s):"
         f" {args.validation_prompt}."
     )
 
@@ -105,14 +105,14 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step):
     image_logs = []
 
     for validation_prompt, validation_image in zip(validation_prompts, validation_images):
-        validation_image = Image.open(args.validation_image)
+        validation_image = Image.open(validation_image)
 
         images = []
 
         for _ in range(args.num_validation_images):
             with torch.autocast("cuda"):
                 image = pipeline(
-                    args.validation_prompt, validation_image, num_inference_steps=20, generator=generator
+                    validation_prompt, validation_image, num_inference_steps=20, generator=generator
                 ).images[0]
 
             images.append(image)
@@ -122,12 +122,12 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step):
         )
 
     for tracker in accelerator.trackers:
-        for log in image_logs:
-            images = log["images"]
-            validation_prompt = log["validation_prompt"]
-            validation_image = log["validation_image"]
+        if tracker.name == "tensorboard":
+            for log in image_logs:
+                images = log["images"]
+                validation_prompt = log["validation_prompt"]
+                validation_image = log["validation_image"]
 
-            if tracker.name == "tensorboard":
                 formatted_images = []
 
                 formatted_images.append(np.asarray(validation_image))
@@ -138,18 +138,23 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step):
                 formatted_images = np.stack(formatted_images)
 
                 tracker.writer.add_images(validation_prompt, formatted_images, step, dataformats="NHWC")
-            elif tracker.name == "wandb":
-                formatted_images = []
+        elif tracker.name == "wandb":
+            formatted_images = []
+
+            for log in image_logs:
+                images = log["images"]
+                validation_prompt = log["validation_prompt"]
+                validation_image = log["validation_image"]
 
                 formatted_images.append(wandb.Image(validation_image, caption="Controlnet conditioning"))
 
                 for image in images:
-                    image = wandb.Image(image)
+                    image = wandb.Image(image, caption=validation_prompt)
                     formatted_images.append(image)
 
-                tracker.log({validation_prompt: formatted_images})
-            else:
-                logger.warn(f"image logging not implemented for {tracker.name}")
+            tracker.log({"validation": formatted_images})
+        else:
+            logger.warn(f"image logging not implemented for {tracker.name}")
 
 
 def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision: str):
@@ -878,7 +883,13 @@ def main(args):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        accelerator.init_trackers("train_controlnet", config=vars(args))
+        tracker_config = dict(vars(args))
+
+        # tensorboard cannot handle list types for config
+        tracker_config.pop("validation_prompt")
+        tracker_config.pop("validation_image")
+
+        accelerator.init_trackers("train_controlnet", config=tracker_config)
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
