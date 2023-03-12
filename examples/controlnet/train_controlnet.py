@@ -482,6 +482,16 @@ def parse_args(input_args=None):
             " and logging the images."
         ),
     )
+    parser.add_argument(
+        "--tracker_project_name",
+        type=str,
+        default="train_controlnet",
+        required=True,
+        help=(
+            "The `project_name` argument passed to Accelerator.init_trackers for"
+            " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
+        ),
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -889,7 +899,7 @@ def main(args):
         tracker_config.pop("validation_prompt")
         tracker_config.pop("validation_image")
 
-        accelerator.init_trackers("train_controlnet", config=tracker_config)
+        accelerator.init_trackers(args.tracker_project_name, config=tracker_config)
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
