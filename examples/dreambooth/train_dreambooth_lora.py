@@ -47,7 +47,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.loaders import AttnProcsLayers
-from diffusers.models.cross_attention import LoRACrossAttnProcessor
+from diffusers.models.cross_attention import LoRACrossAttnProcessor, LoRAXFormersCrossAttnProcessor
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
@@ -683,7 +683,7 @@ def main(args):
     unet.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
     text_encoder.to(accelerator.device, dtype=weight_dtype)
-
+    useXformers = False
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
             import xformers
@@ -694,6 +694,7 @@ def main(args):
                     "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                 )
             unet.enable_xformers_memory_efficient_attention()
+            useXformers = True
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
 
@@ -722,8 +723,8 @@ def main(args):
         elif name.startswith("down_blocks"):
             block_id = int(name[len("down_blocks.")])
             hidden_size = unet.config.block_out_channels[block_id]
-
-        lora_attn_procs[name] = LoRACrossAttnProcessor(
+        processsorClass = LoRAXFormersCrossAttnProcessor if useXformers else LoRACrossAttnProcessor
+        lora_attn_procs[name] = processsorClass(
             hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
         )
 
