@@ -1028,6 +1028,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    progress_bar.set_postfix({"loss": loss.loss.detach().item()})
                     progress_bar.update()
 
         # 11. Post-process the latents.
