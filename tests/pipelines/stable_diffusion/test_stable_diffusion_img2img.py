@@ -29,6 +29,7 @@ from diffusers import (
     PNDMScheduler,
     StableDiffusionImg2ImgPipeline,
     UNet2DConditionModel,
+    VaeImageProcessor,
 )
 from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
@@ -94,19 +95,33 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         }
         return components
 
-    def get_dummy_inputs(self, device, seed=0):
+    def get_dummy_inputs(self, device, seed=0, input_image_type='pt', output_type='np'):
         image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
+        
+        if input_image_type == 'pt':
+            input_image = image
+        elif input_image_type == 'np':
+            input_image = image.cpu().numpy().transpose(0, 2, 3, 1)
+        elif input_image_type == 'pil': 
+            input_image = image.cpu().numpy().transpose(0, 2, 3, 1)
+            input_image = VaeImageProcessor.numpy_to_pil(input_image)
+        else:
+            raise ValueError(f"unsupported input_image_type {input_image_type}.")
+        
+        if output_type not in ['pt', 'np', 'pil']:
+            raise ValueError(f"unsupported output_type {output_type}")
+
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
-            "image": image,
+            "image": input_image,
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "np",
+            "output_type": output_type,
         }
         return inputs
 
@@ -122,7 +137,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.4492, 0.3865, 0.4222, 0.5854, 0.5139, 0.4379, 0.4193, 0.48, 0.4218])
+        expected_slice = np.array([0.46275955, 0.3977616,  0.42548066, 0.5823421,  0.50115615, 0.43968713, 0.41080174, 0.47410887, 0.42165133])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -140,8 +155,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.4065, 0.3783, 0.4050, 0.5266, 0.4781, 0.4252, 0.4203, 0.4692, 0.4365])
-
+        expected_slice = np.array([0.4104152, 0.38498846, 0.41070235, 0.52090424, 0.47205922, 0.42849067, 0.41589636, 0.46834698, 0.4408132])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_img2img_multiple_init_images(self):
@@ -158,7 +172,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         image_slice = image[-1, -3:, -3:, -1]
 
         assert image.shape == (2, 32, 32, 3)
-        expected_slice = np.array([0.5144, 0.4447, 0.4735, 0.6676, 0.5526, 0.5454, 0.645, 0.5149, 0.4689])
+        expected_slice = np.array([0.46686086, 0.44393504, 0.5084481, 0.67471784, 0.55514234, 0.5346449, 0.63654804, 0.51626045, 0.46245307])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -177,7 +191,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.4367, 0.4986, 0.4372, 0.6706, 0.5665, 0.444, 0.5864, 0.6019, 0.5203])
+        expected_slice = np.array([0.4390018, 0.49910325, 0.43994197, 0.6633433, 0.56556225, 0.44274506, 0.58594346, 0.60113865, 0.52007025])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -197,7 +211,36 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
     def test_attention_slicing_forward_pass(self):
         return super().test_attention_slicing_forward_pass()
 
+    @skip_mps
+    def test_pt_np_pil_outputs_equivalent(self):
+        device = 'cpu'
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionImg2ImgPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+        
+        output_pt = sd_pipe(**self.get_dummy_inputs(device, output_type='pt'))[0]
+        output_np = sd_pipe(**self.get_dummy_inputs(device, output_type='np'))[0]
+        output_pil = sd_pipe(**self.get_dummy_inputs(device, output_type='pil'))[0]
 
+        assert np.abs(output_pt.cpu().numpy().transpose(0, 2, 3, 1) - output_np).max() <= 1e-4
+        assert np.abs(np.array(output_pil[0]) - (output_np * 255).round()).max() <= 1e-4
+
+    @skip_mps
+    def test_image_types_consistent(self):
+        device = 'cpu'
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionImg2ImgPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+        
+        output_pt = sd_pipe(**self.get_dummy_inputs(device, input_image_type='pt'))[0]
+        output_np = sd_pipe(**self.get_dummy_inputs(device, input_image_type='np'))[0]
+        output_pil = sd_pipe(**self.get_dummy_inputs(device, input_image_type='pil'))[0]
+
+        assert np.abs(output_pt - output_np).max() <= 1e-4
+        assert np.abs(output_pil - output_np).max() <= 1e-2
+       
 @slow
 @require_torch_gpu
 class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
@@ -219,7 +262,7 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
             "num_inference_steps": 3,
             "strength": 0.75,
             "guidance_scale": 7.5,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -426,7 +469,7 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
             "num_inference_steps": 50,
             "strength": 0.75,
             "guidance_scale": 7.5,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 

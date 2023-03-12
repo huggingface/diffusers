@@ -76,8 +76,7 @@ class VaeImageProcessor(ConfigMixin):
         """
         if images.ndim == 3:
             images = images[..., None]
-        elif images.ndim == 5:
-            images = images.squeeze(0)
+
         images = torch.from_numpy(images.transpose(0, 3, 1, 2))
         return images
 
@@ -105,7 +104,7 @@ class VaeImageProcessor(ConfigMixin):
         images = images.resize((w, h), resample=PIL_INTERPOLATION[self.resample])
         return images
 
-    def encode(
+    def preprocess(
         self,
         image: Union[torch.FloatTensor, PIL.Image.Image, np.ndarray],
     ) -> torch.Tensor:
@@ -128,12 +127,11 @@ class VaeImageProcessor(ConfigMixin):
             image = [np.array(i).astype(np.float32) / 255.0 for i in image]
 
         if isinstance(image[0], np.ndarray):
-            image = self.numpy_to_pt(np.stack(image, axis=0))
-        elif not isinstance(image, torch.Tensor) and isinstance(image[0], torch.Tensor):
-            image = torch.cat(image, dim=0)
+            image = np.concatenate(image, axis=0) if image[0].ndim == 4 else np.stack(image, axis=0)
+            image = self.numpy_to_pt(image)
+        elif isinstance(image[0], torch.Tensor):
+            image = torch.cat(image, axis=0) if image[0].ndim == 4 else torch.stack(image, axis=0)
 
-        if image.ndim == 5:
-            image = image.squeeze(0)
         _, _, height, width = image.shape
         if self.do_resize and (height % self.vae_scale_factor != 0 or width % self.vae_scale_factor != 0):
             raise ValueError(
@@ -155,12 +153,12 @@ class VaeImageProcessor(ConfigMixin):
 
         return image
 
-    def decode(
+    def postprocess(
         self,
         image,
         output_type: str = "pil",
     ):
-        if output_type == "pt":
+        if isinstance(image, torch.Tensor) and output_type == "pt":
             return image
 
         image = self.pt_to_numpy(image)
