@@ -62,10 +62,7 @@ logger = get_logger(__name__)
 
 
 def log_validation(controlnet, args, accelerator, weight_dtype, step):
-    logger.info(
-        f"Running validation... \n Generating {args.num_validation_images} images with prompt(s):"
-        f" {args.validation_prompt}."
-    )
+    logger.info("Running validation... ")
 
     controlnet = accelerator.unwrap_model(controlnet)
 
@@ -777,6 +774,7 @@ def main(args):
     vae.requires_grad_(False)
     unet.requires_grad_(False)
     text_encoder.requires_grad_(False)
+    controlnet.train()
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -951,7 +949,6 @@ def main(args):
     )
 
     for epoch in range(first_epoch, args.num_train_epochs):
-        controlnet.train()
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(controlnet):
                 # Convert images to latent space
