@@ -738,7 +738,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                 instead.
             image (`torch.FloatTensor`, `PIL.Image.Image`, `List[torch.FloatTensor]` or `List[PIL.Image.Image]`):
                 The ControlNet input condition. ControlNet uses this input condition to generate guidance to Unet. If
-                the type is specified as `Torch.FloatTensor`, it is passed to ControlNet as is. PIL.Image.Image` can
+                the type is specified as `Torch.FloatTensor`, it is passed to ControlNet as is. `PIL.Image.Image` can
                 also be accepted as an image. The control image is automatically resized to fit the output image. If
                 multiple ControlNets are specified in init, you need to set the corresponding images in the form of a
                 list of `List[torch.FloatTensor]` or `List[PIL.Image.Image]`.
