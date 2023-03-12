@@ -89,6 +89,18 @@ EXAMPLE_DOC_STRING = """
 
 
 class MultiControlNet(nn.Module):
+    r"""
+    Multiple `ControlNetModel` wrapper class for Multi-ControlNet
+
+    This module is a wrapper for multiple instances of the `ControlNetModel`. The `forward()` API is designed to be
+    compatible with `ControlNetModel`.
+
+    Args:
+        controlnets (`List[ControlNetModel]`):
+            Provides additional conditioning to the unet during the denoising process. You must set multiple
+            `ControlNetModel` as a list.
+    """
+
     def __init__(self, controlnets: List[ControlNetModel]):
         super().__init__()
         self.nets = nn.ModuleList(controlnets)
@@ -166,8 +178,9 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
             Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
-        controlnet ([`ControlNetModel`]):
-            Provides additional conditioning to the unet during the denoising process
+        controlnet ([`ControlNetModel`] or `List[ControlNetModel]`):
+            Provides additional conditioning to the unet during the denoising process. You can set multiple
+            `ControlNetModel` as a list.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
@@ -713,7 +726,9 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
             image (`torch.FloatTensor`, `PIL.Image.Image`, `List[torch.FloatTensor]` or `List[PIL.Image.Image]`):
                 The ControlNet input condition. ControlNet uses this input condition to generate guidance to Unet. If
                 the type is specified as `Torch.FloatTensor`, it is passed to ControlNet as is. PIL.Image.Image` can
-                also be accepted as an image. The control image is automatically resized to fit the output image.
+                also be accepted as an image. The control image is automatically resized to fit the output image. If
+                multiple ControlNets are specified in init, you need to set the corresponding images in the form of a
+                list of `List[torch.FloatTensor]` or `List[PIL.Image.Image]`.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
@@ -766,10 +781,10 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                 A kwargs dictionary that if specified is passed along to the `AttnProcessor` as defined under
                 `self.processor` in
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
-            controlnet_conditioning_scale (`float`, *optional*, defaults to 1.0):
+            controlnet_conditioning_scale (`float` or `List[float]`, *optional*, defaults to 1.0):
                 The outputs of the controlnet are multiplied by `controlnet_conditioning_scale` before they are added
-                to the residual in the original unet.
-
+                to the residual in the original unet. If multiple ControlNets are specified in init, you can set the
+                corresponding scale as a list.
         Examples:
 
         Returns:
