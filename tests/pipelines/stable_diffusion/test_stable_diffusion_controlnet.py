@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import gc
+import tempfile
 import unittest
 
 import numpy as np
@@ -264,11 +265,8 @@ class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unitt
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=2e-3)
 
-    @unittest.skip(reason="Not implemented")
     def test_inference_batch_single_identical(self):
-        # TODO: implementation
-        # self._test_inference_batch_single_identical(expected_max_diff=2e-3)
-        pass
+        self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
     # override PipelineTesterMixin
     @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
@@ -293,26 +291,30 @@ class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unitt
         max_diff = np.abs(output - output_fp16).max()
         self.assertLess(max_diff, 1e-2, "The outputs of the fp16 and fp32 pipelines are too different.")
 
-    # # override PipelineTesterMixin
-    @unittest.skip(reason="Not implemented")
+    def check_save_pretrained_raise_not_implemented_exception(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            try:
+                # save_pretrained is not implemented for Multi-ControlNet
+                pipe.save_pretrained(tmpdir)
+            except NotImplementedError:
+                pass
+
+    # override PipelineTesterMixin
+    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
     def test_save_load_float16(self):
-        pass
+        self.check_save_pretrained_raise_not_implemented_exception()
 
     # override PipelineTesterMixin
-    @unittest.skip(reason="Not implemented")
-    def test_inference_batch_consistent(self):
-        # TODO: implementation
-        pass
-
-    # override PipelineTesterMixin
-    @unittest.skip(reason="Not implemented")
     def test_save_load_local(self):
-        pass
+        self.check_save_pretrained_raise_not_implemented_exception()
 
     # override PipelineTesterMixin
-    @unittest.skip(reason="Not implemented")
     def test_save_load_optional_components(self):
-        pass
+        self.check_save_pretrained_raise_not_implemented_exception()
 
 
 @slow

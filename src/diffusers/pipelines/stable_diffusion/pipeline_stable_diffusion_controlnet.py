@@ -14,6 +14,7 @@
 
 
 import inspect
+import os
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -691,6 +692,18 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
             else:
                 controlnet_conditioning_scale = [controlnet_conditioning_scale] * num_controlnets
             return controlnet_conditioning_scale
+
+    # override DiffusionPipeline
+    def save_pretrained(
+        self,
+        save_directory: Union[str, os.PathLike],
+        safe_serialization: bool = False,
+        variant: Optional[str] = None,
+    ):
+        if isinstance(self.controlnet, ControlNetModel):
+            super().save_pretrained(save_directory, safe_serialization, variant)
+        else:
+            raise NotImplementedError("Currently, the `save_pretrained()` is not implemented for Multi-ControlNet.")
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
