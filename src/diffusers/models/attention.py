@@ -291,7 +291,7 @@ class BasicTransformerBlock(nn.Module):
         attn_output = self.attn1(
             norm_hidden_states,
             encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
-            attention_mask=attention_mask,
+            attention_mask=attention_mask if self.only_cross_attention else None,
             **cross_attention_kwargs,
         )
         if self.use_ada_layer_norm_zero:
