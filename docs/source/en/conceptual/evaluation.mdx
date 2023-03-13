@@ -12,6 +12,10 @@ specific language governing permissions and limitations under the License.
 
 # Evaluating Diffusion Models
 
+<a target="_blank" href="https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/evaluation.ipynb">                                                                                                                                                                                                                                                                                                                                                            
+    <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>                                                                                                                                                 
+</a>   
+
 Evaluation of generative models like [Stable Diffusion](https://huggingface.co/docs/diffusers/stable_diffusion) is subjective in nature. But as practitioners and researchers, we often have to make careful choices amongst many different possibilities. So, when working with different generative models (like GANs, Diffusion, etc.), how do we choose one over the other?
 
 Qualitative evaluation of such models can be error-prone and might incorrectly influence a decision.
@@ -56,9 +60,9 @@ from datasets import load_dataset
 
 prompts = load_dataset("nateraw/parti-prompts", split="train")
 prompts = prompts.shuffle()
-samples_prompts = [prompts[i]["Prompt"] for i in range(5)]
+sample_prompts = [prompts[i]["Prompt"] for i in range(5)]
 
-samples_prompts = [
+sample_prompts = [
     "a corgi",
     "a hot air balloon with a yin-yang symbol, with the moon visible in the daytime sky",
     "a car with no windows",
@@ -159,7 +163,8 @@ print(f"CLIP score: {sd_clip_score}")
 
 In the above example, we generated one image per prompt. If we generated multiple images per prompt, we could uniformly sample just one from the pool of generated images.
 
-Now, if we wanted to compare two checkpoints compatible with the [`StableDiffusionPipeline`] we should pass a generator while calling the pipeline:
+Now, if we wanted to compare two checkpoints compatible with the [`StableDiffusionPipeline`] we should pass a generator while calling the pipeline. First, we generate images with a
+fixed seed with the [v1-4 Stable Diffusion checkpoint](https://huggingface.co/CompVis/stable-diffusion-v1-4):
 
 ```python
 seed = 0
@@ -168,12 +173,16 @@ generator = torch.manual_seed(seed)
 images = sd_pipeline(prompts, num_images_per_prompt=1, generator=generator, output_type="numpy").images
 ```
 
+Then we load the [v1-5 checkpoint](https://huggingface.co/runwayml/stable-diffusion-v1-5) to generate images: 
+
 ```python
 model_ckpt_1_5 = "runwayml/stable-diffusion-v1-5"
 sd_pipeline_1_5 = StableDiffusionPipeline.from_pretrained(model_ckpt_1_5, torch_dtype=weight_dtype).to(device)
 
 images_1_5 = sd_pipeline_1_5(prompts, num_images_per_prompt=1, generator=generator, output_type="numpy").images
 ```
+
+And finally, we compare their CLIP scores:
 
 ```python
 sd_clip_score_1_4 = calculate_clip_score(images, prompts)
@@ -468,7 +477,7 @@ print(real_images.shape)
 # torch.Size([10, 3, 256, 256])
 ```
 
-We now load the `DiTPipeline` to generate images conditioned on the above-mentioned classes.
+We now load the [`DiTPipeline`](https://huggingface.co/docs/diffusers/api/pipelines/dit) to generate images conditioned on the above-mentioned classes.
 
 ```python
 from diffusers import DiTPipeline, DPMSolverMultistepScheduler
@@ -501,6 +510,17 @@ print(fake_images.shape)
 ```
 
 Now, we can compute the FID using [`torchmetrics`](https://torchmetrics.readthedocs.io/).
+
+```python
+from torchmetrics.image.fid import FrechetInceptionDistance
+
+fid = FrechetInceptionDistance(normalize=True)
+fid.update(real_images, real=True)
+fid.update(fake_images, real=False)
+
+print(f"FID: {float(fid.compute())}")
+# FID: 177.7147216796875
+```
 
 The lower the FID, the better it is. Several things can influence FID here:
 
