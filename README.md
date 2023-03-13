@@ -84,7 +84,8 @@ input = noise
 for t in scheduler.timesteps:
     with torch.no_grad():
         noisy_residual = model(input, t).sample
-        previous_noisy_sample = scheduler.step(noisy_residual, t, input).prev_sample
+        prev_noisy_sample = scheduler.step(noisy_residual, t, input).prev_sample
+        input = prev_noisy_sample
 
 image = (input / 2 + 0.5).clamp(0, 1)
 image = image.cpu().permute(0, 2, 3, 1).numpy()[0]
