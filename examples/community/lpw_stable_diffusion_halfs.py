@@ -398,7 +398,7 @@ def preprocess_mask(mask, scale_factor=8):
     return mask
 
 
-class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
+class StableDiffusionLongPromptWeightingPipelineHalfs(StableDiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion without tokens length limit, and support parsing
     weighting in prompt.
@@ -665,6 +665,10 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
         self,
         prompt: Union[str, List[str]],
         negative_prompt: Optional[Union[str, List[str]]] = None,
+        prompt_half1: Optional[str] = None,
+        prompt_half2: Optional[str] = None,
+        negative_prompt_half1: Optional[str] = None,
+        negative_prompt_half2: Optional[str] = None,
         image: Union[torch.FloatTensor, PIL.Image.Image] = None,
         mask_image: Union[torch.FloatTensor, PIL.Image.Image] = None,
         height: int = 512,
@@ -778,15 +782,48 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        text_embeddings = self._encode_prompt(
-            prompt,
-            device,
-            num_images_per_prompt,
-            do_classifier_free_guidance,
-            negative_prompt,
-            max_embeddings_multiples,
-        )
-        dtype = text_embeddings.dtype
+        if prompt_half1 or prompt_half2 or negative_prompt_half1 or negative_prompt_half2:
+			negative_prompt = negative_prompt or ""
+
+			prompt_half1 = prompt_half1 or ""
+			prompt_half2 = prompt_half2 or ""
+
+			negative_prompt_half1 = negative_prompt_half1 or ""
+			negative_prompt_half2 = negative_prompt_half2 or ""
+
+			if not isinstance(prompt, str) or not isinstance(negative_prompt, str):
+				raise "Half-prompts cannot be used in a batch yet, please pass a single string (but your contribution are welcome)"
+
+			text_embeddings_1 = self._encode_prompt(
+				prompt + prompt_half1,
+				device,
+				num_images_per_prompt,
+				do_classifier_free_guidance,
+				negative_prompt + negative_prompt_half1,
+				max_embeddings_multiples,
+			)
+
+			text_embeddings_2 = self._encode_prompt(
+				prompt + prompt_half2,
+				device,
+				num_images_per_prompt,
+				do_classifier_free_guidance,
+				negative_prompt + negative_prompt_half2,
+				max_embeddings_multiples,
+			)
+
+		else:
+			#Just do usual workflow
+			text_embeddings_1 = text_embeddings_2 = self._encode_prompt(
+				prompt,
+				device,
+				num_images_per_prompt,
+				do_classifier_free_guidance,
+				negative_prompt,
+				max_embeddings_multiples,
+			)
+
+		dtype = text_embeddings_1.dtype
 
         # 4. Preprocess image and mask
         if isinstance(image, PIL.Image.Image):
@@ -829,7 +866,10 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
             # predict the noise residual
-            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
+            if i <= num_inference_steps // 2:
+				noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings_1).sample
+			else:
+				noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings_2).sample
 
             # perform guidance
             if do_classifier_free_guidance:
@@ -855,7 +895,7 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
         image = self.decode_latents(latents)
 
         # 10. Run safety checker
-        image, has_nsfw_concept = self.run_safety_checker(image, device, text_embeddings.dtype)
+        image, has_nsfw_concept = self.run_safety_checker(image, device, text_embeddings_1.dtype)
 
         # 11. Convert to PIL
         if output_type == "pil":
