@@ -723,8 +723,8 @@ def main(args):
         elif name.startswith("down_blocks"):
             block_id = int(name[len("down_blocks.")])
             hidden_size = unet.config.block_out_channels[block_id]
-        processsorClass = LoRAXFormersCrossAttnProcessor if useXformers else LoRACrossAttnProcessor
-        lora_attn_procs[name] = processsorClass(
+        processsor_cls = LoRAXFormersCrossAttnProcessor if use_xformers else LoRACrossAttnProcessor
+        lora_attn_procs[name] = processsor_cls(
             hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
         )
 
