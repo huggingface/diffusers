@@ -153,6 +153,8 @@ EXAMPLE_INVERT_DOC_STRING = """
         >>> source_embeds = pipeline.get_embeds(source_prompts)
         >>> target_embeds = pipeline.get_embeds(target_prompts)
         >>> # the latents can then be used to edit a real image
+        >>> # when using Stable Diffusion 2 or other models that use v-prediction
+        >>> # set `cross_attention_guidance_amount` to 0.01 or less to avoid input latent gradient explosion
 
         >>> image = pipeline(
         ...     caption,
@@ -1198,6 +1200,8 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                         if lambda_auto_corr > 0:
                             for _ in range(num_auto_corr_rolls):
                                 var = torch.autograd.Variable(noise_pred.detach().clone(), requires_grad=True)
+
+                                # Derive epsilon from model output before regularizing to IID standard normal
                                 var_epsilon = self.get_epsilon(var, latent_model_input.detach(), t)
 
                                 l_ac = self.auto_corr_loss(var_epsilon, generator=generator)
@@ -1208,6 +1212,8 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
                         if lambda_kl > 0:
                             var = torch.autograd.Variable(noise_pred.detach().clone(), requires_grad=True)
+
+                            # Derive epsilon from model output before regularizing to IID standard normal
                             var_epsilon = self.get_epsilon(var, latent_model_input.detach(), t)
 
                             l_kld = self.kl_divergence(var_epsilon)

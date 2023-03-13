@@ -168,7 +168,7 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = None
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps).copy().astype(np.int64))
 
-    # Copy from diffusers.schedulers.scheduling_ddim.DDIMScheduler.scale_model_input
+    # Copied from diffusers.schedulers.scheduling_ddim.DDIMScheduler.scale_model_input
     def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
