@@ -16,7 +16,13 @@ import PIL.ImageOps
 import requests
 from packaging import version
 
-from .import_utils import is_compel_available, is_flax_available, is_note_seq_available, is_onnx_available, is_torch_available
+from .import_utils import (
+    is_compel_available,
+    is_flax_available,
+    is_note_seq_available,
+    is_onnx_available,
+    is_torch_available,
+)
 from .logging import get_logger
 
 
