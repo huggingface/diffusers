@@ -53,8 +53,6 @@ class EMAModelTests(unittest.TestCase):
             ema_unet.step(unet.parameters())
         assert ema_unet.optimization_step == 3
 
-        del unet, ema_unet
-
     def test_shadow_params_not_updated(self):
         unet, ema_unet = self.get_models()
         # Since the `unet` is not being updated (i.e., backprop'd)
@@ -71,8 +69,6 @@ class EMAModelTests(unittest.TestCase):
             ema_unet.step(unet.parameters())
         for s_param, param in zip(ema_unet.shadow_params, orig_params):
             assert torch.allclose(s_param, param)
-
-        del unet, ema_unet
 
     def test_shadow_params_updated(self):
         unet, ema_unet = self.get_models()
@@ -113,8 +109,6 @@ class EMAModelTests(unittest.TestCase):
         for step_one, step_two in zip(step_one_shadow_params, step_two_shadow_params):
             assert ~torch.allclose(step_one, step_two)
 
-        del unet, ema_unet
-
     def test_zero_decay(self):
         # If there's no decay even if there are backprops, EMA steps
         # won't take any effect i.e., the shadow params would remain the
@@ -130,9 +124,3 @@ class EMAModelTests(unittest.TestCase):
 
         for step_one, step_two in zip(step_one_shadow_params, step_two_shadow_params):
             assert torch.allclose(step_one, step_two)
-
-        del unet, ema_unet
-
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
