@@ -19,7 +19,7 @@ import torch
 
 from .models.cross_attention import LoRACrossAttnProcessor
 from .models.modeling_utils import _get_model_file
-from .utils import DIFFUSERS_CACHE, HF_HUB_OFFLINE, is_safetensors_available, logging
+from .utils import DIFFUSERS_CACHE, HF_HUB_OFFLINE, deprecate, is_safetensors_available, logging
 
 
 if is_safetensors_available():
@@ -150,7 +150,9 @@ class UNet2DConditionLoadersMixin:
 
         model_file = None
         if not isinstance(pretrained_model_name_or_path_or_dict, dict):
-            if (is_safetensors_available() and weight_name is None) or (weight_name is not None and weight_name.endswith(".safetensors")):
+            if (is_safetensors_available() and weight_name is None) or (
+                weight_name is not None and weight_name.endswith(".safetensors")
+            ):
                 try:
                     model_file = _get_model_file(
                         pretrained_model_name_or_path_or_dict,
@@ -222,9 +224,10 @@ class UNet2DConditionLoadersMixin:
         self,
         save_directory: Union[str, os.PathLike],
         is_main_process: bool = True,
-        weights_name: str = None,
+        weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = False,
+        **kwargs,
     ):
         r"""
         Save an attention processor to a directory, so that it can be re-loaded using the
@@ -242,6 +245,13 @@ class UNet2DConditionLoadersMixin:
                 need to replace `torch.save` by another method. Can be configured with the environment variable
                 `DIFFUSERS_SAVE_MODE`.
         """
+        weight_name = weight_name or deprecate(
+            "weights_name",
+            "0.18.0",
+            "`weights_name` is deprecated, please use `weight_name` instead.",
+            take_from=kwargs,
+        )
+        print(weight_name)
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
@@ -262,13 +272,13 @@ class UNet2DConditionLoadersMixin:
         # Save the model
         state_dict = model_to_save.state_dict()
 
-        if weights_name is None:
+        if weight_name is None:
             if safe_serialization:
-                weights_name = LORA_WEIGHT_NAME_SAFE
+                weight_name = LORA_WEIGHT_NAME_SAFE
             else:
-                weights_name = LORA_WEIGHT_NAME
+                weight_name = LORA_WEIGHT_NAME
 
         # Save the model
-        save_function(state_dict, os.path.join(save_directory, weights_name))
+        save_function(state_dict, os.path.join(save_directory, weight_name))
 
-        logger.info(f"Model weights saved in {os.path.join(save_directory, weights_name)}")
+        logger.info(f"Model weights saved in {os.path.join(save_directory, weight_name)}")
