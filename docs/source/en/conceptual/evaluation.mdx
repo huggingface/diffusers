@@ -33,7 +33,7 @@ We cover Diffusion models with the following pipelines:
 
 ## Qualitative
 
-Qualitative evaluation typically involves humans that assess the quality of the generated images across various aspects such as compositionality, image-text alignment, spatial relations, etc. To have a uniform ground to assess different models on such aspects, we need to start with some common prompts that allow for varied coverage. Two notable benchmarks in this area are DrawBench and PartiPrompts introduced by [Imagen](https://imagen.research.google/) and [Parti](https://parti.research.google/) respectively. 
+Qualitative evaluation typically involves human assessment of generated images. Quality is measured across aspects such as compositionality, image-text alignment, and spatial relations. Common prompts provide a degree of uniformity for subjective metrics. DrawBench and PartiPrompts are prompt datasets used for qualitative benchmarking. DrawBench and PartiPrompts were introduced by [Imagen](https://imagen.research.google/) and [Parti](https://parti.research.google/) respectively. 
 
 From the [official Parti website](https://parti.research.google/): 
 
@@ -97,15 +97,15 @@ logging to TensorBoard and Weights and Biases.
 
 ## Quantitative
 
-In this section, we focus on:
+In this section, we will walk you through how to evaluate three different diffusion pipelines using
 
 - CLIP score
-- Clip directional similarity
+- CLIP directional similarity
 - FID
 
-## Text-guided image generation
+### Text-guided image generation
 
-One commonly used metric here is the [CLIP score](https://arxiv.org/abs/2104.08718). It measures how well-aligned a pair of image and caption is. The higher the CLIP score, the better it is 🔼
+[CLIP score](https://arxiv.org/abs/2104.08718) measures the compatibility of image-caption pairs. Higher CLIP scores imply higher compatibility 🔼. The CLIP score is a quantitative measurement of the qualitative concept "compatibility". Image-caption pair compatibility can also be thought of as the semantic similarity between the image and the caption. CLIP score was found to have high correlation with human judgement.
 
 Let's first load a [`StableDiffusionPipeline`]:
 
@@ -194,7 +194,7 @@ had to "engineer" some prompts here.
 
 </Tip>
 
-## Image-conditioned text-to-image generation
+### Image-conditioned text-to-image generation
 
 In this case, we condition the generation pipeline with an input image as well as a text prompt. Let's take the [`StableDiffusionInstructPix2PixPipeline`], as an example. It takes an edit instruction as an input prompt and an input image to be edited.
 
@@ -408,7 +408,7 @@ We can use these metrics for similar pipelines such as the[`StableDiffusionPix2P
 
 ***Using the above metrics helps evaluate models that are class-conditioned. For example, [DiT](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/overview). It was pre-trained being conditioned on the ImageNet-1k classes.***
 
-## Class-conditioned image generation
+### Class-conditioned image generation
 
 Class-conditioned generative models are usually pre-trained on a class-labeled dataset such as [ImageNet-1k](https://huggingface.co/datasets/imagenet-1k). Popular metrics for evaluating these models include Fréchet Inception Distance (FID), Kernel Inception Distance (KID), and Inception Score (IS). In this document, we focus on FID ([Heusel et al.](https://arxiv.org/abs/1706.08500)). We show how to compute it with the [`DiTPipeline`], which uses the [DiT model](https://arxiv.org/abs/2212.09748) under the hood.
 
