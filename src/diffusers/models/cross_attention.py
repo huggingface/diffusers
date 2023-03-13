@@ -472,7 +472,9 @@ class AttnProcessor2_0:
             raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
 
     def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None):
-        batch_size, sequence_length, inner_dim = hidden_states.shape
+        batch_size, sequence_length, inner_dim = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
 
         if attention_mask is not None:
             attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
