@@ -150,13 +150,11 @@ class UNet2DConditionLoadersMixin:
 
         model_file = None
         if not isinstance(pretrained_model_name_or_path_or_dict, dict):
-            if (is_safetensors_available() and weight_name is None) or weight_name.endswith(".safetensors"):
-                if weight_name is None:
-                    weight_name = LORA_WEIGHT_NAME_SAFE
+            if (is_safetensors_available() and weight_name is None) or (weight_name is not None and weight_name.endswith(".safetensors")):
                 try:
                     model_file = _get_model_file(
                         pretrained_model_name_or_path_or_dict,
-                        weights_name=weight_name,
+                        weights_name=weight_name or LORA_WEIGHT_NAME_SAFE,
                         cache_dir=cache_dir,
                         force_download=force_download,
                         resume_download=resume_download,
@@ -169,14 +167,13 @@ class UNet2DConditionLoadersMixin:
                     )
                     state_dict = safetensors.torch.load_file(model_file, device="cpu")
                 except EnvironmentError:
-                    if weight_name == LORA_WEIGHT_NAME_SAFE:
-                        weight_name = None
+                    # try loading non-safetensors weights
+                    pass
+
             if model_file is None:
-                if weight_name is None:
-                    weight_name = LORA_WEIGHT_NAME
                 model_file = _get_model_file(
                     pretrained_model_name_or_path_or_dict,
-                    weights_name=weight_name,
+                    weights_name=weight_name or LORA_WEIGHT_NAME,
                     cache_dir=cache_dir,
                     force_download=force_download,
                     resume_download=resume_download,
@@ -264,15 +261,6 @@ class UNet2DConditionLoadersMixin:
 
         # Save the model
         state_dict = model_to_save.state_dict()
-
-        # Clean the folder from a previous save
-        for filename in os.listdir(save_directory):
-            full_filename = os.path.join(save_directory, filename)
-            # If we have a shard file that is not going to be replaced, we delete it, but only from the main process
-            # in distributed settings to avoid race conditions.
-            weights_no_suffix = weights_name.replace(".bin", "")
-            if filename.startswith(weights_no_suffix) and os.path.isfile(full_filename) and is_main_process:
-                os.remove(full_filename)
 
         if weights_name is None:
             if safe_serialization:
