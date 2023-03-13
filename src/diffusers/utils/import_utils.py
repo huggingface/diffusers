@@ -239,6 +239,14 @@ except importlib_metadata.PackageNotFoundError:
     _tensorboard_available = False
 
 
+_compel_available = importlib.util.find_spec("compel")
+try:
+    _compel_version = importlib_metadata.version("compel")
+    logger.debug(f"Successfully imported compel version {_compel_version}")
+except importlib_metadata.PackageNotFoundError:
+    _compel_available = False
+
+
 def is_torch_available():
     return _torch_available
 
@@ -305,6 +313,10 @@ def is_omegaconf_available():
 
 def is_tensorboard_available():
     return _tensorboard_available
+
+
+def is_compel_available():
+    return _compel_available
 
 
 # docstyle-ignore
@@ -385,6 +397,12 @@ TENSORBOARD_IMPORT_ERROR = """
 install tensorboard`
 """
 
+
+# docstyle-ignore
+COMPEL_IMPORT_ERROR = """
+{0} requires the compel library but it was not found in your environment. You can install it with pip: `pip install compel`
+"""
+
 BACKENDS_MAPPING = OrderedDict(
     [
         ("flax", (is_flax_available, FLAX_IMPORT_ERROR)),
@@ -400,6 +418,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("wandb", (is_wandb_available, WANDB_IMPORT_ERROR)),
         ("omegaconf", (is_omegaconf_available, OMEGACONF_IMPORT_ERROR)),
         ("tensorboard", (_tensorboard_available, TENSORBOARD_IMPORT_ERROR)),
+        ("compel", (_compel_available, COMPEL_IMPORT_ERROR)),
     ]
 )
 

@@ -25,6 +25,7 @@ import unittest.mock as mock
 
 import numpy as np
 import PIL
+import requests_mock
 import safetensors.torch
 import torch
 from parameterized import parameterized
@@ -49,25 +50,56 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
     UNet2DModel,
+    UniPCMultistepScheduler,
     logging,
 )
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, is_flax_available, nightly, slow, torch_device
-from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir, require_torch_gpu
+from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir, load_numpy, require_compel, require_torch_gpu
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
 class DownloadTests(unittest.TestCase):
+    def test_one_request_upon_cached(self):
+        # TODO: For some reason this test fails on MPS where no HEAD call is made.
+        if torch_device == "mps":
+            return
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with requests_mock.mock(real_http=True) as m:
+                DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
+                )
+
+            download_requests = [r.method for r in m.request_history]
+            assert download_requests.count("HEAD") == 15, "15 calls to files"
+            assert download_requests.count("GET") == 17, "15 calls to files + model_info + model_index.json"
+            assert (
+                len(download_requests) == 32
+            ), "2 calls per file (15 files) + send_telemetry, model_info and model_index.json"
+
+            with requests_mock.mock(real_http=True) as m:
+                DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
+                )
+
+            cache_requests = [r.method for r in m.request_history]
+            assert cache_requests.count("HEAD") == 1, "model_index.json is only HEAD"
+            assert cache_requests.count("GET") == 1, "model info is only GET"
+            assert (
+                len(cache_requests) == 2
+            ), "We should call only `model_info` to check for _commit hash and `send_telemetry`"
+
     def test_download_only_pytorch(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
             # pipeline has Flax weights
-            _ = DiffusionPipeline.from_pretrained(
+            tmpdirname = DiffusionPipeline.download(
                 "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
             )
 
-            all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname, os.listdir(tmpdirname)[0], "snapshots"))]
+            all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
             files = [item for sublist in all_root_files for item in sublist]
 
             # None of the downloaded files should be a flax file even if we have some here:
@@ -100,13 +132,13 @@ class DownloadTests(unittest.TestCase):
     def test_download_safetensors(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
             # pipeline has Flax weights
-            _ = DiffusionPipeline.from_pretrained(
+            tmpdirname = DiffusionPipeline.download(
                 "hf-internal-testing/tiny-stable-diffusion-pipe-safetensors",
                 safety_checker=None,
                 cache_dir=tmpdirname,
             )
 
-            all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname, os.listdir(tmpdirname)[0], "snapshots"))]
+            all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
             files = [item for sublist in all_root_files for item in sublist]
 
             # None of the downloaded files should be a pytorch file even if we have some here:
@@ -203,12 +235,10 @@ class DownloadTests(unittest.TestCase):
 
             other_format = ".bin" if safe_avail else ".safetensors"
             with tempfile.TemporaryDirectory() as tmpdirname:
-                StableDiffusionPipeline.from_pretrained(
+                tmpdirname = StableDiffusionPipeline.download(
                     "hf-internal-testing/stable-diffusion-all-variants", cache_dir=tmpdirname
                 )
-                all_root_files = [
-                    t[-1] for t in os.walk(os.path.join(tmpdirname, os.listdir(tmpdirname)[0], "snapshots"))
-                ]
+                all_root_files = [t[-1] for t in os.walk(tmpdirname)]
                 files = [item for sublist in all_root_files for item in sublist]
 
                 # None of the downloaded files should be a variant file even if we have some here:
@@ -231,12 +261,10 @@ class DownloadTests(unittest.TestCase):
             variant = "fp16"
 
             with tempfile.TemporaryDirectory() as tmpdirname:
-                StableDiffusionPipeline.from_pretrained(
+                tmpdirname = StableDiffusionPipeline.download(
                     "hf-internal-testing/stable-diffusion-all-variants", cache_dir=tmpdirname, variant=variant
                 )
-                all_root_files = [
-                    t[-1] for t in os.walk(os.path.join(tmpdirname, os.listdir(tmpdirname)[0], "snapshots"))
-                ]
+                all_root_files = [t[-1] for t in os.walk(tmpdirname)]
                 files = [item for sublist in all_root_files for item in sublist]
 
                 # None of the downloaded files should be a non-variant file even if we have some here:
@@ -261,14 +289,13 @@ class DownloadTests(unittest.TestCase):
             variant = "no_ema"
 
             with tempfile.TemporaryDirectory() as tmpdirname:
-                StableDiffusionPipeline.from_pretrained(
+                tmpdirname = StableDiffusionPipeline.download(
                     "hf-internal-testing/stable-diffusion-all-variants", cache_dir=tmpdirname, variant=variant
                 )
-                snapshots = os.path.join(tmpdirname, os.listdir(tmpdirname)[0], "snapshots")
-                all_root_files = [t[-1] for t in os.walk(snapshots)]
+                all_root_files = [t[-1] for t in os.walk(tmpdirname)]
                 files = [item for sublist in all_root_files for item in sublist]
 
-                unet_files = os.listdir(os.path.join(snapshots, os.listdir(snapshots)[0], "unet"))
+                unet_files = os.listdir(os.path.join(tmpdirname, "unet"))
 
                 # Some of the downloaded files should be a non-variant file, check:
                 # https://huggingface.co/hf-internal-testing/stable-diffusion-all-variants/tree/main/unet
@@ -291,7 +318,7 @@ class DownloadTests(unittest.TestCase):
             for variant in [None, "no_ema"]:
                 with self.assertRaises(OSError) as error_context:
                     with tempfile.TemporaryDirectory() as tmpdirname:
-                        StableDiffusionPipeline.from_pretrained(
+                        tmpdirname = StableDiffusionPipeline.from_pretrained(
                             "hf-internal-testing/stable-diffusion-broken-variants",
                             cache_dir=tmpdirname,
                             variant=variant,
@@ -301,13 +328,11 @@ class DownloadTests(unittest.TestCase):
 
             # text encoder has fp16 variants so we can load it
             with tempfile.TemporaryDirectory() as tmpdirname:
-                pipe = StableDiffusionPipeline.from_pretrained(
+                tmpdirname = StableDiffusionPipeline.download(
                     "hf-internal-testing/stable-diffusion-broken-variants", cache_dir=tmpdirname, variant="fp16"
                 )
-                assert pipe is not None
 
-                snapshots = os.path.join(tmpdirname, os.listdir(tmpdirname)[0], "snapshots")
-                all_root_files = [t[-1] for t in os.walk(snapshots)]
+                all_root_files = [t[-1] for t in os.walk(tmpdirname)]
                 files = [item for sublist in all_root_files for item in sublist]
 
                 # None of the downloaded files should be a non-variant file even if we have some here:
@@ -394,7 +419,7 @@ class CustomPipelineTests(unittest.TestCase):
 
     @slow
     @require_torch_gpu
-    def test_load_pipeline_from_git(self):
+    def test_download_from_git(self):
         clip_model_id = "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 
         feature_extractor = CLIPFeatureExtractor.from_pretrained(clip_model_id)
@@ -583,6 +608,42 @@ class PipelineFastTests(unittest.TestCase):
         assert image_inpaint.shape == (1, 32, 32, 3)
         assert image_img2img.shape == (1, 32, 32, 3)
         assert image_text2img.shape == (1, 64, 64, 3)
+
+    @require_torch_gpu
+    def test_pipe_false_offload_warn(self):
+        unet = self.dummy_cond_unet()
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        sd = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+
+        sd.enable_model_cpu_offload()
+
+        logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
+        with CaptureLogger(logger) as cap_logger:
+            sd.to("cuda")
+
+        assert "It is strongly recommended against doing so" in str(cap_logger)
+
+        sd = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
 
     def test_set_scheduler(self):
         unet = self.dummy_cond_unet()
@@ -1021,6 +1082,37 @@ class PipelineSlowTests(unittest.TestCase):
         ).images[0]
 
         assert np.abs(image_0 - image_1).sum() < 1e-5, "Models don't give the same forward pass"
+
+    @require_compel
+    def test_weighted_prompts_compel(self):
+        from compel import Compel
+
+        pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+        pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+        pipe.enable_model_cpu_offload()
+        pipe.enable_attention_slicing()
+
+        compel = Compel(tokenizer=pipe.tokenizer, text_encoder=pipe.text_encoder)
+
+        prompt = "a red cat playing with a ball{}"
+
+        prompts = [prompt.format(s) for s in ["", "++", "--"]]
+
+        prompt_embeds = compel(prompts)
+
+        generator = [torch.Generator(device="cpu").manual_seed(33) for _ in range(prompt_embeds.shape[0])]
+
+        images = pipe(
+            prompt_embeds=prompt_embeds, generator=generator, num_inference_steps=20, output_type="numpy"
+        ).images
+
+        for i, image in enumerate(images):
+            expected_image = load_numpy(
+                "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+                f"/compel/forest_{i}.npy"
+            )
+
+            assert np.abs(image - expected_image).max() < 1e-3
 
 
 @nightly

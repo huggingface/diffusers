@@ -35,7 +35,11 @@ from .constants import (
 from .deprecation_utils import deprecate
 from .doc_utils import replace_example_docstring
 from .dynamic_modules_utils import get_class_from_dynamic_module
-from .hub_utils import HF_HUB_OFFLINE, http_user_agent
+from .hub_utils import (
+    HF_HUB_OFFLINE,
+    extract_commit_hash,
+    http_user_agent,
+)
 from .import_utils import (
     ENV_VARS_TRUE_AND_AUTO_VALUES,
     ENV_VARS_TRUE_VALUES,
