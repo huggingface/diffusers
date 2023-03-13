@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import tempfile
 import unittest
 
 import torch
@@ -24,6 +25,12 @@ from diffusers.utils.testing_utils import torch_device
 
 class EMAModelTests(unittest.TestCase):
     model_id = "hf-internal-testing/tiny-stable-diffusion-pipe"
+    batch_size = 1
+    prompt_length = 77
+    text_encoder_hidden_dim = 32
+    num_in_channels = 4
+    latent_height = latent_width = 64
+    generator = torch.manual_seed(0)
 
     def get_models(self, decay=0.9999):
         unet = UNet2DConditionModel.from_pretrained(self.model_id, subfolder="unet")
@@ -32,6 +39,16 @@ class EMAModelTests(unittest.TestCase):
             ema_unet.parameters(), decay=decay, model_cls=UNet2DConditionModel, model_config=ema_unet.config
         )
         return unet.to(torch_device), ema_unet.to(torch_device)
+
+    def get_dummy_inputs(self):
+        noisy_latents = torch.randn(
+            self.batch_size, self.num_in_channels, self.latent_height, self.latent_width, generator=self.generator
+        ).to(torch_device)
+        timesteps = torch.randint(0, 1000, size=(self.batch_size,), generator=self.generator).to(torch_device)
+        encoder_hidden_states = torch.randn(
+            self.batch_size, self.prompt_length, self.text_encoder_hidden_dim, generator=self.generator
+        ).to(torch_device)
+        return noisy_latents, timesteps, encoder_hidden_states
 
     def simulate_backprop(self, unet):
         updated_state_dict = {}
@@ -123,3 +140,17 @@ class EMAModelTests(unittest.TestCase):
 
         for step_one, step_two in zip(step_one_shadow_params, step_two_shadow_params):
             assert torch.allclose(step_one, step_two)
+
+    def test_serialization(self):
+        unet, ema_unet = self.get_models()
+        noisy_latents, timesteps, encoder_hidden_states = self.get_dummy_inputs()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ema_unet.save_pretrained(tmpdir)
+            loaded_unet = UNet2DConditionModel.from_pretrained(tmpdir, model_cls=UNet2DConditionModel)
+
+        # Since no EMA step has been performed the outputs should match.
+        output = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+        output_loaded = loaded_unet(noisy_latents, timesteps, encoder_hidden_states).sample
+
+        assert torch.allclose(output, output_loaded)
