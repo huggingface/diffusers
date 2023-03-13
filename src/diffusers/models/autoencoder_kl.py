@@ -121,6 +121,10 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         self.tile_latent_min_size = int(sample_size / (2 ** (len(self.block_out_channels) - 1)))
         self.tile_overlap_factor = 0.25
 
+    def _set_gradient_checkpointing(self, module, value=False):
+        if isinstance(module, (Encoder, Decoder)):
+            module.gradient_checkpointing = value
+
     def enable_tiling(self, use_tiling: bool = True):
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
@@ -204,6 +208,8 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         Args:
         When this option is enabled, the VAE will split the input tensor into tiles to compute encoding in several
         steps. This is useful to keep memory use constant regardless of image size. The end result of tiled encoding is:
+            
+
         different from non-tiled encoding due to each tile using a different encoder. To avoid tiling artifacts, the
         tiles overlap and are blended together to form a smooth output. You may still see tile-sized changes in the
         look of the output, but they should be much less noticeable.
@@ -250,6 +256,8 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         Args:
         When this option is enabled, the VAE will split the input tensor into tiles to compute decoding in several
         steps. This is useful to keep memory use constant regardless of image size. The end result of tiled decoding is:
+            
+
         different from non-tiled decoding due to each tile using a different decoder. To avoid tiling artifacts, the
         tiles overlap and are blended together to form a smooth output. You may still see tile-sized changes in the
         look of the output, but they should be much less noticeable.
