@@ -4,7 +4,7 @@
 
 Using the pretrained models we can provide control images (for example, a depth map) to control Stable Diffusion text-to-image generation so that it follows the structure of the depth image and fills in the details. `train_controlnet.py` script shows how to train a controlnet from scratch with simple example data.
 
-This example is based on the [training example in the original Controlnet repository](https://github.com/lllyasviel/ControlNet/blob/main/docs/train.md) and it trains a controlnet that can fill circles using a small synthetic dataset. The end results isn't very useful but it should serve as a starting point for controlnet training.
+This example is based on the [training example in the original Controlnet repository](https://github.com/lllyasviel/ControlNet/blob/main/docs/train.md) and it trains a controlnet that can fill circles using a small synthetic dataset.
 
 ## Installing the dependencies
 
@@ -45,64 +45,81 @@ write_basic_config()
 
 ## Circle filling dataset
 
-Download the fill50k dataset from [huggingface page](https://huggingface.co/lllyasviel/ControlNet) and extract it. You should have a json file with the prompts and two directories, source and target, with training images.
+The original dataset is hosted in the [controlnet repo](https://huggingface.co/lllyasviel/ControlNet/blob/main/training/fill50k.zip). We re-uploaded it to be compatible with datasets [here](https://huggingface.co/datasets/fusing/fill50k). Note that datasets handles dataloading
+within the training script.
+
+Our training examples use stable diffusion 1.5 as the original set of controlnet models were trained from it. However, controlnet can be trained to augment any stable diffusion compatible model.
 
 ## Training
 
-After having set up the dataset training can be started.
-
 ```bash
 export MODEL_DIR="runwayml/stable-diffusion-v1-5"
-export DATASET_DIR="path to extracted fill50k dataset"
 export OUTPUT_DIR="path to save model"
 
 accelerate launch examples/controlnet/train_controlnet.py \
  --pretrained_model_name_or_path=$MODEL_DIR \
- --instance_data_dir=$DATASET_DIR  \
  --output_dir=$OUTPUT_DIR \
+ --dataset_name=fusing/fill50k \
  --resolution=512 \
- --train_batch_size=1 \
- --gradient_accumulation_steps=4 \
+ --train_batch_size=4 \
  --learning_rate=1e-5 \
- --lr_warmup_steps=0 \
- --max_train_steps=10000
+ --validation_image "./images/conditioning_image_1.png" "./images/conditioning_image_2.png" \
+ --validation_prompt "red circle with blue background" "cyan circle with brown floral background"
 ```
 
-If you run into OOM errors you can try one or more options below:
+## Example results
 
-```bash
---mixed_precision=fp16
---set_grads_to_none
---enable_xformers_memory_efficient_attention
---use_8bit_adam
---gradient_checkpointing
-```
+#### After 300 steps with batch size 8
 
-Using all the above options it should be possible to be able to train with 8 GB VRAM.
+| |  | 
+|-------------------|:-------------------------:|
+![conditioning image](./images/conditioning_image_1.png) | ![red circle with blue background](./images/red_circle_with_blue_background_300_steps.png) |
+![conditioning image](./images/conditioning_image_2.png) | ![cyan circle with brown floral background](./images/cyan_circle_with_brown_floral_background_300_steps.png) |
 
-## Testing the trained model
 
-The trained model can be tested with the following code. Change `model`, `controlnet_folder` and `control_image_path` to proper values.
+#### After 6000 steps with batch size 8:
 
-```python
-from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
+| |  | 
+|-------------------|:-------------------------:|
+![conditioning image](./images/conditioning_image_1.png) | ![red circle with blue background](./images/red_circle_with_blue_background_6000_steps.png) |
+![conditioning image](./images/conditioning_image_2.png) | ![cyan circle with brown floral background](./images/cyan_circle_with_brown_floral_background_6000_steps.png) |
+
+TODO document lower vram training requirements
+
+## Running the trained controlnet
+
+The trained model can be run same as the original controlnet pipeline with the newly trained controlnet.
+Set `base_model_path` and `controlnet_path` to the values `--pretrained_model_name_or_path` and 
+`--output_dir` were respectively set to in the training script.
+
+```py
+from diffusers import StableDiffusionControlNetPipeline, ControlNetModel, UniPCMultistepScheduler
 from diffusers.utils import load_image
 import torch
 
-model = "path to model"
-controlnet_folder = "path to controlnet"
-control_image_path = "path to control image"
+base_model_path = "path to model"
+controlnet_path = "path to controlnet"
 
-control_image = load_image(control_image_path)
+controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16)
+pipe = StableDiffusionControlNetPipeline.from_pretrained(
+    base_model_path, controlnet=controlnet, torch_dtype=torch.float16
+)
+
+# speed up diffusion process with faster scheduler and memory optimization
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+# remove following line if xformers is not installed
+pipe.enable_xformers_memory_efficient_attention()
+
+pipe.enable_model_cpu_offload()
+
+control_image = load_image("./images/conditioning_image_1.png")
 prompt = "pale golden rod circle with old lace background"
 
-controlnet = ControlNetModel.from_pretrained(controlnet_folder)
-pipe = StableDiffusionControlNetPipeline.from_pretrained(model, controlnet=controlnet)
-pipe = pipe.to("cuda")
-with torch.inference_mode():
-    image = pipe(prompt=prompt, image=control_image).images[0]
+# generate image
+generator = torch.manual_seed(0)
+image = pipe(
+     prompt, num_inference_steps=20, generator=generator, image=control_image
+).images[0]
+
 image.save("./output.png")
 ```
-
-If everything worked correctly the "./output.png" image should contain an image of
-a filled circle with outline that matches the control image.
