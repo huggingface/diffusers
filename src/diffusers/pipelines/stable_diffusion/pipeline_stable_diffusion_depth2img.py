@@ -32,7 +32,6 @@ from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.preprocess
 def preprocess(image):
     if isinstance(image, torch.Tensor):
         return image
