@@ -445,6 +445,12 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert np.abs(output_2.images.flatten() - output_1.images.flatten()).max() < 5e-1
 
+        # test that tiled decode works with various shapes
+        shapes = [(1, 4, 73, 97), (1, 4, 97, 73), (1, 4, 49, 65), (1, 4, 65, 49)]
+        for shape in shapes:
+            zeros = torch.zeros(shape).to(device)
+            sd_pipe.vae.decode(zeros)
+
     def test_stable_diffusion_negative_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
