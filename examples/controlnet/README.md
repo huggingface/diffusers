@@ -73,7 +73,9 @@ accelerate launch examples/controlnet/train_controlnet.py \
 
 | |  | 
 |-------------------|:-------------------------:|
+| | red circle with blue background  | 
 ![conditioning image](./images/conditioning_image_1.png) | ![red circle with blue background](./images/red_circle_with_blue_background_300_steps.png) |
+| | cyan circle with brown floral background | 
 ![conditioning image](./images/conditioning_image_2.png) | ![cyan circle with brown floral background](./images/cyan_circle_with_brown_floral_background_300_steps.png) |
 
 
@@ -81,7 +83,9 @@ accelerate launch examples/controlnet/train_controlnet.py \
 
 | |  | 
 |-------------------|:-------------------------:|
+| | red circle with blue background  | 
 ![conditioning image](./images/conditioning_image_1.png) | ![red circle with blue background](./images/red_circle_with_blue_background_6000_steps.png) |
+| | cyan circle with brown floral background | 
 ![conditioning image](./images/conditioning_image_2.png) | ![cyan circle with brown floral background](./images/cyan_circle_with_brown_floral_background_6000_steps.png) |
 
 TODO document lower vram training requirements
