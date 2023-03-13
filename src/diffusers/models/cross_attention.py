@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import inspect
 from typing import Callable, Optional, Union
 
 import torch
@@ -101,10 +102,17 @@ class CrossAttention(nn.Module):
         self.to_out.append(nn.Dropout(dropout))
 
         # set attention processor
-        # We use the AttnProcessor2_0 by default when torch2.x is used which uses
+        # We use the AttnProcessor2_0 by default when torch 2.x is used which uses
         # torch.nn.functional.scaled_dot_product_attention for native Flash/memory_efficient_attention
+        # but only if it has the `scale` argument
         if processor is None:
-            processor = AttnProcessor2_0() if hasattr(F, "scaled_dot_product_attention") else CrossAttnProcessor()
+            if (
+                hasattr(F, "scaled_dot_product_attention")
+                and inspect.signature(F.scaled_dot_product_attention).parameters.get("scale") is not None
+            ):
+                processor = AttnProcessor2_0()
+            else:
+                CrossAttnProcessor()
         self.set_processor(processor)
 
     def set_use_memory_efficient_attention_xformers(
