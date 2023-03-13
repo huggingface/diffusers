@@ -605,7 +605,6 @@ class StableDiffusionMultiControlNetPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (768, 512, 3)
 
-        # np.save('pose_canny_out.npy', image)
 
         expected_image = load_numpy("https://huggingface.co/takuma104/controlnet_dev/resolve/main/pose_canny_out.npy")
 
