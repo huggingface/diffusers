@@ -33,12 +33,12 @@ class EMAModelTests(unittest.TestCase):
     generator = torch.manual_seed(0)
 
     def get_models(self, decay=0.9999):
-        unet = UNet2DConditionModel.from_pretrained(self.model_id, subfolder="unet")
+        unet = UNet2DConditionModel.from_pretrained(self.model_id, subfolder="unet", device=torch_device)
         ema_unet = UNet2DConditionModel.from_pretrained(self.model_id, subfolder="unet")
         ema_unet = EMAModel(
             ema_unet.parameters(), decay=decay, model_cls=UNet2DConditionModel, model_config=ema_unet.config
         )
-        return unet.to(torch_device), ema_unet.to(torch_device)
+        return unet, ema_unet
 
     def get_dummy_inputs(self):
         noisy_latents = torch.randn(
@@ -91,7 +91,7 @@ class EMAModelTests(unittest.TestCase):
         # Here we simulate the parameter updates for `unet`. Since there might
         # be some parameters which are initialized to zero we take extra care to
         # initialize their values to something non-zero before the multiplication.
-        unet_pseudo_updated_step_one = self.similuate_backprop(unet)
+        unet_pseudo_updated_step_one = self.simulate_backprop(unet)
 
         # Take the EMA step.
         ema_unet.step(unet_pseudo_updated_step_one.parameters())
@@ -113,12 +113,12 @@ class EMAModelTests(unittest.TestCase):
         unet, ema_unet = self.get_models()
 
         # First backprop + EMA
-        unet_step_one = self.similuate_backprop(unet)
+        unet_step_one = self.simulate_backprop(unet)
         ema_unet.step(unet_step_one.parameters())
         step_one_shadow_params = ema_unet.shadow_params
 
         # Second backprop + EMA
-        unet_step_two = self.similuate_backprop(unet_step_one)
+        unet_step_two = self.simulate_backprop(unet_step_one)
         ema_unet.step(unet_step_two.parameters())
         step_two_shadow_params = ema_unet.shadow_params
 
@@ -130,11 +130,11 @@ class EMAModelTests(unittest.TestCase):
         # won't take any effect i.e., the shadow params would remain the
         # same.
         unet, ema_unet = self.get_models(decay=0.0)
-        unet_step_one = self.similuate_backprop(unet)
+        unet_step_one = self.simulate_backprop(unet)
         ema_unet.step(unet_step_one.parameters())
         step_one_shadow_params = ema_unet.shadow_params
 
-        unet_step_two = self.similuate_backprop(unet_step_one)
+        unet_step_two = self.simulate_backprop(unet_step_one)
         ema_unet.step(unet_step_two.parameters())
         step_two_shadow_params = ema_unet.shadow_params
 
