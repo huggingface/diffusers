@@ -584,7 +584,7 @@ def main():
     else:
         optimizer_cls = torch.optim.AdamW
 
-    if args.peft:
+    if args.use_peft:
         # Optimizer creation
         params_to_optimize = (
             itertools.chain(unet.parameters(), text_encoder.parameters())
@@ -726,7 +726,7 @@ def main():
     )
 
     # Prepare everything with our `accelerator`.
-    if args.peft:
+    if args.use_peft:
         if args.train_text_encoder:
             unet, text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
                 unet, text_encoder, optimizer, train_dataloader, lr_scheduler
@@ -794,6 +794,8 @@ def main():
     progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
     progress_bar.set_description("Steps")
 
+    raise NotImplementedError('no soup for you')
+
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
         if args.train_text_encoder:
@@ -844,7 +846,7 @@ def main():
                 # Backpropagate
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    if args.peft:
+                    if args.use_peft:
                         params_to_clip = (
                             itertools.chain(unet.parameters(), text_encoder.parameters())
                             if args.train_text_encoder
