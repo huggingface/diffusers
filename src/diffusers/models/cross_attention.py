@@ -59,6 +59,8 @@ class CrossAttention(nn.Module):
         cross_attention_norm: bool = False,
         added_kv_proj_dim: Optional[int] = None,
         norm_num_groups: Optional[int] = None,
+        out_bias: bool = True,
+        scale_qk: bool = True,
         processor: Optional["AttnProcessor"] = None,
     ):
         super().__init__()
@@ -68,7 +70,7 @@ class CrossAttention(nn.Module):
         self.upcast_softmax = upcast_softmax
         self.cross_attention_norm = cross_attention_norm
 
-        self.scale = dim_head**-0.5
+        self.scale = dim_head**-0.5 if scale_qk else 1.0
 
         self.heads = heads
         # for slice_size > 0 the attention score computation
@@ -95,7 +97,7 @@ class CrossAttention(nn.Module):
             self.add_v_proj = nn.Linear(added_kv_proj_dim, cross_attention_dim)
 
         self.to_out = nn.ModuleList([])
-        self.to_out.append(nn.Linear(inner_dim, query_dim))
+        self.to_out.append(nn.Linear(inner_dim, query_dim, bias=out_bias))
         self.to_out.append(nn.Dropout(dropout))
 
         # set attention processor
@@ -295,7 +297,9 @@ class CrossAttnProcessor:
         encoder_hidden_states=None,
         attention_mask=None,
     ):
-        batch_size, sequence_length, _ = hidden_states.shape
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
         query = attn.to_q(hidden_states)
 
@@ -362,7 +366,9 @@ class LoRACrossAttnProcessor(nn.Module):
     def __call__(
         self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0
     ):
-        batch_size, sequence_length, _ = hidden_states.shape
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
         query = attn.to_q(hidden_states) + scale * self.to_q_lora(hidden_states)
@@ -454,7 +460,7 @@ class XFormersCrossAttnProcessor:
         value = attn.head_to_batch_dim(value).contiguous()
 
         hidden_states = xformers.ops.memory_efficient_attention(
-            query, key, value, attn_bias=attention_mask, op=self.attention_op
+            query, key, value, attn_bias=attention_mask, op=self.attention_op, scale=attn.scale
         )
         hidden_states = hidden_states.to(query.dtype)
         hidden_states = attn.batch_to_head_dim(hidden_states)
@@ -499,7 +505,7 @@ class AttnProcessor2_0:
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False, scale=attn.scale
         )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
@@ -529,7 +535,9 @@ class LoRAXFormersCrossAttnProcessor(nn.Module):
     def __call__(
         self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0
     ):
-        batch_size, sequence_length, _ = hidden_states.shape
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
         query = attn.to_q(hidden_states) + scale * self.to_q_lora(hidden_states)
@@ -561,8 +569,9 @@ class SlicedAttnProcessor:
         self.slice_size = slice_size
 
     def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None):
-        batch_size, sequence_length, _ = hidden_states.shape
-
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
         query = attn.to_q(hidden_states)
@@ -617,7 +626,9 @@ class SlicedAttnAddedKVProcessor:
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
         encoder_hidden_states = encoder_hidden_states.transpose(1, 2)
 
-        batch_size, sequence_length, _ = hidden_states.shape
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
 
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
