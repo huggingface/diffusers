@@ -20,6 +20,7 @@ import torch
 
 from diffusers import UNet2DConditionModel
 from diffusers.training_utils import EMAModel
+from diffusers.utils.testing_utils import torch_device
 
 
 class EMAModelTests(unittest.TestCase):
@@ -31,7 +32,7 @@ class EMAModelTests(unittest.TestCase):
         ema_unet = EMAModel(
             ema_unet.parameters(), decay=decay, model_cls=UNet2DConditionModel, model_config=ema_unet.config
         )
-        return unet, ema_unet
+        return unet.to(torch_device), ema_unet.to(torch_device)
 
     def similuate_backprop(self, unet):
         updated_state_dict = {}
