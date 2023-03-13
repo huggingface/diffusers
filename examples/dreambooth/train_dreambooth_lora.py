@@ -683,7 +683,7 @@ def main(args):
     unet.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
     text_encoder.to(accelerator.device, dtype=weight_dtype)
-    useXformers = False
+    use_xformers = False
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
             import xformers
