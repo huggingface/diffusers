@@ -28,6 +28,7 @@ from diffusers import (
     StableDiffusionControlNetPipeline,
     UNet2DConditionModel,
 )
+from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_controlnet import MultiControlNetModel
 from diffusers.utils import load_image, load_numpy, randn_tensor, slow, torch_device
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import require_torch_gpu
@@ -211,9 +212,11 @@ class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unitt
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
+        controlnet = MultiControlNetModel([controlnet1, controlnet2])
+
         components = {
             "unet": unet,
-            "controlnet": [controlnet1, controlnet2],
+            "controlnet": controlnet,
             "scheduler": scheduler,
             "vae": vae,
             "text_encoder": text_encoder,
@@ -268,30 +271,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unitt
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
-    # override PipelineTesterMixin
-    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
-    def test_float16_inference(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        for name, module in components.items():
-            if isinstance(module, list):
-                components[name] = [m.half() for m in module if hasattr(m, "half")]
-            elif hasattr(module, "half"):
-                components[name] = module.half()
-        pipe_fp16 = self.pipeline_class(**components)
-        pipe_fp16.to(torch_device)
-        pipe_fp16.set_progress_bar_config(disable=None)
-
-        output = pipe(**self.get_dummy_inputs(torch_device))[0]
-        output_fp16 = pipe_fp16(**self.get_dummy_inputs(torch_device))[0]
-
-        max_diff = np.abs(output - output_fp16).max()
-        self.assertLess(max_diff, 1e-2, "The outputs of the fp16 and fp32 pipelines are too different.")
-
-    def check_save_pretrained_raise_not_implemented_exception(self):
+    def test_save_pretrained_raise_not_implemented_exception(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
@@ -304,17 +284,19 @@ class StableDiffusionMultiControlNetPipelineFastTests(PipelineTesterMixin, unitt
                 pass
 
     # override PipelineTesterMixin
-    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
+    @unittest.skip("save pretrained not implemented")
     def test_save_load_float16(self):
-        self.check_save_pretrained_raise_not_implemented_exception()
+        ...
 
     # override PipelineTesterMixin
+    @unittest.skip("save pretrained not implemented")
     def test_save_load_local(self):
-        self.check_save_pretrained_raise_not_implemented_exception()
+        ...
 
     # override PipelineTesterMixin
+    @unittest.skip("save pretrained not implemented")
     def test_save_load_optional_components(self):
-        self.check_save_pretrained_raise_not_implemented_exception()
+        ...
 
 
 @slow
@@ -605,6 +587,8 @@ class StableDiffusionMultiControlNetPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (768, 512, 3)
 
-        expected_image = load_numpy("https://huggingface.co/takuma104/controlnet_dev/resolve/main/pose_canny_out.npy")
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/pose_canny_out.npy"
+        )
 
         assert np.abs(expected_image - image).max() < 5e-2
