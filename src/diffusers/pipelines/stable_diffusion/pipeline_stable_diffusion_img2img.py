@@ -404,14 +404,11 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         return prompt_embeds
 
     def run_safety_checker(self, image, device, dtype):
-        feature_extractor_input = self.image_processor.postprocess(image, output_type='pil')
-        safety_checker_input = self.feature_extractor(
-            feature_extractor_input, 
-            return_tensors="pt"
-            ).to(device)
+        feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
+        safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
         image, has_nsfw_concept = self.safety_checker(
             images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
-            )
+        )
         return image, has_nsfw_concept
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
@@ -694,13 +691,13 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
-        
+
         if output_type not in ["latent", "pt", "np", "pil"]:
             deprecation_message = (
                 f"the output_type {output_type} is outdated. Please make sure to set it to one of these instead: "
                 "`pil`, `np`, `pt`, `latent`"
             )
-            deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False ) 
+            deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
             output_type = "np"
 
         if output_type == "latent":
@@ -713,7 +710,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
             has_nsfw_concept = False
-        
+
         image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload last model to CPU
