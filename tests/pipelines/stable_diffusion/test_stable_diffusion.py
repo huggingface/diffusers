@@ -737,7 +737,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 
         # make sure that more than 4 GB is allocated
         mem_bytes = torch.cuda.max_memory_allocated()
-        assert mem_bytes > 4e9
+        assert mem_bytes > 5e9
         assert np.abs(image_chunked.flatten() - image.flatten()).max() < 1e-2
 
     def test_stable_diffusion_fp16_vs_autocast(self):
