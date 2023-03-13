@@ -30,7 +30,7 @@
       title: Using KerasCV Stable Diffusion Checkpoints in Diffusers
     title: Loading & Hub
   - sections:
-    - local: using-differs/pipeline_overview
+    - local: using-diffusers/pipeline_overview
       title: Overview
     - local: using-diffusers/write_own_pipeline
       title: Understanding models and schedulers
