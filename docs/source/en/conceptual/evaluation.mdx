@@ -14,7 +14,10 @@ specific language governing permissions and limitations under the License.
 
 Evaluation of generative models like [Stable Diffusion](https://huggingface.co/docs/diffusers/stable_diffusion) is subjective in nature. But as practitioners and researchers, we often have to make careful choices amongst many different possibilities. So, when working with different generative models (like GANs, Diffusion, etc.), how do we choose one over the other?
 
-Qualitative evaluation of such models can be error-prone and might incorrectly influence a decision. However, solely relying on quantitative metrics doesn't give a full picture either. For example, a generative model might provide a lower FID score, but the generated images might still lack quality. So, usually, a combination of both qualitative and quantitative evaluations provides a stronger signal when choosing one model over the other.
+Qualitative evaluation of such models can be error-prone and might incorrectly influence a decision.
+However, quantitative metrics don't necessarily correspond to image quality. So, usually, a combination
+of both qualitative and quantitative evaluations provides a stronger signal when choosing one model
+over the other.
 
 In this document, we provide a non-exhaustive overview of qualitative and quantitative methods to evaluate Diffusion models. For quantitative methods, we specifically focus on how to implement them alongside `diffusers`. 
 
