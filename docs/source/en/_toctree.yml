@@ -9,6 +9,8 @@
     title: Installation
   title: Get started
 - sections:
+  - local: using-diffusers/write_own_pipeline
+    title: Understanding models and schedulers
   - local: tutorials/basic_training
     title: Train a diffusion model
   title: Tutorials
@@ -18,16 +20,12 @@
       title: Loading Pipelines, Models, and Schedulers
     - local: using-diffusers/schedulers
       title: Using different Schedulers
-    - local: using-diffusers/configuration
-      title: Configuring Pipelines, Models, and Schedulers
     - local: using-diffusers/custom_pipeline_overview
       title: Loading and Adding Custom Pipelines
     - local: using-diffusers/kerascv
       title: Using KerasCV Stable Diffusion Checkpoints in Diffusers
     title: Loading & Hub
   - sections:
-    - local: using-diffusers/write_own_pipeline
-      title: Understanding models and schedulers
     - local: using-diffusers/unconditional_image_generation
       title: Unconditional Image Generation
     - local: using-diffusers/conditional_image_generation
@@ -54,6 +52,20 @@
       title: Weighting Prompts
     title: Pipelines for Inference
   - sections:
+    - local: training/overview
+      title: Overview
+    - local: training/unconditional_training
+      title: Unconditional image generation
+    - local: training/text_inversion
+      title: Textual Inversion
+    - local: training/dreambooth
+      title: DreamBooth
+    - local: training/text2image
+      title: Text-to-image
+    - local: training/lora
+      title: Low-Rank Adaptation of Large Language Models (LoRA)
+    title: Training
+  - sections:
     - local: using-diffusers/rl
       title: Reinforcement Learning
     - local: using-diffusers/audio
@@ -78,20 +90,6 @@
   - local: optimization/habana
     title: Habana Gaudi
   title: Optimization/Special Hardware
-- sections:
-  - local: training/overview
-    title: Overview
-  - local: training/unconditional_training
-    title: Unconditional image generation
-  - local: training/text_inversion
-    title: Textual Inversion
-  - local: training/dreambooth
-    title: DreamBooth
-  - local: training/text2image
-    title: Text-to-image
-  - local: training/lora
-    title: Low-Rank Adaptation of Large Language Models (LoRA)
-  title: Training
 - sections:
   - local: conceptual/philosophy
     title: Philosophy
