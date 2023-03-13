@@ -34,7 +34,7 @@ class EMAModelTests(unittest.TestCase):
         )
         return unet.to(torch_device), ema_unet.to(torch_device)
 
-    def similuate_backprop(self, unet):
+    def simulate_backprop(self, unet):
         updated_state_dict = {}
         for k, param in unet.state_dict().items():
             updated_param = torch.randn_like(param) + (param * torch.randn_like(param))
