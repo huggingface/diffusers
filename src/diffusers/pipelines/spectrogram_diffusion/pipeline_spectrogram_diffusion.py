@@ -130,7 +130,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
 
         pred_mel = np.zeros([1, TARGET_FEATURE_LENGTH, self.n_dims], dtype=np.float32)
         full_pred_mel = np.zeros([1, 0, self.n_dims], np.float32)
-        ones = torch.ones((1, TARGET_FEATURE_LENGTH), dtype=np.bool, device=self.device)
+        ones = torch.ones((1, TARGET_FEATURE_LENGTH), dtype=bool, device=self.device)
 
         for i, encoder_input_tokens in enumerate(input_tokens):
             if i == 0:
@@ -138,7 +138,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
                     device=self.device, dtype=self.decoder.dtype
                 )
                 # The first chunk has no previous context.
-                encoder_continuous_mask = torch.zeros((1, TARGET_FEATURE_LENGTH), dtype=np.bool, device=self.device)
+                encoder_continuous_mask = torch.zeros((1, TARGET_FEATURE_LENGTH), dtype=bool, device=self.device)
             else:
                 # The full song pipeline does not feed in a context feature, so the mask
                 # will be all 0s after the feature converter. Because we know we're
