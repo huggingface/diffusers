@@ -394,9 +394,8 @@ class ModelMixin(torch.nn.Module):
                 ignored when using `from_flax`.
             use_safetensors (`bool`, *optional* ):
                 If set to `True`, the pipeline will forcibly load the models from `safetensors` weights. If set to
-                `None` (the default). The pipeline will load using `safetensors` if safetensors weights are
-                available *and* if `safetensors` is installed. If the to `False` the pipeline will *not* use
-                `safetensors`.
+                `None` (the default). The pipeline will load using `safetensors` if safetensors weights are available
+                *and* if `safetensors` is installed. If the to `False` the pipeline will *not* use `safetensors`.
 
         <Tip>
 

@@ -697,10 +697,9 @@ class DiffusionPipeline(ConfigMixin):
             return_cached_folder (`bool`, *optional*, defaults to `False`):
                 If set to `True`, path to downloaded cached folder will be returned in addition to loaded pipeline.
             use_safetensors (`bool`, *optional* ):
-                If set to `True`, the pipeline will be loaded from `safetensors` weights. If set to
-                `None` (the default). The pipeline will load using `safetensors` if the safetensors weights are
-                available *and* if `safetensors` is installed. If the to `False` the pipeline will *not* use
-                `safetensors`.
+                If set to `True`, the pipeline will be loaded from `safetensors` weights. If set to `None` (the
+                default). The pipeline will load using `safetensors` if the safetensors weights are available *and* if
+                `safetensors` is installed. If the to `False` the pipeline will *not* use `safetensors`.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load - and saveable variables - *i.e.* the pipeline components - of the
                 specific pipeline class. The overwritten components are then directly passed to the pipelines
