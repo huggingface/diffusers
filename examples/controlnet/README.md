@@ -1,4 +1,4 @@
-# Controlnet training example
+# ControlNet training example
 
 [Adding Conditional Control to Text-to-Image Diffusion Models](https://arxiv.org/abs/2302.05543) by Lvmin Zhang and Maneesh Agrawala.
 
