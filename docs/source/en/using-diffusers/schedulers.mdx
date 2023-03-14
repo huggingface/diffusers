@@ -13,7 +13,7 @@ specific language governing permissions and limitations under the License.
 # Schedulers
 
 Diffusion pipelines are inherently a collection of diffusion models and schedulers that are partly independent from each other. This means that one is able to switch out parts of the pipeline to better customize 
-a pipeline to one's use case. The best example of this are the [Schedulers](../api/schedulers/overview.mdx).
+a pipeline to one's use case. The best example of this is the [Schedulers](../api/schedulers/overview.mdx).
 
 Whereas diffusion models usually simply define the forward pass from noise to a less noisy sample, 
 schedulers define the whole denoising process, *i.e.*:
@@ -24,7 +24,7 @@ schedulers define the whole denoising process, *i.e.*:
 They can be quite complex and often define a trade-off between **denoising speed** and **denoising quality**.
 It is extremely difficult to measure quantitatively which scheduler works best for a given diffusion pipeline, so it is often recommended to simply try out which works best.
 
-The following paragraphs shows how to do so with the 🧨 Diffusers library.
+The following paragraphs show how to do so with the 🧨 Diffusers library.
 
 ## Load pipeline
 
