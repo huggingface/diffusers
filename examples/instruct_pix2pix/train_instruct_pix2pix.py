@@ -25,6 +25,7 @@ from typing import Optional
 
 import accelerate
 import datasets
+import numpy as np
 import PIL
 import requests
 import torch
@@ -386,6 +387,11 @@ def initialize_unet(unet: UNet2DConditionModel, instruct_pix2pix_unet: UNet2DCon
     return instruct_pix2pix_unet
 
 
+def convert_to_np(image, resolution):
+    image = image.convert("RGB").resize((resolution, resolution))
+    return np.array(image).transpose(2, 0, 1)
+
+
 def download_image(url):
     image = PIL.Image.open(requests.get(url, stream=True).raw)
     image = PIL.ImageOps.exif_transpose(image)
@@ -649,19 +655,36 @@ def main():
     # Preprocessing the datasets.
     train_transforms = transforms.Compose(
         [
-            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
             transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
             transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x),
-            transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5]),
         ]
     )
 
+    def preprocess_images(examples):
+        original_images = np.concatenate([convert_to_np(image) for image in examples[original_image_column]])
+        edited_images = np.concatenate([convert_to_np(image) for image in examples[edited_image_column]])
+        # We need to ensure that the original and the edited images undergo the same
+        # augmentation transforms.
+        images = np.concatenate([original_images, edited_images])
+        images = torch.tensor(images)
+        images = 2 * (images / 255) - 1
+        return train_transforms(images)
+
     def preprocess_train(examples):
-        original_images = [image.convert("RGB") for image in examples[original_image_column]]
-        edited_images = [image.convert("RGB") for image in examples[edited_image_column]]
-        examples["original_pixel_values"] = [train_transforms(image) for image in original_images]
-        examples["edited_pixel_values"] = [train_transforms(image) for image in edited_images]
+        # Preprocess images.
+        preprocessed_images = preprocess_images(examples)
+        # Since the original and edited images were concatenated before
+        # applying the transformations, we need to separate them and reshape
+        # them accordingly.
+        original_images, edited_images = preprocessed_images.chunk(2)
+        original_images = original_images.reshape(-1, 3, args.resolution)
+        edited_images = edited_images.reshape(-1, 3, args.resolution)
+
+        # Collate the preprocessed images into the `examples`.
+        examples["original_pixel_values"] = original_images
+        examples["edited_pixel_values"] = edited_images
+
+        # Preprocess the captions.
         captions = [caption for caption in examples[edit_prompt_column]]
         examples["input_ids"] = tokenize_captions(captions)
         return examples
