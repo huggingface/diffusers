@@ -158,8 +158,14 @@ accelerate launch train_controlnet.py \
  --enable_xformers_memory_efficient_attention \
  --set_grads_to_none
 ```
- When using `enable_xformers_memory_efficient_attention`, please make sure to install `xformers` by `pip install xformers`. 
+
+When using `enable_xformers_memory_efficient_attention`, please make sure to install `xformers` by `pip install xformers`. 
+
 ## Training on an 8 GB GPU
+
+We have not exhaustively tested DeepSpeed support for ControlNet. While the configuration does
+save memory, we have not confirmed the configuration to train successfully. You will very likely
+have to make changes to the config to have a successful training run.
 
 Optimizations:
 - Gradient checkpointing
