@@ -696,11 +696,11 @@ class DiffusionPipeline(ConfigMixin):
                 setting this argument to `True` will raise an error.
             return_cached_folder (`bool`, *optional*, defaults to `False`):
                 If set to `True`, path to downloaded cached folder will be returned in addition to loaded pipeline.
-            use_safetensors (`bool`, *optional*, defaults to `None`):
-                If set to `True`, the pipeline will forcibly load the models using `safetensors` weights. If set to
+            use_safetensors (`bool`, *optional* ):
+                If set to `True`, the pipeline will be loaded from `safetensors` weights. If set to
                 `None` (the default). The pipeline will load using `safetensors` if the safetensors weights are
-                actually available *and* you have the library installed. If the to `False` the pipeline will *not* use
-                `safetensors` at all.
+                available *and* if `safetensors` is installed. If the to `False` the pipeline will *not* use
+                `safetensors`.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load - and saveable variables - *i.e.* the pipeline components - of the
                 specific pipeline class. The overwritten components are then directly passed to the pipelines
@@ -760,7 +760,7 @@ class DiffusionPipeline(ConfigMixin):
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
         return_cached_folder = kwargs.pop("return_cached_folder", False)
-        use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
+        kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
