@@ -402,9 +402,7 @@ class CrossAttnAddedKVProcessor:
     def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None):
         residual = hidden_states
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
+        batch_size, sequence_length, _ = hidden_states.shape
         encoder_hidden_states = encoder_hidden_states.transpose(1, 2)
 
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
@@ -634,9 +632,7 @@ class SlicedAttnAddedKVProcessor:
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
         encoder_hidden_states = encoder_hidden_states.transpose(1, 2)
 
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
+        batch_size, sequence_length, _ = hidden_states.shape
 
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
