@@ -108,7 +108,7 @@ class VaeImageProcessor(ConfigMixin):
         image: Union[torch.FloatTensor, PIL.Image.Image, np.ndarray],
     ) -> torch.Tensor:
         """
-        Preprocess the image input, accpet formats in PIL images, numpy arrays or pytorch tensors"
+        Preprocess the image input, accepted formats are PIL images, numpy arrays or pytorch tensors"
         """
         supported_formats = (PIL.Image.Image, np.ndarray, torch.Tensor)
         if isinstance(image, supported_formats):
