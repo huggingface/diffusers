@@ -160,7 +160,7 @@ accelerate launch train_controlnet.py \
  --enable_xformers_memory_efficient_attention \
  --set_grads_to_none
 ```
-
+ When using `enable_xformers_memory_efficient_attention`, please make sure to install `xformers` by `pip install xformers`. 
 ## Training on an 8 GB GPU
 
 Optimizations:
