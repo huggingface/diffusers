@@ -681,8 +681,8 @@ def main():
         # applying the transformations, we need to separate them and reshape
         # them accordingly.
         original_images, edited_images = preprocessed_images.chunk(2)
-        original_images = original_images.reshape(-1, 3, args.resolution)
-        edited_images = edited_images.reshape(-1, 3, args.resolution)
+        original_images = original_images.reshape(-1, 3, args.resolution, args.resolution)
+        edited_images = edited_images.reshape(-1, 3, args.resolution, args.resolution)
 
         # Collate the preprocessed images into the `examples`.
         examples["original_pixel_values"] = original_images
