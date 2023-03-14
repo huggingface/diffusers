@@ -597,12 +597,12 @@ class SlicedAttnProcessor:
         key = attn.head_to_batch_dim(key)
         value = attn.head_to_batch_dim(value)
 
-        batch_size_attention = query.shape[0]
+        batch_size_attention, query_tokens, _ = query.shape
         hidden_states = torch.zeros(
-            (batch_size_attention, sequence_length, dim // attn.heads), device=query.device, dtype=query.dtype
+            (batch_size_attention, query_tokens, dim // attn.heads), device=query.device, dtype=query.dtype
         )
 
-        for i in range(hidden_states.shape[0] // self.slice_size):
+        for i in range(batch_size_attention // self.slice_size):
             start_idx = i * self.slice_size
             end_idx = (i + 1) * self.slice_size
 
@@ -660,12 +660,12 @@ class SlicedAttnAddedKVProcessor:
         key = torch.cat([encoder_hidden_states_key_proj, key], dim=1)
         value = torch.cat([encoder_hidden_states_value_proj, value], dim=1)
 
-        batch_size_attention = query.shape[0]
+        batch_size_attention, query_tokens, _ = query.shape
         hidden_states = torch.zeros(
-            (batch_size_attention, sequence_length, dim // attn.heads), device=query.device, dtype=query.dtype
+            (batch_size_attention, query_tokens, dim // attn.heads), device=query.device, dtype=query.dtype
         )
 
-        for i in range(hidden_states.shape[0] // self.slice_size):
+        for i in range(batch_size_attention // self.slice_size):
             start_idx = i * self.slice_size
             end_idx = (i + 1) * self.slice_size
 
