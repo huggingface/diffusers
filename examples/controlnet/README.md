@@ -46,7 +46,6 @@ write_basic_config()
 ## Circle filling dataset
 
 The original dataset is hosted in the [ControlNet repo](https://huggingface.co/lllyasviel/ControlNet/blob/main/training/fill50k.zip). We re-uploaded it to be compatible with `datasets` [here](https://huggingface.co/datasets/fusing/fill50k). Note that `datasets` handles dataloading within the training script.
-within the training script.
 
 Our training examples use stable diffusion 1.5 as the original set of controlnet models were trained from it. However, controlnet can be trained to augment any stable diffusion compatible model.
 
