@@ -112,7 +112,7 @@ class VaeImageProcessor(ConfigMixin):
         supported_formats = (PIL.Image.Image, np.ndarray, torch.Tensor)
         if isinstance(image, supported_formats):
             image = [image]
-        else:
+        elif not (isinstance(image, list) and all(isinstance(i, supported_formats)):
             raise ValueError(
                 "incorrect image format is used - currently we only support PIL image, numpy array or pytorch tensor"
             )
