@@ -140,7 +140,7 @@ class VaeImageProcessor(ConfigMixin):
             _, _, height, width = image.shape
             if self.do_resize and (height % self.vae_scale_factor != 0 or width % self.vae_scale_factor != 0):
                 raise ValueError(
-                    f"Currently we only support resizing for PIL image - please resize your numpy array to be divisible by {self.vae_scale_factor}"
+                    f"Currently we only support resizing for PIL image - please resize your pytorch tensor to be divisible by {self.vae_scale_factor}"
                     f"currently the sizes are {height} and {width}. You can also pass a PIL image instead to use resize option in VAEImageProcessor"
                 )
 
