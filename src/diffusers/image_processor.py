@@ -137,6 +137,7 @@ class VaeImageProcessor(ConfigMixin):
 
         elif isinstance(image[0], torch.Tensor):
             image = torch.cat(image, axis=0) if image[0].ndim == 4 else torch.stack(image, axis=0)
+            _, _, height, width = image.shape
             if self.do_resize and (height % self.vae_scale_factor != 0 or width % self.vae_scale_factor != 0):
                 raise ValueError(
                    f"Currently we only support resizing for PIL image - please resize your numpy array to be divisible by {self.vae_scale_factor}"
