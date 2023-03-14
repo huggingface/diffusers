@@ -156,6 +156,8 @@ if _onnx_available:
         "onnxruntime-directml",
         "onnxruntime-openvino",
         "ort_nightly_directml",
+        "onnxruntime-rocm",
+        "onnxruntime-training",
     )
     _onnxruntime_version = None
     # For the metadata, we have to look for both onnxruntime and onnxruntime-gpu
