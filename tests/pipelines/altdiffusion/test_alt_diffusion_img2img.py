@@ -21,7 +21,13 @@ import numpy as np
 import torch
 from transformers import XLMRobertaTokenizer
 
-from diffusers import AltDiffusionImg2ImgPipeline, AutoencoderKL, PNDMScheduler, UNet2DConditionModel, VaeImageProcessor
+from diffusers import (
+    AltDiffusionImg2ImgPipeline,
+    AutoencoderKL,
+    PNDMScheduler,
+    UNet2DConditionModel,
+    VaeImageProcessor,
+)
 from diffusers.pipelines.alt_diffusion.modeling_roberta_series import (
     RobertaSeriesConfig,
     RobertaSeriesModelWithTransformation,
