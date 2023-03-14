@@ -153,6 +153,8 @@ EXAMPLE_INVERT_DOC_STRING = """
         >>> source_embeds = pipeline.get_embeds(source_prompts)
         >>> target_embeds = pipeline.get_embeds(target_prompts)
         >>> # the latents can then be used to edit a real image
+        >>> # when using Stable Diffusion 2 or other models that use v-prediction
+        >>> # set `cross_attention_guidance_amount` to 0.01 or less to avoid input latent gradient explosion
 
         >>> image = pipeline(
         ...     caption,
@@ -730,6 +732,23 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
         return latents
 
+    def get_epsilon(self, model_output: torch.Tensor, sample: torch.Tensor, timestep: int):
+        pred_type = self.inverse_scheduler.config.prediction_type
+        alpha_prod_t = self.inverse_scheduler.alphas_cumprod[timestep]
+
+        beta_prod_t = 1 - alpha_prod_t
+
+        if pred_type == "epsilon":
+            return model_output
+        elif pred_type == "sample":
+            return (sample - alpha_prod_t ** (0.5) * model_output) / beta_prod_t ** (0.5)
+        elif pred_type == "v_prediction":
+            return (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
+        else:
+            raise ValueError(
+                f"prediction_type given as {pred_type} must be one of `epsilon`, `sample`, or `v_prediction`"
+            )
+
     def auto_corr_loss(self, hidden_states, generator=None):
         batch_size, channel, height, width = hidden_states.shape
         if batch_size > 1:
@@ -1156,8 +1175,8 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
         # 7. Denoising loop where we obtain the cross-attention maps.
         num_warmup_steps = len(timesteps) - num_inference_steps * self.inverse_scheduler.order
-        with self.progress_bar(total=num_inference_steps - 2) as progress_bar:
-            for i, t in enumerate(timesteps[1:-1]):
+        with self.progress_bar(total=num_inference_steps - 1) as progress_bar:
+            for i, t in enumerate(timesteps[:-1]):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.inverse_scheduler.scale_model_input(latent_model_input, t)
@@ -1181,7 +1200,11 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                         if lambda_auto_corr > 0:
                             for _ in range(num_auto_corr_rolls):
                                 var = torch.autograd.Variable(noise_pred.detach().clone(), requires_grad=True)
-                                l_ac = self.auto_corr_loss(var, generator=generator)
+
+                                # Derive epsilon from model output before regularizing to IID standard normal
+                                var_epsilon = self.get_epsilon(var, latent_model_input.detach(), t)
+
+                                l_ac = self.auto_corr_loss(var_epsilon, generator=generator)
                                 l_ac.backward()
 
                                 grad = var.grad.detach() / num_auto_corr_rolls
@@ -1190,7 +1213,10 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                         if lambda_kl > 0:
                             var = torch.autograd.Variable(noise_pred.detach().clone(), requires_grad=True)
 
-                            l_kld = self.kl_divergence(var)
+                            # Derive epsilon from model output before regularizing to IID standard normal
+                            var_epsilon = self.get_epsilon(var, latent_model_input.detach(), t)
+
+                            l_kld = self.kl_divergence(var_epsilon)
                             l_kld.backward()
 
                             grad = var.grad.detach()
