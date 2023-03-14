@@ -29,7 +29,7 @@ MagicMix | Diffusion Pipeline for semantic mixing of an image and a text prompt 
 | Stable UnCLIP | Diffusion Pipeline for combining prior model (generate clip image embedding from text, UnCLIPPipeline `"kakaobrain/karlo-v1-alpha"`) and decoder pipeline (decode clip image embedding to image, StableDiffusionImageVariationPipeline `"lambdalabs/sd-image-variations-diffusers"` ). | [Stable UnCLIP](#stable-unclip) | -  |[Ray Wang](https://wrong.wang) |
 | UnCLIP Text Interpolation Pipeline | Diffusion Pipeline that allows passing two prompts and produces images while interpolating between the text-embeddings of the two prompts | [UnCLIP Text Interpolation Pipeline](#unclip-text-interpolation-pipeline)                   | -                                                                                                                                                                                                                  | [Naga Sai Abhinay Devarinti](https://github.com/Abhinay1997/) | 
 | UnCLIP Image Interpolation Pipeline | Diffusion Pipeline that allows passing two images/image_embeddings and produces images while interpolating between their image-embeddings | [UnCLIP Image Interpolation Pipeline](#unclip-image-interpolation-pipeline)                   | -                                                                                                                                                                                                                  | [Naga Sai Abhinay Devarinti](https://github.com/Abhinay1997/) | 
-
+| DDIM Noise Comparative Analysis Pipeline | Investigating how the diffusion models learn visual concepts from each noise level (which is a contribution of [P2 weighting (CVPR 2022)](https://arxiv.org/abs/2204.00227)) | [DDIM Noise Comparative Analysis Pipeline](#ddim-noise-comparative-analysis-pipeline) | - |[Aengus (Duc-Anh)](https://github.com/aengusng8) |
 
 
 
@@ -1033,4 +1033,44 @@ The resulting images in order:-
 ![result4](https://huggingface.co/datasets/NagaSaiAbhinay/UnCLIPImageInterpolationSamples/resolve/main/starry_to_flowers_4.png)
 ![result5](https://huggingface.co/datasets/NagaSaiAbhinay/UnCLIPImageInterpolationSamples/resolve/main/starry_to_flowers_5.png)
 
+### DDIM Noise Comparative Analysis Pipeline
+#### **Research question: What visual concepts do the diffusion models learn from each noise level during training?**  
+The [P2 weighting (CVPR 2022)](https://arxiv.org/abs/2204.00227) paper proposed an approach to answer the above question, which is their second contribution.  
+The approach consists of the following steps:
 
+1. The input is an image x0.
+2. Perturb it to xt using a diffusion process q(xt|x0).
+    - `strength` is a value between 0.0 and 1.0, that controls the amount of noise that is added to the input image. Values that approach 1.0 allow for lots of variations but will also produce images that are not semantically consistent with the input.
+3. Reconstruct the image with the learned denoising process pθ(ˆx0|xt).
+4. Compare x0 and ˆx0 among various t to show how each step contributes to the sample.
+The authors used [openai/guided-diffusion](https://github.com/openai/guided-diffusion) model to denoise images in FFHQ dataset. This pipeline extends their second contribution by investigating DDIM on any input image.
+
+```python
+import torch
+from PIL import Image
+import numpy as np
+
+image_path = "path/to/your/image" # images from CelebA-HQ might be better
+image_pil = Image.open(image_path)
+image_name = image_path.split("/")[-1].split(".")[0]
+
+device = torch.device("cpu" if not torch.cuda.is_available() else "cuda")
+pipe = DiffusionPipeline.from_pretrained(
+    "google/ddpm-ema-celebahq-256",
+    custom_pipeline="ddim_noise_comparative_analysis",
+)
+pipe = pipe.to(device)
+
+for strength in np.linspace(0.1, 1, 25):
+    denoised_image, latent_timestep = pipe(
+        image_pil, strength=strength, return_dict=False
+    )
+    denoised_image = denoised_image[0]
+    denoised_image.save(
+        f"noise_comparative_analysis_{image_name}_{latent_timestep}.png"
+    )
+```
+
+Here is the result of this pipeline (which is DDIM) on CelebA-HQ dataset.
+
+![noise-comparative-analysis](https://user-images.githubusercontent.com/67547213/224677066-4474b2ed-56ab-4c27-87c6-de3c0255eb9c.jpeg)
