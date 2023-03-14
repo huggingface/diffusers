@@ -129,6 +129,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionImg2ImgPipeline(**components)
+        sd_pipe.image_processor = VaeImageProcessor(vae_scale_factor=sd_pipe.vae_scale_factor, do_normalize=False)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -145,6 +146,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionImg2ImgPipeline(**components)
+        sd_pipe.image_processor = VaeImageProcessor(vae_scale_factor=sd_pipe.vae_scale_factor, do_normalize=False)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -163,6 +165,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionImg2ImgPipeline(**components)
+        sd_pipe.image_processor = VaeImageProcessor(vae_scale_factor=sd_pipe.vae_scale_factor, do_normalize=False)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -184,6 +187,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
         )
         sd_pipe = StableDiffusionImg2ImgPipeline(**components)
+        sd_pipe.image_processor = VaeImageProcessor(vae_scale_factor=sd_pipe.vae_scale_factor, do_normalize=False)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
