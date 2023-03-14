@@ -120,7 +120,6 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
     """
     _optional_components = ["safety_checker", "feature_extractor"]
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.__init__
     def __init__(
         self,
         vae: AutoencoderKL,
