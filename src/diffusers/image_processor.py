@@ -129,7 +129,7 @@ class VaeImageProcessor(ConfigMixin):
             image = torch.cat(image, axis=0) if image[0].ndim == 4 else torch.stack(image, axis=0)
 
         _, _, height, width = image.shape
-        
+
         if self.do_resize and (height % self.vae_scale_factor != 0 or width % self.vae_scale_factor != 0):
             raise ValueError(
                 f"the height and width of image have to be divisible by {self.vae_scale_factor} but are {height} and {width}."

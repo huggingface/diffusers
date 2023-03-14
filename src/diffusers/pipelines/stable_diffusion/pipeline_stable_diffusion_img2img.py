@@ -15,6 +15,7 @@
 import inspect
 from typing import Callable, List, Optional, Union
 
+import numpy as np
 import PIL
 import torch
 from packaging import version
@@ -25,6 +26,7 @@ from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
+    PIL_INTERPOLATION,
     deprecate,
     is_accelerate_available,
     is_accelerate_version,
@@ -88,7 +90,7 @@ def preprocess(image):
         image = torch.cat(image, dim=0)
     return image
 
-    
+
 class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
     r"""
     Pipeline for text-guided image to image generation using Stable Diffusion.
