@@ -32,8 +32,7 @@ class VaeImageProcessor(ConfigMixin):
         do_resize (`bool`, *optional*, defaults to `True`):
             Whether to downscale the image's (height, width) dimensions to multiples of `vae_scale_factor`.
         vae_scale_factor (`int`, *optional*, defaults to `8`):
-            scale factor in VAE, if do_resize is True, the image will be automatically resized to multipls of
-            vae_scale_factor
+            VAE scale factor. If `do_resize` is True, the image will be automatically resized to multiples of this factor.
         resample (`str`, *optional*, defaults to `lanczos`):
             Resampling filter to use if resizing the image.
         do_normalize (`bool`, *optional*, defaults to `True`):
