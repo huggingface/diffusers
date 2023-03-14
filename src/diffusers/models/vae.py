@@ -28,7 +28,6 @@ class DecoderOutput(BaseOutput):
     Output of decoding method.
 
     Args:
-    Output of decoding method.
         sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
             Decoded output sample of the model. Output of the last layer of the model.
     """
