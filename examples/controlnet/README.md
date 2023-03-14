@@ -214,7 +214,7 @@ accelerate launch train_controlnet.py \
  --mixed_precision fp16
 ```
 
-## Running the trained controlnet
+## Performing inference with the trained ControlNet
 
 The trained model can be run the same as the original ControlNet pipeline with the newly trained ControlNet.
 Set `base_model_path` and `controlnet_path` to the values `--pretrained_model_name_or_path` and 
