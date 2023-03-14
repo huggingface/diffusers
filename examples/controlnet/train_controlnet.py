@@ -179,7 +179,7 @@ def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: st
 
 
 def parse_args(input_args=None):
-    parser = argparse.ArgumentParser(description="Simple example of a training script.")
+    parser = argparse.ArgumentParser(description="Simple example of a ControlNet training script.")
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
