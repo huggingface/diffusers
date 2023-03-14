@@ -142,6 +142,7 @@ class UNet2DConditionLoadersMixin:
         revision = kwargs.pop("revision", None)
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
+        use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
 
         user_agent = {
             "file_type": "attn_procs_weights",
@@ -150,7 +151,7 @@ class UNet2DConditionLoadersMixin:
 
         model_file = None
         if not isinstance(pretrained_model_name_or_path_or_dict, dict):
-            if (is_safetensors_available() and weight_name is None) or weight_name.endswith(".safetensors"):
+            if (use_safetensors is not False and weight_name is None) or weight_name.endswith(".safetensors"):
                 if weight_name is None:
                     weight_name = LORA_WEIGHT_NAME_SAFE
                 try:
@@ -168,7 +169,9 @@ class UNet2DConditionLoadersMixin:
                         user_agent=user_agent,
                     )
                     state_dict = safetensors.torch.load_file(model_file, device="cpu")
-                except EnvironmentError:
+                except EnvironmentError as e:
+                    if use_safetensors is True:
+                        raise e
                     if weight_name == LORA_WEIGHT_NAME_SAFE:
                         weight_name = None
             if model_file is None:
