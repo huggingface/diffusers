@@ -56,7 +56,7 @@ Our training examples use stable diffusion 1.5 as the original set of controlnet
 export MODEL_DIR="runwayml/stable-diffusion-v1-5"
 export OUTPUT_DIR="path to save model"
 
-accelerate launch examples/controlnet/train_controlnet.py \
+accelerate launch train_controlnet.py \
  --pretrained_model_name_or_path=$MODEL_DIR \
  --output_dir=$OUTPUT_DIR \
  --dataset_name=fusing/fill50k \

@@ -511,7 +511,9 @@ def parse_args(input_args=None):
         raise ValueError("`--validation_prompt` must be set if `--validation_image` is set")
 
     if (
-        len(args.validation_image) != 1
+        args.validation_image is not None
+        and args.validation_prompt is not None
+        and len(args.validation_image) != 1
         and len(args.validation_prompt) != 1
         and len(args.validation_image) != len(args.validation_prompt)
     ):
