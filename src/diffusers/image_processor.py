@@ -122,19 +122,26 @@ class VaeImageProcessor(ConfigMixin):
             if self.do_resize:
                 image = [self.resize(i) for i in image]
             image = [np.array(i).astype(np.float32) / 255.0 for i in image]
+            image = np.stack(image, axis=0)  # to np
+            image = self.numpy_to_pt(image)  # to pt
 
-        if isinstance(image[0], np.ndarray):
+        elif isinstance(image[0], np.ndarray):
             image = np.concatenate(image, axis=0) if image[0].ndim == 4 else np.stack(image, axis=0)
             image = self.numpy_to_pt(image)
+            _, _, height, width = image.shape
+            if self.do_resize and (height % self.vae_scale_factor != 0 or width % self.vae_scale_factor != 0):
+                raise ValueError(
+                    f"Currently we only support resizing for PIL image - please resize your numpy array to be divisible by {self.vae_scale_factor}"
+                    f"currently the sizes are {height} and {width}. You can also pass a PIL image instead to use resize option in VAEImageProcessor"
+                    )
+
         elif isinstance(image[0], torch.Tensor):
             image = torch.cat(image, axis=0) if image[0].ndim == 4 else torch.stack(image, axis=0)
-
-        _, _, height, width = image.shape
-
-        if self.do_resize and (height % self.vae_scale_factor != 0 or width % self.vae_scale_factor != 0):
-            raise ValueError(
-                f"the height and width of image have to be divisible by {self.vae_scale_factor} but are {height} and {width}."
-            )
+            if self.do_resize and (height % self.vae_scale_factor != 0 or width % self.vae_scale_factor != 0):
+                raise ValueError(
+                   f"Currently we only support resizing for PIL image - please resize your numpy array to be divisible by {self.vae_scale_factor}"
+                    f"currently the sizes are {height} and {width}. You can also pass a PIL image instead to use resize option in VAEImageProcessor"
+                    )
 
         # expected range [0,1], normalize to [-1,1]
         do_normalize = self.do_normalize
