@@ -661,8 +661,12 @@ def main():
     )
 
     def preprocess_images(examples):
-        original_images = np.concatenate([convert_to_np(image) for image in examples[original_image_column]])
-        edited_images = np.concatenate([convert_to_np(image) for image in examples[edited_image_column]])
+        original_images = np.concatenate(
+            [convert_to_np(image, args.resolution) for image in examples[original_image_column]]
+        )
+        edited_images = np.concatenate(
+            [convert_to_np(image, args.resolution) for image in examples[edited_image_column]]
+        )
         # We need to ensure that the original and the edited images undergo the same
         # augmentation transforms.
         images = np.concatenate([original_images, edited_images])
