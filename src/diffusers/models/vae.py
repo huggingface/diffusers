@@ -25,6 +25,8 @@ from .unet_2d_blocks import UNetMidBlock2D, get_down_block, get_up_block
 @dataclass
 class DecoderOutput(BaseOutput):
     """
+    Output of decoding method.
+
     Args:
     Output of decoding method.
         sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
