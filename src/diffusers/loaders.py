@@ -150,6 +150,7 @@ class UNet2DConditionLoadersMixin:
 
         model_file = None
         if not isinstance(pretrained_model_name_or_path_or_dict, dict):
+            # Let's first try to load .safetensors weights
             if (is_safetensors_available() and weight_name is None) or (
                 weight_name is not None and weight_name.endswith(".safetensors")
             ):
@@ -251,7 +252,6 @@ class UNet2DConditionLoadersMixin:
             "`weights_name` is deprecated, please use `weight_name` instead.",
             take_from=kwargs,
         )
-        print(weight_name)
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
