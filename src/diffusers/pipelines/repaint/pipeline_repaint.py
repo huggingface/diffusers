@@ -13,7 +13,6 @@
 # limitations under the License.
 
 
-import warnings
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
@@ -31,11 +30,6 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.preprocess
 def _preprocess_image(image: Union[List, PIL.Image.Image, torch.Tensor]):
-    warnings.warn(
-        "The function preprocess is deprecated and will be removed. Please"
-        " use VAEImageProcessor.preprocess instead.",
-        FutureWarning,
-    )
     if isinstance(image, torch.Tensor):
         return image
     elif isinstance(image, PIL.Image.Image):
