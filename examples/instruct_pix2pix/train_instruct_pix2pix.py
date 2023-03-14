@@ -56,7 +56,7 @@ check_min_version("0.14.0.dev0")
 logger = get_logger(__name__, log_level="INFO")
 
 DATASET_NAME_MAPPING = {
-    "sayakpaul/instructpix2pix-1000-samples": ("input_image", "edit_prompt", "edited_image"),
+    "fusing/instructpix2pix-1000-samples": ("input_image", "edit_prompt", "edited_image"),
 }
 LAYER_TO_FILL = "conv_in.weight"
 NULL_PROMPT = ""
