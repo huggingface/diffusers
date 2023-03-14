@@ -30,8 +30,7 @@ class VaeImageProcessor(ConfigMixin):
 
     Args:
         do_resize (`bool`, *optional*, defaults to `True`):
-            Whether to resize the image's (height, width) dimensions to the specified `size`. `do_resize` in the
-            `preprocess` method.
+            Whether to downscale the image's (height, width) dimensions to multiples of `vae_scale_factor`.
         vae_scale_factor (`int`, *optional*, defaults to `8`):
             scale factor in VAE, if do_resize is True, the image will be automatically resized to multipls of
             vae_scale_factor
