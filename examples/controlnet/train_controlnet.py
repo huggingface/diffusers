@@ -755,12 +755,16 @@ def main(args):
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
         def save_model_hook(models, weights, output_dir):
-            for model in models:
+            i = len(weights) - 1
+
+            while len(weights) > 0:
+                weights.pop()
+                model = models[i]
+
                 sub_dir = "controlnet"
                 model.save_pretrained(os.path.join(output_dir, sub_dir))
 
-                # make sure to pop weight so that corresponding model is not saved again
-                weights.pop()
+                i -= 1
 
         def load_model_hook(models, input_dir):
             while len(models) > 0:
