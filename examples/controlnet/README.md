@@ -4,7 +4,7 @@
 
 Using the pretrained models we can provide control images (for example, a depth map) to control Stable Diffusion text-to-image generation so that it follows the structure of the depth image and fills in the details. `train_controlnet.py` script shows how to train a controlnet from scratch with simple example data.
 
-This example is based on the [training example in the original Controlnet repository](https://github.com/lllyasviel/ControlNet/blob/main/docs/train.md) and it trains a controlnet that can fill circles using a small synthetic dataset.
+This example is based on the [training example in the original ControlNet repository](https://github.com/lllyasviel/ControlNet/blob/main/docs/train.md) and it trains a ControlNet that can fill circles using a [small synthetic dataset](https://huggingface.co/datasets/fusing/fill50k).
 
 ## Installing the dependencies
 
