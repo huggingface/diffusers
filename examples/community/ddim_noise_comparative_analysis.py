@@ -161,7 +161,7 @@ class DDIMNoiseComparativeAnalysisPipeline(DiffusionPipeline):
         # 4. Prepare latent variables
         latents = self.prepare_latents(image, latent_timestep, batch_size, self.unet.dtype, self.device, generator)
         image = latents
-        
+
         # 5. Denoising loop
         for t in self.progress_bar(timesteps):
             # 1. predict noise model_output
