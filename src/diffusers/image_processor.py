@@ -112,9 +112,9 @@ class VaeImageProcessor(ConfigMixin):
         supported_formats = (PIL.Image.Image, np.ndarray, torch.Tensor)
         if isinstance(image, supported_formats):
             image = [image]
-        elif not (isinstance(image, list) and all(isinstance(i, supported_formats)):
+        elif not (isinstance(image, list) and all(isinstance(i, supported_formats) for i in image)):
             raise ValueError(
-                f"Input is in incorrect format: {[type(i) for i in image)}. Currently, we only support {', '.join(supported_formats)}"
+                f"Input is in incorrect format: {[type(i) for i in image]}. Currently, we only support {', '.join(supported_formats)}"
             )
 
         if isinstance(image[0], PIL.Image.Image):
