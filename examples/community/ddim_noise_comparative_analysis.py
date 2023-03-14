@@ -150,18 +150,19 @@ class DDIMNoiseComparativeAnalysisPipeline(DiffusionPipeline):
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(strength)
 
-        # 4. Preprocess image
+        # 2. Preprocess image
         image = preprocess(image)
 
-        # 5. set timesteps
+        # 3. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=self.device)
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, self.device)
         latent_timestep = timesteps[:1].repeat(batch_size)
 
-        # 6. Prepare latent variables
+        # 4. Prepare latent variables
         latents = self.prepare_latents(image, latent_timestep, batch_size, self.unet.dtype, self.device, generator)
         image = latents
-
+        
+        # 5. Denoising loop
         for t in self.progress_bar(timesteps):
             # 1. predict noise model_output
             model_output = self.unet(image, t).sample
