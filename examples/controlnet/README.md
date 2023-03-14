@@ -216,7 +216,7 @@ accelerate launch train_controlnet.py \
 
 ## Running the trained controlnet
 
-The trained model can be run same as the original controlnet pipeline with the newly trained controlnet.
+The trained model can be run the same as the original ControlNet pipeline with the newly trained ControlNet.
 Set `base_model_path` and `controlnet_path` to the values `--pretrained_model_name_or_path` and 
 `--output_dir` were respectively set to in the training script.
 
