@@ -221,6 +221,7 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         prev_timestep = timestep + self.config.num_train_timesteps // self.num_inference_steps
 
         # 2. compute alphas, betas
+        # change original implementation to exactly match noise levels for analogous forward process
         alpha_prod_t = self.alphas_cumprod[timestep]
         alpha_prod_t_prev = (
             self.alphas_cumprod[prev_timestep]
