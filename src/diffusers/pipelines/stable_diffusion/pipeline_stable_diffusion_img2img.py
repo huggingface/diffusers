@@ -71,6 +71,11 @@ EXAMPLE_DOC_STRING = """
 
 
 def preprocess(image):
+    warnings.warn(
+            "The function preprocess is deprecated and will be removed. Please"
+            " use VAEImageProcessor.preprocess instead.",
+            FutureWarning,
+        )
     if isinstance(image, torch.Tensor):
         return image
     elif isinstance(image, PIL.Image.Image):
