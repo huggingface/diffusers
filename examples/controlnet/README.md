@@ -49,6 +49,15 @@ Our training examples use [Stable Diffusion 1.5](https://huggingface.co/runwayml
 
 ## Training
 
+Our training examples use two test conditioning images. They can be downloaded by running
+
+```sh
+wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_1.png
+
+wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_2.png
+```
+
+
 ```bash
 export MODEL_DIR="runwayml/stable-diffusion-v1-5"
 export OUTPUT_DIR="path to save model"
@@ -59,7 +68,7 @@ accelerate launch train_controlnet.py \
  --dataset_name=fusing/fill50k \
  --resolution=512 \
  --learning_rate=1e-5 \
- --validation_image "./images/conditioning_image_1.png" "./images/conditioning_image_2.png" \
+ --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
  --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
  --train_batch_size=4
 ```
@@ -81,7 +90,7 @@ accelerate launch train_controlnet.py \
  --dataset_name=fusing/fill50k \
  --resolution=512 \
  --learning_rate=1e-5 \
- --validation_image "./images/conditioning_image_1.png" "./images/conditioning_image_2.png" \
+ --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
  --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
  --train_batch_size=1 \
  --gradient_accumulation_steps=4
@@ -94,9 +103,9 @@ accelerate launch train_controlnet.py \
 | |  | 
 |-------------------|:-------------------------:|
 | | red circle with blue background  | 
-![conditioning image](./images/conditioning_image_1.png) | ![red circle with blue background](./images/red_circle_with_blue_background_300_steps.png) |
+![conditioning image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_1.png) | ![red circle with blue background](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/red_circle_with_blue_background_300_steps.png) |
 | | cyan circle with brown floral background | 
-![conditioning image](./images/conditioning_image_2.png) | ![cyan circle with brown floral background](./images/cyan_circle_with_brown_floral_background_300_steps.png) |
+![conditioning image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_2.png) | ![cyan circle with brown floral background](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/cyan_circle_with_brown_floral_background_300_steps.png) |
 
 
 #### After 6000 steps with batch size 8:
@@ -104,9 +113,9 @@ accelerate launch train_controlnet.py \
 | |  | 
 |-------------------|:-------------------------:|
 | | red circle with blue background  | 
-![conditioning image](./images/conditioning_image_1.png) | ![red circle with blue background](./images/red_circle_with_blue_background_6000_steps.png) |
+![conditioning image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_1.png) | ![red circle with blue background](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/red_circle_with_blue_background_6000_steps.png) |
 | | cyan circle with brown floral background | 
-![conditioning image](./images/conditioning_image_2.png) | ![cyan circle with brown floral background](./images/cyan_circle_with_brown_floral_background_6000_steps.png) |
+![conditioning image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_2.png) | ![cyan circle with brown floral background](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/cyan_circle_with_brown_floral_background_6000_steps.png) |
 
 ## Training on a 16 GB GPU
 
@@ -126,7 +135,7 @@ accelerate launch train_controlnet.py \
  --dataset_name=fusing/fill50k \
  --resolution=512 \
  --learning_rate=1e-5 \
- --validation_image "./images/conditioning_image_1.png" "./images/conditioning_image_2.png" \
+ --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
  --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
  --train_batch_size=1 \
  --gradient_accumulation_steps=4 \
@@ -152,7 +161,7 @@ accelerate launch train_controlnet.py \
  --dataset_name=fusing/fill50k \
  --resolution=512 \
  --learning_rate=1e-5 \
- --validation_image "./images/conditioning_image_1.png" "./images/conditioning_image_2.png" \
+ --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
  --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
  --train_batch_size=1 \
  --gradient_accumulation_steps=4 \
@@ -211,7 +220,7 @@ accelerate launch train_controlnet.py \
  --output_dir=$OUTPUT_DIR \
  --dataset_name=fusing/fill50k \
  --resolution=512 \
- --validation_image "./images/conditioning_image_1.png" "./images/conditioning_image_2.png" \
+ --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
  --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
  --train_batch_size=1 \
  --gradient_accumulation_steps=4 \
@@ -247,7 +256,7 @@ pipe.enable_xformers_memory_efficient_attention()
 
 pipe.enable_model_cpu_offload()
 
-control_image = load_image("./images/conditioning_image_1.png")
+control_image = load_image("./conditioning_image_1.png")
 prompt = "pale golden rod circle with old lace background"
 
 # generate image
