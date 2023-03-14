@@ -20,7 +20,7 @@ import torch
 
 from diffusers import UNet2DConditionModel
 from diffusers.training_utils import EMAModel
-from diffusers.utils.testing_utils import torch_device
+from diffusers.utils.testing_utils import skip_mps, torch_device
 
 
 class EMAModelTests(unittest.TestCase):
@@ -141,6 +141,7 @@ class EMAModelTests(unittest.TestCase):
         for step_one, step_two in zip(step_one_shadow_params, step_two_shadow_params):
             assert torch.allclose(step_one, step_two)
 
+    @skip_mps
     def test_serialization(self):
         unet, ema_unet = self.get_models()
         noisy_latents, timesteps, encoder_hidden_states = self.get_dummy_inputs()
