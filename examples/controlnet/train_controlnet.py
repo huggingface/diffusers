@@ -99,9 +99,9 @@ def log_validation(vae, text_encoder, tokenizer, unet, controlnet, args, acceler
         validation_images = args.validation_image
         validation_prompts = args.validation_prompt * len(args.validation_image)
     else:
-        assert (
-            False
-        ), "number of `args.validation_image` and `args.validation_prompt` should be checked in `parse_args`"
+        raise ValueError(
+            "number of `args.validation_image` and `args.validation_prompt` should be checked in `parse_args`"
+        )
 
     image_logs = []
 
