@@ -61,15 +61,19 @@ check_min_version("0.15.0.dev0")
 logger = get_logger(__name__)
 
 
-def log_validation(controlnet, args, accelerator, weight_dtype, step):
+def log_validation(vae, text_encoder, tokenizer, unet, controlnet, args, accelerator, weight_dtype, step):
     logger.info("Running validation... ")
 
     controlnet = accelerator.unwrap_model(controlnet)
 
     pipeline = StableDiffusionControlNetPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
-        safety_checker=None,
+        vae=vae,
+        text_encoder=text_encoder,
+        tokenizer=tokenizer,
+        unet=unet,
         controlnet=controlnet,
+        safety_checker=None,
         revision=args.revision,
         torch_dtype=weight_dtype,
     )
@@ -1020,7 +1024,17 @@ def main(args):
                             logger.info(f"Saved state to {save_path}")
 
                     if args.validation_prompt is not None and global_step % args.validation_steps == 0:
-                        log_validation(controlnet, args, accelerator, weight_dtype, global_step)
+                        log_validation(
+                            vae,
+                            text_encoder,
+                            tokenizer,
+                            unet,
+                            controlnet,
+                            args,
+                            accelerator,
+                            weight_dtype,
+                            global_step,
+                        )
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
