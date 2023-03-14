@@ -61,10 +61,30 @@ accelerate launch train_controlnet.py \
  --output_dir=$OUTPUT_DIR \
  --dataset_name=fusing/fill50k \
  --resolution=512 \
- --train_batch_size=4 \
  --learning_rate=1e-5 \
  --validation_image "./images/conditioning_image_1.png" "./images/conditioning_image_2.png" \
- --validation_prompt "red circle with blue background" "cyan circle with brown floral background"
+ --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
+ --train_batch_size=4
+```
+
+This default configuration requires ~38GB VRAM.
+
+Gradient accumulation with a smaller batch size can be used to reduce training requirements to ~20 GB VRAM
+
+```bash
+export MODEL_DIR="runwayml/stable-diffusion-v1-5"
+export OUTPUT_DIR="path to save model"
+
+accelerate launch train_controlnet.py \
+ --pretrained_model_name_or_path=$MODEL_DIR \
+ --output_dir=$OUTPUT_DIR \
+ --dataset_name=fusing/fill50k \
+ --resolution=512 \
+ --learning_rate=1e-5 \
+ --validation_image "./images/conditioning_image_1.png" "./images/conditioning_image_2.png" \
+ --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
+ --train_batch_size=1 \
+ --gradient_accumulation_steps=4
 ```
 
 ## Example results
@@ -88,7 +108,112 @@ accelerate launch train_controlnet.py \
 | | cyan circle with brown floral background | 
 ![conditioning image](./images/conditioning_image_2.png) | ![cyan circle with brown floral background](./images/cyan_circle_with_brown_floral_background_6000_steps.png) |
 
-TODO document lower vram training requirements
+## Training on a 16 GB GPU
+
+Optimizations:
+- Gradient checkpointing
+- bitsandbyte's 8-bit optimizer
+
+[bitandbytes install instructions](https://github.com/TimDettmers/bitsandbytes#requirements--installation).
+
+```bash
+export MODEL_DIR="runwayml/stable-diffusion-v1-5"
+export OUTPUT_DIR="path to save model"
+
+accelerate launch train_controlnet.py \
+ --pretrained_model_name_or_path=$MODEL_DIR \
+ --output_dir=$OUTPUT_DIR \
+ --dataset_name=fusing/fill50k \
+ --resolution=512 \
+ --learning_rate=1e-5 \
+ --validation_image "./images/conditioning_image_1.png" "./images/conditioning_image_2.png" \
+ --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
+ --train_batch_size=1 \
+ --gradient_accumulation_steps=4 \
+ --gradient_checkpointing \
+ --use_8bit_adam
+```
+
+## Training on a 12 GB GPU
+
+Optimizations:
+- Gradient checkpointing
+- bitsandbyte's 8-bit optimizer
+- xformers
+- set grads to none
+
+```bash
+export MODEL_DIR="runwayml/stable-diffusion-v1-5"
+export OUTPUT_DIR="path to save model"
+
+accelerate launch train_controlnet.py \
+ --pretrained_model_name_or_path=$MODEL_DIR \
+ --output_dir=$OUTPUT_DIR \
+ --dataset_name=fusing/fill50k \
+ --resolution=512 \
+ --learning_rate=1e-5 \
+ --validation_image "./images/conditioning_image_1.png" "./images/conditioning_image_2.png" \
+ --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
+ --train_batch_size=1 \
+ --gradient_accumulation_steps=4 \
+ --gradient_checkpointing \
+ --use_8bit_adam \
+ --enable_xformers_memory_efficient_attention \
+ --set_grads_to_none
+```
+
+## Training on an 8 GB GPU
+
+Optimizations:
+- Gradient checkpointing
+- xformers
+- set grads to none
+- DeepSpeed stage 2 with parameter and optimizer offloading
+- fp16 mixed precision
+
+[DeepSpeed](https://www.deepspeed.ai/) can offload tensors from VRAM to either 
+CPU or NVME. This requires significantly more RAM (about 25 GB).
+
+Use `accelerate config` to enable DeepSpeed stage 2.
+
+The relevant parts of the resulting accelerate config file are
+
+```yaml
+compute_environment: LOCAL_MACHINE
+deepspeed_config:
+  gradient_accumulation_steps: 4
+  offload_optimizer_device: cpu
+  offload_param_device: cpu
+  zero3_init_flag: false
+  zero_stage: 2
+distributed_type: DEEPSPEED
+```
+
+See [documentation](https://huggingface.co/docs/accelerate/usage_guides/deepspeed) for more DeepSpeed configuration options.
+
+Changing the default Adam optimizer to DeepSpeed's Adam
+`deepspeed.ops.adam.DeepSpeedCPUAdam` gives a substantial speedup but
+it requires CUDA toolchain with the same version as pytorch. 8-bit optimizer
+does not seem to be compatible with DeepSpeed at the moment.
+
+```bash
+export MODEL_DIR="runwayml/stable-diffusion-v1-5"
+export OUTPUT_DIR="path to save model"
+
+accelerate launch train_controlnet.py \
+ --pretrained_model_name_or_path=$MODEL_DIR \
+ --output_dir=$OUTPUT_DIR \
+ --dataset_name=fusing/fill50k \
+ --resolution=512 \
+ --validation_image "./images/conditioning_image_1.png" "./images/conditioning_image_2.png" \
+ --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
+ --train_batch_size=1 \
+ --gradient_accumulation_steps=4 \
+ --gradient_checkpointing \
+ --enable_xformers_memory_efficient_attention \
+ --set_grads_to_none \
+ --mixed_precision fp16
+```
 
 ## Running the trained controlnet
 
