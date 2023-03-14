@@ -103,12 +103,10 @@ class CrossAttention(nn.Module):
         # set attention processor
         # We use the AttnProcessor2_0 by default when torch 2.x is used which uses
         # torch.nn.functional.scaled_dot_product_attention for native Flash/memory_efficient_attention
-        # but only if it has the `scale` argument
-        if processor is None:
-            if torch.torch_version.TorchVersion(torch.__version__) >= (2, 1, 0):
-                processor = AttnProcessor2_0()
-            else:
-                processor = CrossAttnProcessor()
+        # but only if it has the default `scale` argument. TODO remove scale_qk check when we move to torch 2.1
+        processor = (
+            AttnProcessor2_0() if hasattr(F, "scaled_dot_product_attention") and scale_qk else CrossAttnProcessor()
+        )
         self.set_processor(processor)
 
     def set_use_memory_efficient_attention_xformers(
@@ -510,8 +508,9 @@ class AttnProcessor2_0:
         value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
+        # TODO: add support for attn.scale when we move to Torch 2.1
         hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False, scale=attn.scale
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
