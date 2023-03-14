@@ -68,7 +68,7 @@ accelerate launch train_controlnet.py \
 
 This default configuration requires ~38GB VRAM.
 
-Gradient accumulation with a smaller batch size can be used to reduce training requirements to ~20 GB VRAM
+Gradient accumulation with a smaller batch size can be used to reduce training requirements to ~20 GB VRAM.
 
 ```bash
 export MODEL_DIR="runwayml/stable-diffusion-v1-5"
