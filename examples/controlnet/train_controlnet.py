@@ -805,8 +805,8 @@ def main(args):
 
     # Check that all trainable models are in full precision
     low_precision_error_string = (
-        "Please make sure to always have all model weights in full float32 precision when starting training - even if"
-        " doing mixed precision training. copy of the weights should still be float32."
+        " Please make sure to always have all model weights in full float32 precision when starting training - even if"
+        " doing mixed precision training, copy of the weights should still be float32."
     )
 
     if accelerator.unwrap_model(controlnet).dtype != torch.float32:
