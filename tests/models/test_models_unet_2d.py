@@ -61,6 +61,7 @@ class Unet2DModelTests(ModelTesterMixin, unittest.TestCase):
             "in_channels": 3,
             "layers_per_block": 2,
             "sample_size": 32,
+            "attention_block_type": "Attention",
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
@@ -98,6 +99,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
             "attention_head_dim": 32,
             "down_block_types": ("DownBlock2D", "DownBlock2D"),
             "up_block_types": ("UpBlock2D", "UpBlock2D"),
+            "attention_block_type": "Attention",
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
@@ -223,6 +225,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
                 "AttnSkipUpBlock2D",
                 "SkipUpBlock2D",
             ],
+            "attention_block_type": "Attention",
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict

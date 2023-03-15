@@ -58,6 +58,7 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
             "down_block_types": ["DownEncoderBlock2D", "DownEncoderBlock2D"],
             "up_block_types": ["UpDecoderBlock2D", "UpDecoderBlock2D"],
             "latent_channels": 4,
+            "attention_block_type": "Attention",
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict

@@ -81,6 +81,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         norm_num_groups: int = 32,
         sample_size: int = 32,
         scaling_factor: float = 0.18215,
+        attention_block_type: str = "AttentionBlock",
     ):
         super().__init__()
 
@@ -94,6 +95,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
             act_fn=act_fn,
             norm_num_groups=norm_num_groups,
             double_z=True,
+            attention_block_type=attention_block_type,
         )
 
         # pass init params to Decoder
@@ -105,6 +107,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
             layers_per_block=layers_per_block,
             norm_num_groups=norm_num_groups,
             act_fn=act_fn,
+            attention_block_type=attention_block_type,
         )
 
         self.quant_conv = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1)

@@ -139,6 +139,7 @@ class AttnDownEncoderBlock2DTests(UNetBlockTesterMixin, unittest.TestCase):
         init_dict = {
             "in_channels": 32,
             "out_channels": 32,
+            "attention_block_type": "Attention",
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
@@ -156,6 +157,7 @@ class UNetMidBlock2DTests(UNetBlockTesterMixin, unittest.TestCase):
         init_dict = {
             "in_channels": 32,
             "temb_channels": 128,
+            "attention_block_type": "Attention",
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
@@ -327,7 +329,7 @@ class AttnUpDecoderBlock2DTests(UNetBlockTesterMixin, unittest.TestCase):
         return super().get_dummy_input(include_temb=False)
 
     def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {"in_channels": 32, "out_channels": 32}
+        init_dict = {"in_channels": 32, "out_channels": 32, "attention_block_type": "Attention"}
 
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict

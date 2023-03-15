@@ -82,6 +82,7 @@ class VQModel(ModelMixin, ConfigMixin):
         norm_num_groups: int = 32,
         vq_embed_dim: Optional[int] = None,
         scaling_factor: float = 0.18215,
+        attention_block_type: str = "AttentionBlock",
     ):
         super().__init__()
 
@@ -95,6 +96,7 @@ class VQModel(ModelMixin, ConfigMixin):
             act_fn=act_fn,
             norm_num_groups=norm_num_groups,
             double_z=False,
+            attention_block_type=attention_block_type,
         )
 
         vq_embed_dim = vq_embed_dim if vq_embed_dim is not None else latent_channels
@@ -112,6 +114,7 @@ class VQModel(ModelMixin, ConfigMixin):
             layers_per_block=layers_per_block,
             act_fn=act_fn,
             norm_num_groups=norm_num_groups,
+            attention_block_type=attention_block_type,
         )
 
     def encode(self, x: torch.FloatTensor, return_dict: bool = True) -> VQEncoderOutput:

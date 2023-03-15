@@ -25,7 +25,7 @@ from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from packaging import version
 from requests import HTTPError
-from torch import Tensor, device
+from torch import Tensor, device, nn
 
 from .. import __version__
 from ..utils import (
@@ -629,6 +629,10 @@ class ModelMixin(torch.nn.Module):
 
         model.register_to_config(_name_or_path=pretrained_model_name_or_path)
 
+        # The model has had its weights loaded. If the deprecated attention block weights
+        # were in the old format, it's now safe to convert them.
+        model._convert_deprecated_attention_blocks()
+
         # Set model in evaluation mode to deactivate DropOut modules by default
         model.eval()
         if output_loading_info:
@@ -782,6 +786,72 @@ class ModelMixin(torch.nn.Module):
             return sum(p.numel() for p in non_embedding_parameters if p.requires_grad or not only_trainable)
         else:
             return sum(p.numel() for p in self.parameters() if p.requires_grad or not only_trainable)
+
+    def _convert_deprecated_attention_blocks(self):
+        """
+        `diffusers.models.attention.AttentionBlock` is deprecated and must be converted to
+        `diffusers.models.attention_processor.Attention`.
+
+        See https://github.com/huggingface/diffusers/issues/1880 and https://github.com/huggingface/diffusers/pull/2697
+        for more details
+        """
+        models_with_deprecated_attention = ["UNet2DModel", "VQModel", "AutoencoderKL"]
+
+        blocks_with_deprecated_attention = [
+            "AttnDownBlock2D",
+            "AttnSkipDownBlock2D",
+            "AttnDownEncoderBlock2D",
+            "AttnUpBlock2D",
+            "AttnSkipUpBlock2D",
+            "AttnUpDecoderBlock2D",
+            "UNetMidBlock2D",
+        ]
+
+        if self.__class__.__name__ not in models_with_deprecated_attention:
+            return
+
+        if self.config.attention_block_type == "Attention":
+            # Model as already been converted
+            return
+
+        self.register_to_config(attention_block_type="Attention")
+
+        def _convert_deprecated_attention_blocks_in_module(module):
+            if module.__class__.__name__ not in blocks_with_deprecated_attention:
+                return
+
+            attentions = nn.ModuleList()
+
+            for attention in module.attentions:
+                if attention is not None:
+                    attention = attention._as_attention_processor_attention()
+
+                attentions.append(attention)
+
+            module.attentions = attentions
+
+        if self.__class__.__name__ == "UNet2DModel":
+            for down_block in self.down_blocks:
+                _convert_deprecated_attention_blocks_in_module(down_block)
+
+            _convert_deprecated_attention_blocks_in_module(self.mid_block)
+
+            for up_block in self.up_blocks:
+                _convert_deprecated_attention_blocks_in_module(up_block)
+
+        elif self.__class__.__name__ in ["VQModel", "AutoencoderKL"]:
+            for down_block in self.encoder.down_blocks:
+                _convert_deprecated_attention_blocks_in_module(down_block)
+
+            _convert_deprecated_attention_blocks_in_module(self.encoder.mid_block)
+
+            _convert_deprecated_attention_blocks_in_module(self.decoder.mid_block)
+
+            for up_block in self.decoder.up_blocks:
+                _convert_deprecated_attention_blocks_in_module(up_block)
+
+        else:
+            assert False
 
 
 def _get_model_file(

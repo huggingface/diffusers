@@ -36,7 +36,7 @@ import diffusers
 
 from .. import __version__
 from ..configuration_utils import ConfigMixin
-from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
+from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
 from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
     CONFIG_NAME,
@@ -442,6 +442,11 @@ class DiffusionPipeline(ConfigMixin):
 
             # set models
             setattr(self, name, module)
+
+            # In case the module was created only its constructor and ModelMixin.from_pretrained
+            # was never called.
+            if issubclass(module.__class__, ModelMixin):
+                module._convert_deprecated_attention_blocks()
 
     def save_pretrained(
         self,

@@ -62,6 +62,8 @@ class Attention(nn.Module):
         out_bias: bool = True,
         scale_qk: bool = True,
         processor: Optional["AttnProcessor"] = None,
+        eps: float = 1e-5,
+        rescale_output_factor: float = 1.0,
     ):
         super().__init__()
         inner_dim = dim_head * heads
@@ -69,6 +71,7 @@ class Attention(nn.Module):
         self.upcast_attention = upcast_attention
         self.upcast_softmax = upcast_softmax
         self.cross_attention_norm = cross_attention_norm
+        self.rescale_output_factor = rescale_output_factor
 
         self.scale = dim_head**-0.5 if scale_qk else 1.0
 
@@ -81,7 +84,7 @@ class Attention(nn.Module):
         self.added_kv_proj_dim = added_kv_proj_dim
 
         if norm_num_groups is not None:
-            self.group_norm = nn.GroupNorm(num_channels=inner_dim, num_groups=norm_num_groups, eps=1e-5, affine=True)
+            self.group_norm = nn.GroupNorm(num_channels=inner_dim, num_groups=norm_num_groups, eps=eps, affine=True)
         else:
             self.group_norm = None
 
@@ -115,6 +118,10 @@ class Attention(nn.Module):
     ):
         is_lora = hasattr(self, "processor") and isinstance(
             self.processor, (LoRAAttnProcessor, LoRAXFormersAttnProcessor)
+        )
+
+        is_spatial_attention = hasattr(self, "processor") and isinstance(
+            self.processor, (SpatialAttnProcessor, XFormersSpatialAttnProcessor)
         )
 
         if use_memory_efficient_attention_xformers:
@@ -159,6 +166,8 @@ class Attention(nn.Module):
                 )
                 processor.load_state_dict(self.processor.state_dict())
                 processor.to(self.processor.to_q_lora.up.weight.device)
+            elif is_spatial_attention:
+                processor = XFormersSpatialAttnProcessor()
             else:
                 processor = XFormersAttnProcessor(attention_op=attention_op)
         else:
@@ -170,6 +179,8 @@ class Attention(nn.Module):
                 )
                 processor.load_state_dict(self.processor.state_dict())
                 processor.to(self.processor.to_q_lora.up.weight.device)
+            elif is_spatial_attention:
+                processor = SpatialAttnProcessor()
             else:
                 processor = AttnProcessor()
 
@@ -684,6 +695,94 @@ class SlicedAttnAddedKVProcessor:
         return hidden_states
 
 
+class SpatialAttnProcessor:
+    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
+        if attention_mask is not None:
+            raise ValueError(f"{self.__class__.__name__} does not support `attention_mask`")
+
+        if encoder_hidden_states is not None:
+            raise ValueError(f"{self.__class__.__name__} does not support `encoder_hidden_states`")
+
+        residual = hidden_states
+        batch, channel, height, width = hidden_states.shape
+
+        # norm
+        hidden_states = attn.group_norm(hidden_states)
+
+        hidden_states = hidden_states.view(batch, channel, height * width).transpose(1, 2)
+
+        # proj to q, k, v
+        query_proj = attn.to_q(hidden_states)
+        key_proj = attn.to_k(hidden_states)
+        value_proj = attn.to_v(hidden_states)
+
+        query_proj = attn.head_to_batch_dim(query_proj)
+        key_proj = attn.head_to_batch_dim(key_proj)
+        value_proj = attn.head_to_batch_dim(value_proj)
+
+        attention_probs = attn.get_attention_scores(query_proj, key_proj)
+        hidden_states = torch.bmm(attention_probs, value_proj)
+
+        # reshape hidden_states
+        hidden_states = attn.batch_to_head_dim(hidden_states)
+
+        # compute next hidden_states
+        hidden_states = attn.to_out[0](hidden_states)
+
+        hidden_states = hidden_states.transpose(-1, -2).reshape(batch, channel, height, width)
+
+        # res connect and rescale
+        hidden_states = (hidden_states + residual) / attn.rescale_output_factor
+        return hidden_states
+
+
+class XFormersSpatialAttnProcessor:
+    def __init__(self, attention_op: Optional[Callable] = None):
+        self.attention_op = attention_op
+
+    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
+        if attention_mask is not None:
+            raise ValueError(f"{self.__class__.__name__} does not support `attention_mask`")
+
+        if encoder_hidden_states is not None:
+            raise ValueError(f"{self.__class__.__name__} does not support `encoder_hidden_states`")
+
+        residual = hidden_states
+        batch, channel, height, width = hidden_states.shape
+
+        # norm
+        hidden_states = attn.group_norm(hidden_states)
+
+        hidden_states = hidden_states.view(batch, channel, height * width).transpose(1, 2)
+
+        # proj to q, k, v
+        query_proj = attn.to_q(hidden_states)
+        key_proj = attn.to_k(hidden_states)
+        value_proj = attn.to_v(hidden_states)
+
+        query_proj = attn.head_to_batch_dim(query_proj)
+        key_proj = attn.head_to_batch_dim(key_proj)
+        value_proj = attn.head_to_batch_dim(value_proj)
+
+        # Memory efficient attention
+        hidden_states = xformers.ops.memory_efficient_attention(
+            query_proj, key_proj, value_proj, attn_bias=None, op=self.attention_op, scale=attn.scale
+        )
+        hidden_states = hidden_states.to(query_proj.dtype)
+
+        # reshape hidden_states
+        hidden_states = attn.batch_to_head_dim(hidden_states)
+
+        # compute next hidden_states
+        hidden_states = attn.to_out[0](hidden_states)
+
+        hidden_states = hidden_states.transpose(-1, -2).reshape(batch, channel, height, width)
+
+        # res connect and rescale
+        hidden_states = (hidden_states + residual) / attn.rescale_output_factor
+        return hidden_states
+
+
 AttentionProcessor = Union[
     AttnProcessor,
     XFormersAttnProcessor,
@@ -692,4 +791,6 @@ AttentionProcessor = Union[
     SlicedAttnAddedKVProcessor,
     LoRAAttnProcessor,
     LoRAXFormersAttnProcessor,
+    SpatialAttnProcessor,
+    XFormersSpatialAttnProcessor,
 ]

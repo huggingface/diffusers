@@ -397,10 +397,12 @@ def main(args):
                 "UpBlock2D",
                 "UpBlock2D",
             ),
+            attention_block_type="Attention",
         )
     else:
         config = UNet2DModel.load_config(args.model_config_name_or_path)
         model = UNet2DModel.from_config(config)
+        model._convert_deprecated_attention_blocks()
 
     # Create EMA for the model.
     if args.use_ema:

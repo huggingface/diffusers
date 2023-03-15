@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import inspect
 import unittest
 from typing import Tuple
 
@@ -82,6 +83,12 @@ class UNetBlockTesterMixin:
 
         if self.block_type == "mid":
             init_dict.pop("out_channels")
+
+        constructor_args = inspect.signature(self.block_class.__init__)
+        constructor_args = constructor_args.parameters.keys()
+
+        if "attention_block_type" in constructor_args:
+            init_dict["attention_block_type"] = "Attention"
 
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict

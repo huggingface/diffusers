@@ -350,6 +350,7 @@ def main(args):
             "UpBlock2D",
             "UpBlock2D",
         ),
+        attention_block_type="Attention",
     )
 
     # Create EMA for the model.

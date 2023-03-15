@@ -18,7 +18,7 @@ import torch
 from torch import nn
 
 from .attention import AdaGroupNorm, AttentionBlock
-from .attention_processor import Attention, AttnAddedKVProcessor
+from .attention_processor import Attention, AttnAddedKVProcessor, SpatialAttnProcessor
 from .dual_transformer_2d import DualTransformer2DModel
 from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, KDownsample2D, KUpsample2D, ResnetBlock2D, Upsample2D
 from .transformer_2d import Transformer2DModel
@@ -42,6 +42,7 @@ def get_down_block(
     only_cross_attention=False,
     upcast_attention=False,
     resnet_time_scale_shift="default",
+    attention_block_type="AttentionBlock",
 ):
     down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
     if down_block_type == "DownBlock2D":
@@ -82,6 +83,7 @@ def get_down_block(
             downsample_padding=downsample_padding,
             attn_num_head_channels=attn_num_head_channels,
             resnet_time_scale_shift=resnet_time_scale_shift,
+            attention_block_type=attention_block_type,
         )
     elif down_block_type == "CrossAttnDownBlock2D":
         if cross_attention_dim is None:
@@ -144,6 +146,7 @@ def get_down_block(
             downsample_padding=downsample_padding,
             attn_num_head_channels=attn_num_head_channels,
             resnet_time_scale_shift=resnet_time_scale_shift,
+            attention_block_type=attention_block_type,
         )
     elif down_block_type == "DownEncoderBlock2D":
         return DownEncoderBlock2D(
@@ -169,6 +172,7 @@ def get_down_block(
             downsample_padding=downsample_padding,
             attn_num_head_channels=attn_num_head_channels,
             resnet_time_scale_shift=resnet_time_scale_shift,
+            attention_block_type=attention_block_type,
         )
     elif down_block_type == "KDownBlock2D":
         return KDownBlock2D(
@@ -214,6 +218,7 @@ def get_up_block(
     only_cross_attention=False,
     upcast_attention=False,
     resnet_time_scale_shift="default",
+    attention_block_type="AttentionBlock",
 ):
     up_block_type = up_block_type[7:] if up_block_type.startswith("UNetRes") else up_block_type
     if up_block_type == "UpBlock2D":
@@ -293,6 +298,7 @@ def get_up_block(
             resnet_groups=resnet_groups,
             attn_num_head_channels=attn_num_head_channels,
             resnet_time_scale_shift=resnet_time_scale_shift,
+            attention_block_type=attention_block_type,
         )
     elif up_block_type == "SkipUpBlock2D":
         return SkipUpBlock2D(
@@ -318,6 +324,7 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
             attn_num_head_channels=attn_num_head_channels,
             resnet_time_scale_shift=resnet_time_scale_shift,
+            attention_block_type=attention_block_type,
         )
     elif up_block_type == "UpDecoderBlock2D":
         return UpDecoderBlock2D(
@@ -341,6 +348,7 @@ def get_up_block(
             resnet_groups=resnet_groups,
             attn_num_head_channels=attn_num_head_channels,
             resnet_time_scale_shift=resnet_time_scale_shift,
+            attention_block_type=attention_block_type,
         )
     elif up_block_type == "KUpBlock2D":
         return KUpBlock2D(
@@ -383,6 +391,7 @@ class UNetMidBlock2D(nn.Module):
         add_attention: bool = True,
         attn_num_head_channels=1,
         output_scale_factor=1.0,
+        attention_block_type: str = "AttentionBlock",
     ):
         super().__init__()
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
@@ -407,15 +416,29 @@ class UNetMidBlock2D(nn.Module):
 
         for _ in range(num_layers):
             if self.add_attention:
-                attentions.append(
-                    AttentionBlock(
+                if attention_block_type == "AttentionBlock":
+                    attention = AttentionBlock(
                         in_channels,
                         num_head_channels=attn_num_head_channels,
                         rescale_output_factor=output_scale_factor,
                         eps=resnet_eps,
                         norm_num_groups=resnet_groups,
                     )
-                )
+                elif attention_block_type == "Attention":
+                    attention = Attention(
+                        in_channels,
+                        heads=in_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
+                        dim_head=attn_num_head_channels if attn_num_head_channels is not None else in_channels,
+                        bias=True,
+                        upcast_softmax=True,
+                        norm_num_groups=resnet_groups,
+                        processor=SpatialAttnProcessor(),
+                        eps=resnet_eps,
+                    )
+                else:
+                    raise ValueError(f"Unknown attention_block_type: {attention_block_type}")
+
+                attentions.append(attention)
             else:
                 attentions.append(None)
 
@@ -658,6 +681,7 @@ class AttnDownBlock2D(nn.Module):
         output_scale_factor=1.0,
         downsample_padding=1,
         add_downsample=True,
+        attention_block_type: str = "AttentionBlock",
     ):
         super().__init__()
         resnets = []
@@ -679,15 +703,28 @@ class AttnDownBlock2D(nn.Module):
                     pre_norm=resnet_pre_norm,
                 )
             )
-            attentions.append(
-                AttentionBlock(
+            if attention_block_type == "AttentionBlock":
+                attention = AttentionBlock(
                     out_channels,
                     num_head_channels=attn_num_head_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
                     norm_num_groups=resnet_groups,
                 )
-            )
+            elif attention_block_type == "Attention":
+                attention = Attention(
+                    out_channels,
+                    heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
+                    dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
+                    bias=True,
+                    upcast_softmax=True,
+                    norm_num_groups=resnet_groups,
+                    processor=SpatialAttnProcessor(),
+                    eps=resnet_eps,
+                )
+            else:
+                raise ValueError(f"Unknown attention_block_type: {attention_block_type}")
+            attentions.append(attention)
 
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
@@ -1006,6 +1043,7 @@ class AttnDownEncoderBlock2D(nn.Module):
         output_scale_factor=1.0,
         add_downsample=True,
         downsample_padding=1,
+        attention_block_type: str = "AttentionBlock",
     ):
         super().__init__()
         resnets = []
@@ -1027,15 +1065,29 @@ class AttnDownEncoderBlock2D(nn.Module):
                     pre_norm=resnet_pre_norm,
                 )
             )
-            attentions.append(
-                AttentionBlock(
+            if attention_block_type == "AttentionBlock":
+                attention = AttentionBlock(
                     out_channels,
                     num_head_channels=attn_num_head_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
                     norm_num_groups=resnet_groups,
                 )
-            )
+            elif attention_block_type == "Attention":
+                attention = Attention(
+                    out_channels,
+                    heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
+                    dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
+                    bias=True,
+                    upcast_softmax=True,
+                    norm_num_groups=resnet_groups,
+                    processor=SpatialAttnProcessor(),
+                    eps=resnet_eps,
+                    rescale_output_factor=output_scale_factor,
+                )
+            else:
+                raise ValueError(f"Unknown attention_block_type: {attention_block_type}")
+            attentions.append(attention)
 
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
@@ -1079,6 +1131,7 @@ class AttnSkipDownBlock2D(nn.Module):
         output_scale_factor=np.sqrt(2.0),
         downsample_padding=1,
         add_downsample=True,
+        attention_block_type: str = "AttentionBlock",
     ):
         super().__init__()
         self.attentions = nn.ModuleList([])
@@ -1101,14 +1154,30 @@ class AttnSkipDownBlock2D(nn.Module):
                     pre_norm=resnet_pre_norm,
                 )
             )
-            self.attentions.append(
-                AttentionBlock(
+            if attention_block_type == "AttentionBlock":
+                attention = AttentionBlock(
                     out_channels,
                     num_head_channels=attn_num_head_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
+                    norm_num_groups=32,
                 )
-            )
+            elif attention_block_type == "Attention":
+                attention = Attention(
+                    out_channels,
+                    heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
+                    dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
+                    bias=True,
+                    upcast_softmax=True,
+                    norm_num_groups=32,
+                    processor=SpatialAttnProcessor(),
+                    eps=resnet_eps,
+                    rescale_output_factor=output_scale_factor,
+                )
+            else:
+                raise ValueError(f"Unknown attention_block_type: {attention_block_type}")
+
+            self.attentions.append(attention)
 
         if add_downsample:
             self.resnet_down = ResnetBlock2D(
@@ -1632,6 +1701,7 @@ class AttnUpBlock2D(nn.Module):
         attn_num_head_channels=1,
         output_scale_factor=1.0,
         add_upsample=True,
+        attention_block_type: str = "AttentionBlock",
     ):
         super().__init__()
         resnets = []
@@ -1655,15 +1725,31 @@ class AttnUpBlock2D(nn.Module):
                     pre_norm=resnet_pre_norm,
                 )
             )
-            attentions.append(
-                AttentionBlock(
+
+            if attention_block_type == "AttentionBlock":
+                attention = AttentionBlock(
                     out_channels,
                     num_head_channels=attn_num_head_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
                     norm_num_groups=resnet_groups,
                 )
-            )
+            elif attention_block_type == "Attention":
+                attention = Attention(
+                    out_channels,
+                    heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
+                    dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
+                    bias=True,
+                    upcast_softmax=True,
+                    norm_num_groups=resnet_groups,
+                    processor=SpatialAttnProcessor(),
+                    eps=resnet_eps,
+                    rescale_output_factor=output_scale_factor,
+                )
+            else:
+                raise ValueError(f"Unknown attention_block_type: {attention_block_type}")
+
+            attentions.append(attention)
 
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
@@ -1966,6 +2052,7 @@ class AttnUpDecoderBlock2D(nn.Module):
         attn_num_head_channels=1,
         output_scale_factor=1.0,
         add_upsample=True,
+        attention_block_type: str = "AttentionBlock",
     ):
         super().__init__()
         resnets = []
@@ -1988,15 +2075,31 @@ class AttnUpDecoderBlock2D(nn.Module):
                     pre_norm=resnet_pre_norm,
                 )
             )
-            attentions.append(
-                AttentionBlock(
+
+            if attention_block_type == "AttentionBlock":
+                attention = AttentionBlock(
                     out_channels,
                     num_head_channels=attn_num_head_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
                     norm_num_groups=resnet_groups,
                 )
-            )
+            elif attention_block_type == "Attention":
+                attention = Attention(
+                    out_channels,
+                    heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
+                    dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
+                    bias=True,
+                    upcast_softmax=True,
+                    norm_num_groups=resnet_groups,
+                    processor=SpatialAttnProcessor(),
+                    eps=resnet_eps,
+                    rescale_output_factor=output_scale_factor,
+                )
+            else:
+                raise ValueError(f"Unknown attention_block_type: {attention_block_type}")
+
+            attentions.append(attention)
 
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
@@ -2035,6 +2138,7 @@ class AttnSkipUpBlock2D(nn.Module):
         output_scale_factor=np.sqrt(2.0),
         upsample_padding=1,
         add_upsample=True,
+        attention_block_type: str = "AttentionBlock",
     ):
         super().__init__()
         self.attentions = nn.ModuleList([])
@@ -2060,14 +2164,30 @@ class AttnSkipUpBlock2D(nn.Module):
                 )
             )
 
-        self.attentions.append(
-            AttentionBlock(
+        if attention_block_type == "AttentionBlock":
+            attention = AttentionBlock(
                 out_channels,
                 num_head_channels=attn_num_head_channels,
                 rescale_output_factor=output_scale_factor,
                 eps=resnet_eps,
+                norm_num_groups=32,
             )
-        )
+        elif attention_block_type == "Attention":
+            attention = Attention(
+                out_channels,
+                heads=out_channels // attn_num_head_channels if attn_num_head_channels is not None else 1,
+                dim_head=attn_num_head_channels if attn_num_head_channels is not None else out_channels,
+                bias=True,
+                upcast_softmax=True,
+                norm_num_groups=32,
+                processor=SpatialAttnProcessor(),
+                eps=resnet_eps,
+                rescale_output_factor=output_scale_factor,
+            )
+        else:
+            raise ValueError(f"Unknown attention_block_type: {attention_block_type}")
+
+        self.attentions.append(attention)
 
         self.upsampler = FirUpsample2D(in_channels, out_channels=out_channels)
         if add_upsample:

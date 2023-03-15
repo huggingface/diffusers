@@ -17,6 +17,7 @@
 import unittest
 
 import numpy as np
+import pytest
 import torch
 from torch import nn
 
@@ -25,6 +26,7 @@ from diffusers.models.embeddings import get_timestep_embedding
 from diffusers.models.resnet import Downsample2D, ResnetBlock2D, Upsample2D
 from diffusers.models.transformer_2d import Transformer2DModel
 from diffusers.utils import torch_device
+from diffusers.utils.import_utils import is_xformers_available
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -331,6 +333,7 @@ class AttentionBlockTests(unittest.TestCase):
             eps=1e-6,
             norm_num_groups=32,
         ).to(torch_device)
+        attentionBlock = attentionBlock._as_attention_processor_attention()
         with torch.no_grad():
             attention_scores = attentionBlock(sample)
 
@@ -355,6 +358,54 @@ class AttentionBlockTests(unittest.TestCase):
             eps=1e-6,
             norm_num_groups=32,
         ).to(torch_device)
+        attentionBlock = attentionBlock._as_attention_processor_attention()
+        with torch.no_grad():
+            attention_scores = attentionBlock(sample)
+
+        assert attention_scores.shape == (1, 512, 64, 64)
+        output_slice = attention_scores[0, -1, -3:, -3:]
+
+        expected_slice = torch.tensor(
+            [-0.6621, -0.0156, -3.2766, 0.8025, -0.8609, 0.2820, 0.0905, -1.1179, -3.2126], device=torch_device
+        )
+        assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
+
+    def test_unconverted_block_forward_throws_errors(self):
+        attentionBlock = AttentionBlock(32)
+
+        with pytest.raises(
+            ValueError,
+            match="`AttentionBlock` should have been converted after load to `diffusers.models.attention_processor.Attention`",
+        ):
+            attentionBlock(1)
+
+    def test_unconverted_block_xformers_throws_errors(self):
+        attentionBlock = AttentionBlock(32)
+
+        with pytest.raises(
+            ValueError,
+            match="`AttentionBlock` should have been converted after load to `diffusers.models.attention_processor.Attention`",
+        ):
+            attentionBlock.set_use_memory_efficient_attention_xformers(False)
+
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_conversion_xformers(self):
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+
+        sample = torch.randn(1, 512, 64, 64).to(torch_device)
+        attentionBlock = AttentionBlock(
+            channels=512,
+            rescale_output_factor=1.0,
+            eps=1e-6,
+            norm_num_groups=32,
+        ).to(torch_device)
+        attentionBlock = attentionBlock._as_attention_processor_attention()
+        attentionBlock.set_use_memory_efficient_attention_xformers(True)
         with torch.no_grad():
             attention_scores = attentionBlock(sample)
 

@@ -102,6 +102,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         add_attention: bool = True,
         class_embed_type: Optional[str] = None,
         num_class_embeds: Optional[int] = None,
+        attention_block_type: str = "AttentionBlock",
     ):
         super().__init__()
 
@@ -166,6 +167,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 attn_num_head_channels=attention_head_dim,
                 downsample_padding=downsample_padding,
                 resnet_time_scale_shift=resnet_time_scale_shift,
+                attention_block_type=attention_block_type,
             )
             self.down_blocks.append(down_block)
 
@@ -180,6 +182,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             attn_num_head_channels=attention_head_dim,
             resnet_groups=norm_num_groups,
             add_attention=add_attention,
+            attention_block_type=attention_block_type,
         )
 
         # up
@@ -205,6 +208,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 resnet_groups=norm_num_groups,
                 attn_num_head_channels=attention_head_dim,
                 resnet_time_scale_shift=resnet_time_scale_shift,
+                attention_block_type=attention_block_type,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
