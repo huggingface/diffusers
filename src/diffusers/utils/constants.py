@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,11 +13,10 @@
 # limitations under the License.
 import os
 
+from huggingface_hub.constants import HUGGINGFACE_HUB_CACHE, hf_cache_home
 
-hf_cache_home = os.path.expanduser(
-    os.getenv("HF_HOME", os.path.join(os.getenv("XDG_CACHE_HOME", "~/.cache"), "huggingface"))
-)
-default_cache_path = os.path.join(hf_cache_home, "diffusers")
+
+default_cache_path = HUGGINGFACE_HUB_CACHE
 
 
 CONFIG_NAME = "config.json"
