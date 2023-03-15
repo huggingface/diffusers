@@ -184,7 +184,7 @@ class Attention(nn.Module):
         elif slice_size is not None:
             processor = SlicedAttnProcessor(slice_size)
         elif self.added_kv_proj_dim is not None:
-            processor = CrossAttnAddedKVProcessor()
+            processor = AttnAddedKVProcessor()
         else:
             processor = AttnProcessor()
 
@@ -395,7 +395,7 @@ class LoRAAttnProcessor(nn.Module):
         return hidden_states
 
 
-class CrossAttnAddedKVProcessor:
+class AttnAddedKVProcessor:
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
         residual = hidden_states
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
@@ -688,7 +688,7 @@ AttentionProcessor = Union[
     AttnProcessor,
     XFormersAttnProcessor,
     SlicedAttnProcessor,
-    CrossAttnAddedKVProcessor,
+    AttnAddedKVProcessor,
     SlicedAttnAddedKVProcessor,
     LoRAAttnProcessor,
     LoRAXFormersAttnProcessor,
