@@ -32,6 +32,7 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip && \
         datasets \
         hf-doc-builder \
         huggingface-hub \
+        Jinja2 \
         librosa \
         numpy \
         scipy \
