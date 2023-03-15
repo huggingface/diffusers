@@ -18,7 +18,7 @@ import torch
 from torch import nn
 
 from .attention import AdaGroupNorm, AttentionBlock
-from .cross_attention import CrossAttention, CrossAttnAddedKVProcessor
+from .attention_processor import Attention, AttnAddedKVProcessor
 from .dual_transformer_2d import DualTransformer2DModel
 from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, KDownsample2D, KUpsample2D, ResnetBlock2D, Upsample2D
 from .transformer_2d import Transformer2DModel
@@ -591,7 +591,7 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
 
         for _ in range(num_layers):
             attentions.append(
-                CrossAttention(
+                Attention(
                     query_dim=in_channels,
                     cross_attention_dim=in_channels,
                     heads=self.num_heads,
@@ -600,7 +600,7 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
                     norm_num_groups=resnet_groups,
                     bias=True,
                     upcast_softmax=True,
-                    processor=CrossAttnAddedKVProcessor(),
+                    processor=AttnAddedKVProcessor(),
                 )
             )
             resnets.append(
@@ -1365,7 +1365,7 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
                 )
             )
             attentions.append(
-                CrossAttention(
+                Attention(
                     query_dim=out_channels,
                     cross_attention_dim=out_channels,
                     heads=self.num_heads,
@@ -1374,7 +1374,7 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
                     norm_num_groups=resnet_groups,
                     bias=True,
                     upcast_softmax=True,
-                    processor=CrossAttnAddedKVProcessor(),
+                    processor=AttnAddedKVProcessor(),
                 )
             )
         self.attentions = nn.ModuleList(attentions)
@@ -2358,7 +2358,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
                 )
             )
             attentions.append(
-                CrossAttention(
+                Attention(
                     query_dim=out_channels,
                     cross_attention_dim=out_channels,
                     heads=self.num_heads,
@@ -2367,7 +2367,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
                     norm_num_groups=resnet_groups,
                     bias=True,
                     upcast_softmax=True,
-                    processor=CrossAttnAddedKVProcessor(),
+                    processor=AttnAddedKVProcessor(),
                 )
             )
         self.attentions = nn.ModuleList(attentions)
@@ -2677,7 +2677,7 @@ class KAttentionBlock(nn.Module):
         # 1. Self-Attn
         if add_self_attention:
             self.norm1 = AdaGroupNorm(temb_channels, dim, max(1, dim // group_size))
-            self.attn1 = CrossAttention(
+            self.attn1 = Attention(
                 query_dim=dim,
                 heads=num_attention_heads,
                 dim_head=attention_head_dim,
@@ -2689,7 +2689,7 @@ class KAttentionBlock(nn.Module):
 
         # 2. Cross-Attn
         self.norm2 = AdaGroupNorm(temb_channels, dim, max(1, dim // group_size))
-        self.attn2 = CrossAttention(
+        self.attn2 = Attention(
             query_dim=dim,
             cross_attention_dim=cross_attention_dim,
             heads=num_attention_heads,
