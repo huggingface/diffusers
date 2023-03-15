@@ -99,6 +99,8 @@
     title: How to contribute?
   - local: conceptual/ethical_guidelines
     title: Diffusers' Ethical Guidelines
+  - local: conceptual/evaluation
+    title: Evaluating Diffusion Models
   title: Conceptual Guides
 - sections:
   - sections:
