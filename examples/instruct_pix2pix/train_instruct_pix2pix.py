@@ -474,7 +474,7 @@ def main():
         logger.info("Initializing the InstructPix2Pix UNet from the pretrained UNet.")
         in_channels = 8
         out_channels = unet.conv_in.out_channels
-        unet.register_to_config(in_channel=in_channels)
+        unet.register_to_config(in_channels=in_channels)
 
         with torch.no_grad():
             new_conv_in = nn.Conv2d(
