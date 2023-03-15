@@ -684,7 +684,7 @@ class SlicedAttnAddedKVProcessor:
         return hidden_states
 
 
-AttnProcessors = Union[
+AttentionProcessor = Union[
     AttnProcessor,
     XFormersAttnProcessor,
     SlicedAttnProcessor,
