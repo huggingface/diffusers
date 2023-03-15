@@ -32,7 +32,6 @@ try:
 except OptionalDependencyNotAvailable:
     from .utils.dummy_pt_objects import *  # noqa F403
 else:
-    from .image_processor import VaeImageProcessor
     from .models import (
         AutoencoderKL,
         ControlNetModel,
