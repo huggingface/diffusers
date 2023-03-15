@@ -35,7 +35,7 @@ We cover Diffusion models with the following pipelines:
 - Text-guided image generation, additionally conditioned on an input image (such as the [`StableDiffusionImg2ImgPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/img2img), and [`StableDiffusionInstructPix2PixPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/pix2pix)).
 - Class-conditioned image generation models (such as the [`DiTPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/dit)).
 
-## Qualitative
+## Qualitative Evaluation
 
 Qualitative evaluation typically involves human assessment of generated images. Quality is measured across aspects such as compositionality, image-text alignment, and spatial relations. Common prompts provide a degree of uniformity for subjective metrics. DrawBench and PartiPrompts are prompt datasets used for qualitative benchmarking. DrawBench and PartiPrompts were introduced by [Imagen](https://imagen.research.google/) and [Parti](https://parti.research.google/) respectively. 
 
@@ -89,17 +89,17 @@ We can also set `num_images_per_prompt` accordingly to compare different images 
 ![parti-prompts-15](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/parti-prompts-15.png)
 
 Once several images are generated from all the prompts using multiple models (under evaluation), these results are presented to human evaluators for scoring. For
-more details on these benchmarks, refer to their respective papers.  
+more details on the DrawBench and PartiPrompts benchmarks, refer to their respective papers.  
 
 <Tip> 
 
 It is useful to look at some inference samples while a model is training to measure the 
 training progress. In our [training scripts](https://github.com/huggingface/diffusers/tree/main/examples/), we support this utility with additional support for
-logging to TensorBoard and Weights and Biases.
+logging to TensorBoard and Weights & Biases.
 
 </Tip>
 
-## Quantitative
+## Quantitative Evaluation
 
 In this section, we will walk you through how to evaluate three different diffusion pipelines using:
 
@@ -118,9 +118,7 @@ from diffusers import StableDiffusionPipeline
 import torch
 
 model_ckpt = "CompVis/stable-diffusion-v1-4"
-device = "cuda"
-weight_dtype = torch.float16
-sd_pipeline = StableDiffusionPipeline.from_pretrained(model_ckpt, torch_dtype=weight_dtype).to(device)
+sd_pipeline = StableDiffusionPipeline.from_pretrained(model_ckpt, torch_dtype= torch.float16).to("cuda")
 ```
 
 Generate some images with multiple prompts:
@@ -458,7 +456,7 @@ image_paths = sorted([os.path.join(dataset_path, x) for x in os.listdir(dataset_
 real_images = [np.array(Image.open(path).convert("RGB")) for path in image_paths]
 ```
 
-These images are from the following Imagenet-1k classes: "cassette_player", "chain_saw", "church", "gas_pump", "parachute", and "tench".
+These are 10 images from the following Imagenet-1k classes: "cassette_player", "chain_saw" (x2), "church", "gas_pump" (x3), "parachute" (x2), and "tench".
 
 Now that the images are loaded, let's apply some lightweight pre-processing on them to use them for FID calculation.
 
