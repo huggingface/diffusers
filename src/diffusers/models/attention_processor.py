@@ -106,7 +106,7 @@ class Attention(nn.Module):
         # but only if it has the default `scale` argument. TODO remove scale_qk check when we move to torch 2.1
         if processor is None:
             processor = (
-                AttnProcessor2_0() if hasattr(F, "scaled_dot_product_attention") and scale_qk else CrossAttnProcessor()
+                AttnProcessor2_0() if hasattr(F, "scaled_dot_product_attention") and scale_qk else AttnProcessor()
             )
         self.set_processor(processor)
 
@@ -114,7 +114,7 @@ class Attention(nn.Module):
         self, use_memory_efficient_attention_xformers: bool, attention_op: Optional[Callable] = None
     ):
         is_lora = hasattr(self, "processor") and isinstance(
-            self.processor, (LoRACrossAttnProcessor, LoRAXFormersCrossAttnProcessor)
+            self.processor, (LoRAAttnProcessor, LoRAXFormersAttnProcessor)
         )
 
         if use_memory_efficient_attention_xformers:
@@ -151,7 +151,7 @@ class Attention(nn.Module):
                     raise e
 
             if is_lora:
-                processor = LoRAXFormersCrossAttnProcessor(
+                processor = LoRAXFormersAttnProcessor(
                     hidden_size=self.processor.hidden_size,
                     cross_attention_dim=self.processor.cross_attention_dim,
                     rank=self.processor.rank,
@@ -160,10 +160,10 @@ class Attention(nn.Module):
                 processor.load_state_dict(self.processor.state_dict())
                 processor.to(self.processor.to_q_lora.up.weight.device)
             else:
-                processor = XFormersCrossAttnProcessor(attention_op=attention_op)
+                processor = XFormersAttnProcessor(attention_op=attention_op)
         else:
             if is_lora:
-                processor = LoRACrossAttnProcessor(
+                processor = LoRAAttnProcessor(
                     hidden_size=self.processor.hidden_size,
                     cross_attention_dim=self.processor.cross_attention_dim,
                     rank=self.processor.rank,
@@ -171,7 +171,7 @@ class Attention(nn.Module):
                 processor.load_state_dict(self.processor.state_dict())
                 processor.to(self.processor.to_q_lora.up.weight.device)
             else:
-                processor = CrossAttnProcessor()
+                processor = AttnProcessor()
 
         self.set_processor(processor)
 
@@ -186,7 +186,7 @@ class Attention(nn.Module):
         elif self.added_kv_proj_dim is not None:
             processor = CrossAttnAddedKVProcessor()
         else:
-            processor = CrossAttnProcessor()
+            processor = AttnProcessor()
 
         self.set_processor(processor)
 
@@ -292,7 +292,7 @@ class Attention(nn.Module):
         return attention_mask
 
 
-class CrossAttnProcessor:
+class AttnProcessor:
     def __call__(
         self,
         attn: Attention,
@@ -353,7 +353,7 @@ class LoRALinearLayer(nn.Module):
         return up_hidden_states.to(orig_dtype)
 
 
-class LoRACrossAttnProcessor(nn.Module):
+class LoRAAttnProcessor(nn.Module):
     def __init__(self, hidden_size, cross_attention_dim=None, rank=4):
         super().__init__()
 
@@ -437,7 +437,7 @@ class CrossAttnAddedKVProcessor:
         return hidden_states
 
 
-class XFormersCrossAttnProcessor:
+class XFormersAttnProcessor:
     def __init__(self, attention_op: Optional[Callable] = None):
         self.attention_op = attention_op
 
@@ -523,7 +523,7 @@ class AttnProcessor2_0:
         return hidden_states
 
 
-class LoRAXFormersCrossAttnProcessor(nn.Module):
+class LoRAXFormersAttnProcessor(nn.Module):
     def __init__(self, hidden_size, cross_attention_dim, rank=4, attention_op: Optional[Callable] = None):
         super().__init__()
 
@@ -684,12 +684,12 @@ class SlicedAttnAddedKVProcessor:
         return hidden_states
 
 
-AttnProcessor = Union[
-    CrossAttnProcessor,
-    XFormersCrossAttnProcessor,
+AttnProcessors = Union[
+    AttnProcessor,
+    XFormersAttnProcessor,
     SlicedAttnProcessor,
     CrossAttnAddedKVProcessor,
     SlicedAttnAddedKVProcessor,
-    LoRACrossAttnProcessor,
-    LoRAXFormersCrossAttnProcessor,
+    LoRAAttnProcessor,
+    LoRAXFormersAttnProcessor,
 ]

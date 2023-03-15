@@ -20,7 +20,7 @@ from torch.nn import functional as F
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, logging
-from .attention_processor import AttnProcessor
+from .attention_processor import AttnProcessors
 from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
 from .unet_2d_blocks import (
@@ -314,7 +314,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
 
     @property
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.attn_processors
-    def attn_processors(self) -> Dict[str, AttnProcessor]:
+    def attn_processors(self) -> Dict[str, AttnProcessors]:
         r"""
         Returns:
             `dict` of attention processors: A dictionary containing all attention processors used in the model with
@@ -323,7 +323,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         # set recursively
         processors = {}
 
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttnProcessor]):
+        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttnProcessors]):
             if hasattr(module, "set_processor"):
                 processors[f"{name}.processor"] = module.processor
 
@@ -338,10 +338,10 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         return processors
 
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttnProcessor, Dict[str, AttnProcessor]]):
+    def set_attn_processor(self, processor: Union[AttnProcessors, Dict[str, AttnProcessors]]):
         r"""
         Parameters:
-            `processor (`dict` of `AttnProcessor` or `AttnProcessor`):
+            `processor (`dict` of `AttnProcessors` or `AttnProcessors`):
                 The instantiated processor class or a dictionary of processor classes that will be set as the processor
                 of **all** `Attention` layers.
             In case `processor` is a dict, the key needs to define the path to the corresponding cross attention processor. This is strongly recommended when setting trainablae attention processors.:

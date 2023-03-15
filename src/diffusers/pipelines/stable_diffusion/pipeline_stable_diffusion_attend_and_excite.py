@@ -121,7 +121,7 @@ class AttentionStore:
         self.attn_res = attn_res
 
 
-class AttendExciteCrossAttnProcessor:
+class AttendExciteAttnProcessor:
     def __init__(self, attnstore, place_in_unet):
         super().__init__()
         self.attnstore = attnstore
@@ -679,9 +679,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
                 continue
 
             cross_att_count += 1
-            attn_procs[name] = AttendExciteCrossAttnProcessor(
-                attnstore=self.attention_store, place_in_unet=place_in_unet
-            )
+            attn_procs[name] = AttendExciteAttnProcessor(attnstore=self.attention_store, place_in_unet=place_in_unet)
 
         self.unet.set_attn_processor(attn_procs)
         self.attention_store.num_att_layers = cross_att_count
@@ -777,7 +775,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
             cross_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttnProcessor` as defined under
+                A kwargs dictionary that if specified is passed along to the `AttnProcessors` as defined under
                 `self.processor` in
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
             max_iter_to_alter (`int`, *optional*, defaults to `25`):
