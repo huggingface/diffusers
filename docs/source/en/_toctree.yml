@@ -11,6 +11,8 @@
 - sections:
   - local: tutorials/tutorial_overview
     title: Overview
+  - local: using-diffusers/write_own_pipeline
+    title: Understanding models and schedulers
   - local: tutorials/basic_training
     title: Train a diffusion model
   title: Tutorials
@@ -19,21 +21,17 @@
     - local: using-diffusers/loading_overview
       title: Overview
     - local: using-diffusers/loading
-      title: Loading Pipelines, Models, and Schedulers
+      title: Load pipelines, models, and schedulers
     - local: using-diffusers/schedulers
-      title: Using different Schedulers
-    - local: using-diffusers/configuration
-      title: Configuring Pipelines, Models, and Schedulers
+      title: Load and compare different schedulers
     - local: using-diffusers/custom_pipeline_overview
-      title: Loading and Adding Custom Pipelines
+      title: Load and add custom pipelines
     - local: using-diffusers/kerascv
-      title: Using KerasCV Stable Diffusion Checkpoints in Diffusers
+      title: Load KerasCV Stable Diffusion checkpoints
     title: Loading & Hub
   - sections:
     - local: using-diffusers/pipeline_overview
       title: Overview
-    - local: using-diffusers/write_own_pipeline
-      title: Understanding models and schedulers
     - local: using-diffusers/unconditional_image_generation
       title: Unconditional Image Generation
     - local: using-diffusers/conditional_image_generation
@@ -44,8 +42,6 @@
       title: Text-Guided Image-Inpainting
     - local: using-diffusers/depth2img
       title: Text-Guided Depth-to-Image
-    - local: using-diffusers/controlling_generation
-      title: Controlling generation
     - local: using-diffusers/reusing_seeds
       title: Reusing seeds for deterministic generation
     - local: using-diffusers/reproducibility
@@ -59,6 +55,20 @@
     - local: using-diffusers/weighted_prompts
       title: Weighting Prompts
     title: Pipelines for Inference
+  - sections:
+    - local: training/overview
+      title: Overview
+    - local: training/unconditional_training
+      title: Unconditional image generation
+    - local: training/text_inversion
+      title: Textual Inversion
+    - local: training/dreambooth
+      title: DreamBooth
+    - local: training/text2image
+      title: Text-to-image
+    - local: training/lora
+      title: Low-Rank Adaptation of Large Language Models (LoRA)
+    title: Training
   - sections:
     - local: using-diffusers/rl
       title: Reinforcement Learning
@@ -87,22 +97,10 @@
     title: Habana Gaudi
   title: Optimization/Special Hardware
 - sections:
-  - local: training/overview
-    title: Overview
-  - local: training/unconditional_training
-    title: Unconditional image generation
-  - local: training/text_inversion
-    title: Textual Inversion
-  - local: training/dreambooth
-    title: DreamBooth
-  - local: training/text2image
-    title: Text-to-image
-  - local: training/lora
-    title: Low-Rank Adaptation of Large Language Models (LoRA)
-  title: Training
-- sections:
   - local: conceptual/philosophy
     title: Philosophy
+  - local: using-diffusers/controlling_generation
+    title: Controlled generation
   - local: conceptual/contribution
     title: How to contribute?
   - local: conceptual/ethical_guidelines
