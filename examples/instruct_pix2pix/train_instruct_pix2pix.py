@@ -973,7 +973,7 @@ def main():
     if accelerator.is_main_process:
         unet = accelerator.unwrap_model(instruct_pix2pix_unet)
         if args.use_ema:
-            ema_unet.copy_to(instruct_pix2pix_unet.parameters())
+            ema_unet.copy_to(unet.parameters())
 
         pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
