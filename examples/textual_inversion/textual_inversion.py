@@ -843,13 +843,14 @@ def main():
                     save_path = os.path.join(args.output_dir, f"learned_embeds-steps-{global_step}.bin")
                     save_progress(text_encoder, placeholder_token_id, accelerator, args, save_path)
 
-                if global_step % args.checkpointing_steps == 0:
-                    if accelerator.is_main_process:
+                if accelerator.is_main_process:
+                    if global_step % args.checkpointing_steps == 0:
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
-                if args.validation_prompt is not None and global_step % args.validation_steps == 0:
-                    log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch)
+
+                    if args.validation_prompt is not None and global_step % args.validation_steps == 0:
+                        log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch)
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)

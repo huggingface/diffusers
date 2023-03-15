@@ -598,7 +598,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             for down_block_res_sample, down_block_additional_residual in zip(
                 down_block_res_samples, down_block_additional_residuals
             ):
-                down_block_res_sample += down_block_additional_residual
+                down_block_res_sample = down_block_res_sample + down_block_additional_residual
                 new_down_block_res_samples += (down_block_res_sample,)
 
             down_block_res_samples = new_down_block_res_samples
@@ -614,7 +614,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             )
 
         if mid_block_additional_residual is not None:
-            sample += mid_block_additional_residual
+            sample = sample + mid_block_additional_residual
 
         # 5. up
         for i, upsample_block in enumerate(self.up_blocks):

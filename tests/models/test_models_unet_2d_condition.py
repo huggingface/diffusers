@@ -118,7 +118,8 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         model.enable_xformers_memory_efficient_attention()
 
         assert (
-            model.mid_block.attentions[0].transformer_blocks[0].attn1._use_memory_efficient_attention_xformers
+            model.mid_block.attentions[0].transformer_blocks[0].attn1.processor.__class__.__name__
+            == "XFormersCrossAttnProcessor"
         ), "xformers is not enabled"
 
     @unittest.skipIf(torch_device == "mps", "Gradient checkpointing skipped on MPS")
