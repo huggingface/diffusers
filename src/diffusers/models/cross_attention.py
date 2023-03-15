@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from attention_processor import (
+from attention_processor import (  # noqa: F401
     Attention,
     AttnAddedKVProcessor,
     LoRAAttnProcessor,
@@ -19,9 +19,12 @@ from attention_processor import (
     SlicedAttnAddedKVProcessor,
     SlicedAttnProcessor,
     XFormersAttnProcessor,
+    LoRALinearLayer,
+    AttnProcessor2_0,
 )
-from attention_processor import (
+from attention_processor import (  # noqa: F401
     AttnProcessor as AttnProcessorRename,
+    AttnProcessors as AttnProcessor,
 )
 
 from ..utils import deprecate
