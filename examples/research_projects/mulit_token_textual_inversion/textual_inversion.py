@@ -864,7 +864,7 @@ def main():
             if global_step >= args.max_train_steps:
                 break
 
-        if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
+        if accelerator.is_main_process and args.validation_prompt is not None and epoch % args.validation_epochs == 0:
             logger.info(
                 f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
                 f" {args.validation_prompt}."

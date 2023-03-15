@@ -322,7 +322,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
         )
 
-        output = pipe(prompt, image, generator=generator, output_type="np")
+        output = pipe(prompt, image, generator=generator, output_type="np", num_inference_steps=3)
 
         image = output.images[0]
 
@@ -349,7 +349,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth.png"
         )
 
-        output = pipe(prompt, image, generator=generator, output_type="np")
+        output = pipe(prompt, image, generator=generator, output_type="np", num_inference_steps=3)
 
         image = output.images[0]
 
@@ -376,7 +376,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/man_hed.png"
         )
 
-        output = pipe(prompt, image, generator=generator, output_type="np")
+        output = pipe(prompt, image, generator=generator, output_type="np", num_inference_steps=3)
 
         image = output.images[0]
 
@@ -403,7 +403,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/room_mlsd.png"
         )
 
-        output = pipe(prompt, image, generator=generator, output_type="np")
+        output = pipe(prompt, image, generator=generator, output_type="np", num_inference_steps=3)
 
         image = output.images[0]
 
@@ -430,7 +430,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/cute_toy_normal.png"
         )
 
-        output = pipe(prompt, image, generator=generator, output_type="np")
+        output = pipe(prompt, image, generator=generator, output_type="np", num_inference_steps=3)
 
         image = output.images[0]
 
@@ -457,7 +457,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/pose.png"
         )
 
-        output = pipe(prompt, image, generator=generator, output_type="np")
+        output = pipe(prompt, image, generator=generator, output_type="np", num_inference_steps=3)
 
         image = output.images[0]
 
@@ -484,7 +484,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bag_scribble.png"
         )
 
-        output = pipe(prompt, image, generator=generator, output_type="np")
+        output = pipe(prompt, image, generator=generator, output_type="np", num_inference_steps=3)
 
         image = output.images[0]
 
@@ -511,7 +511,7 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/house_seg.png"
         )
 
-        output = pipe(prompt, image, generator=generator, output_type="np")
+        output = pipe(prompt, image, generator=generator, output_type="np", num_inference_steps=3)
 
         image = output.images[0]
 
@@ -581,7 +581,7 @@ class StableDiffusionMultiControlNetPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/pose.png"
         )
 
-        output = pipe(prompt, [image_pose, image_canny], generator=generator, output_type="np")
+        output = pipe(prompt, [image_pose, image_canny], generator=generator, output_type="np", num_inference_steps=3)
 
         image = output.images[0]
 
