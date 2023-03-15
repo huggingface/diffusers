@@ -9,7 +9,7 @@
 The output is an "edited" image that reflects the edit instruction applied on the input image:
 
 <p align="center">
-    <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/edit-output.png" alt="instructpix2pix-output" width=600/>
+    <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/output-gs%407-igs%401-steps%4050.png" alt="instructpix2pix-output" width=600/>
 </p>
 
 The `train_instruct_pix2pix.py` script shows how to implement the training procedure and adapt it for Stable Diffusion.
