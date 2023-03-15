@@ -9,11 +9,15 @@
     title: Installation
   title: Get started
 - sections:
+  - local: tutorials/tutorial_overview
+    title: Overview
   - local: tutorials/basic_training
     title: Train a diffusion model
   title: Tutorials
 - sections:
   - sections:
+    - local: using-diffusers/loading_overview
+      title: Overview
     - local: using-diffusers/loading
       title: Loading Pipelines, Models, and Schedulers
     - local: using-diffusers/schedulers
@@ -26,6 +30,8 @@
       title: Using KerasCV Stable Diffusion Checkpoints in Diffusers
     title: Loading & Hub
   - sections:
+    - local: using-diffusers/pipeline_overview
+      title: Overview
     - local: using-diffusers/write_own_pipeline
       title: Understanding models and schedulers
     - local: using-diffusers/unconditional_image_generation
@@ -63,6 +69,8 @@
     title: Taking Diffusers Beyond Images
   title: Using Diffusers
 - sections:
+  - local: optimization/opt_overview
+    title: Overview
   - local: optimization/fp16
     title: Memory and Speed
   - local: optimization/torch2.0
