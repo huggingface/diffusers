@@ -29,6 +29,7 @@ import numpy as np
 import PIL
 import requests
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
@@ -58,8 +59,6 @@ logger = get_logger(__name__, log_level="INFO")
 DATASET_NAME_MAPPING = {
     "fusing/instructpix2pix-1000-samples": ("input_image", "edit_prompt", "edited_image"),
 }
-LAYER_TO_FILL = "conv_in.weight"
-NULL_PROMPT = ""
 WANDB_TABLE_COL_NAMES = ["original_image", "edited_image", "edit_prompt"]
 
 
@@ -374,19 +373,6 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
         return f"{organization}/{model_id}"
 
 
-def initialize_unet(unet: UNet2DConditionModel, instruct_pix2pix_unet: UNet2DConditionModel):
-    pretrained_unet_state_dict = unet.state_dict()
-    instruct_pix2pix_unet_state_dict = instruct_pix2pix_unet.state_dict()
-    for k in pretrained_unet_state_dict:
-        if k == LAYER_TO_FILL:
-            instruct_pix2pix_unet_state_dict[k].zero_()
-            instruct_pix2pix_unet_state_dict[k][:, :4, :, :].copy_(pretrained_unet_state_dict[k])
-        else:
-            instruct_pix2pix_unet_state_dict[k].copy_(pretrained_unet_state_dict[k])
-    instruct_pix2pix_unet.load_state_dict(instruct_pix2pix_unet_state_dict)
-    return instruct_pix2pix_unet
-
-
 def convert_to_np(image, resolution):
     image = image.convert("RGB").resize((resolution, resolution))
     return np.array(image).transpose(2, 0, 1)
@@ -412,9 +398,7 @@ def main():
             ),
         )
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
-
     accelerator_project_config = ProjectConfiguration(total_limit=args.checkpoints_total_limit)
-
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
@@ -422,6 +406,8 @@ def main():
         logging_dir=logging_dir,
         project_config=accelerator_project_config,
     )
+
+    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
 
     if args.report_to == "wandb":
         if not is_wandb_available():
@@ -485,14 +471,18 @@ def main():
     # from the pre-trained checkpoints. For the extra channels added to the first layer, they are
     # initialized to zero.
     if accelerator.is_main_process:
-        instruct_pix2pix_config = dict(unet.config)
-        instruct_pix2pix_config.update({"in_channels": 8})
-
-    instruct_pix2pix_unet = UNet2DConditionModel.from_config(instruct_pix2pix_config)
-
-    if accelerator.is_main_process:
         logger.info("Initializing the InstructPix2Pix UNet from the pretrained UNet.")
-        instruct_pix2pix_unet = initialize_unet(unet, instruct_pix2pix_unet)
+        in_channels = 8
+        out_channels = unet.conv_in.out_channels
+        unet.register_to_config(in_channel=in_channels)
+
+        with torch.no_grad():
+            new_conv_in = nn.Conv2d(
+                in_channels, out_channels, unet.conv_in.kernel_size, unet.conv_in.stride, unet.conv_in.padding
+            )
+            new_conv_in.weight.zero_()
+            new_conv_in.weight[:, :4, :, :].copy_(unet.conv_in.weight)
+            unet.conv_in = new_conv_in
 
     # Freeze vae and text_encoder
     vae.requires_grad_(False)
@@ -500,13 +490,7 @@ def main():
 
     # Create EMA for the unet.
     if args.use_ema:
-        ema_unet = UNet2DConditionModel.from_config(instruct_pix2pix_config)
-        if accelerator.is_main_process:
-            ema_unet = initialize_unet(unet, ema_unet)
-        ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config)
-
-    # Remove the `unet` as we don't need it.
-    del unet
+        ema_unet = EMAModel(unet.parameters(), model_cls=UNet2DConditionModel, model_config=unet.config)
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -556,7 +540,7 @@ def main():
         accelerator.register_load_state_pre_hook(load_model_hook)
 
     if args.gradient_checkpointing:
-        instruct_pix2pix_unet.enable_gradient_checkpointing()
+        unet.enable_gradient_checkpointing()
 
     # Enable TF32 for faster training on Ampere GPUs,
     # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
@@ -582,7 +566,7 @@ def main():
         optimizer_cls = torch.optim.AdamW
 
     optimizer = optimizer_cls(
-        instruct_pix2pix_unet.parameters(),
+        unet.parameters(),
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -735,8 +719,8 @@ def main():
     )
 
     # Prepare everything with our `accelerator`.
-    instruct_pix2pix_unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        instruct_pix2pix_unet, optimizer, train_dataloader, lr_scheduler
+    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        unet, optimizer, train_dataloader, lr_scheduler
     )
 
     if args.use_ema:
@@ -809,7 +793,7 @@ def main():
     progress_bar.set_description("Steps")
 
     for epoch in range(first_epoch, args.num_train_epochs):
-        instruct_pix2pix_unet.train()
+        unet.train()
         train_loss = 0.0
         for step, batch in enumerate(train_dataloader):
             # Skip steps until we reach the resumed step
@@ -818,7 +802,7 @@ def main():
                     progress_bar.update(1)
                 continue
 
-            with accelerator.accumulate(instruct_pix2pix_unet):
+            with accelerator.accumulate(unet):
                 # We want to learn the denoising process w.r.t the edited images which
                 # are conditioned on the original image (which was edited) and the edit instruction.
                 # So, first, convert images to latent space.
@@ -846,7 +830,7 @@ def main():
                 # Conditioning dropout to support classifier-free guidance during inference. For more details
                 # check out the section 3.2.1 of the original paper https://arxiv.org/abs/2211.09800.
                 if args.conditioning_dropout_prob is not None:
-                    random_p = torch.rand(bsz, device=latents.device)
+                    random_p = torch.rand(bsz, device=latents.device, generator=generator)
                     # Sample masks for the edit prompts.
                     prompt_mask = random_p < 2 * args.conditioning_dropout_prob
                     prompt_mask = prompt_mask.reshape(bsz, 1, 1)
@@ -876,7 +860,7 @@ def main():
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
                 # Predict the noise residual and compute loss
-                model_pred = instruct_pix2pix_unet(concatenated_noisy_latents, timesteps, encoder_hidden_states).sample
+                model_pred = unet(concatenated_noisy_latents, timesteps, encoder_hidden_states).sample
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
                 # Gather the losses across all processes for logging (if we use distributed training).
@@ -886,7 +870,7 @@ def main():
                 # Backpropagate
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(instruct_pix2pix_unet.parameters(), args.max_grad_norm)
+                    accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
@@ -894,7 +878,7 @@ def main():
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
                 if args.use_ema:
-                    ema_unet.step(instruct_pix2pix_unet.parameters())
+                    ema_unet.step(unet.parameters())
                 progress_bar.update(1)
                 global_step += 1
                 accelerator.log({"train_loss": train_loss}, step=global_step)
@@ -925,11 +909,11 @@ def main():
                 # create pipeline
                 if args.use_ema:
                     # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
-                    ema_unet.store(instruct_pix2pix_unet.parameters())
-                    ema_unet.copy_to(instruct_pix2pix_unet.parameters())
+                    ema_unet.store(unet.parameters())
+                    ema_unet.copy_to(unet.parameters())
                 pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
-                    unet=instruct_pix2pix_unet,
+                    unet=unet,
                     revision=args.revision,
                     torch_dtype=weight_dtype,
                 )
@@ -937,7 +921,6 @@ def main():
                 pipeline.set_progress_bar_config(disable=True)
 
                 # run inference
-                generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
                 original_image = download_image(args.val_image_url)
                 edited_images = []
                 with torch.autocast(str(accelerator.device), enabled=accelerator.mixed_precision == "fp16"):
@@ -963,7 +946,7 @@ def main():
                         tracker.log({"validation": wandb_table})
                 if args.use_ema:
                     # Switch back to the original UNet parameters.
-                    ema_unet.restore(instruct_pix2pix_unet.parameters())
+                    ema_unet.restore(unet.parameters())
 
                 del pipeline
                 torch.cuda.empty_cache()
@@ -971,7 +954,7 @@ def main():
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        unet = accelerator.unwrap_model(instruct_pix2pix_unet)
+        unet = accelerator.unwrap_model(unet)
         if args.use_ema:
             ema_unet.copy_to(unet.parameters())
 
