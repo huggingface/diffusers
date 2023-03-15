@@ -58,10 +58,11 @@ Below we show some prompts sampled across different challenges: Basic, Complex, 
 ```python
 from datasets import load_dataset
 
-prompts = load_dataset("nateraw/parti-prompts", split="train")
-prompts = prompts.shuffle()
-sample_prompts = [prompts[i]["Prompt"] for i in range(5)]
+# prompts = load_dataset("nateraw/parti-prompts", split="train")
+# prompts = prompts.shuffle()
+# sample_prompts = [prompts[i]["Prompt"] for i in range(5)]
 
+# Fixing these sample prompts in the interest of reproducibility.
 sample_prompts = [
     "a corgi",
     "a hot air balloon with a yin-yang symbol, with the moon visible in the daytime sky",
@@ -159,7 +160,7 @@ print(f"CLIP score: {sd_clip_score}")
 # CLIP score: 35.7038
 ```
 
-In the above example, we generated one image per prompt. If we generated multiple images per prompt, we could uniformly sample just one from the pool of generated images.
+In the above example, we generated one image per prompt. If we generated multiple images per prompt, we would have to take the average score from the generated images per prompt.
 
 Now, if we wanted to compare two checkpoints compatible with the [`StableDiffusionPipeline`] we should pass a generator while calling the pipeline. First, we generate images with a
 fixed seed with the [v1-4 Stable Diffusion checkpoint](https://huggingface.co/CompVis/stable-diffusion-v1-4):
@@ -185,9 +186,11 @@ And finally, we compare their CLIP scores:
 ```python
 sd_clip_score_1_4 = calculate_clip_score(images, prompts)
 print(f"CLIP Score with v-1-4: {sd_clip_score_1_4}")
+# CLIP Score with v-1-4: 34.9102
 
 sd_clip_score_1_5 = calculate_clip_score(images_1_5, prompts)
 print(f"CLIP Score with v-1-5: {sd_clip_score_1_5}")
+# CLIP Score with v-1-5: 36.2137
 ```
 
 It seems like the [v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) checkpoint performs better than its predecessor. Note, however, that the number of prompts we used to compute the CLIP scores is quite low. For a more practical evaluation, this number should be way higher, and the prompts should be diverse.
@@ -409,7 +412,11 @@ We can extend the idea of this metric to measure how similar the original image 
 
 We can use these metrics for similar pipelines such as the[`StableDiffusionPix2PixZeroPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/pix2pix_zero#diffusers.StableDiffusionPix2PixZeroPipeline)`.
 
-> Both CLIP score and CLIP direction similarity rely on the CLIP model, which can make the evaluations biased.
+<Tip>
+
+Both CLIP score and CLIP direction similarity rely on the CLIP model, which can make the evaluations biased.
+
+</Tip>
 
 ***Extending metrics like IS, FID (discussed later), or KID can be difficult*** when the model under evaluation was pre-trained on a large image-captioning dataset (such as the [LAION-5B dataset](https://laion.ai/blog/laion-5b/)). This is because underlying these metrics is an InceptionNet (pre-trained on the ImageNet-1k dataset) used for extracting intermediate image features. The pre-training dataset of Stable Diffusion may have limited overlap with the pre-training dataset of InceptionNet, so it is not a good candidate here for feature extraction.
 
@@ -417,7 +424,7 @@ We can use these metrics for similar pipelines such as the[`StableDiffusionPix2P
 
 ### Class-conditioned image generation
 
-Class-conditioned generative models are usually pre-trained on a class-labeled dataset such as [ImageNet-1k](https://huggingface.co/datasets/imagenet-1k). Popular metrics for evaluating these models include Fréchet Inception Distance (FID), Kernel Inception Distance (KID), and Inception Score (IS). In this document, we focus on FID ([Heusel et al.](https://arxiv.org/abs/1706.08500)). We show how to compute it with the [`DiTPipeline`], which uses the [DiT model](https://arxiv.org/abs/2212.09748) under the hood.
+Class-conditioned generative models are usually pre-trained on a class-labeled dataset such as [ImageNet-1k](https://huggingface.co/datasets/imagenet-1k). Popular metrics for evaluating these models include Fréchet Inception Distance (FID), Kernel Inception Distance (KID), and Inception Score (IS). In this document, we focus on FID ([Heusel et al.](https://arxiv.org/abs/1706.08500)). We show how to compute it with the [`DiTPipeline`](https://huggingface.co/docs/diffusers/api/pipelines/dit), which uses the [DiT model](https://arxiv.org/abs/2212.09748) under the hood.
 
 FID aims to measure how similar are two datasets of images. As per [this resource](https://mmgeneration.readthedocs.io/en/latest/quick_run.html#fid):
 
@@ -457,6 +464,11 @@ real_images = [np.array(Image.open(path).convert("RGB")) for path in image_paths
 ```
 
 These are 10 images from the following Imagenet-1k classes: "cassette_player", "chain_saw" (x2), "church", "gas_pump" (x3), "parachute" (x2), and "tench".
+
+<p align="center">
+    <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/real-images.png" alt="real-images"><br>
+    <em>Real images.</em>
+</p>
 
 Now that the images are loaded, let's apply some lightweight pre-processing on them to use them for FID calculation.
 
@@ -545,14 +557,9 @@ These points apply to other related metrics too, such as KID and IS.
 
 </Tip>
 
-As a final step, let's visually inspect the `fake_images` and `real_images`, respectively. 
+As a final step, let's visually inspect the `fake_images`. 
 
 <p align="center">
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/fake-images.png" alt="fake-images"><br>
     <em>Fake images.</em>
-</p>
-
-<p align="center">
-    <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/real-images.png" alt="real-images"><br>
-    <em>Real images.</em>
 </p>
