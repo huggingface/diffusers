@@ -3,10 +3,14 @@
 [InstructPix2Pix](https://arxiv.org/abs/2211.09800) is a method to fine-tune text-conditioned diffusion models such that they can follow an edit instruction for an input image. Models fine-tuned using this method take the following as inputs:
 
 <p align="center">
-<img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/edit-instruction.png" width=600/>
+    <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/edit-instruction.png" alt="instructpix2pix-inputs" width=600/>
 </p>
 
-The output is an "edited" image that reflects the edit instruction applied on the input image.
+The output is an "edited" image that reflects the edit instruction applied on the input image:
+
+<p align="center">
+    <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/edit-output.png" alt="instructpix2pix-output" width=600/>
+</p>
 
 The `train_instruct_pix2pix.py` script shows how to implement the training procedure and adapt it for Stable Diffusion.
 
@@ -133,7 +137,7 @@ image = download_image(url)
 prompt = "wipe out the lake"
 num_inference_steps = 20
 image_guidance_scale = 1.5
-guidance_scale = 50
+guidance_scale = 10
 
 edited_image = pipe(prompt, 
     image=image, 
@@ -144,3 +148,13 @@ edited_image = pipe(prompt,
 ).images[0]
 edited_image.save("edited_image.png")
 ```
+
+We encourage you to play with the following three parameters to control
+speed and quality:
+
+* `num_inference_steps`
+* `image_guidance_scale`
+* `guidance_scale`
+
+Particularly, `image_guidance_scale` and `guidance_scale` can have a profound impact
+on the generated ("edited") image (see [here](https://twitter.com/RisingSayak/status/1628392199196151808?s=20) for an example).
