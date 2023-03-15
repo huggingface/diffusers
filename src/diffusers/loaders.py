@@ -170,7 +170,7 @@ class UNet2DConditionLoadersMixin:
                         user_agent=user_agent,
                     )
                     state_dict = safetensors.torch.load_file(model_file, device="cpu")
-                except EnvironmentError:
+                except EnvironmentError as e:
                     if use_safetensors is True:
                         raise e
                     # try loading non-safetensors weights
