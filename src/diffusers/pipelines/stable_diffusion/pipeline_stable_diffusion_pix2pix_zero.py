@@ -29,7 +29,7 @@ from transformers import (
 )
 
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...models.cross_attention import CrossAttention
+from ...models.attention_processor import Attention
 from ...schedulers import DDIMScheduler, DDPMScheduler, EulerAncestralDiscreteScheduler, LMSDiscreteScheduler
 from ...schedulers.scheduling_ddim_inverse import DDIMInverseScheduler
 from ...utils import (
@@ -229,7 +229,7 @@ class Pix2PixZeroCrossAttnProcessor:
 
     def __call__(
         self,
-        attn: CrossAttention,
+        attn: Attention,
         hidden_states,
         encoder_hidden_states=None,
         attention_mask=None,

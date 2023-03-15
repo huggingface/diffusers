@@ -6,8 +6,8 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models import ModelMixin
-from ...models.attention import CrossAttention
-from ...models.cross_attention import AttnProcessor, CrossAttnAddedKVProcessor
+from ...models.attention import Attention
+from ...models.attention_processor import AttnProcessor, CrossAttnAddedKVProcessor
 from ...models.dual_transformer_2d import DualTransformer2DModel
 from ...models.embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from ...models.transformer_2d import Transformer2DModel
@@ -480,7 +480,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         Parameters:
             `processor (`dict` of `AttnProcessor` or `AttnProcessor`):
                 The instantiated processor class or a dictionary of processor classes that will be set as the processor
-                of **all** `CrossAttention` layers.
+                of **all** `Attention` layers.
             In case `processor` is a dict, the key needs to define the path to the corresponding cross attention processor. This is strongly recommended when setting trainablae attention processors.:
 
         """
@@ -1425,7 +1425,7 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
 
         for _ in range(num_layers):
             attentions.append(
-                CrossAttention(
+                Attention(
                     query_dim=in_channels,
                     cross_attention_dim=in_channels,
                     heads=self.num_heads,

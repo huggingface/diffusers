@@ -50,7 +50,7 @@ pip install --pre torch torchvision --index-url https://download.pytorch.org/whl
     ```Python
     import torch
     from diffusers import StableDiffusionPipeline
-    from diffusers.models.cross_attention import AttnProcessor2_0
+    from diffusers.models.attention_processor import AttnProcessor2_0
 
     pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
     pipe.unet.set_attn_processor(AttnProcessor2_0())

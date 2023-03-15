@@ -17,7 +17,7 @@ from typing import Callable, Dict, Union
 
 import torch
 
-from .models.cross_attention import LoRACrossAttnProcessor
+from .models.attention_processor import LoRACrossAttnProcessor
 from .models.modeling_utils import _get_model_file
 from .utils import DIFFUSERS_CACHE, HF_HUB_OFFLINE, deprecate, is_safetensors_available, logging
 

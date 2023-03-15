@@ -22,7 +22,7 @@ import torch
 from parameterized import parameterized
 
 from diffusers import UNet2DConditionModel
-from diffusers.models.cross_attention import CrossAttnProcessor, LoRACrossAttnProcessor
+from diffusers.models.attention_processor import CrossAttnProcessor, LoRACrossAttnProcessor
 from diffusers.utils import (
     floats_tensor,
     load_hf_numpy,
