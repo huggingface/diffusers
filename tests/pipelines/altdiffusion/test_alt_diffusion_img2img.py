@@ -26,8 +26,8 @@ from diffusers import (
     AutoencoderKL,
     PNDMScheduler,
     UNet2DConditionModel,
-    VaeImageProcessor,
 )
+from diffusers.image_processor import VaeImageProcessor
 from diffusers.pipelines.alt_diffusion.modeling_roberta_series import (
     RobertaSeriesConfig,
     RobertaSeriesModelWithTransformation,
