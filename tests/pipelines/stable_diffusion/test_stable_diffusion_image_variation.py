@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ from diffusers import (
 from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 
+from ...pipeline_params import IMAGE_VARIATION_BATCH_PARAMS, IMAGE_VARIATION_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin
 
 
@@ -40,6 +41,8 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 class StableDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionImageVariationPipeline
+    params = IMAGE_VARIATION_PARAMS
+    batch_params = IMAGE_VARIATION_BATCH_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -139,42 +142,6 @@ class StableDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unitte
         expected_slice = np.array([0.6568, 0.5470, 0.5684, 0.5444, 0.5945, 0.6221, 0.5508, 0.5531, 0.5263])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-
-    def test_stable_diffusion_img_variation_num_images_per_prompt(self):
-        device = "cpu"
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionImageVariationPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        # test num_images_per_prompt=1 (default)
-        inputs = self.get_dummy_inputs(device)
-        images = sd_pipe(**inputs).images
-
-        assert images.shape == (1, 64, 64, 3)
-
-        # test num_images_per_prompt=1 (default) for batch of images
-        batch_size = 2
-        inputs = self.get_dummy_inputs(device)
-        inputs["image"] = batch_size * [inputs["image"]]
-        images = sd_pipe(**inputs).images
-
-        assert images.shape == (batch_size, 64, 64, 3)
-
-        # test num_images_per_prompt for single prompt
-        num_images_per_prompt = 2
-        inputs = self.get_dummy_inputs(device)
-        images = sd_pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
-
-        assert images.shape == (num_images_per_prompt, 64, 64, 3)
-
-        # test num_images_per_prompt for batch of prompts
-        batch_size = 2
-        inputs = self.get_dummy_inputs(device)
-        inputs["image"] = batch_size * [inputs["image"]]
-        images = sd_pipe(**inputs, num_images_per_prompt=num_images_per_prompt).images
-
-        assert images.shape == (batch_size * num_images_per_prompt, 64, 64, 3)
 
 
 @slow

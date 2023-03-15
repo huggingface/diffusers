@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -271,9 +271,10 @@ class BasicTransformerBlock(nn.Module):
     def forward(
         self,
         hidden_states,
-        encoder_hidden_states=None,
-        timestep=None,
         attention_mask=None,
+        encoder_hidden_states=None,
+        encoder_attention_mask=None,
+        timestep=None,
         cross_attention_kwargs=None,
         class_labels=None,
     ):
@@ -302,12 +303,14 @@ class BasicTransformerBlock(nn.Module):
             norm_hidden_states = (
                 self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
             )
+            # TODO (Birch-San): Here we should prepare the encoder_attention mask correctly
+            # prepare attention mask here
 
             # 2. Cross-Attention
             attn_output = self.attn2(
                 norm_hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
-                attention_mask=attention_mask,
+                attention_mask=encoder_attention_mask,
                 **cross_attention_kwargs,
             )
             hidden_states = attn_output + hidden_states
