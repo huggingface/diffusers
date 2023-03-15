@@ -76,6 +76,12 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         num_class_embeds (`int`, *optional*, defaults to None):
             Input dimension of the learnable embedding matrix to be projected to `time_embed_dim`, when performing
             class conditioning with `class_embed_type` equal to `None`.
+        conv_in_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_in` layer.
+        conv_out_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_out` layer.
+        patch_size (`int`, *optional*, default to `1`):
+            The side length of image patches extracted before the rest of the UNet. The height and width of the input
+            are each reduced by a factor of `patch_size`, while the number of channels is increased by a factor of
+            `patch_size^2`.
     """
 
     @register_to_config
@@ -102,6 +108,9 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         add_attention: bool = True,
         class_embed_type: Optional[str] = None,
         num_class_embeds: Optional[int] = None,
+        conv_in_kernel: int = 3,
+        conv_out_kernel: int = 3,
+        patch_size: int = 1,
     ):
         super().__init__()
 
@@ -120,7 +129,16 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             )
 
         # input
-        self.conv_in = nn.Conv2d(in_channels, block_out_channels[0], kernel_size=3, padding=(1, 1))
+        self.patchify = None
+        if patch_size > 1:
+            in_channels = in_channels * patch_size * patch_size
+            out_channels = out_channels * patch_size * patch_size
+            self.patchify = nn.PixelUnshuffle(patch_size)
+
+        conv_in_padding = (conv_in_kernel - 1) // 2
+        self.conv_in = nn.Conv2d(
+            in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
+        )
 
         # time
         if time_embedding_type == "fourier":
@@ -213,7 +231,15 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         num_groups_out = norm_num_groups if norm_num_groups is not None else min(block_out_channels[0] // 4, 32)
         self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=num_groups_out, eps=norm_eps)
         self.conv_act = nn.SiLU()
-        self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, kernel_size=3, padding=1)
+
+        conv_out_padding = (conv_out_kernel - 1) // 2
+        self.conv_out = nn.Conv2d(
+            block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
+        )
+
+        self.unpatchify = None
+        if patch_size > 1:
+            self.unpatchify = nn.PixelShuffle(patch_size)
 
     def forward(
         self,
@@ -268,6 +294,9 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             emb = emb + class_emb
 
         # 2. pre-process
+        if self.patchify is not None:
+            sample = self.patchify(sample)
+
         skip_sample = sample
         sample = self.conv_in(sample)
 
@@ -304,6 +333,9 @@ class UNet2DModel(ModelMixin, ConfigMixin):
 
         if skip_sample is not None:
             sample += skip_sample
+
+        if self.unpatchify is not None:
+            sample = self.unpatchify(sample)
 
         if self.config.time_embedding_type == "fourier":
             timesteps = timesteps.reshape((sample.shape[0], *([1] * len(sample.shape[1:]))))

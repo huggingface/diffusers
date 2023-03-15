@@ -104,6 +104,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             The dimension of `cond_proj` layer in timestep embedding.
         conv_in_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_in` layer.
         conv_out_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_out` layer.
+        patch_size (`int`, *optional*, default to `1`):
+            The side length of image patches extracted before the rest of the UNet. The height and width of the input
+            are each reduced by a factor of `patch_size`, while the number of channels is increased by a factor of
+            `patch_size^2`.
         projection_class_embeddings_input_dim (`int`, *optional*): The dimension of the `class_labels` input when
             using the "projection" `class_embed_type`. Required when using the "projection" `class_embed_type`.
     """
@@ -148,6 +152,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         time_cond_proj_dim: Optional[int] = None,
         conv_in_kernel: int = 3,
         conv_out_kernel: int = 3,
+        patch_size: int = 1,
         projection_class_embeddings_input_dim: Optional[int] = None,
     ):
         super().__init__()
@@ -176,6 +181,12 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             )
 
         # input
+        self.patchify = None
+        if patch_size > 1:
+            in_channels = in_channels * patch_size * patch_size
+            out_channels = out_channels * patch_size * patch_size
+            self.patchify = nn.PixelUnshuffle(patch_size)
+
         conv_in_padding = (conv_in_kernel - 1) // 2
         self.conv_in = nn.Conv2d(
             in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
@@ -360,6 +371,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         self.conv_out = nn.Conv2d(
             block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
         )
+
+        self.unpatchify = None
+        if patch_size > 1:
+            self.unpatchify = nn.PixelShuffle(patch_size)
 
     @property
     def attn_processors(self) -> Dict[str, AttnProcessor]:
@@ -574,6 +589,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             emb = emb + class_emb
 
         # 2. pre-process
+        if self.patchify is not None:
+            sample = self.patchify(sample)
+
         sample = self.conv_in(sample)
 
         # 3. down
@@ -648,6 +666,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             sample = self.conv_norm_out(sample)
             sample = self.conv_act(sample)
         sample = self.conv_out(sample)
+
+        if self.unpatchify is not None:
+            sample = self.unpatchify(sample)
 
         if not return_dict:
             return (sample,)
