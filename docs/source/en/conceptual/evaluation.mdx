@@ -118,7 +118,7 @@ from diffusers import StableDiffusionPipeline
 import torch
 
 model_ckpt = "CompVis/stable-diffusion-v1-4"
-sd_pipeline = StableDiffusionPipeline.from_pretrained(model_ckpt, torch_dtype= torch.float16).to("cuda")
+sd_pipeline = StableDiffusionPipeline.from_pretrained(model_ckpt, torch_dtype=torch.float16).to("cuda")
 ```
 
 Generate some images with multiple prompts:
