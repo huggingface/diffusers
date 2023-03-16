@@ -17,7 +17,6 @@ The `train_instruct_pix2pix.py` script shows how to implement the training proce
 ***Disclaimer: Even though `train_instruct_pix2pix.py` implements the InstructPix2Pix
 training procedure while being faithful to the [original implementation](https://github.com/timothybrooks/instruct-pix2pix) we have only tested it on a [small-scale dataset](https://huggingface.co/datasets/fusing/instructpix2pix-1000-samples). This can impact the end results. For better results, we recommend longer training runs with a larger dataset. [Here](https://huggingface.co/datasets/timbrooks/instructpix2pix-clip-filtered) you can find a large dataset for InstructPix2Pix training.***
 
-
 ## Running locally with PyTorch
 
 ### Installing the dependencies
@@ -112,6 +111,8 @@ accelerate launch --mixed_precision="fp16" train_instruct_pix2pix.py \
 
  [Here](https://wandb.ai/sayakpaul/instruct-pix2pix/runs/ctr3kovq), you can find an example training run that includes some validation samples and the training hyperparameters.
 
+ ## Inference
+
  Once training is complete, we can perform inference:
 
  ```python
@@ -153,7 +154,7 @@ An example model repo obtained using this training script can be found
 here - [sayakpaul/instruct-pix2pix](https://huggingface.co/sayakpaul/instruct-pix2pix).
 
 We encourage you to play with the following three parameters to control
-speed and quality:
+speed and quality during performance:
 
 * `num_inference_steps`
 * `image_guidance_scale`
