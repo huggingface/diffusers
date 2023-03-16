@@ -65,6 +65,8 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
             Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) paper.
     """
 
+    _supports_gradient_checkpointing = True
+
     @register_to_config
     def __init__(
         self,
