@@ -960,8 +960,8 @@ def main():
 
         pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
-            # text_encoder=text_encoder,
-            # vae=vae,
+            text_encoder=text_encoder,
+            vae=vae,
             unet=unet,
             revision=args.revision,
         )
