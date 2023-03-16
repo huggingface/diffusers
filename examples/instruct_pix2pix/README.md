@@ -110,7 +110,7 @@ accelerate launch --mixed_precision="fp16" train_instruct_pix2pix.py \
 
  We recommend this type of validation as it can be useful for model debugging. 
 
- [Here] (TODO:run link), you can find an example training run that includes some validation samples and the training hyperparameters.
+ [Here](https://wandb.ai/sayakpaul/instruct-pix2pix/runs/ctr3kovq), you can find an example training run that includes some validation samples and the training hyperparameters.
 
  Once training is complete, we can perform inference:
 
@@ -120,7 +120,7 @@ import requests
 import torch
 from diffusers import StableDiffusionInstructPix2PixPipeline
 
-model_id = "model id"
+model_id = "model id" # <- replace this 
 pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 generator = torch.Generator("cuda").manual_seed(0)
 
@@ -148,6 +148,9 @@ edited_image = pipe(prompt,
 ).images[0]
 edited_image.save("edited_image.png")
 ```
+
+An example model repo obtained using this training script can be found
+here - [sayakpaul/instruct-pix2pix](https://huggingface.co/sayakpaul/instruct-pix2pix).
 
 We encourage you to play with the following three parameters to control
 speed and quality:
