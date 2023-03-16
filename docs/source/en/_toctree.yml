@@ -92,7 +92,7 @@
   - local: training/lora
     title: Low-Rank Adaptation of Large Language Models (LoRA)
   - local: training/controlnet
-    title: Adding Conditional Control to Text-to-Image Diffusion Models
+    title: ControlNet
   title: Training
 - sections:
   - local: conceptual/philosophy

@@ -18,18 +18,22 @@ This example is based on the [training example in the original ControlNet reposi
 
 ## Installing the dependencies
 
-Before running the scripts, make sure to install the library's training dependencies:
+Before running the scripts, make sure to install the library's training dependencies.
 
-**Important**
+<Tip warning={true}>
 
-To make sure you can successfully run the latest versions of the example scripts, we highly recommend **installing from source** and keeping the install up to date as we update the example scripts frequently and install some example-specific requirements. To do this, execute the following steps in a new virtual environment:
+To successfully run the latest versions of the example scripts, we highly recommend **installing from source** and keeping the installation up to date. We update the example scripts frequently and install example-specific requirements.
+
+</Tip>
+
+To do this, execute the following steps in a new virtual environment:
 ```bash
 git clone https://github.com/huggingface/diffusers
 cd diffusers
 pip install -e .
 ```
 
-Then cd in the example folder and run
+Then navigate into the example folder and run:
 ```bash
 pip install -r requirements.txt
 ```
@@ -40,13 +44,13 @@ And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) e
 accelerate config
 ```
 
-Or for a default accelerate configuration without answering questions about your environment
+Or for a default 🤗Accelerate configuration without answering questions about your environment:
 
 ```bash
 accelerate config default
 ```
 
-Or if your environment doesn't support an interactive shell e.g. a notebook
+Or if your environment doesn't support an interactive shell like a notebook:
 
 ```python
 from accelerate.utils import write_basic_config
@@ -56,13 +60,13 @@ write_basic_config()
 
 ## Circle filling dataset
 
-The original dataset is hosted in the [ControlNet repo](https://huggingface.co/lllyasviel/ControlNet/blob/main/training/fill50k.zip). We re-uploaded it to be compatible with `datasets` [here](https://huggingface.co/datasets/fusing/fill50k). Note that `datasets` handles dataloading within the training script.
+The original dataset is hosted in the ControlNet [repo](https://huggingface.co/lllyasviel/ControlNet/blob/main/training/fill50k.zip), but we re-uploaded it [here](https://huggingface.co/datasets/fusing/fill50k) to be compatible with 🤗 Datasets so that it can handle the data loading within the training script.
 
-Our training examples use [Stable Diffusion 1.5](https://huggingface.co/runwayml/stable-diffusion-v1-5) as the original set of ControlNet models were trained from it. However, ControlNet can be trained to augment any Stable Diffusion compatible model (such as [CompVis/stable-diffusion-v1-4](https://huggingface.co/CompVis/stable-diffusion-v1-4)) or [stabilityai/stable-diffusion-2-1](https://huggingface.co/stabilityai/stable-diffusion-2-1).
+Our training examples use [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) because that is what the original set of ControlNet models was trained on. However, ControlNet can be trained to augment any compatible Stable Diffusion model (such as [`CompVis/stable-diffusion-v1-4`](https://huggingface.co/CompVis/stable-diffusion-v1-4)) or [`stabilityai/stable-diffusion-2-1`](https://huggingface.co/stabilityai/stable-diffusion-2-1).
 
 ## Training
 
-Our training examples use two test conditioning images. They can be downloaded by running
+Download the following images to condition our training with:
 
 ```sh
 wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_1.png
@@ -88,8 +92,8 @@ accelerate launch train_controlnet.py \
 
 This default configuration requires ~38GB VRAM.
 
-By default, the training script logs outputs to tensorboard. Pass `--report_to wandb` to use weights and
-biases.
+By default, the training script logs outputs to tensorboard. Pass `--report_to wandb` to use Weights &
+Biases.
 
 Gradient accumulation with a smaller batch size can be used to reduce training requirements to ~20 GB VRAM.
 
@@ -132,11 +136,12 @@ accelerate launch train_controlnet.py \
 
 ## Training on a 16 GB GPU
 
-Optimizations:
-- Gradient checkpointing
-- bitsandbyte's 8-bit optimizer
+Enable the following optimizations to train on a 16GB GPU:
 
-[bitandbytes install instructions](https://github.com/TimDettmers/bitsandbytes#requirements--installation).
+- Gradient checkpointing
+- bitsandbyte's 8-bit optimizer (take a look at the [installation]((https://github.com/TimDettmers/bitsandbytes#requirements--installation) instructions if you don't already have it installed)
+
+Now you can launch the training script:
 
 ```bash
 export MODEL_DIR="runwayml/stable-diffusion-v1-5"
@@ -158,11 +163,11 @@ accelerate launch train_controlnet.py \
 
 ## Training on a 12 GB GPU
 
-Optimizations:
+Enable the following optimizations to train on a 12GB GPU:
 - Gradient checkpointing
-- bitsandbyte's 8-bit optimizer
-- xformers
-- set grads to none
+- bitsandbyte's 8-bit optimizer (take a look at the [installation]((https://github.com/TimDettmers/bitsandbytes#requirements--installation) instructions if you don't already have it installed)
+- xFormers (take a look at the [installation](https://huggingface.co/docs/diffusers/training/optimization/xformers) instructions if you don't already have it installed)
+- set gradients to `None`
 
 ```bash
 export MODEL_DIR="runwayml/stable-diffusion-v1-5"
@@ -189,22 +194,23 @@ When using `enable_xformers_memory_efficient_attention`, please make sure to ins
 ## Training on an 8 GB GPU
 
 We have not exhaustively tested DeepSpeed support for ControlNet. While the configuration does
-save memory, we have not confirmed the configuration to train successfully. You will very likely
+save memory, we have not confirmed whether the configuration trains successfully. You will very likely
 have to make changes to the config to have a successful training run.
 
-Optimizations:
+Enable the following optimizations to train on a 8GB GPU:
 - Gradient checkpointing
-- xformers
-- set grads to none
+- bitsandbyte's 8-bit optimizer (take a look at the [installation]((https://github.com/TimDettmers/bitsandbytes#requirements--installation) instructions if you don't already have it installed)
+- xFormers (take a look at the [installation](https://huggingface.co/docs/diffusers/training/optimization/xformers) instructions if you don't already have it installed)
+- set gradients to `None`
 - DeepSpeed stage 2 with parameter and optimizer offloading
 - fp16 mixed precision
 
 [DeepSpeed](https://www.deepspeed.ai/) can offload tensors from VRAM to either 
 CPU or NVME. This requires significantly more RAM (about 25 GB).
 
-Use `accelerate config` to enable DeepSpeed stage 2.
+You'll have to configure your environment with `accelerate config` to enable DeepSpeed stage 2.
 
-The relevant parts of the resulting accelerate config file are
+The configuration file should look like this:
 
 ```yaml
 compute_environment: LOCAL_MACHINE
@@ -221,7 +227,7 @@ See [documentation](https://huggingface.co/docs/accelerate/usage_guides/deepspee
 
 Changing the default Adam optimizer to DeepSpeed's Adam
 `deepspeed.ops.adam.DeepSpeedCPUAdam` gives a substantial speedup but
-it requires CUDA toolchain with the same version as pytorch. 8-bit optimizer
+it requires a CUDA toolchain with the same version as PyTorch. 8-bit optimizer
 does not seem to be compatible with DeepSpeed at the moment.
 
 ```bash
@@ -243,9 +249,9 @@ accelerate launch train_controlnet.py \
  --mixed_precision fp16
 ```
 
-## Performing inference with the trained ControlNet
+## Inference
 
-The trained model can be run the same as the original ControlNet pipeline with the newly trained ControlNet.
+The trained model can be run with the [`StableDiffusionControlNetPipeline`].
 Set `base_model_path` and `controlnet_path` to the values `--pretrained_model_name_or_path` and 
 `--output_dir` were respectively set to in the training script.
 
