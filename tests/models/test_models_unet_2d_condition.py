@@ -517,8 +517,9 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
             torch.manual_seed(0)
             new_model = self.model_class(**init_dict)
             new_model.to(torch_device)
-            with self.assertRaises(EnvironmentError):
+            with self.assertRaises(IOError) as e:
                 new_model.load_attn_procs(tmpdirname, use_safetensors=True)
+            self.assertIn("Error no file named pytorch_lora_weights.safetensors", str(e.exception))
 
     def test_lora_on_off(self):
         # enable deterministic behavior for gradient checkpointing

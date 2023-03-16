@@ -427,7 +427,17 @@ class ModelMixin(torch.nn.Module):
         device_map = kwargs.pop("device_map", None)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
-        use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+
+        if use_safetensors and not is_safetensors_available():
+            raise ValueError(
+                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetenstors"
+            )
+
+        allow_pickle = False
+        if use_safetensors is None:
+            use_safetensors = is_safetensors_available()
+            allow_pickle = True
 
         if low_cpu_mem_usage and not is_accelerate_available():
             low_cpu_mem_usage = False
@@ -514,7 +524,7 @@ class ModelMixin(torch.nn.Module):
 
             model = load_flax_checkpoint_in_pytorch_model(model, model_file)
         else:
-            if use_safetensors is not False:
+            if use_safetensors:
                 try:
                     model_file = _get_model_file(
                         pretrained_model_name_or_path,
@@ -530,8 +540,8 @@ class ModelMixin(torch.nn.Module):
                         user_agent=user_agent,
                         commit_hash=commit_hash,
                     )
-                except Exception as e:
-                    if use_safetensors is True:
+                except IOError as e:
+                    if not allow_pickle:
                         raise e
                     pass
             if model_file is None:

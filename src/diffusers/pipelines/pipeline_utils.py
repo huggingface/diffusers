@@ -1073,7 +1073,17 @@ class DiffusionPipeline(ConfigMixin):
         from_flax = kwargs.pop("from_flax", False)
         custom_pipeline = kwargs.pop("custom_pipeline", None)
         variant = kwargs.pop("variant", None)
-        use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+
+        if use_safetensors and not is_safetensors_available():
+            raise ValueError(
+                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetenstors"
+            )
+
+        allow_pickle = False
+        if use_safetensors is None:
+            use_safetensors = is_safetensors_available()
+            allow_pickle = True
 
         pipeline_is_cached = False
         allow_patterns = None
@@ -1129,13 +1139,17 @@ class DiffusionPipeline(ConfigMixin):
                 CUSTOM_PIPELINE_FILE_NAME,
             ]
 
-            if use_safetensors is True and not is_safetensors_compatible(model_filenames, variant=variant):
+            if (
+                use_safetensors
+                and not allow_pickle
+                and not is_safetensors_compatible(model_filenames, variant=variant)
+            ):
                 raise EnvironmentError(
                     f"Could not found the necessary `safetensors` weights in {model_filenames} (variant={variant})"
                 )
             if from_flax:
                 ignore_patterns = ["*.bin", "*.safetensors", "*.onnx", "*.pb"]
-            elif use_safetensors is not False and is_safetensors_compatible(model_filenames, variant=variant):
+            elif use_safetensors and is_safetensors_compatible(model_filenames, variant=variant):
                 ignore_patterns = ["*.bin", "*.msgpack"]
 
                 safetensors_variant_filenames = set([f for f in variant_filenames if f.endswith(".safetensors")])
