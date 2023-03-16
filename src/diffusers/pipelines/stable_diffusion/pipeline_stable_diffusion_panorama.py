@@ -17,9 +17,10 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import torch
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
+from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDIMScheduler, PNDMScheduler
-from ...utils import is_accelerate_available, is_accelerate_version, logging, randn_tensor, replace_example_docstring
+from ...utils import is_accelerate_available, is_accelerate_version, deprecate, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
@@ -122,6 +123,7 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline):
             feature_extractor=feature_extractor,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
@@ -328,13 +330,11 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline):
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
-        if self.safety_checker is not None:
-            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
-            image, has_nsfw_concept = self.safety_checker(
-                images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
-            )
-        else:
-            has_nsfw_concept = None
+        feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
+        safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
+        image, has_nsfw_concept = self.safety_checker(
+            images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
+        )
         return image, has_nsfw_concept
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
@@ -342,8 +342,6 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline):
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
@@ -648,15 +646,27 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
-        # 8. Post-processing
-        image = self.decode_latents(latents)
+        if output_type not in ["latent", "pt", "np", "pil"]:
+            deprecation_message = (
+                f"the output_type {output_type} is outdated. Please make sure to set it to one of these instead: "
+                "`pil`, `np`, `pt`, `latent`"
+            )
+            deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
+            output_type = "np"
 
-        # 9. Run safety checker
-        image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+        if output_type == "latent":
+            image = latents
+            has_nsfw_concept = None
 
-        # 10. Convert to PIL
-        if output_type == "pil":
-            image = self.numpy_to_pil(image)
+        else:
+            image = self.decode_latents(latents)
+
+            if self.safety_checker is not None:
+                image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+            else:
+                has_nsfw_concept = False
+
+            image = self.image_processor.postprocess(image, output_type=output_type)
 
         if not return_dict:
             return (image, has_nsfw_concept)

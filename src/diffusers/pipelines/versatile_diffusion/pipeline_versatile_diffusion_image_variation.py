@@ -21,6 +21,7 @@ import torch
 import torch.utils.checkpoint
 from transformers import CLIPFeatureExtractor, CLIPVisionModelWithProjection
 
+from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import is_accelerate_available, logging, randn_tensor
@@ -71,6 +72,7 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
             scheduler=scheduler,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
@@ -192,8 +194,6 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
@@ -414,12 +414,20 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 callback(i, t, latents)
 
-        # 8. Post-processing
+        if output_type not in ["latent", "pt", "np", "pil"]:
+            deprecation_message = (
+                f"the output_type {output_type} is outdated. Please make sure to set it to one of these instead: "
+                "`pil`, `np`, `pt`, `latent`"
+            )
+            deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
+            output_type = "np"
+
+        if output_type == "latent":
+            image = latents
+
         image = self.decode_latents(latents)
 
-        # 9. Convert to PIL
-        if output_type == "pil":
-            image = self.numpy_to_pil(image)
+        image = self.image_processor.postprocess(image, output_type=output_type)
 
         if not return_dict:
             return (image,)

@@ -119,7 +119,8 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
     _optional_components = ["safety_checker", "feature_extractor"]
-
+    
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.__init__
     def __init__(
         self,
         vae: AutoencoderKL,
@@ -196,6 +197,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             new_config = dict(unet.config)
             new_config["sample_size"] = 64
             unet._internal_dict = FrozenDict(new_config)
+
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -206,11 +208,8 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             feature_extractor=feature_extractor,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
-        self.register_to_config(
-            requires_safety_checker=requires_safety_checker,
-        )
+        self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
     def enable_sequential_cpu_offload(self, gpu_id=0):
@@ -424,7 +423,8 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         return prompt_embeds
-
+    
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
         feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
         safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
@@ -432,7 +432,8 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
         )
         return image, has_nsfw_concept
-
+    
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
@@ -723,14 +724,15 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             image = latents
             has_nsfw_concept = None
 
-        image = self.decode_latents(latents)
-
-        if self.safety_checker is not None:
-            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
-            has_nsfw_concept = False
+            image = self.decode_latents(latents)
 
-        image = self.image_processor.postprocess(image, output_type=output_type)
+            if self.safety_checker is not None:
+                image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+            else:
+                has_nsfw_concept = False
+
+            image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:

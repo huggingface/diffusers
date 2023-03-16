@@ -28,6 +28,7 @@ from transformers import (
     CLIPTokenizer,
 )
 
+from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention_processor import Attention
 from ...schedulers import DDIMScheduler, DDPMScheduler, EulerAncestralDiscreteScheduler, LMSDiscreteScheduler
@@ -40,6 +41,7 @@ from ...utils import (
     logging,
     randn_tensor,
     replace_example_docstring,
+    deprecate
 )
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
@@ -356,6 +358,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             inverse_scheduler=inverse_scheduler,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
@@ -568,13 +571,11 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
-        if self.safety_checker is not None:
-            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
-            image, has_nsfw_concept = self.safety_checker(
-                images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
-            )
-        else:
-            has_nsfw_concept = None
+        feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
+        safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
+        image, has_nsfw_concept = self.safety_checker(
+            images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
+        )
         return image, has_nsfw_concept
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
@@ -582,8 +583,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
@@ -1032,24 +1031,36 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
-        # 11. Post-process the latents.
-        edited_image = self.decode_latents(latents)
+        if output_type not in ["latent", "pt", "np", "pil"]:
+            deprecation_message = (
+                f"the output_type {output_type} is outdated. Please make sure to set it to one of these instead: "
+                "`pil`, `np`, `pt`, `latent`"
+            )
+            deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
+            output_type = "np"
 
-        # 12. Run the safety checker.
-        edited_image, has_nsfw_concept = self.run_safety_checker(edited_image, device, prompt_embeds.dtype)
+        if output_type == "latent":
+            image = latents
+            has_nsfw_concept = None
 
-        # 13. Convert to PIL.
-        if output_type == "pil":
-            edited_image = self.numpy_to_pil(edited_image)
+        else:
+            image = self.decode_latents(latents)
+
+            if self.safety_checker is not None:
+                image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+            else:
+                has_nsfw_concept = False
+
+            image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.final_offload_hook.offload()
 
         if not return_dict:
-            return (edited_image, has_nsfw_concept)
+            return (image, has_nsfw_concept)
 
-        return StableDiffusionPipelineOutput(images=edited_image, nsfw_content_detected=has_nsfw_concept)
+        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_INVERT_DOC_STRING)
@@ -1246,7 +1257,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
         # 9. Convert to PIL.
         if output_type == "pil":
-            image = self.numpy_to_pil(image)
+            image = self.image_processor.postprocess(image, output_type='pil')
 
         if not return_dict:
             return (inverted_latents, image)

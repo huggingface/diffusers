@@ -22,6 +22,7 @@ from transformers import CLIPFeatureExtractor, XLMRobertaTokenizer
 from diffusers.utils import is_accelerate_available, is_accelerate_version
 
 from ...configuration_utils import FrozenDict
+from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import deprecate, logging, randn_tensor, replace_example_docstring
@@ -165,6 +166,7 @@ class AltDiffusionPipeline(DiffusionPipeline):
             feature_extractor=feature_extractor,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     def enable_vae_slicing(self):
@@ -409,21 +411,17 @@ class AltDiffusionPipeline(DiffusionPipeline):
         return prompt_embeds
 
     def run_safety_checker(self, image, device, dtype):
-        if self.safety_checker is not None:
-            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
-            image, has_nsfw_concept = self.safety_checker(
-                images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
-            )
-        else:
-            has_nsfw_concept = None
+        feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
+        safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
+        image, has_nsfw_concept = self.safety_checker(
+            images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
+        )
         return image, has_nsfw_concept
 
     def decode_latents(self, latents):
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -682,24 +680,27 @@ class AltDiffusionPipeline(DiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
+        if output_type not in ["latent", "pt", "np", "pil"]:
+            deprecation_message = (
+                f"the output_type {output_type} is outdated. Please make sure to set it to one of these instead: "
+                "`pil`, `np`, `pt`, `latent`"
+            )
+            deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
+            output_type = "np"
+
         if output_type == "latent":
             image = latents
             has_nsfw_concept = None
-        elif output_type == "pil":
-            # 8. Post-processing
-            image = self.decode_latents(latents)
 
-            # 9. Run safety checker
-            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
-
-            # 10. Convert to PIL
-            image = self.numpy_to_pil(image)
         else:
-            # 8. Post-processing
             image = self.decode_latents(latents)
 
-            # 9. Run safety checker
-            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+            if self.safety_checker is not None:
+                image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+            else:
+                has_nsfw_concept = False
+
+            image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:

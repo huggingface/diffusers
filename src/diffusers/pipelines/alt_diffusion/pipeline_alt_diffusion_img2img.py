@@ -193,6 +193,7 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
             new_config = dict(unet.config)
             new_config["sample_size"] = 64
             unet._internal_dict = FrozenDict(new_config)
+
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -203,11 +204,8 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
             feature_extractor=feature_extractor,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
-        self.register_to_config(
-            requires_safety_checker=requires_safety_checker,
-        )
+        self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
@@ -715,14 +713,15 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
             image = latents
             has_nsfw_concept = None
 
-        image = self.decode_latents(latents)
-
-        if self.safety_checker is not None:
-            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
-            has_nsfw_concept = False
+            image = self.decode_latents(latents)
 
-        image = self.image_processor.postprocess(image, output_type=output_type)
+            if self.safety_checker is not None:
+                image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+            else:
+                has_nsfw_concept = False
+
+            image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:

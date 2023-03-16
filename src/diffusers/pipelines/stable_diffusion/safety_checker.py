@@ -85,7 +85,10 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
 
         for idx, has_nsfw_concept in enumerate(has_nsfw_concepts):
             if has_nsfw_concept:
-                images[idx] = np.zeros(images[idx].shape)  # black image
+                if isinstance(images, np.ndarray):
+                    images[idx] = np.zeros(images[idx].shape)  # black image
+                elif isinstance(images, torch.Tensor):
+                    images[idx] = torch.zeros(images[idx].shape)
 
         if any(has_nsfw_concepts):
             logger.warning(
