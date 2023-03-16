@@ -973,7 +973,7 @@ def main():
         if args.validation_prompt is not None:
             edited_images = []
             pipeline.torch_dtype = weight_dtype
-            # pipeline = pipeline.to(accelerator.device)
+            pipeline.unet = pipeline.unet.to(weight_dtype)
             for _ in range(args.num_validation_images):
                 print(f"Pipeline device: {pipeline.device}")
                 print(
