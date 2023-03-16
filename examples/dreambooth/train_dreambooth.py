@@ -23,6 +23,7 @@ import warnings
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 import accelerate
 import torch
 import torch.nn.functional as F
@@ -40,9 +41,9 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
 import diffusers
-from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
+from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel, DPMSolverMultistepScheduler
 from diffusers.optimization import get_scheduler
-from diffusers.utils import check_min_version
+from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
 
@@ -123,6 +124,33 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         help="The prompt to specify images in the same class as provided instance images.",
+    )
+    parser.add_argument(
+        "--validation_prompt",
+        type=str,
+        default=None,
+        help="A prompt that is used during validation to verify that the model is learning.",
+    )
+    parser.add_argument(
+        "--num_validation_images",
+        type=int,
+        default=4,
+        help="Number of images that should be generated during validation with `validation_prompt`.",
+    )
+    parser.add_argument(
+        "--validation_steps",
+        type=int,
+        default=500,
+        help=(
+            "Run dreambooth validation every X updates. Dreambooth validation consists of running the prompt"
+            " `args.validation_prompt` multiple times: `args.num_validation_images`."
+        ),
+    )
+    parser.add_argument(
+        "--num_inference_steps",
+        type=int,
+        default=25,
+        help="Number of inference steps that should be used during validation with `validation_prompt`.",
     )
     parser.add_argument(
         "--with_prior_preservation",
@@ -287,6 +315,24 @@ def parse_args(input_args=None):
         help=(
             "[TensorBoard](https://www.tensorflow.org/tensorboard) log directory. Will default to"
             " *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***."
+        ),
+    )
+    parser.add_argument(
+        "--log_name",
+        type=str,
+        default=None,
+        required=False,
+        help=(
+            "Name of log to identify experiment in reporting tool."
+        ),
+    )
+    parser.add_argument(
+        "--log_group",
+        type=str,
+        default=None,
+        required=False,
+        help=(
+            "Name of log group to aggregate experiments in reporting tool."
         ),
     )
     parser.add_argument(
@@ -507,6 +553,11 @@ def main(args):
         logging_dir=logging_dir,
         project_config=accelerator_project_config,
     )
+
+    if args.report_to == "wandb":
+        if not is_wandb_available():
+            raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
+        import wandb
 
     # Currently, it's not possible to do gradient accumulation when training two models with accelerate.accumulate
     # This will be enabled soon in accelerate. For now, we don't allow gradient accumulation when training two models.
@@ -796,7 +847,10 @@ def main(args):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        accelerator.init_trackers("dreambooth", config=vars(args))
+        init_kwargs = {"wandb":{"settings":{"console": "off"},
+                                "name":f"{args.log_name}",
+                                "group":f"{args.log_group}"}}
+        accelerator.init_trackers("dreambooth", config=vars(args), init_kwargs=init_kwargs)
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -928,6 +982,47 @@ def main(args):
             if global_step >= args.max_train_steps:
                 break
 
+            if accelerator.is_main_process:
+                if args.validation_prompt is not None and global_step % args.validation_steps == 0:
+                    logger.info(
+                        f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+                        f" {args.validation_prompt}."
+                    )
+                    # create pipeline
+                    pipeline = DiffusionPipeline.from_pretrained(
+                        args.pretrained_model_name_or_path,
+                        unet=accelerator.unwrap_model(unet),
+                        text_encoder=accelerator.unwrap_model(text_encoder),
+                        revision=args.revision,
+                    )
+                    pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
+                    pipeline = pipeline.to(accelerator.device)
+                    pipeline.set_progress_bar_config(disable=True)
+
+                    # run inference
+                    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+                    images = [
+                        pipeline(args.validation_prompt, num_inference_steps=args.num_inference_steps, generator=generator).images[0]
+                        for _ in range(args.num_validation_images)
+                    ]
+
+                    for tracker in accelerator.trackers:
+                        if tracker.name == "tensorboard":
+                            np_images = np.stack([np.asarray(img) for img in images])
+                            tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+                        if tracker.name == "wandb":
+                            tracker.log(
+                                {
+                                    "validation": [
+                                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                        for i, image in enumerate(images)
+                                    ]
+                                }
+                            )
+
+                    del pipeline
+                    torch.cuda.empty_cache()
+
     # Create the pipeline using using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
@@ -938,6 +1033,42 @@ def main(args):
             revision=args.revision,
         )
         pipeline.save_pretrained(args.output_dir)
+
+        if args.validation_prompt and args.num_validation_images > 0:
+            # Final inference
+            # Load previous pipeline
+            pipeline = DiffusionPipeline.from_pretrained(
+                args.output_dir,
+                revision=args.revision,
+                torch_dtype=weight_dtype
+            )
+            pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
+            pipeline = pipeline.to(accelerator.device)
+
+            # run inference
+            logger.info(
+                f"Running test... \n Generating {args.num_validation_images} images with prompt:"
+                f" {args.validation_prompt}."
+            )
+            generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+            images = [
+                pipeline(args.validation_prompt, num_inference_steps=args.num_inference_steps, generator=generator).images[0]
+                for _ in range(args.num_validation_images)
+            ]
+
+            for tracker in accelerator.trackers:
+                if tracker.name == "tensorboard":
+                    np_images = np.stack([np.asarray(img) for img in images])
+                    tracker.writer.add_images("test", np_images, epoch, dataformats="NHWC")
+                if tracker.name == "wandb":
+                    tracker.log(
+                        {
+                            "test": [
+                                wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                for i, image in enumerate(images)
+                            ]
+                        }
+                    )
 
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
