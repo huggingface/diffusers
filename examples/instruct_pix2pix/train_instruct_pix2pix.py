@@ -974,6 +974,8 @@ def main():
             edited_images = []
             pipeline.torch_dtype = weight_dtype
             for _ in range(args.num_validation_images):
+                print(f"Pipeline device: {pipeline.device}")
+                print(f"Text encoder device: {pipeline.text_encoder.device}")
                 edited_images.append(
                     pipeline(
                         args.validation_prompt,
