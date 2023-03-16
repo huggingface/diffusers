@@ -445,6 +445,12 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert np.abs(output_2.images.flatten() - output_1.images.flatten()).max() < 5e-1
 
+        # test that tiled decode works with various shapes
+        shapes = [(1, 4, 73, 97), (1, 4, 97, 73), (1, 4, 49, 65), (1, 4, 65, 49)]
+        for shape in shapes:
+            zeros = torch.zeros(shape).to(device)
+            sd_pipe.vae.decode(zeros)
+
     def test_stable_diffusion_negative_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -476,43 +482,6 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-
-    def test_stable_diffusion_num_images_per_prompt(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        components["scheduler"] = PNDMScheduler(skip_prk_steps=True)
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        prompt = "A painting of a squirrel eating a burger"
-
-        # test num_images_per_prompt=1 (default)
-        images = sd_pipe(prompt, num_inference_steps=2, output_type="np").images
-
-        assert images.shape == (1, 64, 64, 3)
-
-        # test num_images_per_prompt=1 (default) for batch of prompts
-        batch_size = 2
-        images = sd_pipe([prompt] * batch_size, num_inference_steps=2, output_type="np").images
-
-        assert images.shape == (batch_size, 64, 64, 3)
-
-        # test num_images_per_prompt for single prompt
-        num_images_per_prompt = 2
-        images = sd_pipe(
-            prompt, num_inference_steps=2, output_type="np", num_images_per_prompt=num_images_per_prompt
-        ).images
-
-        assert images.shape == (num_images_per_prompt, 64, 64, 3)
-
-        # test num_images_per_prompt for batch of prompts
-        batch_size = 2
-        images = sd_pipe(
-            [prompt] * batch_size, num_inference_steps=2, output_type="np", num_images_per_prompt=num_images_per_prompt
-        ).images
-
-        assert images.shape == (batch_size * num_images_per_prompt, 64, 64, 3)
 
     def test_stable_diffusion_long_prompt(self):
         components = self.get_dummy_components()
@@ -774,7 +743,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 
         # make sure that more than 4 GB is allocated
         mem_bytes = torch.cuda.max_memory_allocated()
-        assert mem_bytes > 4e9
+        assert mem_bytes > 5e9
         assert np.abs(image_chunked.flatten() - image.flatten()).max() < 1e-2
 
     def test_stable_diffusion_fp16_vs_autocast(self):

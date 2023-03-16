@@ -98,11 +98,22 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             options to clip the variance used when adding noise to the denoised sample. Choose from `fixed_small`,
             `fixed_small_log`, `fixed_large`, `fixed_large_log`, `learned` or `learned_range`.
         clip_sample (`bool`, default `True`):
-            option to clip predicted sample between -1 and 1 for numerical stability.
+            option to clip predicted sample for numerical stability.
+        clip_sample_range (`float`, default `1.0`):
+            the maximum magnitude for sample clipping. Valid only when `clip_sample=True`.
         prediction_type (`str`, default `epsilon`, optional):
             prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
             process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
             https://imagen.research.google/video/paper.pdf)
+        thresholding (`bool`, default `False`):
+            whether to use the "dynamic thresholding" method (introduced by Imagen, https://arxiv.org/abs/2205.11487).
+            Note that the thresholding method is unsuitable for latent-space diffusion models (such as
+            stable-diffusion).
+        dynamic_thresholding_ratio (`float`, default `0.995`):
+            the ratio for the dynamic thresholding method. Default is `0.995`, the same as Imagen
+            (https://arxiv.org/abs/2205.11487). Valid only when `thresholding=True`.
+        sample_max_value (`float`, default `1.0`):
+            the threshold value for dynamic thresholding. Valid only when `thresholding=True`.
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -119,7 +130,10 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         variance_type: str = "fixed_small",
         clip_sample: bool = True,
         prediction_type: str = "epsilon",
-        clip_sample_range: Optional[float] = 1.0,
+        thresholding: bool = False,
+        dynamic_thresholding_ratio: float = 0.995,
+        clip_sample_range: float = 1.0,
+        sample_max_value: float = 1.0,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -226,6 +240,17 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         return variance
 
+    def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
+        # Dynamic thresholding in https://arxiv.org/abs/2205.11487
+        dynamic_max_val = (
+            sample.flatten(1)
+            .abs()
+            .quantile(self.config.dynamic_thresholding_ratio, dim=1)
+            .clamp_min(self.config.sample_max_value)
+            .view(-1, *([1] * (sample.ndim - 1)))
+        )
+        return sample.clamp(-dynamic_max_val, dynamic_max_val) / dynamic_max_val
+
     def step(
         self,
         model_output: torch.FloatTensor,
@@ -283,11 +308,14 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
                 " `v_prediction`  for the DDPMScheduler."
             )
 
-        # 3. Clip "predicted x_0"
+        # 3. Clip or threshold "predicted x_0"
         if self.config.clip_sample:
-            pred_original_sample = torch.clamp(
-                pred_original_sample, -self.config.clip_sample_range, self.config.clip_sample_range
+            pred_original_sample = pred_original_sample.clamp(
+                -self.config.clip_sample_range, self.config.clip_sample_range
             )
+
+        if self.config.thresholding:
+            pred_original_sample = self._threshold_sample(pred_original_sample)
 
         # 4. Compute coefficients for pred_original_sample x_0 and current sample x_t
         # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
