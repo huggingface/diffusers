@@ -24,9 +24,7 @@ from .attention_processor import (  # noqa: F401
     SlicedAttnProcessor,
     XFormersAttnProcessor,
 )
-from .attention_processor import (  # noqa: F401
-    AttnProcessor as AttnProcessorRename,
-)
+from .attention_processor import AttnProcessor as AttnProcessorRename  # noqa: F401
 
 
 deprecate(
