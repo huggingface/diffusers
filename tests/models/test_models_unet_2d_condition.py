@@ -497,9 +497,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
                 block_id = int(name[len("down_blocks.")])
                 hidden_size = model.config.block_out_channels[block_id]
 
-            lora_attn_procs[name] = LoRACrossAttnProcessor(
-                hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
-            )
+            lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
             lora_attn_procs[name] = lora_attn_procs[name].to(model.device)
 
         model.set_attn_processor(lora_attn_procs)
