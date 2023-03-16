@@ -47,7 +47,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.loaders import AttnProcsLayers
-from diffusers.models.cross_attention import LoRACrossAttnProcessor
+from diffusers.models.attention_processor import LoRAAttnProcessor
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
@@ -723,9 +723,7 @@ def main(args):
             block_id = int(name[len("down_blocks.")])
             hidden_size = unet.config.block_out_channels[block_id]
 
-        lora_attn_procs[name] = LoRACrossAttnProcessor(
-            hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
-        )
+        lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
 
     unet.set_attn_processor(lora_attn_procs)
     lora_layers = AttnProcsLayers(unet.attn_processors)

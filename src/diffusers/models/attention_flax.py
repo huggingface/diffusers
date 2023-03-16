@@ -16,7 +16,7 @@ import flax.linen as nn
 import jax.numpy as jnp
 
 
-class FlaxCrossAttention(nn.Module):
+class FlaxAttention(nn.Module):
     r"""
     A Flax multi-head attention module as described in: https://arxiv.org/abs/1706.03762
 
@@ -118,9 +118,9 @@ class FlaxBasicTransformerBlock(nn.Module):
 
     def setup(self):
         # self attention (or cross_attention if only_cross_attention is True)
-        self.attn1 = FlaxCrossAttention(self.dim, self.n_heads, self.d_head, self.dropout, dtype=self.dtype)
+        self.attn1 = FlaxAttention(self.dim, self.n_heads, self.d_head, self.dropout, dtype=self.dtype)
         # cross attention
-        self.attn2 = FlaxCrossAttention(self.dim, self.n_heads, self.d_head, self.dropout, dtype=self.dtype)
+        self.attn2 = FlaxAttention(self.dim, self.n_heads, self.d_head, self.dropout, dtype=self.dtype)
         self.ff = FlaxFeedForward(dim=self.dim, dropout=self.dropout, dtype=self.dtype)
         self.norm1 = nn.LayerNorm(epsilon=1e-5, dtype=self.dtype)
         self.norm2 = nn.LayerNorm(epsilon=1e-5, dtype=self.dtype)
