@@ -576,23 +576,28 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         # 2. pre-process
         sample = self.conv_in(sample)
 
+        is_controlnet = mid_block_additional_residual is not None and down_block_additional_residuals is not None
+        is_t2i = mid_block_additional_residual is None and down_block_additional_residuals is not None
         # 3. down
         down_block_res_samples = (sample,)
         for downsample_block in self.down_blocks:
             if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
+                # find out whether `is_t2i` depending on the shape of the residual connections
+                kwargs = {} if not is_t2i else {"down_block_res": down_block_additional_residuals.pop()}
                 sample, res_samples = downsample_block(
                     hidden_states=sample,
                     temb=emb,
                     encoder_hidden_states=encoder_hidden_states,
                     attention_mask=attention_mask,
                     cross_attention_kwargs=cross_attention_kwargs,
+                    **kwargs,
                 )
             else:
                 sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
 
             down_block_res_samples += res_samples
 
-        if down_block_additional_residuals is not None:
+        if is_controlnet:
             new_down_block_res_samples = ()
 
             for down_block_res_sample, down_block_additional_residual in zip(
@@ -613,7 +618,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 cross_attention_kwargs=cross_attention_kwargs,
             )
 
-        if mid_block_additional_residual is not None:
+        if is_controlnet:
             sample = sample + mid_block_additional_residual
 
         # 5. up

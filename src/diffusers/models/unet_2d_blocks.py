@@ -808,7 +808,7 @@ class CrossAttnDownBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(
-        self, hidden_states, temb=None, encoder_hidden_states=None, attention_mask=None, cross_attention_kwargs=None
+        self, hidden_states, temb=None, encoder_hidden_states=None, attention_mask=None, down_block_res=None, cross_attention_kwargs=None
     ):
         # TODO(Patrick, William) - attention mask is not used
         output_states = ()
@@ -843,6 +843,8 @@ class CrossAttnDownBlock2D(nn.Module):
             output_states += (hidden_states,)
 
         if self.downsamplers is not None:
+            if down_block_res is not None:
+                hidden_states += down_block_res
             for downsampler in self.downsamplers:
                 hidden_states = downsampler(hidden_states)
 
