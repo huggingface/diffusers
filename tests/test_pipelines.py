@@ -113,7 +113,7 @@ class DownloadTests(unittest.TestCase):
             # pipeline has Flax weights
             with self.assertRaises(EnvironmentError):
                 tmpdirname = DiffusionPipeline.download(
-                    "hf-internal-testing/tiny-stable-diffusion-pipe",
+                    "hf-internal-testing/tiny-stable-diffusion-pipe-no-safetensors",
                     safety_checker=None,
                     cache_dir=tmpdirname,
                     use_safetensors=True,
