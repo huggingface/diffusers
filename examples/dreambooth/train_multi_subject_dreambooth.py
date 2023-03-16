@@ -1,3 +1,18 @@
+#!/usr/bin/env python
+# coding=utf-8
+# Copyright 2022 The HuggingFace Inc. team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+
 import argparse
 import hashlib
 import itertools
@@ -9,6 +24,9 @@ from pathlib import Path
 from typing import Optional
 
 import datasets
+
+import numpy as np
+import accelerate
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
@@ -17,6 +35,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
+from packaging import version
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
@@ -24,14 +43,14 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
 import diffusers
-from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
+from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel, DPMSolverMultistepScheduler
 from diffusers.optimization import get_scheduler
-from diffusers.utils import check_min_version
+from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.13.0.dev0")
+check_min_version("0.14.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -70,7 +89,10 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         required=False,
-        help="Revision of pretrained model identifier from huggingface.co/models.",
+        help=(
+            "Revision of pretrained model identifier from huggingface.co/models. Trainable model components should be"
+            " float32 precision."
+        ),
     )
     parser.add_argument(
         "--tokenizer_name",
@@ -104,6 +126,33 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         help="The prompt to specify images in the same class as provided instance images.",
+    )
+    parser.add_argument(
+        "--validation_prompt",
+        type=str,
+        default=None,
+        help="A prompt that is used during validation to verify that the model is learning.",
+    )
+    parser.add_argument(
+        "--num_validation_images",
+        type=int,
+        default=4,
+        help="Number of images that should be generated during validation with `validation_prompt`.",
+    )
+    parser.add_argument(
+        "--validation_steps",
+        type=int,
+        default=500,
+        help=(
+            "Run dreambooth validation every X updates. Dreambooth validation consists of running the prompt"
+            " `args.validation_prompt` multiple times: `args.num_validation_images`."
+        ),
+    )
+    parser.add_argument(
+        "--num_inference_steps",
+        type=int,
+        default=25,
+        help="Number of inference steps that should be used during validation with `validation_prompt`.",
     )
     parser.add_argument(
         "--with_prior_preservation",
@@ -146,7 +195,11 @@ def parse_args(input_args=None):
             " cropped. The images will be resized to the resolution first before cropping."
         ),
     )
-    parser.add_argument("--train_text_encoder", action="store_true", help="Whether to train the text encoder")
+    parser.add_argument(
+        "--train_text_encoder",
+        action="store_true",
+        help="Whether to train the text encoder. If set, the text encoder should be float32 precision.",
+    )
     parser.add_argument(
         "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
     )
@@ -165,9 +218,11 @@ def parse_args(input_args=None):
         type=int,
         default=500,
         help=(
-            "Save a checkpoint of the training state every X updates. These checkpoints can be used both as final"
-            " checkpoints in case they are better than the last checkpoint, and are also suitable for resuming"
-            " training using `--resume_from_checkpoint`."
+            "Save a checkpoint of the training state every X updates. Checkpoints can be used for resuming training via `--resume_from_checkpoint`. "
+            "In the case that the checkpoint is better than the final trained model, the checkpoint can also be used for inference."
+            "Using a checkpoint for inference requires separate loading of the original pipeline and the individual checkpointed model components."
+            "See https://huggingface.co/docs/diffusers/main/en/training/dreambooth#performing-inference-using-a-saved-checkpoint for step by step"
+            "instructions."
         ),
     )
     parser.add_argument(
@@ -177,7 +232,7 @@ def parse_args(input_args=None):
         help=(
             "Max number of checkpoints to store. Passed as `total_limit` to the `Accelerator` `ProjectConfiguration`."
             " See Accelerator::save_state https://huggingface.co/docs/accelerate/package_reference/accelerator#accelerate.Accelerator.save_state"
-            " for more docs"
+            " for more details"
         ),
     )
     parser.add_argument(
@@ -234,6 +289,14 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
     )
+    parser.add_argument(
+        "--dataloader_num_workers",
+        type=int,
+        default=0,
+        help=(
+            "Number of subprocesses to use for data loading. 0 means that the data will be loaded in the main process."
+        ),
+    )
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
@@ -254,6 +317,24 @@ def parse_args(input_args=None):
         help=(
             "[TensorBoard](https://www.tensorflow.org/tensorboard) log directory. Will default to"
             " *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***."
+        ),
+    )
+    parser.add_argument(
+        "--log_name",
+        type=str,
+        default=None,
+        required=False,
+        help=(
+            "Name of log to identify experiment in reporting tool."
+        ),
+    )
+    parser.add_argument(
+        "--log_group",
+        type=str,
+        default=None,
+        required=False,
+        help=(
+            "Name of log group to aggregate experiments in reporting tool."
         ),
     )
     parser.add_argument(
@@ -297,6 +378,15 @@ def parse_args(input_args=None):
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
     parser.add_argument(
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
+    )
+    parser.add_argument(
+        "--set_grads_to_none",
+        action="store_true",
+        help=(
+            "Save more memory by using setting grads to None instead of zero. Be aware, that this changes certain"
+            " behaviors, so disable this argument if it causes any problems. More info:"
+            " https://pytorch.org/docs/stable/generated/torch.optim.Optimizer.zero_grad.html"
+        ),
     )
 
     if input_args is not None:
@@ -367,7 +457,7 @@ class DreamBoothDataset(Dataset):
                 self.class_data_root.append(Path(class_data_root[i]))
                 self.class_data_root[i].mkdir(parents=True, exist_ok=True)
                 self.class_images_path.append(list(self.class_data_root[i].iterdir()))
-                self.num_class_images.append(len(self.class_images_path[i]))
+                self.num_class_images.append(len(self.class_images_path))
                 if self.num_class_images[i] > self.num_instance_images[i]:
                     self._length -= self.num_instance_images[i]
                     self._length += self.num_class_images[i]
@@ -486,6 +576,11 @@ def main(args):
         project_config=accelerator_project_config,
     )
 
+    if args.report_to == "wandb":
+        if not is_wandb_available():
+            raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
+        import wandb
+
     # Currently, it's not possible to do gradient accumulation when training two models with accelerate.accumulate
     # This will be enabled soon in accelerate. For now, we don't allow gradient accumulation when training two models.
     # TODO (patil-suraj): Remove this check when gradient accumulation with two models is enabled in accelerate.
@@ -573,9 +668,7 @@ def main(args):
 
                     for i, image in enumerate(images):
                         hash_image = hashlib.sha1(image.tobytes()).hexdigest()
-                        image_filename = (
-                            class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
-                        )
+                        image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
                         image.save(image_filename)
 
                 del pipeline
@@ -624,12 +717,50 @@ def main(args):
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
 
+    # `accelerate` 0.16.0 will have better support for customized saving
+    if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
+        # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
+        def save_model_hook(models, weights, output_dir):
+            for model in models:
+                sub_dir = "unet" if type(model) == type(unet) else "text_encoder"
+                model.save_pretrained(os.path.join(output_dir, sub_dir))
+
+                # make sure to pop weight so that corresponding model is not saved again
+                weights.pop()
+
+        def load_model_hook(models, input_dir):
+            while len(models) > 0:
+                # pop models so that they are not loaded again
+                model = models.pop()
+
+                if type(model) == type(text_encoder):
+                    # load transformers style into model
+                    load_model = text_encoder_cls.from_pretrained(input_dir, subfolder="text_encoder")
+                    model.config = load_model.config
+                else:
+                    # load diffusers style into model
+                    load_model = UNet2DConditionModel.from_pretrained(input_dir, subfolder="unet")
+                    model.register_to_config(**load_model.config)
+
+                model.load_state_dict(load_model.state_dict())
+                del load_model
+
+        accelerator.register_save_state_pre_hook(save_model_hook)
+        accelerator.register_load_state_pre_hook(load_model_hook)
+
     vae.requires_grad_(False)
     if not args.train_text_encoder:
         text_encoder.requires_grad_(False)
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
+            import xformers
+
+            xformers_version = version.parse(xformers.__version__)
+            if xformers_version == version.parse("0.0.16"):
+                logger.warn(
+                    "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
+                )
             unet.enable_xformers_memory_efficient_attention()
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
@@ -638,6 +769,23 @@ def main(args):
         unet.enable_gradient_checkpointing()
         if args.train_text_encoder:
             text_encoder.gradient_checkpointing_enable()
+
+    # Check that all trainable models are in full precision
+    low_precision_error_string = (
+        "Please make sure to always have all model weights in full float32 precision when starting training - even if"
+        " doing mixed precision training. copy of the weights should still be float32."
+    )
+
+    if accelerator.unwrap_model(unet).dtype != torch.float32:
+        raise ValueError(
+            f"Unet loaded as datatype {accelerator.unwrap_model(unet).dtype}. {low_precision_error_string}"
+        )
+
+    if args.train_text_encoder and accelerator.unwrap_model(text_encoder).dtype != torch.float32:
+        raise ValueError(
+            f"Text encoder loaded as datatype {accelerator.unwrap_model(text_encoder).dtype}."
+            f" {low_precision_error_string}"
+        )
 
     # Enable TF32 for faster training on Ampere GPUs,
     # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
@@ -690,7 +838,7 @@ def main(args):
         batch_size=args.train_batch_size,
         shuffle=True,
         collate_fn=lambda examples: collate_fn(len(instance_data_dir), examples, args.with_prior_preservation),
-        num_workers=1,
+        num_workers=args.dataloader_num_workers,
     )
 
     # Scheduler and math around the number of training steps.
@@ -742,7 +890,10 @@ def main(args):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        accelerator.init_trackers("dreambooth", config=vars(args))
+        init_kwargs = {"wandb":{"settings":{"console": "off"},
+                                "name":f"{args.log_name}",
+                                "group":f"{args.log_group}"}}
+        accelerator.init_trackers("dreambooth", config=vars(args), init_kwargs=init_kwargs)
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -854,7 +1005,7 @@ def main(args):
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
-                optimizer.zero_grad()
+                optimizer.zero_grad(set_to_none=args.set_grads_to_none)
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
@@ -874,6 +1025,47 @@ def main(args):
             if global_step >= args.max_train_steps:
                 break
 
+            if accelerator.is_main_process:
+                if args.validation_prompt is not None and global_step % args.validation_steps == 0:
+                    logger.info(
+                        f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+                        f" {args.validation_prompt}."
+                    )
+                    # create pipeline
+                    pipeline = DiffusionPipeline.from_pretrained(
+                        args.pretrained_model_name_or_path,
+                        unet=accelerator.unwrap_model(unet),
+                        text_encoder=accelerator.unwrap_model(text_encoder),
+                        revision=args.revision,
+                    )
+                    pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
+                    pipeline = pipeline.to(accelerator.device)
+                    pipeline.set_progress_bar_config(disable=True)
+
+                    # run inference
+                    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+                    images = [
+                        pipeline(args.validation_prompt, num_inference_steps=args.num_inference_steps, generator=generator).images[0]
+                        for _ in range(args.num_validation_images)
+                    ]
+
+                    for tracker in accelerator.trackers:
+                        if tracker.name == "tensorboard":
+                            np_images = np.stack([np.asarray(img) for img in images])
+                            tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+                        if tracker.name == "wandb":
+                            tracker.log(
+                                {
+                                    "validation": [
+                                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                        for i, image in enumerate(images)
+                                    ]
+                                }
+                            )
+
+                    del pipeline
+                    torch.cuda.empty_cache()
+
     # Create the pipeline using using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
@@ -884,6 +1076,42 @@ def main(args):
             revision=args.revision,
         )
         pipeline.save_pretrained(args.output_dir)
+
+        if args.validation_prompt and args.num_validation_images > 0:
+            # Final inference
+            # Load previous pipeline
+            pipeline = DiffusionPipeline.from_pretrained(
+                args.output_dir,
+                revision=args.revision,
+                torch_dtype=weight_dtype
+            )
+            pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
+            pipeline = pipeline.to(accelerator.device)
+
+            # run inference
+            logger.info(
+                f"Running test... \n Generating {args.num_validation_images} images with prompt:"
+                f" {args.validation_prompt}."
+            )
+            generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+            images = [
+                pipeline(args.validation_prompt, num_inference_steps=args.num_inference_steps, generator=generator).images[0]
+                for _ in range(args.num_validation_images)
+            ]
+
+            for tracker in accelerator.trackers:
+                if tracker.name == "tensorboard":
+                    np_images = np.stack([np.asarray(img) for img in images])
+                    tracker.writer.add_images("test", np_images, epoch, dataformats="NHWC")
+                if tracker.name == "wandb":
+                    tracker.log(
+                        {
+                            "test": [
+                                wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                for i, image in enumerate(images)
+                            ]
+                        }
+                    )
 
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
