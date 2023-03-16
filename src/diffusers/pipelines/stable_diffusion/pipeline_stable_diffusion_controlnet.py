@@ -611,9 +611,17 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                 image = [image]
 
             if isinstance(image[0], PIL.Image.Image):
-                image = [
-                    np.array(i.resize((width, height), resample=PIL_INTERPOLATION["lanczos"]))[None, :] for i in image
-                ]
+                images = []
+
+                for image_ in image:
+                    image_ = image_.convert("RGB")
+                    image_ = image_.resize((width, height), resample=PIL_INTERPOLATION["lanczos"])
+                    image_ = np.array(image_)
+                    image_ = image_[None, :]
+                    images.append(image_)
+
+                image = images
+
                 image = np.concatenate(image, axis=0)
                 image = np.array(image).astype(np.float32) / 255.0
                 image = image.transpose(0, 3, 1, 2)
@@ -781,7 +789,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
             cross_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttnProcessor` as defined under
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
             controlnet_conditioning_scale (`float` or `List[float]`, *optional*, defaults to 1.0):

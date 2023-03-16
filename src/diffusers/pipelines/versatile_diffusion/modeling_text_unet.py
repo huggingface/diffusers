@@ -6,8 +6,8 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models import ModelMixin
-from ...models.attention import CrossAttention
-from ...models.cross_attention import AttnProcessor, CrossAttnAddedKVProcessor
+from ...models.attention import Attention
+from ...models.attention_processor import AttentionProcessor, AttnAddedKVProcessor
 from ...models.dual_transformer_2d import DualTransformer2DModel
 from ...models.embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from ...models.transformer_2d import Transformer2DModel
@@ -452,7 +452,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         )
 
     @property
-    def attn_processors(self) -> Dict[str, AttnProcessor]:
+    def attn_processors(self) -> Dict[str, AttentionProcessor]:
         r"""
         Returns:
             `dict` of attention processors: A dictionary containing all attention processors used in the model with
@@ -461,7 +461,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         # set recursively
         processors = {}
 
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttnProcessor]):
+        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
             if hasattr(module, "set_processor"):
                 processors[f"{name}.processor"] = module.processor
 
@@ -475,12 +475,12 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
         return processors
 
-    def set_attn_processor(self, processor: Union[AttnProcessor, Dict[str, AttnProcessor]]):
+    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
         r"""
         Parameters:
-            `processor (`dict` of `AttnProcessor` or `AttnProcessor`):
+            `processor (`dict` of `AttentionProcessor` or `AttentionProcessor`):
                 The instantiated processor class or a dictionary of processor classes that will be set as the processor
-                of **all** `CrossAttention` layers.
+                of **all** `Attention` layers.
             In case `processor` is a dict, the key needs to define the path to the corresponding cross attention processor. This is strongly recommended when setting trainablae attention processors.:
 
         """
@@ -595,7 +595,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
             cross_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttnProcessor` as defined under
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
 
@@ -1425,7 +1425,7 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
 
         for _ in range(num_layers):
             attentions.append(
-                CrossAttention(
+                Attention(
                     query_dim=in_channels,
                     cross_attention_dim=in_channels,
                     heads=self.num_heads,
@@ -1434,7 +1434,7 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
                     norm_num_groups=resnet_groups,
                     bias=True,
                     upcast_softmax=True,
-                    processor=CrossAttnAddedKVProcessor(),
+                    processor=AttnAddedKVProcessor(),
                 )
             )
             resnets.append(
