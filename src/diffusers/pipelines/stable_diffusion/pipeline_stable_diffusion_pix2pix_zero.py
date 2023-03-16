@@ -29,7 +29,7 @@ from transformers import (
 )
 
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...models.cross_attention import CrossAttention
+from ...models.attention_processor import Attention
 from ...schedulers import DDIMScheduler, DDPMScheduler, EulerAncestralDiscreteScheduler, LMSDiscreteScheduler
 from ...schedulers.scheduling_ddim_inverse import DDIMInverseScheduler
 from ...utils import (
@@ -200,10 +200,10 @@ def prepare_unet(unet: UNet2DConditionModel):
         module_name = name.replace(".processor", "")
         module = unet.get_submodule(module_name)
         if "attn2" in name:
-            pix2pix_zero_attn_procs[name] = Pix2PixZeroCrossAttnProcessor(is_pix2pix_zero=True)
+            pix2pix_zero_attn_procs[name] = Pix2PixZeroAttnProcessor(is_pix2pix_zero=True)
             module.requires_grad_(True)
         else:
-            pix2pix_zero_attn_procs[name] = Pix2PixZeroCrossAttnProcessor(is_pix2pix_zero=False)
+            pix2pix_zero_attn_procs[name] = Pix2PixZeroAttnProcessor(is_pix2pix_zero=False)
             module.requires_grad_(False)
 
     unet.set_attn_processor(pix2pix_zero_attn_procs)
@@ -218,7 +218,7 @@ class Pix2PixZeroL2Loss:
         self.loss += ((predictions - targets) ** 2).sum((1, 2)).mean(0)
 
 
-class Pix2PixZeroCrossAttnProcessor:
+class Pix2PixZeroAttnProcessor:
     """An attention processor class to store the attention weights.
     In Pix2Pix Zero, it happens during computations in the cross-attention blocks."""
 
@@ -229,7 +229,7 @@ class Pix2PixZeroCrossAttnProcessor:
 
     def __call__(
         self,
-        attn: CrossAttention,
+        attn: Attention,
         hidden_states,
         encoder_hidden_states=None,
         attention_mask=None,

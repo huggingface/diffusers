@@ -22,7 +22,7 @@ import torch
 from parameterized import parameterized
 
 from diffusers import UNet2DConditionModel
-from diffusers.models.cross_attention import CrossAttnProcessor, LoRACrossAttnProcessor
+from diffusers.models.attention_processor import AttnProcessor, LoRAAttnProcessor
 from diffusers.utils import (
     floats_tensor,
     load_hf_numpy,
@@ -54,9 +54,7 @@ def create_lora_layers(model):
             block_id = int(name[len("down_blocks.")])
             hidden_size = model.config.block_out_channels[block_id]
 
-        lora_attn_procs[name] = LoRACrossAttnProcessor(
-            hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
-        )
+        lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
         lora_attn_procs[name] = lora_attn_procs[name].to(model.device)
 
         # add 1 to weights to mock trained weights
@@ -119,7 +117,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
         assert (
             model.mid_block.attentions[0].transformer_blocks[0].attn1.processor.__class__.__name__
-            == "XFormersCrossAttnProcessor"
+            == "XFormersAttnProcessor"
         ), "xformers is not enabled"
 
     @unittest.skipIf(torch_device == "mps", "Gradient checkpointing skipped on MPS")
@@ -324,9 +322,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
                 block_id = int(name[len("down_blocks.")])
                 hidden_size = model.config.block_out_channels[block_id]
 
-            lora_attn_procs[name] = LoRACrossAttnProcessor(
-                hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
-            )
+            lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
 
             # add 1 to weights to mock trained weights
             with torch.no_grad():
@@ -413,9 +409,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
                 block_id = int(name[len("down_blocks.")])
                 hidden_size = model.config.block_out_channels[block_id]
 
-            lora_attn_procs[name] = LoRACrossAttnProcessor(
-                hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
-            )
+            lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
             lora_attn_procs[name] = lora_attn_procs[name].to(model.device)
 
             # add 1 to weights to mock trained weights
@@ -446,7 +440,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         # LoRA and no LoRA should NOT be the same
         assert (sample - old_sample).abs().max() > 1e-4
 
-    def test_lora_save_load_safetensors_load_torch(self):
+    def test_lora_save_safetensors_load_torch(self):
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -468,9 +462,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
                 block_id = int(name[len("down_blocks.")])
                 hidden_size = model.config.block_out_channels[block_id]
 
-            lora_attn_procs[name] = LoRACrossAttnProcessor(
-                hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
-            )
+            lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
             lora_attn_procs[name] = lora_attn_procs[name].to(model.device)
 
         model.set_attn_processor(lora_attn_procs)
@@ -482,6 +474,43 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
             new_model = self.model_class(**init_dict)
             new_model.to(torch_device)
             new_model.load_attn_procs(tmpdirname, weight_name="pytorch_lora_weights.bin")
+
+    def test_lora_save_torch_force_load_safetensors_error(self):
+        # enable deterministic behavior for gradient checkpointing
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        init_dict["attention_head_dim"] = (8, 16)
+
+        torch.manual_seed(0)
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        lora_attn_procs = {}
+        for name in model.attn_processors.keys():
+            cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
+            if name.startswith("mid_block"):
+                hidden_size = model.config.block_out_channels[-1]
+            elif name.startswith("up_blocks"):
+                block_id = int(name[len("up_blocks.")])
+                hidden_size = list(reversed(model.config.block_out_channels))[block_id]
+            elif name.startswith("down_blocks"):
+                block_id = int(name[len("down_blocks.")])
+                hidden_size = model.config.block_out_channels[block_id]
+
+            lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
+            lora_attn_procs[name] = lora_attn_procs[name].to(model.device)
+
+        model.set_attn_processor(lora_attn_procs)
+        # Saving as torch, properly reloads with directly filename
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            model.save_attn_procs(tmpdirname)
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+            torch.manual_seed(0)
+            new_model = self.model_class(**init_dict)
+            new_model.to(torch_device)
+            with self.assertRaises(IOError) as e:
+                new_model.load_attn_procs(tmpdirname, use_safetensors=True)
+            self.assertIn("Error no file named pytorch_lora_weights.safetensors", str(e.exception))
 
     def test_lora_on_off(self):
         # enable deterministic behavior for gradient checkpointing
@@ -502,7 +531,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             sample = model(**inputs_dict, cross_attention_kwargs={"scale": 0.0}).sample
 
-        model.set_attn_processor(CrossAttnProcessor())
+        model.set_attn_processor(AttnProcessor())
 
         with torch.no_grad():
             new_sample = model(**inputs_dict).sample

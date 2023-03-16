@@ -19,7 +19,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from ..utils.import_utils import is_xformers_available
-from .cross_attention import CrossAttention
+from .attention_processor import Attention
 from .embeddings import CombinedTimestepLabelEmbeddings
 
 
@@ -220,7 +220,7 @@ class BasicTransformerBlock(nn.Module):
             )
 
         # 1. Self-Attn
-        self.attn1 = CrossAttention(
+        self.attn1 = Attention(
             query_dim=dim,
             heads=num_attention_heads,
             dim_head=attention_head_dim,
@@ -234,7 +234,7 @@ class BasicTransformerBlock(nn.Module):
 
         # 2. Cross-Attn
         if cross_attention_dim is not None:
-            self.attn2 = CrossAttention(
+            self.attn2 = Attention(
                 query_dim=dim,
                 cross_attention_dim=cross_attention_dim,
                 heads=num_attention_heads,
