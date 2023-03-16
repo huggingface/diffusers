@@ -13,11 +13,11 @@ specific language governing permissions and limitations under the License.
 
 # How to use the ONNX Runtime for inference
 
-🤗 [Optimum](https://github.com/huggingface/optimum-intel) provides a Stable Diffusion pipeline compatible with ONNX. 
+🤗 [Optimum](https://github.com/huggingface/optimum) provides a Stable Diffusion pipeline compatible with ONNX Runtime. 
 
 ## Installation
 
-Install 🤗 Optimum with the following command for ONNX support:
+Install 🤗 Optimum with the following command for ONNX Runtime support:
 
 ```
 pip install optimum["onnxruntime"]
@@ -35,6 +35,7 @@ model_id = "runwayml/stable-diffusion-v1-5"
 pipe = ORTStableDiffusionPipeline.from_pretrained(model_id, export=True)
 prompt = "a photo of an astronaut riding a horse on mars"
 images = pipe(prompt).images[0]
+pipe.save_pretrained("./onnx-stable-diffusion-v1-5")
 ```
 
 If you want to export the pipeline in the ONNX format offline and later use it for inference,
