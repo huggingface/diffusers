@@ -1,4 +1,4 @@
-# Copyright 2022 ETH Zurich Computer Vision Lab and The HuggingFace Team. All rights reserved.
+# Copyright 2023 ETH Zurich Computer Vision Lab and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import torch
 
 from ...models import UNet2DModel
 from ...schedulers import RePaintScheduler
-from ...utils import PIL_INTERPOLATION, deprecate, logging, randn_tensor
+from ...utils import PIL_INTERPOLATION, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
@@ -90,7 +90,6 @@ class RePaintPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""
         Args:
@@ -124,9 +123,7 @@ class RePaintPipeline(DiffusionPipeline):
             True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
         """
 
-        message = "Please use `image` instead of `original_image`."
-        original_image = deprecate("original_image", "0.15.0", message, take_from=kwargs)
-        original_image = original_image or image
+        original_image = image
 
         original_image = _preprocess_image(original_image)
         original_image = original_image.to(device=self.device, dtype=self.unet.dtype)

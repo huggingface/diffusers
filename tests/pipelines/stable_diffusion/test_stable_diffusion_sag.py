@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ from diffusers import (
 from diffusers.utils import slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 
+from ...pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin
 
 
@@ -37,6 +38,8 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 class StableDiffusionSAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionSAGPipeline
+    params = TEXT_TO_IMAGE_PARAMS
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     test_cpu_offload = False
 
     def get_dummy_components(self):

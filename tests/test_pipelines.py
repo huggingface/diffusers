@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -584,6 +584,42 @@ class PipelineFastTests(unittest.TestCase):
         assert image_img2img.shape == (1, 32, 32, 3)
         assert image_text2img.shape == (1, 64, 64, 3)
 
+    @require_torch_gpu
+    def test_pipe_false_offload_warn(self):
+        unet = self.dummy_cond_unet()
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        sd = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+
+        sd.enable_model_cpu_offload()
+
+        logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
+        with CaptureLogger(logger) as cap_logger:
+            sd.to("cuda")
+
+        assert "It is strongly recommended against doing so" in str(cap_logger)
+
+        sd = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+
     def test_set_scheduler(self):
         unet = self.dummy_cond_unet()
         scheduler = PNDMScheduler(skip_prk_steps=True)
@@ -879,8 +915,8 @@ class PipelineSlowTests(unittest.TestCase):
                 )
 
         assert (
-            cap_logger.out
-            == "Keyword arguments {'not_used': True} are not expected by DDPMPipeline and will be ignored.\n"
+            cap_logger.out.strip().split("\n")[-1]
+            == "Keyword arguments {'not_used': True} are not expected by DDPMPipeline and will be ignored."
         )
 
     def test_from_save_pretrained(self):
