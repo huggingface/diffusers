@@ -12,8 +12,8 @@ specific language governing permissions and limitations under the License.
 
 # Configuration
 
-In Diffusers, schedulers of type [`schedulers.scheduling_utils.SchedulerMixin`], and models of type [`ModelMixin`] inherit from [`ConfigMixin`] which conveniently takes care of storing all parameters that are 
-passed to the respective `__init__` methods in a JSON-configuration file.
+Schedulers from [`~schedulers.scheduling_utils.SchedulerMixin`] and models from [`ModelMixin`] inherit from [`ConfigMixin`] which conveniently takes care of storing all the parameters that are 
+passed to their respective `__init__` methods in a JSON-configuration file.
 
 ## ConfigMixin
 
@@ -21,3 +21,5 @@ passed to the respective `__init__` methods in a JSON-configuration file.
 	- load_config
 	- from_config
 	- save_config
+	- to_json_file
+	- to_json_string
