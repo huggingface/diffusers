@@ -221,7 +221,7 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
         controlnet_block = nn.Conv(
             output_channel, 
             kernel_size=(1,1),
-            padding=((1, 1), (1, 1)),
+            padding="VALID",
             kernel_init=nn.initializers.zeros_init(),
             bias_init=nn.initializers.zeros_init(),
             dtype=self.dtype,
@@ -261,7 +261,7 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
                 controlnet_block = nn.Conv(
                     output_channel, 
                     kernel_size=(1,1),
-                    padding=((1, 1), (1, 1)),
+                    padding="VALID",
                     kernel_init=nn.initializers.zeros_init(),
                     bias_init=nn.initializers.zeros_init(),
                     dtype=self.dtype,
@@ -272,7 +272,7 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
                 controlnet_block = nn.Conv(
                     output_channel, 
                     kernel_size=(1,1),
-                    padding=((1, 1), (1, 1)),
+                    padding="VALID",
                     kernel_init=nn.initializers.zeros_init(),
                     bias_init=nn.initializers.zeros_init(),
                     dtype=self.dtype,
@@ -295,7 +295,7 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
         self.controlnet_mid_block = nn.Conv(
             mid_block_channel, 
             kernel_size=(1,1),
-            padding=((1, 1), (1, 1)),
+            padding="VALID",
             kernel_init=nn.initializers.zeros_init(),
             bias_init=nn.initializers.zeros_init(),
             dtype=self.dtype,
