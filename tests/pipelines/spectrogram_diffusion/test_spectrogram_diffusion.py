@@ -93,9 +93,9 @@ class SpectrogramDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         scheduler = DDPMScheduler()
 
         components = {
-            "notes_encoder": notes_encoder,
-            "continuous_encoder": continuous_encoder,
-            "decoder": decoder,
+            "notes_encoder": notes_encoder.eval(),
+            "continuous_encoder": continuous_encoder.eval(),
+            "decoder": decoder.eval(),
             "scheduler": scheduler,
             "melgan": None,
         }
@@ -131,7 +131,7 @@ class SpectrogramDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
 
         assert mel_slice.shape == (3, 3)
         expected_slice = np.array(
-            [-4.783236, 4.0, -2.2628813, -4.4896817, -10.321411, -11.162924, -11.512925, 4.0, 4.0]
+            [-11.512925, -4.788215, -0.46172905, -2.051715, -10.539147, -10.970963, -9.091634, 4.0, 4.0]
         )
         assert np.abs(mel_slice.flatten() - expected_slice).max() < 1e-2
 
