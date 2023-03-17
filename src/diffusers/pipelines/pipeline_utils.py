@@ -484,6 +484,11 @@ class DiffusionPipeline(ConfigMixin):
             sub_model = getattr(self, pipeline_component_name)
             model_cls = sub_model.__class__
 
+            # Dynamo wraps the original mode and changes the class.
+            # Is there a principled way to obtain the original class?
+            if "_dynamo.eval_frame" in str(model_cls):
+                model_cls = sub_model._orig_mod.__class__
+
             save_method_name = None
             # search for the model's base class in LOADABLE_CLASSES
             for library_name, library_classes in LOADABLE_CLASSES.items():
