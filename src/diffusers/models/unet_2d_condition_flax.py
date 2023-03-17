@@ -249,7 +249,6 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         sample,
         timesteps,
         encoder_hidden_states,
-        return_dict: bool = True,
         down_block_additional_residuals = None,
         mid_block_additional_residual = None,
         return_dict: bool = True, 
@@ -310,7 +309,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
 
         if mid_block_additional_residual is not None:
             sample += mid_block_additional_residual
-            
+
         # 5. up
         for up_block in self.up_blocks:
             res_samples = down_block_res_samples[-(self.layers_per_block + 1) :]
