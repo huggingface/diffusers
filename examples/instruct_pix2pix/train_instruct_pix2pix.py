@@ -974,7 +974,7 @@ def main():
             edited_images = []
             # pipeline.torch_dtype = weight_dtype
             # pipeline.unet = pipeline.unet.to(weight_dtype)
-            with torch.autocast(str(accelerator.device), enabled=accelerator.mixed_precision == "fp16"):
+            with torch.autocast(str(accelerator.device)):
                 for _ in range(args.num_validation_images):
                     # print(f"Pipeline device: {pipeline.device}")
                     # print(
