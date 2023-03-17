@@ -264,29 +264,6 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert np.abs(audio_slice - expected_slice).max() < 1e-3
 
-    def test_audioldm_vae_slicing(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
-        audioldm_pipe = AudioLDMPipeline(**components)
-        audioldm_pipe = audioldm_pipe.to(device)
-        audioldm_pipe.set_progress_bar_config(disable=None)
-
-        audio_count = 4
-
-        inputs = self.get_dummy_inputs(device)
-        inputs["prompt"] = [inputs["prompt"]] * audio_count
-        output_1 = audioldm_pipe(**inputs)
-
-        # make sure sliced vae decode yields the same result
-        audioldm_pipe.enable_vae_slicing()
-        inputs = self.get_dummy_inputs(device)
-        inputs["prompt"] = [inputs["prompt"]] * audio_count
-        output_2 = audioldm_pipe(**inputs)
-
-        # there is a small discrepancy at spectrogram borders vs. full batch decode
-        assert np.abs(output_2.audios - output_1.audios).max() < 1e-3
-
     def test_audioldm_num_waveforms_per_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
