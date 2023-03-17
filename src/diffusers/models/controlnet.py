@@ -449,6 +449,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        guess_mode: bool = False,
         return_dict: bool = True,
     ) -> Union[ControlNetOutput, Tuple]:
         # check channel order
@@ -466,6 +467,14 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         if attention_mask is not None:
             attention_mask = (1 - attention_mask.to(sample.dtype)) * -10000.0
             attention_mask = attention_mask.unsqueeze(1)
+
+        if guess_mode:
+            assert sample.shape[0] == controlnet_cond.shape[0] == encoder_hidden_states.shape[0]
+            assert sample.shape[0] == 2  # TODO: batch!=2
+            # extract cond batch (remove uncond batch)
+            sample = sample[0, :, :, :].unsqueeze(0)
+            controlnet_cond = controlnet_cond[0, :, :, :].unsqueeze(0)
+            encoder_hidden_states = encoder_hidden_states[0, :, :].unsqueeze(0)
 
         # 1. time
         timesteps = timestep
@@ -549,8 +558,20 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         mid_block_res_sample = self.controlnet_mid_block(sample)
 
         # 6. scaling
-        down_block_res_samples = [sample * conditioning_scale for sample in down_block_res_samples]
-        mid_block_res_sample *= conditioning_scale
+        if guess_mode:
+            assert len(down_block_res_samples) == 12
+            # magic coeff number from:
+            # https://github.com/lllyasviel/ControlNet/blob/16ea3b5379c1e78a4bc8e3fc9cae8d65c42511b1/gradio_canny2image.py#L52
+            scales = [conditioning_scale * (0.825 ** float(12 - i)) for i in range(13)]
+            down_block_res_samples = [sample * scale for sample, scale in zip(down_block_res_samples, scales)]
+            mid_block_res_sample *= scales[-1]  # last one
+
+            # fill zero to uncond batch
+            # down_block_res_samples = [torch.cat([d, torch.zeros_like(d)]) for d in down_block_res_samples]
+            # mid_block_res_sample = torch.cat([mid_block_res_sample, torch.zeros_like(mid_block_res_sample)])
+        else:
+            down_block_res_samples = [sample * conditioning_scale for sample in down_block_res_samples]
+            mid_block_res_sample *= conditioning_scale
 
         if not return_dict:
             return (down_block_res_samples, mid_block_res_sample)
