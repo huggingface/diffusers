@@ -17,11 +17,13 @@ from diffusers import (
     PNDMScheduler,
     UNet2DConditionModel,
 )
+from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.utils import (
     PIL_INTERPOLATION,
+    deprecate,
     randn_tensor,
 )
-from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipelineOutput
+
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -109,7 +111,7 @@ class MakeCutouts(nn.Module):
             size = int(torch.rand([]) ** self.cut_power * (max_size - min_size) + min_size)
             offsetx = torch.randint(0, sideX - size + 1, ())
             offsety = torch.randint(0, sideY - size + 1, ())
-            cutout = pixel_values[:, :, offsety: offsety + size, offsetx: offsetx + size]
+            cutout = pixel_values[:, :, offsety : offsety + size, offsetx : offsetx + size]
             cutouts.append(F.adaptive_avg_pool2d(cutout, self.cut_size))
         return torch.cat(cutouts)
 
@@ -132,14 +134,14 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
     """
 
     def __init__(
-            self,
-            vae: AutoencoderKL,
-            text_encoder: CLIPTextModel,
-            clip_model: CLIPModel,
-            tokenizer: CLIPTokenizer,
-            unet: UNet2DConditionModel,
-            scheduler: Union[PNDMScheduler, LMSDiscreteScheduler, DDIMScheduler],
-            feature_extractor: CLIPFeatureExtractor,
+        self,
+        vae: AutoencoderKL,
+        text_encoder: CLIPTextModel,
+        clip_model: CLIPModel,
+        tokenizer: CLIPTokenizer,
+        unet: UNet2DConditionModel,
+        scheduler: Union[PNDMScheduler, LMSDiscreteScheduler, DDIMScheduler],
+        feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
         self.register_modules(
@@ -211,7 +213,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
 
         if isinstance(generator, list):
             init_latents = [
-                self.vae.encode(image[i: i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)
+                self.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)
             ]
             init_latents = torch.cat(init_latents, dim=0)
         else:
@@ -248,23 +250,23 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
 
     @torch.enable_grad()
     def cond_fn(
-            self,
-            latents,
-            timestep,
-            index,
-            text_embeddings,
-            noise_pred_original,
-            text_embeddings_clip,
-            clip_guidance_scale,
-            num_cutouts,
-            use_cutouts=True,
+        self,
+        latents,
+        timestep,
+        index,
+        text_embeddings,
+        noise_pred_original,
+        text_embeddings_clip,
+        clip_guidance_scale,
+        num_cutouts,
+        use_cutouts=True,
     ):
         latents = latents.detach().requires_grad_()
 
         if isinstance(self.scheduler, LMSDiscreteScheduler):
             sigma = self.scheduler.sigmas[index]
             # the model input needs to be scaled to match the continuous ODE formulation in K-LMS
-            latent_model_input = latents / ((sigma ** 2 + 1) ** 0.5)
+            latent_model_input = latents / ((sigma**2 + 1) ** 0.5)
         else:
             latent_model_input = latents
 
@@ -309,7 +311,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
         grads = -torch.autograd.grad(loss, latents)[0]
 
         if isinstance(self.scheduler, LMSDiscreteScheduler):
-            latents = latents.detach() + grads * (sigma ** 2)
+            latents = latents.detach() + grads * (sigma**2)
             noise_pred = noise_pred_original
         else:
             noise_pred = noise_pred_original - torch.sqrt(beta_prod_t) * grads
@@ -317,24 +319,24 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
 
     @torch.no_grad()
     def __call__(
-            self,
-            prompt: Union[str, List[str]],
-            height: Optional[int] = 512,
-            width: Optional[int] = 512,
-            image: Union[torch.FloatTensor, PIL.Image.Image] = None,
-            strength: float = 0.8,
-            num_inference_steps: Optional[int] = 50,
-            guidance_scale: Optional[float] = 7.5,
-            num_images_per_prompt: Optional[int] = 1,
-            eta: float = 0.0,
-            clip_guidance_scale: Optional[float] = 100,
-            clip_prompt: Optional[Union[str, List[str]]] = None,
-            num_cutouts: Optional[int] = 4,
-            use_cutouts: Optional[bool] = True,
-            generator: Optional[torch.Generator] = None,
-            latents: Optional[torch.FloatTensor] = None,
-            output_type: Optional[str] = "pil",
-            return_dict: bool = True,
+        self,
+        prompt: Union[str, List[str]],
+        height: Optional[int] = 512,
+        width: Optional[int] = 512,
+        image: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        strength: float = 0.8,
+        num_inference_steps: Optional[int] = 50,
+        guidance_scale: Optional[float] = 7.5,
+        num_images_per_prompt: Optional[int] = 1,
+        eta: float = 0.0,
+        clip_guidance_scale: Optional[float] = 100,
+        clip_prompt: Optional[Union[str, List[str]]] = None,
+        num_cutouts: Optional[int] = 4,
+        use_cutouts: Optional[bool] = True,
+        generator: Optional[torch.Generator] = None,
+        latents: Optional[torch.FloatTensor] = None,
+        output_type: Optional[str] = "pil",
+        return_dict: bool = True,
     ):
         if isinstance(prompt, str):
             batch_size = 1
@@ -367,7 +369,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps, **extra_set_kwargs)
         # Some schedulers like PNDM have timesteps as arrays
         # It's more optimized to move all timesteps to correct device beforehand
-        timesteps_tensor = self.scheduler.timesteps.to(self.device)
+        self.scheduler.timesteps.to(self.device)
 
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, self.device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
@@ -448,7 +450,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
 
-        with self.progress_bar(total=num_inference_steps) as progress_bar:
+        with self.progress_bar(total=num_inference_steps):
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
