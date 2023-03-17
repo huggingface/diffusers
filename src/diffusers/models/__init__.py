@@ -29,4 +29,5 @@ if is_torch_available():
 
 if is_flax_available():
     from .unet_2d_condition_flax import FlaxUNet2DConditionModel
+    from .controlnet_flax import FlaxControlNetModel
     from .vae_flax import FlaxAutoencoderKL
