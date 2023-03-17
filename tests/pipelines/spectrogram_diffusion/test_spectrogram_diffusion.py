@@ -25,6 +25,7 @@ from diffusers.pipelines.spectrogram_diffusion import SpectrogramContEncoder, Sp
 from diffusers.utils import require_torch_gpu, skip_mps, slow, torch_device
 from diffusers.utils.testing_utils import is_onnx_available, require_note_seq, require_onnxruntime
 
+from ...pipeline_params import TOKENS_TO_AUDIO_GENERATION_PARAMS, TOKENS_TO_AUDIO_GENERATION_BATCH_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin
 
 
@@ -48,6 +49,8 @@ class SpectrogramDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
     }
     test_attention_slicing = False
     test_cpu_offload = False
+    batch_params = TOKENS_TO_AUDIO_GENERATION_PARAMS
+    params = TOKENS_TO_AUDIO_GENERATION_BATCH_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -173,7 +176,8 @@ class PipelineIntegrationTests(unittest.TestCase):
 
         def callback(step, mel_output):
             # decode mel to audio
-            audio = melgan(input_features=mel_output.astype(np.float32))
+            audio = melgan(input_features=mel_output.astype(np.float32))[0]
+            assert len(audio[0]) == 81920 * (step + 1)
             # simulate that audio is played
             return audio
 
