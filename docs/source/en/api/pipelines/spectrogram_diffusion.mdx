@@ -10,9 +10,9 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
- # Multi-instrument Music Synthesis with Spectrogram Diffusion
+# Multi-instrument Music Synthesis with Spectrogram Diffusion
 
- ## Overview
+## Overview
 
 [Spectrogram Diffusion](https://arxiv.org/abs/2206.05408) by Curtis Hawthorne, Ian Simon, Adam Roberts, Neil Zeghidour, Josh Gardner, Ethan Manilow, and Jesse Engel.
 
@@ -41,6 +41,7 @@ from diffusers import SpectrogramDiffusionPipeline
 pipe = SpectrogramDiffusionPipeline.from_pretrained("kashif/music-spectrogram-diffusion")
 pipe = pipe.to("cuda")
 
+# Download via: wget http://www.piano-midi.de/midis/beethoven/beethoven_hammerklavier_2.mid
 output = pipe("beethoven_hammerklavier_2.mid")
 
 audio = output.audios[0]
