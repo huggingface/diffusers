@@ -39,8 +39,8 @@ from diffusers import (
     UNet2DConditionModel,
 )
 
-from ...utils import is_omegaconf_available, is_safetensors_available
-from ...utils.import_utils import BACKENDS_MAPPING
+from diffusers.utils import is_omegaconf_available, is_safetensors_available
+from diffusers.utils.import_utils import BACKENDS_MAPPING
 
 
 # Copied from diffusers.pipelines.stable_diffusion.convert_from_ckpt.shave_segments
