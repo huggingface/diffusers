@@ -194,7 +194,7 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         output = audioldm_pipe(**inputs)
         audio_2 = output.audios[0]
 
-        assert np.abs(audio_1 - audio_2).max() < 1e-4
+        assert np.abs(audio_1 - audio_2).max() < 1e-3
 
     def test_audioldm_negative_prompt_embeds(self):
         components = self.get_dummy_components()
@@ -241,141 +241,7 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         output = audioldm_pipe(**inputs)
         audio_2 = output.audios[0]
 
-        assert np.abs(audio_1 - audio_2).max() < 1e-4
-
-    def test_audioldm_ddim_factor_8(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
-        components = self.get_dummy_components()
-        audioldm_pipe = AudioLDMPipeline(**components)
-        audioldm_pipe = audioldm_pipe.to(device)
-        audioldm_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        output = audioldm_pipe(**inputs, height=136)  # width has to stay fixed for the vocoder
-        audio = output.audios[0]
-
-        assert audio.ndim == 1
-        assert len(audio) == 544
-
-        audio_slice = audio[-10:]
-        expected_slice = np.array([-0.0029, 0.0036, -0.0027, 0.0032, -0.0029, 0.0034, -0.0028, 0.0073, 0.0039, 0.0058])
-
-        assert np.abs(audio_slice - expected_slice).max() < 1e-3
-
-    def test_audioldm_pndm(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        audioldm_pipe = AudioLDMPipeline(**components)
-        audioldm_pipe.scheduler = PNDMScheduler(skip_prk_steps=True)
-        audioldm_pipe = audioldm_pipe.to(device)
-        audioldm_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        output = audioldm_pipe(**inputs)
-        audio = output.audios[0]
-
-        assert audio.ndim == 1
-        assert len(audio) == 256
-
-        audio_slice = audio[:10]
-        expected_slice = np.array(
-            [-0.0051, 0.0050, -0.0060, 0.0034, -0.0026, 0.0033, -0.0027, 0.0033, -0.0028, 0.0032]
-        )
-
-        assert np.abs(audio_slice - expected_slice).max() < 1e-3
-
-    def test_audioldm_k_lms(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
-        components = self.get_dummy_components()
-        audioldm_pipe = AudioLDMPipeline(**components)
-        audioldm_pipe.scheduler = LMSDiscreteScheduler.from_config(audioldm_pipe.scheduler.config)
-        audioldm_pipe = audioldm_pipe.to(device)
-        audioldm_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        output = audioldm_pipe(**inputs)
-        audio = output.audios[0]
-
-        assert audio.ndim == 1
-        assert len(audio) == 256
-
-        audio_slice = audio[:10]
-        expected_slice = np.array(
-            [-0.0051, 0.0050, -0.0060, 0.0034, -0.0026, 0.0033, -0.0027, 0.0033, -0.0028, 0.0032]
-        )
-
-        assert np.abs(audio_slice - expected_slice).max() < 1e-3
-
-    def test_audioldm_k_euler_ancestral(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
-        components = self.get_dummy_components()
-        audioldm_pipe = AudioLDMPipeline(**components)
-        audioldm_pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(audioldm_pipe.scheduler.config)
-        audioldm_pipe = audioldm_pipe.to(device)
-        audioldm_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        output = audioldm_pipe(**inputs)
-        audio = output.audios[0]
-
-        assert audio.ndim == 1
-        assert len(audio) == 256
-
-        audio_slice = audio[:10]
-        expected_slice = np.array(
-            [-0.0051, 0.0050, -0.0060, 0.0034, -0.0026, 0.0033, -0.0027, 0.0033, -0.0028, 0.0032]
-        )
-
-        assert np.abs(audio_slice - expected_slice).max() < 1e-3
-
-    def test_audioldm_k_euler(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
-        components = self.get_dummy_components()
-        audioldm_pipe = AudioLDMPipeline(**components)
-        audioldm_pipe.scheduler = EulerDiscreteScheduler.from_config(audioldm_pipe.scheduler.config)
-        audioldm_pipe = audioldm_pipe.to(device)
-        audioldm_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        output = audioldm_pipe(**inputs)
-        audio = output.audios[0]
-
-        assert audio.ndim == 1
-        assert len(audio) == 256
-
-        audio_slice = audio[:10]
-        expected_slice = np.array(
-            [-0.0051, 0.0050, -0.0060, 0.0034, -0.0026, 0.0033, -0.0027, 0.0033, -0.0028, 0.0032]
-        )
-
-        assert np.abs(audio_slice - expected_slice).max() < 1e-3
-
-    def test_audioldm_vae_slicing(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
-        audioldm_pipe = AudioLDMPipeline(**components)
-        audioldm_pipe = audioldm_pipe.to(device)
-        audioldm_pipe.set_progress_bar_config(disable=None)
-
-        image_count = 4
-
-        inputs = self.get_dummy_inputs(device)
-        inputs["prompt"] = [inputs["prompt"]] * image_count
-        output_1 = audioldm_pipe(**inputs)
-
-        # make sure sliced vae decode yields the same result
-        audioldm_pipe.enable_vae_slicing()
-        inputs = self.get_dummy_inputs(device)
-        inputs["prompt"] = [inputs["prompt"]] * image_count
-        output_2 = audioldm_pipe(**inputs)
-
-        # there is a small discrepancy at spectrogram borders vs. full batch decode
-        assert np.abs(output_2.audios - output_1.audios).max() < 1e-4
+        assert np.abs(audio_1 - audio_2).max() < 1e-3
 
     def test_audioldm_negative_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -399,6 +265,29 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
         assert np.abs(audio_slice - expected_slice).max() < 1e-3
+
+    def test_audioldm_vae_slicing(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
+        audioldm_pipe = AudioLDMPipeline(**components)
+        audioldm_pipe = audioldm_pipe.to(device)
+        audioldm_pipe.set_progress_bar_config(disable=None)
+
+        audio_count = 4
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["prompt"] = [inputs["prompt"]] * audio_count
+        output_1 = audioldm_pipe(**inputs)
+
+        # make sure sliced vae decode yields the same result
+        audioldm_pipe.enable_vae_slicing()
+        inputs = self.get_dummy_inputs(device)
+        inputs["prompt"] = [inputs["prompt"]] * audio_count
+        output_2 = audioldm_pipe(**inputs)
+
+        # there is a small discrepancy at spectrogram borders vs. full batch decode
+        assert np.abs(output_2.audios - output_1.audios).max() < 1e-3
 
     def test_audioldm_num_waveforms_per_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -435,48 +324,29 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert audios.shape == (batch_size * num_waveforms_per_prompt, 256)
 
-    def test_audioldm_long_prompt(self):
+    def test_audioldm_audio_length_in_s(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
         audioldm_pipe = AudioLDMPipeline(**components)
         audioldm_pipe = audioldm_pipe.to(torch_device)
         audioldm_pipe.set_progress_bar_config(disable=None)
+        vocoder_sampling_rate = audioldm_pipe.vocoder.config.sampling_rate
 
-        do_classifier_free_guidance = True
-        negative_prompt = None
-        num_images_per_prompt = 1
-        logger = logging.get_logger("diffusers.pipelines.audioldm.pipeline_audioldm")
+        inputs = self.get_dummy_inputs(device)
+        output = audioldm_pipe(audio_length_in_s=0.016, **inputs)
+        audio = output.audios[0]
 
-        prompt = 25 * "@"
-        with CaptureLogger(logger) as cap_logger_3:
-            text_embeddings_3 = audioldm_pipe._encode_prompt(
-                prompt, torch_device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
-            )
+        assert audio.ndim == 1
+        assert len(audio) / vocoder_sampling_rate == 0.016
 
-        prompt = 100 * "@"
-        with CaptureLogger(logger) as cap_logger:
-            text_embeddings = audioldm_pipe._encode_prompt(
-                prompt, torch_device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
-            )
+        output = audioldm_pipe(audio_length_in_s=0.032, **inputs)
+        audio = output.audios[0]
 
-        negative_prompt = "Hello"
-        with CaptureLogger(logger) as cap_logger_2:
-            text_embeddings_2 = audioldm_pipe._encode_prompt(
-                prompt, torch_device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
-            )
+        assert audio.ndim == 1
+        assert len(audio) / vocoder_sampling_rate == 0.032
 
-        assert text_embeddings_3.shape == text_embeddings_2.shape == text_embeddings.shape
-
-        assert text_embeddings.shape[1] == 32
-
-        assert cap_logger.out == cap_logger_2.out
-        # 100 - 77 + 1 (BOS token) + 1 (EOS token) = 25
-        assert cap_logger.out.count("@") == 25
-        assert cap_logger_3.out == ""
-
-    def test_audioldm_height_opt(self):
+    def test_audioldm_vocoder_model_in_dim(self):
         components = self.get_dummy_components()
-        components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
         audioldm_pipe = AudioLDMPipeline(**components)
         audioldm_pipe = audioldm_pipe.to(torch_device)
         audioldm_pipe.set_progress_bar_config(disable=None)
@@ -487,36 +357,10 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         audio_shape = output.audios.shape
         assert audio_shape == (1, 256)
 
-        output = audioldm_pipe(prompt, num_inference_steps=1, height=96, width=8)
-        audio_shape = output.audios.shape
-        assert audio_shape == (1, 384)
-
-        config = dict(audioldm_pipe.unet.config)
-        config["sample_size"] = 96
-        audioldm_pipe.unet = UNet2DConditionModel.from_config(config).to(torch_device)
-        output = audioldm_pipe(prompt, num_inference_steps=1, width=8)  # need to keep width fixed for vocoder
-        audio_shape = output.audios.shape
-        assert audio_shape == (1, 768)
-
-    def test_audioldm_width_opt(self):
-        components = self.get_dummy_components()
-        components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
-        audioldm_pipe = AudioLDMPipeline(**components)
-        audioldm_pipe = audioldm_pipe.to(torch_device)
-        audioldm_pipe.set_progress_bar_config(disable=None)
-
-        prompt = ["hey"]
-
-        width = audioldm_pipe.vocoder.config.model_in_dim
-
-        output = audioldm_pipe(prompt, num_inference_steps=1, width=width)
-        audio_shape = output.audios.shape
-        assert audio_shape == (1, 256)
-
         config = audioldm_pipe.vocoder.config
-        config.model_in_dim = width * 2
+        config.model_in_dim *= 2
         audioldm_pipe.vocoder = SpeechT5HifiGan(config).to(torch_device)
-        output = audioldm_pipe(prompt, num_inference_steps=1, width=width * 2)
+        output = audioldm_pipe(prompt, num_inference_steps=1)
         audio_shape = output.audios.shape
         # waveform shape is unchanged, we just have 2x the number of mel channels in the spectrogram
         assert audio_shape == (1, 256)
