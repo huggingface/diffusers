@@ -41,7 +41,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
 from diffusers.loaders import AttnProcsLayers
-from diffusers.models.cross_attention import LoRACrossAttnProcessor
+from diffusers.models.attention_processor import LoRAAttnProcessor
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
@@ -474,9 +474,7 @@ def main():
             block_id = int(name[len("down_blocks.")])
             hidden_size = unet.config.block_out_channels[block_id]
 
-        lora_attn_procs[name] = LoRACrossAttnProcessor(
-            hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
-        )
+        lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
 
     unet.set_attn_processor(lora_attn_procs)
 
@@ -800,20 +798,19 @@ def main():
                         pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0]
                     )
 
-                if accelerator.is_main_process:
-                    for tracker in accelerator.trackers:
-                        if tracker.name == "tensorboard":
-                            np_images = np.stack([np.asarray(img) for img in images])
-                            tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
-                        if tracker.name == "wandb":
-                            tracker.log(
-                                {
-                                    "validation": [
-                                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                                        for i, image in enumerate(images)
-                                    ]
-                                }
-                            )
+                for tracker in accelerator.trackers:
+                    if tracker.name == "tensorboard":
+                        np_images = np.stack([np.asarray(img) for img in images])
+                        tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+                    if tracker.name == "wandb":
+                        tracker.log(
+                            {
+                                "validation": [
+                                    wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                    for i, image in enumerate(images)
+                                ]
+                            }
+                        )
 
                 del pipeline
                 torch.cuda.empty_cache()
