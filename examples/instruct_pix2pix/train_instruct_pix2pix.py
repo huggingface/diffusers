@@ -976,10 +976,10 @@ def main():
             # pipeline.unet = pipeline.unet.to(weight_dtype)
             with torch.autocast(str(accelerator.device)):
                 for _ in range(args.num_validation_images):
-                    # print(f"Pipeline device: {pipeline.device}")
-                    # print(
-                    #     f"UNet: {pipeline.unet.device} Text Encoder: {pipeline.text_encoder.device} VAE: {pipeline.vae.device}"
-                    # )
+                    print(f"Pipeline device: {pipeline.device}")
+                    print(
+                        f"UNet: {pipeline.unet.device} Text Encoder: {pipeline.text_encoder.device} VAE: {pipeline.vae.device}"
+                    )
                     # print(
                     #     f"UNet: {pipeline.unet.dtype} Text Encoder: {pipeline.text_encoder.dtype} VAE: {pipeline.vae.dtype}"
                     # )
