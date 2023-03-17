@@ -15,6 +15,7 @@
 import inspect
 from typing import Callable, List, Optional, Union
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 from transformers import ClapTextModelWithProjection, RobertaTokenizer, RobertaTokenizerFast, SpeechT5HifiGan
@@ -313,19 +314,22 @@ class AudioLDMPipeline(DiffusionPipeline):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
-        height,
-        width,
+        audio_length_in_s,
+        vocoder_upsample_factor,
         callback_steps,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
     ):
-        if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+        min_audio_length_in_s = vocoder_upsample_factor * self.vae_scale_factor
+        if audio_length_in_s < min_audio_length_in_s:
+            raise ValueError(
+                f"`audio_length_in_s` has to be a positive value greater than or equal to {min_audio_length_in_s}, but "
+                f"is {audio_length_in_s}."
+            )
 
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
@@ -361,9 +365,9 @@ class AudioLDMPipeline(DiffusionPipeline):
                     f" {negative_prompt_embeds.shape}."
                 )
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents with width->self.vocoder.config.model_in_dim
+    def prepare_latents(self, batch_size, num_channels_latents, height, dtype, device, generator, latents=None):
+        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, self.vocoder.config.model_in_dim // self.vae_scale_factor)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -384,8 +388,7 @@ class AudioLDMPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        audio_length_in_s: Optional[float] = None,
         num_inference_steps: int = 10,
         guidance_scale: float = 2.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -407,11 +410,8 @@ class AudioLDMPipeline(DiffusionPipeline):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the audio generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The height in pixels of the generated spectrogram. Using a larger height results in a longer
-                spectrogram and thus longer audio sample.
-            width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor // 8):
-                The width in pixels of the generated spectrogram.
+            audio_length_in_s (`int`, *optional*, defaults to 5.12):
+                The length of the generated audio sample in seconds.
             num_inference_steps (`int`, *optional*, defaults to 10):
                 The number of denoising steps. More denoising steps usually lead to a higher quality audio at the
                 expense of slower inference.
@@ -465,13 +465,17 @@ class AudioLDMPipeline(DiffusionPipeline):
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
             When returning a tuple, the first element is a list with the generated audios.
         """
-        # 0. Default height and width to unet
-        height = height or self.unet.config.sample_size * self.vae_scale_factor
-        width = width or self.unet.config.sample_size * self.vae_scale_factor // 8
+        # 0. Convert audio input length from seconds to spectrogram height
+        vocoder_upsample_factor = np.prod(self.vocoder.config.upsample_rates) / self.vocoder.config.sampling_rate
+
+        if audio_length_in_s is None:
+            audio_length_in_s = self.unet.config.sample_size * self.vae_scale_factor * vocoder_upsample_factor
+
+        height = int(audio_length_in_s / vocoder_upsample_factor)
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
+            prompt, audio_length_in_s, vocoder_upsample_factor, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
         )
 
         # 2. Define call parameters
@@ -509,14 +513,13 @@ class AudioLDMPipeline(DiffusionPipeline):
             batch_size * num_waveforms_per_prompt,
             num_channels_latents,
             height,
-            width,
             prompt_embeds.dtype,
             device,
             generator,
             latents,
         )
 
-        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        # 6. Prepare extra step kwargs
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 7. Denoising loop
