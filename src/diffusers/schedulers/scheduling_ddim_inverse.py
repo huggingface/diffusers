@@ -23,7 +23,7 @@ import torch
 
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.schedulers.scheduling_utils import SchedulerMixin
-from diffusers.utils import BaseOutput
+from diffusers.utils import BaseOutput, deprecate
 
 
 @dataclass
@@ -96,15 +96,17 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         trained_betas (`np.ndarray`, optional):
             option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
         clip_sample (`bool`, default `True`):
-            option to clip predicted sample between -1 and 1 for numerical stability.
-        set_alpha_to_one (`bool`, default `True`):
+            option to clip predicted sample for numerical stability.
+        clip_sample_range (`float`, default `1.0`):
+            the maximum magnitude for sample clipping. Valid only when `clip_sample=True`.
+        set_alpha_to_zero (`bool`, default `True`):
             each diffusion step uses the value of alphas product at that step and at the previous one. For the final
-            step there is no previous alpha. When this option is `True` the previous alpha product is fixed to `1`,
-            otherwise it uses the value of alpha at step 0.
+            step there is no previous alpha. When this option is `True` the previous alpha product is fixed to `0`,
+            otherwise it uses the value of alpha at step `num_train_timesteps - 1`.
         steps_offset (`int`, default `0`):
             an offset added to the inference steps. You can use a combination of `offset=1` and
-            `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
-            stable diffusion.
+            `set_alpha_to_zero=False`, to make the last step use step `num_train_timesteps - 1` for the previous alpha
+            product.
         prediction_type (`str`, default `epsilon`, optional):
             prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
             process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
@@ -122,10 +124,18 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         beta_schedule: str = "linear",
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
         clip_sample: bool = True,
-        set_alpha_to_one: bool = True,
+        set_alpha_to_zero: bool = True,
         steps_offset: int = 0,
         prediction_type: str = "epsilon",
+        clip_sample_range: float = 1.0,
+        **kwargs,
     ):
+        if kwargs.get("set_alpha_to_one", None) is not None:
+            deprecation_message = (
+                "The `set_alpha_to_one` argument is deprecated. Please use `set_alpha_to_zero` instead."
+            )
+            deprecate("set_alpha_to_one", "1.0.0", deprecation_message, standard_warn=False)
+            set_alpha_to_zero = kwargs["set_alpha_to_one"]
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
         elif beta_schedule == "linear":
@@ -144,11 +154,12 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
 
-        # At every step in ddim, we are looking into the previous alphas_cumprod
-        # For the final step, there is no previous alphas_cumprod because we are already at 0
-        # `set_alpha_to_one` decides whether we set this parameter simply to one or
-        # whether we use the final alpha of the "non-previous" one.
-        self.final_alpha_cumprod = torch.tensor(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
+        # At every step in inverted ddim, we are looking into the next alphas_cumprod
+        # For the final step, there is no next alphas_cumprod, and the index is out of bounds
+        # `set_alpha_to_zero` decides whether we set this parameter simply to zero
+        # in this case, self.step() just output the predicted noise
+        # or whether we use the final alpha of the "non-previous" one.
+        self.final_alpha_cumprod = torch.tensor(0.0) if set_alpha_to_zero else self.alphas_cumprod[-1]
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0
@@ -157,6 +168,7 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = None
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps).copy().astype(np.int64))
 
+    # Copied from diffusers.schedulers.scheduling_ddim.DDIMScheduler.scale_model_input
     def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
@@ -205,23 +217,52 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         variance_noise: Optional[torch.FloatTensor] = None,
         return_dict: bool = True,
     ) -> Union[DDIMSchedulerOutput, Tuple]:
-        e_t = model_output
-
-        x = sample
+        # 1. get previous step value (=t+1)
         prev_timestep = timestep + self.config.num_train_timesteps // self.num_inference_steps
 
-        a_t = self.alphas_cumprod[timestep - 1]
-        a_prev = self.alphas_cumprod[prev_timestep - 1] if prev_timestep >= 0 else self.final_alpha_cumprod
+        # 2. compute alphas, betas
+        # change original implementation to exactly match noise levels for analogous forward process
+        alpha_prod_t = self.alphas_cumprod[timestep]
+        alpha_prod_t_prev = (
+            self.alphas_cumprod[prev_timestep]
+            if prev_timestep < self.config.num_train_timesteps
+            else self.final_alpha_cumprod
+        )
 
-        pred_x0 = (x - (1 - a_t) ** 0.5 * e_t) / a_t.sqrt()
+        beta_prod_t = 1 - alpha_prod_t
 
-        dir_xt = (1.0 - a_prev).sqrt() * e_t
+        # 3. compute predicted original sample from predicted noise also called
+        # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+        if self.config.prediction_type == "epsilon":
+            pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
+            pred_epsilon = model_output
+        elif self.config.prediction_type == "sample":
+            pred_original_sample = model_output
+            pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
+        elif self.config.prediction_type == "v_prediction":
+            pred_original_sample = (alpha_prod_t**0.5) * sample - (beta_prod_t**0.5) * model_output
+            pred_epsilon = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
+        else:
+            raise ValueError(
+                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, or"
+                " `v_prediction`"
+            )
 
-        prev_sample = a_prev.sqrt() * pred_x0 + dir_xt
+        # 4. Clip or threshold "predicted x_0"
+        if self.config.clip_sample:
+            pred_original_sample = pred_original_sample.clamp(
+                -self.config.clip_sample_range, self.config.clip_sample_range
+            )
+
+        # 5. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+        pred_sample_direction = (1 - alpha_prod_t_prev) ** (0.5) * pred_epsilon
+
+        # 6. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+        prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
 
         if not return_dict:
-            return (prev_sample, pred_x0)
-        return DDIMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_x0)
+            return (prev_sample, pred_original_sample)
+        return DDIMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
 
     def __len__(self):
         return self.config.num_train_timesteps
