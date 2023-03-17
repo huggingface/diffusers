@@ -18,7 +18,6 @@ import hashlib
 import itertools
 import logging
 import math
-import random
 import os
 import warnings
 from pathlib import Path
@@ -630,11 +629,6 @@ def main(args):
     if args.seed is not None:
         set_seed(args.seed)
 
-    logger.info(f"{torch.get_rng_state()}")
-    logger.info(f"{torch.cuda.get_rng_state()}")
-    logger.info(f"{np.random.get_state()}")
-    logger.info(f"{random.getstate()}")
-
     # Generate class images if prior preservation is enabled.
     if args.with_prior_preservation:
         for i in range(len(class_data_dir)):
@@ -1122,11 +1116,6 @@ def main(args):
 
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
-
-    logger.info(f"{torch.get_rng_state()}")
-    logger.info(f"{torch.cuda.get_rng_state()}")
-    logger.info(f"{np.random.get_state()}")
-    logger.info(f"{random.getstate()}")
 
     accelerator.end_training()
 
