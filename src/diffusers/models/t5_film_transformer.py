@@ -17,7 +17,7 @@ import torch
 from torch import nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .cross_attention import CrossAttention
+from ..models.attention_processor import Attention
 from .embeddings import get_timestep_embedding
 from .modeling_utils import ModelMixin
 
@@ -187,9 +187,7 @@ class T5LayerSelfAttentionCond(nn.Module):
         super().__init__()
         self.layer_norm = T5LayerNorm(d_model)
         self.FiLMLayer = T5FiLMLayer(in_features=d_model * 4, out_features=d_model)
-        self.attention = CrossAttention(
-            query_dim=d_model, heads=num_heads, dim_head=d_kv, out_bias=False, scale_qk=False
-        )
+        self.attention = Attention(query_dim=d_model, heads=num_heads, dim_head=d_kv, out_bias=False, scale_qk=False)
         self.dropout = nn.Dropout(dropout_rate)
 
     def forward(
@@ -215,9 +213,7 @@ class T5LayerSelfAttentionCond(nn.Module):
 class T5LayerCrossAttention(nn.Module):
     def __init__(self, d_model, d_kv, num_heads, dropout_rate, layer_norm_epsilon):
         super().__init__()
-        self.attention = CrossAttention(
-            query_dim=d_model, heads=num_heads, dim_head=d_kv, out_bias=False, scale_qk=False
-        )
+        self.attention = Attention(query_dim=d_model, heads=num_heads, dim_head=d_kv, out_bias=False, scale_qk=False)
         self.layer_norm = T5LayerNorm(d_model, eps=layer_norm_epsilon)
         self.dropout = nn.Dropout(dropout_rate)
 
@@ -285,7 +281,7 @@ class T5LayerNorm(nn.Module):
 
     def forward(self, hidden_states):
         # T5 uses a layer_norm which only scales and doesn't shift, which is also known as Root Mean
-        # Square Layer Normalization https://arxiv.org/abs/1910.07467 thus varience is calculated
+        # Square Layer Normalization https://arxiv.org/abs/1910.07467 thus variance is calculated
         # w/o mean and there is no bias. Additionally we want to make sure that the accumulation for
         # half-precision inputs is done in fp32
 
