@@ -37,7 +37,7 @@ pipe = AudioLDMPipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
 pipe = pipe.to("cuda")
 
 prompt = "Techno music with a strong, upbeat tempo and high melodic riffs"
-audio = pipe(prompt, num_inference_steps=10, height=512).audios[0]
+audio = pipe(prompt, num_inference_steps=10, audio_length_in_s=5.0).audios[0]
 
 # save the audio sample as a .wav file
 scipy.io.wavfile.write("techno.wav", rate=16000, data=audio)
@@ -45,10 +45,13 @@ scipy.io.wavfile.write("techno.wav", rate=16000, data=audio)
 
 ### Tips
 
-* Try to provide descriptive text inputs to AudioLDM. You can use adjectives to describe the sound (e.g. "high quality" or "clear") and make the prompt context specific (e.g., "water stream in a forest" instead of "stream").
+Prompts:
+* Descriptive prompt inputs work best: you can use adjectives to describe the sound (e.g. "high quality" or "clear") and make the prompt context specific (e.g., "water stream in a forest" instead of "stream").
 * It's best to use general terms like 'cat' or 'dog' instead of specific names or abstract objects that the model may not be familiar with.
+
+Inference:
 * The _quality_ of the predicted audio sample can be controlled by the `num_inference_steps` argument: higher steps give higher quality audio at the expense of slower inference.
-* The _length_ of the predicted audio sample can be controlled by varying the `height` argument (which controls the height of the spectrogram prediction).
+* The _length_ of the predicted audio sample can be controlled by varying the `audio_length_in_s` argument.
 
 ### How to load and use different schedulers
 
