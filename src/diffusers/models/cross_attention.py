@@ -32,7 +32,7 @@ from .attention_processor import (  # noqa: F401
 deprecate(
     "cross_attention",
     "0.18.0",
-    "Importing from cross_attention is deprecated. Please import from attention_processor instead.",
+    "Importing from cross_attention is deprecated. Please import from diffusers.models.attention_processor instead.",
     standard_warn=False,
 )
 
