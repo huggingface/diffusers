@@ -102,3 +102,17 @@ UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS = frozenset([])
 UNCONDITIONAL_AUDIO_GENERATION_PARAMS = frozenset(["batch_size"])
 
 UNCONDITIONAL_AUDIO_GENERATION_BATCH_PARAMS = frozenset([])
+
+TEXT_TO_AUDIO_PARAMS = frozenset(
+    [
+        "prompt",
+        "audio_length_in_s",
+        "guidance_scale",
+        "negative_prompt",
+        "prompt_embeds",
+        "negative_prompt_embeds",
+        "cross_attention_kwargs",
+    ]
+)
+
+TEXT_TO_AUDIO_BATCH_PARAMS = frozenset(["prompt", "negative_prompt"])

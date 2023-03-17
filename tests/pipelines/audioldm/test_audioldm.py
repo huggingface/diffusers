@@ -43,12 +43,15 @@ from diffusers import (
 )
 from diffusers.utils import load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
+from ...pipeline_params import TEXT_TO_AUDIO_PARAMS, TEXT_TO_AUDIO_BATCH_PARAMS
 
 from ...test_pipelines_common import PipelineTesterMixin
 
 
 class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = AudioLDMPipeline
+    params = TEXT_TO_AUDIO_PARAMS
+    batch_params = TEXT_TO_AUDIO_BATCH_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
