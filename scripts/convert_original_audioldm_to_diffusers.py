@@ -38,7 +38,6 @@ from diffusers import (
     PNDMScheduler,
     UNet2DConditionModel,
 )
-
 from diffusers.utils import is_omegaconf_available, is_safetensors_available
 from diffusers.utils.import_utils import BACKENDS_MAPPING
 

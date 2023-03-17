@@ -15,7 +15,6 @@
 
 
 import gc
-import time
 import unittest
 
 import numpy as np
@@ -33,18 +32,14 @@ from diffusers import (
     AudioLDMPipeline,
     AutoencoderKL,
     DDIMScheduler,
-    DPMSolverMultistepScheduler,
-    EulerAncestralDiscreteScheduler,
-    EulerDiscreteScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
     UNet2DConditionModel,
-    logging,
 )
-from diffusers.utils import load_numpy, nightly, slow, torch_device
-from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
-from ...pipeline_params import TEXT_TO_AUDIO_PARAMS, TEXT_TO_AUDIO_BATCH_PARAMS
+from diffusers.utils import slow, torch_device
+from diffusers.utils.testing_utils import require_torch_gpu
 
+from ...pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin
 
 
@@ -409,7 +404,9 @@ class AudioLDMPipelineSlowTests(unittest.TestCase):
         assert len(audio) == 81952
 
         audio_slice = audio[77230:77240]
-        expected_slice = np.array([-0.4884, -0.4607, 0.0023, 0.5007, 0.5896, 0.5151, 0.3813, -0.0208, -0.3687, -0.4315])
+        expected_slice = np.array(
+            [-0.4884, -0.4607, 0.0023, 0.5007, 0.5896, 0.5151, 0.3813, -0.0208, -0.3687, -0.4315]
+        )
         max_diff = np.abs(expected_slice - audio_slice).max()
         assert max_diff < 1e-2
 
