@@ -367,7 +367,12 @@ class AudioLDMPipeline(DiffusionPipeline):
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents with width->self.vocoder.config.model_in_dim
     def prepare_latents(self, batch_size, num_channels_latents, height, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, self.vocoder.config.model_in_dim // self.vae_scale_factor)
+        shape = (
+            batch_size,
+            num_channels_latents,
+            height // self.vae_scale_factor,
+            self.vocoder.config.model_in_dim // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -475,7 +480,13 @@ class AudioLDMPipeline(DiffusionPipeline):
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            prompt, audio_length_in_s, vocoder_upsample_factor, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
+            prompt,
+            audio_length_in_s,
+            vocoder_upsample_factor,
+            callback_steps,
+            negative_prompt,
+            prompt_embeds,
+            negative_prompt_embeds,
         )
 
         # 2. Define call parameters
