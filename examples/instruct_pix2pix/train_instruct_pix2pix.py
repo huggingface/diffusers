@@ -972,27 +972,27 @@ def main():
 
         if args.validation_prompt is not None:
             edited_images = []
-            pipeline.torch_dtype = weight_dtype
-            pipeline.unet = pipeline.unet.to(weight_dtype)
-            for _ in range(args.num_validation_images):
-                print(f"Pipeline device: {pipeline.device}")
-                print(
-                    f"UNet: {pipeline.unet.device} Text Encoder: {pipeline.text_encoder.device} VAE: {pipeline.vae.device}"
-                )
-                print(
-                    f"UNet: {pipeline.unet.dtype} Text Encoder: {pipeline.text_encoder.dtype} VAE: {pipeline.vae.dtype}"
-                )
-
-                edited_images.append(
-                    pipeline(
-                        args.validation_prompt,
-                        image=original_image,
-                        num_inference_steps=20,
-                        image_guidance_scale=1.5,
-                        guidance_scale=7,
-                        generator=generator,
-                    ).images[0]
-                )
+            # pipeline.torch_dtype = weight_dtype
+            # pipeline.unet = pipeline.unet.to(weight_dtype)
+            with torch.autocast(str(accelerator.device), enabled=accelerator.mixed_precision == "fp16"):
+                for _ in range(args.num_validation_images):
+                    # print(f"Pipeline device: {pipeline.device}")
+                    # print(
+                    #     f"UNet: {pipeline.unet.device} Text Encoder: {pipeline.text_encoder.device} VAE: {pipeline.vae.device}"
+                    # )
+                    # print(
+                    #     f"UNet: {pipeline.unet.dtype} Text Encoder: {pipeline.text_encoder.dtype} VAE: {pipeline.vae.dtype}"
+                    # )
+                    edited_images.append(
+                        pipeline(
+                            args.validation_prompt,
+                            image=original_image,
+                            num_inference_steps=20,
+                            image_guidance_scale=1.5,
+                            guidance_scale=7,
+                            generator=generator,
+                        ).images[0]
+                    )
 
             for tracker in accelerator.trackers:
                 if tracker.name == "wandb":

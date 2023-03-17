@@ -111,6 +111,8 @@ accelerate launch --mixed_precision="fp16" train_instruct_pix2pix.py \
 
  [Here](https://wandb.ai/sayakpaul/instruct-pix2pix/runs/ctr3kovq), you can find an example training run that includes some validation samples and the training hyperparameters.
 
+ ***Note: In the original paper, the authors observed that even when the model is trained with an image resolution of 256x256, it generalizes well to bigger resolutions such as 512x512. This is likely because of the larger dataset they used during training.***
+
  ## Inference
 
  Once training is complete, we can perform inference:
