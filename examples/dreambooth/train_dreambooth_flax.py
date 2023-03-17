@@ -370,7 +370,8 @@ def main():
             for example in tqdm(
                 sample_dataloader, desc="Generating class images", disable=not jax.process_index() == 0
             ):
-                prompt_ids = pipeline.prepare_inputs(example["prompt"])
+                prompt = example["prompt"] * jax.device_count()
+                prompt_ids = pipeline.prepare_inputs(prompt)
                 prompt_ids = shard(prompt_ids)
                 p_params = jax_utils.replicate(params)
                 rng = jax.random.split(rng)[0]
