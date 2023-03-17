@@ -18,7 +18,6 @@ import tempfile
 import unittest
 import unittest.mock as mock
 from typing import Dict, List, Tuple
-from diffusers.models.attention_processor import AttnProcessor
 
 import numpy as np
 import requests_mock
@@ -26,6 +25,7 @@ import torch
 from requests.exceptions import HTTPError
 
 from diffusers.models import ModelMixin, UNet2DConditionModel
+from diffusers.models.attention_processor import AttnProcessor
 from diffusers.training_utils import EMAModel
 from diffusers.utils import torch_device
 
