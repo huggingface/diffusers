@@ -153,6 +153,7 @@ if _onnx_available:
     candidates = (
         "onnxruntime",
         "onnxruntime-gpu",
+        "ort_nightly_gpu",
         "onnxruntime-directml",
         "onnxruntime-openvino",
         "ort_nightly_directml",
