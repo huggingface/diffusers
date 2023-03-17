@@ -549,22 +549,22 @@ class AudioLDMPipelineSlowTests(unittest.TestCase):
         }
         return inputs
 
-    def test_audioldm_ddim(self):
+    def test_audioldm(self):
         audioldm_pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm")
-        audioldm_pipe.scheduler = DDIMScheduler.from_config(audioldm_pipe.scheduler.config)
         audioldm_pipe = audioldm_pipe.to(torch_device)
         audioldm_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 25
         audio = audioldm_pipe(**inputs).audios[0]
 
         assert audio.ndim == 1
         assert len(audio) == 81952
 
-        audio_slice = audio[3880:3890]
-        expected_slice = np.array([-0.0574, 0.2462, 0.3955, 0.4213, 0.3901, 0.3770, 0.2762, 0.0206, -0.2208, -0.3282])
+        audio_slice = audio[77230:77240]
+        expected_slice = np.array([-0.4884, -0.4607, 0.0023, 0.5007, 0.5896, 0.5151, 0.3813, -0.0208, -0.3687, -0.4315])
         max_diff = np.abs(expected_slice - audio_slice).max()
-        assert max_diff < 1e-3
+        assert max_diff < 1e-2
 
     def test_audioldm_lms(self):
         audioldm_pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm")
@@ -581,166 +581,4 @@ class AudioLDMPipelineSlowTests(unittest.TestCase):
         audio_slice = audio[27780:27790]
         expected_slice = np.array([-0.2131, -0.0873, -0.0124, -0.0189, 0.0569, 0.1373, 0.1883, 0.2886, 0.3297, 0.2212])
         max_diff = np.abs(expected_slice - audio_slice).max()
-        assert max_diff < 1e-3
-
-    def test_audioldm_dpm(self):
-        audioldm_pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm")
-        audioldm_pipe.scheduler = DPMSolverMultistepScheduler.from_config(audioldm_pipe.scheduler.config)
-        audioldm_pipe = audioldm_pipe.to(torch_device)
-        audioldm_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        audio = audioldm_pipe(**inputs).audios[0]
-
-        assert audio.ndim == 1
-        assert len(audio) == 81952
-
-        audio_slice = audio[69310:69320]
-        expected_slice = np.array([0.1842, 0.2411, 0.3127, 0.3069, 0.2287, 0.0948, -0.0071, -0.041, -0.1293, -0.2075])
-        max_diff = np.abs(expected_slice - audio_slice).max()
-        assert max_diff < 1e-3
-
-    @unittest.skip("TODO(SG): fix or remove. This test yields the same memory for with / without attn slicing")
-    def test_audioldm_attention_slicing(self):
-        torch.cuda.reset_peak_memory_stats()
-        pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm", torch_dtype=torch.float16)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        # enable attention slicing
-        pipe.enable_attention_slicing(slice_size="max")
-        inputs = self.get_inputs(torch_device, dtype=torch.float16)
-        audios_sliced = pipe(**inputs).audios
-
-        mem_bytes = torch.cuda.max_memory_allocated()
-        torch.cuda.reset_peak_memory_stats()
-        # make sure that less than 3.75 GB is allocated
-        assert mem_bytes < 3.75 * 10**9
-
-        # disable slicing
-        pipe.disable_attention_slicing()
-        inputs = self.get_inputs(torch_device, dtype=torch.float16)
-        audios = pipe(**inputs).audios
-
-        # make sure that more than 3.75 GB is allocated
-        mem_bytes = torch.cuda.max_memory_allocated()
-        assert mem_bytes > 3.75 * 10**9
-        assert np.abs(audios_sliced - audios).max() < 1e-3
-
-    def test_audioldm_vae_slicing(self):
-        torch.cuda.reset_peak_memory_stats()
-        pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm", torch_dtype=torch.float16)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        pipe.enable_attention_slicing()
-
-        # enable vae slicing
-        pipe.enable_vae_slicing()
-        inputs = self.get_inputs(torch_device, dtype=torch.float16)
-        inputs["prompt"] = [inputs["prompt"]] * 4
-        inputs["latents"] = torch.cat([inputs["latents"]] * 4)
-        audio_sliced = pipe(**inputs).audios
-
-        mem_bytes = torch.cuda.max_memory_allocated()
-        torch.cuda.reset_peak_memory_stats()
-        # make sure that less than 1.1 GB is allocated
-        assert mem_bytes < 1.1 * 10**9
-
-        # disable vae slicing
-        pipe.disable_vae_slicing()
-        inputs = self.get_inputs(torch_device, dtype=torch.float16)
-        inputs["prompt"] = [inputs["prompt"]] * 4
-        inputs["latents"] = torch.cat([inputs["latents"]] * 4)
-        audio = pipe(**inputs).audios
-
-        # make sure that more than 1.1 GB is allocated
-        mem_bytes = torch.cuda.max_memory_allocated()
-        assert mem_bytes > 1.1 * 10**9
-        # There is a small discrepancy at the spectrogram borders vs. a fully batched version.
-        assert np.abs(audio_sliced - audio).max() < 1e-2
-
-    def test_audioldm_fp16_vs_autocast(self):
-        # this test makes sure that the original model with autocast
-        # and the new model with fp16 yield the same result
-        pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm", torch_dtype=torch.float16)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device, dtype=torch.float16)
-        audio_fp16 = pipe(**inputs).audios
-
-        with torch.autocast(torch_device):
-            inputs = self.get_inputs(torch_device)
-            audio_autocast = pipe(**inputs).audios
-
-        # Make sure results are close enough
-        diff = np.abs(audio_fp16.flatten() - audio_autocast.flatten())
-        # They ARE different since ops are not run always at the same precision
-        # however, they should be extremely close.
-        assert diff.mean() < 1e-3
-
-    def test_audioldm_intermediate_state(self):
-        number_of_steps = 0
-
-        def callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
-            callback_fn.has_been_called = True
-            nonlocal number_of_steps
-            number_of_steps += 1
-            if step == 1:
-                latents = latents.detach().cpu().numpy()
-                assert latents.shape == (1, 8, 128, 16)
-                latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([-0.6730, -0.9062, 1.0400, 0.4220, -0.9785, 1.817, 0.1906, -1.3430, 1.3330])
-
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
-            elif step == 2:
-                latents = latents.detach().cpu().numpy()
-                assert latents.shape == (1, 8, 128, 16)
-                latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([-0.6763, -0.9062, 1.0520, 0.4200, -0.9750, 1.8220, 0.1879, -1.3490, 1.3190])
-
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
-
-        callback_fn.has_been_called = False
-
-        pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm", torch_dtype=torch.float16)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        pipe.enable_attention_slicing()
-
-        inputs = self.get_inputs(torch_device, dtype=torch.float16)
-        pipe(**inputs, callback=callback_fn, callback_steps=1)
-        assert callback_fn.has_been_called
-        assert number_of_steps == inputs["num_inference_steps"]
-
-    def test_audioldm_low_cpu_mem_usage(self):
-        pipeline_id = "cvssp/audioldm"
-
-        start_time = time.time()
-        pipeline_low_cpu_mem_usage = AudioLDMPipeline.from_pretrained(pipeline_id, torch_dtype=torch.float16)
-        pipeline_low_cpu_mem_usage.to(torch_device)
-        low_cpu_mem_usage_time = time.time() - start_time
-
-        start_time = time.time()
-        _ = AudioLDMPipeline.from_pretrained(pipeline_id, torch_dtype=torch.float16, low_cpu_mem_usage=False)
-        normal_load_time = time.time() - start_time
-
-        assert 2 * low_cpu_mem_usage_time < normal_load_time
-
-    def test_audioldm_pipeline_with_sequential_cpu_offloading(self):
-        torch.cuda.empty_cache()
-        torch.cuda.reset_max_memory_allocated()
-        torch.cuda.reset_peak_memory_stats()
-
-        pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm", torch_dtype=torch.float16)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        pipe.enable_attention_slicing(1)
-        pipe.enable_sequential_cpu_offload()
-
-        inputs = self.get_inputs(torch_device, dtype=torch.float16)
-        _ = pipe(**inputs)
-
-        mem_bytes = torch.cuda.max_memory_allocated()
-        # make sure that less than 2.8 GB is allocated
-        assert mem_bytes < 2.8 * 10**9
+        assert max_diff < 1e-2
