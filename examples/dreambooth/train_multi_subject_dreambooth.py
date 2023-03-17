@@ -534,6 +534,7 @@ def collate_fn(num_instances, examples, with_prior_preservation=False):
         "input_ids": input_ids,
         "pixel_values": pixel_values,
     }
+    logging.info(batch)
     return batch
 
 
