@@ -609,6 +609,9 @@ def main(args):
         class_data_dir = args.class_data_dir
         class_prompt = args.class_prompt
 
+    if args.validation_prompt is not None:
+        validation_prompt = args.validation_prompt.split(",")
+
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -1027,11 +1030,8 @@ def main(args):
                 break
 
             if accelerator.is_main_process:
-                if args.validation_prompt is not None and global_step % args.validation_steps == 0:
-                    logger.info(
-                        f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
-                        f" {args.validation_prompt}."
-                    )
+                if validation_prompt is not None and global_step % args.validation_steps == 0:
+                    logger.info("Running validation....")
                     # create pipeline
                     pipeline = DiffusionPipeline.from_pretrained(
                         args.pretrained_model_name_or_path,
@@ -1044,25 +1044,30 @@ def main(args):
                     pipeline.set_progress_bar_config(disable=True)
 
                     # run inference
-                    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
-                    images = [
-                        pipeline(args.validation_prompt, num_inference_steps=args.num_inference_steps, generator=generator).images[0]
-                        for _ in range(args.num_validation_images)
-                    ]
+                    for i in range(len(validation_prompt)):
+                        logger.info(
+                            f"Generating {args.num_validation_images} images with prompt:"
+                            f" {validation_prompt[i]}."
+                        )
+                        generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+                        images = [
+                            pipeline(validation_prompt[i], num_inference_steps=args.num_inference_steps, generator=generator).images[0]
+                            for _ in range(args.num_validation_images)
+                        ]
 
-                    for tracker in accelerator.trackers:
-                        if tracker.name == "tensorboard":
-                            np_images = np.stack([np.asarray(img) for img in images])
-                            tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
-                        if tracker.name == "wandb":
-                            tracker.log(
-                                {
-                                    "validation": [
-                                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                                        for i, image in enumerate(images)
-                                    ]
-                                }
-                            )
+                        for tracker in accelerator.trackers:
+                            if tracker.name == "tensorboard":
+                                np_images = np.stack([np.asarray(img) for img in images])
+                                tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+                            if tracker.name == "wandb":
+                                tracker.log(
+                                    {
+                                        "validation": [
+                                            wandb.Image(image, caption=f"{j}: {validation_prompt[i]}")
+                                            for j, image in enumerate(images)
+                                        ]
+                                    }
+                                )
 
                     del pipeline
                     torch.cuda.empty_cache()
@@ -1078,7 +1083,7 @@ def main(args):
         )
         pipeline.save_pretrained(args.output_dir)
 
-        if args.validation_prompt and args.num_validation_images > 0:
+        if validation_prompt and args.num_validation_images > 0:
             # Final inference
             # Load previous pipeline
             pipeline = DiffusionPipeline.from_pretrained(
@@ -1090,29 +1095,32 @@ def main(args):
             pipeline = pipeline.to(accelerator.device)
 
             # run inference
-            logger.info(
-                f"Running test... \n Generating {args.num_validation_images} images with prompt:"
-                f" {args.validation_prompt}."
-            )
-            generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
-            images = [
-                pipeline(args.validation_prompt, num_inference_steps=args.num_inference_steps, generator=generator).images[0]
-                for _ in range(args.num_validation_images)
-            ]
+            logger.info("Running test...")
+            
+            for i in range(len(validation_prompt)):
+                logger.info(
+                    f"Generating {args.num_validation_images} images with prompt:"
+                    f" {validation_prompt[i]}."
+                )
+                generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+                images = [
+                    pipeline(validation_prompt[i], num_inference_steps=args.num_inference_steps, generator=generator).images[0]
+                    for _ in range(args.num_validation_images)
+                ]
 
-            for tracker in accelerator.trackers:
-                if tracker.name == "tensorboard":
-                    np_images = np.stack([np.asarray(img) for img in images])
-                    tracker.writer.add_images("test", np_images, epoch, dataformats="NHWC")
-                if tracker.name == "wandb":
-                    tracker.log(
-                        {
-                            "test": [
-                                wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                                for i, image in enumerate(images)
-                            ]
-                        }
-                    )
+                for tracker in accelerator.trackers:
+                    if tracker.name == "tensorboard":
+                        np_images = np.stack([np.asarray(img) for img in images])
+                        tracker.writer.add_images("test", np_images, epoch, dataformats="NHWC")
+                    if tracker.name == "wandb":
+                        tracker.log(
+                            {
+                                "test": [
+                                    wandb.Image(image, caption=f"{j}: {validation_prompt[i]}")
+                                    for j, image in enumerate(images)
+                                ]
+                            }
+                        )
 
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
