@@ -32,7 +32,7 @@ from diffusers import (
 )
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint import prepare_mask_and_masked_image
 from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
-from diffusers.utils.testing_utils import print_tensor_test, require_torch_gpu
+from diffusers.utils.testing_utils import require_torch_gpu
 
 from ...pipeline_params import TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin
@@ -215,7 +215,6 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.1350, 0.1123, 0.1350, 0.1641, 0.1328, 0.1230, 0.1289, 0.1531, 0.1687])
-        print_tensor_test(image_slice)
 
         assert np.abs(expected_slice - image_slice).max() < 5e-2
 
