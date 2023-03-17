@@ -154,6 +154,8 @@
       title: Score SDE VE
     - local: api/pipelines/semantic_stable_diffusion
       title: Semantic Guidance
+    - local: api/pipelines/time_diffusion
+      title: Text-to-Image Model Editing
     - sections:
       - local: api/pipelines/stable_diffusion/overview
         title: Overview
