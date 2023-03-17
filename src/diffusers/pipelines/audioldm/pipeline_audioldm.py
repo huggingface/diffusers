@@ -386,7 +386,7 @@ class AudioLDMPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        num_inference_steps: int = 200,
+        num_inference_steps: int = 10,
         guidance_scale: float = 2.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_waveforms_per_prompt: Optional[int] = 1,
@@ -412,7 +412,7 @@ class AudioLDMPipeline(DiffusionPipeline):
                 spectrogram and thus longer audio sample.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor // 8):
                 The width in pixels of the generated spectrogram.
-            num_inference_steps (`int`, *optional*, defaults to 200):
+            num_inference_steps (`int`, *optional*, defaults to 10):
                 The number of denoising steps. More denoising steps usually lead to a higher quality audio at the
                 expense of slower inference.
             guidance_scale (`float`, *optional*, defaults to 2.5):
