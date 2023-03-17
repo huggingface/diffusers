@@ -63,13 +63,14 @@ method, or pass the `scheduler` argument to the `from_pretrained` method of the 
 
 ```python
 >>> from diffusers import AudioLDMPipeline, DPMSolverMultistepScheduler
+>>> import torch
 
->>> pipeline = AudioLDMPipeline.from_pretrained("cvssp/audioldm")
+>>> pipeline = AudioLDMPipeline.from_pretrained("cvssp/audioldm", torch_dtype=torch.float16)
 >>> pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
 
 >>> # or
 >>> dpm_scheduler = DPMSolverMultistepScheduler.from_pretrained("cvssp/audioldm", subfolder="scheduler")
->>> pipeline = AudioLDMPipeline.from_pretrained("cvssp/audioldm", scheduler=dpm_scheduler)
+>>> pipeline = AudioLDMPipeline.from_pretrained("cvssp/audioldm", scheduler=dpm_scheduler, torch_dtype=torch.float16)
 ```
 
 ## AudioLDMPipeline
