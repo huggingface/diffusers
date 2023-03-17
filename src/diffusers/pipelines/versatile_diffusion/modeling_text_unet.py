@@ -287,7 +287,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             timestep_input_dim = block_out_channels[0]
         else:
             raise ValueError(
-                f"{time_embedding_type} does not exist. Pleaes make sure to use one of `fourier` or `positional`."
+                f"{time_embedding_type} does not exist. Please make sure to use one of `fourier` or `positional`."
             )
 
         self.time_embedding = TimestepEmbedding(
@@ -481,7 +481,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             `processor (`dict` of `AttentionProcessor` or `AttentionProcessor`):
                 The instantiated processor class or a dictionary of processor classes that will be set as the processor
                 of **all** `Attention` layers.
-            In case `processor` is a dict, the key needs to define the path to the corresponding cross attention processor. This is strongly recommended when setting trainablae attention processors.:
+            In case `processor` is a dict, the key needs to define the path to the corresponding cross attention processor. This is strongly recommended when setting trainable attention processors.:
 
         """
         count = len(self.attn_processors.keys())
@@ -515,24 +515,24 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         Args:
             slice_size (`str` or `int` or `list(int)`, *optional*, defaults to `"auto"`):
                 When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
-                `"max"`, maxium amount of memory will be saved by running only one slice at a time. If a number is
+                `"max"`, maximum amount of memory will be saved by running only one slice at a time. If a number is
                 provided, uses as many slices as `attention_head_dim // slice_size`. In this case, `attention_head_dim`
                 must be a multiple of `slice_size`.
         """
         sliceable_head_dims = []
 
-        def fn_recursive_retrieve_slicable_dims(module: torch.nn.Module):
+        def fn_recursive_retrieve_sliceable_dims(module: torch.nn.Module):
             if hasattr(module, "set_attention_slice"):
                 sliceable_head_dims.append(module.sliceable_head_dim)
 
             for child in module.children():
-                fn_recursive_retrieve_slicable_dims(child)
+                fn_recursive_retrieve_sliceable_dims(child)
 
         # retrieve number of attention layers
         for module in self.children():
-            fn_recursive_retrieve_slicable_dims(module)
+            fn_recursive_retrieve_sliceable_dims(module)
 
-        num_slicable_layers = len(sliceable_head_dims)
+        num_sliceable_layers = len(sliceable_head_dims)
 
         if slice_size == "auto":
             # half the attention head size is usually a good trade-off between
@@ -540,9 +540,9 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             slice_size = [dim // 2 for dim in sliceable_head_dims]
         elif slice_size == "max":
             # make smallest slice possible
-            slice_size = num_slicable_layers * [1]
+            slice_size = num_sliceable_layers * [1]
 
-        slice_size = num_slicable_layers * [slice_size] if not isinstance(slice_size, list) else slice_size
+        slice_size = num_sliceable_layers * [slice_size] if not isinstance(slice_size, list) else slice_size
 
         if len(slice_size) != len(sliceable_head_dims):
             raise ValueError(
@@ -605,7 +605,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             returning a tuple, the first element is the sample tensor.
         """
         # By default samples have to be AT least a multiple of the overall upsampling factor.
-        # The overall upsampling factor is equal to 2 ** (# num of upsampling layears).
+        # The overall upsampling factor is equal to 2 ** (# num of upsampling layers).
         # However, the upsampling interpolation output size can be forced to fit any upsampling size
         # on the fly if necessary.
         default_overall_up_factor = 2**self.num_upsamplers
