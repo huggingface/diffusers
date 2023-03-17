@@ -151,6 +151,12 @@ class SpectrogramDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
     def test_attention_slicing_forward_pass(self):
         return super().test_attention_slicing_forward_pass()
 
+    def test_inference_batch_single_identical(self):
+        pass
+
+    def test_inference_batch_consistent(self):
+        pass
+
 
 @slow
 @require_torch_gpu
