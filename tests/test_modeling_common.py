@@ -106,14 +106,16 @@ class ModelTesterMixin:
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict)
-        model.set_attn_processor(AttnProcessor())
+        if hasattr(model, "set_attn_processor"):
+            model.set_attn_processor(AttnProcessor())
         model.to(torch_device)
         model.eval()
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_pretrained(tmpdirname)
             new_model = self.model_class.from_pretrained(tmpdirname)
-            new_model.set_attn_processor(AttnProcessor())
+            if hasattr(new_model, "set_attn_processor"):
+                new_model.set_attn_processor(AttnProcessor())
             new_model.to(torch_device)
 
         with torch.no_grad():
@@ -138,14 +140,16 @@ class ModelTesterMixin:
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict)
-        model.set_attn_processor(AttnProcessor())
+        if hasattr(model, "set_attn_processor"):
+            model.set_attn_processor(AttnProcessor())
         model.to(torch_device)
         model.eval()
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_pretrained(tmpdirname, variant="fp16")
             new_model = self.model_class.from_pretrained(tmpdirname, variant="fp16")
-            new_model.set_attn_processor(AttnProcessor())
+            if hasattr(new_model, "set_attn_processor"):
+                new_model.set_attn_processor(AttnProcessor())
 
             # non-variant cannot be loaded
             with self.assertRaises(OSError) as error_context:
