@@ -853,7 +853,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 Amount of guidance needed from the reference cross-attention maps.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image`, `np.array`, or 'latent'.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
@@ -1031,16 +1031,19 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
+        if output_type == "latent":
+            edited_image = latents
+            has_nsfw_concept = None
+        else:
+            # 11. Post-process the latents.
+            edited_image = self.decode_latents(latents)
 
-        # 11. Post-process the latents.
-        edited_image = self.decode_latents(latents)
+            # 12. Run the safety checker.
+            edited_image, has_nsfw_concept = self.run_safety_checker(edited_image, device, prompt_embeds.dtype)
 
-        # 12. Run the safety checker.
-        edited_image, has_nsfw_concept = self.run_safety_checker(edited_image, device, prompt_embeds.dtype)
-
-        # 13. Convert to PIL.
-        if output_type == "pil":
-            edited_image = self.numpy_to_pil(edited_image)
+            # 13. Convert to PIL.
+            if output_type == "pil":
+                edited_image = self.numpy_to_pil(edited_image)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
@@ -1105,7 +1108,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 Amount of guidance needed from the reference cross-attention maps.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image`, `np.array`, or 'latent'.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
@@ -1237,16 +1240,19 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
         inverted_latents = latents.detach().clone()
 
-        # 8. Post-processing
-        image = self.decode_latents(latents.detach())
+        if output_type == "latent":
+            image = inverted_latents
+        else:
+            # 8. Post-processing
+            image = self.decode_latents(latents.detach())
 
-        # Offload last model to CPU
-        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-            self.final_offload_hook.offload()
+            # Offload last model to CPU
+            if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
+                self.final_offload_hook.offload()
 
-        # 9. Convert to PIL.
-        if output_type == "pil":
-            image = self.numpy_to_pil(image)
+            # 9. Convert to PIL.
+            if output_type == "pil":
+                image = self.numpy_to_pil(image)
 
         if not return_dict:
             return (inverted_latents, image)

@@ -734,7 +734,7 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
                 The max multiple length of prompt embeddings compared to the max output length of text encoder.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image`, `np.array`, or 'latent'.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
@@ -845,18 +845,24 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
                 if is_cancelled_callback is not None and is_cancelled_callback():
                     return None
 
-        # 9. Post-processing
-        image = self.decode_latents(latents)
+        if output_type == "latent":
+            image = latents
+            has_nsfw_concept = None
+        elif output_type == "np":
+            # 8. Post-processing
+            image = self.decode_latents(latents)
 
-        # 10. Run safety checker
-        image, has_nsfw_concept = self.run_safety_checker(image, device, text_embeddings.dtype)
+            # 9. Run safety checker
+            image, has_nsfw_concept = self.run_safety_checker(image, device, text_embeddings.dtype)
+        elif output_type == "pil":
+            # 8. Post-processing
+            image = self.decode_latents(latents)
 
-        # 11. Convert to PIL
-        if output_type == "pil":
+            # 9. Run safety checker
+            image, has_nsfw_concept = self.run_safety_checker(image, device, text_embeddings.dtype)
+
+            # 10. Convert to PIL
             image = self.numpy_to_pil(image)
-
-        if not return_dict:
-            return image, has_nsfw_concept
 
         return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
 
