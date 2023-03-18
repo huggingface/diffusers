@@ -23,7 +23,7 @@ import torch.nn.functional as F
 from transformers import (
     BlipForConditionalGeneration,
     BlipProcessor,
-    CLIPFeatureExtractor,
+    CLIPImageProcessor,
     CLIPTextModel,
     CLIPTokenizer,
 )
@@ -297,7 +297,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
-        feature_extractor ([`CLIPFeatureExtractor`]):
+        feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
         requires_safety_checker (bool):
             Whether the pipeline requires a safety checker. We recommend setting it to True if you're using the
@@ -318,7 +318,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
         scheduler: Union[DDPMScheduler, DDIMScheduler, EulerAncestralDiscreteScheduler, LMSDiscreteScheduler],
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
         safety_checker: StableDiffusionSafetyChecker,
         inverse_scheduler: DDIMInverseScheduler,
         caption_generator: BlipForConditionalGeneration,

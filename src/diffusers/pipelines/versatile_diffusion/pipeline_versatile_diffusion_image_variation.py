@@ -19,7 +19,7 @@ import numpy as np
 import PIL
 import torch
 import torch.utils.checkpoint
-from transformers import CLIPFeatureExtractor, CLIPVisionModelWithProjection
+from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
@@ -48,7 +48,7 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
-    image_feature_extractor: CLIPFeatureExtractor
+    image_feature_extractor: CLIPImageProcessor
     image_encoder: CLIPVisionModelWithProjection
     image_unet: UNet2DConditionModel
     vae: AutoencoderKL
@@ -56,7 +56,7 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
 
     def __init__(
         self,
-        image_feature_extractor: CLIPFeatureExtractor,
+        image_feature_extractor: CLIPImageProcessor,
         image_encoder: CLIPVisionModelWithProjection,
         image_unet: UNet2DConditionModel,
         vae: AutoencoderKL,

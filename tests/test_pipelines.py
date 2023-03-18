@@ -31,7 +31,7 @@ import torch
 from parameterized import parameterized
 from PIL import Image
 from requests.exceptions import HTTPError
-from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
@@ -433,7 +433,7 @@ class CustomPipelineTests(unittest.TestCase):
     def test_download_from_git(self):
         clip_model_id = "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 
-        feature_extractor = CLIPFeatureExtractor.from_pretrained(clip_model_id)
+        feature_extractor = CLIPImageProcessor.from_pretrained(clip_model_id)
         clip_model = CLIPModel.from_pretrained(clip_model_id, torch_dtype=torch.float16)
 
         pipeline = DiffusionPipeline.from_pretrained(
