@@ -84,7 +84,7 @@ class VaeImageProcessor(ConfigMixin):
         """
         Convert a numpy image to a pytorch tensor
         """
-        images = images.cpu().permute(0, 2, 3, 1).float().numpy()
+        images = images.cpu().permute(0, 2, 3, 1).float().detach().numpy()
         return images
 
     @staticmethod

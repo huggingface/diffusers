@@ -224,7 +224,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
+        image = image.cpu().permute(0, 2, 3, 1).float().detach().numpy()
         return image
 
     def check_inputs(self, prompt, image, callback_steps):

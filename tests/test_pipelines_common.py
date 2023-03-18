@@ -589,13 +589,16 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         if inputs.get("output_type"):
             del inputs["output_type"]
-        output_pil = pipe(output_type="np", **inputs)[0]
+        output_np = pipe(output_type="np", **inputs)[0]
         inputs = self.get_dummy_inputs(torch_device)
         if inputs.get("output_type"):
             del inputs["output_type"]
-        raw_output_latents = pipe(output_type="latent", **inputs).cpu()
-        output_latent = pipe.decode_latents(raw_output_latents)[0]
-        max_diff = np.abs(output_pil - output_latent).max()
+        raw_output_latents = pipe(output_type="latent", **inputs)[0]
+        output_latent = pipe.decode_latents(raw_output_latents)
+        # Needed for stable_diffusion_img2img
+        if hasattr(pipe, "image_processor"):
+            output_latent = pipe.image_processor.postprocess(output_latent, output_type='np')
+        max_diff = np.abs(output_np - output_latent).max()
         self.assertLess(max_diff, 1e-4, "Latent output should not affect the inference results")
 
 

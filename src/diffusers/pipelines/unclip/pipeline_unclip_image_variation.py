@@ -453,7 +453,7 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
 
             image = image * 0.5 + 0.5
             image = image.clamp(0, 1)
-            image = image.cpu().permute(0, 2, 3, 1).float().numpy()
+            image = image.cpu().permute(0, 2, 3, 1).float().detach().numpy()
 
             if output_type == "pil":
                 image = self.numpy_to_pil(image)
