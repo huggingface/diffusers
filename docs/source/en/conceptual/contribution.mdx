@@ -27,24 +27,24 @@ the core library.
 
 In the following, we give an overview of different ways to contribute, ranked by difficulty in ascending order.
 
-* 1. Asking and answering questions on [the Diffusers discussion forum](TODO:PVP) or on [Discord](TODO:PVP).
-* 2. Opening new issues on [the GitHub Issues tab](TODO:PVP)
-* 3. Answering issues on [the GitHub Issues tab](TODO:PVP)
-* 4. Fix a simple issue, marked by the "Good first issue" label, see [here](TODO:PVP).
+* 1. Asking and answering questions on [the Diffusers discussion forum](https://discuss.huggingface.co/c/discussion-related-to-httpsgithubcomhuggingfacediffusers) or on [Discord](https://discord.gg/G7tWnz98XR).
+* 2. Opening new issues on [the GitHub Issues tab](https://github.com/huggingface/diffusers/issues/new/choose)
+* 3. Answering issues on [the GitHub Issues tab](https://github.com/huggingface/diffusers/issues)
+* 4. Fix a simple issue, marked by the "Good first issue" label, see [here](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22).
 * 5. Contribute to the [documentation](https://github.com/huggingface/diffusers/tree/main/docs/source).
-* 6. Contribute a [Community Pipeline](TODO:PVP)
+* 6. Contribute a [Community Pipeline](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3Acommunity-examples)
 * 7. Contribute to the [examples](https://github.com/huggingface/diffusers/tree/main/examples).
-* 8. Fix a more difficult issue, marked by the "Good second issue" label, see [here](TODO:PVP).
-* 9. Add a new pipeline, model and, or pipeline, see ["New Pipeline/Model"](TODO:PVP) and ["New scheduler"](TODO:PVP) issues. For this contribution, please have a look at [Design Philosophy](TODO:PVP).
+* 8. Fix a more difficult issue, marked by the "Good second issue" label, see [here](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22Good+second+issue%22).
+* 9. Add a new pipeline, model and, or pipeline, see ["New Pipeline/Model"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+pipeline%2Fmodel%22) and ["New scheduler"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+scheduler%22) issues. For this contribution, please have a look at [Design Philosophy](https://github.com/huggingface/diffusers/blob/main/PHILOSOPHY.md).
 
 As said before, **all contributions are valuable to the community**.
 In the following, we will explain each contribution a bit more in-detail.
 
-For all contributions 4.-9. you will need to open a PR. It is explained in detail how to do so in [Opening a pull requst](TODO:PVP)
+For all contributions 4.-9. you will need to open a PR. It is explained in detail how to do so in [Opening a pull requst](#how-to-open-a-pr)
 
 ### 1. Asking and answering questions on the Diffusers discussion forum or on the Diffusers Discord
 
-    Any question or comment to related to the Diffusers library can be asked on the [discussion forum](TODO:PVP) or on [Discord](TODO:PVP). Such questions and comments include (but are not limited to):
+    Any question or comment to related to the Diffusers library can be asked on the [discussion forum](https://discuss.huggingface.co/c/discussion-related-to-httpsgithubcomhuggingfacediffusers/) or on [Discord](https://discord.gg/G7tWnz98XR). Such questions and comments include (but are not limited to):
 	- Reports of training or inference experiments in an attempt to share knowledge
 	- Presentation of personal projects
 	- Questions to non-official training examples
@@ -63,7 +63,7 @@ For all contributions 4.-9. you will need to open a PR. It is explained in detai
 
 	**Please** keep in mind that the more effort you put into asking or answering a question, the higher 
 	is the quality of the publicly documented knowledge. The same way, well-posed and well-answered questions    create a high quality knowledge database accesible to everybody, a badly posed question or answer reduces the overall quality of the public knowledge database. 
-	In short, a high quality question or answer is *precise*, *concise*, *relevant*, *easy-to-understand*, *accesible*, and *well-formated/well-posed*. For more information, please have a look through the [How to write a good issue](#how-to-write-a-good-issue)(TODO:PVP) section.
+	In short, a high quality question or answer is *precise*, *concise*, *relevant*, *easy-to-understand*, *accesible*, and *well-formated/well-posed*. For more information, please have a look through the [How to write a good issue](#how-to-write-a-good-issue) section.
 
 	**NOTE**: 
 	*The forum* is much better indexed by search engines, such as Google. Posts are ranked more by popularity than chronologically. Hence, it's easier to look up questions and answers that we posted some time ago. 
@@ -79,13 +79,13 @@ For all contributions 4.-9. you will need to open a PR. It is explained in detai
 
     Remember, GitHub issues are reserved for technical questions directly related to the Diffusers library, 	bug reports, feature requests, or feedback on the library design.
 
-	In a nutshell, this means that everything that is **not** related to the **code of the Diffusers library** should **not** be asked on GitHub, but rather on either the [forum](TODO:PVP) or [Discord](TODO:PVP) as explained in [1.](TODO:PVP).
+	In a nutshell, this means that everything that is **not** related to the **code of the Diffusers library** should **not** be asked on GitHub, but rather on either the [forum](https://discuss.huggingface.co/c/discussion-related-to-httpsgithubcomhuggingfacediffusers/63) or [Discord](https://discord.gg/G7tWnz98XR).
 
 	**Please consider the following guidelines when open a new issue**:
 	- Make sure you have searched whether your issue has already been asked before (use the search bar on GitHub under Issues).
 	- Please never report a new issue on another (related) issue. If another issue is highly related, please
 	open a new issue nevertheless and link to the related issue.
-	- Make sure your issue is written in English. Plesae use on of the great, free online trasnlation services, such as [DeepL](TODO:PVP) to translate from your native language to English if you are not conformtible in English.
+	- Make sure your issue is written in English. Plesae use on of the great, free online trasnlation services, such as [DeepL](https://www.deepl.com/translator) to translate from your native language to English if you are not conformtible in English.
 	- Check whether your issue might be solved by updating to the newest Diffusers version. Before posting your issue, please make sure that `python -c "import diffusers; print(diffusers.__version__)"` is higher or matches the latest Diffusers version.
 	- Remember that the more effort you put into opening a new issue, the higher the quality of your answer will be and the better the overall quality of the Diffusers issues.
 
@@ -105,7 +105,7 @@ This means in more detail:
 
 For more information, please have a look through the [How to write a good issue](#how-to-write-a-good-issue) section.
 
-You can open a bug report [here](TODO:PVP).
+You can open a bug report [here](https://github.com/huggingface/diffusers/issues/new/choose).
 
 #### 2.2. Feature requests.
 
@@ -123,21 +123,21 @@ A world-class feature request addresses the following points:
 4. In case this is related to a paper, please attach a link;
 5. Attach any additional information (drawings, screenshots, etc.) you think may help.
 
-You can open a feature request [here](TODO:PVP).
+You can open a feature request [here](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&template=feature_request.md&title=).
 
 #### 2.3 Feedback. 
 
-Feedback about the library design and why it is good or not good helps the core maintainers immensely to build a user-friendly library. To understand the philosohpy behind the current design philosophy, plesae have a look [here](TODO:PVP). If you feel like a certain design choice does not fit in with the current design philosophy, plesae explain why and how it should be changed. If a certain design choice follows the design philosophy too much, hence restricting use cases, explain why and how it should be changed. 
+Feedback about the library design and why it is good or not good helps the core maintainers immensely to build a user-friendly library. To understand the philosohpy behind the current design philosophy, plesae have a look [here](). If you feel like a certain design choice does not fit in with the current design philosophy, plesae explain why and how it should be changed. If a certain design choice follows the design philosophy too much, hence restricting use cases, explain why and how it should be changed. 
 If a certain design choice is very useful for you, please also leave a not as this is great feedback for future design decisions.
 
-You can open an issue about a feedback [here](TODO:PVP).
+You can open an issue about a feedback [here](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&template=feedback.md&title=).
 
 #### 2.4 Technical questions. 
 
 Technical questions are mainly about why certain code of the library was written in a certain way, or what a certain part of the code does. Please make sure to link to the code in question and plesae provide detail on
 why this part of the code is difficult to understand.
 
-You can open an issue about a technical question [here](TODO:PVP).
+You can open an issue about a technical question [here](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=bug&template=bug-report.yml).
 
 #### 2.5 Proposal to add a new model, scheduler, or pipeline.
 
@@ -150,7 +150,7 @@ If the diffusion model community relesaed a new model, pipeline or scheduler tha
 If you are willing to contribute the model yourself, let us know so we can best guide you. Also don't forget 
 to tag the author by github handle if you can find it.
 
-You can open a requests for a model/pipeline [here](TODO:PVP) and for a scheduler [here](TODO:PVP).
+You can open a requests for a model/pipeline/scheduler [here](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=New+model%2Fpipeline%2Fscheduler&template=new-model-addition.yml).
 
 ### 3. Answering issues on the GitHub issues tab
 
@@ -163,16 +163,16 @@ You can open a requests for a model/pipeline [here](TODO:PVP) and for a schedule
 
 	Also, many issues tend to be simply off-topic, duplicates of other issues or irrelevant. It is of great 
 	help to the maintainers if you can answer to such issues, encouraging the author of the issue to be 
-	more precise, provide the link to a duplicated issue or redirect them to [the forum](TODO:PVP) or [Discord](TODO:PVP)
+	more precise, provide the link to a duplicated issue or redirect them to [the forum](https://discuss.huggingface.co/c/discussion-related-to-httpsgithubcomhuggingfacediffusers/63) or [Discord](https://discord.gg/G7tWnz98XR)
 
 	If you have verified that the issued bug report is correct and requires a correction in the source code, 
-	please have a look at the [next sections](TODO:PVP).
+	please have a look at the next sections.
 
-For all of the following contributions, you will need to open a PR. It is explained in detail how to do so in [Opening a pull requst](TODO:PVP)
+For all of the following contributions, you will need to open a PR. It is explained in detail how to do so in [Opening a pull requst](#how-to-open-a-pr)
 
 ### 4. Fixing a "Good first issue"
 	
-	*Good first issues* are marked by the [Good first issue](TODO:PVP) label. Usually, the issue already 
+	*Good first issues* are marked by the [Good first issue](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22) label. Usually, the issue already 
 	explains how a potential solution should look like so that it is easier to fix. 
 	If the issue hasn't been closed and you would like to try to fix this issue, you can just leave a message "I would like to try this issue.". There are usually three scenarios:
 	- a.) The issue description already proposes a fix. In this case and if the solution makes sense to you, you can open a PR or work-in-progress PR to fix it. 
@@ -192,18 +192,18 @@ For all of the following contributions, you will need to open a PR. It is explai
 	- Correct the shape or dimensions of a docstring input or output tensor.
 	- Clarify documentation that is hard to understand or incorrect
 	- Update out-dated code examples.
-	- Translating the documentation to another language. See [here](TODO:PVP) for more details.
+	- Translating the documentation to another language.
 	- etc...
 
-	Anything displayed on [the official Diffusers doc page](TODO:PVP) is part of the official documentation and can be corrected, adjusted in the respective [documentation source](https://github.com/huggingface/diffusers/tree/main/docs/source).
+	Anything displayed on [the official Diffusers doc page](https://huggingface.co/docs/diffusers/index) is part of the official documentation and can be corrected, adjusted in the respective [documentation source](https://github.com/huggingface/diffusers/tree/main/docs/source).
 
-	Please have a look at [this page](TODO:PVP) on how to verify changes changes made to the documentation locally.
+	Please have a look at [this page](https://github.com/huggingface/diffusers/tree/main/docs) on how to verify changes changes made to the documentation locally.
 	
 
 ### 6. Contribute a community pipeline
 
-	[Pipelines](TODO:PVP) are usually the first point of contact between the Diffusers library and the user.
-	Pipelines are examples of how to use Diffusers [models](TODO:PVP) and [schedulers](TODO:PVP).
+	[Pipelines](https://huggingface.co/docs/diffusers/api/pipelines/overview) are usually the first point of contact between the Diffusers library and the user.
+	Pipelines are examples of how to use Diffusers [models](https://huggingface.co/docs/diffusers/api/models) and [schedulers](https://huggingface.co/docs/diffusers/api/schedulers/overview).
 	We support two types of pipelines:
 
 		- Official Pipelines
@@ -212,18 +212,18 @@ For all of the following contributions, you will need to open a PR. It is explai
 	Both official and communtiy pipelines follow the same design and consists of the same type of components.
 
 	Official pipelines are tested and maintained by the core Diffusers core-maintainers. Their code
-	resides in [src/diffusers/pipelines](TODO:PVP).
+	resides in [src/diffusers/pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines).
 	In contrast, community pipeline are contributed and maintained purely by the **community** and are **not** tested. 
-	They reside in [examples/community](TODO:PVP) and while they can be accesed via the pypi diffusers package (see [here](TODO:PVP)), their code is not part of the Pypi diffusers package.
+	They reside in [examples/community](https://github.com/huggingface/diffusers/tree/main/examples/community) and while they can be accesed via the pypi diffusers package (see [here](https://pypi.org/project/diffusers/)), their code is not part of the Pypi diffusers package.
 
 	The reason for the distinction is that the Diffusers core-maintainers simply cannot maintain and test all 
 	possible ways diffusion models can be used for inference. 
 	Officially released diffusion pipelines, 
-	such as [Stable Diffusion](TODO:PVP) are added to the core src/diffusers/pipelines package which ensures a 
+	such as Stable Diffusion are added to the core src/diffusers/pipelines package which ensures a 
 	high quality of maintenance, no backwards-breaking code changes and testing. 
 	More edge-casy, unofficial pipelines should be added as community pipelines. If usage for a community pipeline is high, they pipeline can be moved to the official pipelines upon request from the community.
 
-    To add a community pipeline, one should add a <name-of-the-community>.py file to [examples/community](TODO:PVP) and adapt the [examples/community/README.md](TODO:PVP) to include an example of the new pipeline.
+    To add a community pipeline, one should add a <name-of-the-community>.py file to [examples/community](https://github.com/huggingface/diffusers/tree/main/examples/community) and adapt the [examples/community/README.md](https://github.com/huggingface/diffusers/tree/main/examples/community/README.md) to include an example of the new pipeline.
 	
 	TODO(PVP:Copy&Paste test from the issue)
 
@@ -241,7 +241,7 @@ For all of the following contributions, you will need to open a PR. It is explai
 		- Official training examples
 		- Research training examples
 
-	Research training examples are located in [examples/research_projects](TODO:PVP) whereas official training examples include all folders under [examples](TODO:PVP) except the [research_projects] and [community] folders.
+	Research training examples are located in [examples/research_projects](https://github.com/huggingface/diffusers/tree/main/examples/research_projects) whereas official training examples include all folders under [examples](https://github.com/huggingface/diffusers/tree/main/examples) except the `research_projects` and `community` folders.
 	The official training examples are maintained by the Diffusers core-maintainers whereas the research training examples are maintained by the community.
 	This is because of the same reasons put forward in [6. Contribute a community pipeline](#contribute-a-community-pipeline) for official pipelines vs. community pipelines: It is not feasible for the core-maintainers to maintain all possible training methods for diffusion models.
 	If the Diffusers core-maintainers and community judges a certain training paradigm not popular enough of too experimental, the corresponding training code should be put in the `research_projects` folder and maintained by the author.
@@ -259,27 +259,27 @@ For all of the following contributions, you will need to open a PR. It is explai
 	pip install -r /examples/<your-example-folder>/requirements.txt
 	```
 
-	Therefore when adding an example, the requirements.txt file shall define all pip dependencies required for your training example so that once all those are installed the user can run the example's training script, as an example, see the [dreambooth requirements.txt file](TODO:PVP).
+	Therefore when adding an example, the requirements.txt file shall define all pip dependencies required for your training example so that once all those are installed the user can run the example's training script, as an example, see the [dreambooth requirements.txt file](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/requirements.txt).
 
 	Training examples of the Diffusers library should adhere to the following philosohpy:
 	- All the code necessary to run the examples should be found in a single Python file
 	- One should be able to run the example from the command line with `python <your-example>.py --args`
 	- Examples should be kept simple and serve as **an example** on how to use Diffusers for training. The purpose of example scripts is **not** to create state-of-the-art diffusion models, but rather to reproduce known training schemes without adding too much costum logic.
 
-	To contribute an example, it is highly recommended to look at already existing examples such as [dreambooth](TODO:PVP) to get an idea of how the should look like.
-	We strongly advise contributors to make use of the [Accelerate library](TODO:PVP) as it's tightly integrated 
+	To contribute an example, it is highly recommended to look at already existing examples such as [dreambooth](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth.py) to get an idea of how the should look like.
+	We strongly advise contributors to make use of the [Accelerate library](https://github.com/huggingface/accelerate) as it's tightly integrated 
 	with Diffusers.
 	Once an example script works, please make sure to add a nice README.md that states how to use the example exactly. This README should:
-	- An example command on how to run the example script as shown [here e.g.](TODO:PVP)
-	- A link to some training results (logs, models, ...) that show what the user can expect as shown [here e.g.](TODO:PVP)
-	- If you are adding a non-official/research training example, **please don't forget** to add a sentence that you are maintaining this training examples which includes your git handle as shown [here](TODO:PVP).
+	- An example command on how to run the example script as shown [here e.g.](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth#running-locally-with-pytorch).
+	- A link to some training results (logs, models, ...) that show what the user can expect as shown [here e.g.](https://api.wandb.ai/report/patrickvonplaten/xm6cd5q5).
+	- If you are adding a non-official/research training example, **please don't forget** to add a sentence that you are maintaining this training examples which includes your git handle as shown [here](https://github.com/huggingface/diffusers/tree/main/examples/research_projects/intel_opts#diffusers-examples-with-intel-optimizations).
 
-	If you are contributing to the official training examples, please also make sure to add a test to [examples/test_examples.py](TODO:PVP). This is not necessary for non-official training examples.
+	If you are contributing to the official training examples, please also make sure to add a test to [examples/test_examples.py](https://github.com/huggingface/diffusers/blob/main/examples/test_examples.py). This is not necessary for non-official training examples.
 
 ### 8. Fixing a "Good second issue"
 
-	*Good second issues* are marked by the [Good second issue](TODO:PVP) label. Good second issues are 
-	usually more complicated to solve then [Good first issues](#fixing-a-"good-second-issue").
+	*Good second issues* are marked by the [Good second issue](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22Good+second+issue%22) label. Good second issues are 
+	usually more complicated to solve then [Good first issues](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22).
 	The issue description gives normally less guidance on how to example fix the issue and requires 
 	a decent understanding of the library by the user. 
 	If you are interested in tackling a second good issue, feel free to open a PR to fix it and link the PR to the issue. If you see that a PR has already been opened for this issue but did not get merged, have a look to understand why it wasn't merged and try to open an improved PR.
@@ -293,15 +293,60 @@ For all of the following contributions, you will need to open a PR. It is explai
 
 	By adding a new model, pipeline or scheduler you might enable a new powerful use case for any of the user interfaces relying on Diffusers which can be of immense value for the whole generative AI ecosystem.
 
-	Before adding any of the three components, it is strongly recommended that you give the [Philosophy guide](TODO:PVP) a read to better understand the design of any of the three components.
+    Diffusers has a couple of open feature requests for all three componests - feel free to gloss over them 
+	if you don't know yet what specific component you would like to add:
+	- [Model or pipeline](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+pipeline%2Fmodel%22)
+	- [Scheduler](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+scheduler%22)
 
-	
+	Before adding any of the three components, it is strongly recommended that you give the [Philosophy guide](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22Good+second+issue%22) a read to better understand the design of any of the three components. Please be aware that 
+	we cannot merge model, scheduler, or pipeline additions that strongly diverge from our design philosophy
+	as it will lead to API inconsistencies. If you fundamentally disagree with a design choice, please 
+	open a [Feedback issue](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&template=feedback.md&title=) instead so that it can be discussed whether a certain design 
+	pattern / design choice shall be changed everywhere in the library and whether we shall update our design philosophy. Consistency across the library is very important for us.
 
+	Please make sure to add links to the original codebase / paper to the PR and ideally to also ping the 
+	original author directly on the PR so that they can follow the progress and potentially help with questions.
+
+	If you are unsure or stuck in the PR, don't hesitate to leave a message to ask for a first review or help.
 
 ## How to write a good issue
 
-(TODO:PVP)
-	
+**The better your issue is written, the higher the chances that it will be quickly resolved by the maintainers.**
+
+1. Make sure that you've used the correct template for your issue. You can pick between *Bug Report*, *Feature Request*, *Feedback about API Design*, *New model/pipeline/scheduler addition*, *Forum* or a blank issue. Make sure to pick the correct one when opening [a new issue](https://github.com/huggingface/diffusers/issues/new/choose).
+2. **Be precise**: Give your issue a fitting title. Try to formulate your issue description as simple as possible. The more precise you are when submitting an issue, the less time it takes to understand the issue and to potentially solve it. Make sure to open an issue for one issue only and not for multiple issues. If you found multiple issues, simply open multiple issues. If your issue is a bug, try to be as precise as possible about what bug it is - you should not just write "Error in diffusers".
+3. **Reproducibility**: No reproducible code snippet == no solution. If you encounter a bug, maintainers **have to be able to reproduce** it. Make sure that you include a code snippet that can be copy-pasted into a Python interpreter to reproduce the issue. Make sure that your code snippet works, *i.e.* that they are no missing imports, missing links to images, ... Your issue should contain an error message **and** a code snippet that can be copy-pasted whithout any changes to reproduce the exact same error message. If your issue is using local model weights or local data that cannot be accessed by the reader, the issue cannot be solved. If you cannot share your data or model, try to make a dummy model or dummy data.
+4. **Minimalistic**: Try to help the reader as much as you can to understand the issue as quickly as possible by staying as concise as possible. Remove all code / all information that is irrelevant to the issue. If you have found a bug, try to create the easiest code example you can to demonstrate your issue, do not just dump your whole workflow into the issue as soon as you have found a bug. E.g., if you train a model and get an error at some point during the training, you should first try to understand what part of the training code is reposnible for the error and try to reproduce it with a couple of lines. Try to use dummy data instead of full datasets.
+5. Add links. If you are referring to a certain naming, method, model make sure to provide a link so that the reader can better understand what you mean. If you are referring to a specific PR or issue, make sure to link it to your issue. Do not assume that the reader knows what you are talking about. The more links you add to you issue the better.
+6. Formatting. Make sure to nicely format you issue by formatting code into Python code syntax, error messages into normal code syntax. See the [official GitHub formatting docs](https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax) for more information.
+7. Think of you issue not as a ticket to be solved, but rather as a beautiful entry to a well-written encyclopedia. Every added issue as a contribution to publicly available knowledge and by adding a nicely written issue you not only make it easier for maintainers to solve your issue, but you are helping the whole commmunity to better understand a certain aspect about the library.
+
+## How to write a good PR
+
+1. Be a chameleon. Understand existing design patterns and syntax and make sure your code additions flows seamlessly into the existing code base. Pull requests that significantly diverge from existing design patterns or user interfaces will not be merged.
+2. Be laser focussed. A pull requests should solve one problem and one problems only. Make sure to not fall into the trap of "also fixing another problem while we're add it". It is much more difficult to review pull requests that solve multiple, unrelated problems at once.
+3. If helpful, try to add a code snippet that displays an example of how your addition can be used.
+4. The title of your pull request should be a summary of its contribution;
+5. If your pull request addresses an issue, please mention the issue number in
+   the pull request description to make sure they are linked (and people
+   consulting the issue know you are working on it);
+6. To indicate a work in progress please prefix the title with `[WIP]`. These
+   are useful to avoid duplicated work, and to differentiate it from PRs ready
+   to be merged;
+7. Try to formulate and format your text as explained in [How to write a good issue](#how-to-write-a-good-issue).
+8. Make sure existing tests pass;
+9. Add high-coverage tests. No quality testing = no merge.
+   - If you are adding new `@slow` tests, make sure they pass using
+     `RUN_SLOW=1 python -m pytest tests/test_my_new_model.py`.
+   - If you are adding a new tokenizer, write tests, and make sure
+     `RUN_SLOW=1 python -m pytest tests/test_tokenization_{your_model_name}.py` passes.
+   CircleCI does not run the slow tests, but GitHub actions does every night!
+10. All public methods must have informative docstrings that work nicely with markdown. See `[pipeline_latent_diffusion.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/latent_diffusion/pipeline_latent_diffusion.py)` for an example.
+11. Due to the rapidly growing repository, it is important to make sure that no files that would significantly weigh down the repository are added. This includes images, videos and other non-text files. We prefer to leverage a hf.co hosted `dataset` like
+   the ones hosted on [`hf-internal-testing`](https://huggingface.co/hf-internal-testing) in which to place these files and reference or [huggingface/documentation-images](https://huggingface.co/datasets/huggingface/documentation-images).
+   If an external contribution, feel free to add the images to your PR and ask a Hugging Face member to migrate your images
+   to this dataset.
+
 ## How to open a PR
 
 Before writing code, we strongly advise you to search through the existing PRs or
@@ -313,7 +358,7 @@ You will need basic `git` proficiency to be able to contribute to
 manual. Type `git --help` in a shell and enjoy. If you prefer books, [Pro
 Git](https://git-scm.com/book/en/v2) is a very good reference.
 
-Follow these steps to start contributing ([supported Python versions](https://github.com/huggingface/diffusers/blob/main/setup.py#L212)):
+Follow these steps to start contributing ([supported Python versions](https://github.com/huggingface/diffusers/blob/main/setup.py#L244)):
 
 1. Fork the [repository](https://github.com/huggingface/diffusers) by
    clicking on the 'Fork' button on the repository's page. This creates a copy of the code
@@ -341,19 +386,6 @@ Follow these steps to start contributing ([supported Python versions](https://gi
    $ pip install -e ".[dev]"
    ```
 
-   (If Diffusers was already installed in the virtual environment, remove
-   it with `pip uninstall diffusers` before reinstalling it in editable
-   mode with the `-e` flag.)
-
-   To run the full test suite, you might need the additional dependency on `transformers`
-   install:
-
-   ```bash
-   $ git clone https://github.com/huggingface/transformers
-   $ cd transformers
-   $ pip install -e .
-   ```
-
    If you have already cloned that repo, you might need to `git pull` to get the most recent changes in the `datasets`
    library.
 
@@ -374,9 +406,6 @@ Follow these steps to start contributing ([supported Python versions](https://gi
    $ make test
    ```
 
-   For more information about tests, check out the
-   [dedicated documentation](https://huggingface.co/docs/diffusers/testing)
-
    🧨 Diffusers relies on `black` and `isort` to format its source code
    consistently. After you make changes, apply automatic style corrections and code verifications
    that can't be automated in one go with:
@@ -385,7 +414,7 @@ Follow these steps to start contributing ([supported Python versions](https://gi
    $ make style
    ```
 
-   🧨 Diffusers also uses `flake8` and a few custom scripts to check for coding mistakes. Quality
+   🧨 Diffusers also uses ``ruff` and a few custom scripts to check for coding mistakes. Quality
    control runs in CI, however you can also run the same checks with:
 
    ```bash
@@ -421,29 +450,6 @@ Follow these steps to start contributing ([supported Python versions](https://gi
    too! So everyone can see the changes in the Pull request, work in your local
    branch and push the changes to your fork. They will automatically appear in
    the pull request.
-
-
-### Checklist
-
-1. The title of your pull request should be a summary of its contribution;
-2. If your pull request addresses an issue, please mention the issue number in
-   the pull request description to make sure they are linked (and people
-   consulting the issue know you are working on it);
-3. To indicate a work in progress please prefix the title with `[WIP]`. These
-   are useful to avoid duplicated work, and to differentiate it from PRs ready
-   to be merged;
-4. Make sure existing tests pass;
-5. Add high-coverage tests. No quality testing = no merge.
-   - If you are adding new `@slow` tests, make sure they pass using
-     `RUN_SLOW=1 python -m pytest tests/test_my_new_model.py`.
-   - If you are adding a new tokenizer, write tests, and make sure
-     `RUN_SLOW=1 python -m pytest tests/test_tokenization_{your_model_name}.py` passes.
-   CircleCI does not run the slow tests, but GitHub actions does every night!
-6. All public methods must have informative docstrings that work nicely with markdown. See `[pipeline_latent_diffusion.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/latent_diffusion/pipeline_latent_diffusion.py)` for an example.
-7. Due to the rapidly growing repository, it is important to make sure that no files that would significantly weigh down the repository are added. This includes images, videos and other non-text files. We prefer to leverage a hf.co hosted `dataset` like
-   the ones hosted on [`hf-internal-testing`](https://huggingface.co/hf-internal-testing) in which to place these files and reference or [huggingface/documentation-images](https://huggingface.co/datasets/huggingface/documentation-images).
-   If an external contribution, feel free to add the images to your PR and ask a Hugging Face member to migrate your images
-   to this dataset.
 
 ### Tests
 
@@ -493,6 +499,5 @@ $ git push --set-upstream origin your-branch-for-syncing
 ### Style guide
 
 For documentation strings, 🧨 Diffusers follows the [google style](https://google.github.io/styleguide/pyguide.html).
-
 
 **This guide was heavily inspired by the awesome [scikit-learn guide to contributing](https://github.com/scikit-learn/scikit-learn/blob/main/CONTRIBUTING.md).**
