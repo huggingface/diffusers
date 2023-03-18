@@ -593,8 +593,8 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         if inputs.get("output_type"):
             del inputs["output_type"]
-        raw_output_latent = pipe(output_type="latent", **inputs)[0]
-        output_latent = pipe.decode_latents(raw_output_latent)
+        raw_output_latents = pipe(output_type="latent", **inputs).cpu()
+        output_latent = pipe.decode_latents(raw_output_latents)[0]
         max_diff = np.abs(output_pil - output_latent).max()
         self.assertLess(max_diff, 1e-4, "Latent output should not affect the inference results")
 
