@@ -597,7 +597,7 @@ class PipelineTesterMixin:
         output_latent = pipe.decode_latents(raw_output_latents)
         # Needed for stable_diffusion_img2img
         if hasattr(pipe, "image_processor"):
-            output_latent = pipe.image_processor.postprocess(output_latent, output_type='np')
+            output_latent = pipe.image_processor.postprocess(output_latent, output_type="np")
         max_diff = np.abs(output_np - output_latent).max()
         self.assertLess(max_diff, 1e-4, "Latent output should not affect the inference results")
 
