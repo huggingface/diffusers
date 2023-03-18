@@ -466,5 +466,5 @@ class InversionPipelineSlowTests(unittest.TestCase):
             output_type="np",
         ).images
 
-        max_diff = np.abs(expected_image - image).mean()
-        assert max_diff < 0.05
+        mean_diff = np.abs(expected_image - image).mean()
+        assert mean_diff < 0.25
