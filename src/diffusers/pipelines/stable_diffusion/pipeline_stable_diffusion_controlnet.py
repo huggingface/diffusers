@@ -778,7 +778,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                 argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image`, `np.array`, or 'latent'.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.

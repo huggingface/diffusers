@@ -579,6 +579,25 @@ class PipelineTesterMixin:
 
                 assert images.shape[0] == batch_size * num_images_per_prompt
 
+    def test_latent_vae_decode(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        if not hasattr(pipe, "decode_latents"):
+            return
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        inputs = self.get_dummy_inputs(torch_device)
+        if inputs.get("output_type"):
+            del inputs["output_type"]
+        output_pil = pipe(output_type="np", **inputs)[0]
+        inputs = self.get_dummy_inputs(torch_device)
+        if inputs.get("output_type"):
+            del inputs["output_type"]
+        raw_output_latent = pipe(output_type="latent", **inputs)[0]
+        output_latent = pipe.decode_latents(raw_output_latent)
+        max_diff = np.abs(output_pil - output_latent).max()
+        self.assertLess(max_diff, 1e-4, "Latent output should not affect the inference results")
+
 
 # Some models (e.g. unCLIP) are extremely likely to significantly deviate depending on which hardware is used.
 # This helper function is used to check that the image doesn't deviate on average more than 10 pixels from a
