@@ -425,8 +425,6 @@ class InversionPipelineSlowTests(unittest.TestCase):
             output_type="np",
         ).images
 
-        np.save("/home/patrick_huggingface_co/diffusers-images/pix2pix/dog.npy", image)
-
         max_diff = np.abs(expected_image - image).mean()
         assert max_diff < 0.05
 
@@ -467,8 +465,6 @@ class InversionPipelineSlowTests(unittest.TestCase):
             negative_prompt=caption,
             output_type="np",
         ).images
-
-        np.save("/home/patrick_huggingface_co/diffusers-images/pix2pix/dog_2.npy", image)
 
         max_diff = np.abs(expected_image - image).mean()
         assert max_diff < 0.05
