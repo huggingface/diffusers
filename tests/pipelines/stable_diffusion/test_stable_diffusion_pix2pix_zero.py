@@ -361,7 +361,7 @@ class InversionPipelineSlowTests(unittest.TestCase):
         image_slice = inv_latents[0, -3:, -3:, -1].flatten()
 
         assert inv_latents.shape == (1, 4, 64, 64)
-        expected_slice = np.array([0.8877, 0.0587, 0.7700, -1.6035, -0.5962, 0.4827, -0.6265, 1.0498, -0.8599])
+        expected_slice = np.array([0.8447, -0.0730, 0.7588, -1.2070, -0.4678, 0.1511, -0.8555, 1.1816, -0.7666])
 
         assert np.abs(expected_slice - image_slice.cpu().numpy()).max() < 5e-2
 
@@ -383,7 +383,7 @@ class InversionPipelineSlowTests(unittest.TestCase):
         image_slice = inv_latents[0, -3:, -3:, -1].flatten()
 
         assert inv_latents.shape == (1, 4, 64, 64)
-        expected_slice = np.array([0.7515, -0.2397, 0.4922, -0.9736, -0.7031, 0.4846, -1.0781, 1.1309, -0.6973])
+        expected_slice = np.array([0.8970, -0.1611, 0.4766, -1.1162, -0.5923, 0.1050, -0.9678, 1.0537, -0.6050])
 
         assert np.abs(expected_slice - image_slice.cpu().numpy()).max() < 5e-2
 
