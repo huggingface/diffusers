@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The HuggingFace Inc. team.
+# Copyright 2023 The HuggingFace Inc. team.
 # Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -392,6 +392,10 @@ class ModelMixin(torch.nn.Module):
             variant (`str`, *optional*):
                 If specified load weights from `variant` filename, *e.g.* pytorch_model.<variant>.bin. `variant` is
                 ignored when using `from_flax`.
+            use_safetensors (`bool`, *optional* ):
+                If set to `True`, the pipeline will forcibly load the models from `safetensors` weights. If set to
+                `None` (the default). The pipeline will load using `safetensors` if safetensors weights are available
+                *and* if `safetensors` is installed. If the to `False` the pipeline will *not* use `safetensors`.
 
         <Tip>
 
@@ -423,6 +427,17 @@ class ModelMixin(torch.nn.Module):
         device_map = kwargs.pop("device_map", None)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+
+        if use_safetensors and not is_safetensors_available():
+            raise ValueError(
+                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetenstors"
+            )
+
+        allow_pickle = False
+        if use_safetensors is None:
+            use_safetensors = is_safetensors_available()
+            allow_pickle = True
 
         if low_cpu_mem_usage and not is_accelerate_available():
             low_cpu_mem_usage = False
@@ -458,18 +473,34 @@ class ModelMixin(torch.nn.Module):
                 " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
             )
 
+        # Load config if we don't provide a configuration
+        config_path = pretrained_model_name_or_path
+
         user_agent = {
             "diffusers": __version__,
             "file_type": "model",
             "framework": "pytorch",
         }
 
-        # Load config if we don't provide a configuration
-        config_path = pretrained_model_name_or_path
+        # load config
+        config, unused_kwargs, commit_hash = cls.load_config(
+            config_path,
+            cache_dir=cache_dir,
+            return_unused_kwargs=True,
+            return_commit_hash=True,
+            force_download=force_download,
+            resume_download=resume_download,
+            proxies=proxies,
+            local_files_only=local_files_only,
+            use_auth_token=use_auth_token,
+            revision=revision,
+            subfolder=subfolder,
+            device_map=device_map,
+            user_agent=user_agent,
+            **kwargs,
+        )
 
-        # This variable will flag if we're loading a sharded checkpoint. In this case the archive file is just the
-        # Load model
-
+        # load model
         model_file = None
         if from_flax:
             model_file = _get_model_file(
@@ -484,20 +515,7 @@ class ModelMixin(torch.nn.Module):
                 revision=revision,
                 subfolder=subfolder,
                 user_agent=user_agent,
-            )
-            config, unused_kwargs = cls.load_config(
-                config_path,
-                cache_dir=cache_dir,
-                return_unused_kwargs=True,
-                force_download=force_download,
-                resume_download=resume_download,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
-                revision=revision,
-                subfolder=subfolder,
-                device_map=device_map,
-                **kwargs,
+                commit_hash=commit_hash,
             )
             model = cls.from_config(config, **unused_kwargs)
 
@@ -506,7 +524,7 @@ class ModelMixin(torch.nn.Module):
 
             model = load_flax_checkpoint_in_pytorch_model(model, model_file)
         else:
-            if is_safetensors_available():
+            if use_safetensors:
                 try:
                     model_file = _get_model_file(
                         pretrained_model_name_or_path,
@@ -520,8 +538,11 @@ class ModelMixin(torch.nn.Module):
                         revision=revision,
                         subfolder=subfolder,
                         user_agent=user_agent,
+                        commit_hash=commit_hash,
                     )
-                except:  # noqa: E722
+                except IOError as e:
+                    if not allow_pickle:
+                        raise e
                     pass
             if model_file is None:
                 model_file = _get_model_file(
@@ -536,25 +557,12 @@ class ModelMixin(torch.nn.Module):
                     revision=revision,
                     subfolder=subfolder,
                     user_agent=user_agent,
+                    commit_hash=commit_hash,
                 )
 
             if low_cpu_mem_usage:
                 # Instantiate model with empty weights
                 with accelerate.init_empty_weights():
-                    config, unused_kwargs = cls.load_config(
-                        config_path,
-                        cache_dir=cache_dir,
-                        return_unused_kwargs=True,
-                        force_download=force_download,
-                        resume_download=resume_download,
-                        proxies=proxies,
-                        local_files_only=local_files_only,
-                        use_auth_token=use_auth_token,
-                        revision=revision,
-                        subfolder=subfolder,
-                        device_map=device_map,
-                        **kwargs,
-                    )
                     model = cls.from_config(config, **unused_kwargs)
 
                 # if device_map is None, load the state dict and move the params from meta device to the cpu
@@ -593,20 +601,6 @@ class ModelMixin(torch.nn.Module):
                     "error_msgs": [],
                 }
             else:
-                config, unused_kwargs = cls.load_config(
-                    config_path,
-                    cache_dir=cache_dir,
-                    return_unused_kwargs=True,
-                    force_download=force_download,
-                    resume_download=resume_download,
-                    proxies=proxies,
-                    local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
-                    revision=revision,
-                    subfolder=subfolder,
-                    device_map=device_map,
-                    **kwargs,
-                )
                 model = cls.from_config(config, **unused_kwargs)
 
                 state_dict = load_state_dict(model_file, variant=variant)
@@ -803,6 +797,7 @@ def _get_model_file(
     use_auth_token,
     user_agent,
     revision,
+    commit_hash=None,
 ):
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
     if os.path.isfile(pretrained_model_name_or_path):
@@ -826,7 +821,7 @@ def _get_model_file(
         if (
             revision in DEPRECATED_REVISION_ARGS
             and (weights_name == WEIGHTS_NAME or weights_name == SAFETENSORS_WEIGHTS_NAME)
-            and version.parse(version.parse(__version__).base_version) >= version.parse("0.15.0")
+            and version.parse(version.parse(__version__).base_version) >= version.parse("0.17.0")
         ):
             try:
                 model_file = hf_hub_download(
@@ -840,7 +835,7 @@ def _get_model_file(
                     use_auth_token=use_auth_token,
                     user_agent=user_agent,
                     subfolder=subfolder,
-                    revision=revision,
+                    revision=revision or commit_hash,
                 )
                 warnings.warn(
                     f"Loading the variant {revision} from {pretrained_model_name_or_path} via `revision='{revision}'` is deprecated. Loading instead from `revision='main'` with `variant={revision}`. Loading model variants via `revision='{revision}'` will be removed in diffusers v1. Please use `variant='{revision}'` instead.",
@@ -849,7 +844,7 @@ def _get_model_file(
                 return model_file
             except:  # noqa: E722
                 warnings.warn(
-                    f"You are loading the variant {revision} from {pretrained_model_name_or_path} via `revision='{revision}'`. This behavior is deprecated and will be removed in diffusers v1. One should use `variant='{revision}'` instead. However, it appears that {pretrained_model_name_or_path} currently does not have a {_add_variant(weights_name)} file in the 'main' branch of {pretrained_model_name_or_path}. \n The Diffusers team and community would be very grateful if you could open an issue: https://github.com/huggingface/diffusers/issues/new with the title '{pretrained_model_name_or_path} is missing {_add_variant(weights_name)}' so that the correct variant file can be added.",
+                    f"You are loading the variant {revision} from {pretrained_model_name_or_path} via `revision='{revision}'`. This behavior is deprecated and will be removed in diffusers v1. One should use `variant='{revision}'` instead. However, it appears that {pretrained_model_name_or_path} currently does not have a {_add_variant(weights_name, revision)} file in the 'main' branch of {pretrained_model_name_or_path}. \n The Diffusers team and community would be very grateful if you could open an issue: https://github.com/huggingface/diffusers/issues/new with the title '{pretrained_model_name_or_path} is missing {_add_variant(weights_name, revision)}' so that the correct variant file can be added.",
                     FutureWarning,
                 )
         try:
@@ -865,7 +860,7 @@ def _get_model_file(
                 use_auth_token=use_auth_token,
                 user_agent=user_agent,
                 subfolder=subfolder,
-                revision=revision,
+                revision=revision or commit_hash,
             )
             return model_file
 

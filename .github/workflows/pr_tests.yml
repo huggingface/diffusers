@@ -31,6 +31,11 @@ jobs:
             runner: docker-cpu
             image: diffusers/diffusers-flax-cpu
             report: flax_cpu
+          - name: Fast ONNXRuntime CPU tests on Ubuntu
+            framework: onnxruntime
+            runner: docker-cpu
+            image: diffusers/diffusers-onnxruntime-cpu
+            report: onnx_cpu
           - name: PyTorch Example CPU tests on Ubuntu
             framework: pytorch_examples
             runner: docker-cpu

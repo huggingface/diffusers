@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -447,7 +447,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
         if isinstance(image[0], PIL.Image.Image):
             width, height = image[0].size
         else:
-            width, height = image[0].shape[-2:]
+            height, width = image[0].shape[-2:]
 
         if depth_map is None:
             pixel_values = self.feature_extractor(images=image, return_tensors="pt").pixel_values
