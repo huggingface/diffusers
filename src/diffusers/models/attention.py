@@ -783,7 +783,7 @@ class BasicSparseTransformerBlock(nn.Module):
         hidden_states = self.attn_temp(norm_hidden_states) + hidden_states
         # hidden_states = rearrange(hidden_states, "(b d) f c -> (b f) d c", d=d)
         # (b d) f c -> b d f c ->  b f d c -> (b f) d c
-        hidden_states = hidden_states.reshape([-1, video_length, *hidden_states.shape[1:]])
+        hidden_states = hidden_states.reshape([-1, d, *hidden_states.shape[1:]])
         hidden_states = hidden_states.movedim((0,1,2,3), (0,2,1,3))
         hidden_states = hidden_states.flatten(0,1)
 
