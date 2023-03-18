@@ -1,4 +1,4 @@
-<!--Copyright 2022 The HuggingFace Team. All rights reserved.
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -17,7 +17,7 @@ specific language governing permissions and limitations under the License.
 The Stable Diffusion model was created by the researchers and engineers from [CompVis](https://github.com/CompVis), [Stability AI](https://stability.ai/), [runway](https://github.com/runwayml), and [LAION](https://laion.ai/). The [`StableDiffusionPipeline`] is capable of generating photo-realistic images given any text input using Stable Diffusion.
 
 The original codebase can be found here: 
-- *Stable Diffusion V1*: [CampVis/stable-diffusion](https://github.com/CompVis/stable-diffusion)
+- *Stable Diffusion V1*: [CompVis/stable-diffusion](https://github.com/CompVis/stable-diffusion)
 - *Stable Diffusion v2*: [Stability-AI/stablediffusion](https://github.com/Stability-AI/stablediffusion)
 
 Available Checkpoints are:
@@ -37,3 +37,9 @@ Available Checkpoints are:
 	- disable_vae_slicing
 	- enable_xformers_memory_efficient_attention
 	- disable_xformers_memory_efficient_attention
+	- enable_vae_tiling
+	- disable_vae_tiling
+
+[[autodoc]] FlaxStableDiffusionPipeline
+	- all
+	- __call__

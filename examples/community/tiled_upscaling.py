@@ -1,4 +1,4 @@
-# Copyright 2022 Peter Willemsen <peter@codebuffet.co>. All rights reserved.
+# Copyright 2023 Peter Willemsen <peter@codebuffet.co>. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,14 +16,14 @@ import math
 from typing import Callable, List, Optional, Union
 
 import numpy as np
-import torch
-
 import PIL
+import torch
+from PIL import Image
+from transformers import CLIPTextModel, CLIPTokenizer
+
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale import StableDiffusionUpscalePipeline
 from diffusers.schedulers import DDIMScheduler, DDPMScheduler, LMSDiscreteScheduler, PNDMScheduler
-from PIL import Image
-from transformers import CLIPTextModel, CLIPTokenizer
 
 
 def make_transparency_mask(size, overlap_pixels, remove_borders=[]):
@@ -195,7 +195,7 @@ class StableDiffusionTiledUpscalePipeline(StableDiffusionUpscalePipeline):
         generator: Optional[torch.Generator] = None,
         latents: Optional[torch.FloatTensor] = None,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
         tile_size: int = 128,
         tile_border: int = 32,
         original_image_slice: int = 32,

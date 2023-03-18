@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The HuggingFace Inc. team.
+# Copyright 2023 The HuggingFace Inc. team.
 # Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,20 +16,23 @@
 
 import inspect
 import os
+import warnings
 from functools import partial
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
-from torch import Tensor, device
-
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
+from packaging import version
 from requests import HTTPError
+from torch import Tensor, device
 
 from .. import __version__
 from ..utils import (
     CONFIG_NAME,
+    DEPRECATED_REVISION_ARGS,
     DIFFUSERS_CACHE,
+    FLAX_WEIGHTS_NAME,
     HF_HUB_OFFLINE,
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
     SAFETENSORS_WEIGHTS_NAME,
@@ -89,12 +92,12 @@ def get_parameter_dtype(parameter: torch.nn.Module):
         return first_tuple[1].dtype
 
 
-def load_state_dict(checkpoint_file: Union[str, os.PathLike]):
+def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[str] = None):
     """
     Reads a checkpoint file, returning properly formatted errors if they arise.
     """
     try:
-        if os.path.basename(checkpoint_file) == WEIGHTS_NAME:
+        if os.path.basename(checkpoint_file) == _add_variant(WEIGHTS_NAME, variant):
             return torch.load(checkpoint_file, map_location="cpu")
         else:
             return safetensors.torch.load_file(checkpoint_file, device="cpu")
@@ -139,6 +142,15 @@ def _load_state_dict_into_model(model_to_load, state_dict):
     load(model_to_load)
 
     return error_msgs
+
+
+def _add_variant(weights_name: str, variant: Optional[str] = None) -> str:
+    if variant is not None:
+        splits = weights_name.split(".")
+        splits = splits[:-1] + [variant] + splits[-1:]
+        weights_name = ".".join(splits)
+
+    return weights_name
 
 
 class ModelMixin(torch.nn.Module):
@@ -189,13 +201,15 @@ class ModelMixin(torch.nn.Module):
         if self._supports_gradient_checkpointing:
             self.apply(partial(self._set_gradient_checkpointing, value=False))
 
-    def set_use_memory_efficient_attention_xformers(self, valid: bool) -> None:
+    def set_use_memory_efficient_attention_xformers(
+        self, valid: bool, attention_op: Optional[Callable] = None
+    ) -> None:
         # Recursively walk through all the children.
         # Any children which exposes the set_use_memory_efficient_attention_xformers method
         # gets the message
         def fn_recursive_set_mem_eff(module: torch.nn.Module):
             if hasattr(module, "set_use_memory_efficient_attention_xformers"):
-                module.set_use_memory_efficient_attention_xformers(valid)
+                module.set_use_memory_efficient_attention_xformers(valid, attention_op)
 
             for child in module.children():
                 fn_recursive_set_mem_eff(child)
@@ -204,7 +218,7 @@ class ModelMixin(torch.nn.Module):
             if isinstance(module, torch.nn.Module):
                 fn_recursive_set_mem_eff(module)
 
-    def enable_xformers_memory_efficient_attention(self):
+    def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
         r"""
         Enable memory efficient attention as implemented in xformers.
 
@@ -213,8 +227,28 @@ class ModelMixin(torch.nn.Module):
 
         Warning: When Memory Efficient Attention and Sliced attention are both enabled, the Memory Efficient Attention
         is used.
+
+        Parameters:
+            attention_op (`Callable`, *optional*):
+                Override the default `None` operator for use as `op` argument to the
+                [`memory_efficient_attention()`](https://facebookresearch.github.io/xformers/components/ops.html#xformers.ops.memory_efficient_attention)
+                function of xFormers.
+
+        Examples:
+
+        ```py
+        >>> import torch
+        >>> from diffusers import UNet2DConditionModel
+        >>> from xformers.ops import MemoryEfficientAttentionFlashAttentionOp
+
+        >>> model = UNet2DConditionModel.from_pretrained(
+        ...     "stabilityai/stable-diffusion-2-1", subfolder="unet", torch_dtype=torch.float16
+        ... )
+        >>> model = model.to("cuda")
+        >>> model.enable_xformers_memory_efficient_attention(attention_op=MemoryEfficientAttentionFlashAttentionOp)
+        ```
         """
-        self.set_use_memory_efficient_attention_xformers(True)
+        self.set_use_memory_efficient_attention_xformers(True, attention_op)
 
     def disable_xformers_memory_efficient_attention(self):
         r"""
@@ -228,6 +262,7 @@ class ModelMixin(torch.nn.Module):
         is_main_process: bool = True,
         save_function: Callable = None,
         safe_serialization: bool = False,
+        variant: Optional[str] = None,
     ):
         """
         Save a model and its configuration file to a directory, so that it can be re-loaded using the
@@ -246,6 +281,8 @@ class ModelMixin(torch.nn.Module):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `False`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way (that uses `pickle`).
+            variant (`str`, *optional*):
+                If specified, weights are saved in the format pytorch_model.<variant>.bin.
         """
         if safe_serialization and not is_safetensors_available():
             raise ImportError("`safe_serialization` requires the `safetensors library: `pip install safetensors`.")
@@ -253,9 +290,6 @@ class ModelMixin(torch.nn.Module):
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
-
-        if save_function is None:
-            save_function = safetensors.torch.save_file if safe_serialization else torch.save
 
         os.makedirs(save_directory, exist_ok=True)
 
@@ -270,18 +304,15 @@ class ModelMixin(torch.nn.Module):
         state_dict = model_to_save.state_dict()
 
         weights_name = SAFETENSORS_WEIGHTS_NAME if safe_serialization else WEIGHTS_NAME
-
-        # Clean the folder from a previous save
-        for filename in os.listdir(save_directory):
-            full_filename = os.path.join(save_directory, filename)
-            # If we have a shard file that is not going to be replaced, we delete it, but only from the main process
-            # in distributed settings to avoid race conditions.
-            weights_no_suffix = weights_name.replace(".bin", "").replace(".safetensors", "")
-            if filename.startswith(weights_no_suffix) and os.path.isfile(full_filename) and is_main_process:
-                os.remove(full_filename)
+        weights_name = _add_variant(weights_name, variant)
 
         # Save the model
-        save_function(state_dict, os.path.join(save_directory, weights_name))
+        if safe_serialization:
+            safetensors.torch.save_file(
+                state_dict, os.path.join(save_directory, weights_name), metadata={"format": "pt"}
+            )
+        else:
+            torch.save(state_dict, os.path.join(save_directory, weights_name))
 
         logger.info(f"Model weights saved in {os.path.join(save_directory, weights_name)}")
 
@@ -335,6 +366,8 @@ class ModelMixin(torch.nn.Module):
                 The specific model version to use. It can be a branch name, a tag name, or a commit id, since we use a
                 git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
                 identifier allowed by git.
+            from_flax (`bool`, *optional*, defaults to `False`):
+                Load the model weights from a Flax checkpoint save file.
             subfolder (`str`, *optional*, defaults to `""`):
                 In case the relevant files are located inside a subfolder of the model repo (either remote in
                 huggingface.co or downloaded locally), you can specify the folder name here.
@@ -356,6 +389,13 @@ class ModelMixin(torch.nn.Module):
                 also tries to not use more than 1x model size in CPU memory (including peak memory) while loading the
                 model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
                 setting this argument to `True` will raise an error.
+            variant (`str`, *optional*):
+                If specified load weights from `variant` filename, *e.g.* pytorch_model.<variant>.bin. `variant` is
+                ignored when using `from_flax`.
+            use_safetensors (`bool`, *optional* ):
+                If set to `True`, the pipeline will forcibly load the models from `safetensors` weights. If set to
+                `None` (the default). The pipeline will load using `safetensors` if safetensors weights are available
+                *and* if `safetensors` is installed. If the to `False` the pipeline will *not* use `safetensors`.
 
         <Tip>
 
@@ -375,6 +415,7 @@ class ModelMixin(torch.nn.Module):
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         ignore_mismatched_sizes = kwargs.pop("ignore_mismatched_sizes", False)
         force_download = kwargs.pop("force_download", False)
+        from_flax = kwargs.pop("from_flax", False)
         resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
         output_loading_info = kwargs.pop("output_loading_info", False)
@@ -385,6 +426,18 @@ class ModelMixin(torch.nn.Module):
         subfolder = kwargs.pop("subfolder", None)
         device_map = kwargs.pop("device_map", None)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
+        variant = kwargs.pop("variant", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+
+        if use_safetensors and not is_safetensors_available():
+            raise ValueError(
+                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetenstors"
+            )
+
+        allow_pickle = False
+        if use_safetensors is None:
+            use_safetensors = is_safetensors_available()
+            allow_pickle = True
 
         if low_cpu_mem_usage and not is_accelerate_available():
             low_cpu_mem_usage = False
@@ -420,40 +473,39 @@ class ModelMixin(torch.nn.Module):
                 " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
             )
 
+        # Load config if we don't provide a configuration
+        config_path = pretrained_model_name_or_path
+
         user_agent = {
             "diffusers": __version__,
             "file_type": "model",
             "framework": "pytorch",
         }
 
-        # Load config if we don't provide a configuration
-        config_path = pretrained_model_name_or_path
+        # load config
+        config, unused_kwargs, commit_hash = cls.load_config(
+            config_path,
+            cache_dir=cache_dir,
+            return_unused_kwargs=True,
+            return_commit_hash=True,
+            force_download=force_download,
+            resume_download=resume_download,
+            proxies=proxies,
+            local_files_only=local_files_only,
+            use_auth_token=use_auth_token,
+            revision=revision,
+            subfolder=subfolder,
+            device_map=device_map,
+            user_agent=user_agent,
+            **kwargs,
+        )
 
-        # This variable will flag if we're loading a sharded checkpoint. In this case the archive file is just the
-        # Load model
-
+        # load model
         model_file = None
-        if is_safetensors_available():
-            try:
-                model_file = cls._get_model_file(
-                    pretrained_model_name_or_path,
-                    weights_name=SAFETENSORS_WEIGHTS_NAME,
-                    cache_dir=cache_dir,
-                    force_download=force_download,
-                    resume_download=resume_download,
-                    proxies=proxies,
-                    local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
-                    revision=revision,
-                    subfolder=subfolder,
-                    user_agent=user_agent,
-                )
-            except:
-                pass
-        if model_file is None:
-            model_file = cls._get_model_file(
+        if from_flax:
+            model_file = _get_model_file(
                 pretrained_model_name_or_path,
-                weights_name=WEIGHTS_NAME,
+                weights_name=FLAX_WEIGHTS_NAME,
                 cache_dir=cache_dir,
                 force_download=force_download,
                 resume_download=resume_download,
@@ -463,15 +515,40 @@ class ModelMixin(torch.nn.Module):
                 revision=revision,
                 subfolder=subfolder,
                 user_agent=user_agent,
+                commit_hash=commit_hash,
             )
+            model = cls.from_config(config, **unused_kwargs)
 
-        if low_cpu_mem_usage:
-            # Instantiate model with empty weights
-            with accelerate.init_empty_weights():
-                config, unused_kwargs = cls.load_config(
-                    config_path,
+            # Convert the weights
+            from .modeling_pytorch_flax_utils import load_flax_checkpoint_in_pytorch_model
+
+            model = load_flax_checkpoint_in_pytorch_model(model, model_file)
+        else:
+            if use_safetensors:
+                try:
+                    model_file = _get_model_file(
+                        pretrained_model_name_or_path,
+                        weights_name=_add_variant(SAFETENSORS_WEIGHTS_NAME, variant),
+                        cache_dir=cache_dir,
+                        force_download=force_download,
+                        resume_download=resume_download,
+                        proxies=proxies,
+                        local_files_only=local_files_only,
+                        use_auth_token=use_auth_token,
+                        revision=revision,
+                        subfolder=subfolder,
+                        user_agent=user_agent,
+                        commit_hash=commit_hash,
+                    )
+                except IOError as e:
+                    if not allow_pickle:
+                        raise e
+                    pass
+            if model_file is None:
+                model_file = _get_model_file(
+                    pretrained_model_name_or_path,
+                    weights_name=_add_variant(WEIGHTS_NAME, variant),
                     cache_dir=cache_dir,
-                    return_unused_kwargs=True,
                     force_download=force_download,
                     resume_download=resume_download,
                     proxies=proxies,
@@ -479,66 +556,69 @@ class ModelMixin(torch.nn.Module):
                     use_auth_token=use_auth_token,
                     revision=revision,
                     subfolder=subfolder,
-                    device_map=device_map,
-                    **kwargs,
+                    user_agent=user_agent,
+                    commit_hash=commit_hash,
                 )
+
+            if low_cpu_mem_usage:
+                # Instantiate model with empty weights
+                with accelerate.init_empty_weights():
+                    model = cls.from_config(config, **unused_kwargs)
+
+                # if device_map is None, load the state dict and move the params from meta device to the cpu
+                if device_map is None:
+                    param_device = "cpu"
+                    state_dict = load_state_dict(model_file, variant=variant)
+                    # move the params from meta device to cpu
+                    missing_keys = set(model.state_dict().keys()) - set(state_dict.keys())
+                    if len(missing_keys) > 0:
+                        raise ValueError(
+                            f"Cannot load {cls} from {pretrained_model_name_or_path} because the following keys are"
+                            f" missing: \n {', '.join(missing_keys)}. \n Please make sure to pass"
+                            " `low_cpu_mem_usage=False` and `device_map=None` if you want to randomely initialize"
+                            " those weights or else make sure your checkpoint file is correct."
+                        )
+
+                    for param_name, param in state_dict.items():
+                        accepts_dtype = "dtype" in set(
+                            inspect.signature(set_module_tensor_to_device).parameters.keys()
+                        )
+                        if accepts_dtype:
+                            set_module_tensor_to_device(
+                                model, param_name, param_device, value=param, dtype=torch_dtype
+                            )
+                        else:
+                            set_module_tensor_to_device(model, param_name, param_device, value=param)
+                else:  # else let accelerate handle loading and dispatching.
+                    # Load weights and dispatch according to the device_map
+                    # by deafult the device_map is None and the weights are loaded on the CPU
+                    accelerate.load_checkpoint_and_dispatch(model, model_file, device_map, dtype=torch_dtype)
+
+                loading_info = {
+                    "missing_keys": [],
+                    "unexpected_keys": [],
+                    "mismatched_keys": [],
+                    "error_msgs": [],
+                }
+            else:
                 model = cls.from_config(config, **unused_kwargs)
 
-            # if device_map is Non,e load the state dict on move the params from meta device to the cpu
-            if device_map is None:
-                param_device = "cpu"
-                state_dict = load_state_dict(model_file)
-                # move the parms from meta device to cpu
-                for param_name, param in state_dict.items():
-                    accepts_dtype = "dtype" in set(inspect.signature(set_module_tensor_to_device).parameters.keys())
-                    if accepts_dtype:
-                        set_module_tensor_to_device(model, param_name, param_device, value=param, dtype=torch_dtype)
-                    else:
-                        set_module_tensor_to_device(model, param_name, param_device, value=param)
-            else:  # else let accelerate handle loading and dispatching.
-                # Load weights and dispatch according to the device_map
-                # by deafult the device_map is None and the weights are loaded on the CPU
-                accelerate.load_checkpoint_and_dispatch(model, model_file, device_map, dtype=torch_dtype)
+                state_dict = load_state_dict(model_file, variant=variant)
 
-            loading_info = {
-                "missing_keys": [],
-                "unexpected_keys": [],
-                "mismatched_keys": [],
-                "error_msgs": [],
-            }
-        else:
-            config, unused_kwargs = cls.load_config(
-                config_path,
-                cache_dir=cache_dir,
-                return_unused_kwargs=True,
-                force_download=force_download,
-                resume_download=resume_download,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
-                revision=revision,
-                subfolder=subfolder,
-                device_map=device_map,
-                **kwargs,
-            )
-            model = cls.from_config(config, **unused_kwargs)
+                model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
+                    model,
+                    state_dict,
+                    model_file,
+                    pretrained_model_name_or_path,
+                    ignore_mismatched_sizes=ignore_mismatched_sizes,
+                )
 
-            state_dict = load_state_dict(model_file)
-
-            model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
-                model,
-                state_dict,
-                model_file,
-                pretrained_model_name_or_path,
-                ignore_mismatched_sizes=ignore_mismatched_sizes,
-            )
-
-            loading_info = {
-                "missing_keys": missing_keys,
-                "unexpected_keys": unexpected_keys,
-                "mismatched_keys": mismatched_keys,
-                "error_msgs": error_msgs,
-            }
+                loading_info = {
+                    "missing_keys": missing_keys,
+                    "unexpected_keys": unexpected_keys,
+                    "mismatched_keys": mismatched_keys,
+                    "error_msgs": error_msgs,
+                }
 
         if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
             raise ValueError(
@@ -555,92 +635,6 @@ class ModelMixin(torch.nn.Module):
             return model, loading_info
 
         return model
-
-    @classmethod
-    def _get_model_file(
-        cls,
-        pretrained_model_name_or_path,
-        *,
-        weights_name,
-        subfolder,
-        cache_dir,
-        force_download,
-        proxies,
-        resume_download,
-        local_files_only,
-        use_auth_token,
-        user_agent,
-        revision,
-    ):
-        pretrained_model_name_or_path = str(pretrained_model_name_or_path)
-        if os.path.isdir(pretrained_model_name_or_path):
-            if os.path.isfile(os.path.join(pretrained_model_name_or_path, weights_name)):
-                # Load from a PyTorch checkpoint
-                model_file = os.path.join(pretrained_model_name_or_path, weights_name)
-            elif subfolder is not None and os.path.isfile(
-                os.path.join(pretrained_model_name_or_path, subfolder, weights_name)
-            ):
-                model_file = os.path.join(pretrained_model_name_or_path, subfolder, weights_name)
-            else:
-                raise EnvironmentError(
-                    f"Error no file named {weights_name} found in directory {pretrained_model_name_or_path}."
-                )
-            return model_file
-        else:
-            try:
-                # Load from URL or cache if already cached
-                model_file = hf_hub_download(
-                    pretrained_model_name_or_path,
-                    filename=weights_name,
-                    cache_dir=cache_dir,
-                    force_download=force_download,
-                    proxies=proxies,
-                    resume_download=resume_download,
-                    local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
-                    user_agent=user_agent,
-                    subfolder=subfolder,
-                    revision=revision,
-                )
-                return model_file
-
-            except RepositoryNotFoundError:
-                raise EnvironmentError(
-                    f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier "
-                    "listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a "
-                    "token having permission to this repo with `use_auth_token` or log in with `huggingface-cli "
-                    "login`."
-                )
-            except RevisionNotFoundError:
-                raise EnvironmentError(
-                    f"{revision} is not a valid git identifier (branch name, tag name or commit id) that exists for "
-                    "this model name. Check the model page at "
-                    f"'https://huggingface.co/{pretrained_model_name_or_path}' for available revisions."
-                )
-            except EntryNotFoundError:
-                raise EnvironmentError(
-                    f"{pretrained_model_name_or_path} does not appear to have a file named {weights_name}."
-                )
-            except HTTPError as err:
-                raise EnvironmentError(
-                    "There was a specific connection error when trying to load"
-                    f" {pretrained_model_name_or_path}:\n{err}"
-                )
-            except ValueError:
-                raise EnvironmentError(
-                    f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load this model, couldn't find it"
-                    f" in the cached files and it looks like {pretrained_model_name_or_path} is not the path to a"
-                    f" directory containing a file named {weights_name} or"
-                    " \nCheckout your internet connection or see how to run the library in"
-                    " offline mode at 'https://huggingface.co/docs/diffusers/installation#offline-mode'."
-                )
-            except EnvironmentError:
-                raise EnvironmentError(
-                    f"Can't load the model for '{pretrained_model_name_or_path}'. If you were trying to load it from "
-                    "'https://huggingface.co/models', make sure you don't have a local directory with the same name. "
-                    f"Otherwise, make sure '{pretrained_model_name_or_path}' is the correct path to a directory "
-                    f"containing a file named {weights_name}"
-                )
 
     @classmethod
     def _load_pretrained_model(
@@ -803,9 +797,12 @@ def _get_model_file(
     use_auth_token,
     user_agent,
     revision,
+    commit_hash=None,
 ):
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
-    if os.path.isdir(pretrained_model_name_or_path):
+    if os.path.isfile(pretrained_model_name_or_path):
+        return pretrained_model_name_or_path
+    elif os.path.isdir(pretrained_model_name_or_path):
         if os.path.isfile(os.path.join(pretrained_model_name_or_path, weights_name)):
             # Load from a PyTorch checkpoint
             model_file = os.path.join(pretrained_model_name_or_path, weights_name)
@@ -820,8 +817,38 @@ def _get_model_file(
                 f"Error no file named {weights_name} found in directory {pretrained_model_name_or_path}."
             )
     else:
+        # 1. First check if deprecated way of loading from branches is used
+        if (
+            revision in DEPRECATED_REVISION_ARGS
+            and (weights_name == WEIGHTS_NAME or weights_name == SAFETENSORS_WEIGHTS_NAME)
+            and version.parse(version.parse(__version__).base_version) >= version.parse("0.17.0")
+        ):
+            try:
+                model_file = hf_hub_download(
+                    pretrained_model_name_or_path,
+                    filename=_add_variant(weights_name, revision),
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    proxies=proxies,
+                    resume_download=resume_download,
+                    local_files_only=local_files_only,
+                    use_auth_token=use_auth_token,
+                    user_agent=user_agent,
+                    subfolder=subfolder,
+                    revision=revision or commit_hash,
+                )
+                warnings.warn(
+                    f"Loading the variant {revision} from {pretrained_model_name_or_path} via `revision='{revision}'` is deprecated. Loading instead from `revision='main'` with `variant={revision}`. Loading model variants via `revision='{revision}'` will be removed in diffusers v1. Please use `variant='{revision}'` instead.",
+                    FutureWarning,
+                )
+                return model_file
+            except:  # noqa: E722
+                warnings.warn(
+                    f"You are loading the variant {revision} from {pretrained_model_name_or_path} via `revision='{revision}'`. This behavior is deprecated and will be removed in diffusers v1. One should use `variant='{revision}'` instead. However, it appears that {pretrained_model_name_or_path} currently does not have a {_add_variant(weights_name, revision)} file in the 'main' branch of {pretrained_model_name_or_path}. \n The Diffusers team and community would be very grateful if you could open an issue: https://github.com/huggingface/diffusers/issues/new with the title '{pretrained_model_name_or_path} is missing {_add_variant(weights_name, revision)}' so that the correct variant file can be added.",
+                    FutureWarning,
+                )
         try:
-            # Load from URL or cache if already cached
+            # 2. Load model file as usual
             model_file = hf_hub_download(
                 pretrained_model_name_or_path,
                 filename=weights_name,
@@ -833,7 +860,7 @@ def _get_model_file(
                 use_auth_token=use_auth_token,
                 user_agent=user_agent,
                 subfolder=subfolder,
-                revision=revision,
+                revision=revision or commit_hash,
             )
             return model_file
 

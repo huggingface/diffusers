@@ -4,6 +4,8 @@ from typing import List, Optional, Union
 import torch
 from torch import nn
 from torch.nn import functional as F
+from torchvision import transforms
+from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
@@ -14,8 +16,6 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipelineOutput
-from torchvision import transforms
-from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextModel, CLIPTokenizer
 
 
 class MakeCutouts(nn.Module):
@@ -78,12 +78,12 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
         )
 
         self.normalize = transforms.Normalize(mean=feature_extractor.image_mean, std=feature_extractor.image_std)
-        cut_out_size = (
+        self.cut_out_size = (
             feature_extractor.size
             if isinstance(feature_extractor.size, int)
             else feature_extractor.size["shortest_edge"]
         )
-        self.make_cutouts = MakeCutouts(cut_out_size)
+        self.make_cutouts = MakeCutouts(self.cut_out_size)
 
         set_requires_grad(self.text_encoder, False)
         set_requires_grad(self.clip_model, False)
@@ -150,14 +150,14 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
         else:
             raise ValueError(f"scheduler type {type(self.scheduler)} not supported")
 
-        sample = 1 / 0.18215 * sample
+        sample = 1 / self.vae.config.scaling_factor * sample
         image = self.vae.decode(sample).sample
         image = (image / 2 + 0.5).clamp(0, 1)
 
         if use_cutouts:
             image = self.make_cutouts(image, num_cutouts)
         else:
-            image = transforms.Resize(self.feature_extractor.size)(image)
+            image = transforms.Resize(self.cut_out_size)(image)
         image = self.normalize(image).to(latents.dtype)
 
         image_embeddings_clip = self.clip_model.get_image_features(image)
@@ -336,7 +336,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
             latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
         # scale and decode the image latents with vae
-        latents = 1 / 0.18215 * latents
+        latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
 
         image = (image / 2 + 0.5).clamp(0, 1)

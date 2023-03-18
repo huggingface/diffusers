@@ -5,11 +5,11 @@ import os
 from copy import deepcopy
 
 import torch
+from audio_diffusion.models import DiffusionAttnUnet1D
+from diffusion import sampling
 from torch import nn
 
-from audio_diffusion.models import DiffusionAttnUnet1D
 from diffusers import DanceDiffusionPipeline, IPNDMScheduler, UNet1DModel
-from diffusion import sampling
 
 
 MODELS_MAP = {

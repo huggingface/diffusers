@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,12 +21,18 @@ import shutil
 import sys
 import tempfile
 import unittest
+import unittest.mock as mock
 
 import numpy as np
-import torch
-
 import PIL
+import requests_mock
 import safetensors.torch
+import torch
+from parameterized import parameterized
+from PIL import Image
+from requests.exceptions import HTTPError
+from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
+
 from diffusers import (
     AutoencoderKL,
     DDIMPipeline,
@@ -44,28 +50,56 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
     UNet2DModel,
+    UniPCMultistepScheduler,
     logging,
 )
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
-from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, nightly, slow, torch_device
-from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir, require_torch_gpu
-from parameterized import parameterized
-from PIL import Image
-from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
+from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, is_flax_available, nightly, slow, torch_device
+from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir, load_numpy, require_compel, require_torch_gpu
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
 class DownloadTests(unittest.TestCase):
+    def test_one_request_upon_cached(self):
+        # TODO: For some reason this test fails on MPS where no HEAD call is made.
+        if torch_device == "mps":
+            return
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with requests_mock.mock(real_http=True) as m:
+                DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
+                )
+
+            download_requests = [r.method for r in m.request_history]
+            assert download_requests.count("HEAD") == 15, "15 calls to files"
+            assert download_requests.count("GET") == 17, "15 calls to files + model_info + model_index.json"
+            assert (
+                len(download_requests) == 32
+            ), "2 calls per file (15 files) + send_telemetry, model_info and model_index.json"
+
+            with requests_mock.mock(real_http=True) as m:
+                DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
+                )
+
+            cache_requests = [r.method for r in m.request_history]
+            assert cache_requests.count("HEAD") == 1, "model_index.json is only HEAD"
+            assert cache_requests.count("GET") == 1, "model info is only GET"
+            assert (
+                len(cache_requests) == 2
+            ), "We should call only `model_info` to check for _commit hash and `send_telemetry`"
+
     def test_download_only_pytorch(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
             # pipeline has Flax weights
-            _ = DiffusionPipeline.from_pretrained(
+            tmpdirname = DiffusionPipeline.download(
                 "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
             )
 
-            all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname, os.listdir(tmpdirname)[0], "snapshots"))]
+            all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
             files = [item for sublist in all_root_files for item in sublist]
 
             # None of the downloaded files should be a flax file even if we have some here:
@@ -73,6 +107,17 @@ class DownloadTests(unittest.TestCase):
             assert not any(f.endswith(".msgpack") for f in files)
             # We need to never convert this tiny model to safetensors for this test to pass
             assert not any(f.endswith(".safetensors") for f in files)
+
+    def test_force_safetensors_error(self):
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            # pipeline has Flax weights
+            with self.assertRaises(EnvironmentError):
+                tmpdirname = DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-pipe-no-safetensors",
+                    safety_checker=None,
+                    cache_dir=tmpdirname,
+                    use_safetensors=True,
+                )
 
     def test_returned_cached_folder(self):
         prompt = "hello"
@@ -86,19 +131,11 @@ class DownloadTests(unittest.TestCase):
 
         pipe = pipe.to(torch_device)
         pipe_2 = pipe_2.to(torch_device)
-        if torch_device == "mps":
-            # device type MPS is not supported for torch.Generator() api.
-            generator = torch.manual_seed(0)
-        else:
-            generator = torch.Generator(device=torch_device).manual_seed(0)
 
+        generator = torch.manual_seed(0)
         out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
-        if torch_device == "mps":
-            # device type MPS is not supported for torch.Generator() api.
-            generator = torch.manual_seed(0)
-        else:
-            generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         assert np.max(np.abs(out - out_2)) < 1e-3
@@ -106,13 +143,13 @@ class DownloadTests(unittest.TestCase):
     def test_download_safetensors(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
             # pipeline has Flax weights
-            _ = DiffusionPipeline.from_pretrained(
+            tmpdirname = DiffusionPipeline.download(
                 "hf-internal-testing/tiny-stable-diffusion-pipe-safetensors",
                 safety_checker=None,
                 cache_dir=tmpdirname,
             )
 
-            all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname, os.listdir(tmpdirname)[0], "snapshots"))]
+            all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
             files = [item for sublist in all_root_files for item in sublist]
 
             # None of the downloaded files should be a pytorch file even if we have some here:
@@ -125,20 +162,12 @@ class DownloadTests(unittest.TestCase):
             "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
         )
         pipe = pipe.to(torch_device)
-        if torch_device == "mps":
-            # device type MPS is not supported for torch.Generator() api.
-            generator = torch.manual_seed(0)
-        else:
-            generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         pipe_2 = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
         pipe_2 = pipe_2.to(torch_device)
-        if torch_device == "mps":
-            # device type MPS is not supported for torch.Generator() api.
-            generator = torch.manual_seed(0)
-        else:
-            generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         assert np.max(np.abs(out - out_2)) < 1e-3
@@ -149,11 +178,7 @@ class DownloadTests(unittest.TestCase):
             "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
         )
         pipe = pipe.to(torch_device)
-        if torch_device == "mps":
-            # device type MPS is not supported for torch.Generator() api.
-            generator = torch.manual_seed(0)
-        else:
-            generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -161,11 +186,7 @@ class DownloadTests(unittest.TestCase):
             pipe_2 = StableDiffusionPipeline.from_pretrained(tmpdirname, safety_checker=None)
             pipe_2 = pipe_2.to(torch_device)
 
-            if torch_device == "mps":
-                # device type MPS is not supported for torch.Generator() api.
-                generator = torch.manual_seed(0)
-            else:
-                generator = torch.Generator(device=torch_device).manual_seed(0)
+            generator = torch.manual_seed(0)
 
             out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
@@ -175,11 +196,8 @@ class DownloadTests(unittest.TestCase):
         prompt = "hello"
         pipe = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
         pipe = pipe.to(torch_device)
-        if torch_device == "mps":
-            # device type MPS is not supported for torch.Generator() api.
-            generator = torch.manual_seed(0)
-        else:
-            generator = torch.Generator(device=torch_device).manual_seed(0)
+
+        generator = torch.manual_seed(0)
         out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -187,15 +205,153 @@ class DownloadTests(unittest.TestCase):
             pipe_2 = StableDiffusionPipeline.from_pretrained(tmpdirname)
             pipe_2 = pipe_2.to(torch_device)
 
-            if torch_device == "mps":
-                # device type MPS is not supported for torch.Generator() api.
-                generator = torch.manual_seed(0)
-            else:
-                generator = torch.Generator(device=torch_device).manual_seed(0)
+            generator = torch.manual_seed(0)
 
             out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         assert np.max(np.abs(out - out_2)) < 1e-3
+
+    def test_cached_files_are_used_when_no_internet(self):
+        # A mock response for an HTTP head request to emulate server down
+        response_mock = mock.Mock()
+        response_mock.status_code = 500
+        response_mock.headers = {}
+        response_mock.raise_for_status.side_effect = HTTPError
+        response_mock.json.return_value = {}
+
+        # Download this model to make sure it's in the cache.
+        orig_pipe = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+        orig_comps = {k: v for k, v in orig_pipe.components.items() if hasattr(v, "parameters")}
+
+        # Under the mock environment we get a 500 error when trying to reach the model.
+        with mock.patch("requests.request", return_value=response_mock):
+            # Download this model to make sure it's in the cache.
+            pipe = StableDiffusionPipeline.from_pretrained(
+                "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None, local_files_only=True
+            )
+            comps = {k: v for k, v in pipe.components.items() if hasattr(v, "parameters")}
+
+        for m1, m2 in zip(orig_comps.values(), comps.values()):
+            for p1, p2 in zip(m1.parameters(), m2.parameters()):
+                if p1.data.ne(p2.data).sum() > 0:
+                    assert False, "Parameters not the same!"
+
+    def test_download_from_variant_folder(self):
+        for safe_avail in [False, True]:
+            import diffusers
+
+            diffusers.utils.import_utils._safetensors_available = safe_avail
+
+            other_format = ".bin" if safe_avail else ".safetensors"
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                tmpdirname = StableDiffusionPipeline.download(
+                    "hf-internal-testing/stable-diffusion-all-variants", cache_dir=tmpdirname
+                )
+                all_root_files = [t[-1] for t in os.walk(tmpdirname)]
+                files = [item for sublist in all_root_files for item in sublist]
+
+                # None of the downloaded files should be a variant file even if we have some here:
+                # https://huggingface.co/hf-internal-testing/stable-diffusion-all-variants/tree/main/unet
+                assert len(files) == 15, f"We should only download 15 files, not {len(files)}"
+                assert not any(f.endswith(other_format) for f in files)
+                # no variants
+                assert not any(len(f.split(".")) == 3 for f in files)
+
+        diffusers.utils.import_utils._safetensors_available = True
+
+    def test_download_variant_all(self):
+        for safe_avail in [False, True]:
+            import diffusers
+
+            diffusers.utils.import_utils._safetensors_available = safe_avail
+
+            other_format = ".bin" if safe_avail else ".safetensors"
+            this_format = ".safetensors" if safe_avail else ".bin"
+            variant = "fp16"
+
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                tmpdirname = StableDiffusionPipeline.download(
+                    "hf-internal-testing/stable-diffusion-all-variants", cache_dir=tmpdirname, variant=variant
+                )
+                all_root_files = [t[-1] for t in os.walk(tmpdirname)]
+                files = [item for sublist in all_root_files for item in sublist]
+
+                # None of the downloaded files should be a non-variant file even if we have some here:
+                # https://huggingface.co/hf-internal-testing/stable-diffusion-all-variants/tree/main/unet
+                assert len(files) == 15, f"We should only download 15 files, not {len(files)}"
+                # unet, vae, text_encoder, safety_checker
+                assert len([f for f in files if f.endswith(f"{variant}{this_format}")]) == 4
+                # all checkpoints should have variant ending
+                assert not any(f.endswith(this_format) and not f.endswith(f"{variant}{this_format}") for f in files)
+                assert not any(f.endswith(other_format) for f in files)
+
+        diffusers.utils.import_utils._safetensors_available = True
+
+    def test_download_variant_partly(self):
+        for safe_avail in [False, True]:
+            import diffusers
+
+            diffusers.utils.import_utils._safetensors_available = safe_avail
+
+            other_format = ".bin" if safe_avail else ".safetensors"
+            this_format = ".safetensors" if safe_avail else ".bin"
+            variant = "no_ema"
+
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                tmpdirname = StableDiffusionPipeline.download(
+                    "hf-internal-testing/stable-diffusion-all-variants", cache_dir=tmpdirname, variant=variant
+                )
+                all_root_files = [t[-1] for t in os.walk(tmpdirname)]
+                files = [item for sublist in all_root_files for item in sublist]
+
+                unet_files = os.listdir(os.path.join(tmpdirname, "unet"))
+
+                # Some of the downloaded files should be a non-variant file, check:
+                # https://huggingface.co/hf-internal-testing/stable-diffusion-all-variants/tree/main/unet
+                assert len(files) == 15, f"We should only download 15 files, not {len(files)}"
+                # only unet has "no_ema" variant
+                assert f"diffusion_pytorch_model.{variant}{this_format}" in unet_files
+                assert len([f for f in files if f.endswith(f"{variant}{this_format}")]) == 1
+                # vae, safety_checker and text_encoder should have no variant
+                assert sum(f.endswith(this_format) and not f.endswith(f"{variant}{this_format}") for f in files) == 3
+                assert not any(f.endswith(other_format) for f in files)
+
+        diffusers.utils.import_utils._safetensors_available = True
+
+    def test_download_broken_variant(self):
+        for safe_avail in [False, True]:
+            import diffusers
+
+            diffusers.utils.import_utils._safetensors_available = safe_avail
+            # text encoder is missing no variant and "no_ema" variant weights, so the following can't work
+            for variant in [None, "no_ema"]:
+                with self.assertRaises(OSError) as error_context:
+                    with tempfile.TemporaryDirectory() as tmpdirname:
+                        tmpdirname = StableDiffusionPipeline.from_pretrained(
+                            "hf-internal-testing/stable-diffusion-broken-variants",
+                            cache_dir=tmpdirname,
+                            variant=variant,
+                        )
+
+                assert "Error no file name" in str(error_context.exception)
+
+            # text encoder has fp16 variants so we can load it
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                tmpdirname = StableDiffusionPipeline.download(
+                    "hf-internal-testing/stable-diffusion-broken-variants", cache_dir=tmpdirname, variant="fp16"
+                )
+
+                all_root_files = [t[-1] for t in os.walk(tmpdirname)]
+                files = [item for sublist in all_root_files for item in sublist]
+
+                # None of the downloaded files should be a non-variant file even if we have some here:
+                # https://huggingface.co/hf-internal-testing/stable-diffusion-broken-variants/tree/main/unet
+                assert len(files) == 15, f"We should only download 15 files, not {len(files)}"
+                # only unet has "no_ema" variant
+
+        diffusers.utils.import_utils._safetensors_available = True
 
 
 class CustomPipelineTests(unittest.TestCase):
@@ -274,7 +430,7 @@ class CustomPipelineTests(unittest.TestCase):
 
     @slow
     @require_torch_gpu
-    def test_load_pipeline_from_git(self):
+    def test_download_from_git(self):
         clip_model_id = "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 
         feature_extractor = CLIPFeatureExtractor.from_pretrained(clip_model_id)
@@ -299,6 +455,16 @@ class CustomPipelineTests(unittest.TestCase):
 
 
 class PipelineFastTests(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        import diffusers
+
+        diffusers.utils.import_utils._safetensors_available = True
+
     def dummy_image(self):
         batch_size = 1
         num_channels = 3
@@ -391,12 +557,7 @@ class PipelineFastTests(unittest.TestCase):
         scheduler = scheduler_fn()
         pipeline = pipeline_fn(unet, scheduler).to(torch_device)
 
-        # Device type MPS is not supported for torch.Generator() api.
-        if torch_device == "mps":
-            generator = torch.manual_seed(0)
-        else:
-            generator = torch.Generator(device=torch_device).manual_seed(0)
-
+        generator = torch.manual_seed(0)
         out_image = pipeline(
             generator=generator,
             num_inference_steps=2,
@@ -432,12 +593,7 @@ class PipelineFastTests(unittest.TestCase):
 
         prompt = "A painting of a squirrel eating a burger"
 
-        # Device type MPS is not supported for torch.Generator() api.
-        if torch_device == "mps":
-            generator = torch.manual_seed(0)
-        else:
-            generator = torch.Generator(device=torch_device).manual_seed(0)
-
+        generator = torch.manual_seed(0)
         image_inpaint = inpaint(
             [prompt],
             generator=generator,
@@ -463,6 +619,42 @@ class PipelineFastTests(unittest.TestCase):
         assert image_inpaint.shape == (1, 32, 32, 3)
         assert image_img2img.shape == (1, 32, 32, 3)
         assert image_text2img.shape == (1, 64, 64, 3)
+
+    @require_torch_gpu
+    def test_pipe_false_offload_warn(self):
+        unet = self.dummy_cond_unet()
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        sd = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+
+        sd.enable_model_cpu_offload()
+
+        logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
+        with CaptureLogger(logger) as cap_logger:
+            sd.to("cuda")
+
+        assert "It is strongly recommended against doing so" in str(cap_logger)
+
+        sd = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
 
     def test_set_scheduler(self):
         unet = self.dummy_cond_unet()
@@ -566,6 +758,50 @@ class PipelineFastTests(unittest.TestCase):
             assert pipeline.text_encoder is not None
             assert pipeline.scheduler is not None
             assert pipeline.feature_extractor is not None
+
+    def test_no_pytorch_download_when_doing_safetensors(self):
+        # by default we don't download
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            _ = StableDiffusionPipeline.from_pretrained(
+                "hf-internal-testing/diffusers-stable-diffusion-tiny-all", cache_dir=tmpdirname
+            )
+
+            path = os.path.join(
+                tmpdirname,
+                "models--hf-internal-testing--diffusers-stable-diffusion-tiny-all",
+                "snapshots",
+                "07838d72e12f9bcec1375b0482b80c1d399be843",
+                "unet",
+            )
+            # safetensors exists
+            assert os.path.exists(os.path.join(path, "diffusion_pytorch_model.safetensors"))
+            # pytorch does not
+            assert not os.path.exists(os.path.join(path, "diffusion_pytorch_model.bin"))
+
+    def test_no_safetensors_download_when_doing_pytorch(self):
+        # mock diffusers safetensors not available
+        import diffusers
+
+        diffusers.utils.import_utils._safetensors_available = False
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            _ = StableDiffusionPipeline.from_pretrained(
+                "hf-internal-testing/diffusers-stable-diffusion-tiny-all", cache_dir=tmpdirname
+            )
+
+            path = os.path.join(
+                tmpdirname,
+                "models--hf-internal-testing--diffusers-stable-diffusion-tiny-all",
+                "snapshots",
+                "07838d72e12f9bcec1375b0482b80c1d399be843",
+                "unet",
+            )
+            # safetensors does not exists
+            assert not os.path.exists(os.path.join(path, "diffusion_pytorch_model.safetensors"))
+            # pytorch does
+            assert os.path.exists(os.path.join(path, "diffusion_pytorch_model.bin"))
+
+        diffusers.utils.import_utils._safetensors_available = True
 
     def test_optional_components(self):
         unet = self.dummy_cond_unet()
@@ -715,8 +951,8 @@ class PipelineSlowTests(unittest.TestCase):
                 )
 
         assert (
-            cap_logger.out
-            == "Keyword arguments {'not_used': True} are not expected by DDPMPipeline and will be ignored.\n"
+            cap_logger.out.strip().split("\n")[-1]
+            == "Keyword arguments {'not_used': True} are not expected by DDPMPipeline and will be ignored."
         )
 
     def test_from_save_pretrained(self):
@@ -742,10 +978,10 @@ class PipelineSlowTests(unittest.TestCase):
             new_ddpm.to(torch_device)
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = ddpm(generator=generator, output_type="numpy").images
+        image = ddpm(generator=generator, num_inference_steps=5, output_type="numpy").images
 
-        generator = generator.manual_seed(0)
-        new_image = new_ddpm(generator=generator, output_type="numpy").images
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        new_image = new_ddpm(generator=generator, num_inference_steps=5, output_type="numpy").images
 
         assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
 
@@ -763,10 +999,10 @@ class PipelineSlowTests(unittest.TestCase):
         ddpm_from_hub.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = ddpm(generator=generator, output_type="numpy").images
+        image = ddpm(generator=generator, num_inference_steps=5, output_type="numpy").images
 
-        generator = generator.manual_seed(0)
-        new_image = ddpm_from_hub(generator=generator, output_type="numpy").images
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        new_image = ddpm_from_hub(generator=generator, num_inference_steps=5, output_type="numpy").images
 
         assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
 
@@ -786,10 +1022,10 @@ class PipelineSlowTests(unittest.TestCase):
         ddpm_from_hub_custom_model.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = ddpm_from_hub_custom_model(generator=generator, output_type="numpy").images
+        image = ddpm_from_hub_custom_model(generator=generator, num_inference_steps=5, output_type="numpy").images
 
-        generator = generator.manual_seed(0)
-        new_image = ddpm_from_hub(generator=generator, output_type="numpy").images
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        new_image = ddpm_from_hub(generator=generator, num_inference_steps=5, output_type="numpy").images
 
         assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
 
@@ -801,20 +1037,93 @@ class PipelineSlowTests(unittest.TestCase):
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        images = pipe(generator=generator, output_type="numpy").images
+        images = pipe(output_type="numpy").images
         assert images.shape == (1, 32, 32, 3)
         assert isinstance(images, np.ndarray)
 
-        images = pipe(generator=generator, output_type="pil", num_inference_steps=4).images
+        images = pipe(output_type="pil", num_inference_steps=4).images
         assert isinstance(images, list)
         assert len(images) == 1
         assert isinstance(images[0], PIL.Image.Image)
 
         # use PIL by default
-        images = pipe(generator=generator, num_inference_steps=4).images
+        images = pipe(num_inference_steps=4).images
         assert isinstance(images, list)
         assert isinstance(images[0], PIL.Image.Image)
+
+    def test_from_flax_from_pt(self):
+        pipe_pt = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+        pipe_pt.to(torch_device)
+
+        if not is_flax_available():
+            raise ImportError("Make sure flax is installed.")
+
+        from diffusers import FlaxStableDiffusionPipeline
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe_pt.save_pretrained(tmpdirname)
+
+            pipe_flax, params = FlaxStableDiffusionPipeline.from_pretrained(
+                tmpdirname, safety_checker=None, from_pt=True
+            )
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe_flax.save_pretrained(tmpdirname, params=params)
+            pipe_pt_2 = StableDiffusionPipeline.from_pretrained(tmpdirname, safety_checker=None, from_flax=True)
+            pipe_pt_2.to(torch_device)
+
+        prompt = "Hello"
+
+        generator = torch.manual_seed(0)
+        image_0 = pipe_pt(
+            [prompt],
+            generator=generator,
+            num_inference_steps=2,
+            output_type="np",
+        ).images[0]
+
+        generator = torch.manual_seed(0)
+        image_1 = pipe_pt_2(
+            [prompt],
+            generator=generator,
+            num_inference_steps=2,
+            output_type="np",
+        ).images[0]
+
+        assert np.abs(image_0 - image_1).sum() < 1e-5, "Models don't give the same forward pass"
+
+    @require_compel
+    def test_weighted_prompts_compel(self):
+        from compel import Compel
+
+        pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+        pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+        pipe.enable_model_cpu_offload()
+        pipe.enable_attention_slicing()
+
+        compel = Compel(tokenizer=pipe.tokenizer, text_encoder=pipe.text_encoder)
+
+        prompt = "a red cat playing with a ball{}"
+
+        prompts = [prompt.format(s) for s in ["", "++", "--"]]
+
+        prompt_embeds = compel(prompts)
+
+        generator = [torch.Generator(device="cpu").manual_seed(33) for _ in range(prompt_embeds.shape[0])]
+
+        images = pipe(
+            prompt_embeds=prompt_embeds, generator=generator, num_inference_steps=20, output_type="numpy"
+        ).images
+
+        for i, image in enumerate(images):
+            expected_image = load_numpy(
+                "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+                f"/compel/forest_{i}.npy"
+            )
+
+            assert np.abs(image - expected_image).max() < 1e-2
 
 
 @nightly

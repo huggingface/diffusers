@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The HuggingFace Inc. team.
+# Copyright 2023 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,9 +19,9 @@ import json
 import os
 
 import torch
+from transformers.file_utils import has_file
 
 from diffusers import UNet2DConditionModel, UNet2DModel
-from transformers.file_utils import has_file
 
 
 do_only_config = False

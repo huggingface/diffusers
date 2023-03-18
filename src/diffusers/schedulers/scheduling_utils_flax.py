@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,16 +15,28 @@ import importlib
 import math
 import os
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Dict, Optional, Tuple, Union
 
 import flax
 import jax.numpy as jnp
 
-from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, BaseOutput
+from ..utils import BaseOutput
 
 
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
-_FLAX_COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS = ["Flax" + c for c in _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS]
+
+
+# NOTE: We make this type an enum because it simplifies usage in docs and prevents
+# circular imports when used for `_compatibles` within the schedulers module.
+# When it's used as a type in pipelines, it really is a Union because the actual
+# scheduler instance is passed in.
+class FlaxKarrasDiffusionSchedulers(Enum):
+    FlaxDDIMScheduler = 1
+    FlaxDDPMScheduler = 2
+    FlaxPNDMScheduler = 3
+    FlaxLMSDiscreteScheduler = 4
+    FlaxDPMSolverMultistepScheduler = 5
 
 
 @dataclass
