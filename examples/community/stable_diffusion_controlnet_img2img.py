@@ -547,10 +547,14 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline):
             raise ValueError(f"The value of `strength` should in [0.0, 1.0] but is {strength}")
 
         if controlnet_guidance_start < 0 or controlnet_guidance_start > 1:
-            raise ValueError(f"The value of `controlnet_guidance_start` should in [0.0, 1.0] but is {controlnet_guidance_start}")
+            raise ValueError(
+                f"The value of `controlnet_guidance_start` should in [0.0, 1.0] but is {controlnet_guidance_start}"
+            )
 
         if controlnet_guidance_end < 0 or controlnet_guidance_end > 1:
-            raise ValueError(f"The value of `controlnet_guidance_end` should in [0.0, 1.0] but is {controlnet_guidance_end}")
+            raise ValueError(
+                f"The value of `controlnet_guidance_end` should in [0.0, 1.0] but is {controlnet_guidance_end}"
+            )
 
         if controlnet_guidance_start > controlnet_guidance_end:
             raise ValueError(
@@ -846,7 +850,10 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline):
                 # compute the percentage of total steps we are at
                 current_sampling_percent = i / len(timesteps)
 
-                if current_sampling_percent < controlnet_guidance_start or current_sampling_percent > controlnet_guidance_end:
+                if (
+                    current_sampling_percent < controlnet_guidance_start
+                    or current_sampling_percent > controlnet_guidance_end
+                ):
                     # do not apply the controlnet
                     down_block_res_samples = None
                     mid_block_res_sample = None
