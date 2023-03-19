@@ -124,4 +124,5 @@ else:
         FlaxStableDiffusionImg2ImgPipeline,
         FlaxStableDiffusionInpaintPipeline,
         FlaxStableDiffusionPipeline,
+        FlaxStableDiffusionControlNetPipeline,
     )
