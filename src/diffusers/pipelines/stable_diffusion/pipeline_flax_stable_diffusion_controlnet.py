@@ -164,6 +164,7 @@ class FlaxStableDiffusionControlNetPipeline(FlaxDiffusionPipeline):
             text_encoder=text_encoder,
             tokenizer=tokenizer,
             unet=unet,
+            controlnet=controlnet,
             scheduler=scheduler,
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
@@ -258,6 +259,8 @@ class FlaxStableDiffusionControlNetPipeline(FlaxDiffusionPipeline):
             uncond_input = neg_prompt_ids
         negative_prompt_embeds = self.text_encoder(uncond_input, params=params["text_encoder"])[0]
         context = jnp.concatenate([negative_prompt_embeds, prompt_embeds])
+
+        image = jnp.concatenate([image] * 2)
 
         latents_shape = (
             batch_size,
@@ -395,6 +398,9 @@ class FlaxStableDiffusionControlNetPipeline(FlaxDiffusionPipeline):
             element is a list of `bool`s denoting whether the corresponding generated image likely represents
             "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
         """
+
+        height, width = image.shape[-2:]
+
         if isinstance(guidance_scale, float):
             # Convert to a tensor so each device gets a copy. Follow the prompt_ids for
             # shape information, as they may be sharded (when `jit` is `True`), or not.
@@ -467,8 +473,8 @@ class FlaxStableDiffusionControlNetPipeline(FlaxDiffusionPipeline):
 # Non-static args are (sharded) input tensors mapped over their first dimension (hence, `0`).
 @partial(
     jax.pmap,
-    in_axes=(None, 0, 0, 0, 0, None, None, 0, 0, 0),
-    static_broadcasted_argnums=(0, 5, 6,),
+    in_axes=(None, 0, 0, 0, 0, None, 0, 0, 0, 0),
+    static_broadcasted_argnums=(0, 5),
 )
 def _p_generate(
     pipe,
@@ -508,10 +514,10 @@ def unshard(x: jnp.ndarray):
 
 
 def preprocess(image, dtype):
-    image = image_.convert("RGB")
+    image = image.convert("RGB")
     w, h = image.size
     w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
     image = image.resize((w, h), resample=PIL_INTERPOLATION["lanczos"])
     image = jnp.array(image).astype(dtype) / 255.0
     image = image[None].transpose(0, 3, 1, 2)
-    return 2.0 * image - 1.0
+    return image
