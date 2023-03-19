@@ -472,9 +472,9 @@ class ControlNetModel(ModelMixin, ConfigMixin):
             assert sample.shape[0] == controlnet_cond.shape[0] == encoder_hidden_states.shape[0]
             assert sample.shape[0] == 2  # TODO: batch!=2
             # extract cond batch (remove uncond batch)
-            sample = sample[0, :, :, :].unsqueeze(0)
-            controlnet_cond = controlnet_cond[0, :, :, :].unsqueeze(0)
-            encoder_hidden_states = encoder_hidden_states[0, :, :].unsqueeze(0)
+            sample = sample[1, :, :, :].unsqueeze(0)
+            controlnet_cond = controlnet_cond[1, :, :, :].unsqueeze(0)
+            encoder_hidden_states = encoder_hidden_states[1, :, :].unsqueeze(0)
 
         # 1. time
         timesteps = timestep
@@ -567,8 +567,8 @@ class ControlNetModel(ModelMixin, ConfigMixin):
             mid_block_res_sample *= scales[-1]  # last one
 
             # fill zero to uncond batch
-            # down_block_res_samples = [torch.cat([d, torch.zeros_like(d)]) for d in down_block_res_samples]
-            # mid_block_res_sample = torch.cat([mid_block_res_sample, torch.zeros_like(mid_block_res_sample)])
+            down_block_res_samples = [torch.cat([torch.zeros_like(d), d]) for d in down_block_res_samples]
+            mid_block_res_sample = torch.cat([torch.zeros_like(mid_block_res_sample), mid_block_res_sample])
         else:
             down_block_res_samples = [sample * conditioning_scale for sample in down_block_res_samples]
             mid_block_res_sample *= conditioning_scale
