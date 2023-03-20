@@ -89,7 +89,7 @@ pip install --pre torch torchvision --index-url https://download.pytorch.org/whl
 ## Benchmark
 
 We conducted a simple benchmark on different GPUs to compare vanilla attention, xFormers, `torch.nn.functional.scaled_dot_product_attention` and `torch.compile+torch.nn.functional.scaled_dot_product_attention`.
-For the benchmark we used the the [stable-diffusion-v1-4](https://huggingface.co/CompVis/stable-diffusion-v1-4) model with 50 steps. The `xFormers` benchmark is done using the `torch==1.13.1` version, while the accelerated transformers optimizations are tested using nightly versions of PyTorch 2.0. The tables below summarize the results we got.
+For the benchmark we used the [stable-diffusion-v1-4](https://huggingface.co/CompVis/stable-diffusion-v1-4) model with 50 steps. The `xFormers` benchmark is done using the `torch==1.13.1` version, while the accelerated transformers optimizations are tested using nightly versions of PyTorch 2.0. The tables below summarize the results we got.
 
 The `Speed over xformers` columns denote the speed-up gained over `xFormers` using the `torch.compile+torch.nn.functional.scaled_dot_product_attention`.
 
@@ -202,7 +202,7 @@ Using `torch.compile` in addition to the accelerated transformers implementation
 
 
 
-(1) Batch Size >= 32 requires enable_vae_slicing() because of https://github.com/pytorch/pytorch/issues/81665																										
-This is required for PyTorch 1.13.1, and also for PyTorch 2.0 and batch size of 64
+(1) Batch Size >= 32 requires enable_vae_slicing() because of https://github.com/pytorch/pytorch/issues/81665.																										
+This is required for PyTorch 1.13.1, and also for PyTorch 2.0 and batch size of 64.
 
 For more details about how this benchmark was run, please refer to [this PR](https://github.com/huggingface/diffusers/pull/2303).	
