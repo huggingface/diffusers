@@ -171,17 +171,9 @@ class FlaxStableDiffusionControlNetPipeline(FlaxDiffusionPipeline):
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
-    def prepare_inputs(self, prompt: Union[str, List[str]], image: Union[Image.Image, List[Image.Image]]):
+     def prepare_text_inputs(self, prompt: Union[str, List[str]]):
         if not isinstance(prompt, (str, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-
-        if not isinstance(image, (Image.Image, list)):
-            raise ValueError(f"image has to be of type `PIL.Image.Image` or list but is {type(image)}")
-
-        if isinstance(image, Image.Image):
-            image = [image]
-
-        processed_images = jnp.concatenate([preprocess(img, jnp.float32) for img in image])
 
         text_input = self.tokenizer(
             prompt,
@@ -190,7 +182,19 @@ class FlaxStableDiffusionControlNetPipeline(FlaxDiffusionPipeline):
             truncation=True,
             return_tensors="np",
         )
-        return text_input.input_ids, processed_images
+
+        return text_input.input_ids
+
+    def prepare_image_inputs(self, image: Union[Image.Image, List[Image.Image]]):
+        if not isinstance(image, (Image.Image, list)):
+            raise ValueError(f"image has to be of type `PIL.Image.Image` or list but is {type(image)}")
+
+        if isinstance(image, Image.Image):
+            image = [image]
+
+        processed_images = jnp.concatenate([preprocess(img, jnp.float32) for img in image])
+
+        return processed_images, 
 
     def _get_has_nsfw_concepts(self, features, params):
         has_nsfw_concepts = self.safety_checker(features, params)
