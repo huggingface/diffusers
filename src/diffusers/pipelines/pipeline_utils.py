@@ -498,7 +498,8 @@ class DiffusionPipeline(ConfigMixin):
             # Dynamo wraps the original model in a private class.
             # I didn't find a public API to get the original class.
             if is_torch_version(">=", "2.0.0") and isinstance(sub_model, torch._dynamo.eval_frame.OptimizedModule):
-                model_cls = sub_model._orig_mod.__class__
+                sub_model = sub_model._orig_mod
+                model_cls = sub_model.__class__
 
             save_method_name = None
             # search for the model's base class in LOADABLE_CLASSES
