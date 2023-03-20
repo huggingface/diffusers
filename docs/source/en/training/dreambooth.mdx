@@ -118,7 +118,7 @@ python train_dreambooth_flax.py \
 
 Prior preservation is used to avoid overfitting and language-drift (check out the [paper](https://arxiv.org/abs/2208.12242) to learn more if you're interested). For prior preservation, you use other images of the same class as part of the training process. The nice thing is that you can generate those images using the Stable Diffusion model itself! The training script will save the generated images to a local path you specify.
 
-The author's recommend generating `num_epochs * num_samples` images for prior preservation. In most cases, 200-300 images work well.
+The authors recommend generating `num_epochs * num_samples` images for prior preservation. In most cases, 200-300 images work well.
 
 <frameworkcontent>
 <pt>
@@ -237,7 +237,7 @@ python train_dreambooth_flax.py \
 
 ## Finetuning with LoRA
 
-You can also use Low-Rank Adaptation of Large Language Models (LoRA), a fine-tuning technique for accelerating training large models, on DreamBooth. For more details, take a look at the [LoRA training](training/lora#dreambooth) guide.
+You can also use Low-Rank Adaptation of Large Language Models (LoRA), a fine-tuning technique for accelerating training large models, on DreamBooth. For more details, take a look at the [LoRA training](lora#dreambooth) guide.
 
 ## Saving checkpoints while training
 
