@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
 from ..utils.import_utils import is_xformers_available
 from .cross_attention import CrossAttention, TuneAVideoCrossAttnProcessor
+from .attention_processor import Attention
 from .embeddings import CombinedTimestepLabelEmbeddings
 from .modeling_utils import ModelMixin
 
@@ -226,7 +227,7 @@ class BasicTransformerBlock(nn.Module):
             )
 
         # 1. Self-Attn
-        self.attn1 = CrossAttention(
+        self.attn1 = Attention(
             query_dim=dim,
             heads=num_attention_heads,
             dim_head=attention_head_dim,
@@ -240,7 +241,7 @@ class BasicTransformerBlock(nn.Module):
 
         # 2. Cross-Attn
         if cross_attention_dim is not None:
-            self.attn2 = CrossAttention(
+            self.attn2 = Attention(
                 query_dim=dim,
                 cross_attention_dim=cross_attention_dim,
                 heads=num_attention_heads,
@@ -277,9 +278,10 @@ class BasicTransformerBlock(nn.Module):
     def forward(
         self,
         hidden_states,
-        encoder_hidden_states=None,
-        timestep=None,
         attention_mask=None,
+        encoder_hidden_states=None,
+        encoder_attention_mask=None,
+        timestep=None,
         cross_attention_kwargs=None,
         class_labels=None,
     ):
@@ -308,12 +310,14 @@ class BasicTransformerBlock(nn.Module):
             norm_hidden_states = (
                 self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
             )
+            # TODO (Birch-San): Here we should prepare the encoder_attention mask correctly
+            # prepare attention mask here
 
             # 2. Cross-Attention
             attn_output = self.attn2(
                 norm_hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
-                attention_mask=attention_mask,
+                attention_mask=encoder_attention_mask,
                 **cross_attention_kwargs,
             )
             hidden_states = attn_output + hidden_states

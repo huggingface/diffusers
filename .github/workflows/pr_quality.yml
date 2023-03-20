@@ -47,3 +47,4 @@ jobs:
         run: |
           python utils/check_copies.py
           python utils/check_dummies.py
+          make deps_table_check_updated

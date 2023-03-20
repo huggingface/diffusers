@@ -1,4 +1,4 @@
-# Copyright 2022 Google Brain and The HuggingFace Team. All rights reserved.
+# Copyright 2023 Google Brain and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -109,7 +109,8 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         Args:
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
-            sampling_eps (`float`, optional): final timestep value (overrides value given at Scheduler instantiation).
+            sampling_eps (`float`, optional):
+                final timestep value (overrides value given at Scheduler instantiation).
 
         """
         sampling_eps = sampling_eps if sampling_eps is not None else self.config.sampling_eps
@@ -129,8 +130,10 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
                 the number of diffusion steps used when generating samples with a pre-trained model.
             sigma_min (`float`, optional):
                 initial noise scale value (overrides value given at Scheduler instantiation).
-            sigma_max (`float`, optional): final noise scale value (overrides value given at Scheduler instantiation).
-            sampling_eps (`float`, optional): final timestep value (overrides value given at Scheduler instantiation).
+            sigma_max (`float`, optional):
+                final noise scale value (overrides value given at Scheduler instantiation).
+            sampling_eps (`float`, optional):
+                final timestep value (overrides value given at Scheduler instantiation).
 
         """
         sigma_min = sigma_min if sigma_min is not None else self.config.sigma_min

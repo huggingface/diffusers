@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,9 +32,11 @@ from diffusers import (
     UNet2DConditionModel,
     logging,
 )
+from diffusers.models.attention_processor import AttnProcessor
 from diffusers.utils import load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
 
+from ...pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin
 
 
@@ -43,6 +45,8 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 class StableDiffusion2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionPipeline
+    params = TEXT_TO_IMAGE_PARAMS
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -406,6 +410,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
             "stabilityai/stable-diffusion-2-base",
             torch_dtype=torch.float16,
         )
+        pipe.unet.set_attn_processor(AttnProcessor())
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         outputs = pipe(**inputs)
@@ -418,6 +423,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
             "stabilityai/stable-diffusion-2-base",
             torch_dtype=torch.float16,
         )
+        pipe.unet.set_attn_processor(AttnProcessor())
 
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
@@ -425,6 +431,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
 
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
+        inputs = self.get_inputs(torch_device, dtype=torch.float16)
         outputs_offloaded = pipe(**inputs)
         mem_bytes_offloaded = torch.cuda.max_memory_allocated()
 

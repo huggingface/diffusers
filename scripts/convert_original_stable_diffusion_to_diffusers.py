@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The HuggingFace Inc. team.
+# Copyright 2023 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 import argparse
 
-from diffusers.pipelines.stable_diffusion.convert_from_ckpt import load_pipeline_from_original_stable_diffusion_ckpt
+from diffusers.pipelines.stable_diffusion.convert_from_ckpt import download_from_original_stable_diffusion_ckpt
 
 
 if __name__ == "__main__":
@@ -120,9 +120,12 @@ if __name__ == "__main__":
         help="Path to the clip stats file. Only required if the stable unclip model's config specifies `model.params.noise_aug_config.params.clip_stats_path`.",
         required=False,
     )
+    parser.add_argument(
+        "--controlnet", action="store_true", default=None, help="Set flag if this is a controlnet checkpoint."
+    )
     args = parser.parse_args()
 
-    pipe = load_pipeline_from_original_stable_diffusion_ckpt(
+    pipe = download_from_original_stable_diffusion_ckpt(
         checkpoint_path=args.checkpoint_path,
         original_config_file=args.original_config_file,
         image_size=args.image_size,
@@ -137,5 +140,11 @@ if __name__ == "__main__":
         stable_unclip=args.stable_unclip,
         stable_unclip_prior=args.stable_unclip_prior,
         clip_stats_path=args.clip_stats_path,
+        controlnet=args.controlnet,
     )
-    pipe.save_pretrained(args.dump_path, safe_serialization=args.to_safetensors)
+
+    if args.controlnet:
+        # only save the controlnet model
+        pipe.controlnet.save_pretrained(args.dump_path, safe_serialization=args.to_safetensors)
+    else:
+        pipe.save_pretrained(args.dump_path, safe_serialization=args.to_safetensors)

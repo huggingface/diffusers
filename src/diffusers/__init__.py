@@ -1,4 +1,4 @@
-__version__ = "0.14.0.dev0"
+__version__ = "0.15.0.dev0"
 
 from .configuration_utils import ConfigMixin
 from .utils import (
@@ -34,6 +34,7 @@ except OptionalDependencyNotAvailable:
 else:
     from .models import (
         AutoencoderKL,
+        ControlNetModel,
         ModelMixin,
         PriorTransformer,
         Transformer2DModel,
@@ -114,6 +115,7 @@ else:
         PaintByExamplePipeline,
         SemanticStableDiffusionPipeline,
         StableDiffusionAttendAndExcitePipeline,
+        StableDiffusionControlNetPipeline,
         StableDiffusionDepth2ImgPipeline,
         StableDiffusionImageVariationPipeline,
         StableDiffusionImg2ImgPipeline,
@@ -158,6 +160,7 @@ else:
         OnnxStableDiffusionInpaintPipeline,
         OnnxStableDiffusionInpaintPipelineLegacy,
         OnnxStableDiffusionPipeline,
+        OnnxStableDiffusionUpscalePipeline,
         StableDiffusionOnnxPipeline,
     )
 
