@@ -40,6 +40,7 @@ else:
         Transformer2DModel,
         UNet1DModel,
         UNet2DConditionModel,
+        UNet3DConditionModel,
         UNet2DModel,
         VQModel,
     )

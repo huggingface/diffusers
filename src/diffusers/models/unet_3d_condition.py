@@ -22,16 +22,8 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, logging
 from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
-from .unet_2d_blocks import (
-    CrossAttnDownBlock2D,
-    CrossAttnUpBlock2D,
-    DownBlock2D,
-    UNetMidBlock2DCrossAttn,
-    UNetMidBlock2DSimpleCrossAttn,
-    UpBlock2D,
-    get_down_block,
-    get_up_block,
-)
+from .transformer_temp import TransformerTempModel
+from .unet_3d_blocks import get_down_block, get_up_block, UNetMidBlock3DCrossAttn, UpBlock3D, DownBlock3D, CrossAttnUpBlock3D, CrossAttnDownBlock3D
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -114,39 +106,36 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         sample_size: Optional[int] = None,
         in_channels: int = 4,
         out_channels: int = 4,
-        center_input_sample: bool = False,
-        flip_sin_to_cos: bool = True,
-        freq_shift: int = 0,
+        center_input_sample: bool = False,  # remove
+        flip_sin_to_cos: bool = True,  # remove
+        freq_shift: int = 0,  # remove
         down_block_types: Tuple[str] = (
-            "CrossAttnDownBlock2D",
-            "CrossAttnDownBlock2D",
-            "CrossAttnDownBlock2D",
-            "DownBlock2D",
+            "CrossAttnDownBlock3D",
+            "CrossAttnDownBlock3D",
+            "CrossAttnDownBlock3D",
+            "DownBlock3D",
         ),
-        mid_block_type: Optional[str] = "UNetMidBlock2DCrossAttn",
-        up_block_types: Tuple[str] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
-        only_cross_attention: Union[bool, Tuple[bool]] = False,
+        mid_block_type: Optional[str] = "UNetMidBlock3DCrossAttn",
+        up_block_types: Tuple[str] = ("UpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D"),
+        only_cross_attention: Union[bool, Tuple[bool]] = False,  # remove
         block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
-        layers_per_block: int = 2,
+        layers_per_block: int = 1,
         downsample_padding: int = 1,
-        mid_block_scale_factor: float = 1,
-        act_fn: str = "silu",
-        norm_num_groups: Optional[int] = 32,
-        norm_eps: float = 1e-5,
+        mid_block_scale_factor: float = 1,  # remove
+        act_fn: str = "silu",  # remove
+        norm_num_groups: Optional[int] = 32,  # remove
+        norm_eps: float = 1e-5,  # remove
         cross_attention_dim: int = 1280,
-        attention_head_dim: Union[int, Tuple[int]] = 8,
-        dual_cross_attention: bool = False,
-        use_linear_projection: bool = False,
-        class_embed_type: Optional[str] = None,
-        num_class_embeds: Optional[int] = None,
-        upcast_attention: bool = False,
-        resnet_time_scale_shift: str = "default",
-        time_embedding_type: str = "positional",
-        timestep_post_act: Optional[str] = None,
-        time_cond_proj_dim: Optional[int] = None,
-        conv_in_kernel: int = 3,
-        conv_out_kernel: int = 3,
-        projection_class_embeddings_input_dim: Optional[int] = None,
+        attention_head_dim: Union[int, Tuple[int]] = 8,  # remove
+        use_linear_projection: bool = False,  # remove
+        class_embed_type: Optional[str] = None,  # remove
+        num_class_embeds: Optional[int] = None,  # remove
+        upcast_attention: bool = False,  # remvoe
+        resnet_time_scale_shift: str = "default",  # remove
+        time_embedding_type: str = "positional",  # remove
+        timestep_post_act: Optional[str] = None,  # remove
+        time_cond_proj_dim: Optional[int] = None,  # remove
+        projection_class_embeddings_input_dim: Optional[int] = None,  # remove
     ):
         super().__init__()
 
@@ -174,6 +163,8 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
             )
 
         # input
+        conv_in_kernel = 3
+        conv_out_kernel = 3
         conv_in_padding = (conv_in_kernel - 1) // 2
         self.conv_in = nn.Conv2d(
             in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
@@ -206,29 +197,17 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
             cond_proj_dim=time_cond_proj_dim,
         )
 
-        # class embedding
-        if class_embed_type is None and num_class_embeds is not None:
-            self.class_embedding = nn.Embedding(num_class_embeds, time_embed_dim)
-        elif class_embed_type == "timestep":
-            self.class_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim)
-        elif class_embed_type == "identity":
-            self.class_embedding = nn.Identity(time_embed_dim, time_embed_dim)
-        elif class_embed_type == "projection":
-            if projection_class_embeddings_input_dim is None:
-                raise ValueError(
-                    "`class_embed_type`: 'projection' requires `projection_class_embeddings_input_dim` be set"
-                )
-            # The projection `class_embed_type` is the same as the timestep `class_embed_type` except
-            # 1. the `class_labels` inputs are not first converted to sinusoidal embeddings
-            # 2. it projects from an arbitrary input dimension.
-            #
-            # Note that `TimestepEmbedding` is quite general, being mainly linear layers and activations.
-            # When used for embedding actual timesteps, the timesteps are first converted to sinusoidal embeddings.
-            # As a result, `TimestepEmbedding` can be passed arbitrary vectors.
-            self.class_embedding = TimestepEmbedding(projection_class_embeddings_input_dim, time_embed_dim)
-        else:
-            self.class_embedding = None
+        self.transformer_in = TransformerTempModel(
+            num_attention_heads=8,
+            attention_head_dim=64,
+            in_channels=block_out_channels[0],
+            num_layers=1,
+            cross_attention_dim=cross_attention_dim,
+            use_linear_projection=use_linear_projection,
+            upcast_attention=upcast_attention,
+        )
 
+        # class embedding
         self.down_blocks = nn.ModuleList([])
         self.up_blocks = nn.ModuleList([])
 
@@ -258,7 +237,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
                 cross_attention_dim=cross_attention_dim,
                 attn_num_head_channels=attention_head_dim[i],
                 downsample_padding=downsample_padding,
-                dual_cross_attention=dual_cross_attention,
+                dual_cross_attention=False,
                 use_linear_projection=use_linear_projection,
                 only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
@@ -267,37 +246,20 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
             self.down_blocks.append(down_block)
 
         # mid
-        if mid_block_type == "UNetMidBlock2DCrossAttn":
-            self.mid_block = UNetMidBlock2DCrossAttn(
-                in_channels=block_out_channels[-1],
-                temb_channels=time_embed_dim,
-                resnet_eps=norm_eps,
-                resnet_act_fn=act_fn,
-                output_scale_factor=mid_block_scale_factor,
-                resnet_time_scale_shift=resnet_time_scale_shift,
-                cross_attention_dim=cross_attention_dim,
-                attn_num_head_channels=attention_head_dim[-1],
-                resnet_groups=norm_num_groups,
-                dual_cross_attention=dual_cross_attention,
-                use_linear_projection=use_linear_projection,
-                upcast_attention=upcast_attention,
-            )
-        elif mid_block_type == "UNetMidBlock2DSimpleCrossAttn":
-            self.mid_block = UNetMidBlock2DSimpleCrossAttn(
-                in_channels=block_out_channels[-1],
-                temb_channels=time_embed_dim,
-                resnet_eps=norm_eps,
-                resnet_act_fn=act_fn,
-                output_scale_factor=mid_block_scale_factor,
-                cross_attention_dim=cross_attention_dim,
-                attn_num_head_channels=attention_head_dim[-1],
-                resnet_groups=norm_num_groups,
-                resnet_time_scale_shift=resnet_time_scale_shift,
-            )
-        elif mid_block_type is None:
-            self.mid_block = None
-        else:
-            raise ValueError(f"unknown mid_block_type : {mid_block_type}")
+        self.mid_block = UNetMidBlock3DCrossAttn(
+            in_channels=block_out_channels[-1],
+            temb_channels=time_embed_dim,
+            resnet_eps=norm_eps,
+            resnet_act_fn=act_fn,
+            output_scale_factor=mid_block_scale_factor,
+            resnet_time_scale_shift=resnet_time_scale_shift,
+            cross_attention_dim=cross_attention_dim,
+            attn_num_head_channels=attention_head_dim[-1],
+            resnet_groups=norm_num_groups,
+            dual_cross_attention=False,
+            use_linear_projection=use_linear_projection,
+            upcast_attention=upcast_attention,
+        )
 
         # count how many layers upsample the images
         self.num_upsamplers = 0
@@ -335,7 +297,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
                 attn_num_head_channels=reversed_attention_head_dim[i],
-                dual_cross_attention=dual_cross_attention,
+                dual_cross_attention=False,
                 use_linear_projection=use_linear_projection,
                 only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
@@ -425,7 +387,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
             fn_recursive_set_attention_slice(module, reversed_slice_size)
 
     def _set_gradient_checkpointing(self, module, value=False):
-        if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D, CrossAttnUpBlock2D, UpBlock2D)):
+        if isinstance(module, (CrossAttnDownBlock3D, DownBlock3D, CrossAttnUpBlock3D, UpBlock3D)):
             module.gradient_checkpointing = value
 
     def forward(
@@ -478,8 +440,8 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
             attention_mask = attention_mask.unsqueeze(1)
 
         # 0. center input if necessary
-        if self.config.center_input_sample:
-            sample = 2 * sample - 1.0
+#        if self.config.center_input_sample:
+#            sample = 2 * sample - 1.0
 
         # 1. time
         timesteps = timestep
