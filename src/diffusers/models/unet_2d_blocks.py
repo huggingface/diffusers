@@ -18,7 +18,7 @@ import torch
 from torch import nn
 
 from .attention import AdaGroupNorm, AttentionBlock
-from .attention_processor import Attention, AttnAddedKVProcessor, SpatialAttnProcessor
+from .attention_processor import Attention, AttnAddedKVProcessor
 from .dual_transformer_2d import DualTransformer2DModel
 from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, KDownsample2D, KUpsample2D, ResnetBlock2D, Upsample2D
 from .transformer_2d import Transformer2DModel
@@ -432,8 +432,8 @@ class UNetMidBlock2D(nn.Module):
                         bias=True,
                         upcast_softmax=True,
                         norm_num_groups=resnet_groups,
-                        processor=SpatialAttnProcessor(),
                         eps=resnet_eps,
+                        residual_connection=True,
                     )
                 else:
                     raise ValueError(f"Unknown attention_block_type: {attention_block_type}")
@@ -719,8 +719,8 @@ class AttnDownBlock2D(nn.Module):
                     bias=True,
                     upcast_softmax=True,
                     norm_num_groups=resnet_groups,
-                    processor=SpatialAttnProcessor(),
                     eps=resnet_eps,
+                    residual_connection=True,
                 )
             else:
                 raise ValueError(f"Unknown attention_block_type: {attention_block_type}")
@@ -1081,9 +1081,9 @@ class AttnDownEncoderBlock2D(nn.Module):
                     bias=True,
                     upcast_softmax=True,
                     norm_num_groups=resnet_groups,
-                    processor=SpatialAttnProcessor(),
                     eps=resnet_eps,
                     rescale_output_factor=output_scale_factor,
+                    residual_connection=True,
                 )
             else:
                 raise ValueError(f"Unknown attention_block_type: {attention_block_type}")
@@ -1170,9 +1170,9 @@ class AttnSkipDownBlock2D(nn.Module):
                     bias=True,
                     upcast_softmax=True,
                     norm_num_groups=32,
-                    processor=SpatialAttnProcessor(),
                     eps=resnet_eps,
                     rescale_output_factor=output_scale_factor,
+                    residual_connection=True,
                 )
             else:
                 raise ValueError(f"Unknown attention_block_type: {attention_block_type}")
@@ -1742,9 +1742,9 @@ class AttnUpBlock2D(nn.Module):
                     bias=True,
                     upcast_softmax=True,
                     norm_num_groups=resnet_groups,
-                    processor=SpatialAttnProcessor(),
                     eps=resnet_eps,
                     rescale_output_factor=output_scale_factor,
+                    residual_connection=True,
                 )
             else:
                 raise ValueError(f"Unknown attention_block_type: {attention_block_type}")
@@ -2092,9 +2092,9 @@ class AttnUpDecoderBlock2D(nn.Module):
                     bias=True,
                     upcast_softmax=True,
                     norm_num_groups=resnet_groups,
-                    processor=SpatialAttnProcessor(),
                     eps=resnet_eps,
                     rescale_output_factor=output_scale_factor,
+                    residual_connection=True,
                 )
             else:
                 raise ValueError(f"Unknown attention_block_type: {attention_block_type}")
@@ -2180,9 +2180,9 @@ class AttnSkipUpBlock2D(nn.Module):
                 bias=True,
                 upcast_softmax=True,
                 norm_num_groups=32,
-                processor=SpatialAttnProcessor(),
                 eps=resnet_eps,
                 rescale_output_factor=output_scale_factor,
+                residual_connection=True,
             )
         else:
             raise ValueError(f"Unknown attention_block_type: {attention_block_type}")

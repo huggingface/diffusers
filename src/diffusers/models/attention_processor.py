@@ -64,6 +64,7 @@ class Attention(nn.Module):
         processor: Optional["AttnProcessor"] = None,
         eps: float = 1e-5,
         rescale_output_factor: float = 1.0,
+        residual_connection: bool = False,
     ):
         super().__init__()
         inner_dim = dim_head * heads
@@ -72,6 +73,7 @@ class Attention(nn.Module):
         self.upcast_softmax = upcast_softmax
         self.cross_attention_norm = cross_attention_norm
         self.rescale_output_factor = rescale_output_factor
+        self.residual_connection = residual_connection
 
         self.scale = dim_head**-0.5 if scale_qk else 1.0
 
@@ -120,10 +122,6 @@ class Attention(nn.Module):
             self.processor, (LoRAAttnProcessor, LoRAXFormersAttnProcessor)
         )
 
-        is_spatial_attention = hasattr(self, "processor") and isinstance(
-            self.processor, (SpatialAttnProcessor, XFormersSpatialAttnProcessor)
-        )
-
         if use_memory_efficient_attention_xformers:
             if self.added_kv_proj_dim is not None:
                 # TODO(Anton, Patrick, Suraj, William) - currently xformers doesn't work for UnCLIP
@@ -166,8 +164,6 @@ class Attention(nn.Module):
                 )
                 processor.load_state_dict(self.processor.state_dict())
                 processor.to(self.processor.to_q_lora.up.weight.device)
-            elif is_spatial_attention:
-                processor = XFormersSpatialAttnProcessor()
             else:
                 processor = XFormersAttnProcessor(attention_op=attention_op)
         else:
@@ -179,8 +175,6 @@ class Attention(nn.Module):
                 )
                 processor.load_state_dict(self.processor.state_dict())
                 processor.to(self.processor.to_q_lora.up.weight.device)
-            elif is_spatial_attention:
-                processor = SpatialAttnProcessor()
             else:
                 processor = AttnProcessor()
 
@@ -311,10 +305,31 @@ class AttnProcessor:
         encoder_hidden_states=None,
         attention_mask=None,
     ):
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
+        if attn.residual_connection:
+            residual = hidden_states
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states)
+
+        batch_size = hidden_states.shape[0]
+
+        if hidden_states.ndim == 4:
+            reshaped_input = True
+
+            _, channel, height, width = hidden_states.shape
+
+            hidden_states = hidden_states.view(batch_size, channel, height * width)
+            hidden_states = hidden_states.transpose(1, 2)
+        else:
+            reshaped_input = False
+
+        if encoder_hidden_states is None:
+            sequence_length = hidden_states.shape[1]
+        else:
+            sequence_length = encoder_hidden_states.shape[1]
+
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+
         query = attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:
@@ -337,6 +352,15 @@ class AttnProcessor:
         hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
+
+        if reshaped_input:
+            hidden_states = hidden_states.transpose(1, 2)
+            hidden_states = hidden_states.reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
 
         return hidden_states
 
@@ -378,9 +402,29 @@ class LoRAAttnProcessor(nn.Module):
         self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank)
 
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
+        if attn.residual_connection:
+            residual = hidden_states
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states)
+
+        batch_size = hidden_states.shape[0]
+
+        if hidden_states.ndim == 4:
+            reshaped_input = True
+
+            _, channel, height, width = hidden_states.shape
+
+            hidden_states = hidden_states.view(batch_size, channel, height * width)
+            hidden_states = hidden_states.transpose(1, 2)
+        else:
+            reshaped_input = False
+
+        if encoder_hidden_states is None:
+            sequence_length = hidden_states.shape[1]
+        else:
+            sequence_length = encoder_hidden_states.shape[1]
+
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
         query = attn.to_q(hidden_states) + scale * self.to_q_lora(hidden_states)
@@ -402,6 +446,15 @@ class LoRAAttnProcessor(nn.Module):
         hidden_states = attn.to_out[0](hidden_states) + scale * self.to_out_lora(hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
+
+        if reshaped_input:
+            hidden_states = hidden_states.transpose(1, 2)
+            hidden_states = hidden_states.reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
 
         return hidden_states
 
@@ -453,9 +506,28 @@ class XFormersAttnProcessor:
         self.attention_op = attention_op
 
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
+        if attn.residual_connection:
+            residual = hidden_states
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states)
+
+        batch_size = hidden_states.shape[0]
+
+        if hidden_states.ndim == 4:
+            reshaped_input = True
+
+            _, channel, height, width = hidden_states.shape
+
+            hidden_states = hidden_states.view(batch_size, channel, height * width)
+            hidden_states = hidden_states.transpose(1, 2)
+        else:
+            reshaped_input = False
+
+        if encoder_hidden_states is None:
+            sequence_length = hidden_states.shape[1]
+        else:
+            sequence_length = encoder_hidden_states.shape[1]
 
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
@@ -483,6 +555,16 @@ class XFormersAttnProcessor:
         hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
+
+        if reshaped_input:
+            hidden_states = hidden_states.transpose(1, 2)
+            hidden_states = hidden_states.reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
         return hidden_states
 
 
@@ -492,9 +574,29 @@ class AttnProcessor2_0:
             raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
 
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
+        if attn.residual_connection:
+            residual = hidden_states
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states)
+
+        batch_size = hidden_states.shape[0]
+
+        if hidden_states.ndim == 4:
+            reshaped_input = True
+
+            _, channel, height, width = hidden_states.shape
+
+            hidden_states = hidden_states.view(batch_size, channel, height * width)
+            hidden_states = hidden_states.transpose(1, 2)
+        else:
+            reshaped_input = False
+
+        if encoder_hidden_states is None:
+            sequence_length = hidden_states.shape[1]
+        else:
+            sequence_length = encoder_hidden_states.shape[1]
+
         inner_dim = hidden_states.shape[-1]
 
         if attention_mask is not None:
@@ -531,6 +633,16 @@ class AttnProcessor2_0:
         hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
+
+        if reshaped_input:
+            hidden_states = hidden_states.transpose(1, 2)
+            hidden_states = hidden_states.reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
         return hidden_states
 
 
@@ -549,9 +661,29 @@ class LoRAXFormersAttnProcessor(nn.Module):
         self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank)
 
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
+        if attn.residual_connection:
+            residual = hidden_states
+
+        if attn.group_norm:
+            hidden_states = attn.group_norm(hidden_states)
+
+        batch_size = hidden_states.shape[0]
+
+        if hidden_states.ndim == 4:
+            reshaped_input = True
+
+            _, channel, height, width = hidden_states.shape
+
+            hidden_states = hidden_states.view(batch_size, channel, height * width)
+            hidden_states = hidden_states.transpose(1, 2)
+        else:
+            reshaped_input = False
+
+        if encoder_hidden_states is None:
+            sequence_length = hidden_states.shape[1]
+        else:
+            sequence_length = encoder_hidden_states.shape[1]
+
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
         query = attn.to_q(hidden_states) + scale * self.to_q_lora(hidden_states)
@@ -575,6 +707,15 @@ class LoRAXFormersAttnProcessor(nn.Module):
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
+        if reshaped_input:
+            hidden_states = hidden_states.transpose(1, 2)
+            hidden_states = hidden_states.reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
         return hidden_states
 
 
@@ -583,9 +724,29 @@ class SlicedAttnProcessor:
         self.slice_size = slice_size
 
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
+        if attn.residual_connection:
+            residual = hidden_states
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states)
+
+        batch_size = hidden_states.shape[0]
+
+        if hidden_states.ndim == 4:
+            reshaped_input = True
+
+            _, channel, height, width = hidden_states.shape
+
+            hidden_states = hidden_states.view(batch_size, channel, height * width)
+            hidden_states = hidden_states.transpose(1, 2)
+        else:
+            reshaped_input = False
+
+        if encoder_hidden_states is None:
+            sequence_length = hidden_states.shape[1]
+        else:
+            sequence_length = encoder_hidden_states.shape[1]
+
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
         query = attn.to_q(hidden_states)
@@ -627,6 +788,15 @@ class SlicedAttnProcessor:
         hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
+
+        if reshaped_input:
+            hidden_states = hidden_states.transpose(1, 2)
+            hidden_states = hidden_states.reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
 
         return hidden_states
 
@@ -695,94 +865,6 @@ class SlicedAttnAddedKVProcessor:
         return hidden_states
 
 
-class SpatialAttnProcessor:
-    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
-        if attention_mask is not None:
-            raise ValueError(f"{self.__class__.__name__} does not support `attention_mask`")
-
-        if encoder_hidden_states is not None:
-            raise ValueError(f"{self.__class__.__name__} does not support `encoder_hidden_states`")
-
-        residual = hidden_states
-        batch, channel, height, width = hidden_states.shape
-
-        # norm
-        hidden_states = attn.group_norm(hidden_states)
-
-        hidden_states = hidden_states.view(batch, channel, height * width).transpose(1, 2)
-
-        # proj to q, k, v
-        query_proj = attn.to_q(hidden_states)
-        key_proj = attn.to_k(hidden_states)
-        value_proj = attn.to_v(hidden_states)
-
-        query_proj = attn.head_to_batch_dim(query_proj)
-        key_proj = attn.head_to_batch_dim(key_proj)
-        value_proj = attn.head_to_batch_dim(value_proj)
-
-        attention_probs = attn.get_attention_scores(query_proj, key_proj)
-        hidden_states = torch.bmm(attention_probs, value_proj)
-
-        # reshape hidden_states
-        hidden_states = attn.batch_to_head_dim(hidden_states)
-
-        # compute next hidden_states
-        hidden_states = attn.to_out[0](hidden_states)
-
-        hidden_states = hidden_states.transpose(-1, -2).reshape(batch, channel, height, width)
-
-        # res connect and rescale
-        hidden_states = (hidden_states + residual) / attn.rescale_output_factor
-        return hidden_states
-
-
-class XFormersSpatialAttnProcessor:
-    def __init__(self, attention_op: Optional[Callable] = None):
-        self.attention_op = attention_op
-
-    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
-        if attention_mask is not None:
-            raise ValueError(f"{self.__class__.__name__} does not support `attention_mask`")
-
-        if encoder_hidden_states is not None:
-            raise ValueError(f"{self.__class__.__name__} does not support `encoder_hidden_states`")
-
-        residual = hidden_states
-        batch, channel, height, width = hidden_states.shape
-
-        # norm
-        hidden_states = attn.group_norm(hidden_states)
-
-        hidden_states = hidden_states.view(batch, channel, height * width).transpose(1, 2)
-
-        # proj to q, k, v
-        query_proj = attn.to_q(hidden_states)
-        key_proj = attn.to_k(hidden_states)
-        value_proj = attn.to_v(hidden_states)
-
-        query_proj = attn.head_to_batch_dim(query_proj)
-        key_proj = attn.head_to_batch_dim(key_proj)
-        value_proj = attn.head_to_batch_dim(value_proj)
-
-        # Memory efficient attention
-        hidden_states = xformers.ops.memory_efficient_attention(
-            query_proj, key_proj, value_proj, attn_bias=None, op=self.attention_op, scale=attn.scale
-        )
-        hidden_states = hidden_states.to(query_proj.dtype)
-
-        # reshape hidden_states
-        hidden_states = attn.batch_to_head_dim(hidden_states)
-
-        # compute next hidden_states
-        hidden_states = attn.to_out[0](hidden_states)
-
-        hidden_states = hidden_states.transpose(-1, -2).reshape(batch, channel, height, width)
-
-        # res connect and rescale
-        hidden_states = (hidden_states + residual) / attn.rescale_output_factor
-        return hidden_states
-
-
 AttentionProcessor = Union[
     AttnProcessor,
     XFormersAttnProcessor,
@@ -791,6 +873,4 @@ AttentionProcessor = Union[
     SlicedAttnAddedKVProcessor,
     LoRAAttnProcessor,
     LoRAXFormersAttnProcessor,
-    SpatialAttnProcessor,
-    XFormersSpatialAttnProcessor,
 ]

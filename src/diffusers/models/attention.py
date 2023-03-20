@@ -18,7 +18,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from ..utils import deprecate
-from .attention_processor import Attention, SpatialAttnProcessor
+from .attention_processor import Attention
 from .embeddings import CombinedTimestepLabelEmbeddings
 
 
@@ -104,9 +104,9 @@ class AttentionBlock(nn.Module):
             bias=True,
             upcast_softmax=True,
             norm_num_groups=self.group_norm.num_groups,
-            processor=SpatialAttnProcessor(),
             eps=self.group_norm.eps,
             rescale_output_factor=self.rescale_output_factor,
+            residual_connection=True,
         )
 
         param = next(self.parameters())
