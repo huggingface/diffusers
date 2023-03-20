@@ -255,7 +255,14 @@ def maybe_raise_or_warn(
             if class_candidate is not None and issubclass(class_obj, class_candidate):
                 expected_class_obj = class_candidate
 
-        if not issubclass(passed_class_obj[name].__class__, expected_class_obj):
+        # Dynamo wraps the original model in a private class.
+        # I didn't find a public API to get the original class.
+        sub_model = passed_class_obj[name]
+        model_cls = sub_model.__class__
+        if is_torch_version(">=", "2.0.0") and isinstance(sub_model, torch._dynamo.eval_frame.OptimizedModule):
+            model_cls = sub_model._orig_mod.__class__
+
+        if not issubclass(model_cls, expected_class_obj):
             raise ValueError(
                 f"{passed_class_obj[name]} is of type: {type(passed_class_obj[name])}, but should be"
                 f" {expected_class_obj}"
@@ -484,8 +491,8 @@ class DiffusionPipeline(ConfigMixin):
             sub_model = getattr(self, pipeline_component_name)
             model_cls = sub_model.__class__
 
-            # Dynamo wraps the original mode and changes the class.
-            # Is there a principled way to obtain the original class?
+            # Dynamo wraps the original model in a private class.
+            # I didn't find a public API to get the original class.
             if is_torch_version(">=", "2.0.0") and isinstance(sub_model, torch._dynamo.eval_frame.OptimizedModule):
                 model_cls = sub_model._orig_mod.__class__
 
