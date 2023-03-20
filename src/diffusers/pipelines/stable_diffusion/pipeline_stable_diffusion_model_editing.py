@@ -11,13 +11,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
-
-import copy
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDIMScheduler, PNDMScheduler
@@ -134,19 +133,21 @@ class StableDiffusionModelEditingPipeline(DiffusionPipeline):
 
         # get cross-attention layers
         ca_layers = []
+
         def append_ca(net_):
-            if net_.__class__.__name__ == 'CrossAttention':
+            if net_.__class__.__name__ == "CrossAttention":
                 ca_layers.append(net_)
-            elif hasattr(net_, 'children'):
+            elif hasattr(net_, "children"):
                 for net__ in net_.children():
                     append_ca(net__)
+
         for net in self.unet.named_children():
-                if "down" in net[0]:
-                    append_ca(net[1])
-                elif "up" in net[0]:
-                    append_ca(net[1])
-                elif "mid" in net[0]:
-                    append_ca(net[1])
+            if "down" in net[0]:
+                append_ca(net[1])
+            elif "up" in net[0]:
+                append_ca(net[1])
+            elif "mid" in net[0]:
+                append_ca(net[1])
 
         # get projection matrices
         self.ca_clip_layers = [l for l in ca_layers if l.to_v.in_features == 768]
@@ -475,11 +476,11 @@ class StableDiffusionModelEditingPipeline(DiffusionPipeline):
                 if self.with_to_k:
                     l.to_k = copy.deepcopy(self.og_matrices[num_ca_clip_layers + idx_])
                     self.projection_matrices[num_ca_clip_layers + idx_] = l.to_k
-        
+
         # set up sentences
         old_texts = [source_prompt]
         new_texts = [destination_prompt]
-        if with_augs:
+        if self.with_augs:
             base = old_texts[0] if old_texts[0][0:1] != "A" else "a" + old_texts[0][1:]
             old_texts.append("A photo of " + base)
             old_texts.append("An image of " + base)
@@ -488,7 +489,7 @@ class StableDiffusionModelEditingPipeline(DiffusionPipeline):
             new_texts.append("A photo of " + base)
             new_texts.append("An image of " + base)
             new_texts.append("A picture of " + base)
-        
+
         # prepare input k* and v*
         old_embs, new_embs = [], []
         for old_text, new_text in zip(old_texts, new_texts):
@@ -503,14 +504,14 @@ class StableDiffusionModelEditingPipeline(DiffusionPipeline):
             old_emb, new_emb = text_embeddings
             old_embs.append(old_emb)
             new_embs.append(new_emb)
-        
+
         # identify corresponding destinations for each token in old_emb
         idxs_replaces = []
         for old_text, new_text in zip(old_texts, new_texts):
             tokens_a = self.tokenizer(old_text).input_ids
             tokens_b = self.tokenizer(new_text).input_ids
-            tokens_a = [self.tokenizer.encode("a ")[1] if self.tokenizer.decode(t) == 'an' else t for t in tokens_a]
-            tokens_b = [self.tokenizer.encode("a ")[1] if self.tokenizer.decode(t) == 'an' else t for t in tokens_b]
+            tokens_a = [self.tokenizer.encode("a ")[1] if self.tokenizer.decode(t) == "an" else t for t in tokens_a]
+            tokens_b = [self.tokenizer.encode("a ")[1] if self.tokenizer.decode(t) == "an" else t for t in tokens_b]
             num_orig_tokens = len(tokens_a)
             idxs_replace = []
             j = 0
@@ -526,7 +527,7 @@ class StableDiffusionModelEditingPipeline(DiffusionPipeline):
             while len(idxs_replace) < 77:
                 idxs_replace.append(76)
             idxs_replaces.append(idxs_replace)
-        
+
         # prepare batch: for each pair of setences, old context and new values
         contexts, valuess = [], []
         for old_emb, new_emb, idxs_replace in zip(old_embs, new_embs, idxs_replaces):
@@ -537,16 +538,19 @@ class StableDiffusionModelEditingPipeline(DiffusionPipeline):
                     values.append(layer(new_emb[idxs_replace]).detach())
             contexts.append(context)
             valuess.append(values)
-        
+
         # edit the model
         for layer_num in range(len(self.projection_matrices)):
-            #mat1 = \lambda W + \sum{v k^T}
+            # mat1 = \lambda W + \sum{v k^T}
             mat1 = lamb * self.projection_matrices[layer_num].weight
 
-            #mat2 = \lambda I + \sum{k k^T}
-            mat2 = lamb * torch.eye(self.projection_matrices[layer_num].weight.shape[1], device = self.projection_matrices[layer_num].weight.device)
+            # mat2 = \lambda I + \sum{k k^T}
+            mat2 = lamb * torch.eye(
+                self.projection_matrices[layer_num].weight.shape[1],
+                device=self.projection_matrices[layer_num].weight.device,
+            )
 
-            #aggregate sums for mat1, mat2
+            # aggregate sums for mat1, mat2
             for context, values in zip(contexts, valuess):
                 context_vector = context.reshape(context.shape[0], context.shape[1], 1)
                 context_vector_T = context.reshape(context.shape[0], 1, context.shape[1])
@@ -556,7 +560,7 @@ class StableDiffusionModelEditingPipeline(DiffusionPipeline):
                 mat1 += for_mat1
                 mat2 += for_mat2
 
-            #update projection matrix
+            # update projection matrix
             self.projection_matrices[layer_num].weight = torch.nn.Parameter(mat1 @ torch.inverse(mat2))
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.__call__
