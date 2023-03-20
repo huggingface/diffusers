@@ -24,8 +24,8 @@ from torch import nn
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
 from ..utils.import_utils import is_xformers_available
-from .cross_attention import CrossAttention, TuneAVideoCrossAttnProcessor
 from .attention_processor import Attention
+from .cross_attention import CrossAttention, TuneAVideoCrossAttnProcessor
 from .embeddings import CombinedTimestepLabelEmbeddings
 from .modeling_utils import ModelMixin
 

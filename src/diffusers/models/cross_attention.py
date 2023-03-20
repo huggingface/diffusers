@@ -11,6 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from typing import Union
+
+import torch
+import torch.nn.functional as F
+
 from ..utils import deprecate
 from .attention_processor import (  # noqa: F401
     Attention,
@@ -156,6 +161,13 @@ class TuneAVideoCrossAttnProcessor:
         return hidden_states
 
 
+class SlicedCrossAttnAddedKVProcessor(SlicedAttnAddedKVProcessor):
+    def __init__(self, *args, **kwargs):
+        deprecation_message = f"{self.__class__.__name__} is deprecated and will be removed in `0.18.0`. Please use `from diffusers.models.attention_processor import {''.join(self.__class__.__name__.split('Cross'))} instead."
+        deprecate("cross_attention", "0.18.0", deprecation_message, standard_warn=False)
+        super().__init__(*args, **kwargs)
+
+
 AttnProcessor = Union[
     CrossAttnProcessor,
     TuneAVideoCrossAttnProcessor,
@@ -166,9 +178,3 @@ AttnProcessor = Union[
     LoRACrossAttnProcessor,
     LoRAXFormersCrossAttnProcessor,
 ]
-
-class SlicedCrossAttnAddedKVProcessor(SlicedAttnAddedKVProcessor):
-    def __init__(self, *args, **kwargs):
-        deprecation_message = f"{self.__class__.__name__} is deprecated and will be removed in `0.18.0`. Please use `from diffusers.models.attention_processor import {''.join(self.__class__.__name__.split('Cross'))} instead."
-        deprecate("cross_attention", "0.18.0", deprecation_message, standard_warn=False)
-        super().__init__(*args, **kwargs)
