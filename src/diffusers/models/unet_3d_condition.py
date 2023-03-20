@@ -127,7 +127,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         norm_eps: float = 1e-5,  # remove
         cross_attention_dim: int = 1024,
         attention_head_dim: Union[int, Tuple[int]] = 8,  # remove
-        use_linear_projection: bool = False,  # remove
+        use_linear_projection: bool = True,  # remove
         class_embed_type: Optional[str] = None,  # remove
         num_class_embeds: Optional[int] = None,  # remove
         upcast_attention: bool = False,  # remvoe

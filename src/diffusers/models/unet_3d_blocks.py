@@ -180,6 +180,7 @@ class UNetMidBlock3DCrossAttn(nn.Module):
             )
         ]
         attentions = []
+        temp_attentions = []
 
         for _ in range(num_layers):
             attentions.append(
@@ -194,7 +195,7 @@ class UNetMidBlock3DCrossAttn(nn.Module):
                     upcast_attention=upcast_attention,
                 )
             )
-            attentions.append(
+            temp_attentions.append(
                 TransformerTempModel(
                     attn_num_head_channels,
                     in_channels // attn_num_head_channels,
@@ -231,14 +232,20 @@ class UNetMidBlock3DCrossAttn(nn.Module):
         self.resnets = nn.ModuleList(resnets)
         self.temp_convs = nn.ModuleList(temp_convs)
         self.attentions = nn.ModuleList(attentions)
+        self.temp_attentions = nn.ModuleList(temp_attentions)
 
     def forward(
         self, hidden_states, temb=None, encoder_hidden_states=None, attention_mask=None, cross_attention_kwargs=None
     ):
         hidden_states = self.resnets[0](hidden_states, temb)
         hidden_states = self.temp_convs[0](hidden_states)
-        for attn, resnet, temp_conv in zip(self.attentions, self.resnets[1:], self.temp_convs[1:]):
+        for attn, temp_attn, resnet, temp_conv in zip(self.attentions, self.temp_attentions, self.resnets[1:], self.temp_convs[1:]):
             hidden_states = attn(
+                hidden_states,
+                encoder_hidden_states=encoder_hidden_states,
+                cross_attention_kwargs=cross_attention_kwargs,
+            ).sample
+            hidden_states = temp_attn(
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
                 cross_attention_kwargs=cross_attention_kwargs,
@@ -275,6 +282,7 @@ class CrossAttnDownBlock3D(nn.Module):
         super().__init__()
         resnets = []
         attentions = []
+        temp_attentions = []
         temp_convs = []
 
         self.has_cross_attention = True
@@ -316,7 +324,7 @@ class CrossAttnDownBlock3D(nn.Module):
                     upcast_attention=upcast_attention,
                 )
             )
-            attentions.append(
+            temp_attentions.append(
                 TransformerTempModel(
                     attn_num_head_channels,
                     out_channels // attn_num_head_channels,
@@ -331,6 +339,7 @@ class CrossAttnDownBlock3D(nn.Module):
         self.resnets = nn.ModuleList(resnets)
         self.temp_convs = nn.ModuleList(temp_convs)
         self.attentions = nn.ModuleList(attentions)
+        self.temp_attentions = nn.ModuleList(temp_attentions)
 
         if add_downsample:
             self.downsamplers = nn.ModuleList(
@@ -351,7 +360,7 @@ class CrossAttnDownBlock3D(nn.Module):
         # TODO(Patrick, William) - attention mask is not used
         output_states = ()
 
-        for resnet, temp_conv, attn in zip(self.resnets, self.temp_convs, self.attentions):
+        for resnet, temp_conv, attn, temp_attn in zip(self.resnets, self.temp_convs, self.attentions, self.temp_attentions):
             if self.training and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
@@ -374,6 +383,11 @@ class CrossAttnDownBlock3D(nn.Module):
                 hidden_states = resnet(hidden_states, temb)
                 hidden_states = temp_conv(hidden_states)
                 hidden_states = attn(
+                    hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                ).sample
+                hidden_states = temp_attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=cross_attention_kwargs,
@@ -507,6 +521,7 @@ class CrossAttnUpBlock3D(nn.Module):
         resnets = []
         temp_convs = []
         attentions = []
+        temp_attentions = []
 
         self.has_cross_attention = True
         self.attn_num_head_channels = attn_num_head_channels
@@ -549,7 +564,7 @@ class CrossAttnUpBlock3D(nn.Module):
                     upcast_attention=upcast_attention,
                 )
             )
-            attentions.append(
+            temp_attentions.append(
                 TransformerTempModel(
                     attn_num_head_channels,
                     out_channels // attn_num_head_channels,
@@ -565,6 +580,7 @@ class CrossAttnUpBlock3D(nn.Module):
         self.resnets = nn.ModuleList(resnets)
         self.temp_convs = nn.ModuleList(temp_convs)
         self.attentions = nn.ModuleList(attentions)
+        self.temp_attentions = nn.ModuleList(temp_attentions)
 
         if add_upsample:
             self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
@@ -584,7 +600,7 @@ class CrossAttnUpBlock3D(nn.Module):
         attention_mask=None,
     ):
         # TODO(Patrick, William) - attention mask is not used
-        for resnet, temp_conv, attn in zip(self.resnets, self.temp_convs, self.attentions):
+        for resnet, temp_conv, attn, temp_attn in zip(self.resnets, self.temp_convs, self.attentions, self.temp_attentions):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
@@ -612,6 +628,11 @@ class CrossAttnUpBlock3D(nn.Module):
                 hidden_states = resnet(hidden_states, temb)
                 hidden_states = temp_conv(hidden_states)
                 hidden_states = attn(
+                    hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                ).sample
+                hidden_states = temp_attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=cross_attention_kwargs,
