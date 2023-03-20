@@ -20,7 +20,7 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDIMScheduler, PNDMScheduler
-from ...utils import is_accelerate_available, is_accelerate_version, logging, randn_tensor, replace_example_docstring
+from ...utils import is_accelerate_available, is_accelerate_version, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
@@ -565,7 +565,6 @@ class StableDiffusionModelEditingPipeline(DiffusionPipeline):
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.__call__
     @torch.no_grad()
-    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
