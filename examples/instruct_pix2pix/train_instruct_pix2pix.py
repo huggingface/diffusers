@@ -960,8 +960,8 @@ def main():
 
         pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
-            text_encoder=text_encoder,
-            vae=vae,
+            text_encoder=accelerator.unwrap_model(text_encoder),
+            vae=accelerator.unwrap_model(vae),
             unet=unet,
             revision=args.revision,
         )
@@ -972,17 +972,9 @@ def main():
 
         if args.validation_prompt is not None:
             edited_images = []
-            # pipeline.torch_dtype = weight_dtype
-            # pipeline.unet = pipeline.unet.to(weight_dtype)
+            pipeline = pipeline.to(accelerator.device)
             with torch.autocast(str(accelerator.device)):
                 for _ in range(args.num_validation_images):
-                    print(f"Pipeline device: {pipeline.device}")
-                    print(
-                        f"UNet: {pipeline.unet.device} Text Encoder: {pipeline.text_encoder.device} VAE: {pipeline.vae.device}"
-                    )
-                    # print(
-                    #     f"UNet: {pipeline.unet.dtype} Text Encoder: {pipeline.text_encoder.dtype} VAE: {pipeline.vae.dtype}"
-                    # )
                     edited_images.append(
                         pipeline(
                             args.validation_prompt,
