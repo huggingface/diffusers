@@ -426,6 +426,10 @@ class DiffusionPipeline(ConfigMixin):
             if module is None:
                 register_dict = {name: (None, None)}
             else:
+                # register the original module, not the dynamo compiled one
+                if is_torch_version(">=", "2.0.0") and isinstance(module, torch._dynamo.eval_frame.OptimizedModule):
+                    module = module._orig_mod
+
                 library = module.__module__.split(".")[0]
 
                 # check if the module is a pipeline module
