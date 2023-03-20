@@ -259,7 +259,7 @@ def maybe_raise_or_warn(
         # I didn't find a public API to get the original class.
         sub_model = passed_class_obj[name]
         model_cls = sub_model.__class__
-        if is_torch_version(">=", "2.0.0") and isinstance(sub_model, torch._dynamo.eval_frame.OptimizedModule):
+        if "_dynamo.eval_frame" in str(model_cls):
             model_cls = sub_model._orig_mod.__class__
 
         if not issubclass(model_cls, expected_class_obj):
@@ -427,7 +427,7 @@ class DiffusionPipeline(ConfigMixin):
                 register_dict = {name: (None, None)}
             else:
                 # register the original module, not the dynamo compiled one
-                if is_torch_version(">=", "2.0.0") and isinstance(module, torch._dynamo.eval_frame.OptimizedModule):
+                if "_dynamo.eval_frame" in str(module.__class__):
                     module = module._orig_mod
 
                 library = module.__module__.split(".")[0]
@@ -497,7 +497,7 @@ class DiffusionPipeline(ConfigMixin):
 
             # Dynamo wraps the original model in a private class.
             # I didn't find a public API to get the original class.
-            if is_torch_version(">=", "2.0.0") and isinstance(sub_model, torch._dynamo.eval_frame.OptimizedModule):
+            if "_dynamo.eval_frame" in str(model_cls):
                 sub_model = sub_model._orig_mod
                 model_cls = sub_model.__class__
 
