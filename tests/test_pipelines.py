@@ -54,7 +54,16 @@ from diffusers import (
     logging,
 )
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
-from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, is_flax_available, is_torch_version, nightly, require_torch_2, slow, torch_device
+from diffusers.utils import (
+    CONFIG_NAME,
+    WEIGHTS_NAME,
+    floats_tensor,
+    is_flax_available,
+    nightly,
+    require_torch_2,
+    slow,
+    torch_device,
+)
 from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir, load_numpy, require_compel, require_torch_gpu
 
 

@@ -16,7 +16,13 @@ import PIL.ImageOps
 import requests
 from packaging import version
 
-from .import_utils import is_compel_available, is_flax_available, is_onnx_available, is_torch_available, is_torch_version
+from .import_utils import (
+    is_compel_available,
+    is_flax_available,
+    is_onnx_available,
+    is_torch_available,
+    is_torch_version,
+)
 from .logging import get_logger
 
 
@@ -160,7 +166,9 @@ def require_torch_2(test_case):
     """
     Decorator marking a test that requires PyTorch. These tests are skipped when PyTorch isn't installed.
     """
-    return unittest.skipUnless(is_torch_available() and is_torch_version(">=", "2.0.0"), "test requires PyTorch")(test_case)
+    return unittest.skipUnless(is_torch_available() and is_torch_version(">=", "2.0.0"), "test requires PyTorch 2")(
+        test_case
+    )
 
 
 def require_torch_gpu(test_case):
