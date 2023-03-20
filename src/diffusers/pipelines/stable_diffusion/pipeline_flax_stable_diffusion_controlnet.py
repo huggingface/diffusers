@@ -52,53 +52,58 @@ EXAMPLE_DOC_STRING = """
         >>> import jax.numpy as jnp
         >>> from flax.jax_utils import replicate
         >>> from flax.training.common_utils import shard
-        >>> import requests
-        >>> from io import BytesIO
+        >>> from diffusers.utils import load_image
         >>> from PIL import Image
-        >>> from diffusers import FlaxStableDiffusionImg2ImgPipeline
+        >>> from diffusers import FlaxStableDiffusionControlNetPipeline, FlaxControlNetModel
 
+        >>> def image_grid(imgs, rows, cols):
+        ...     w,h = imgs[0].size
+        ...     grid = Image.new('RGB', size=(cols*w, rows*h))
+        ...     for i, img in enumerate(imgs): grid.paste(img, box=(i%cols*w, i//cols*h))
+        ...     return grid
 
         >>> def create_key(seed=0):
         ...     return jax.random.PRNGKey(seed)
 
-
         >>> rng = create_key(0)
 
-        >>> url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
-        >>> response = requests.get(url)
-        >>> init_img = Image.open(BytesIO(response.content)).convert("RGB")
-        >>> init_img = init_img.resize((768, 512))
+        >>> # get canny image
+        >>> canny_image = load_image("https://huggingface.co/datasets/YiYiXu/test-doc-assets/resolve/main/blog_post_cell_10_output_0.jpeg")
 
-        >>> prompts = "A fantasy landscape, trending on artstation"
+        >>> prompts = "best quality, extremely detailed"
+        >>> negative_prompts = "monochrome, lowres, bad anatomy, worst quality, low quality"
 
-        >>> pipeline, params = FlaxStableDiffusionImg2ImgPipeline.from_pretrained(
-        ...     "CompVis/stable-diffusion-v1-4",
-        ...     revision="flax",
-        ...     dtype=jnp.bfloat16,
-        ... )
+        >>> # load control net and stable diffusion v1-5
+        >>> controlnet, controlnet_params = FlaxControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", from_pt=True, dtype=jnp.float32)
+        >>> pipe, params = FlaxStableDiffusionControlNetPipeline.from_pretrained(
+        ...     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, from_pt=True, dtype = jnp.float32)
+        >>> params['controlnet'] = controlnet_params
 
         >>> num_samples = jax.device_count()
         >>> rng = jax.random.split(rng, jax.device_count())
-        >>> prompt_ids, processed_image = pipeline.prepare_inputs(
-        ...     prompt=[prompts] * num_samples, image=[init_img] * num_samples
-        ... )
+
+        >>> prompt_ids = pipe.prepare_text_inputs([prompts] * num_samples)
+        >>> negative_prompt_ids = pipe.prepare_text_inputs([negative_prompts] * num_samples)
+        >>> processed_image = pipe.prepare_image_inputs([canny_image] * num_samples)
+
         >>> p_params = replicate(params)
         >>> prompt_ids = shard(prompt_ids)
+        >>> negative_prompt_ids = shard(negative_prompt_ids)
         >>> processed_image = shard(processed_image)
 
-        >>> output = pipeline(
+        >>> output = pipe(
         ...     prompt_ids=prompt_ids,
         ...     image=processed_image,
         ...     params=p_params,
         ...     prng_seed=rng,
-        ...     strength=0.75,
         ...     num_inference_steps=50,
+        ...     neg_prompt_ids=negative_prompt_ids,
         ...     jit=True,
-        ...     height=512,
-        ...     width=768,
         ... ).images
 
-        >>> output_images = pipeline.numpy_to_pil(np.asarray(output.reshape((num_samples,) + output.shape[-3:])))
+        >>> output_images = pipe.numpy_to_pil(np.asarray(output.reshape((num_samples,) + output.shape[-3:])))
+        >>> output_images = image_grid(output_images, num_samples//4, 4)
+        >>> output_images.save("generated_image.png")
         ```
 """
 
@@ -121,6 +126,8 @@ class FlaxStableDiffusionControlNetPipeline(FlaxDiffusionPipeline):
             Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         unet ([`FlaxUNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
+        controlnet ([`FlaxControlNetModel`]:
+            Provides additional conditioning to the unet during the denoising process.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`FlaxDDIMScheduler`], [`FlaxLMSDiscreteScheduler`], [`FlaxPNDMScheduler`], or
@@ -194,7 +201,7 @@ class FlaxStableDiffusionControlNetPipeline(FlaxDiffusionPipeline):
 
         processed_images = jnp.concatenate([preprocess(img, jnp.float32) for img in image])
 
-        return processed_images, 
+        return processed_images
 
     def _get_has_nsfw_concepts(self, features, params):
         has_nsfw_concepts = self.safety_checker(features, params)
@@ -243,8 +250,8 @@ class FlaxStableDiffusionControlNetPipeline(FlaxDiffusionPipeline):
         controlnet_conditioning_scale: float = 1.0,
     ):
         height, width = image.shape[-2:]
-        if height % 32 != 0 or width % 32 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 32 but are {height} and {width}.")
+        if height % 64 != 0 or width % 64 != 0:
+            raise ValueError(f"`height` and `width` have to be divisible by 64 but are {height} and {width}.")
 
         # get prompt text embeddings
         prompt_embeds = self.text_encoder(prompt_ids, params=params["text_encoder"])[0]
@@ -361,31 +368,25 @@ class FlaxStableDiffusionControlNetPipeline(FlaxDiffusionPipeline):
             prompt_ids (`jnp.array`):
                 The prompt or prompts to guide the image generation.
             image (`jnp.array`):
-                Array representing an image batch, that will be used as the starting point for the process.
+                Array representing the ControlNet input condition. ControlNet use this input condition to generate guidance to Unet.
             params (`Dict` or `FrozenDict`): Dictionary containing the model parameters/weights
             prng_seed (`jax.random.KeyArray` or `jax.Array`): Array containing random number generator key
-            strength (`float`, *optional*, defaults to 0.8):
-                Conceptually, indicates how much to transform the reference `image`. Must be between 0 and 1. `image`
-                will be used as a starting point, adding more noise to it the larger the `strength`. The number of
-                denoising steps depends on the amount of noise initially added. When `strength` is 1, added noise will
-                be maximum and the denoising process will run for the full number of iterations specified in
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The width in pixels of the generated image.
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
-            noise (`jnp.array`, *optional*):
+            latents (`jnp.array`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
-                generation. Can be used to tweak the same generation with different prompts. tensor will ge generated
-                by sampling using the supplied random `generator`.
+                generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
+                tensor will ge generated by sampling using the supplied random `generator`.
+            controlnet_conditioning_scale (`float` or `jnp.array`, *optional*, defaults to 1.0):
+                The outputs of the controlnet are multiplied by `controlnet_conditioning_scale` before they are added
+                to the residual in the original unet. 
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.FlaxStableDiffusionPipelineOutput`] instead of
                 a plain tuple.
@@ -473,7 +474,7 @@ class FlaxStableDiffusionControlNetPipeline(FlaxDiffusionPipeline):
         return FlaxStableDiffusionPipelineOutput(images=images, nsfw_content_detected=has_nsfw_concept)
 
 
-# Static argnums are pipe, start_timestep, num_inference_steps. A change would trigger recompilation.
+# Static argnums are pipe, num_inference_steps. A change would trigger recompilation.
 # Non-static args are (sharded) input tensors mapped over their first dimension (hence, `0`).
 @partial(
     jax.pmap,
@@ -520,7 +521,7 @@ def unshard(x: jnp.ndarray):
 def preprocess(image, dtype):
     image = image.convert("RGB")
     w, h = image.size
-    w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
+    w, h = map(lambda x: x - x % 64, (w, h))  # resize to integer multiple of 64
     image = image.resize((w, h), resample=PIL_INTERPOLATION["lanczos"])
     image = jnp.array(image).astype(dtype) / 255.0
     image = image[None].transpose(0, 3, 1, 2)

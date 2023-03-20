@@ -32,12 +32,6 @@ from .unet_2d_blocks_flax import (
 
 @flax.struct.dataclass
 class FlaxControlNetOutput(BaseOutput):
-    """
-    Args:
-        sample (`jnp.ndarray` of shape `(batch_size, num_channels, height, width)`):
-            Hidden states conditioned on `encoder_hidden_states` input. Output of last layer of model.
-    """
-
     down_block_res_samples: jnp.ndarray
     mid_block_res_sample: jnp.ndarray
 
@@ -101,8 +95,12 @@ class FlaxControlNetConditioningEmbedding(nn.Module):
 @flax_register_to_config
 class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
     r"""
-    FlaxUNet2DConditionModel is a conditional 2D UNet model that takes in a noisy sample, conditional state, and a
-    timestep and returns sample shaped output.
+    Quoting from https://arxiv.org/abs/2302.05543: "Stable Diffusion uses a pre-processing method similar to VQ-GAN
+    [11] to convert the entire dataset of 512 × 512 images into smaller 64 × 64 “latent images” for stabilized
+    training. This requires ControlNets to convert image-based conditions to 64 × 64 feature space to match the
+    convolution size. We use a tiny network E(·) of four convolution layers with 4 × 4 kernels and 2 × 2 strides
+    (activated by ReLU, channels are 16, 32, 64, 128, initialized with Gaussian weights, trained jointly with the full
+    model) to encode image-space conditions ... into feature maps ..."
 
     This model inherits from [`FlaxModelMixin`]. Check the superclass documentation for the generic methods the library
     implements for all the models (such as downloading or saving, etc.)
@@ -122,14 +120,9 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
             The size of the input sample.
         in_channels (`int`, *optional*, defaults to 4):
             The number of channels in the input sample.
-        out_channels (`int`, *optional*, defaults to 4):
-            The number of channels in the output.
         down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
             The tuple of downsample blocks to use. The corresponding class names will be: "FlaxCrossAttnDownBlock2D",
             "FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxDownBlock2D"
-        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D",)`):
-            The tuple of upsample blocks to use. The corresponding class names will be: "FlaxUpBlock2D",
-            "FlaxCrossAttnUpBlock2D", "FlaxCrossAttnUpBlock2D", "FlaxCrossAttnUpBlock2D"
         block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each block.
         layers_per_block (`int`, *optional*, defaults to 2):
@@ -143,6 +136,11 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
         flip_sin_to_cos (`bool`, *optional*, defaults to `True`):
             Whether to flip the sin to cos in the time embedding.
         freq_shift (`int`, *optional*, defaults to 0): The frequency shift to apply to the time embedding.
+        controlnet_conditioning_channel_order (`str`, *optional*, defaults to `rgb`):
+            The channel order of conditional image. Will convert it to `rgb` if it's `bgr`
+        conditioning_embedding_out_channels (`tuple`, *optional*, defaults to `(16, 32, 96, 256)`):
+            The tuple of output channel for each block in conditioning_embedding layer 
+
 
     """
     sample_size: int = 32
@@ -316,6 +314,8 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
             sample (`jnp.ndarray`): (batch, channel, height, width) noisy inputs tensor
             timestep (`jnp.ndarray` or `float` or `int`): timesteps
             encoder_hidden_states (`jnp.ndarray`): (batch_size, sequence_length, hidden_size) encoder hidden states
+            controlnet_cond (`jnp.ndarray`): (batch, channel, height, width) the conditional input tensor
+            conditioning_scale: (`float`) the scale factor for controlnet outputs
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] instead of a
                 plain tuple.
