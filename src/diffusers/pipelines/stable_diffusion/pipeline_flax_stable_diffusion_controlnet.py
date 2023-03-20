@@ -171,7 +171,7 @@ class FlaxStableDiffusionControlNetPipeline(FlaxDiffusionPipeline):
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
-     def prepare_text_inputs(self, prompt: Union[str, List[str]]):
+    def prepare_text_inputs(self, prompt: Union[str, List[str]]):
         if not isinstance(prompt, (str, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
