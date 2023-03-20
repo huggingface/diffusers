@@ -486,7 +486,7 @@ class DiffusionPipeline(ConfigMixin):
 
             # Dynamo wraps the original mode and changes the class.
             # Is there a principled way to obtain the original class?
-            if "_dynamo.eval_frame" in str(model_cls):
+            if is_torch_version(">=", "2.0.0") and isinstance(sub_model, torch._dynamo.eval_frame.OptimizedModule):
                 model_cls = sub_model._orig_mod.__class__
 
             save_method_name = None
