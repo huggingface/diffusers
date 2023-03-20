@@ -748,8 +748,6 @@ class DiffusionPipeline(ConfigMixin):
 
         # 3. Load each module in the pipeline
         for name, (library_name, class_name) in init_dict.items():
-            #TODO: REMOVE
-            print(f'Debugging the failing module {name}, {library_name}, {class_name}')
             # 3.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
             if class_name.startswith("Flax"):
                 class_name = class_name[4:]
@@ -785,13 +783,11 @@ class DiffusionPipeline(ConfigMixin):
                 # set passed class object
                 loaded_sub_model = passed_class_obj[name]
             elif is_pipeline_module:
-                print(f'Reached line 788 for {name}, {library_name}, {class_name}')
                 pipeline_module = getattr(pipelines, library_name)
                 class_obj = getattr(pipeline_module, class_name)
                 importable_classes = ALL_IMPORTABLE_CLASSES
                 class_candidates = {c: class_obj for c in importable_classes.keys()}
             else:
-                print(f'Reached line 794 for {name}, {library_name}, {class_name}')
                 # else we just import it from the library.
                 library = importlib.import_module(library_name)
 

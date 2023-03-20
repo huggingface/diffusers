@@ -1,10 +1,10 @@
 # Adapted from https://github.com/showlab/Tune-A-Video/blob/main/tuneavideo/pipelines/pipeline_tuneavideo.py
 
 import inspect
+
 # from dataclasses import dataclass
 from typing import Callable, List, Optional, Union
 
-import numpy as np
 import torch
 
 # Remove this
@@ -23,11 +23,13 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ...utils import BaseOutput, deprecate, logging, is_accelerate_available
+from ...utils import deprecate, is_accelerate_available, logging
 from ..pipeline_utils import DiffusionPipeline
 from . import TuneAVideoPipelineOutput
 
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 class TuneAVideoPipeline(DiffusionPipeline):
     _optional_components = []
@@ -229,14 +231,13 @@ class TuneAVideoPipeline(DiffusionPipeline):
     def decode_latents(self, latents):
         video_length = latents.shape[2]
         latents = 1 / 0.18215 * latents
-        #TODO(Abhinay) verify
         # latents = rearrange(latents, "b c f h w -> (b f) c h w")
-        latents = latents.movedim((0,1,2,3,4),(0,2,1,3,4))
-        latents = latents.flatten(0,1)
+        latents = latents.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
+        latents = latents.flatten(0, 1)
         video = self.vae.decode(latents).sample
         # video = rearrange(video, "(b f) c h w -> b c f h w", f=video_length)
         video = video.reshape([-1, video_length, *video.shape[1:]])
-        video = video.movedim((0,1,2,3,4), (0,2,1,3,4))
+        video = video.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
         video = (video / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
         video = video.cpu().float().numpy()

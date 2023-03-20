@@ -17,6 +17,7 @@ from typing import Callable, Optional
 
 import torch
 import torch.nn.functional as F
+
 # from einops import rearrange, repeat
 from torch import nn
 
@@ -592,12 +593,11 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
         # Input
         assert hidden_states.dim() == 5, f"Expected hidden_states to have ndim=5, but got ndim={hidden_states.dim()}."
         video_length = hidden_states.shape[2]
-        #TODO(Abhinay) Verify
         # hidden_states = rearrange(hidden_states, "b c f h w -> (b f) c h w")
-        hidden_states = hidden_states.movedim((0,1,2,3,4),(0,2,1,3,4))
-        hidden_states = hidden_states.flatten(0,1)
+        hidden_states = hidden_states.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
+        hidden_states = hidden_states.flatten(0, 1)
         # encoder_hidden_states = repeat(encoder_hidden_states, "b n c -> (b f) n c", f=video_length)
-        encoder_hidden_states = encoder_hidden_states.repeat_interleave(repeats=video_length,dim=0)
+        encoder_hidden_states = encoder_hidden_states.repeat_interleave(repeats=video_length, dim=0)
 
         batch, channel, height, weight = hidden_states.shape
         residual = hidden_states
@@ -633,7 +633,7 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
 
         # output = rearrange(output, "(b f) c h w -> b c f h w", f=video_length)
         output = output.reshape([-1, video_length, *output.shape[1:]])
-        output = output.movedim((0,1,2,3,4), (0,2,1,3,4))
+        output = output.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
         if not return_dict:
             return (output,)
 
@@ -657,8 +657,8 @@ class BasicSparseTransformerBlock(nn.Module):
         super().__init__()
         self.only_cross_attention = only_cross_attention
         self.use_ada_layer_norm = num_embeds_ada_norm is not None
-        
-        #Maybe instead of defining a new class here. I can use cross attention with a custom processor.
+
+        # Maybe instead of defining a new class here. I can use cross attention with a custom processor.
         # SC-Attn
         self.attn1 = CrossAttention(
             query_dim=dim,
@@ -668,9 +668,8 @@ class BasicSparseTransformerBlock(nn.Module):
             bias=attention_bias,
             cross_attention_dim=cross_attention_dim if only_cross_attention else None,
             upcast_attention=upcast_attention,
-            processor=TuneAVideoCrossAttnProcessor()
+            processor=TuneAVideoCrossAttnProcessor(),
         )
-        print(f"Params: query_dim {dim},heads {num_attention_heads},dim_head {attention_head_dim}, dropout {dropout}, bias {attention_bias}, cross_attention_dim {cross_attention_dim if only_cross_attention else None}, upcast_attention {upcast_attention}")
         self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
 
         # Cross-Attn
@@ -771,12 +770,11 @@ class BasicSparseTransformerBlock(nn.Module):
 
         # Temporal-Attention
         d = hidden_states.shape[1]
-        #TODO(Abhinay) Verify
         # hidden_states = rearrange(hidden_states, "(b f) d c -> (b d) f c", f=video_length)
         # (b f) d c -> b f d c -> b d f c -> (b d) f c
         hidden_states = hidden_states.reshape([-1, video_length, *hidden_states.shape[1:]])
-        hidden_states = hidden_states.movedim((0,1,2,3), (0,2,1,3))
-        hidden_states = hidden_states.flatten(0,1)
+        hidden_states = hidden_states.movedim((0, 1, 2, 3), (0, 2, 1, 3))
+        hidden_states = hidden_states.flatten(0, 1)
         norm_hidden_states = (
             self.norm_temp(hidden_states, timestep) if self.use_ada_layer_norm else self.norm_temp(hidden_states)
         )
@@ -784,73 +782,7 @@ class BasicSparseTransformerBlock(nn.Module):
         # hidden_states = rearrange(hidden_states, "(b d) f c -> (b f) d c", d=d)
         # (b d) f c -> b d f c ->  b f d c -> (b f) d c
         hidden_states = hidden_states.reshape([-1, d, *hidden_states.shape[1:]])
-        hidden_states = hidden_states.movedim((0,1,2,3), (0,2,1,3))
-        hidden_states = hidden_states.flatten(0,1)
+        hidden_states = hidden_states.movedim((0, 1, 2, 3), (0, 2, 1, 3))
+        hidden_states = hidden_states.flatten(0, 1)
 
         return hidden_states
-
-
-# class SparseCausalAttention(CrossAttention):
-#     def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None, video_length=None):
-#         batch_size, sequence_length, _ = hidden_states.shape
-
-#         encoder_hidden_states = encoder_hidden_states
-
-#         if self.group_norm is not None:
-#             hidden_states = self.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
-
-#         query = self.to_q(hidden_states)
-#         dim = query.shape[-1]
-#         query = self.head_to_batch_dim(query)
-
-#         if self.added_kv_proj_dim is not None:
-#             raise NotImplementedError
-
-#         encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
-#         key = self.to_k(encoder_hidden_states)
-#         value = self.to_v(encoder_hidden_states)
-
-#         former_frame_index = torch.arange(video_length) - 1
-#         former_frame_index[0] = 0
-
-#         #TODO(Abhinay) Verify
-#         # key = rearrange(key, "(b f) d c -> b f d c", f=video_length)
-#         key = key.reshape([-1, video_length, *key.shape[1:]])
-#         key = torch.cat([key[:, [0] * video_length], key[:, former_frame_index]], dim=2)
-#         # key = rearrange(key, "b f d c -> (b f) d c")
-#         key.flatten(0,1)
-        
-#         # value = rearrange(value, "(b f) d c -> b f d c", f=video_length)
-#         value = value.reshape([-1, video_length, *value.shape[1:]])
-#         value = torch.cat([value[:, [0] * video_length], value[:, former_frame_index]], dim=2)
-#         # value = rearrange(value, "b f d c -> (b f) d c")
-#         value.flatten(0,1)
-
-#         key = self.head_to_batch_dim(key)
-#         value = self.head_to_batch_dim(value)
-
-#         if attention_mask is not None:
-#             if attention_mask.shape[-1] != query.shape[1]:
-#                 target_length = query.shape[1]
-#                 attention_mask = F.pad(attention_mask, (0, target_length), value=0.0)
-#                 attention_mask = attention_mask.repeat_interleave(self.heads, dim=0)
-
-#         # attention, what we cannot get enough of
-#         if self._use_memory_efficient_attention_xformers:
-#             hidden_states = self._memory_efficient_attention_xformers(query, key, value, attention_mask)
-#             # Some versions of xformers return output in fp32, cast it back to the dtype of the input
-#             hidden_states = hidden_states.to(query.dtype)
-#         else:
-#             if self._slice_size is None or query.shape[0] // self._slice_size == 1:
-#                 hidden_states = self._attention(query, key, value, attention_mask)
-#             else:
-#                 hidden_states = self._sliced_attention(query, key, value, sequence_length, dim, attention_mask)
-
-#         # linear proj
-#         hidden_states = self.to_out[0](hidden_states)
-
-#         # dropout
-#         hidden_states = self.to_out[1](hidden_states)
-#         return hidden_states
-
-

@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from typing import Union
-import torch
 
 import numpy as np
+import torch
 
 from ...utils import (
     BaseOutput,
@@ -15,6 +15,7 @@ from ...utils import (
     is_transformers_available,
     is_transformers_version,
 )
+
 
 @dataclass
 class TuneAVideoPipelineOutput(BaseOutput):
