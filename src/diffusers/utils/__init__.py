@@ -85,6 +85,7 @@ if is_torch_available():
         nightly,
         parse_flag_from_env,
         print_tensor_test,
+        require_torch_2,
         require_torch_gpu,
         skip_mps,
         slow,
