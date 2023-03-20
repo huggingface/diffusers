@@ -19,10 +19,8 @@ import torch.nn.functional as F
 from torch import nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..models.embeddings import ImagePositionalEmbeddings
 from ..utils import BaseOutput, deprecate
 from .attention import BasicTransformerBlock
-from .embeddings import PatchEmbed
 from .modeling_utils import ModelMixin
 
 
@@ -98,6 +96,7 @@ class TransformerTempModel(ModelMixin, ConfigMixin):
         upcast_attention: bool = False,
         norm_type: str = "layer_norm",
         norm_elementwise_affine: bool = True,
+        double_self_attention: bool = True,
     ):
         super().__init__()
         self.use_linear_projection = use_linear_projection
@@ -139,40 +138,10 @@ class TransformerTempModel(ModelMixin, ConfigMixin):
             )
 
         # 2. Define input layers
-        if self.is_input_continuous:
-            self.in_channels = in_channels
+        self.in_channels = in_channels
 
-            self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
-            if use_linear_projection:
-                self.proj_in = nn.Linear(in_channels, inner_dim)
-            else:
-                self.proj_in = nn.Conv2d(in_channels, inner_dim, kernel_size=1, stride=1, padding=0)
-        elif self.is_input_vectorized:
-            assert sample_size is not None, "TransformerTempModel over discrete input must provide sample_size"
-            assert num_vector_embeds is not None, "TransformerTempModel over discrete input must provide num_embed"
-
-            self.height = sample_size
-            self.width = sample_size
-            self.num_vector_embeds = num_vector_embeds
-            self.num_latent_pixels = self.height * self.width
-
-            self.latent_image_embedding = ImagePositionalEmbeddings(
-                num_embed=num_vector_embeds, embed_dim=inner_dim, height=self.height, width=self.width
-            )
-        elif self.is_input_patches:
-            assert sample_size is not None, "TransformerTempModel over patched input must provide sample_size"
-
-            self.height = sample_size
-            self.width = sample_size
-
-            self.patch_size = patch_size
-            self.pos_embed = PatchEmbed(
-                height=sample_size,
-                width=sample_size,
-                patch_size=patch_size,
-                in_channels=in_channels,
-                embed_dim=inner_dim,
-            )
+        self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
+        self.proj_in = nn.Linear(in_channels, inner_dim)
 
         # 3. Define transformers blocks
         self.transformer_blocks = nn.ModuleList(
@@ -187,6 +156,7 @@ class TransformerTempModel(ModelMixin, ConfigMixin):
                     num_embeds_ada_norm=num_embeds_ada_norm,
                     attention_bias=attention_bias,
                     only_cross_attention=only_cross_attention,
+                    double_self_attention=double_self_attention,
                     upcast_attention=upcast_attention,
                     norm_type=norm_type,
                     norm_elementwise_affine=norm_elementwise_affine,
@@ -196,20 +166,7 @@ class TransformerTempModel(ModelMixin, ConfigMixin):
         )
 
         # 4. Define output layers
-        self.out_channels = in_channels if out_channels is None else out_channels
-        if self.is_input_continuous:
-            # TODO: should use out_channels for continous projections
-            if use_linear_projection:
-                self.proj_out = nn.Linear(inner_dim, in_channels)
-            else:
-                self.proj_out = nn.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
-        elif self.is_input_vectorized:
-            self.norm_out = nn.LayerNorm(inner_dim)
-            self.out = nn.Linear(inner_dim, self.num_vector_embeds - 1)
-        elif self.is_input_patches:
-            self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
-            self.proj_out_1 = nn.Linear(inner_dim, 2 * inner_dim)
-            self.proj_out_2 = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
+        self.proj_out = nn.Linear(inner_dim, in_channels)
 
     def forward(
         self,

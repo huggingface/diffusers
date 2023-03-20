@@ -119,13 +119,13 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         up_block_types: Tuple[str] = ("UpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D"),
         only_cross_attention: Union[bool, Tuple[bool]] = False,  # remove
         block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
-        layers_per_block: int = 1,
+        layers_per_block: int = 2,
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,  # remove
         act_fn: str = "silu",  # remove
         norm_num_groups: Optional[int] = 32,  # remove
         norm_eps: float = 1e-5,  # remove
-        cross_attention_dim: int = 1280,
+        cross_attention_dim: int = 1024,
         attention_head_dim: Union[int, Tuple[int]] = 8,  # remove
         use_linear_projection: bool = False,  # remove
         class_embed_type: Optional[str] = None,  # remove
@@ -202,7 +202,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
             attention_head_dim=64,
             in_channels=block_out_channels[0],
             num_layers=1,
-            cross_attention_dim=cross_attention_dim,
             use_linear_projection=use_linear_projection,
             upcast_attention=upcast_attention,
         )

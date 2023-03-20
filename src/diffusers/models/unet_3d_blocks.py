@@ -206,6 +206,28 @@ class UNetMidBlock3DCrossAttn(nn.Module):
                     upcast_attention=upcast_attention,
                 )
             )
+            resnets.append(
+                ResnetBlock2D(
+                    in_channels=in_channels,
+                    out_channels=in_channels,
+                    temb_channels=temb_channels,
+                    eps=resnet_eps,
+                    groups=resnet_groups,
+                    dropout=dropout,
+                    time_embedding_norm=resnet_time_scale_shift,
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
+                    pre_norm=resnet_pre_norm,
+                )
+            )
+            temp_convs.append(
+                TemporalConvBlock_v2(
+                    in_channels,
+                    in_channels,
+                    dropout=0.1,
+                )
+            )
+
         self.resnets = nn.ModuleList(resnets)
         self.temp_convs = nn.ModuleList(temp_convs)
         self.attentions = nn.ModuleList(attentions)
@@ -213,7 +235,9 @@ class UNetMidBlock3DCrossAttn(nn.Module):
     def forward(
         self, hidden_states, temb=None, encoder_hidden_states=None, attention_mask=None, cross_attention_kwargs=None
     ):
-        for attn, resnet, temp_conv in zip(self.attentions, self.resnets, self.temp_convs):
+        hidden_states = self.resnets[0](hidden_states, temb)
+        hidden_states = self.temp_convs[0](hidden_states)
+        for attn, resnet, temp_conv in zip(self.attentions, self.resnets[1:], self.temp_convs[1:]):
             hidden_states = attn(
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
@@ -295,8 +319,8 @@ class CrossAttnDownBlock3D(nn.Module):
             attentions.append(
                 TransformerTempModel(
                     attn_num_head_channels,
-                    in_channels // attn_num_head_channels,
-                    in_channels=in_channels,
+                    out_channels // attn_num_head_channels,
+                    in_channels=out_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
