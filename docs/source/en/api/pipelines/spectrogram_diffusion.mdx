@@ -38,7 +38,7 @@ As depicted above the model takes as input a MIDI file and tokenizes it into a s
 ```python
 from diffusers import SpectrogramDiffusionPipeline
 
-pipe = SpectrogramDiffusionPipeline.from_pretrained("kashif/music-spectrogram-diffusion")
+pipe = SpectrogramDiffusionPipeline.from_pretrained("google/music-spectrogram-diffusion")
 pipe = pipe.to("cuda")
 
 # Download via: wget http://www.piano-midi.de/midis/beethoven/beethoven_hammerklavier_2.mid
