@@ -504,7 +504,6 @@ class XFormersAttnProcessor:
         input_ndim = hidden_states.ndim
 
         if input_ndim == 4:
-
             _, channel, height, width = hidden_states.shape
 
             hidden_states = hidden_states.view(batch_size, channel, height * width)
