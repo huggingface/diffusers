@@ -15,7 +15,6 @@ from dataclasses import dataclass
 from typing import Optional
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
@@ -225,7 +224,12 @@ class TransformerTempModel(ModelMixin, ConfigMixin):
 
         # 3. Output
         hidden_states = self.proj_out(hidden_states)
-        hidden_states = hidden_states[None, None, :].reshape(batch_size, height, width, channel, num_frames).permute(0, 3, 4, 1, 2).contiguous()
+        hidden_states = (
+            hidden_states[None, None, :]
+            .reshape(batch_size, height, width, channel, num_frames)
+            .permute(0, 3, 4, 1, 2)
+            .contiguous()
+        )
         hidden_states = hidden_states.reshape(batch_frames, channel, height, width)
 
         output = hidden_states + residual

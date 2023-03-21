@@ -235,11 +235,19 @@ class UNetMidBlock3DCrossAttn(nn.Module):
         self.temp_attentions = nn.ModuleList(temp_attentions)
 
     def forward(
-        self, hidden_states, temb=None, encoder_hidden_states=None, attention_mask=None, num_frames=1, cross_attention_kwargs=None
+        self,
+        hidden_states,
+        temb=None,
+        encoder_hidden_states=None,
+        attention_mask=None,
+        num_frames=1,
+        cross_attention_kwargs=None,
     ):
         hidden_states = self.resnets[0](hidden_states, temb)
         hidden_states = self.temp_convs[0](hidden_states, num_frames=num_frames)
-        for attn, temp_attn, resnet, temp_conv in zip(self.attentions, self.temp_attentions, self.resnets[1:], self.temp_convs[1:]):
+        for attn, temp_attn, resnet, temp_conv in zip(
+            self.attentions, self.temp_attentions, self.resnets[1:], self.temp_convs[1:]
+        ):
             hidden_states = attn(
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
@@ -351,12 +359,20 @@ class CrossAttnDownBlock3D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(
-        self, hidden_states, temb=None, encoder_hidden_states=None, attention_mask=None, num_frames=1, cross_attention_kwargs=None
+        self,
+        hidden_states,
+        temb=None,
+        encoder_hidden_states=None,
+        attention_mask=None,
+        num_frames=1,
+        cross_attention_kwargs=None,
     ):
         # TODO(Patrick, William) - attention mask is not used
         output_states = ()
 
-        for resnet, temp_conv, attn, temp_attn in zip(self.resnets, self.temp_convs, self.attentions, self.temp_attentions):
+        for resnet, temp_conv, attn, temp_attn in zip(
+            self.resnets, self.temp_convs, self.attentions, self.temp_attentions
+        ):
             hidden_states = resnet(hidden_states, temb)
             hidden_states = temp_conv(hidden_states, num_frames=num_frames)
             hidden_states = attn(
@@ -563,7 +579,9 @@ class CrossAttnUpBlock3D(nn.Module):
         cross_attention_kwargs=None,
     ):
         # TODO(Patrick, William) - attention mask is not used
-        for resnet, temp_conv, attn, temp_attn in zip(self.resnets, self.temp_convs, self.attentions, self.temp_attentions):
+        for resnet, temp_conv, attn, temp_attn in zip(
+            self.resnets, self.temp_convs, self.attentions, self.temp_attentions
+        ):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
@@ -660,11 +678,7 @@ class UpBlock3D(nn.Module):
 
 
 class TemporalConvBlock_v2(nn.Module):
-    def __init__(self,
-                 in_dim,
-                 out_dim=None,
-                 dropout=0.0,
-                 use_image_dataset=False):
+    def __init__(self, in_dim, out_dim=None, dropout=0.0, use_image_dataset=False):
         super(TemporalConvBlock_v2, self).__init__()
         if out_dim is None:
             out_dim = in_dim  # int(1.5*in_dim)
@@ -674,17 +688,26 @@ class TemporalConvBlock_v2(nn.Module):
 
         # conv layers
         self.conv1 = nn.Sequential(
-            nn.GroupNorm(32, in_dim), nn.SiLU(),
-            nn.Conv3d(in_dim, out_dim, (3, 1, 1), padding=(1, 0, 0)))
+            nn.GroupNorm(32, in_dim), nn.SiLU(), nn.Conv3d(in_dim, out_dim, (3, 1, 1), padding=(1, 0, 0))
+        )
         self.conv2 = nn.Sequential(
-            nn.GroupNorm(32, out_dim), nn.SiLU(), nn.Dropout(dropout),
-            nn.Conv3d(out_dim, in_dim, (3, 1, 1), padding=(1, 0, 0)))
+            nn.GroupNorm(32, out_dim),
+            nn.SiLU(),
+            nn.Dropout(dropout),
+            nn.Conv3d(out_dim, in_dim, (3, 1, 1), padding=(1, 0, 0)),
+        )
         self.conv3 = nn.Sequential(
-            nn.GroupNorm(32, out_dim), nn.SiLU(), nn.Dropout(dropout),
-            nn.Conv3d(out_dim, in_dim, (3, 1, 1), padding=(1, 0, 0)))
+            nn.GroupNorm(32, out_dim),
+            nn.SiLU(),
+            nn.Dropout(dropout),
+            nn.Conv3d(out_dim, in_dim, (3, 1, 1), padding=(1, 0, 0)),
+        )
         self.conv4 = nn.Sequential(
-            nn.GroupNorm(32, out_dim), nn.SiLU(), nn.Dropout(dropout),
-            nn.Conv3d(out_dim, in_dim, (3, 1, 1), padding=(1, 0, 0)))
+            nn.GroupNorm(32, out_dim),
+            nn.SiLU(),
+            nn.Dropout(dropout),
+            nn.Conv3d(out_dim, in_dim, (3, 1, 1), padding=(1, 0, 0)),
+        )
 
         # zero out the last layer params,so the conv block is identity
         nn.init.zeros_(self.conv4[-1].weight)

@@ -15,7 +15,9 @@
 """ Conversion script for the LDM checkpoints. """
 
 import argparse
+
 import torch
+
 from diffusers import UNet3DConditionModel
 
 
@@ -191,9 +193,7 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
     first_temp_attention = [v for v in unet_state_dict if v.startswith("input_blocks.0.1")]
     paths = renew_attention_paths(first_temp_attention)
     meta_path = {"old": "input_blocks.0.1", "new": "transformer_in"}
-    assign_to_checkpoint(
-        paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config
-    )
+    assign_to_checkpoint(paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config)
 
     new_checkpoint["conv_norm_out.weight"] = unet_state_dict["out.0.weight"]
     new_checkpoint["conv_norm_out.bias"] = unet_state_dict["out.0.bias"]
@@ -245,11 +245,12 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
             paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config
         )
 
-        temporal_convs = [
-            key for key in resnets if "temopral_conv" in key
-        ]
+        temporal_convs = [key for key in resnets if "temopral_conv" in key]
         paths = renew_temp_conv_paths(temporal_convs)
-        meta_path = {"old": f"input_blocks.{i}.0.temopral_conv", "new": f"down_blocks.{block_id}.temp_convs.{layer_in_block_id}"}
+        meta_path = {
+            "old": f"input_blocks.{i}.0.temopral_conv",
+            "new": f"down_blocks.{block_id}.temp_convs.{layer_in_block_id}",
+        }
         assign_to_checkpoint(
             paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config
         )
@@ -263,37 +264,44 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
 
         if len(temp_attentions):
             paths = renew_attention_paths(temp_attentions)
-            meta_path = {"old": f"input_blocks.{i}.2", "new": f"down_blocks.{block_id}.temp_attentions.{layer_in_block_id}"}
+            meta_path = {
+                "old": f"input_blocks.{i}.2",
+                "new": f"down_blocks.{block_id}.temp_attentions.{layer_in_block_id}",
+            }
             assign_to_checkpoint(
                 paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config
             )
 
     resnet_0 = middle_blocks[0]
-    temporal_convs_0 = [
-        key for key in resnet_0 if "temopral_conv" in key
-    ]
+    temporal_convs_0 = [key for key in resnet_0 if "temopral_conv" in key]
     attentions = middle_blocks[1]
     temp_attentions = middle_blocks[2]
     resnet_1 = middle_blocks[3]
-    temporal_convs_1 = [
-        key for key in resnet_1 if "temopral_conv" in key
-    ]
+    temporal_convs_1 = [key for key in resnet_1 if "temopral_conv" in key]
 
     resnet_0_paths = renew_resnet_paths(resnet_0)
     meta_path = {"old": "middle_block.0", "new": "mid_block.resnets.0"}
-    assign_to_checkpoint(resnet_0_paths, new_checkpoint, unet_state_dict, config=config, additional_replacements=[meta_path])
+    assign_to_checkpoint(
+        resnet_0_paths, new_checkpoint, unet_state_dict, config=config, additional_replacements=[meta_path]
+    )
 
     temp_conv_0_paths = renew_temp_conv_paths(temporal_convs_0)
     meta_path = {"old": "middle_block.0.temopral_conv", "new": "mid_block.temp_convs.0"}
-    assign_to_checkpoint(temp_conv_0_paths, new_checkpoint, unet_state_dict, config=config, additional_replacements=[meta_path])
+    assign_to_checkpoint(
+        temp_conv_0_paths, new_checkpoint, unet_state_dict, config=config, additional_replacements=[meta_path]
+    )
 
     resnet_1_paths = renew_resnet_paths(resnet_1)
     meta_path = {"old": "middle_block.3", "new": "mid_block.resnets.1"}
-    assign_to_checkpoint(resnet_1_paths, new_checkpoint, unet_state_dict, config=config, additional_replacements=[meta_path])
+    assign_to_checkpoint(
+        resnet_1_paths, new_checkpoint, unet_state_dict, config=config, additional_replacements=[meta_path]
+    )
 
     temp_conv_1_paths = renew_temp_conv_paths(temporal_convs_1)
     meta_path = {"old": "middle_block.3.temopral_conv", "new": "mid_block.temp_convs.1"}
-    assign_to_checkpoint(temp_conv_1_paths, new_checkpoint, unet_state_dict, config=config, additional_replacements=[meta_path])
+    assign_to_checkpoint(
+        temp_conv_1_paths, new_checkpoint, unet_state_dict, config=config, additional_replacements=[meta_path]
+    )
 
     attentions_paths = renew_attention_paths(attentions)
     meta_path = {"old": "middle_block.1", "new": "mid_block.attentions.0"}
@@ -333,11 +341,12 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
                 paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config
             )
 
-            temporal_convs = [
-                key for key in resnets if "temopral_conv" in key
-            ]
+            temporal_convs = [key for key in resnets if "temopral_conv" in key]
             paths = renew_temp_conv_paths(temporal_convs)
-            meta_path = {"old": f"output_blocks.{i}.0.temopral_conv", "new": f"up_blocks.{block_id}.temp_convs.{layer_in_block_id}"}
+            meta_path = {
+                "old": f"output_blocks.{i}.0.temopral_conv",
+                "new": f"up_blocks.{block_id}.temp_convs.{layer_in_block_id}",
+            }
             assign_to_checkpoint(
                 paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config
             )
@@ -385,7 +394,7 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
             temopral_conv_paths = [l for l in output_block_layers if "temopral_conv" in l]
             for path in temopral_conv_paths:
                 pruned_path = path.split("temopral_conv.")[-1]
-                old_path = ".".join(["output_blocks", str(i), str(block_id) , "temopral_conv", pruned_path])
+                old_path = ".".join(["output_blocks", str(i), str(block_id), "temopral_conv", pruned_path])
                 new_path = ".".join(["up_blocks", str(block_id), "temp_convs", str(layer_in_block_id), pruned_path])
                 new_checkpoint[new_path] = unet_state_dict[old_path]
 

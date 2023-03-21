@@ -40,8 +40,8 @@ else:
         Transformer2DModel,
         UNet1DModel,
         UNet2DConditionModel,
-        UNet3DConditionModel,
         UNet2DModel,
+        UNet3DConditionModel,
         VQModel,
     )
     from .optimization import (
@@ -131,6 +131,7 @@ else:
         StableDiffusionUpscalePipeline,
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
+        TextToVideoMSPipeline,
         UnCLIPImageVariationPipeline,
         UnCLIPPipeline,
         VersatileDiffusionDualGuidedPipeline,

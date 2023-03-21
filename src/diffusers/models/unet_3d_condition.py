@@ -23,7 +23,15 @@ from ..utils import BaseOutput, logging
 from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
 from .transformer_temp import TransformerTempModel
-from .unet_3d_blocks import get_down_block, get_up_block, UNetMidBlock3DCrossAttn, UpBlock3D, DownBlock3D, CrossAttnUpBlock3D, CrossAttnDownBlock3D
+from .unet_3d_blocks import (
+    CrossAttnDownBlock3D,
+    CrossAttnUpBlock3D,
+    DownBlock3D,
+    UNetMidBlock3DCrossAttn,
+    UpBlock3D,
+    get_down_block,
+    get_up_block,
+)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -545,7 +553,11 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
                 )
             else:
                 sample = upsample_block(
-                    hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size, num_frames=num_frames
+                    hidden_states=sample,
+                    temb=emb,
+                    res_hidden_states_tuple=res_samples,
+                    upsample_size=upsample_size,
+                    num_frames=num_frames,
                 )
 
         print("3", sample.abs().sum())
@@ -558,6 +570,9 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         sample = self.conv_out(sample)
 
         print("4", sample.abs().sum())
+
+        # reshape to (batch, channel, framerate, width, height)
+        sample = sample[None, :].reshape((-1, num_frames) + sample.shape[1:]).permute(0, 2, 1, 3, 4)
 
         if not return_dict:
             return (sample,)

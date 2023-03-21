@@ -18,7 +18,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
-from ...models import AutoencoderKL, UNet2DConditionModel
+from ...models import AutoencoderKL, UNet3DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     is_accelerate_available,
@@ -39,13 +39,25 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import TextToVideoMSPipeline
 
-        >>> pipe = TextToVideoMSPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+        >>> pipe = TextToVideoMSPipeline.from_pretrained("diffusers/ms-text-to-video-1.7b", torch_dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
 
         >>> prompt = "a photo of an astronaut riding a horse on mars"
         >>> image = pipe(prompt).images[0]
         ```
 """
+
+
+def tensor2vid(video, mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]):
+    mean = torch.tensor(mean, device=video.device).reshape(1, -1, 1, 1, 1)  # ncfhw
+    std = torch.tensor(std, device=video.device).reshape(1, -1, 1, 1, 1)  # ncfhw
+    video = video.mul_(std).add_(mean)  # unnormalize back to [0,1]
+    video.clamp_(0, 1)
+    i, c, f, h, w = video.shape
+    images = video.permute(2, 3, 0, 4, 1).reshape(f, h, i * w, c)
+    images = images.unbind(dim=0)
+    images = [(image.cpu().numpy() * 255).astype("uint8") for image in images]  # f h w c
+    return images
 
 
 class TextToVideoMSPipeline(DiffusionPipeline):
@@ -65,7 +77,7 @@ class TextToVideoMSPipeline(DiffusionPipeline):
         tokenizer (`CLIPTokenizer`):
             Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
-        unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
+        unet ([`UNet3DConditionModel`]): Conditional U-Net architecture to denoise the encoded video latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
@@ -76,7 +88,7 @@ class TextToVideoMSPipeline(DiffusionPipeline):
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
-        unet: UNet2DConditionModel,
+        unet: UNet3DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
     ):
         super().__init__()
@@ -125,10 +137,9 @@ class TextToVideoMSPipeline(DiffusionPipeline):
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
-        text_encoder, vae have their state dicts saved to CPU and then are moved to a
-        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
-        Note that offloading happens on a submodule basis. Memory savings are higher than with
-        `enable_model_cpu_offload`, but performance is lower.
+        text_encoder, vae have their state dicts saved to CPU and then are moved to a `torch.device('meta') and loaded
+        to GPU only when their specific submodule has its `forward` method called. Note that offloading happens on a
+        submodule basis. Memory savings are higher than with `enable_model_cpu_offload`, but performance is lower.
         """
         if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
             from accelerate import cpu_offload
@@ -325,23 +336,28 @@ class TextToVideoMSPipeline(DiffusionPipeline):
 
         return prompt_embeds
 
-    def run_safety_checker(self, image, device, dtype):
-        if self.safety_checker is not None:
-            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
-            image, has_nsfw_concept = self.safety_checker(
-                images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
-            )
-        else:
-            has_nsfw_concept = None
-        return image, has_nsfw_concept
-
     def decode_latents(self, latents):
         latents = 1 / self.vae.config.scaling_factor * latents
+
+        batch_size, channels, num_frames, height, width = latents.shape
+        latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
+
         image = self.vae.decode(latents).sample
-        image = (image / 2 + 0.5).clamp(0, 1)
+        video = (
+            image[None, :]
+            .reshape(
+                (
+                    batch_size,
+                    num_frames,
+                    -1,
+                )
+                + image.shape[2:]
+            )
+            .permute(0, 2, 1, 3, 4)
+        )
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
-        return image
+        video = video.float()
+        return video
 
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
@@ -407,8 +423,16 @@ class TextToVideoMSPipeline(DiffusionPipeline):
                     f" {negative_prompt_embeds.shape}."
                 )
 
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+    def prepare_latents(
+        self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
+    ):
+        shape = (
+            batch_size,
+            num_channels_latents,
+            num_frames,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -431,6 +455,7 @@ class TextToVideoMSPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
+        num_frames: int = 16,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -558,6 +583,7 @@ class TextToVideoMSPipeline(DiffusionPipeline):
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
+            num_frames,
             height,
             width,
             prompt_embeds.dtype,
@@ -599,24 +625,14 @@ class TextToVideoMSPipeline(DiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
-        if output_type == "latent":
-            image = latents
-            has_nsfw_concept = None
-        elif output_type == "pil":
-            # 8. Post-processing
-            image = self.decode_latents(latents)
-
-            # 10. Convert to PIL
-            image = self.numpy_to_pil(image)
-        else:
-            # 8. Post-processing
-            image = self.decode_latents(latents)
+        video_tensor = self.decode_latents(latents)
+        video = tensor2vid(video_tensor)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.final_offload_hook.offload()
 
         if not return_dict:
-            return (image, has_nsfw_concept)
+            return (video,)
 
-        return TextToVideoMSPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+        return TextToVideoMSPipelineOutput(image=video)
