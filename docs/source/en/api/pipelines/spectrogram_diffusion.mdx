@@ -38,7 +38,7 @@ As depicted above the model takes as input a MIDI file and tokenizes it into a s
 ```python
 from diffusers import SpectrogramDiffusionPipeline, MidiProcessor
 
-pipe = SpectrogramDiffusionPipeline.from_pretrained("kashif/music-spectrogram-diffusion")
+pipe = SpectrogramDiffusionPipeline.from_pretrained("google/music-spectrogram-diffusion")
 pipe = pipe.to("cuda")
 processor = MidiProcessor()
 
