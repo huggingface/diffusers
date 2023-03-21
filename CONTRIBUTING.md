@@ -16,7 +16,7 @@ We ❤️ contributions from the open-source community! Everyone is welcome, and
 
 Everyone is encouraged to start by saying 👋 in our public Discord channel. We discuss the latest trends in diffusion models, ask questions, show off personal projects, help each other with contributions, or just hang out ☕. <a href="https://Discord.gg/G7tWnz98XR"><img alt="Join us on Discord" src="https://img.shields.io/Discord/823813159592001537?color=5865F2&logo=Discord&logoColor=white"></a>
 
-Whichever way you choose to contribute, we strive to be part of an open, welcoming, and kind community. Please, read our [code of conduct](https://github.com/huggingface/diffusers/blob/main/CODE_OF_CONDUCT.md) and be mindful to respect it during your interactions.
+Whichever way you choose to contribute, we strive to be part of an open, welcoming, and kind community. Please, read our [code of conduct](https://github.com/huggingface/diffusers/blob/main/CODE_OF_CONDUCT.md) and be mindful to respect it during your interactions. We also recommend you become familiar with the [ethical guidelines](https://huggingface.co/docs/diffusers/conceptual/ethical_guidelines) that guide our project and ask you to adhere to the same principles of transparency and responsibility.
 
 We enormously value feedback from the community, so please do not be afraid to speak up if you believe you have valuable feedback that can help improve the library - every message, comment, issue, and pull request (PR) is read and considered.
 
@@ -62,12 +62,12 @@ having. Please do pose any questions you might have.
 In the same spirit, you are of immense help to the community by answering such questions because this way you are publicly documenting knowledge for everybody to learn from.
 
 **Please** keep in mind that the more effort you put into asking or answering a question, the higher
-the quality of the publicly documented knowledge. In the same way, well-posed and well-answered questions create a high-quality knowledge database accessible to everybody, a badly posed question or answer reduces the overall quality of the public knowledge database.
+the quality of the publicly documented knowledge. In the same way, well-posed and well-answered questions create a high-quality knowledge database accessible to everybody, while badly posed questions or answers reduce the overall quality of the public knowledge database.
 In short, a high quality question or answer is *precise*, *concise*, *relevant*, *easy-to-understand*, *accesible*, and *well-formated/well-posed*. For more information, please have a look through the [How to write a good issue](#how-to-write-a-good-issue) section.
 
-**NOTE**:
-*The forum* is much better indexed by search engines, such as Google. Posts are ranked more by popularity than chronologically. Hence, it's easier to look up questions and answers that we posted some time ago.
-Also, one can easily link to every question and answer.
+**NOTE about channels**:
+[*The forum*](https://discuss.huggingface.co/c/discussion-related-to-httpsgithubcomhuggingfacediffusers/63) is much better indexed by search engines, such as Google. Posts are ranked by popularity rather than chronologically. Hence, it's easier to look up questions and answers that we posted some time ago.
+In addition, questions and answers posted in the forum can easily be linked to.
 In contrast, *Discord* has a chat-like format that invites fast back-and-forth communication.
 While it will most likely take less time for you to get an answer to your question on Discord, your
 question won't be visible anymore over time. Also, it's much harder to find information that was posted a while back on Discord. We therefore strongly recommend using the forum for high-quality questions and answers in an attempt to create long-lasting knowledge for the community. If discussions on Discord lead to very interesting answers and conclusions, we recommend posting the results on the forum to make the information more available for future readers.
@@ -79,7 +79,7 @@ the problems they encounter. So thank you for reporting an issue.
 
 Remember, GitHub issues are reserved for technical questions directly related to the Diffusers library, bug reports, feature requests, or feedback on the library design.
 
-In a nutshell, this means that everything that is **not** related to the **code of the Diffusers library** should **not** be asked on GitHub, but rather on either the [forum](https://discuss.huggingface.co/c/discussion-related-to-httpsgithubcomhuggingfacediffusers/63) or [Discord](https://discord.gg/G7tWnz98XR).
+In a nutshell, this means that everything that is **not** related to the **code of the Diffusers library** (including the documentation) should **not** be asked on GitHub, but rather on either the [forum](https://discuss.huggingface.co/c/discussion-related-to-httpsgithubcomhuggingfacediffusers/63) or [Discord](https://discord.gg/G7tWnz98XR).
 
 **Please consider the following guidelines when opening a new issue**:
 - Make sure you have searched whether your issue has already been asked before (use the search bar on GitHub under Issues).
@@ -127,7 +127,7 @@ You can open a feature request [here](https://github.com/huggingface/diffusers/i
 
 #### 2.3 Feedback. 
 
-Feedback about the library design and why it is good or not good helps the core maintainers immensely to build a user-friendly library. To understand the philosophy behind the current design philosophy, please have a look [here](). If you feel like a certain design choice does not fit in with the current design philosophy, please explain why and how it should be changed. If a certain design choice follows the design philosophy too much, hence restricting use cases, explain why and how it should be changed.
+Feedback about the library design and why it is good or not good helps the core maintainers immensely to build a user-friendly library. To understand the philosophy behind the current design philosophy, please have a look [here](https://huggingface.co/docs/diffusers/conceptual/philosophy). If you feel like a certain design choice does not fit with the current design philosophy, please explain why and how it should be changed. If a certain design choice follows the design philosophy too much, hence restricting use cases, explain why and how it should be changed.
 If a certain design choice is very useful for you, please also leave a note as this is great feedback for future design decisions.
 
 You can open an issue about feedback [here](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&template=feedback.md&title=).
@@ -148,7 +148,7 @@ If the diffusion model community released a new model, pipeline, or scheduler th
 * Link to the model weights if they are available.
 
 If you are willing to contribute to the model yourself, let us know so we can best guide you. Also, don't forget
-tag the original author of the component (model, scheduler, pipeline, etc.) by GitHub handle if you can find it.
+to tag the original author of the component (model, scheduler, pipeline, etc.) by GitHub handle if you can find it.
 
 You can open a request for a model/pipeline/scheduler [here](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=New+model%2Fpipeline%2Fscheduler&template=new-model-addition.yml).
 
@@ -182,7 +182,7 @@ If the issue hasn't been closed and you would like to try to fix this issue, you
 
 ### 5. Contribute to the documentation
 
-A good library **always** has good documentation! The official documentation is often one of the first points of contact with a user of the library and therefore contributing to the documentation is a **highly
+A good library **always** has good documentation! The official documentation is often one of the first points of contact for new users of the library, and therefore contributing to the documentation is a **highly
 valuable contribution**.
 
 Contributing to the library can have many forms:
@@ -213,13 +213,12 @@ Both official and community pipelines follow the same design and consist of the 
 Official pipelines are tested and maintained by the core maintainers of Diffusers. Their code
 resides in [src/diffusers/pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines).
 In contrast, community pipelines are contributed and maintained purely by the **community** and are **not** tested.
-They reside in [examples/community](https://github.com/huggingface/diffusers/tree/main/examples/community) and while they can be accessed via the PyPI diffusers package (see [here](https://pypi.org/project/diffusers/)), their code is not part of the PyPI diffusers package.
+They reside in [examples/community](https://github.com/huggingface/diffusers/tree/main/examples/community) and while they can be accessed via the [PyPI diffusers package](https://pypi.org/project/diffusers/), their code is not part of the PyPI distribution.
 
-The reason for the distinction is that the Diffusers' core-maintainers simply cannot maintain and test all
-possible ways diffusion models can be used for inference.
+The reason for the distinction is that the core maintainers of the Diffusers library cannot maintain and test all
+possible ways diffusion models can be used for inference, but some of them may be of interest to the community.
 Officially released diffusion pipelines,
 such as Stable Diffusion are added to the core src/diffusers/pipelines package which ensures
-
 high quality of maintenance, no backward-breaking code changes, and testing.
 More bleeding edge pipelines should be added as community pipelines. If usage for a community pipeline is high, the pipeline can be moved to the official pipelines upon request from the community. This is one of the ways we strive to be a community-driven library.
 
@@ -227,7 +226,7 @@ To add a community pipeline, one should add a <name-of-the-community>.py file to
 
 An example can be seen [here](https://github.com/huggingface/diffusers/pull/2400).
 
-Community pipeline PRs are only checked at a superficial level and it is desired to be maintained by the author.
+Community pipeline PRs are only checked at a superficial level and ideally they should be maintained by their original authors.
 
 Contributing a community pipeline is a great way to understand how Diffusers models and schedulers work. Having contributed a community pipeline is usually the first stepping stone to contributing an official pipeline to the
 core package.
@@ -242,9 +241,9 @@ We support two types of training examples:
 - Research training examples
 
 Research training examples are located in [examples/research_projects](https://github.com/huggingface/diffusers/tree/main/examples/research_projects) whereas official training examples include all folders under [examples](https://github.com/huggingface/diffusers/tree/main/examples) except the `research_projects` and `community` folders.
-The official training examples are maintained by the Diffusers' core-maintainers whereas the research training examples are maintained by the community.
+The official training examples are maintained by the Diffusers' core maintainers whereas the research training examples are maintained by the community.
 This is because of the same reasons put forward in [6. Contribute a community pipeline](#contribute-a-community-pipeline) for official pipelines vs. community pipelines: It is not feasible for the core maintainers to maintain all possible training methods for diffusion models.
-If the Diffusers core-maintainers and community judges a certain training paradigm is not popular enough or too experimental, the corresponding training code should be put in the `research_projects` folder and maintained by the author.
+If the Diffusers core maintainers and the community consider a certain training paradigm to be too experimental or not popular enough, the corresponding training code should be put in the `research_projects` folder and maintained by the author.
 
 Both official training and research examples consist of a directory that contains one or more training scripts, a requirements.txt file, and a README.md file. In order for the user to make use of the
 training examples, it is required to clone the repository:
@@ -259,7 +258,7 @@ as well as to install all additional dependencies required for training:
 pip install -r /examples/<your-example-folder>/requirements.txt
 ```
 
-Therefore when adding an example, the `requirements.txt` file shall define all pip dependencies required for your training example so that once all those are installed, the user can run the example's training script, as an example, see the [DreamBooth `requirements.txt` file](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/requirements.txt).
+Therefore when adding an example, the `requirements.txt` file shall define all pip dependencies required for your training example so that once all those are installed, the user can run the example's training script. See, for example, the [DreamBooth `requirements.txt` file](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/requirements.txt).
 
 Training examples of the Diffusers library should adhere to the following philosophy:
 - All the code necessary to run the examples should be found in a single Python file
@@ -269,7 +268,7 @@ Training examples of the Diffusers library should adhere to the following philos
 To contribute an example, it is highly recommended to look at already existing examples such as [dreambooth](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth.py) to get an idea of how they should look like.
 We strongly advise contributors to make use of the [Accelerate library](https://github.com/huggingface/accelerate) as it's tightly integrated
 with Diffusers.
-Once an example script works, please make sure to add a comprehensive `README.md` that states how to use the example exactly. This README should:
+Once an example script works, please make sure to add a comprehensive `README.md` that states how to use the example exactly. This README should include:
 - An example command on how to run the example script as shown [here e.g.](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth#running-locally-with-pytorch).
 - A link to some training results (logs, models, ...) that show what the user can expect as shown [here e.g.](https://api.wandb.ai/report/patrickvonplaten/xm6cd5q5).
 - If you are adding a non-official/research training example, **please don't forget** to add a sentence that you are maintaining this training example which includes your git handle as shown [here](https://github.com/huggingface/diffusers/tree/main/examples/research_projects/intel_opts#diffusers-examples-with-intel-optimizations).
@@ -291,7 +290,7 @@ Pipelines, models, and schedulers are the most important pieces of the Diffusers
 They provide easy access to state-of-the-art diffusion technologies and thus allow the community to
 build powerful generative AI applications.
 
-By adding a new model, pipeline, or scheduler you might enable a new powerful use case for any of the users interfaces relying on Diffusers which can be of immense value for the whole generative AI ecosystem.
+By adding a new model, pipeline, or scheduler you might enable a new powerful use case for any of the user interfaces relying on Diffusers which can be of immense value for the whole generative AI ecosystem.
 
 Diffusers has a couple of open feature requests for all three components - feel free to gloss over them
 if you don't know yet what specific component you would like to add:
@@ -305,21 +304,21 @@ open a [Feedback issue](https://github.com/huggingface/diffusers/issues/new?assi
 pattern/design choice shall be changed everywhere in the library and whether we shall update our design philosophy. Consistency across the library is very important for us.
 
 Please make sure to add links to the original codebase/paper to the PR and ideally also ping the
-the original author directly on the PR so that they can follow the progress and potentially help with questions.
+original author directly on the PR so that they can follow the progress and potentially help with questions.
 
 If you are unsure or stuck in the PR, don't hesitate to leave a message to ask for a first review or help.
 
 ## How to write a good issue
 
-**The better your issue is written, the higher the chances that it will be quickly resolved by the maintainers.**
+**The better your issue is written, the higher the chances that it will be quickly resolved.**
 
 1. Make sure that you've used the correct template for your issue. You can pick between *Bug Report*, *Feature Request*, *Feedback about API Design*, *New model/pipeline/scheduler addition*, *Forum*, or a blank issue. Make sure to pick the correct one when opening [a new issue](https://github.com/huggingface/diffusers/issues/new/choose).
 2. **Be precise**: Give your issue a fitting title. Try to formulate your issue description as simple as possible. The more precise you are when submitting an issue, the less time it takes to understand the issue and potentially solve it. Make sure to open an issue for one issue only and not for multiple issues. If you found multiple issues, simply open multiple issues. If your issue is a bug, try to be as precise as possible about what bug it is - you should not just write "Error in diffusers".
-3. **Reproducibility**: No reproducible code snippet == no solution. If you encounter a bug, maintainers **have to be able to reproduce** it. Make sure that you include a code snippet that can be copy-pasted into a Python interpreter to reproduce the issue. Make sure that your code snippet works, *i.e.* that they are no missing imports or missing links to images, ... Your issue should contain an error message **and** a code snippet that can be copy-pasted without any changes to reproduce the exact same error message. If your issue is using local model weights or local data that cannot be accessed by the reader, the issue cannot be solved. If you cannot share your data or model, try to make a dummy model or dummy data.
+3. **Reproducibility**: No reproducible code snippet == no solution. If you encounter a bug, maintainers **have to be able to reproduce** it. Make sure that you include a code snippet that can be copy-pasted into a Python interpreter to reproduce the issue. Make sure that your code snippet works, *i.e.* that there are no missing imports or missing links to images, ... Your issue should contain an error message **and** a code snippet that can be copy-pasted without any changes to reproduce the exact same error message. If your issue is using local model weights or local data that cannot be accessed by the reader, the issue cannot be solved. If you cannot share your data or model, try to make a dummy model or dummy data.
 4. **Minimalistic**: Try to help the reader as much as you can to understand the issue as quickly as possible by staying as concise as possible. Remove all code / all information that is irrelevant to the issue. If you have found a bug, try to create the easiest code example you can to demonstrate your issue, do not just dump your whole workflow into the issue as soon as you have found a bug. E.g., if you train a model and get an error at some point during the training, you should first try to understand what part of the training code is responsible for the error and try to reproduce it with a couple of lines. Try to use dummy data instead of full datasets.
 5. Add links. If you are referring to a certain naming, method, or model make sure to provide a link so that the reader can better understand what you mean. If you are referring to a specific PR or issue, make sure to link it to your issue. Do not assume that the reader knows what you are talking about. The more links you add to your issue the better.
 6. Formatting. Make sure to nicely format your issue by formatting code into Python code syntax, and error messages into normal code syntax. See the [official GitHub formatting docs](https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax) for more information.
-7. Think of your issue not as a ticket to be solved, but rather as a beautiful entry to a well-written encyclopedia. Every added issue is a contribution to publicly available knowledge and by adding a nicely written issue you not only make it easier for maintainers to solve your issue, but you are helping the whole community to better understand a certain aspect of the library.
+7. Think of your issue not as a ticket to be solved, but rather as a beautiful entry to a well-written encyclopedia. Every added issue is a contribution to publicly available knowledge. By adding a nicely written issue you not only make it easier for maintainers to solve your issue, but you are helping the whole community to better understand a certain aspect of the library.
 
 ## How to write a good PR
 
@@ -341,7 +340,7 @@ to be merged;
 CircleCI does not run the slow tests, but GitHub actions does every night!
 10. All public methods must have informative docstrings that work nicely with markdown. See `[pipeline_latent_diffusion.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/latent_diffusion/pipeline_latent_diffusion.py)` for an example.
 11. Due to the rapidly growing repository, it is important to make sure that no files that would significantly weigh down the repository are added. This includes images, videos, and other non-text files. We prefer to leverage a hf.co hosted `dataset` like
-the ones hosted on [`hf-internal-testing`](https://huggingface.co/hf-internal-testing) in which to place these files and reference or [huggingface/documentation-images](https://huggingface.co/datasets/huggingface/documentation-images).
+[`hf-internal-testing`](https://huggingface.co/hf-internal-testing) or [huggingface/documentation-images](https://huggingface.co/datasets/huggingface/documentation-images) to place these files.
 If an external contribution, feel free to add the images to your PR and ask a Hugging Face member to migrate your images
 to this dataset.
 
@@ -384,7 +383,7 @@ under your GitHub user account.
  $ pip install -e ".[dev]"
  ```
 
-If you have already cloned that repo, you might need to `git pull` to get the most recent changes in the `datasets`
+If you have already cloned the repo, you might need to `git pull` to get the most recent changes in the
 library.
 
 5. Develop the features on your branch.
