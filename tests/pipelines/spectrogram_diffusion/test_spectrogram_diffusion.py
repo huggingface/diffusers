@@ -234,6 +234,3 @@ class PipelineIntegrationTests(unittest.TestCase):
         audio = output.audios[0]
         assert abs(np.abs(audio).sum() - 9389.1111) < 5e-2
 
-        audio = output.audios[0]
-        rate = 16_000
-        scipy.io.wavfile.write("/home/patrick_huggingface_co/audios/beet.wav", rate, audio[0])
