@@ -50,7 +50,13 @@ class Encoder(nn.Module):
         super().__init__()
         self.layers_per_block = layers_per_block
 
-        self.conv_in = torch.nn.Conv2d(in_channels, block_out_channels[0], kernel_size=3, stride=1, padding=1)
+        self.conv_in = torch.nn.Conv2d(
+            in_channels,
+            block_out_channels[0],
+            kernel_size=3,
+            stride=1,
+            padding=1,
+        )
 
         self.mid_block = None
         self.down_blocks = nn.ModuleList([])
@@ -96,16 +102,34 @@ class Encoder(nn.Module):
         conv_out_channels = 2 * out_channels if double_z else out_channels
         self.conv_out = nn.Conv2d(block_out_channels[-1], conv_out_channels, 3, padding=1)
 
+        self.gradient_checkpointing = False
+
     def forward(self, x):
         sample = x
         sample = self.conv_in(sample)
 
-        # down
-        for down_block in self.down_blocks:
-            sample = down_block(sample)
+        if self.training and self.gradient_checkpointing:
 
-        # middle
-        sample = self.mid_block(sample)
+            def create_custom_forward(module):
+                def custom_forward(*inputs):
+                    return module(*inputs)
+
+                return custom_forward
+
+            # down
+            for down_block in self.down_blocks:
+                sample = torch.utils.checkpoint.checkpoint(create_custom_forward(down_block), sample)
+
+            # middle
+            sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample)
+
+        else:
+            # down
+            for down_block in self.down_blocks:
+                sample = down_block(sample)
+
+            # middle
+            sample = self.mid_block(sample)
 
         # post-process
         sample = self.conv_norm_out(sample)
@@ -129,7 +153,13 @@ class Decoder(nn.Module):
         super().__init__()
         self.layers_per_block = layers_per_block
 
-        self.conv_in = nn.Conv2d(in_channels, block_out_channels[-1], kernel_size=3, stride=1, padding=1)
+        self.conv_in = nn.Conv2d(
+            in_channels,
+            block_out_channels[-1],
+            kernel_size=3,
+            stride=1,
+            padding=1,
+        )
 
         self.mid_block = None
         self.up_blocks = nn.ModuleList([])
@@ -176,16 +206,33 @@ class Decoder(nn.Module):
         self.conv_act = nn.SiLU()
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, 3, padding=1)
 
+        self.gradient_checkpointing = False
+
     def forward(self, z):
         sample = z
         sample = self.conv_in(sample)
 
-        # middle
-        sample = self.mid_block(sample)
+        if self.training and self.gradient_checkpointing:
 
-        # up
-        for up_block in self.up_blocks:
-            sample = up_block(sample)
+            def create_custom_forward(module):
+                def custom_forward(*inputs):
+                    return module(*inputs)
+
+                return custom_forward
+
+            # middle
+            sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample)
+
+            # up
+            for up_block in self.up_blocks:
+                sample = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), sample)
+        else:
+            # middle
+            sample = self.mid_block(sample)
+
+            # up
+            for up_block in self.up_blocks:
+                sample = up_block(sample)
 
         # post-process
         sample = self.conv_norm_out(sample)
