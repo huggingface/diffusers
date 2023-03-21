@@ -1,4 +1,16 @@
-# InstructPix2Pix training example
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+# InstructPix2Pix 
 
 [InstructPix2Pix](https://arxiv.org/abs/2211.09800) is a method to fine-tune text-conditioned diffusion models such that they can follow an edit instruction for an input image. Models fine-tuned using this method take the following as inputs:
 
@@ -53,6 +65,7 @@ Or if your environment doesn't support an interactive shell e.g. a notebook
 
 ```python
 from accelerate.utils import write_basic_config
+
 write_basic_config()
 ```
 
@@ -123,7 +136,7 @@ import requests
 import torch
 from diffusers import StableDiffusionInstructPix2PixPipeline
 
-model_id = "your_model_id" # <- replace this 
+model_id = "your_model_id"  # <- replace this
 pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 generator = torch.Generator("cuda").manual_seed(0)
 
@@ -136,16 +149,18 @@ def download_image(url):
     image = image.convert("RGB")
     return image
 
+
 image = download_image(url)
 prompt = "wipe out the lake"
 num_inference_steps = 20
 image_guidance_scale = 1.5
 guidance_scale = 10
 
-edited_image = pipe(prompt, 
-    image=image, 
-    num_inference_steps=num_inference_steps, 
-    image_guidance_scale=image_guidance_scale, 
+edited_image = pipe(
+    prompt,
+    image=image,
+    num_inference_steps=num_inference_steps,
+    image_guidance_scale=image_guidance_scale,
     guidance_scale=guidance_scale,
     generator=generator,
 ).images[0]
