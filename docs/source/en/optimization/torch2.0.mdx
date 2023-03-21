@@ -18,11 +18,10 @@ Starting from version `0.13.0`, Diffusers supports the latest optimization from 
 
 
 ## Installation
-To benefit from the accelerated transformers implementation and `torch.compile`, we will need to install the nightly version of PyTorch, as the stable version is yet to be released. The first step is to install CUDA 11.7 or CUDA 11.8, 
-as PyTorch 2.0 does not support the previous versions. Once CUDA is installed, torch nightly can be installed using:
+To benefit from the accelerated attention implementation and `torch.compile`, you just need to install the latest versions of PyTorch 2.0 from `pip`, and make sure you are on diffusers 0.13.0 or later. As explained below, `diffusers` automatically uses the attention optimizations (but not `torch.compile`) when available.
 
 ```bash
-pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu117
+pip install --upgrade torch torchvision diffusers
 ```
 
 ## Using accelerated transformers and torch.compile.
