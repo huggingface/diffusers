@@ -17,7 +17,7 @@ import torch
 from torch import nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..models.attention_processor import Attention
+from .attention_processor import Attention
 from .embeddings import get_timestep_embedding
 from .modeling_utils import ModelMixin
 
