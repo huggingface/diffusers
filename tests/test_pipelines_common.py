@@ -344,11 +344,8 @@ class PipelineTesterMixin:
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        for name, module in components.items():
-            if hasattr(module, "half"):
-                components[name] = module.half()
         pipe_fp16 = self.pipeline_class(**components)
-        pipe_fp16.to(torch_device)
+        pipe_fp16.to(torch_device, torch.float16)
         pipe_fp16.set_progress_bar_config(disable=None)
 
         output = pipe(**self.get_dummy_inputs(torch_device))[0]
@@ -446,6 +443,18 @@ class PipelineTesterMixin:
 
         output_cuda = pipe(**self.get_dummy_inputs("cuda"))[0]
         self.assertTrue(np.isnan(output_cuda).sum() == 0)
+
+    def test_to_dtype(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        model_dtypes = [component.dtype for component in components.values() if hasattr(component, "dtype")]
+        self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes))
+
+        pipe.to(torch_dtype=torch.float16)
+        model_dtypes = [component.dtype for component in components.values() if hasattr(component, "dtype")]
+        self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
 
     def test_attention_slicing_forward_pass(self):
         self._test_attention_slicing_forward_pass()

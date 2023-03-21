@@ -223,23 +223,23 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
             output = model(**inputs_dict)
         assert output is not None
 
-    def test_model_slicable_head_dim(self):
+    def test_model_sliceable_head_dim(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         init_dict["attention_head_dim"] = (8, 16)
 
         model = self.model_class(**init_dict)
 
-        def check_slicable_dim_attr(module: torch.nn.Module):
+        def check_sliceable_dim_attr(module: torch.nn.Module):
             if hasattr(module, "set_attention_slice"):
                 assert isinstance(module.sliceable_head_dim, int)
 
             for child in module.children():
-                check_slicable_dim_attr(child)
+                check_sliceable_dim_attr(child)
 
         # retrieve number of attention layers
         for module in model.children():
-            check_slicable_dim_attr(module)
+            check_sliceable_dim_attr(module)
 
     def test_special_attn_proc(self):
         class AttnEasyProc(torch.nn.Module):
@@ -658,7 +658,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         torch.cuda.reset_max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()
 
-        # there are 32 slicable layers
+        # there are 32 sliceable layers
         slice_list = 16 * [2, 3]
         unet = self.get_unet_model()
         unet.set_attention_slice(slice_list)
