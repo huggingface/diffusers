@@ -174,7 +174,7 @@ class PipelineIntegrationTests(unittest.TestCase):
         # so that music can be played live
         device = torch_device
 
-        pipe = SpectrogramDiffusionPipeline.from_pretrained("kashif/music-spectrogram-diffusion", melgan=None)
+        pipe = SpectrogramDiffusionPipeline.from_pretrained("google/music-spectrogram-diffusion")
         melgan = OnnxRuntimeModel.from_pretrained("kashif/soundstream_mel_decoder")
 
         pipe = pipe.to(device)
