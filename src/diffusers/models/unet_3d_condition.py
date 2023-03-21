@@ -121,12 +121,12 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
         layers_per_block: int = 2,
         downsample_padding: int = 1,
-        mid_block_scale_factor: float = 1,  # remove
-        act_fn: str = "silu",  # remove
-        norm_num_groups: Optional[int] = 32,  # remove
+        mid_block_scale_factor: float = 1,
+        act_fn: str = "silu",
+        norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,  # remove
         cross_attention_dim: int = 1024,
-        attention_head_dim: Union[int, Tuple[int]] = 8,  # remove
+        attention_head_dim: Union[int, Tuple[int]] = 64,
         use_linear_projection: bool = True,  # remove
         class_embed_type: Optional[str] = None,  # remove
         num_class_embeds: Optional[int] = None,  # remove
@@ -199,7 +199,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
 
         self.transformer_in = TransformerTempModel(
             num_attention_heads=8,
-            attention_head_dim=64,
+            attention_head_dim=attention_head_dim,
             in_channels=block_out_channels[0],
             num_layers=1,
             use_linear_projection=use_linear_projection,
@@ -474,6 +474,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         sample = self.transformer_in(sample, num_frames=num_frames).sample
 
         # 3. down
+        print("0", sample.abs().sum())
         down_block_res_samples = (sample,)
         for downsample_block in self.down_blocks:
             if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
@@ -501,6 +502,8 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
 
             down_block_res_samples = new_down_block_res_samples
 
+        print("1", sample.abs().sum())
+
         # 4. mid
         if self.mid_block is not None:
             sample = self.mid_block(
@@ -514,6 +517,8 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
 
         if mid_block_additional_residual is not None:
             sample = sample + mid_block_additional_residual
+
+        print("2", sample.abs().sum())
 
         # 5. up
         for i, upsample_block in enumerate(self.up_blocks):
@@ -543,11 +548,16 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
                     hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size, num_frames=num_frames
                 )
 
+        print("3", sample.abs().sum())
+
         # 6. post-process
         if self.conv_norm_out:
             sample = self.conv_norm_out(sample)
             sample = self.conv_act(sample)
+
         sample = self.conv_out(sample)
+
+        print("4", sample.abs().sum())
 
         if not return_dict:
             return (sample,)
