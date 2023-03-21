@@ -22,7 +22,7 @@ deps = {
     "note-seq": "note-seq",
     "numpy": "numpy",
     "parameterized": "parameterized",
-    "protobuf ": "protobuf >=3.20.3,<4",
+    "protobuf ": "protobuf>=3.20.3,<4",
     "pytest": "pytest",
     "pytest-timeout": "pytest-timeout",
     "pytest-xdist": "pytest-xdist",
