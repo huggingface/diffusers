@@ -17,20 +17,16 @@ import gc
 import unittest
 
 import numpy as np
-import scipy
 import torch
 
 from diffusers import DDPMScheduler, MidiProcessor, SpectrogramDiffusionPipeline
 from diffusers.pipelines.spectrogram_diffusion import SpectrogramContEncoder, SpectrogramNotesEncoder, T5FilmDecoder
 from diffusers.utils import require_torch_gpu, skip_mps, slow, torch_device
-from diffusers.utils.testing_utils import is_onnx_available, require_note_seq, require_onnxruntime
+from diffusers.utils.testing_utils import require_note_seq, require_onnxruntime
 
 from ...pipeline_params import TOKENS_TO_AUDIO_GENERATION_BATCH_PARAMS, TOKENS_TO_AUDIO_GENERATION_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin
 
-
-if is_onnx_available():
-    from diffusers import OnnxRuntimeModel
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
