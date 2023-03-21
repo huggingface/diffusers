@@ -62,7 +62,7 @@ image = pipeline(prompt, generator=generator).images[0]
 image
 ```
 
-<div class="flex-justify center">
+<div class="flex justify-center">
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_1.png">
 <div>
 
@@ -80,7 +80,7 @@ image = pipeline(prompt, generator=generator).images[0]
 image
 ```
 
-<div class="flex-justify center">
+<div class="flex justify-center">
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_2.png">
 </div>
 
@@ -129,7 +129,7 @@ image = pipeline(prompt, generator=generator, num_inference_steps=20).images[0]
 image
 ```
 
-<div class="flex-justify center">
+<div class="flex justify-center">
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_3.png">
 </div>
 
@@ -177,12 +177,12 @@ Unless you have a GPU with more RAM, the code above probably returned an `OOM` e
 Try increasing the `batch_size` to 8!
 
 ```python
-images = pipeline(**get_inputs(batch_size=4)).images
+images = pipeline(**get_inputs(batch_size=8)).images
 image_grid(images, rows=2, cols=4)
 ```
 
-<div class="flex-justify center">
-    <img src="">
+<div class="flex justify-center">
+    <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_5.png">
 </div>
 
 Whereas before you couldn't even generate a batch of 4 images, now you can generate a batch of 8 images at ~3.5 seconds per image! This is probably the fastest you can go on a T4 GPU without sacrificing quality.
@@ -210,7 +210,7 @@ images = pipeline(**get_inputs(batch_size=8)).images
 image_grid(images, rows=2, cols=4)
 ```
 
-<div class="flex-justify center">
+<div class="flex justify-center">
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_6.png">
 </div>
 
@@ -235,7 +235,7 @@ images = pipeline(**get_inputs(batch_size=8)).images
 image_grid(images, rows=2, cols=4)
 ```
 
-<div class="flex-justify center">
+<div class="flex justify-center">
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_7.png">
 </div>
 
@@ -254,7 +254,7 @@ images = pipeline(prompt=prompts, generator=generator, num_inference_steps=25).i
 image_grid(images)
 ```
 
-<div class="flex-justify center">
+<div class="flex justify-center">
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_8.png">
 </div>
 
