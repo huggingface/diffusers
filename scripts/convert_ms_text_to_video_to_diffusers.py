@@ -511,4 +511,6 @@ if __name__ == "__main__":
     # load state_dict
     unet.load_state_dict(converted_ckpt)
 
+    unet.save_pretrained(args.dump_path)
+
     # -- finish converting the unet --
