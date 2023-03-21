@@ -438,10 +438,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
             attention_mask = (1 - attention_mask.to(sample.dtype)) * -10000.0
             attention_mask = attention_mask.unsqueeze(1)
 
-        # 0. center input if necessary
-#        if self.config.center_input_sample:
-#            sample = 2 * sample - 1.0
-
         # 1. time
         timesteps = timestep
         if not torch.is_tensor(timesteps):
@@ -457,6 +453,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
             timesteps = timesteps[None].to(sample.device)
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+        num_frames = sample.shape[2]
         timesteps = timesteps.expand(sample.shape[0])
 
         t_emb = self.time_proj(timesteps)
@@ -467,19 +464,14 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         t_emb = t_emb.to(dtype=self.dtype)
 
         emb = self.time_embedding(t_emb, timestep_cond)
-
-        if self.class_embedding is not None:
-            if class_labels is None:
-                raise ValueError("class_labels should be provided when num_class_embeds > 0")
-
-            if self.config.class_embed_type == "timestep":
-                class_labels = self.time_proj(class_labels)
-
-            class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
-            emb = emb + class_emb
+        emb = emb.repeat_interleave(repeats=num_frames, dim=0)
+        encoder_hidden_states = encoder_hidden_states.repeat_interleave(repeats=num_frames, dim=0)
 
         # 2. pre-process
+        sample = sample.permute(0, 2, 1, 3, 4).reshape((sample.shape[0] * num_frames, -1) + sample.shape[3:])
         sample = self.conv_in(sample)
+
+        sample = self.transformer_in(sample, num_frames=num_frames).sample
 
         # 3. down
         down_block_res_samples = (sample,)
@@ -490,10 +482,11 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
                     temb=emb,
                     encoder_hidden_states=encoder_hidden_states,
                     attention_mask=attention_mask,
+                    num_frames=num_frames,
                     cross_attention_kwargs=cross_attention_kwargs,
                 )
             else:
-                sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
+                sample, res_samples = downsample_block(hidden_states=sample, temb=emb, num_frames=num_frames)
 
             down_block_res_samples += res_samples
 
@@ -515,6 +508,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
                 emb,
                 encoder_hidden_states=encoder_hidden_states,
                 attention_mask=attention_mask,
+                num_frames=num_frames,
                 cross_attention_kwargs=cross_attention_kwargs,
             )
 
@@ -539,13 +533,14 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
                     encoder_hidden_states=encoder_hidden_states,
-                    cross_attention_kwargs=cross_attention_kwargs,
                     upsample_size=upsample_size,
                     attention_mask=attention_mask,
+                    num_frames=num_frames,
+                    cross_attention_kwargs=cross_attention_kwargs,
                 )
             else:
                 sample = upsample_block(
-                    hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size
+                    hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size, num_frames=num_frames
                 )
 
         # 6. post-process

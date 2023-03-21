@@ -174,6 +174,7 @@ class TransformerTempModel(ModelMixin, ConfigMixin):
         encoder_hidden_states=None,
         timestep=None,
         class_labels=None,
+        num_frames=1,
         cross_attention_kwargs=None,
         return_dict: bool = True,
     ):
@@ -199,23 +200,18 @@ class TransformerTempModel(ModelMixin, ConfigMixin):
             returning a tuple, the first element is the sample tensor.
         """
         # 1. Input
-        if self.is_input_continuous:
-            batch, _, height, width = hidden_states.shape
-            residual = hidden_states
+        batch_frames, channel, height, width = hidden_states.shape
+        batch_size = batch_frames // num_frames
 
-            hidden_states = self.norm(hidden_states)
-            if not self.use_linear_projection:
-                hidden_states = self.proj_in(hidden_states)
-                inner_dim = hidden_states.shape[1]
-                hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * width, inner_dim)
-            else:
-                inner_dim = hidden_states.shape[1]
-                hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * width, inner_dim)
-                hidden_states = self.proj_in(hidden_states)
-        elif self.is_input_vectorized:
-            hidden_states = self.latent_image_embedding(hidden_states)
-        elif self.is_input_patches:
-            hidden_states = self.pos_embed(hidden_states)
+        residual = hidden_states
+
+        hidden_states = hidden_states[None, :].reshape(batch_size, num_frames, channel, height, width)
+        hidden_states = hidden_states.permute(0, 2, 1, 3, 4)
+
+        hidden_states = self.norm(hidden_states)
+        hidden_states = hidden_states.permute(0, 3, 4, 2, 1).reshape(batch_size * height * width, num_frames, channel)
+
+        hidden_states = self.proj_in(hidden_states)
 
         # 2. Blocks
         for block in self.transformer_blocks:
@@ -228,41 +224,11 @@ class TransformerTempModel(ModelMixin, ConfigMixin):
             )
 
         # 3. Output
-        if self.is_input_continuous:
-            if not self.use_linear_projection:
-                hidden_states = hidden_states.reshape(batch, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()
-                hidden_states = self.proj_out(hidden_states)
-            else:
-                hidden_states = self.proj_out(hidden_states)
-                hidden_states = hidden_states.reshape(batch, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()
+        hidden_states = self.proj_out(hidden_states)
+        hidden_states = hidden_states[None, None, :].reshape(batch_size, height, width, channel, num_frames).permute(0, 3, 4, 1, 2).contiguous()
+        hidden_states = hidden_states.reshape(batch_frames, channel, height, width)
 
-            output = hidden_states + residual
-        elif self.is_input_vectorized:
-            hidden_states = self.norm_out(hidden_states)
-            logits = self.out(hidden_states)
-            # (batch, self.num_vector_embeds - 1, self.num_latent_pixels)
-            logits = logits.permute(0, 2, 1)
-
-            # log(p(x_0))
-            output = F.log_softmax(logits.double(), dim=1).float()
-        elif self.is_input_patches:
-            # TODO: cleanup!
-            conditioning = self.transformer_blocks[0].norm1.emb(
-                timestep, class_labels, hidden_dtype=hidden_states.dtype
-            )
-            shift, scale = self.proj_out_1(F.silu(conditioning)).chunk(2, dim=1)
-            hidden_states = self.norm_out(hidden_states) * (1 + scale[:, None]) + shift[:, None]
-            hidden_states = self.proj_out_2(hidden_states)
-
-            # unpatchify
-            height = width = int(hidden_states.shape[1] ** 0.5)
-            hidden_states = hidden_states.reshape(
-                shape=(-1, height, width, self.patch_size, self.patch_size, self.out_channels)
-            )
-            hidden_states = torch.einsum("nhwpqc->nchpwq", hidden_states)
-            output = hidden_states.reshape(
-                shape=(-1, self.out_channels, height * self.patch_size, width * self.patch_size)
-            )
+        output = hidden_states + residual
 
         if not return_dict:
             return (output,)
