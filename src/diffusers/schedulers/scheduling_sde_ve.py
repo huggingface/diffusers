@@ -109,7 +109,8 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         Args:
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
-            sampling_eps (`float`, optional): final timestep value (overrides value given at Scheduler instantiation).
+            sampling_eps (`float`, optional):
+                final timestep value (overrides value given at Scheduler instantiation).
 
         """
         sampling_eps = sampling_eps if sampling_eps is not None else self.config.sampling_eps
@@ -129,8 +130,10 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
                 the number of diffusion steps used when generating samples with a pre-trained model.
             sigma_min (`float`, optional):
                 initial noise scale value (overrides value given at Scheduler instantiation).
-            sigma_max (`float`, optional): final noise scale value (overrides value given at Scheduler instantiation).
-            sampling_eps (`float`, optional): final timestep value (overrides value given at Scheduler instantiation).
+            sigma_max (`float`, optional):
+                final noise scale value (overrides value given at Scheduler instantiation).
+            sampling_eps (`float`, optional):
+                final timestep value (overrides value given at Scheduler instantiation).
 
         """
         sigma_min = sigma_min if sigma_min is not None else self.config.sigma_min

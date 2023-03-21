@@ -80,12 +80,14 @@ from setuptools import find_packages, setup
 _deps = [
     "Pillow",  # keep the PIL.Image.Resampling deprecation away
     "accelerate>=0.11.0",
+    "compel==0.1.8",
     "black~=23.1",
     "datasets",
     "filelock",
     "flax>=0.4.1",
     "hf-doc-builder>=0.3.0",
-    "huggingface-hub>=0.10.0",
+    "huggingface-hub>=0.13.2",
+    "requests-mock==1.10.0",
     "importlib_metadata",
     "isort>=5.5.4",
     "jax>=0.2.8,!=0.3.2",
@@ -182,6 +184,7 @@ extras["quality"] = deps_list("black", "isort", "ruff", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "Jinja2")
 extras["test"] = deps_list(
+    "compel",
     "datasets",
     "Jinja2",
     "k-diffusion",
@@ -190,6 +193,7 @@ extras["test"] = deps_list(
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
+    "requests-mock",
     "safetensors",
     "sentencepiece",
     "scipy",

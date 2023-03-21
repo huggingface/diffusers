@@ -447,7 +447,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
         if isinstance(image[0], PIL.Image.Image):
             width, height = image[0].size
         else:
-            width, height = image[0].shape[-2:]
+            height, width = image[0].shape[-2:]
 
         if depth_map is None:
             pixel_values = self.feature_extractor(images=image, return_tensors="pt").pixel_values
