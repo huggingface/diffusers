@@ -932,7 +932,9 @@ def main():
                 )
                 text_encoder_state_dict = {f"text_encoder_{k}": v for k, v in text_encoder_state_dict.items()}
                 state_dict.update(text_encoder_state_dict)
-                lora_config["text_encoder_peft_config"] = unwarpped_text_encoder.get_peft_config_as_dict(inference=True)
+                lora_config["text_encoder_peft_config"] = unwarpped_text_encoder.get_peft_config_as_dict(
+                    inference=True
+                )
 
             accelerator.save(state_dict, os.path.join(args.output_dir, f"{global_step}_lora.pt"))
             with open(os.path.join(args.output_dir, f"{global_step}_lora_config.json"), "w") as f:
@@ -987,9 +989,7 @@ def main():
             pipe.to(device)
             return pipe
 
-        pipeline = load_and_set_lora_ckpt(
-            pipeline, args.output_dir, global_step, accelerator.device, weight_dtype
-        )
+        pipeline = load_and_set_lora_ckpt(pipeline, args.output_dir, global_step, accelerator.device, weight_dtype)
 
     else:
         pipeline = pipeline.to(accelerator.device)
