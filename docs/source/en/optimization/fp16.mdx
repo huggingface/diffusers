@@ -221,7 +221,7 @@ image = pipe(prompt).images[0]
 Full-model offloading is an alternative that moves whole models to the GPU, instead of handling each model's constituent _modules_. This results in a negligible impact on inference time (compared with moving the pipeline to `cuda`), while still providing some memory savings.
 
 In this scenario, only one of the main components of the pipeline (typically: text encoder, unet and vae)
-will be in the GPU while the others wait in the CPU. Compoments like the UNet that run for multiple iterations will stay on GPU until they are no longer needed.
+will be in the GPU while the others wait in the CPU. Components like the UNet that run for multiple iterations will stay on GPU until they are no longer needed.
 
 This feature can be enabled by invoking `enable_model_cpu_offload()` on the pipeline, as shown below.
 
