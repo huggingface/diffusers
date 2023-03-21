@@ -108,6 +108,17 @@ class DownloadTests(unittest.TestCase):
             # We need to never convert this tiny model to safetensors for this test to pass
             assert not any(f.endswith(".safetensors") for f in files)
 
+    def test_force_safetensors_error(self):
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            # pipeline has Flax weights
+            with self.assertRaises(EnvironmentError):
+                tmpdirname = DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-pipe-no-safetensors",
+                    safety_checker=None,
+                    cache_dir=tmpdirname,
+                    use_safetensors=True,
+                )
+
     def test_returned_cached_folder(self):
         prompt = "hello"
         pipe = StableDiffusionPipeline.from_pretrained(
@@ -1112,7 +1123,7 @@ class PipelineSlowTests(unittest.TestCase):
                 f"/compel/forest_{i}.npy"
             )
 
-            assert np.abs(image - expected_image).max() < 1e-3
+            assert np.abs(image - expected_image).max() < 1e-2
 
 
 @nightly

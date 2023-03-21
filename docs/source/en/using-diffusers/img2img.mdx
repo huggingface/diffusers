@@ -33,7 +33,7 @@ from io import BytesIO
 from diffusers import StableDiffusionImg2ImgPipeline
 ```
 
-Load the pipeline
+Load the pipeline:
 
 ```python
 device = "cuda"
@@ -42,7 +42,7 @@ pipe = StableDiffusionImg2ImgPipeline.from_pretrained("runwayml/stable-diffusion
 )
 ```
 
-Download an initial image and preprocess it so we can pass it to the pipeline.
+Download an initial image and preprocess it so we can pass it to the pipeline:
 
 ```python
 url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
@@ -55,7 +55,7 @@ init_image
 
 ![img](https://huggingface.co/datasets/YiYiXu/test-doc-assets/resolve/main/image_2_image_using_diffusers_cell_8_output_0.jpeg)
 
-Define the prompt and run the pipeline.
+Define the prompt and run the pipeline:
 
 ```python
 prompt = "A fantasy landscape, trending on artstation"
@@ -67,7 +67,7 @@ prompt = "A fantasy landscape, trending on artstation"
 
 </Tip>
 
-Let's generate two images with same pipeline and seed, but with different values for `strength`
+Let's generate two images with same pipeline and seed, but with different values for `strength`:
 
 ```python
 generator = torch.Generator(device=device).manual_seed(1024)
@@ -89,9 +89,9 @@ image
 ![img](https://huggingface.co/datasets/YiYiXu/test-doc-assets/resolve/main/image_2_image_using_diffusers_cell_14_output_1.jpeg)
 
 
-As you can see, when using a lower value for `strength`, the generated image is more closer to the original `image`
+As you can see, when using a lower value for `strength`, the generated image is more closer to the original `image`.
 
-Now let's use a different scheduler - [LMSDiscreteScheduler](https://huggingface.co/docs/diffusers/api/schedulers#diffusers.LMSDiscreteScheduler)
+Now let's use a different scheduler - [LMSDiscreteScheduler](https://huggingface.co/docs/diffusers/api/schedulers#diffusers.LMSDiscreteScheduler):
 
 ```python
 from diffusers import LMSDiscreteScheduler
