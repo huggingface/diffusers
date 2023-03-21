@@ -922,15 +922,17 @@ def main():
     if accelerator.is_main_process:
         if args.use_peft:
             lora_config = {}
-            state_dict = get_peft_model_state_dict(unet, state_dict=accelerator.get_state_dict(unet))
-            lora_config["peft_config"] = unet.get_peft_config_as_dict(inference=True)
+            unwarpped_unet = accelerator.unwrap_model(unet)
+            state_dict = get_peft_model_state_dict(unwarpped_unet, state_dict=accelerator.get_state_dict(unet))
+            lora_config["peft_config"] = unwarpped_unet.get_peft_config_as_dict(inference=True)
             if args.train_text_encoder:
+                unwarpped_text_encoder = accelerator.unwrap_model(text_encoder)
                 text_encoder_state_dict = get_peft_model_state_dict(
-                    text_encoder, state_dict=accelerator.get_state_dict(text_encoder)
+                    unwarpped_text_encoder, state_dict=accelerator.get_state_dict(text_encoder)
                 )
                 text_encoder_state_dict = {f"text_encoder_{k}": v for k, v in text_encoder_state_dict.items()}
                 state_dict.update(text_encoder_state_dict)
-                lora_config["text_encoder_peft_config"] = text_encoder.get_peft_config_as_dict(inference=True)
+                lora_config["text_encoder_peft_config"] = unwarpped_text_encoder.get_peft_config_as_dict(inference=True)
 
             accelerator.save(state_dict, os.path.join(args.output_dir, f"{global_step}_lora.pt"))
             with open(os.path.join(args.output_dir, f"{global_step}_lora_config.json"), "w") as f:
@@ -958,11 +960,11 @@ def main():
     if args.use_peft:
 
         def load_and_set_lora_ckpt(pipe, ckpt_dir, global_step, device, dtype):
-            with open(f"{ckpt_dir}{global_step}_lora_config.json", "r") as f:
+            with open(os.path.join(args.output_dir, f"{global_step}_lora_config.json"), "r") as f:
                 lora_config = json.load(f)
             print(lora_config)
 
-            checkpoint = f"{ckpt_dir}{global_step}_lora.pt"
+            checkpoint = os.path.join(args.output_dir, f"{global_step}_lora.pt")
             lora_checkpoint_sd = torch.load(checkpoint)
             unet_lora_ds = {k: v for k, v in lora_checkpoint_sd.items() if "text_encoder_" not in k}
             text_encoder_lora_ds = {
@@ -995,7 +997,10 @@ def main():
         pipeline.unet.load_attn_procs(args.output_dir)
 
     # run inference
-    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+    if args.seed is not None:
+        generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+    else:
+        generator = None
     images = []
     for _ in range(args.num_validation_images):
         images.append(pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0])
