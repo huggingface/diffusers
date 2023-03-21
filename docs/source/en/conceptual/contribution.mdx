@@ -25,7 +25,7 @@ We enormously value feedback from the community, so please do not be afraid to s
 You can contribute in many ways ranging from answering questions on issues to adding new diffusion models to
 the core library.
 
-In the following, we give an overview of different ways to contribute, ranked by difficulty in ascending order.
+In the following, we give an overview of different ways to contribute, ranked by difficulty in ascending order. All of them are valuable to the community.
 
 * 1. Asking and answering questions on [the Diffusers discussion forum](https://discuss.huggingface.co/c/discussion-related-to-httpsgithubcomhuggingfacediffusers) or on [Discord](https://discord.gg/G7tWnz98XR).
 * 2. Opening new issues on [the GitHub Issues tab](https://github.com/huggingface/diffusers/issues/new/choose)
@@ -101,7 +101,7 @@ This means in more detail:
 - **Always** provide all necessary information about your environment; for this, you can run: `diffusers-cli env` in your shell and copy-paste the displayed information to the issue.
 - Explain the issue. If the reader doesn't know what the issue is and why it is an issue, she cannot solve it.
 - **Always** make sure the reader can reproduce your issue with as little effort as possible. If your code snippet cannot be run because of missing libraries or undefined variables, the reader cannot help you. Make sure your reproducible code snippet is as minimal as possible and can be copy-pasted into a simple Python shell.
-- If in order to reproduce your issue a model and/or dataset is required make sure the reader has access to the model or dataset. You can always upload your model or dataset to the [Hub](https://huggingface.co) to make it easily downloadable. Try to keep your model and dataset as small as possible, to make the reproduction of your issue as effortless as possible.
+- If in order to reproduce your issue a model and/or dataset is required, make sure the reader has access to that model or dataset. You can always upload your model or dataset to the [Hub](https://huggingface.co) to make it easily downloadable. Try to keep your model and dataset as small as possible, to make the reproduction of your issue as effortless as possible.
 
 For more information, please have a look through the [How to write a good issue](#how-to-write-a-good-issue) section.
 
