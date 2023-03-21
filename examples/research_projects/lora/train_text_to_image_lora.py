@@ -958,7 +958,7 @@ def main():
     if args.use_peft:
 
         def load_and_set_lora_ckpt(pipe, ckpt_dir, global_step, device, dtype):
-            with open(f"{ckpt_dir}{instance_prompt}_lora_config.json", "r") as f:
+            with open(f"{ckpt_dir}{global_step}_lora_config.json", "r") as f:
                 lora_config = json.load(f)
             print(lora_config)
 
