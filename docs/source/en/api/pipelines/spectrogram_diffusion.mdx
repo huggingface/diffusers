@@ -36,13 +36,15 @@ As depicted above the model takes as input a MIDI file and tokenizes it into a s
 ## Example usage
 
 ```python
-from diffusers import SpectrogramDiffusionPipeline
+from diffusers import SpectrogramDiffusionPipeline, MidiProcessor
 
-pipe = SpectrogramDiffusionPipeline.from_pretrained("google/music-spectrogram-diffusion")
+pipe = SpectrogramDiffusionPipeline.from_pretrained("kashif/music-spectrogram-diffusion")
 pipe = pipe.to("cuda")
 
 # Download via: wget http://www.piano-midi.de/midis/beethoven/beethoven_hammerklavier_2.mid
-output = pipe("beethoven_hammerklavier_2.mid")
+processor = MidiProcessor()
+
+output = pipe(processor("beethoven_hammerklavier_2.mid"))
 
 audio = output.audios[0]
 ```
