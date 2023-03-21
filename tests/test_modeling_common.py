@@ -24,7 +24,7 @@ import requests_mock
 import torch
 from requests.exceptions import HTTPError
 
-from diffusers.models import ModelMixin, UNet2DConditionModel
+from diffusers.models import UNet2DConditionModel
 from diffusers.models.attention_processor import AttnProcessor
 from diffusers.training_utils import EMAModel
 from diffusers.utils import torch_device
