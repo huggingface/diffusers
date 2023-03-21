@@ -233,4 +233,3 @@ class PipelineIntegrationTests(unittest.TestCase):
 
         audio = output.audios[0]
         assert abs(np.abs(audio).sum() - 9389.1111) < 5e-2
-
