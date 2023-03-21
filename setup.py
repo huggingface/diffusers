@@ -98,6 +98,7 @@ _deps = [
     "note-seq",
     "numpy",
     "parameterized",
+    "protobuf >=3.20.3,<4",
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
