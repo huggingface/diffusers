@@ -482,7 +482,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         sample = self.transformer_in(sample, num_frames=num_frames).sample
 
         # 3. down
-        print("0", sample.abs().sum())
         down_block_res_samples = (sample,)
         for downsample_block in self.down_blocks:
             if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
@@ -510,8 +509,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
 
             down_block_res_samples = new_down_block_res_samples
 
-        print("1", sample.abs().sum())
-
         # 4. mid
         if self.mid_block is not None:
             sample = self.mid_block(
@@ -525,8 +522,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
 
         if mid_block_additional_residual is not None:
             sample = sample + mid_block_additional_residual
-
-        print("2", sample.abs().sum())
 
         # 5. up
         for i, upsample_block in enumerate(self.up_blocks):
@@ -560,16 +555,12 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
                     num_frames=num_frames,
                 )
 
-        print("3", sample.abs().sum())
-
         # 6. post-process
         if self.conv_norm_out:
             sample = self.conv_norm_out(sample)
             sample = self.conv_act(sample)
 
         sample = self.conv_out(sample)
-
-        print("4", sample.abs().sum())
 
         # reshape to (batch, channel, framerate, width, height)
         sample = sample[None, :].reshape((-1, num_frames) + sample.shape[1:]).permute(0, 2, 1, 3, 4)
