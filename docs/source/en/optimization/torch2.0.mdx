@@ -91,8 +91,7 @@ pip install --pre torch torchvision --index-url https://download.pytorch.org/whl
 We conducted a simple benchmark on different GPUs to compare vanilla attention, xFormers, `torch.nn.functional.scaled_dot_product_attention` and `torch.compile+torch.nn.functional.scaled_dot_product_attention`.
 For the benchmark we used the the [stable-diffusion-v1-4](https://huggingface.co/CompVis/stable-diffusion-v1-4) model with 50 steps. The `xFormers` benchmark is done using the `torch==1.13.1` version, while the accelerated transformers optimizations are tested using nightly versions of PyTorch 2.0. The tables below summarize the results we got.
 
-The `Speed over xformers` columns denote the speed-up gained over `xFormers` using the `torch.compile+torch.nn.functional.scaled_dot_product_attention`.
-
+Please refer to [our featured blog post in the PyTorch site](https://pytorch.org/blog/accelerated-diffusers-pt-20/) for more details.
 
 ### FP16 benchmark
 
