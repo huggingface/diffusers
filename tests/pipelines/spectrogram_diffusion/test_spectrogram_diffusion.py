@@ -175,7 +175,8 @@ class PipelineIntegrationTests(unittest.TestCase):
         device = torch_device
 
         pipe = SpectrogramDiffusionPipeline.from_pretrained("google/music-spectrogram-diffusion")
-        melgan = OnnxRuntimeModel.from_pretrained("kashif/soundstream_mel_decoder")
+        melgan = pipe.melgan
+        pipe.melgan = None
 
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
