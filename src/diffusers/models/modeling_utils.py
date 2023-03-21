@@ -575,7 +575,7 @@ class ModelMixin(torch.nn.Module):
                         raise ValueError(
                             f"Cannot load {cls} from {pretrained_model_name_or_path} because the following keys are"
                             f" missing: \n {', '.join(missing_keys)}. \n Please make sure to pass"
-                            " `low_cpu_mem_usage=False` and `device_map=None` if you want to randomely initialize"
+                            " `low_cpu_mem_usage=False` and `device_map=None` if you want to randomly initialize"
                             " those weights or else make sure your checkpoint file is correct."
                         )
 
@@ -591,7 +591,7 @@ class ModelMixin(torch.nn.Module):
                             set_module_tensor_to_device(model, param_name, param_device, value=param)
                 else:  # else let accelerate handle loading and dispatching.
                     # Load weights and dispatch according to the device_map
-                    # by deafult the device_map is None and the weights are loaded on the CPU
+                    # by default the device_map is None and the weights are loaded on the CPU
                     accelerate.load_checkpoint_and_dispatch(model, model_file, device_map, dtype=torch_dtype)
 
                 loading_info = {

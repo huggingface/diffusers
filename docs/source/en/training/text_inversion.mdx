@@ -19,7 +19,7 @@ specific language governing permissions and limitations under the License.
 [Textual Inversion](https://arxiv.org/abs/2208.01618) is a technique for capturing novel concepts from a small number of example images. While the technique was originally demonstrated with a [latent diffusion model](https://github.com/CompVis/latent-diffusion), it has since been applied to other model variants like [Stable Diffusion](https://huggingface.co/docs/diffusers/main/en/conceptual/stable_diffusion). The learned concepts can be used to better control the images generated from text-to-image pipelines. It learns new "words" in the text encoder's embedding space, which are used within text prompts for personalized image generation.
 
 ![Textual Inversion example](https://textual-inversion.github.io/static/images/editing/colorful_teapot.JPG)
-<small>By using just 3-5 images you can teach new concepts to a model such as Stable Diffusion for personalized image generation <a href="https://github.com/rinongal/textual_inversion">(image source)</a></small>
+<small>By using just 3-5 images you can teach new concepts to a model such as Stable Diffusion for personalized image generation <a href="https://github.com/rinongal/textual_inversion">(image source)</a>.</small>
 
 This guide will show you how to train a [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) model with Textual Inversion. All the training scripts for Textual Inversion used in this guide can be found [here](https://github.com/huggingface/diffusers/tree/main/examples/textual_inversion) if you're interested in taking a closer look at how things work under the hood.
 
@@ -157,7 +157,7 @@ If you're interested in following along with your model training progress, you c
 
 ## Inference
 
-Once you have trained a model, you can use it for inference with the [`StableDiffusionPipeline]. Make sure you include the `placeholder_token` in your prompt, in this case, it is `<cat-toy>`.
+Once you have trained a model, you can use it for inference with the [`StableDiffusionPipeline`]. Make sure you include the `placeholder_token` in your prompt, in this case, it is `<cat-toy>`.
 
 <frameworkcontent>
 <pt>

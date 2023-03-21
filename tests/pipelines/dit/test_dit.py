@@ -125,8 +125,8 @@ class DiTPipelineIntegrationTests(unittest.TestCase):
             )
             assert np.abs((expected_image - image).max()) < 1e-3
 
-    def test_dit_512_fp16(self):
-        pipe = DiTPipeline.from_pretrained("facebook/DiT-XL-2-512", torch_dtype=torch.float16)
+    def test_dit_512(self):
+        pipe = DiTPipeline.from_pretrained("facebook/DiT-XL-2-512")
         pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
         pipe.to("cuda")
 
@@ -139,7 +139,7 @@ class DiTPipelineIntegrationTests(unittest.TestCase):
         for word, image in zip(words, images):
             expected_image = load_numpy(
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-                f"/dit/{word}_fp16.npy"
+                f"/dit/{word}_512.npy"
             )
 
-            assert np.abs((expected_image - image).max()) < 7.5e-1
+            assert np.abs((expected_image - image).max()) < 1e-1

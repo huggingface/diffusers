@@ -65,6 +65,8 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
             Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) paper.
     """
 
+    _supports_gradient_checkpointing = True
+
     @register_to_config
     def __init__(
         self,
@@ -120,6 +122,10 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         )
         self.tile_latent_min_size = int(sample_size / (2 ** (len(self.block_out_channels) - 1)))
         self.tile_overlap_factor = 0.25
+
+    def _set_gradient_checkpointing(self, module, value=False):
+        if isinstance(module, (Encoder, Decoder)):
+            module.gradient_checkpointing = value
 
     def enable_tiling(self, use_tiling: bool = True):
         r"""
