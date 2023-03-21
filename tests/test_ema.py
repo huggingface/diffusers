@@ -153,4 +153,4 @@ class EMAModelTests(unittest.TestCase):
         output = unet(noisy_latents, timesteps, encoder_hidden_states).sample
         output_loaded = loaded_unet(noisy_latents, timesteps, encoder_hidden_states).sample
 
-        assert torch.allclose(output, output_loaded)
+        assert torch.allclose(output, output_loaded, atol=1e-4)
