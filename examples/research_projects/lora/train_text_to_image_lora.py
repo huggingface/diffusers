@@ -932,8 +932,8 @@ def main():
                 state_dict.update(text_encoder_state_dict)
                 lora_config["text_encoder_peft_config"] = text_encoder.get_peft_config_as_dict(inference=True)
 
-            accelerator.save(state_dict, os.path.join(args.output_dir, f"{args.instance_prompt}_lora.pt"))
-            with open(os.path.join(args.output_dir, f"{args.instance_prompt}_lora_config.json"), "w") as f:
+            accelerator.save(state_dict, os.path.join(args.output_dir, f"{global_step}_lora.pt"))
+            with open(os.path.join(args.output_dir, f"{global_step}_lora_config.json"), "w") as f:
                 json.dump(lora_config, f)
         else:
             unet = unet.to(torch.float32)
@@ -957,12 +957,12 @@ def main():
 
     if args.use_peft:
 
-        def load_and_set_lora_ckpt(pipe, ckpt_dir, instance_prompt, device, dtype):
+        def load_and_set_lora_ckpt(pipe, ckpt_dir, global_step, device, dtype):
             with open(f"{ckpt_dir}{instance_prompt}_lora_config.json", "r") as f:
                 lora_config = json.load(f)
             print(lora_config)
 
-            checkpoint = f"{ckpt_dir}{instance_prompt}_lora.pt"
+            checkpoint = f"{ckpt_dir}{global_step}_lora.pt"
             lora_checkpoint_sd = torch.load(checkpoint)
             unet_lora_ds = {k: v for k, v in lora_checkpoint_sd.items() if "text_encoder_" not in k}
             text_encoder_lora_ds = {
@@ -986,7 +986,7 @@ def main():
             return pipe
 
         pipeline = load_and_set_lora_ckpt(
-            pipeline, args.output_dir, args.instance_prompt, accelerator.device, weight_dtype
+            pipeline, args.output_dir, global_step, accelerator.device, weight_dtype
         )
 
     else:
