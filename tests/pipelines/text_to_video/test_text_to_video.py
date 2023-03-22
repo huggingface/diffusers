@@ -27,7 +27,7 @@ from diffusers import (
     TextToVideoMSPipeline,
     UNet3DConditionModel,
 )
-from diffusers.utils import skip_mps, torch_device
+from diffusers.utils import load_numpy, skip_mps, slow, torch_device
 
 from ...pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin
@@ -312,3 +312,39 @@ class TextToVideoMSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         max_diff = np.abs((output / 255.0) - (output_loaded / 255.0)).max()
         self.assertLess(max_diff, 1e-4)
+
+
+@slow
+class TextToVideoMSPipelineSlowTests(unittest.TestCase):
+    def test_full_model(self):
+        expected_video = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/text_to_video/video.npy"
+        )
+
+        pipe = TextToVideoMSPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b")
+        pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+        pipe = pipe.to("cuda")
+
+        prompt = "Spiderman is surfing"
+        generator = torch.Generator(device="cpu").manual_seed(0)
+
+        video_frames = pipe(prompt, generator=generator, num_inference_steps=25, output_type="pt").frames
+        video = video_frames.cpu().numpy()
+
+        assert np.abs(expected_video - video).mean() < 5e-2
+
+    def test_two_step_model(self):
+        expected_video = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/text_to_video/video_2step.npy"
+        )
+
+        pipe = TextToVideoMSPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b")
+        pipe = pipe.to("cuda")
+
+        prompt = "Spiderman is surfing"
+        generator = torch.Generator(device="cpu").manual_seed(0)
+
+        video_frames = pipe(prompt, generator=generator, num_inference_steps=2, output_type="pt").frames
+        video = video_frames.cpu().numpy()
+
+        assert np.abs(expected_video - video).mean() < 5e-2

@@ -472,6 +472,7 @@ class TextToVideoMSPipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        output_type: Optional[str] = "np",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
@@ -635,7 +636,11 @@ class TextToVideoMSPipeline(DiffusionPipeline):
                         callback(i, t, latents)
 
         video_tensor = self.decode_latents(latents)
-        video = tensor2vid(video_tensor)
+
+        if output_type == "pt":
+            video = video_tensor
+        else:
+            video = tensor2vid(video_tensor)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
