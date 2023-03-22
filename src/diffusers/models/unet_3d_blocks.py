@@ -185,8 +185,8 @@ class UNetMidBlock3DCrossAttn(nn.Module):
         for _ in range(num_layers):
             attentions.append(
                 Transformer2DModel(
-                    attn_num_head_channels,
                     in_channels // attn_num_head_channels,
+                    attn_num_head_channels,
                     in_channels=in_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
@@ -197,8 +197,8 @@ class UNetMidBlock3DCrossAttn(nn.Module):
             )
             temp_attentions.append(
                 TransformerTempModel(
-                    attn_num_head_channels,
                     in_channels // attn_num_head_channels,
+                    attn_num_head_channels,
                     in_channels=in_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
