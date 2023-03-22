@@ -392,3 +392,6 @@ class UNet3DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
         assert (sample - on_sample).abs().max() < 1e-4
         assert (sample - off_sample).abs().max() < 1e-4
+
+
+# (todo: sayakpaul) implement SLOW tests.
