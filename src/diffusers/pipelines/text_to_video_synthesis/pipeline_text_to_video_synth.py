@@ -41,8 +41,8 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import TextToVideoMSPipeline
         >>> from diffusers.utils import export_to_video
 
-        >>> pipe = TextToVideoMSPipeline.from_pretrained("diffusers/ms-text-to-video-1.7b", torch_dtype=torch.float16)
-        >>> pipe = pipe.to("cuda")
+        >>> pipe = TextToVideoMSPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b", torch_dtype=torch.float16, variant="fp16")
+        >>> pipe.enable_model_cpu_offload()
 
         >>> prompt = "Spiderman is surfing"
         >>> video_frames = pipe(prompt).frames
@@ -172,7 +172,7 @@ class TextToVideoMSPipeline(DiffusionPipeline):
         if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
             from accelerate import cpu_offload_with_hook
         else:
-            raise ImportError("`enable_model_offload` requires `accelerate v0.17.0` or higher.")
+            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
 
         device = torch.device(f"cuda:{gpu_id}")
 
