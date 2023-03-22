@@ -169,9 +169,11 @@ if _onnx_available:
     if _onnx_available:
         logger.debug(f"Successfully imported onnxruntime version {_onnxruntime_version}")
 
-_opencv_available = importlib.util.find_spec("cv2") is not None
+# (sayakpaul): importlib.util.find_spec("opencv-python") returns None even when it's installed.
+# _opencv_available = importlib.util.find_spec("opencv-python") is not None
 try:
-    _opencv_version = importlib_metadata.version("cv2")
+    _opencv_version = importlib_metadata.version("opencv-python")
+    _opencv_available = True
     logger.debug(f"Successfully imported cv2 version {_opencv_version}")
 except importlib_metadata.PackageNotFoundError:
     _opencv_available = False
