@@ -3,12 +3,13 @@ import logging
 import os
 import random
 import re
+import tempfile
 import unittest
 import urllib.parse
 from distutils.util import strtobool
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 import numpy as np
 import PIL.Image
@@ -16,7 +17,14 @@ import PIL.ImageOps
 import requests
 from packaging import version
 
-from .import_utils import is_compel_available, is_flax_available, is_onnx_available, is_torch_available
+from .import_utils import (
+    BACKENDS_MAPPING,
+    is_compel_available,
+    is_flax_available,
+    is_onnx_available,
+    is_opencv_available,
+    is_torch_available,
+)
 from .logging import get_logger
 
 
@@ -251,6 +259,23 @@ def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
     image = PIL.ImageOps.exif_transpose(image)
     image = image.convert("RGB")
     return image
+
+
+def export_to_video(video_frames: List[np.ndarray], output_video_path: str = None) -> str:
+    if is_opencv_available():
+        import cv2
+    else:
+        raise ImportError(BACKENDS_MAPPING["opencv"][1].format("export_to_video"))
+    if output_video_path is None:
+        output_video_path = tempfile.NamedTemporaryFile(suffix=".mp4").name
+
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    h, w, c = video_frames[0].shape
+    video_writer = cv2.VideoWriter(output_video_path, fourcc, fps=8, frameSize=(w, h))
+    for i in range(len(video_frames)):
+        img = cv2.cvtColor(video_frames[i], cv2.COLOR_RGB2BGR)
+        video_writer.write(img)
+    return output_video_path
 
 
 def load_hf_numpy(path) -> np.ndarray:

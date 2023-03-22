@@ -274,7 +274,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
             from accelerate import cpu_offload_with_hook
         else:
-            raise ImportError("`enable_model_offload` requires `accelerate v0.17.0` or higher.")
+            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
 
         device = torch.device(f"cuda:{gpu_id}")
 

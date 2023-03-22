@@ -192,6 +192,8 @@
       title: Stable unCLIP
     - local: api/pipelines/stochastic_karras_ve
       title: Stochastic Karras VE
+    - local: api/pipelines/text_to_video
+      title: Text-to-Video
     - local: api/pipelines/unclip
       title: UnCLIP
     - local: api/pipelines/latent_diffusion_uncond
