@@ -144,6 +144,9 @@ class AttentionBlock(nn.Module):
                 query_proj, key_proj, value_proj, attn_bias=None, op=self._attention_op
             )
             hidden_states = hidden_states.to(query_proj.dtype)
+        elif hasattr(F, 'scaled_dot_product_attention'):
+            # PyTorch 2.0: native Flash/memory_efficient_attention
+            hidden_states = F.scaled_dot_product_attention(query_proj, key_proj, value_proj)
         else:
             attention_scores = torch.baddbmm(
                 torch.empty(
