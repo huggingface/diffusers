@@ -12,12 +12,13 @@ class TextToVideoMSPipelineOutput(BaseOutput):
     Output class for text to video pipelines.
 
     Args:
-        images (`List[PIL.Image.Image]` or `np.ndarray`)
-            List of denoised PIL images of length `batch_size` or numpy array of shape `(batch_size, height, width,
-            num_channels)`. PIL images or numpy array present the denoised images of the diffusion pipeline.
+        frames (`List[np.ndarray]`)
+            List of denoised frames (essentially images) as NumPy arrays of shape `(height, width, num_channels)`.
+            NumPy array present the denoised images of the diffusion pipeline. The length of the list denotes the video
+            length i.e., the number of frames.
     """
 
-    image: np.ndarray
+    frames: List[np.ndarray]
 
 
 try:

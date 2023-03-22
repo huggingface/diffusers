@@ -15,6 +15,7 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
+import numpy as np
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
@@ -42,20 +43,25 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = TextToVideoMSPipeline.from_pretrained("diffusers/ms-text-to-video-1.7b", torch_dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
 
-        >>> prompt = "a photo of an astronaut riding a horse on mars"
-        >>> image = pipe(prompt).images[0]
+        >>> prompt = "Spiderman is surfing"
+        >>> video_frames = pipe(prompt).frames
         ```
 """
 
 
-def tensor2vid(video, mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]):
-    mean = torch.tensor(mean, device=video.device).reshape(1, -1, 1, 1, 1)  # ncfhw
-    std = torch.tensor(std, device=video.device).reshape(1, -1, 1, 1, 1)  # ncfhw
-    video = video.mul_(std).add_(mean)  # unnormalize back to [0,1]
+def tensor2vid(video: torch.Tensor, mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]) -> List[np.ndarray]:
+    # reshape to ncfhw
+    mean = torch.tensor(mean, device=video.device).reshape(1, -1, 1, 1, 1)
+    std = torch.tensor(std, device=video.device).reshape(1, -1, 1, 1, 1)
+    # unnormalize back to [0,1]
+    video = video.mul_(std).add_(mean)
     video.clamp_(0, 1)
+    # prepare the final outputs
     i, c, f, h, w = video.shape
-    images = video.permute(2, 3, 0, 4, 1).reshape(f, h, i * w, c)
-    images = images.unbind(dim=0)
+    images = video.permute(2, 3, 0, 4, 1).reshape(
+        f, h, i * w, c
+    )  # 1st (frames, h, batch_size, w, c) 2nd (frames, h, batch_size * w, c)
+    images = images.unbind(dim=0)  # prepare a list of indvidual (consecutive frames)
     images = [(image.cpu().numpy() * 255).astype("uint8") for image in images]  # f h w c
     return images
 
@@ -536,9 +542,7 @@ class TextToVideoMSPipeline(DiffusionPipeline):
         Returns:
             [`~pipelines.stable_diffusion.TextToVideoMSPipelineOutput`] or `tuple`:
             [`~pipelines.stable_diffusion.TextToVideoMSPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
-            When returning a tuple, the first element is a list with the generated images, and the second element is a
-            list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
-            (nsfw) content, according to the `safety_checker`.
+            When returning a tuple, the first element is a list with the generated frames.
         """
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
@@ -635,4 +639,4 @@ class TextToVideoMSPipeline(DiffusionPipeline):
         if not return_dict:
             return (video,)
 
-        return TextToVideoMSPipelineOutput(image=video)
+        return TextToVideoMSPipelineOutput(frames=video)
