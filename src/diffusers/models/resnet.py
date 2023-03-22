@@ -782,6 +782,11 @@ def upfirdn2d_native(tensor, kernel, up=1, down=1, pad=(0, 0)):
 
 
 class TemporalConvLayer(nn.Module):
+    """
+    Temporal convolutional layer that can be used for video (sequence of images) input Code mostly copied from:
+    https://github.com/modelscope/modelscope/blob/1509fdb973e5871f37148a4b5e5964cafd43e64d/modelscope/models/multi_modal/video_synthesis/unet_sd.py#L1016
+    """
+
     def __init__(self, in_dim, out_dim=None, dropout=0.0):
         super().__init__()
         out_dim = out_dim or in_dim
@@ -816,7 +821,9 @@ class TemporalConvLayer(nn.Module):
         nn.init.zeros_(self.conv4[-1].bias)
 
     def forward(self, hidden_states, num_frames=1):
-        hidden_states = hidden_states[None, :].reshape((-1, num_frames) + hidden_states.shape[1:]).permute(0, 2, 1, 3, 4)
+        hidden_states = (
+            hidden_states[None, :].reshape((-1, num_frames) + hidden_states.shape[1:]).permute(0, 2, 1, 3, 4)
+        )
 
         identity = hidden_states
         hidden_states = self.conv1(hidden_states)
@@ -826,5 +833,7 @@ class TemporalConvLayer(nn.Module):
 
         hidden_states = identity + hidden_states
 
-        hidden_states = hidden_states.permute(0, 2, 1, 3, 4).reshape((hidden_states.shape[0] * hidden_states.shape[2], -1) + hidden_states.shape[3:])
+        hidden_states = hidden_states.permute(0, 2, 1, 3, 4).reshape(
+            (hidden_states.shape[0] * hidden_states.shape[2], -1) + hidden_states.shape[3:]
+        )
         return hidden_states

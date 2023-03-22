@@ -42,7 +42,9 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import TextToVideoMSPipeline
         >>> from diffusers.utils import export_to_video
 
-        >>> pipe = TextToVideoMSPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b", torch_dtype=torch.float16, variant="fp16")
+        >>> pipe = TextToVideoMSPipeline.from_pretrained(
+        ...     "damo-vilab/text-to-video-ms-1.7b", torch_dtype=torch.float16, variant="fp16"
+        ... )
         >>> pipe.enable_model_cpu_offload()
 
         >>> prompt = "Spiderman is surfing"
@@ -492,7 +494,8 @@ class TextToVideoMSPipeline(DiffusionPipeline):
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image.
             num_frames (`int`, *optional*, defaults to 16):
-                The number of video frames that are generated. Defaults to 16 frames which at 8 frames per seconds amounts to 2 seconds of video.
+                The number of video frames that are generated. Defaults to 16 frames which at 8 frames per seconds
+                amounts to 2 seconds of video.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
