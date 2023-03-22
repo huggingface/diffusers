@@ -6,6 +6,7 @@ from torch.utils.data import Dataset
 from diffusers.models.retriever import map_txt_to_clip_feature
 import torch
 
+
 class RDMDataset(Dataset):
     def __init__(
         self,
@@ -20,7 +21,7 @@ class RDMDataset(Dataset):
         interpolation="bicubic",
         do_random_flip=True,
         center_crop=False,
-        num_queries=20
+        num_queries=20,
     ):
         self.dataset = dataset
         self.image_column = image_column
@@ -34,7 +35,6 @@ class RDMDataset(Dataset):
         print(f"Loading {len(dataset)} number of images.")
         self._length = len(dataset)
         self.num_queries = num_queries
-
 
         self.interpolation = {
             "linear": PIL.Image.LINEAR,
@@ -54,14 +54,19 @@ class RDMDataset(Dataset):
 
     def __len__(self):
         return self._length
+
     def center_crop_img(self, img):
         crop = min(img.shape[0], img.shape[1])
-        h, w, = (
+        (
+            h,
+            w,
+        ) = (
             img.shape[0],
             img.shape[1],
         )
         img = img[(h - crop) // 2 : (h + crop) // 2, (w - crop) // 2 : (w + crop) // 2]
         return PIL.Image.fromarray(img)
+
     def __getitem__(self, i):
         example = {}
         image = self.dataset[self.image_column][i]
@@ -81,7 +86,9 @@ class RDMDataset(Dataset):
             retrieved_images[i] = self.train_transforms(retrieved_images[i])
             retrieved_images[i] = np.array(retrieved_images[i]).astype(np.float32)
             retrieved_images[i] = (retrieved_images[i] / 127.5 - 1.0).astype(np.float32)
-            retrieved_images[i] =  preprocess_images([retrieved_images[i]], self.feature_extractor)[0][None].to(memory_format=torch.contiguous_format)
+            retrieved_images[i] = preprocess_images([retrieved_images[i]], self.feature_extractor)[0][None].to(
+                memory_format=torch.contiguous_format
+            )
         example["nearest_neighbors"] = torch.cat(retrieved_images)
         img = np.array(image).astype(np.uint8)
 

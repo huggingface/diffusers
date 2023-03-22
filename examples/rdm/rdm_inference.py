@@ -22,6 +22,7 @@ from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPModel, CLIPFeatureExtractor, CLIPTokenizer
 from packaging import version
 import sys
+
 if sys.version_info < (3, 8):
     import importlib_metadata
 else:
@@ -47,6 +48,7 @@ else:
         "nearest": PIL.Image.NEAREST,
     }
 
+
 def get_pipeline(vae, clip_model, unet, tokenizer, feature_extractor):
     # I disabled safety checker as it causes an oom
     pipeline = RDMPipeline(
@@ -57,12 +59,14 @@ def get_pipeline(vae, clip_model, unet, tokenizer, feature_extractor):
         scheduler=PNDMScheduler(
             beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", skip_prk_steps=True, steps_offset=1
         ),
-        feature_extractor=feature_extractor
+        feature_extractor=feature_extractor,
     )
     return pipeline
 
+
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.10.0.dev0")
+
 
 def preprocess_images(images, feature_extractor: CLIPFeatureExtractor) -> torch.FloatTensor:
     """
@@ -76,19 +80,15 @@ def preprocess_images(images, feature_extractor: CLIPFeatureExtractor) -> torch.
         :obj:`torch.FloatTensor`: A batch of tensors.
     """
     images = [np.array(image) for image in images]
-#     print(images[0].shape)
-    images = [(image + 1.) / 2. for image in images]
+    #     print(images[0].shape)
+    images = [(image + 1.0) / 2.0 for image in images]
     images = feature_extractor(images, return_tensors="pt").pixel_values
     return images
 
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
-    parser.add_argument(
-        '--index_name', 
-        type=str,
-        default="embeddings",
-        help="The column containing the embeddings"
-    )
+    parser.add_argument("--index_name", type=str, default="embeddings", help="The column containing the embeddings")
     parser.add_argument(
         "--num_log_imgs",
         type=int,
@@ -408,6 +408,7 @@ dataset_name_mapping = {
     "lambdalabs/pokemon-blip-captions": ("image", "text"),
 }
 
+
 def get_rdm_pipeline(args):
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
     revision_dtype = torch.float32
@@ -423,7 +424,6 @@ def get_rdm_pipeline(args):
     elif args.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
-
     # Load scheduler, tokenizer and models.
     tokenizer = CLIPTokenizer.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
@@ -436,7 +436,10 @@ def get_rdm_pipeline(args):
         unet = UNet2DConditionModel.from_config(args.unet_config, low_cpu_mem_usage=False).to(dtype=revision_dtype)
     else:
         unet = UNet2DConditionModel.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision, low_cpu_mem_usage=False
+            args.pretrained_model_name_or_path,
+            subfolder="unet",
+            revision=args.non_ema_revision,
+            low_cpu_mem_usage=False,
         )
     feature_extractor = CLIPFeatureExtractor.from_pretrained(args.clip_model)
     clip_model = CLIPModel.from_pretrained(args.clip_model).to(dtype=revision_dtype)
@@ -503,10 +506,17 @@ def get_rdm_pipeline(args):
                 f"--caption_column' value '{args.caption_column}' needs to be one of: {', '.join(column_names)}"
             )
 
-    index_config = IndexConfig(clip_name_or_path=args.clip_model, dataset_name=args.dataset_name, image_column=args.image_column,\
-        index_name=args.index_name, dataset_save_path=args.dataset_save_path, dataset_set="train"
+    index_config = IndexConfig(
+        clip_name_or_path=args.clip_model,
+        dataset_name=args.dataset_name,
+        image_column=args.image_column,
+        index_name=args.index_name,
+        dataset_save_path=args.dataset_save_path,
+        dataset_set="train",
     )
-    retriever = Retriever(index_config, dataset=dataset, model=clip_model.get_image_features, feature_extractor=feature_extractor)
+    retriever = Retriever(
+        index_config, dataset=dataset, model=clip_model.get_image_features, feature_extractor=feature_extractor
+    )
 
     # Move text_encode and vae to gpu and cast to weight_dtype
     unet.to(args.device, dtype=weight_dtype)
@@ -514,7 +524,21 @@ def get_rdm_pipeline(args):
     vae.to(args.device, dtype=weight_dtype)
     pipeline = get_pipeline(vae, clip_model, unet, tokenizer, feature_extractor)
     return pipeline, retriever, clip_model, tokenizer
-def get_images(prompt, embedding, pipeline, retriever, img_dir=None, resolution=768, num_queries=10, image_column="image", guidance_scale=7.5, output_dir="sd-model-finetuned", num_log_imgs=3):
+
+
+def get_images(
+    prompt,
+    embedding,
+    pipeline,
+    retriever,
+    img_dir=None,
+    resolution=768,
+    num_queries=10,
+    image_column="image",
+    guidance_scale=7.5,
+    output_dir="sd-model-finetuned",
+    num_log_imgs=3,
+):
     img_output_dir = os.path.join(output_dir, "imgs")
     os.makedirs(img_output_dir, exist_ok=True)
     imgs = []
@@ -530,18 +554,39 @@ def get_images(prompt, embedding, pipeline, retriever, img_dir=None, resolution=
     for i in range(len(retrieved_images)):
         if not retrieved_images[i].mode == "RGB":
             retrieved_images[i] = retrieved_images[i].convert("RGB")
-        retrieved_images[i] = retrieved_images[i].resize((resolution, resolution), resample=PIL_INTERPOLATION['bicubic'])
+        retrieved_images[i] = retrieved_images[i].resize(
+            (resolution, resolution), resample=PIL_INTERPOLATION["bicubic"]
+        )
     for i in range(num_log_imgs):
         image = pipeline(
-            prompt, retrieved_images=retrieved_images, height=resolution, width=resolution, num_inference_steps=50, guidance_scale=guidance_scale
+            prompt,
+            retrieved_images=retrieved_images,
+            height=resolution,
+            width=resolution,
+            num_inference_steps=50,
+            guidance_scale=guidance_scale,
         ).images[0]
         image.save(os.path.join(img_output_dir, f"{i}.png"))
+
+
 def main():
     args = parse_args()
     prompt = args.prompt
-    
+
     pipeline, retriever, clip_model, tokenizer = get_rdm_pipeline(args)
     embedding = map_txt_to_clip_feature(clip_model, tokenizer, prompt)
-    get_images(prompt, embedding, pipeline, retriever, img_dir=args.img_dir, resolution=args.resolution, num_queries=args.num_queries, image_column=args.image_column, guidance_scale=args.guidance_scale)
+    get_images(
+        prompt,
+        embedding,
+        pipeline,
+        retriever,
+        img_dir=args.img_dir,
+        resolution=args.resolution,
+        num_queries=args.num_queries,
+        image_column=args.image_column,
+        guidance_scale=args.guidance_scale,
+    )
+
+
 if __name__ == "__main__":
     main()

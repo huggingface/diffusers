@@ -25,6 +25,7 @@ from diffusers.pipelines.rdm.pipeline_rdm import preprocess_images, normalize_im
 import os
 from torch.nn import Module
 
+
 class IndexConfig(PretrainedConfig):
     def __init__(
         self,
@@ -82,9 +83,7 @@ class Index:
         torch_dtype=torch.float32,
     ):
         if not self.index_initialized:
-            model = model or CLIPModel.from_pretrained(self.config.clip_name_or_path).to(
-                dtype=torch_dtype
-            )
+            model = model or CLIPModel.from_pretrained(self.config.clip_name_or_path).to(dtype=torch_dtype)
             feature_extractor = feature_extractor or CLIPFeatureExtractor.from_pretrained(
                 self.config.clip_name_or_path
             )
@@ -158,7 +157,6 @@ class Retriever:
         self.config.save_pretrained(save_directory)
 
     def init_retrieval(self):
-
         logger.info("initializing retrieval")
         self.index.init_index()
 
@@ -210,9 +208,7 @@ def map_img_to_model_feature(model, feature_extractor, imgs):
     return image_embeddings
 
 
-def get_dataset_with_emb_from_model(
-    dataset, model, feature_extractor, image_column="image", index_name="embeddings"
-):
+def get_dataset_with_emb_from_model(dataset, model, feature_extractor, image_column="image", index_name="embeddings"):
     return dataset.map(
         lambda example: {
             index_name: map_img_to_model_feature(model, feature_extractor, [example[image_column]], model.device)
