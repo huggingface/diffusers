@@ -18,6 +18,7 @@ import requests
 from packaging import version
 
 from .import_utils import (
+    BACKENDS_MAPPING,
     is_compel_available,
     is_flax_available,
     is_onnx_available,

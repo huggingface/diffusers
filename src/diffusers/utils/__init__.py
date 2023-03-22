@@ -94,6 +94,7 @@ if is_torch_available():
 
 from .testing_utils import export_to_video
 
+
 logger = get_logger(__name__)
 
 
