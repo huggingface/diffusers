@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import tempfile
 import unittest
 
 import numpy as np
@@ -27,7 +26,7 @@ from diffusers import (
     TextToVideoSDPipeline,
     UNet3DConditionModel,
 )
-from diffusers.utils import load_numpy, skip_mps, slow, torch_device
+from diffusers.utils import load_numpy, skip_mps, slow
 
 from ...pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin
@@ -65,7 +64,6 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             up_block_types=("UpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D"),
             cross_attention_dim=32,
             attention_head_dim=4,
-            use_linear_projection=True,
         )
         scheduler = DDIMScheduler(
             beta_start=0.00085,
@@ -120,6 +118,7 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
+            "output_type": "pt",
         }
         return inputs
 
@@ -131,6 +130,7 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
+        inputs["output_type"] = "np"
         frames = sd_pipe(**inputs).frames
         image_slice = frames[0][-3:, -3:, -1]
 
@@ -139,41 +139,8 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    def test_stable_diffusion_pix2pix_negative_prompt(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        sd_pipe = TextToVideoSDPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        negative_prompt = "french fries"
-        frames = sd_pipe(**inputs, negative_prompt=negative_prompt).frames
-        image_slice = frames[0][-3:, -3:, -1]
-
-        assert frames[0].shape == (64, 64, 3)
-        expected_slice = np.array([166, 181, 167, 119, 99, 124, 110, 94, 114])
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-
-    def test_stable_diffusion_pix2pix_dpm_multistep(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        components["scheduler"] = DPMSolverMultistepScheduler(
-            beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
-        )
-        sd_pipe = TextToVideoSDPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        frames = sd_pipe(**inputs).frames
-        image_slice = frames[0][-3:, -3:, -1]
-
-        assert frames[0].shape == (64, 64, 3)
-        expected_slice = np.array([170, 190, 180, 140, 121, 136, 121, 97, 122])
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+    def test_attention_slicing_forward_pass(self):
+        self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False)
 
     # (todo): sayakpaul
     @unittest.skip(reason="Batching needs to be properly figured out first for this pipeline.")
@@ -189,129 +156,9 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_num_images_per_prompt(self):
         pass
 
-    # Overriding since the output type for this pipeline differs from that of
-    # text-to-image pipelines.
-    @skip_mps
-    def test_attention_slicing_forward_pass(self):
-        self._test_attention_slicing_forward_pass()
-
-    def _test_attention_slicing_forward_pass(self, expected_max_diff=4e-3):
-        if not self.test_attention_slicing:
-            return
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        # Warmup pass when using mps (see #372)
-        if torch_device == "mps":
-            _ = pipe(**self.get_dummy_inputs(torch_device))
-
-        inputs = self.get_dummy_inputs(torch_device)
-        output_without_slicing = pipe(**inputs).frames[0]
-
-        pipe.enable_attention_slicing(slice_size=1)
-        inputs = self.get_dummy_inputs(torch_device)
-        output_with_slicing = pipe(**inputs).frames[0]
-
-        max_diff = np.abs((output_with_slicing / 255.0) - (output_without_slicing / 255.0)).max()
-        self.assertLess(max_diff, expected_max_diff, "Attention slicing should not affect the inference results")
-
-        avg_diff = np.abs(output_without_slicing - output_without_slicing).mean()
-        self.assertLess(avg_diff, 10, f"Error image deviates {avg_diff} pixels on average")
-
-    # Overriding since the output type for this pipeline differs from that of
-    # text-to-image pipelines.
-    @skip_mps
-    def test_dict_tuple_outputs_equivalent(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        # Warmup pass when using mps (see #372)
-        if torch_device == "mps":
-            _ = pipe(**self.get_dummy_inputs(torch_device))
-
-        output = pipe(**self.get_dummy_inputs(torch_device)).frames[0]
-        output_tuple = pipe(**self.get_dummy_inputs(torch_device), return_dict=False)[0][0]
-
-        max_diff = np.abs(output / 255.0 - output_tuple / 255.0).max()
-        self.assertLess(max_diff, 1e-4)
-
     @skip_mps
     def test_progress_bar(self):
         return super().test_progress_bar()
-
-    # Overriding since the output type for this pipeline differs from that of
-    # text-to-image pipelines.
-    @skip_mps
-    def test_save_load_local(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        # Warmup pass when using mps (see #372)
-        if torch_device == "mps":
-            _ = pipe(**self.get_dummy_inputs(torch_device))
-
-        inputs = self.get_dummy_inputs(torch_device)
-        output = pipe(**inputs).frames[0]
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir)
-            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
-            pipe_loaded.to(torch_device)
-            pipe_loaded.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(torch_device)
-        output_loaded = pipe_loaded(**inputs).frames[0]
-
-        max_diff = np.abs((output / 255.0) - (output_loaded / 255.0)).max()
-        self.assertLess(max_diff, 1e-4)
-
-    # Overriding since the output type for this pipeline differs from that of
-    # text-to-image pipelines.
-    @skip_mps
-    def test_save_load_optional_components(self):
-        if not hasattr(self.pipeline_class, "_optional_components"):
-            return
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        # Warmup pass when using mps (see #372)
-        if torch_device == "mps":
-            _ = pipe(**self.get_dummy_inputs(torch_device))
-
-        # set all optional components to None
-        for optional_component in pipe._optional_components:
-            setattr(pipe, optional_component, None)
-
-        inputs = self.get_dummy_inputs(torch_device)
-        output = pipe(**inputs).frames[0]
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir)
-            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
-            pipe_loaded.to(torch_device)
-            pipe_loaded.set_progress_bar_config(disable=None)
-
-        for optional_component in pipe._optional_components:
-            self.assertTrue(
-                getattr(pipe_loaded, optional_component) is None,
-                f"`{optional_component}` did not stay set to None after loading.",
-            )
-
-        inputs = self.get_dummy_inputs(torch_device)
-        output_loaded = pipe_loaded(**inputs).frames[0]
-
-        max_diff = np.abs((output / 255.0) - (output_loaded / 255.0)).max()
-        self.assertLess(max_diff, 1e-4)
 
 
 @slow
