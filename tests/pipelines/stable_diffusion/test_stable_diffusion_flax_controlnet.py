@@ -17,7 +17,7 @@ import gc
 import unittest
 
 from diffusers import FlaxControlNetModel, FlaxStableDiffusionControlNetPipeline
-from diffusers.utils import is_flax_available, slow, load_image
+from diffusers.utils import is_flax_available, load_image, slow
 from diffusers.utils.testing_utils import require_flax
 
 
@@ -38,17 +38,13 @@ class FlaxStableDiffusionControlNetPipelineIntegrationTests(unittest.TestCase):
 
     def test_canny(self):
         controlnet, controlnet_params = FlaxControlNetModel.from_pretrained(
-            "lllyasviel/sd-controlnet-canny", 
-            from_pt=True, 
-            dtype=jnp.bfloat16
+            "lllyasviel/sd-controlnet-canny", from_pt=True, dtype=jnp.bfloat16
         )
         pipe, params = FlaxStableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", 
-            controlnet=controlnet, from_pt=True, 
-            dtype = jnp.bfloat16
+            "runwayml/stable-diffusion-v1-5", controlnet=controlnet, from_pt=True, dtype=jnp.bfloat16
         )
-        params['controlnet'] = controlnet_params
-        
+        params["controlnet"] = controlnet_params
+
         prompts = "bird"
         num_samples = jax.device_count()
         prompt_ids = pipe.prepare_text_inputs([prompts] * num_samples)
@@ -72,30 +68,28 @@ class FlaxStableDiffusionControlNetPipelineIntegrationTests(unittest.TestCase):
             prng_seed=rng,
             num_inference_steps=50,
             jit=True,
-            ).images  
+        ).images
         assert images.shape == (jax.device_count(), 1, 768, 512, 3)
 
         images = images.reshape((images.shape[0] * images.shape[1],) + images.shape[-3:])
         image_slice = images[0, 253:256, 253:256, -1]
 
         output_slice = jnp.asarray(jax.device_get(image_slice.flatten()))
-        expected_slice = jnp.array([0.167969, 0.116699, 0.081543, 0.154297, 0.132812, 0.108887, 0.169922, 0.169922, 0.205078])
+        expected_slice = jnp.array(
+            [0.167969, 0.116699, 0.081543, 0.154297, 0.132812, 0.108887, 0.169922, 0.169922, 0.205078]
+        )
         print(f"output_slice: {output_slice}")
         assert jnp.abs(output_slice - expected_slice).max() < 1e-2
 
     def test_pose(self):
         controlnet, controlnet_params = FlaxControlNetModel.from_pretrained(
-            "lllyasviel/sd-controlnet-openpose", 
-            from_pt=True, 
-            dtype=jnp.bfloat16
+            "lllyasviel/sd-controlnet-openpose", from_pt=True, dtype=jnp.bfloat16
         )
         pipe, params = FlaxStableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", 
-            controlnet=controlnet, from_pt=True, 
-            dtype = jnp.bfloat16
+            "runwayml/stable-diffusion-v1-5", controlnet=controlnet, from_pt=True, dtype=jnp.bfloat16
         )
-        params['controlnet'] = controlnet_params
-        
+        params["controlnet"] = controlnet_params
+
         prompts = "Chef in the kitchen"
         num_samples = jax.device_count()
         prompt_ids = pipe.prepare_text_inputs([prompts] * num_samples)
@@ -119,15 +113,15 @@ class FlaxStableDiffusionControlNetPipelineIntegrationTests(unittest.TestCase):
             prng_seed=rng,
             num_inference_steps=50,
             jit=True,
-            ).images      
+        ).images
         assert images.shape == (jax.device_count(), 1, 768, 512, 3)
 
         images = images.reshape((images.shape[0] * images.shape[1],) + images.shape[-3:])
         image_slice = images[0, 253:256, 253:256, -1]
 
         output_slice = jnp.asarray(jax.device_get(image_slice.flatten()))
-        expected_slice = jnp.array([[0.271484, 0.261719, 0.275391, 0.277344, 0.279297, 0.291016, 0.294922, 0.302734, 0.302734]])
+        expected_slice = jnp.array(
+            [[0.271484, 0.261719, 0.275391, 0.277344, 0.279297, 0.291016, 0.294922, 0.302734, 0.302734]]
+        )
         print(f"output_slice: {output_slice}")
         assert jnp.abs(output_slice - expected_slice).max() < 1e-2
-
-

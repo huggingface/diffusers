@@ -469,7 +469,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
                     loaded_sub_model = load_method(loadable_folder)
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
-        
+
         # 4. Potentially add passed objects if expected
         missing_modules = set(expected_modules) - set(init_kwargs.keys())
         passed_modules = list(passed_class_obj.keys())

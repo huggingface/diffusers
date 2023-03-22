@@ -28,6 +28,6 @@ if is_torch_available():
     from .vq_model import VQModel
 
 if is_flax_available():
-    from .unet_2d_condition_flax import FlaxUNet2DConditionModel
     from .controlnet_flax import FlaxControlNetModel
+    from .unet_2d_condition_flax import FlaxUNet2DConditionModel
     from .vae_flax import FlaxAutoencoderKL

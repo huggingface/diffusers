@@ -47,27 +47,27 @@ class FlaxControlNetConditioningEmbedding(nn.Module):
             kernel_size=(3, 3),
             padding=((1, 1), (1, 1)),
             dtype=self.dtype,
-            )
-        
+        )
+
         blocks = []
-        for i in range(len(self.block_out_channels) -1):
+        for i in range(len(self.block_out_channels) - 1):
             channel_in = self.block_out_channels[i]
             channel_out = self.block_out_channels[i + 1]
             conv1 = nn.Conv(
-                channel_in, 
-                kernel_size=(3, 3), 
-                padding=((1, 1), (1, 1)), 
+                channel_in,
+                kernel_size=(3, 3),
+                padding=((1, 1), (1, 1)),
                 dtype=self.dtype,
-                )
+            )
             blocks.append(conv1)
             conv2 = nn.Conv(
-                channel_out, 
-                kernel_size=(3, 3), 
-                strides=(2, 2), 
-                padding=((1, 1), (1, 1)), 
-                dtype = self.dtype,
+                channel_out,
+                kernel_size=(3, 3),
+                strides=(2, 2),
+                padding=((1, 1), (1, 1)),
+                dtype=self.dtype,
             )
-            blocks.append(conv2)     
+            blocks.append(conv2)
         self.blocks = blocks
 
         self.conv_out = nn.Conv(
@@ -77,7 +77,7 @@ class FlaxControlNetConditioningEmbedding(nn.Module):
             kernel_init=nn.initializers.zeros_init(),
             bias_init=nn.initializers.zeros_init(),
             dtype=self.dtype,
-            )
+        )
 
     def __call__(self, conditioning):
         embedding = self.conv_in(conditioning)
@@ -139,7 +139,7 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
         controlnet_conditioning_channel_order (`str`, *optional*, defaults to `rgb`):
             The channel order of conditional image. Will convert it to `rgb` if it's `bgr`
         conditioning_embedding_out_channels (`tuple`, *optional*, defaults to `(16, 32, 96, 256)`):
-            The tuple of output channel for each block in conditioning_embedding layer 
+            The tuple of output channel for each block in conditioning_embedding layer
 
 
     """
@@ -196,7 +196,7 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
             block_out_channels[0], flip_sin_to_cos=self.flip_sin_to_cos, freq_shift=self.config.freq_shift
         )
         self.time_embedding = FlaxTimestepEmbedding(time_embed_dim, dtype=self.dtype)
-        
+
         self.controlnet_cond_embedding = FlaxControlNetConditioningEmbedding(
             conditioning_embedding_channels=block_out_channels[0],
             block_out_channels=self.conditioning_embedding_out_channels,
@@ -217,13 +217,13 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
         output_channel = block_out_channels[0]
 
         controlnet_block = nn.Conv(
-            output_channel, 
-            kernel_size=(1,1),
+            output_channel,
+            kernel_size=(1, 1),
             padding="VALID",
             kernel_init=nn.initializers.zeros_init(),
             bias_init=nn.initializers.zeros_init(),
             dtype=self.dtype,
-            )
+        )
         controlnet_down_blocks.append(controlnet_block)
 
         for i, down_block_type in enumerate(self.down_block_types):
@@ -257,24 +257,24 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
 
             for _ in range(self.layers_per_block):
                 controlnet_block = nn.Conv(
-                    output_channel, 
-                    kernel_size=(1,1),
+                    output_channel,
+                    kernel_size=(1, 1),
                     padding="VALID",
                     kernel_init=nn.initializers.zeros_init(),
                     bias_init=nn.initializers.zeros_init(),
                     dtype=self.dtype,
-                    )
+                )
                 controlnet_down_blocks.append(controlnet_block)
 
             if not is_final_block:
                 controlnet_block = nn.Conv(
-                    output_channel, 
-                    kernel_size=(1,1),
+                    output_channel,
+                    kernel_size=(1, 1),
                     padding="VALID",
                     kernel_init=nn.initializers.zeros_init(),
                     bias_init=nn.initializers.zeros_init(),
                     dtype=self.dtype,
-                    )
+                )
                 controlnet_down_blocks.append(controlnet_block)
 
         self.down_blocks = down_blocks
@@ -291,13 +291,13 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
         )
 
         self.controlnet_mid_block = nn.Conv(
-            mid_block_channel, 
-            kernel_size=(1,1),
+            mid_block_channel,
+            kernel_size=(1, 1),
             padding="VALID",
             kernel_init=nn.initializers.zeros_init(),
             bias_init=nn.initializers.zeros_init(),
             dtype=self.dtype,
-        )     
+        )
 
     def __call__(
         self,
@@ -306,7 +306,7 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
         encoder_hidden_states,
         controlnet_cond,
         conditioning_scale: float = 1.0,
-        return_dict: bool = True, 
+        return_dict: bool = True,
         train: bool = False,
     ) -> Union[FlaxControlNetOutput, Tuple]:
         r"""
@@ -328,9 +328,9 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
             When returning a tuple, the first element is the sample tensor.
         """
         channel_order = self.controlnet_conditioning_channel_order
-        if channel_order == 'bgr':
+        if channel_order == "bgr":
             controlnet_cond = jnp.flip(controlnet_cond, axis=1)
-        
+
         # 1. time
         if not isinstance(timesteps, jnp.ndarray):
             timesteps = jnp.array([timesteps], dtype=jnp.int32)
@@ -344,7 +344,7 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
         # 2. pre-process
         sample = jnp.transpose(sample, (0, 2, 3, 1))
         sample = self.conv_in(sample)
-        
+
         controlnet_cond = jnp.transpose(controlnet_cond, (0, 2, 3, 1))
         controlnet_cond = self.controlnet_cond_embedding(controlnet_cond)
         sample += controlnet_cond
@@ -368,7 +368,7 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
             controlnet_down_block_res_samples += (down_block_res_sample,)
 
         down_block_res_samples = controlnet_down_block_res_samples
-        
+
         mid_block_res_sample = self.controlnet_mid_block(sample)
 
         # 6. scaling
@@ -378,4 +378,6 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
         if not return_dict:
             return (down_block_res_samples, mid_block_res_sample)
 
-        return FlaxControlNetOutput(down_block_res_samples=down_block_res_samples, mid_block_res_sample=mid_block_res_sample)
+        return FlaxControlNetOutput(
+            down_block_res_samples=down_block_res_samples, mid_block_res_sample=mid_block_res_sample
+        )

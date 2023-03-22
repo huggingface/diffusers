@@ -249,9 +249,9 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         sample,
         timesteps,
         encoder_hidden_states,
-        down_block_additional_residuals = None,
-        mid_block_additional_residual = None,
-        return_dict: bool = True, 
+        down_block_additional_residuals=None,
+        mid_block_additional_residual=None,
+        return_dict: bool = True,
         train: bool = False,
     ) -> Union[FlaxUNet2DConditionOutput, Tuple]:
         r"""
@@ -292,7 +292,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             else:
                 sample, res_samples = down_block(sample, t_emb, deterministic=not train)
             down_block_res_samples += res_samples
-        
+
         if down_block_additional_residuals is not None:
             new_down_block_res_samples = ()
 
