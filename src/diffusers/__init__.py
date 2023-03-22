@@ -131,7 +131,7 @@ else:
         StableDiffusionUpscalePipeline,
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
-        TextToVideoMSPipeline,
+        TextToVideoSDPipeline,
         UnCLIPImageVariationPipeline,
         UnCLIPPipeline,
         VersatileDiffusionDualGuidedPipeline,

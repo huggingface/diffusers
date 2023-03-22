@@ -24,7 +24,7 @@ from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
     DPMSolverMultistepScheduler,
-    TextToVideoMSPipeline,
+    TextToVideoSDPipeline,
     UNet3DConditionModel,
 )
 from diffusers.utils import load_numpy, skip_mps, slow, torch_device
@@ -36,8 +36,8 @@ from ...test_pipelines_common import PipelineTesterMixin
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class TextToVideoMSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = TextToVideoMSPipeline
+class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = TextToVideoSDPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     # No `output_type`.
@@ -126,7 +126,7 @@ class TextToVideoMSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_text_to_video_default_case(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        sd_pipe = TextToVideoMSPipeline(**components)
+        sd_pipe = TextToVideoSDPipeline(**components)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -142,7 +142,7 @@ class TextToVideoMSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_stable_diffusion_pix2pix_negative_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        sd_pipe = TextToVideoMSPipeline(**components)
+        sd_pipe = TextToVideoSDPipeline(**components)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -162,7 +162,7 @@ class TextToVideoMSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         components["scheduler"] = DPMSolverMultistepScheduler(
             beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
         )
-        sd_pipe = TextToVideoMSPipeline(**components)
+        sd_pipe = TextToVideoSDPipeline(**components)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -315,13 +315,13 @@ class TextToVideoMSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @slow
-class TextToVideoMSPipelineSlowTests(unittest.TestCase):
+class TextToVideoSDPipelineSlowTests(unittest.TestCase):
     def test_full_model(self):
         expected_video = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/text_to_video/video.npy"
         )
 
-        pipe = TextToVideoMSPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b")
+        pipe = TextToVideoSDPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b")
         pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
         pipe = pipe.to("cuda")
 
@@ -338,7 +338,7 @@ class TextToVideoMSPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/text_to_video/video_2step.npy"
         )
 
-        pipe = TextToVideoMSPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b")
+        pipe = TextToVideoSDPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b")
         pipe = pipe.to("cuda")
 
         prompt = "Spiderman is surfing"

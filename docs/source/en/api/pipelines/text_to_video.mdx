@@ -28,7 +28,7 @@ Resources:
 
 | Pipeline | Tasks | Demo
 |---|---|:---:|
-| [TextToVideoMSPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/text_to_video_synthesis/pipeline_text_to_video_synth.py) | *Text-to-Video Generation* | [Spaces] (TODO)
+| [TextToVideoSDPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/text_to_video_synthesis/pipeline_text_to_video_synth.py) | *Text-to-Video Generation* | [Spaces] (TODO)
 
 ## Usage example 
 
@@ -36,10 +36,10 @@ Let's start by generating a short video:
 
 ```python 
 import torch
-from diffusers import TextToVideoMSPipeline
+from diffusers import TextToVideoSDPipeline
 from diffusers.utils import export_to_video
 
-pipe = TextToVideoMSPipeline.from_pretrained("diffusers/ms-text-to-video-1.7b", torch_dtype=torch.float16)
+pipe = TextToVideoSDPipeline.from_pretrained("diffusers/ms-text-to-video-1.7b", torch_dtype=torch.float16)
 pipe = pipe.to("cuda")
 
 prompt = "Spiderman is surfing"
@@ -56,10 +56,10 @@ Let's generate a video of 8 seconds with CPU offloading and VAE slicing:
 
 ```python
 import torch
-from diffusers import TextToVideoMSPipeline
+from diffusers import TextToVideoSDPipeline
 from diffusers.utils import export_to_video
 
-pipe = TextToVideoMSPipeline.from_pretrained("diffusers/ms-text-to-video-1.7b", torch_dtype=torch.float16)
+pipe = TextToVideoSDPipeline.from_pretrained("diffusers/ms-text-to-video-1.7b", torch_dtype=torch.float16)
 pipe = pipe.to("cuda")
 
 # memory optimization
@@ -78,10 +78,10 @@ We can also use a different scheduler easily:
 
 ```python
 import torch
-from diffusers import TextToVideoMSPipeline, DPMSolverMultistepScheduler
+from diffusers import TextToVideoSDPipeline, DPMSolverMultistepScheduler
 from diffusers.utils import export_to_video
 
-pipe = TextToVideoMSPipeline.from_pretrained("diffusers/ms-text-to-video-1.7b", torch_dtype=torch.float16)
+pipe = TextToVideoSDPipeline.from_pretrained("diffusers/ms-text-to-video-1.7b", torch_dtype=torch.float16)
 pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
 pipe = pipe.to("cuda")
 
@@ -117,7 +117,7 @@ Here are sample outputs:
 * [diffusers/ms-text-to-video-sd](https://huggingface.co/diffusers/ms-text-to-video-sd/)
 * [diffusers/ms-text-to-video-1.7b](https://huggingface.co/diffusers/ms-text-to-video-1.7b)
 
-## TextToVideoMSPipeline
-[[autodoc]] TextToVideoMSPipeline
+## TextToVideoSDPipeline
+[[autodoc]] TextToVideoSDPipeline
 	- all
 	- __call__

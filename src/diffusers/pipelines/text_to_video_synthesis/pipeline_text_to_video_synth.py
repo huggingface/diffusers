@@ -30,7 +30,7 @@ from ...utils import (
     replace_example_docstring,
 )
 from ..pipeline_utils import DiffusionPipeline
-from . import TextToVideoMSPipelineOutput
+from . import TextToVideoSDPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -39,10 +39,10 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import TextToVideoMSPipeline
+        >>> from diffusers import TextToVideoSDPipeline
         >>> from diffusers.utils import export_to_video
 
-        >>> pipe = TextToVideoMSPipeline.from_pretrained(
+        >>> pipe = TextToVideoSDPipeline.from_pretrained(
         ...     "damo-vilab/text-to-video-ms-1.7b", torch_dtype=torch.float16, variant="fp16"
         ... )
         >>> pipe.enable_model_cpu_offload()
@@ -73,7 +73,7 @@ def tensor2vid(video: torch.Tensor, mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]) -
     return images
 
 
-class TextToVideoMSPipeline(DiffusionPipeline):
+class TextToVideoSDPipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-video generation.
 
@@ -529,7 +529,7 @@ class TextToVideoMSPipeline(DiffusionPipeline):
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.stable_diffusion.TextToVideoMSPipelineOutput`] instead of a
+                Whether or not to return a [`~pipelines.stable_diffusion.TextToVideoSDPipelineOutput`] instead of a
                 plain tuple.
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_steps` steps during inference. The function will be
@@ -545,8 +545,8 @@ class TextToVideoMSPipeline(DiffusionPipeline):
         Examples:
 
         Returns:
-            [`~pipelines.stable_diffusion.TextToVideoMSPipelineOutput`] or `tuple`:
-            [`~pipelines.stable_diffusion.TextToVideoMSPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
+            [`~pipelines.stable_diffusion.TextToVideoSDPipelineOutput`] or `tuple`:
+            [`~pipelines.stable_diffusion.TextToVideoSDPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
             When returning a tuple, the first element is a list with the generated frames.
         """
         # 0. Default height and width to unet
@@ -656,4 +656,4 @@ class TextToVideoMSPipeline(DiffusionPipeline):
         if not return_dict:
             return (video,)
 
-        return TextToVideoMSPipelineOutput(frames=video)
+        return TextToVideoSDPipelineOutput(frames=video)

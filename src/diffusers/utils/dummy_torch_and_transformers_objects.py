@@ -347,7 +347,7 @@ class StableUnCLIPPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class TextToVideoMSPipeline(metaclass=DummyObject):
+class TextToVideoSDPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
