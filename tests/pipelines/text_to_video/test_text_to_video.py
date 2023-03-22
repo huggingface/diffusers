@@ -43,7 +43,6 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     required_optional_params = frozenset(
         [
             "num_inference_steps",
-            "num_images_per_prompt",
             "generator",
             "latents",
             "return_dict",
