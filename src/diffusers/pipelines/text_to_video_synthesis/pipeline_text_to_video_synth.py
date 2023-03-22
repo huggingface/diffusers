@@ -39,12 +39,15 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers import TextToVideoMSPipeline
+        >>> from diffusers.utils import export_to_video
 
         >>> pipe = TextToVideoMSPipeline.from_pretrained("diffusers/ms-text-to-video-1.7b", torch_dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
 
         >>> prompt = "Spiderman is surfing"
         >>> video_frames = pipe(prompt).frames
+        >>> video_path = export_to_video(video_frames)
+        >>> video_path
         ```
 """
 
