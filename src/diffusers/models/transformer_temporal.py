@@ -24,7 +24,7 @@ from .modeling_utils import ModelMixin
 
 
 @dataclass
-class TransformerTempModelOutput(BaseOutput):
+class TransformerTemporalModelOutput(BaseOutput):
     """
     Args:
         sample (`torch.FloatTensor` of shape `(batch_size x num_frames, num_channels, height, width)`)
@@ -34,20 +34,9 @@ class TransformerTempModelOutput(BaseOutput):
     sample: torch.FloatTensor
 
 
-class TransformerTempModel(ModelMixin, ConfigMixin):
+class TransformerTemporalModel(ModelMixin, ConfigMixin):
     """
-    Transformer model for image-like data. Takes either discrete (classes of vector embeddings) or continuous (actual
-    embeddings) inputs.
-
-    When input is continuous: First, project the input (aka embedding) and reshape to b, t, d. Then apply standard
-    transformer action. Finally, reshape to image.
-
-    When input is discrete: First, input (classes of latent pixels) is converted to embeddings and has positional
-    embeddings applied, see `ImagePositionalEmbeddings`. Then apply standard transformer action. Finally, predict
-    classes of unnoised image.
-
-    Note that it is assumed one of the input classes is the masked latent pixel. The predicted classes of the unnoised
-    image do not contain a prediction for the masked pixel as the unnoised image cannot be masked.
+    Transformer model for video-like data.
 
     Parameters:
         num_attention_heads (`int`, *optional*, defaults to 16): The number of heads to use for multi-head attention.
@@ -141,9 +130,9 @@ class TransformerTempModel(ModelMixin, ConfigMixin):
                 Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
 
         Returns:
-            [`~models.transformer_2d.TransformerTempModelOutput`] or `tuple`:
-            [`~models.transformer_2d.TransformerTempModelOutput`] if `return_dict` is True, otherwise a `tuple`. When
-            returning a tuple, the first element is the sample tensor.
+            [`~models.transformer_2d.TransformerTemporalModelOutput`] or `tuple`:
+            [`~models.transformer_2d.TransformerTemporalModelOutput`] if `return_dict` is True, otherwise a `tuple`.
+            When returning a tuple, the first element is the sample tensor.
         """
         # 1. Input
         batch_frames, channel, height, width = hidden_states.shape
@@ -184,4 +173,4 @@ class TransformerTempModel(ModelMixin, ConfigMixin):
         if not return_dict:
             return (output,)
 
-        return TransformerTempModelOutput(sample=output)
+        return TransformerTemporalModelOutput(sample=output)

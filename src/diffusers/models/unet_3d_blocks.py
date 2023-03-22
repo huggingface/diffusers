@@ -17,7 +17,7 @@ from torch import nn
 
 from .resnet import Downsample2D, ResnetBlock2D, TemporalConvLayer, Upsample2D
 from .transformer_2d import Transformer2DModel
-from .transformer_temporal import TransformerTempModel
+from .transformer_temporal import TransformerTemporalModel
 
 
 def get_down_block(
@@ -196,7 +196,7 @@ class UNetMidBlock3DCrossAttn(nn.Module):
                 )
             )
             temp_attentions.append(
-                TransformerTempModel(
+                TransformerTemporalModel(
                     in_channels // attn_num_head_channels,
                     attn_num_head_channels,
                     in_channels=in_channels,
@@ -327,7 +327,7 @@ class CrossAttnDownBlock3D(nn.Module):
                 )
             )
             temp_attentions.append(
-                TransformerTempModel(
+                TransformerTemporalModel(
                     out_channels // attn_num_head_channels,
                     attn_num_head_channels,
                     in_channels=out_channels,
@@ -539,7 +539,7 @@ class CrossAttnUpBlock3D(nn.Module):
                 )
             )
             temp_attentions.append(
-                TransformerTempModel(
+                TransformerTemporalModel(
                     out_channels // attn_num_head_channels,
                     attn_num_head_channels,
                     in_channels=out_channels,

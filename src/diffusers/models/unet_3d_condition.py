@@ -23,7 +23,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, logging
 from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
-from .transformer_temporal import TransformerTempModel
+from .transformer_temporal import TransformerTemporalModel
 from .unet_3d_blocks import (
     CrossAttnDownBlock3D,
     CrossAttnUpBlock3D,
@@ -143,7 +143,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
             act_fn=act_fn,
         )
 
-        self.transformer_in = TransformerTempModel(
+        self.transformer_in = TransformerTemporalModel(
             num_attention_heads=8,
             attention_head_dim=attention_head_dim,
             in_channels=block_out_channels[0],
