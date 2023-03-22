@@ -18,7 +18,7 @@ import torch
 from torch import nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput, deprecate
+from ..utils import BaseOutput
 from .attention import BasicTransformerBlock
 from .modeling_utils import ModelMixin
 
@@ -27,9 +27,8 @@ from .modeling_utils import ModelMixin
 class TransformerTempModelOutput(BaseOutput):
     """
     Args:
-        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` or `(batch size, num_vector_embeds - 1, num_latent_pixels)` if [`TransformerTempModel`] is discrete):
-            Hidden states conditioned on `encoder_hidden_states` input. If discrete, returns probability distributions
-            for the unnoised latent pixels.
+        sample (`torch.FloatTensor` of shape `(batch_size x num_frames, num_channels, height, width)`)
+            Hidden states conditioned on `encoder_hidden_states` input.
     """
 
     sample: torch.FloatTensor
@@ -61,16 +60,11 @@ class TransformerTempModel(ModelMixin, ConfigMixin):
         sample_size (`int`, *optional*): Pass if the input is discrete. The width of the latent images.
             Note that this is fixed at training time as it is used for learning a number of position embeddings. See
             `ImagePositionalEmbeddings`.
-        num_vector_embeds (`int`, *optional*):
-            Pass if the input is discrete. The number of classes of the vector embeddings of the latent pixels.
-            Includes the class for the masked latent pixel.
         activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
-        num_embeds_ada_norm ( `int`, *optional*): Pass if at least one of the norm_layers is `AdaLayerNorm`.
-            The number of diffusion steps used during training. Note that this is fixed at training time as it is used
-            to learn a number of embeddings that are added to the hidden states. During inference, you can denoise for
-            up to but not more than steps than `num_embeds_ada_norm`.
         attention_bias (`bool`, *optional*):
             Configure if the TransformerBlocks' attention should contain a bias parameter.
+        double_self_attention (`bool`, *optional*):
+            Configure if each TransformerBlock should contain two self-attention layers
     """
 
     @register_to_config
@@ -86,57 +80,15 @@ class TransformerTempModel(ModelMixin, ConfigMixin):
         cross_attention_dim: Optional[int] = None,
         attention_bias: bool = False,
         sample_size: Optional[int] = None,
-        num_vector_embeds: Optional[int] = None,
-        patch_size: Optional[int] = None,
         activation_fn: str = "geglu",
-        num_embeds_ada_norm: Optional[int] = None,
-        use_linear_projection: bool = False,
-        only_cross_attention: bool = False,
-        upcast_attention: bool = False,
-        norm_type: str = "layer_norm",
         norm_elementwise_affine: bool = True,
         double_self_attention: bool = True,
     ):
         super().__init__()
-        self.use_linear_projection = use_linear_projection
         self.num_attention_heads = num_attention_heads
         self.attention_head_dim = attention_head_dim
         inner_dim = num_attention_heads * attention_head_dim
 
-        # 1. TransformerTempModel can process both standard continous images of shape `(batch_size, num_channels, width, height)` as well as quantized image embeddings of shape `(batch_size, num_image_vectors)`
-        # Define whether input is continuous or discrete depending on configuration
-        self.is_input_continuous = (in_channels is not None) and (patch_size is None)
-        self.is_input_vectorized = num_vector_embeds is not None
-        self.is_input_patches = in_channels is not None and patch_size is not None
-
-        if norm_type == "layer_norm" and num_embeds_ada_norm is not None:
-            deprecation_message = (
-                f"The configuration file of this model: {self.__class__} is outdated. `norm_type` is either not set or"
-                " incorrectly set to `'layer_norm'`.Make sure to set `norm_type` to `'ada_norm'` in the config."
-                " Please make sure to update the config accordingly as leaving `norm_type` might led to incorrect"
-                " results in future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it"
-                " would be very nice if you could open a Pull request for the `transformer/config.json` file"
-            )
-            deprecate("norm_type!=num_embeds_ada_norm", "1.0.0", deprecation_message, standard_warn=False)
-            norm_type = "ada_norm"
-
-        if self.is_input_continuous and self.is_input_vectorized:
-            raise ValueError(
-                f"Cannot define both `in_channels`: {in_channels} and `num_vector_embeds`: {num_vector_embeds}. Make"
-                " sure that either `in_channels` or `num_vector_embeds` is None."
-            )
-        elif self.is_input_vectorized and self.is_input_patches:
-            raise ValueError(
-                f"Cannot define both `num_vector_embeds`: {num_vector_embeds} and `patch_size`: {patch_size}. Make"
-                " sure that either `num_vector_embeds` or `num_patches` is None."
-            )
-        elif not self.is_input_continuous and not self.is_input_vectorized and not self.is_input_patches:
-            raise ValueError(
-                f"Has to define `in_channels`: {in_channels}, `num_vector_embeds`: {num_vector_embeds}, or patch_size:"
-                f" {patch_size}. Make sure that `in_channels`, `num_vector_embeds` or `num_patches` is not None."
-            )
-
-        # 2. Define input layers
         self.in_channels = in_channels
 
         self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
@@ -152,19 +104,14 @@ class TransformerTempModel(ModelMixin, ConfigMixin):
                     dropout=dropout,
                     cross_attention_dim=cross_attention_dim,
                     activation_fn=activation_fn,
-                    num_embeds_ada_norm=num_embeds_ada_norm,
                     attention_bias=attention_bias,
-                    only_cross_attention=only_cross_attention,
                     double_self_attention=double_self_attention,
-                    upcast_attention=upcast_attention,
-                    norm_type=norm_type,
                     norm_elementwise_affine=norm_elementwise_affine,
                 )
                 for d in range(num_layers)
             ]
         )
 
-        # 4. Define output layers
         self.proj_out = nn.Linear(inner_dim, in_channels)
 
     def forward(

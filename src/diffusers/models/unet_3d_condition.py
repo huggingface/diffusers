@@ -211,8 +211,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
             attention_head_dim=attention_head_dim,
             in_channels=block_out_channels[0],
             num_layers=1,
-            use_linear_projection=use_linear_projection,
-            upcast_attention=upcast_attention,
         )
 
         # class embedding
