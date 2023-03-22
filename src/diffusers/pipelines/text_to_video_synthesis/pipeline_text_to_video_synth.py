@@ -15,6 +15,7 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
+import numpy as np
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
@@ -38,31 +39,39 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers import TextToVideoMSPipeline
+        >>> from diffusers.utils import export_to_video
 
         >>> pipe = TextToVideoMSPipeline.from_pretrained("diffusers/ms-text-to-video-1.7b", torch_dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
 
-        >>> prompt = "a photo of an astronaut riding a horse on mars"
-        >>> image = pipe(prompt).images[0]
+        >>> prompt = "Spiderman is surfing"
+        >>> video_frames = pipe(prompt).frames
+        >>> video_path = export_to_video(video_frames)
+        >>> video_path
         ```
 """
 
 
-def tensor2vid(video, mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]):
-    mean = torch.tensor(mean, device=video.device).reshape(1, -1, 1, 1, 1)  # ncfhw
-    std = torch.tensor(std, device=video.device).reshape(1, -1, 1, 1, 1)  # ncfhw
-    video = video.mul_(std).add_(mean)  # unnormalize back to [0,1]
+def tensor2vid(video: torch.Tensor, mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]) -> List[np.ndarray]:
+    # reshape to ncfhw
+    mean = torch.tensor(mean, device=video.device).reshape(1, -1, 1, 1, 1)
+    std = torch.tensor(std, device=video.device).reshape(1, -1, 1, 1, 1)
+    # unnormalize back to [0,1]
+    video = video.mul_(std).add_(mean)
     video.clamp_(0, 1)
+    # prepare the final outputs
     i, c, f, h, w = video.shape
-    images = video.permute(2, 3, 0, 4, 1).reshape(f, h, i * w, c)
-    images = images.unbind(dim=0)
+    images = video.permute(2, 3, 0, 4, 1).reshape(
+        f, h, i * w, c
+    )  # 1st (frames, h, batch_size, w, c) 2nd (frames, h, batch_size * w, c)
+    images = images.unbind(dim=0)  # prepare a list of indvidual (consecutive frames)
     images = [(image.cpu().numpy() * 255).astype("uint8") for image in images]  # f h w c
     return images
 
 
 class TextToVideoMSPipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-to-image generation using Stable Diffusion.
+    Pipeline for text-to-video generation.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -71,9 +80,7 @@ class TextToVideoMSPipeline(DiffusionPipeline):
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
         text_encoder ([`CLIPTextModel`]):
-            Frozen text-encoder. Stable Diffusion uses the text portion of
-            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
-            the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
+            Frozen text-encoder. Same as Stable Diffusion 2.
         tokenizer (`CLIPTokenizer`):
             Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
@@ -212,7 +219,7 @@ class TextToVideoMSPipeline(DiffusionPipeline):
         Encodes the prompt into text encoder hidden states.
 
         Args:
-             prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `List[str]`, *optional*):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
@@ -465,7 +472,6 @@ class TextToVideoMSPipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
@@ -514,9 +520,6 @@ class TextToVideoMSPipeline(DiffusionPipeline):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
-            output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.TextToVideoMSPipelineOutput`] instead of a
                 plain tuple.
@@ -536,9 +539,7 @@ class TextToVideoMSPipeline(DiffusionPipeline):
         Returns:
             [`~pipelines.stable_diffusion.TextToVideoMSPipelineOutput`] or `tuple`:
             [`~pipelines.stable_diffusion.TextToVideoMSPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
-            When returning a tuple, the first element is a list with the generated images, and the second element is a
-            list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
-            (nsfw) content, according to the `safety_checker`.
+            When returning a tuple, the first element is a list with the generated frames.
         """
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
@@ -635,4 +636,4 @@ class TextToVideoMSPipeline(DiffusionPipeline):
         if not return_dict:
             return (video,)
 
-        return TextToVideoMSPipelineOutput(image=video)
+        return TextToVideoMSPipelineOutput(frames=video)
