@@ -474,7 +474,8 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
 
         # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
         if depth_map.shape[0] < batch_size:
-            depth_map = depth_map.repeat(batch_size, 1, 1, 1)
+            repeat_by = batch_size // depth_map.shape[0]
+            depth_map = depth_map.repeat(repeat_by, 1, 1, 1)
 
         depth_map = torch.cat([depth_map] * 2) if do_classifier_free_guidance else depth_map
         return depth_map

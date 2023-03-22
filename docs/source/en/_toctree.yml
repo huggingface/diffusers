@@ -43,9 +43,9 @@
     - local: using-diffusers/depth2img
       title: Text-Guided Depth-to-Image
     - local: using-diffusers/reusing_seeds
-      title: Reusing seeds for deterministic generation
+      title: Improve image quality with deterministic generation
     - local: using-diffusers/reproducibility
-      title: Reproducibility
+      title: Create reproducible pipelines
     - local: using-diffusers/custom_pipeline_examples
       title: Community Pipelines
     - local: using-diffusers/contribute_pipeline
