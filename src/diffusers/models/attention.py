@@ -184,6 +184,10 @@ class BasicTransformerBlock(nn.Module):
         attention_head_dim (`int`): The number of channels in each head.
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
         cross_attention_dim (`int`, *optional*): The size of the encoder_hidden_states vector for cross attention.
+        only_cross_attention (`bool`, *optional*):
+            Whether to use only cross-attention layers. In this case two cross attention layers are used.
+        double_self_attention (`bool`, *optional*):
+            Whether to use two self-attention layers. In this case no cross attention layers are used.
         activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
         num_embeds_ada_norm (:
             obj: `int`, *optional*): The number of diffusion steps used during training. See `Transformer2DModel`.

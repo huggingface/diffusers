@@ -39,7 +39,7 @@ import torch
 from diffusers import TextToVideoSDPipeline
 from diffusers.utils import export_to_video
 
-pipe = TextToVideoSDPipeline.from_pretrained("diffusers/ms-text-to-video-1.7b", torch_dtype=torch.float16)
+pipe = TextToVideoSDPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b-legacy", torch_dtype=torch.float16)
 pipe = pipe.to("cuda")
 
 prompt = "Spiderman is surfing"
@@ -59,7 +59,7 @@ import torch
 from diffusers import TextToVideoSDPipeline
 from diffusers.utils import export_to_video
 
-pipe = TextToVideoSDPipeline.from_pretrained("diffusers/ms-text-to-video-1.7b", torch_dtype=torch.float16)
+pipe = TextToVideoSDPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b-legacy", torch_dtype=torch.float16)
 pipe = pipe.to("cuda")
 
 # memory optimization
@@ -81,7 +81,7 @@ import torch
 from diffusers import TextToVideoSDPipeline, DPMSolverMultistepScheduler
 from diffusers.utils import export_to_video
 
-pipe = TextToVideoSDPipeline.from_pretrained("diffusers/ms-text-to-video-1.7b", torch_dtype=torch.float16)
+pipe = TextToVideoSDPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b-legacy", torch_dtype=torch.float16)
 pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
 pipe = pipe.to("cuda")
 
@@ -114,8 +114,8 @@ Here are sample outputs:
 
 ## Available checkpoints 
 
-* [diffusers/ms-text-to-video-sd](https://huggingface.co/diffusers/ms-text-to-video-sd/)
-* [diffusers/ms-text-to-video-1.7b](https://huggingface.co/diffusers/ms-text-to-video-1.7b)
+* [damo-vilab/text-to-video-ms-1.7b](https://huggingface.co/damo-vilab/text-to-video-ms-1.7b/)
+* [damo-vilab/text-to-video-ms-1.7b-legacy](https://huggingface.co/damo-vilab/text-to-video-ms-1.7b-legacy)
 
 ## TextToVideoSDPipeline
 [[autodoc]] TextToVideoSDPipeline

@@ -79,7 +79,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
     """
 
-    _supports_gradient_checkpointing = True
+    _supports_gradient_checkpointing = False
 
     @register_to_config
     def __init__(
@@ -333,7 +333,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
     ) -> Union[UNet3DConditionOutput, Tuple]:
         r"""
         Args:
-            sample (`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
+            sample (`torch.FloatTensor`): (batch, num_frames, channel, height, width) noisy inputs tensor
             timestep (`torch.FloatTensor` or `float` or `int`): (batch) timesteps
             encoder_hidden_states (`torch.FloatTensor`): (batch, sequence_length, feature_dim) encoder hidden states
             return_dict (`bool`, *optional*, defaults to `True`):
