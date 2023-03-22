@@ -23,7 +23,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, logging
 from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
-from .transformer_temp import TransformerTempModel
+from .transformer_temporal import TransformerTempModel
 from .unet_3d_blocks import (
     CrossAttnDownBlock3D,
     CrossAttnUpBlock3D,
