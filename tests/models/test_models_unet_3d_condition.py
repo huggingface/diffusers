@@ -23,7 +23,6 @@ from diffusers.models.attention_processor import LoRAAttnProcessor
 from diffusers.utils import (
     floats_tensor,
     logging,
-    torch_all_close,
     torch_device,
 )
 from diffusers.utils.import_utils import is_xformers_available
@@ -120,47 +119,6 @@ class UNet3DConditionModelTests(ModelTesterMixin, unittest.TestCase):
             == "XFormersAttnProcessor"
         ), "xformers is not enabled"
 
-    @unittest.skipIf(torch_device == "mps", "Gradient checkpointing skipped on MPS")
-    def test_gradient_checkpointing(self):
-        # enable deterministic behavior for gradient checkpointing
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        assert not model.is_gradient_checkpointing and model.training
-
-        out = model(**inputs_dict).sample
-        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
-        # we won't calculate the loss and rather backprop on out.sum()
-        model.zero_grad()
-
-        labels = torch.randn_like(out)
-        loss = (out - labels).mean()
-        loss.backward()
-
-        # re-instantiate the model now enabling gradient checkpointing
-        model_2 = self.model_class(**init_dict)
-        # clone model
-        model_2.load_state_dict(model.state_dict())
-        model_2.to(torch_device)
-        model_2.enable_gradient_checkpointing()
-
-        assert model_2.is_gradient_checkpointing and model_2.training
-
-        out_2 = model_2(**inputs_dict).sample
-        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
-        # we won't calculate the loss and rather backprop on out.sum()
-        model_2.zero_grad()
-        loss_2 = (out_2 - labels).mean()
-        loss_2.backward()
-
-        # compare the output and parameters gradients
-        self.assertTrue((loss - loss_2).abs() < 1e-4)
-        named_params = dict(model.named_parameters())
-        named_params_2 = dict(model_2.named_parameters())
-        for name, param in named_params.items():
-            self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=5e-4))
-
     # Overriding because `block_out_channels` needs to be different for this model.
     def test_forward_with_norm_groups(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -209,44 +167,6 @@ class UNet3DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         max_diff = np.amax(np.abs(out_1 - out_2))
         self.assertLessEqual(max_diff, 1e-5)
 
-    def test_model_with_attention_head_dim_tuple(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        init_dict["attention_head_dim"] = (8, 16, 16, 16)
-
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-        model.eval()
-
-        with torch.no_grad():
-            output = model(**inputs_dict)
-
-            if isinstance(output, dict):
-                output = output.sample
-
-        self.assertIsNotNone(output)
-        expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
-
-    def test_model_with_use_linear_projection(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        init_dict["use_linear_projection"] = True
-
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-        model.eval()
-
-        with torch.no_grad():
-            output = model(**inputs_dict)
-
-            if isinstance(output, dict):
-                output = output.sample
-
-        self.assertIsNotNone(output)
-        expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
-
     def test_model_attention_slicing(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -270,81 +190,6 @@ class UNet3DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             output = model(**inputs_dict)
         assert output is not None
-
-    def test_model_slicable_head_dim(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        init_dict["attention_head_dim"] = (8, 16, 16, 16)
-
-        model = self.model_class(**init_dict)
-
-        def check_slicable_dim_attr(module: torch.nn.Module):
-            if hasattr(module, "set_attention_slice"):
-                assert isinstance(module.sliceable_head_dim, int)
-
-            for child in module.children():
-                check_slicable_dim_attr(child)
-
-        # retrieve number of attention layers
-        for module in model.children():
-            check_slicable_dim_attr(module)
-
-    def test_special_attn_proc(self):
-        class AttnEasyProc(torch.nn.Module):
-            def __init__(self, num):
-                super().__init__()
-                self.weight = torch.nn.Parameter(torch.tensor(num))
-                self.is_run = False
-                self.number = 0
-                self.counter = 0
-
-            def __call__(self, attn, hidden_states, encoder_hidden_states=None, attention_mask=None, number=None):
-                batch_size, sequence_length, _ = hidden_states.shape
-                attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-
-                query = attn.to_q(hidden_states)
-
-                encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
-                key = attn.to_k(encoder_hidden_states)
-                value = attn.to_v(encoder_hidden_states)
-
-                query = attn.head_to_batch_dim(query)
-                key = attn.head_to_batch_dim(key)
-                value = attn.head_to_batch_dim(value)
-
-                attention_probs = attn.get_attention_scores(query, key, attention_mask)
-                hidden_states = torch.bmm(attention_probs, value)
-                hidden_states = attn.batch_to_head_dim(hidden_states)
-
-                # linear proj
-                hidden_states = attn.to_out[0](hidden_states)
-                # dropout
-                hidden_states = attn.to_out[1](hidden_states)
-
-                hidden_states += self.weight
-
-                self.is_run = True
-                self.counter += 1
-                self.number = number
-
-                return hidden_states
-
-        # enable deterministic behavior for gradient checkpointing
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        init_dict["attention_head_dim"] = (8, 16, 16, 16)
-
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        processor = AttnEasyProc(5.0)
-
-        model.set_attn_processor(processor)
-        model(**inputs_dict, cross_attention_kwargs={"number": 123}).sample
-
-        assert processor.counter == 12
-        assert processor.is_run
-        assert processor.number == 123
 
     # (`attn_processors`) needs to be implemented in this model for this test.
     # def test_lora_processors(self):

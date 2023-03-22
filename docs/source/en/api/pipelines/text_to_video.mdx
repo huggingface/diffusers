@@ -28,7 +28,7 @@ Resources:
 
 | Pipeline | Tasks | Demo
 |---|---|:---:|
-| [TextToVideoSDPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/text_to_video_synthesis/pipeline_text_to_video_synth.py) | *Text-to-Video Generation* | [Spaces] (TODO)
+| [DiffusionPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/text_to_video_synthesis/pipeline_text_to_video_synth.py) | *Text-to-Video Generation* | [Spaces] (TODO)
 
 ## Usage example 
 
@@ -36,10 +36,10 @@ Let's start by generating a short video:
 
 ```python 
 import torch
-from diffusers import TextToVideoSDPipeline
+from diffusers import DiffusionPipeline
 from diffusers.utils import export_to_video
 
-pipe = TextToVideoSDPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b-legacy", torch_dtype=torch.float16)
+pipe = DiffusionPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b", torch_dtype=torch.float16, variant="fp16")
 pipe = pipe.to("cuda")
 
 prompt = "Spiderman is surfing"
@@ -56,18 +56,17 @@ Let's generate a video of 8 seconds with CPU offloading and VAE slicing:
 
 ```python
 import torch
-from diffusers import TextToVideoSDPipeline
+from diffusers import DiffusionPipeline
 from diffusers.utils import export_to_video
 
-pipe = TextToVideoSDPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b-legacy", torch_dtype=torch.float16)
-pipe = pipe.to("cuda")
+pipe = DiffusionPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b", torch_dtype=torch.float16, variant="fp16")
+pipe.enable_model_cpu_offload()
 
 # memory optimization
-pipe.enable_model_cpu_offload()
 pipe.enable_vae_slicing()
 
 prompt = "Darth Vader surfing a wave"
-video_frames = pipe(prompt, num_frames=64, num_inference_steps=25).frames
+video_frames = pipe(prompt, num_frames=64).frames
 video_path = export_to_video(video_frames)
 video_path
 ```
@@ -78,15 +77,15 @@ We can also use a different scheduler easily:
 
 ```python
 import torch
-from diffusers import TextToVideoSDPipeline, DPMSolverMultistepScheduler
+from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
 from diffusers.utils import export_to_video
 
-pipe = TextToVideoSDPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b-legacy", torch_dtype=torch.float16)
+pipe = DiffusionPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b", torch_dtype=torch.float16, variant="fp16")
 pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
-pipe = pipe.to("cuda")
+pipe.enable_model_cpu_offload()
 
 prompt = "Spiderman is surfing"
-video_frames = pipe(prompt).frames
+video_frames = pipe(prompt, num_inference_steps=25).frames
 video_path = export_to_video(video_frames)
 video_path
 ```
@@ -117,7 +116,7 @@ Here are sample outputs:
 * [damo-vilab/text-to-video-ms-1.7b](https://huggingface.co/damo-vilab/text-to-video-ms-1.7b/)
 * [damo-vilab/text-to-video-ms-1.7b-legacy](https://huggingface.co/damo-vilab/text-to-video-ms-1.7b-legacy)
 
-## TextToVideoSDPipeline
-[[autodoc]] TextToVideoSDPipeline
+## DiffusionPipeline
+[[autodoc]] DiffusionPipeline
 	- all
 	- __call__
