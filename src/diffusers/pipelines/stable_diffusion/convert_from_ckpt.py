@@ -200,8 +200,7 @@ def assign_to_checkpoint(
         # Global renaming happens here
         new_path = new_path.replace("middle_block.0", "mid_block.resnets.0")
         new_path = new_path.replace("middle_block.1", "mid_block.attentions.0")
-        new_path = new_path.replace("middle_block.2", "mid_block.temp_attentions.0")
-        new_path = new_path.replace("middle_block.3", "mid_block.resnets.1")
+        new_path = new_path.replace("middle_block.2", "mid_block.resnets.1")
 
         if additional_replacements is not None:
             for replacement in additional_replacements:
