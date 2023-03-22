@@ -18,7 +18,7 @@ This is why it's important to understand how to control sources of randomness in
 
 <Tip>
 
-💡 We strongly recommend taking a look at PyTorch's [statement about reproducibility](https://pytorch.org/docs/stable/notes/randomness.html):
+💡 We strongly recommend reading PyTorch's [statement about reproducibility](https://pytorch.org/docs/stable/notes/randomness.html):
 
 > Completely reproducible results are not guaranteed across PyTorch releases, individual commits, or different platforms. Furthermore, results may not be reproducible between CPU and GPU executions, even when using identical seeds.
 
@@ -49,9 +49,11 @@ Running the code above prints one value, but if you run it again you get a diffe
 
 Every time the pipeline is run, [`torch.randn`](https://pytorch.org/docs/stable/generated/torch.randn.html) uses a different random seed to create Gaussian noise which is denoised stepwise. This leads to a different result each time it is run, which is great for diffusion pipelines since it generates a different random image each time.
 
+But if you need to reliably generate the same image, that'll depend on whether you're running the pipeline on a CPU or GPU.
+
 ### CPU
 
-But if you want to reproduce the same image on a CPU, you'll need to use a PyTorch [`Generator`](https://pytorch.org/docs/stable/generated/torch.randn.html) and set a seed:
+To generate reproducible results on a CPU, you'll need to use a PyTorch [`Generator`](https://pytorch.org/docs/stable/generated/torch.randn.html) and set a seed:
 
 ```python
 import torch
@@ -73,7 +75,7 @@ print(np.abs(image).sum())
 
 Now when you run the code above, it always prints a value of `1491.1711` no matter what because the `Generator` object with the seed is passed to all the random functions of the pipeline.
 
-If you run this code example on your specific hardware and version, you should get a similar if not the same, result.
+If you run this code example on your specific hardware and PyTorch version, you should get a similar, if not the same, result.
 
 <Tip>
 
@@ -86,7 +88,7 @@ passed to multiple pipelines in a sequence.
 
 ### GPU
 
-Writing a reproducible pipeline on a GPU is a bit trickier, and full reproducibility across different hardware is not guaranteed because matrix multiplication - which diffusion pipelines require a lot of - is less deterministic on a GPU than a CPU. For example, if you run the same code example above on a CPU on a GPU: 
+Writing a reproducible pipeline on a GPU is a bit trickier, and full reproducibility across different hardware is not guaranteed because matrix multiplication - which diffusion pipelines require a lot of - is less deterministic on a GPU than a CPU. For example, if you run the same code example above on a GPU: 
 
 ```python
 import torch
