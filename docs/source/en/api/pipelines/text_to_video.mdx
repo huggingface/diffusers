@@ -32,7 +32,7 @@ Resources:
 
 ## Usage example 
 
-Let's start by generating a short video:
+Let's start by generating a short video with the default length of 16 frames (2s at 8 fps):
 
 ```python 
 import torch
@@ -48,11 +48,11 @@ video_path = export_to_video(video_frames)
 video_path
 ```
 
-Diffusers supports different optimization techniques to for improving the latency
+Diffusers supports different optimization techniques to improve the latency
 and memory footprint of a pipeline. Since videos are often more memory-heavy than images,
-for this pipeline, we can enable CPU offloading and VAE slicing to keep the memory-footprint at bay.
+we can enable CPU offloading and VAE slicing to keep the memory footprint at bay.
 
-Let's generate a video of 8 seconds with CPU offloading and VAE slicing:
+Let's generate a video of 8 seconds (64 frames) on the same GPU using CPU offloading and VAE slicing:
 
 ```python
 import torch
@@ -71,9 +71,9 @@ video_path = export_to_video(video_frames)
 video_path
 ```
 
-Together with PyTorch 2.0, "fp16" as the precision and the above techniques, it just takes 7 GBs of GPU memory.
+It just takes **7 GBs of GPU memory** to generate the 64 video frames using PyTorch 2.0, "fp16" precision and the techniques mentioned above.
 
-We can also use a different scheduler easily:
+We can also use a different scheduler easily, using the same method we'd use for Stable Diffusion:
 
 ```python
 import torch
@@ -90,7 +90,7 @@ video_path = export_to_video(video_frames)
 video_path
 ```
 
-Here are sample outputs: 
+Here are some sample outputs: 
 
 <table>
     <tr>
