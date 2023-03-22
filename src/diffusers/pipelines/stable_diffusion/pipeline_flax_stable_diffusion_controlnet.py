@@ -55,28 +55,37 @@ EXAMPLE_DOC_STRING = """
         >>> from PIL import Image
         >>> from diffusers import FlaxStableDiffusionControlNetPipeline, FlaxControlNetModel
 
+
         >>> def image_grid(imgs, rows, cols):
-        ...     w,h = imgs[0].size
-        ...     grid = Image.new('RGB', size=(cols*w, rows*h))
-        ...     for i, img in enumerate(imgs): grid.paste(img, box=(i%cols*w, i//cols*h))
+        ...     w, h = imgs[0].size
+        ...     grid = Image.new("RGB", size=(cols * w, rows * h))
+        ...     for i, img in enumerate(imgs):
+        ...         grid.paste(img, box=(i % cols * w, i // cols * h))
         ...     return grid
+
 
         >>> def create_key(seed=0):
         ...     return jax.random.PRNGKey(seed)
 
+
         >>> rng = create_key(0)
 
         >>> # get canny image
-        >>> canny_image = load_image("https://huggingface.co/datasets/YiYiXu/test-doc-assets/resolve/main/blog_post_cell_10_output_0.jpeg")
+        >>> canny_image = load_image(
+        ...     "https://huggingface.co/datasets/YiYiXu/test-doc-assets/resolve/main/blog_post_cell_10_output_0.jpeg"
+        ... )
 
         >>> prompts = "best quality, extremely detailed"
         >>> negative_prompts = "monochrome, lowres, bad anatomy, worst quality, low quality"
 
         >>> # load control net and stable diffusion v1-5
-        >>> controlnet, controlnet_params = FlaxControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", from_pt=True, dtype=jnp.float32)
+        >>> controlnet, controlnet_params = FlaxControlNetModel.from_pretrained(
+        ...     "lllyasviel/sd-controlnet-canny", from_pt=True, dtype=jnp.float32
+        ... )
         >>> pipe, params = FlaxStableDiffusionControlNetPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, from_pt=True, dtype = jnp.float32)
-        >>> params['controlnet'] = controlnet_params
+        ...     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, from_pt=True, dtype=jnp.float32
+        ... )
+        >>> params["controlnet"] = controlnet_params
 
         >>> num_samples = jax.device_count()
         >>> rng = jax.random.split(rng, jax.device_count())
@@ -101,7 +110,7 @@ EXAMPLE_DOC_STRING = """
         ... ).images
 
         >>> output_images = pipe.numpy_to_pil(np.asarray(output.reshape((num_samples,) + output.shape[-3:])))
-        >>> output_images = image_grid(output_images, num_samples//4, 4)
+        >>> output_images = image_grid(output_images, num_samples // 4, 4)
         >>> output_images.save("generated_image.png")
         ```
 """
@@ -367,7 +376,8 @@ class FlaxStableDiffusionControlNetPipeline(FlaxDiffusionPipeline):
             prompt_ids (`jnp.array`):
                 The prompt or prompts to guide the image generation.
             image (`jnp.array`):
-                Array representing the ControlNet input condition. ControlNet use this input condition to generate guidance to Unet.
+                Array representing the ControlNet input condition. ControlNet use this input condition to generate
+                guidance to Unet.
             params (`Dict` or `FrozenDict`): Dictionary containing the model parameters/weights
             prng_seed (`jax.random.KeyArray` or `jax.Array`): Array containing random number generator key
             num_inference_steps (`int`, *optional*, defaults to 50):
