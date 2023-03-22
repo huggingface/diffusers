@@ -263,6 +263,8 @@ def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
 def export_to_video(video_frames: List[np.ndarray], output_video_path: str = None) -> str:
     if is_opencv_available():
         import cv2
+    else:
+        raise ImportError(BACKENDS_MAPPING["opencv"][1].format("export_to_video"))
     if output_video_path is None:
         output_video_path = tempfile.NamedTemporaryFile(suffix=".mp4").name
 
