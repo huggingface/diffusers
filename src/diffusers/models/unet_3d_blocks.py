@@ -15,7 +15,7 @@
 import torch
 from torch import nn
 
-from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
+from .resnet import Downsample2D, ResnetBlock2D, Upsample2D, TemporalConvLayer
 from .transformer_2d import Transformer2DModel
 from .transformer_temporal import TransformerTempModel
 
@@ -34,7 +34,7 @@ def get_down_block(
     cross_attention_dim=None,
     downsample_padding=None,
     dual_cross_attention=False,
-    use_linear_projection=False,
+    use_linear_projection=True,
     only_cross_attention=False,
     upcast_attention=False,
     resnet_time_scale_shift="default",
@@ -90,7 +90,7 @@ def get_up_block(
     resnet_groups=None,
     cross_attention_dim=None,
     dual_cross_attention=False,
-    use_linear_projection=False,
+    use_linear_projection=True,
     only_cross_attention=False,
     upcast_attention=False,
     resnet_time_scale_shift="default",
@@ -148,7 +148,7 @@ class UNetMidBlock3DCrossAttn(nn.Module):
         output_scale_factor=1.0,
         cross_attention_dim=1280,
         dual_cross_attention=False,
-        use_linear_projection=False,
+        use_linear_projection=True,
         upcast_attention=False,
     ):
         super().__init__()
@@ -173,7 +173,7 @@ class UNetMidBlock3DCrossAttn(nn.Module):
             )
         ]
         temp_convs = [
-            TemporalConvBlock_v2(
+            TemporalConvLayer(
                 in_channels,
                 in_channels,
                 dropout=0.1,
@@ -220,7 +220,7 @@ class UNetMidBlock3DCrossAttn(nn.Module):
                 )
             )
             temp_convs.append(
-                TemporalConvBlock_v2(
+                TemporalConvLayer(
                     in_channels,
                     in_channels,
                     dropout=0.1,
@@ -307,7 +307,7 @@ class CrossAttnDownBlock3D(nn.Module):
                 )
             )
             temp_convs.append(
-                TemporalConvBlock_v2(
+                TemporalConvLayer(
                     out_channels,
                     out_channels,
                     dropout=0.1,
@@ -427,7 +427,7 @@ class DownBlock3D(nn.Module):
                 )
             )
             temp_convs.append(
-                TemporalConvBlock_v2(
+                TemporalConvLayer(
                     out_channels,
                     out_channels,
                     dropout=0.1,
@@ -519,7 +519,7 @@ class CrossAttnUpBlock3D(nn.Module):
                 )
             )
             temp_convs.append(
-                TemporalConvBlock_v2(
+                TemporalConvLayer(
                     out_channels,
                     out_channels,
                     dropout=0.1,
@@ -636,7 +636,7 @@ class UpBlock3D(nn.Module):
                 )
             )
             temp_convs.append(
-                TemporalConvBlock_v2(
+                TemporalConvLayer(
                     out_channels,
                     out_channels,
                     dropout=0.1,
@@ -668,57 +668,3 @@ class UpBlock3D(nn.Module):
                 hidden_states = upsampler(hidden_states, upsample_size)
 
         return hidden_states
-
-
-class TemporalConvBlock_v2(nn.Module):
-    def __init__(self, in_dim, out_dim=None, dropout=0.0, use_image_dataset=False):
-        super(TemporalConvBlock_v2, self).__init__()
-        if out_dim is None:
-            out_dim = in_dim  # int(1.5*in_dim)
-        self.in_dim = in_dim
-        self.out_dim = out_dim
-        self.use_image_dataset = use_image_dataset
-
-        # conv layers
-        self.conv1 = nn.Sequential(
-            nn.GroupNorm(32, in_dim), nn.SiLU(), nn.Conv3d(in_dim, out_dim, (3, 1, 1), padding=(1, 0, 0))
-        )
-        self.conv2 = nn.Sequential(
-            nn.GroupNorm(32, out_dim),
-            nn.SiLU(),
-            nn.Dropout(dropout),
-            nn.Conv3d(out_dim, in_dim, (3, 1, 1), padding=(1, 0, 0)),
-        )
-        self.conv3 = nn.Sequential(
-            nn.GroupNorm(32, out_dim),
-            nn.SiLU(),
-            nn.Dropout(dropout),
-            nn.Conv3d(out_dim, in_dim, (3, 1, 1), padding=(1, 0, 0)),
-        )
-        self.conv4 = nn.Sequential(
-            nn.GroupNorm(32, out_dim),
-            nn.SiLU(),
-            nn.Dropout(dropout),
-            nn.Conv3d(out_dim, in_dim, (3, 1, 1), padding=(1, 0, 0)),
-        )
-
-        # zero out the last layer params,so the conv block is identity
-        nn.init.zeros_(self.conv4[-1].weight)
-        nn.init.zeros_(self.conv4[-1].bias)
-
-    def forward(self, x, num_frames=1):
-        x = x[None, :].reshape((-1, num_frames) + x.shape[1:]).permute(0, 2, 1, 3, 4)
-
-        identity = x
-        x = self.conv1(x)
-        x = self.conv2(x)
-        x = self.conv3(x)
-        x = self.conv4(x)
-
-        if self.use_image_dataset:
-            x = identity + 0.0 * x
-        else:
-            x = identity + x
-
-        x = x.permute(0, 2, 1, 3, 4).reshape((x.shape[0] * x.shape[2], -1) + x.shape[3:])
-        return x
