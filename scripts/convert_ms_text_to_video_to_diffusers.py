@@ -407,7 +407,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--checkpoint_path", default=None, type=str, required=True, help="Path to the checkpoint to convert."
     )
-    # !wget https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml
     parser.add_argument(
         "--original_config_file",
         default=None,
