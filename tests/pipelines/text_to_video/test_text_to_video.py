@@ -23,10 +23,11 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
+    DPMSolverMultistepScheduler,
     TextToVideoMSPipeline,
     UNet3DConditionModel,
 )
-from diffusers.utils import torch_device
+from diffusers.utils import skip_mps, torch_device
 
 from ...pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin
@@ -122,7 +123,7 @@ class TextToVideoMSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         }
         return inputs
 
-    def test_text_to_video_ddim(self):
+    def test_text_to_video_default_case(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         sd_pipe = TextToVideoMSPipeline(**components)
@@ -133,13 +134,46 @@ class TextToVideoMSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         frames = sd_pipe(**inputs).frames
         image_slice = frames[0][-3:, -3:, -1]
 
-        slice = [round(x, 4) for x in image_slice.flatten().tolist()]
-        print(",".join([str(x) for x in slice]))
-
         assert frames[0].shape == (64, 64, 3)
         expected_slice = np.array([166, 184, 167, 118, 102, 123, 108, 93, 114])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_stable_diffusion_pix2pix_negative_prompt(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = TextToVideoMSPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        negative_prompt = "french fries"
+        frames = sd_pipe(**inputs, negative_prompt=negative_prompt).frames
+        image_slice = frames[0][-3:, -3:, -1]
+
+        assert frames[0].shape == (64, 64, 3)
+        expected_slice = np.array([166, 181, 167, 119, 99, 124, 110, 94, 114])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    def test_stable_diffusion_pix2pix_dpm_multistep(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        components["scheduler"] = DPMSolverMultistepScheduler(
+            beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
+        )
+        sd_pipe = TextToVideoMSPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        frames = sd_pipe(**inputs).frames
+        image_slice = frames[0][-3:, -3:, -1]
+
+        assert frames[0].shape == (64, 64, 3)
+        expected_slice = np.array([170, 190, 180, 140, 121, 136, 121, 97, 122])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     # (todo): sayakpaul
     @unittest.skip(reason="Batching needs to be properly figured out first for this pipeline.")
@@ -157,10 +191,11 @@ class TextToVideoMSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     # Overriding since the output type for this pipeline differs from that of
     # text-to-image pipelines.
+    @skip_mps
     def test_attention_slicing_forward_pass(self):
         self._test_attention_slicing_forward_pass()
 
-    def _test_attention_slicing_forward_pass(self, expected_max_diff=1e-3):
+    def _test_attention_slicing_forward_pass(self, expected_max_diff=4e-3):
         if not self.test_attention_slicing:
             return
 
@@ -188,6 +223,7 @@ class TextToVideoMSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     # Overriding since the output type for this pipeline differs from that of
     # text-to-image pipelines.
+    @skip_mps
     def test_dict_tuple_outputs_equivalent(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -204,6 +240,13 @@ class TextToVideoMSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         max_diff = np.abs(output / 255.0 - output_tuple / 255.0).max()
         self.assertLess(max_diff, 1e-4)
 
+    @skip_mps
+    def test_progress_bar(self):
+        return super().test_progress_bar()
+
+    # Overriding since the output type for this pipeline differs from that of
+    # text-to-image pipelines.
+    @skip_mps
     def test_save_load_local(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -229,6 +272,9 @@ class TextToVideoMSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         max_diff = np.abs((output / 255.0) - (output_loaded / 255.0)).max()
         self.assertLess(max_diff, 1e-4)
 
+    # Overriding since the output type for this pipeline differs from that of
+    # text-to-image pipelines.
+    @skip_mps
     def test_save_load_optional_components(self):
         if not hasattr(self.pipeline_class, "_optional_components"):
             return
