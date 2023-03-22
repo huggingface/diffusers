@@ -14,11 +14,11 @@ specific language governing permissions and limitations under the License.
 
 [[open-in-colab]]
 
-When you're using the [`DiffusionPipeline`] for inference, you're trying to generate an image with a certain style and the image should contain the elements specified in the prompt. If you've already tried generating something, you know that it can be tricky to generate an image you're happy with, and you might have to run the [`DiffusionPipeline`] multiple times. But generating something out of nothing is a computationally intensive process, especially if you're running inference over and over again. 
+Getting the [`DiffusionPipeline`] to generate images in a certain style or include what you want can be tricky. Often times, you have to run the [`DiffusionPipeline`] several times before you end up with an image you're happy with. But generating something out of nothing is a computationally intensive process, especially if you're running inference over and over again. 
 
-The key is to get the most *computational efficiency* (speed) and *memory efficiency* (GPU RAM) from the pipeline to shorten the time to getting high-quality outputs.
+This is why it's important to get the most *computational* (speed) and *memory* (GPU RAM) efficiency from the pipeline to reduce the time between inference cycles so you can iterate faster.
 
-This tutorial will walk you through how to improve your [`DiffusionPipeline`]'s performance to generate faster.
+This tutorial walks you through how to generate faster and better with the [`DiffusionPipeline`].
 
 Begin by loading the [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) model:
 
@@ -39,7 +39,7 @@ prompt = "portrait photo of a old warrior chief"
 
 <Tip>
 
-💡 If you don't have access to a physical GPU, you can use one for free from a GPU provider like [Colab](https://colab.research.google.com/)!
+💡 If you don't have access to a GPU, you can use one for free from a GPU provider like [Colab](https://colab.research.google.com/)!
 
 </Tip>
 
@@ -49,7 +49,7 @@ One of the simplest ways to speed up inference is to place the pipeline on a GPU
 pipeline = pipeline.to("cuda")
 ```
 
-To make sure you can use the same image and improve on it, use a [`Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) and set a seed for [reproducibility](./using-diffusers/reproducibility).
+To make sure you can use the same image and improve on it, use a [`Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) and set a seed for [reproducibility](./using-diffusers/reproducibility):
 
 ```python
 generator = torch.Generator("cuda").manual_seed(0)
@@ -66,9 +66,9 @@ image
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_1.png">
 </div>
 
-This process took ~30 seconds on a T4 GPU (it might see faster if your allocated GPU is better than a T4). By default, the [`DiffusionPipeline`] runs inference with full `float32` precision for 50 inference steps. You can speed this up by switching to a lower precision like `float16` or running fewer inference steps. 
+This process took ~30 seconds on a T4 GPU (it might be faster if your allocated GPU is better than a T4). By default, the [`DiffusionPipeline`] runs inference with full `float32` precision for 50 inference steps. You can speed this up by switching to a lower precision like `float16` or running fewer inference steps. 
 
-Load the model in `float16` and generate an image:
+Let's start by loading the model in `float16` and generate an image:
 
 ```python
 import torch
@@ -92,7 +92,7 @@ This time, it only took ~11 seconds to generate the image, which is almost 3x fa
 
 </Tip>
 
-The other option is to reduce the number of inference steps. The number of inference steps is associated with a denoising scheduler, and choosing a more efficient scheduler could help decrease the number of steps. You can find out which schedulers are compatible with the [`DiffusionPipeline`] by calling the `compatibles` method:
+Another option is to reduce the number of inference steps. Choosing a more efficient scheduler could help decrease the number of steps without sacrificing output quality. You can find which schedulers are compatible with the current model in the [`DiffusionPipeline`] by calling the `compatibles` method:
 
 ```python
 pipeline.scheduler.compatibles
@@ -113,7 +113,7 @@ pipeline.scheduler.compatibles
 ]
 ```
 
-The Stable Diffusion model uses the [`PNDMScheduler`] by default which usually requires ~50 inference steps. But other more performant schedulers, like [`DPMSolverMultistepScheduler`], typically require only ~20 or 25 inference steps. Set a new scheduler with the [`ConfigMixin.from_config`] method:
+The Stable Diffusion model uses the [`PNDMScheduler`] by default which usually requires ~50 inference steps, but more performant schedulers like [`DPMSolverMultistepScheduler`], require only ~20 or 25 inference steps. Use the [`ConfigMixin.from_config`] method to load a new scheduler:
 
 ```python
 from diffusers import DPMSolverMultistepScheduler
@@ -121,7 +121,7 @@ from diffusers import DPMSolverMultistepScheduler
 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
 ```
 
-Now let's set the `num_inference_steps` to just 20:
+Now set the `num_inference_steps` to 20:
 
 ```python
 generator = torch.Generator("cuda").manual_seed(0)
@@ -133,11 +133,11 @@ image
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_3.png">
 </div>
 
-Now you've managed to cut the inference time to just 4 seconds! ⚡️
+Great, you've managed to cut the inference time to just 4 seconds! ⚡️
 
 ## Memory
 
-The other key to improving pipeline performance is consuming less memory, which indirectly implies more speed, since you're often trying to maximize the number of images generated per second. The easiest way to see how many images you can generate at once is to see when you get an `OutOfMemoryError` (OOM).
+The other key to improving pipeline performance is consuming less memory, which indirectly implies more speed, since you're often trying to maximize the number of images generated per second. The easiest way to see how many images you can generate at once is to try out different batch sizes until you get an `OutOfMemoryError` (OOM).
 
 Create a function that'll generate a batch of images from a list of prompts and `Generators`. Make sure to assign each `Generator` a seed so you can reuse it if it produces a good result.
 
@@ -165,16 +165,20 @@ def image_grid(imgs, rows=2, cols=2):
     return grid
 ```
 
-Generate a batch of images with `batch_size=4` and see how much memory you've consumed:
+Start with `batch_size=4` and see how much memory you've consumed:
 
 ```python
 images = pipeline(**get_inputs(batch_size=4)).images
 image_grid(images)
 ```
 
-Unless you have a GPU with more RAM, the code above probably returned an `OOM` error! Most of the memory is taken up by the cross-attention layers. Instead of running this operation in a batch, you can run it sequentially to save a significant amount of memory. All you have to do is enable [`~DiffusionPipeline.enable_attention_slicing`].
+Unless you have a GPU with more RAM, the code above probably returned an `OOM` error! Most of the memory is taken up by the cross-attention layers. Instead of running this operation in a batch, you can run it sequentially to save a significant amount of memory. All you have to do is configure the pipeline to use the [`~DiffusionPipeline.enable_attention_slicing`] function:
 
-Try increasing the `batch_size` to 8!
+```python
+pipeline.enable_attention_slicing()
+```
+
+Now try increasing the `batch_size` to 8!
 
 ```python
 images = pipeline(**get_inputs(batch_size=8)).images
@@ -193,13 +197,13 @@ In the last two sections, you learned how to optimize the speed of your pipeline
 
 ### Better checkpoints
 
-The most obvious step is to use better checkpoints. The Stable Diffusion model is a good starting point, and since its official release, several improved versions have also been released. However, using a newer version doesn't automatically mean you'll get better results. You'll have to experiment with different checkpoints yourself, and do a little research (such as using [negative prompts](https://minimaxir.com/2022/11/stable-diffusion-negative-prompt/)) to get the best results.
+The most obvious step is to use better checkpoints. The Stable Diffusion model is a good starting point, and since its official launch, several improved versions have also been released. However, using a newer version doesn't automatically mean you'll get better results. You'll still have to experiment with different checkpoints yourself, and do a little research (such as using [negative prompts](https://minimaxir.com/2022/11/stable-diffusion-negative-prompt/)) to get the best results.
 
-As the field grows, there are more high-quality checkpoints finetuned to produce certain styles. Try exploring the [Hub](https://huggingface.co/models?library=diffusers&sort=downloads) and [Diffusers Gallery](https://huggingface.co/spaces/huggingface-projects/diffusers-gallery) to find a checkpoint you're interested in!
+As the field grows, there are more and more high-quality checkpoints finetuned to produce certain styles. Try exploring the [Hub](https://huggingface.co/models?library=diffusers&sort=downloads) and [Diffusers Gallery](https://huggingface.co/spaces/huggingface-projects/diffusers-gallery) to find one you're interested in!
 
 ### Better pipeline components
 
-The other thing you can try is optimizing the pipeline components such as the latent decoder. Let's try loading the latest [autodecoder](https://huggingface.co/stabilityai/stable-diffusion-2-1/tree/main/vae) from Stability AI into the pipeline, and generate some images:
+You can also try replacing the current pipeline components with a newer version. Let's try loading the latest [autodecoder](https://huggingface.co/stabilityai/stable-diffusion-2-1/tree/main/vae) from Stability AI into the pipeline, and generate some images:
 
 ```python
 from diffusers import AutoencoderKL
