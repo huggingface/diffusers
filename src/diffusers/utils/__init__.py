@@ -57,7 +57,6 @@ from .import_utils import (
     is_librosa_available,
     is_omegaconf_available,
     is_onnx_available,
-    is_opencv_available,
     is_safetensors_available,
     is_scipy_available,
     is_tensorboard_available,
@@ -93,8 +92,7 @@ if is_torch_available():
         torch_device,
     )
 
-if is_opencv_available():
-    from .testing_utils import export_to_video
+from .testing_utils import export_to_video
 
 logger = get_logger(__name__)
 
