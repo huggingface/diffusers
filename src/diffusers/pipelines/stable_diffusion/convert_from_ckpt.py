@@ -18,19 +18,9 @@ import re
 from io import BytesIO
 from typing import Optional
 
-import requests
 import torch
-from transformers import (
-    AutoFeatureExtractor,
-    BertTokenizerFast,
-    CLIPImageProcessor,
-    CLIPTextModel,
-    CLIPTextModelWithProjection,
-    CLIPTokenizer,
-    CLIPVisionConfig,
-    CLIPVisionModelWithProjection,
-)
 
+import requests
 from diffusers import (
     AutoencoderKL,
     ControlNetModel,
@@ -55,6 +45,16 @@ from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBe
 from diffusers.pipelines.paint_by_example import PaintByExampleImageEncoder, PaintByExamplePipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
+from transformers import (
+    AutoFeatureExtractor,
+    BertTokenizerFast,
+    CLIPImageProcessor,
+    CLIPTextModel,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    CLIPVisionConfig,
+    CLIPVisionModelWithProjection,
+)
 
 from ...utils import is_omegaconf_available, is_safetensors_available, logging
 from ...utils.import_utils import BACKENDS_MAPPING
@@ -1029,8 +1029,6 @@ def download_from_original_stable_diffusion_ckpt(
             The device to use. Pass `None` to determine automatically. :param from_safetensors: If `checkpoint_path` is
             in `safetensors` format, load checkpoint with safetensors instead of PyTorch. :return: A
             StableDiffusionPipeline object representing the passed-in `.ckpt`/`.safetensors` file.
-        torch_dtype (`torch.dtype`, *optional*, defaults to `torch.float32`):
-            The data type to use for the model. Defaults to `torch.float32`.
         load_safety_checker (`bool`, *optional*, defaults to `True`):
             Whether to load the safety checker or not. Defaults to `True`.
     """
