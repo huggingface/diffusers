@@ -22,9 +22,7 @@ from diffusers.pipelines.stable_diffusion.convert_from_ckpt import download_from
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument(
-        "--checkpoint_path", type=str, required=True, help="Path to the checkpoint to convert."
-    )
+    parser.add_argument("--checkpoint_path", type=str, required=True, help="Path to the checkpoint to convert.")
     # !wget https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml
     parser.add_argument(
         "--original_config_file",

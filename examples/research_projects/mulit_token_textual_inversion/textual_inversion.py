@@ -197,9 +197,7 @@ def parse_args():
         default=None,
         help="Pretrained tokenizer name or path if not the same as model_name",
     )
-    parser.add_argument(
-        "--train_data_dir", type=str, required=True, help="A folder containing the training data."
-    )
+    parser.add_argument("--train_data_dir", type=str, required=True, help="A folder containing the training data.")
     parser.add_argument(
         "--placeholder_token",
         type=str,
@@ -207,9 +205,7 @@ def parse_args():
         required=True,
         help="A token to use as a placeholder for the concept.",
     )
-    parser.add_argument(
-        "--initializer_token", type=str, required=True, help="A token to use as initializer word."
-    )
+    parser.add_argument("--initializer_token", type=str, required=True, help="A token to use as initializer word.")
     parser.add_argument("--learnable_property", type=str, default="object", help="Choose between 'object' and 'style'")
     parser.add_argument("--repeats", type=int, default=100, help="How many times to repeat the training data.")
     parser.add_argument(
@@ -525,10 +521,7 @@ class TextualInversionDataset(Dataset):
 
         if self.center_crop:
             crop = min(img.shape[0], img.shape[1])
-            (
-                h,
-                w,
-            ) = (
+            (h, w,) = (
                 img.shape[0],
                 img.shape[1],
             )

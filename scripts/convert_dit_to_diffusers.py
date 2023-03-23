@@ -149,12 +149,8 @@ if __name__ == "__main__":
         type=str,
         help="Path to pretrained VAE model, either stabilityai/sd-vae-ft-mse or stabilityai/sd-vae-ft-ema.",
     )
-    parser.add_argument(
-        "--save", default=True, type=bool, help="Whether to save the converted pipeline or not."
-    )
-    parser.add_argument(
-        "--checkpoint_path", type=str, required=True, help="Path to the output pipeline."
-    )
+    parser.add_argument("--save", default=True, type=bool, help="Whether to save the converted pipeline or not.")
+    parser.add_argument("--checkpoint_path", type=str, required=True, help="Path to the output pipeline.")
 
     args = parser.parse_args()
     main(args)

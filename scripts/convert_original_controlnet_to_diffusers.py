@@ -22,9 +22,7 @@ from diffusers.pipelines.stable_diffusion.convert_from_ckpt import download_cont
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument(
-        "--checkpoint_path", type=str, required=True, help="Path to the checkpoint to convert."
-    )
+    parser.add_argument("--checkpoint_path", type=str, required=True, help="Path to the checkpoint to convert.")
     parser.add_argument(
         "--original_config_file",
         type=str,

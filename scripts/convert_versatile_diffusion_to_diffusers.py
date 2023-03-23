@@ -679,12 +679,8 @@ def convert_vd_vae_checkpoint(checkpoint, config):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument(
-        "--unet_checkpoint_path", type=str, required=True, help="Path to the checkpoint to convert."
-    )
-    parser.add_argument(
-        "--vae_checkpoint_path", type=str, required=True, help="Path to the checkpoint to convert."
-    )
+    parser.add_argument("--unet_checkpoint_path", type=str, required=True, help="Path to the checkpoint to convert.")
+    parser.add_argument("--vae_checkpoint_path", type=str, required=True, help="Path to the checkpoint to convert.")
     parser.add_argument(
         "--optimus_checkpoint_path", type=str, required=True, help="Path to the checkpoint to convert."
     )

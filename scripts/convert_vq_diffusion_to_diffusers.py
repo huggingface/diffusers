@@ -717,9 +717,7 @@ if __name__ == "__main__":
         help="The YAML config file corresponding to the original architecture for the vqvae.",
     )
 
-    parser.add_argument(
-        "--checkpoint_path", type=str, required=True, help="Path to the checkpoint to convert."
-    )
+    parser.add_argument("--checkpoint_path", type=str, required=True, help="Path to the checkpoint to convert.")
 
     parser.add_argument(
         "--original_config_file",

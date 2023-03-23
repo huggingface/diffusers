@@ -94,9 +94,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--base_model_path", type=str, required=True, help="Path to the base model in diffusers format."
     )
-    parser.add_argument(
-        "--checkpoint_path", type=str, required=True, help="Path to the checkpoint to convert."
-    )
+    parser.add_argument("--checkpoint_path", type=str, required=True, help="Path to the checkpoint to convert.")
     parser.add_argument("--dump_path", type=str, required=True, help="Path to the output model.")
     parser.add_argument(
         "--lora_prefix_unet", default="lora_unet", type=str, help="The prefix of UNet weight in safetensors"

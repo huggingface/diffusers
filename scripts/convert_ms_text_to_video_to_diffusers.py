@@ -404,9 +404,7 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument(
-        "--checkpoint_path", type=str, required=True, help="Path to the checkpoint to convert."
-    )
+    parser.add_argument("--checkpoint_path", type=str, required=True, help="Path to the checkpoint to convert.")
     parser.add_argument("--dump_path", type=str, required=True, help="Path to the output model.")
     args = parser.parse_args()
 

@@ -198,9 +198,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--output_path", type=str, required=True, help="Path to the converted model.")
-    parser.add_argument(
-        "--save", default=True, type=bool, help="Whether to save the converted model or not."
-    )
+    parser.add_argument("--save", default=True, type=bool, help="Whether to save the converted model or not.")
     parser.add_argument(
         "--checkpoint_path",
         default=f"{MODEL}/checkpoint_500000",
