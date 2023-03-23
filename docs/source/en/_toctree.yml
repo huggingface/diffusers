@@ -3,6 +3,8 @@
     title: 🧨 Diffusers
   - local: quicktour
     title: Quicktour
+  - local: stable_diffusion
+    title: Improve DiffusionPipeline performance
   - local: installation
     title: Installation
   title: Get started
@@ -11,8 +13,6 @@
     title: Overview
   - local: using-diffusers/write_own_pipeline
     title: Understanding models and schedulers
-  - local: stable_diffusion
-    title: Improve DiffusionPipeline performance
   - local: tutorials/basic_training
     title: Train a diffusion model
   title: Tutorials
