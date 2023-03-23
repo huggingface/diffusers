@@ -4,7 +4,7 @@ import unittest
 
 import torch
 from transformers import (
-    CLIPFeatureExtractor,
+    CLIPImageProcessor,
     CLIPTextConfig,
     CLIPTextModel,
     CLIPTokenizer,
@@ -36,7 +36,7 @@ class StableUnCLIPImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
 
         # image encoding components
 
-        feature_extractor = CLIPFeatureExtractor(crop_size=32, size=32)
+        feature_extractor = CLIPImageProcessor(crop_size=32, size=32)
 
         image_encoder = CLIPVisionModelWithProjection(
             CLIPVisionConfig(
