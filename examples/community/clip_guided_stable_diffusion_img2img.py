@@ -13,6 +13,7 @@ from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
     DiffusionPipeline,
+    DPMSolverMultistepScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
     UNet2DConditionModel,
@@ -140,7 +141,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
         clip_model: CLIPModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: Union[PNDMScheduler, LMSDiscreteScheduler, DDIMScheduler],
+        scheduler: Union[PNDMScheduler, LMSDiscreteScheduler, DDIMScheduler, DPMSolverMultistepScheduler],
         feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
@@ -263,17 +264,12 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
     ):
         latents = latents.detach().requires_grad_()
 
-        if isinstance(self.scheduler, LMSDiscreteScheduler):
-            sigma = self.scheduler.sigmas[index]
-            # the model input needs to be scaled to match the continuous ODE formulation in K-LMS
-            latent_model_input = latents / ((sigma**2 + 1) ** 0.5)
-        else:
-            latent_model_input = latents
+        latent_model_input = self.scheduler.scale_model_input(latents, timestep)
 
         # predict the noise residual
         noise_pred = self.unet(latent_model_input, timestep, encoder_hidden_states=text_embeddings).sample
 
-        if isinstance(self.scheduler, (PNDMScheduler, DDIMScheduler)):
+        if isinstance(self.scheduler, (PNDMScheduler, DDIMScheduler, DPMSolverMultistepScheduler)):
             alpha_prod_t = self.scheduler.alphas_cumprod[timestep]
             beta_prod_t = 1 - alpha_prod_t
             # compute predicted original sample from predicted noise also called
