@@ -70,6 +70,8 @@
       title: Low-Rank Adaptation of Large Language Models (LoRA)
     - local: training/controlnet
       title: ControlNet
+    - local: training/instructpix2pix
+      title: InstructPix2Pix Training
     title: Training
   - sections:
     - local: using-diffusers/rl
@@ -98,22 +100,6 @@
   - local: optimization/habana
     title: Habana Gaudi
   title: Optimization/Special Hardware
-- sections:
-  - local: training/overview
-    title: Overview
-  - local: training/unconditional_training
-    title: Unconditional image generation
-  - local: training/text_inversion
-    title: Textual Inversion
-  - local: training/dreambooth
-    title: DreamBooth
-  - local: training/text2image
-    title: Text-to-image
-  - local: training/lora
-    title: Low-Rank Adaptation of Large Language Models (LoRA)
-  - local: training/instructpix2pix
-    title: InstructPix2Pix Training
-  title: Training
 - sections:
   - local: conceptual/philosophy
     title: Philosophy
