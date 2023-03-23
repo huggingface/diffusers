@@ -360,7 +360,7 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+#@require_torch_gpu
 class AudioLDMPipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
@@ -390,7 +390,7 @@ class AudioLDMPipelineSlowTests(unittest.TestCase):
         audio = audioldm_pipe(**inputs).audios[0]
 
         assert audio.ndim == 1
-        assert len(audio) == 81952
+        assert len(audio) == 81920
 
         audio_slice = audio[77230:77240]
         expected_slice = np.array(
@@ -409,7 +409,7 @@ class AudioLDMPipelineSlowTests(unittest.TestCase):
         audio = audioldm_pipe(**inputs).audios[0]
 
         assert audio.ndim == 1
-        assert len(audio) == 81952
+        assert len(audio) == 81920
 
         audio_slice = audio[27780:27790]
         expected_slice = np.array([-0.2131, -0.0873, -0.0124, -0.0189, 0.0569, 0.1373, 0.1883, 0.2886, 0.3297, 0.2212])
