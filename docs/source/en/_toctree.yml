@@ -134,6 +134,8 @@
       title: AltDiffusion
     - local: api/pipelines/audio_diffusion
       title: Audio Diffusion
+    - local: api/pipelines/audioldm
+      title: AudioLDM
     - local: api/pipelines/cycle_diffusion
       title: Cycle Diffusion
     - local: api/pipelines/dance_diffusion
