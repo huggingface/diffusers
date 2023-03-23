@@ -24,7 +24,6 @@ from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
     EulerAncestralDiscreteScheduler,
-    LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionModelEditingPipeline,
     UNet2DConditionModel,

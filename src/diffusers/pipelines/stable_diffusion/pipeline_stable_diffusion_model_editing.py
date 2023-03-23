@@ -19,7 +19,7 @@ import torch
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...schedulers import DDIMScheduler, PNDMScheduler
+from ...schedulers import PNDMScheduler
 from ...schedulers.scheduling_utils import SchedulerMixin
 from ...utils import is_accelerate_available, is_accelerate_version, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
