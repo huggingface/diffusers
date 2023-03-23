@@ -47,6 +47,18 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = AudioLDMPipeline
     params = TEXT_TO_AUDIO_PARAMS
     batch_params = TEXT_TO_AUDIO_BATCH_PARAMS
+    required_optional_params = frozenset(
+        [
+            "num_inference_steps",
+            "num_waveforms_per_prompt",
+            "generator",
+            "latents",
+            "output_type",
+            "return_dict",
+            "callback",
+            "callback_steps",
+        ]
+    )
 
     def get_dummy_components(self):
         torch.manual_seed(0)
