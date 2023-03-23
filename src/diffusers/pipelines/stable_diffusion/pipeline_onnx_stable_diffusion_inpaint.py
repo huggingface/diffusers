@@ -18,7 +18,7 @@ from typing import Callable, List, Optional, Union
 import numpy as np
 import PIL
 import torch
-from transformers import CLIPFeatureExtractor, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
@@ -77,7 +77,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
-        feature_extractor ([`CLIPFeatureExtractor`]):
+        feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
     vae_encoder: OnnxRuntimeModel
@@ -87,7 +87,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
     unet: OnnxRuntimeModel
     scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler]
     safety_checker: OnnxRuntimeModel
-    feature_extractor: CLIPFeatureExtractor
+    feature_extractor: CLIPImageProcessor
 
     _optional_components = ["safety_checker", "feature_extractor"]
 
@@ -100,7 +100,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
         unet: OnnxRuntimeModel,
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
         safety_checker: OnnxRuntimeModel,
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
