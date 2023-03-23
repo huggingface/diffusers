@@ -24,7 +24,7 @@ from flax.jax_utils import unreplicate
 from flax.training.common_utils import shard
 from packaging import version
 from PIL import Image
-from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel
+from transformers import CLIPImageProcessor, CLIPTokenizer, FlaxCLIPTextModel
 
 from ...models import FlaxAutoencoderKL, FlaxUNet2DConditionModel
 from ...schedulers import (
@@ -103,7 +103,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         safety_checker ([`FlaxStableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
-        feature_extractor ([`CLIPFeatureExtractor`]):
+        feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
 
@@ -117,7 +117,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
             FlaxDDIMScheduler, FlaxPNDMScheduler, FlaxLMSDiscreteScheduler, FlaxDPMSolverMultistepScheduler
         ],
         safety_checker: FlaxStableDiffusionSafetyChecker,
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
         dtype: jnp.dtype = jnp.float32,
     ):
         super().__init__()

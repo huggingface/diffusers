@@ -50,11 +50,11 @@ and passing pipeline modules directly.
 
 ```python
 from diffusers import DiffusionPipeline
-from transformers import CLIPFeatureExtractor, CLIPModel
+from transformers import CLIPImageProcessor, CLIPModel
 
 clip_model_id = "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 
-feature_extractor = CLIPFeatureExtractor.from_pretrained(clip_model_id)
+feature_extractor = CLIPImageProcessor.from_pretrained(clip_model_id)
 clip_model = CLIPModel.from_pretrained(clip_model_id)
 
 pipeline = DiffusionPipeline.from_pretrained(
