@@ -415,7 +415,7 @@ print(pipe)
 StableDiffusionPipeline {
   "feature_extractor": [
     "transformers",
-    "CLIPFeatureExtractor"
+    "CLIPImageProcessor"
   ],
   "safety_checker": [
     "stable_diffusion",
@@ -445,7 +445,7 @@ StableDiffusionPipeline {
 ```
 
 First, we see that the official pipeline is the [`StableDiffusionPipeline`], and second we see that the `StableDiffusionPipeline` consists of 7 components:
-- `"feature_extractor"` of class `CLIPFeatureExtractor` as defined [in `transformers`](https://huggingface.co/docs/transformers/main/en/model_doc/clip#transformers.CLIPFeatureExtractor).
+- `"feature_extractor"` of class `CLIPImageProcessor` as defined [in `transformers`](https://huggingface.co/docs/transformers/main/en/model_doc/clip#transformers.CLIPImageProcessor).
 - `"safety_checker"` as defined [here](https://github.com/huggingface/diffusers/blob/e55687e1e15407f60f32242027b7bb8170e58266/src/diffusers/pipelines/stable_diffusion/safety_checker.py#L32).
 - `"scheduler"` of class [`PNDMScheduler`].
 - `"text_encoder"` of class `CLIPTextModel` as defined [in `transformers`](https://huggingface.co/docs/transformers/main/en/model_doc/clip#transformers.CLIPTextModel).
@@ -493,7 +493,7 @@ In the case of `runwayml/stable-diffusion-v1-5` the `model_index.json` is theref
   "_diffusers_version": "0.6.0",
   "feature_extractor": [
     "transformers",
-    "CLIPFeatureExtractor"
+    "CLIPImageProcessor"
   ],
   "safety_checker": [
     "stable_diffusion",

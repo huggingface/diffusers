@@ -20,6 +20,13 @@ from diffusers.utils.testing_utils import require_torch, torch_device
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
+def to_np(tensor):
+    if isinstance(tensor, torch.Tensor):
+        tensor = tensor.detach().cpu().numpy()
+
+    return tensor
+
+
 @require_torch
 class PipelineTesterMixin:
     """
@@ -114,10 +121,6 @@ class PipelineTesterMixin:
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        # Warmup pass when using mps (see #372)
-        if torch_device == "mps":
-            _ = pipe(**self.get_dummy_inputs(torch_device))
-
         inputs = self.get_dummy_inputs(torch_device)
         output = pipe(**inputs)[0]
 
@@ -130,7 +133,7 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         output_loaded = pipe_loaded(**inputs)[0]
 
-        max_diff = np.abs(output - output_loaded).max()
+        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(max_diff, 1e-4)
 
     def test_pipeline_call_signature(self):
@@ -320,14 +323,10 @@ class PipelineTesterMixin:
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        # Warmup pass when using mps (see #372)
-        if torch_device == "mps":
-            _ = pipe(**self.get_dummy_inputs(torch_device))
-
         output = pipe(**self.get_dummy_inputs(torch_device))[0]
         output_tuple = pipe(**self.get_dummy_inputs(torch_device), return_dict=False)[0]
 
-        max_diff = np.abs(output - output_tuple).max()
+        max_diff = np.abs(to_np(output) - to_np(output_tuple)).max()
         self.assertLess(max_diff, 1e-4)
 
     def test_components_function(self):
@@ -344,17 +343,14 @@ class PipelineTesterMixin:
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        for name, module in components.items():
-            if hasattr(module, "half"):
-                components[name] = module.half()
         pipe_fp16 = self.pipeline_class(**components)
-        pipe_fp16.to(torch_device)
+        pipe_fp16.to(torch_device, torch.float16)
         pipe_fp16.set_progress_bar_config(disable=None)
 
         output = pipe(**self.get_dummy_inputs(torch_device))[0]
         output_fp16 = pipe_fp16(**self.get_dummy_inputs(torch_device))[0]
 
-        max_diff = np.abs(output - output_fp16).max()
+        max_diff = np.abs(to_np(output) - to_np(output_fp16)).max()
         self.assertLess(max_diff, 1e-2, "The outputs of the fp16 and fp32 pipelines are too different.")
 
     @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
@@ -386,7 +382,7 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         output_loaded = pipe_loaded(**inputs)[0]
 
-        max_diff = np.abs(output - output_loaded).max()
+        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(max_diff, 1e-2, "The output of the fp16 pipeline changed after saving and loading.")
 
     def test_save_load_optional_components(self):
@@ -397,10 +393,6 @@ class PipelineTesterMixin:
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-
-        # Warmup pass when using mps (see #372)
-        if torch_device == "mps":
-            _ = pipe(**self.get_dummy_inputs(torch_device))
 
         # set all optional components to None
         for optional_component in pipe._optional_components:
@@ -424,7 +416,7 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         output_loaded = pipe_loaded(**inputs)[0]
 
-        max_diff = np.abs(output - output_loaded).max()
+        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(max_diff, 1e-4)
 
     @unittest.skipIf(torch_device != "cuda", reason="CUDA and CPU are required to switch devices")
@@ -445,7 +437,19 @@ class PipelineTesterMixin:
         self.assertTrue(all(device == "cuda" for device in model_devices))
 
         output_cuda = pipe(**self.get_dummy_inputs("cuda"))[0]
-        self.assertTrue(np.isnan(output_cuda).sum() == 0)
+        self.assertTrue(np.isnan(to_np(output_cuda)).sum() == 0)
+
+    def test_to_dtype(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        model_dtypes = [component.dtype for component in components.values() if hasattr(component, "dtype")]
+        self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes))
+
+        pipe.to(torch_dtype=torch.float16)
+        model_dtypes = [component.dtype for component in components.values() if hasattr(component, "dtype")]
+        self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
 
     def test_attention_slicing_forward_pass(self):
         self._test_attention_slicing_forward_pass()
@@ -461,10 +465,6 @@ class PipelineTesterMixin:
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        # Warmup pass when using mps (see #372)
-        if torch_device == "mps":
-            _ = pipe(**self.get_dummy_inputs(torch_device))
-
         inputs = self.get_dummy_inputs(torch_device)
         output_without_slicing = pipe(**inputs)[0]
 
@@ -473,7 +473,7 @@ class PipelineTesterMixin:
         output_with_slicing = pipe(**inputs)[0]
 
         if test_max_difference:
-            max_diff = np.abs(output_with_slicing - output_without_slicing).max()
+            max_diff = np.abs(to_np(output_with_slicing) - to_np(output_without_slicing)).max()
             self.assertLess(max_diff, expected_max_diff, "Attention slicing should not affect the inference results")
 
         if test_mean_pixel_difference:
@@ -499,7 +499,7 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         output_with_offload = pipe(**inputs)[0]
 
-        max_diff = np.abs(output_with_offload - output_without_offload).max()
+        max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
         self.assertLess(max_diff, 1e-4, "CPU offloading should not affect the inference results")
 
     @unittest.skipIf(

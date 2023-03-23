@@ -6,7 +6,7 @@ import numpy as np
 import PIL
 import torch
 from packaging import version
-from transformers import CLIPFeatureExtractor, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTokenizer
 
 import diffusers
 from diffusers import OnnxRuntimeModel, OnnxStableDiffusionPipeline, SchedulerMixin
@@ -441,7 +441,7 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(OnnxStableDiffusionPipeline
             unet: OnnxRuntimeModel,
             scheduler: SchedulerMixin,
             safety_checker: OnnxRuntimeModel,
-            feature_extractor: CLIPFeatureExtractor,
+            feature_extractor: CLIPImageProcessor,
             requires_safety_checker: bool = True,
         ):
             super().__init__(
@@ -468,7 +468,7 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(OnnxStableDiffusionPipeline
             unet: OnnxRuntimeModel,
             scheduler: SchedulerMixin,
             safety_checker: OnnxRuntimeModel,
-            feature_extractor: CLIPFeatureExtractor,
+            feature_extractor: CLIPImageProcessor,
         ):
             super().__init__(
                 vae_encoder=vae_encoder,

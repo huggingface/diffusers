@@ -19,7 +19,7 @@ from argparse import Namespace
 
 import torch
 from transformers import (
-    CLIPFeatureExtractor,
+    CLIPImageProcessor,
     CLIPTextModelWithProjection,
     CLIPTokenizer,
     CLIPVisionModelWithProjection,
@@ -774,7 +774,7 @@ if __name__ == "__main__":
         vae.load_state_dict(converted_vae_checkpoint)
 
     tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
-    image_feature_extractor = CLIPFeatureExtractor.from_pretrained("openai/clip-vit-large-patch14")
+    image_feature_extractor = CLIPImageProcessor.from_pretrained("openai/clip-vit-large-patch14")
     text_encoder = CLIPTextModelWithProjection.from_pretrained("openai/clip-vit-large-patch14")
     image_encoder = CLIPVisionModelWithProjection.from_pretrained("openai/clip-vit-large-patch14")
 

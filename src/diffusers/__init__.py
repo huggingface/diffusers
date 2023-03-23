@@ -8,6 +8,7 @@ from .utils import (
     is_k_diffusion_available,
     is_k_diffusion_version,
     is_librosa_available,
+    is_note_seq_available,
     is_onnx_available,
     is_scipy_available,
     is_torch_available,
@@ -37,10 +38,12 @@ else:
         ControlNetModel,
         ModelMixin,
         PriorTransformer,
+        T5FilmDecoder,
         Transformer2DModel,
         UNet1DModel,
         UNet2DConditionModel,
         UNet2DModel,
+        UNet3DConditionModel,
         VQModel,
     )
     from .optimization import (
@@ -130,6 +133,7 @@ else:
         StableDiffusionUpscalePipeline,
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
+        TextToVideoSDPipeline,
         UnCLIPImageVariationPipeline,
         UnCLIPPipeline,
         VersatileDiffusionDualGuidedPipeline,
@@ -171,6 +175,14 @@ else:
     from .pipelines import AudioDiffusionPipeline, Mel
 
 try:
+    if not (is_torch_available() and is_note_seq_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils.dummy_torch_and_note_seq_objects import *  # noqa F403
+else:
+    from .pipelines import SpectrogramDiffusionPipeline
+
+try:
     if not is_flax_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
@@ -203,3 +215,11 @@ else:
         FlaxStableDiffusionInpaintPipeline,
         FlaxStableDiffusionPipeline,
     )
+
+try:
+    if not (is_note_seq_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils.dummy_note_seq_objects import *  # noqa F403
+else:
+    from .pipelines import MidiProcessor
