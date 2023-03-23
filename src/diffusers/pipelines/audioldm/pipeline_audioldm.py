@@ -331,6 +331,13 @@ class AudioLDMPipeline(DiffusionPipeline):
                 f"is {audio_length_in_s}."
             )
 
+        if self.vocoder.config.model_in_dim % self.vae_scale_factor != 0:
+            raise ValueError(
+                f"The number of frequency bins in the vocoder's log-mel spectrogram has to be divisible by the "
+                f"VAE scale factor, but got {self.vocoder.config.model_in_dim} bins and a scale factor of "
+                f"{self.vae_scale_factor}."
+            )
+
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):
