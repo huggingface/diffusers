@@ -18,9 +18,19 @@ import re
 from io import BytesIO
 from typing import Optional
 
-import torch
-
 import requests
+import torch
+from transformers import (
+    AutoFeatureExtractor,
+    BertTokenizerFast,
+    CLIPImageProcessor,
+    CLIPTextModel,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    CLIPVisionConfig,
+    CLIPVisionModelWithProjection,
+)
+
 from diffusers import (
     AutoencoderKL,
     ControlNetModel,
@@ -45,16 +55,6 @@ from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBe
 from diffusers.pipelines.paint_by_example import PaintByExampleImageEncoder, PaintByExamplePipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
-from transformers import (
-    AutoFeatureExtractor,
-    BertTokenizerFast,
-    CLIPImageProcessor,
-    CLIPTextModel,
-    CLIPTextModelWithProjection,
-    CLIPTokenizer,
-    CLIPVisionConfig,
-    CLIPVisionModelWithProjection,
-)
 
 from ...utils import is_omegaconf_available, is_safetensors_available, logging
 from ...utils.import_utils import BACKENDS_MAPPING
