@@ -680,13 +680,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--unet_checkpoint_path", default=None, type=str, required=False, help="Path to the checkpoint to convert."
+        "--unet_checkpoint_path", type=str, required=True, help="Path to the checkpoint to convert."
     )
     parser.add_argument(
-        "--vae_checkpoint_path", default=None, type=str, required=False, help="Path to the checkpoint to convert."
+        "--vae_checkpoint_path", type=str, required=True, help="Path to the checkpoint to convert."
     )
     parser.add_argument(
-        "--optimus_checkpoint_path", default=None, type=str, required=False, help="Path to the checkpoint to convert."
+        "--optimus_checkpoint_path", type=str, required=True, help="Path to the checkpoint to convert."
     )
     parser.add_argument(
         "--scheduler_type",
@@ -703,7 +703,7 @@ if __name__ == "__main__":
             " higher quality images for inference. Non-EMA weights are usually better to continue fine-tuning."
         ),
     )
-    parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output model.")
+    parser.add_argument("--dump_path", type=str, required=True, help="Path to the output model.")
 
     args = parser.parse_args()
 

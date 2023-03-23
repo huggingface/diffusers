@@ -23,7 +23,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--checkpoint_path", default=None, type=str, required=True, help="Path to the checkpoint to convert."
+        "--checkpoint_path", type=str, required=True, help="Path to the checkpoint to convert."
     )
     parser.add_argument(
         "--original_config_file",
@@ -73,7 +73,7 @@ if __name__ == "__main__":
         action="store_true",
         help="Whether to store pipeline in safetensors format or not.",
     )
-    parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output model.")
+    parser.add_argument("--dump_path", type=str, required=True, help="Path to the output model.")
     parser.add_argument("--device", type=str, help="Device to use (e.g. cpu, cuda:0, cuda:1, etc.)")
     args = parser.parse_args()
 

@@ -44,7 +44,6 @@ def parse_args():
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
-        default=None,
         required=True,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
@@ -52,7 +51,6 @@ def parse_args():
         "--revision",
         type=str,
         default=None,
-        required=False,
         help="Revision of pretrained model identifier from huggingface.co/models.",
     )
     parser.add_argument(

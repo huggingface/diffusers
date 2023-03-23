@@ -705,7 +705,6 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--vqvae_checkpoint_path",
-        default=None,
         type=str,
         required=True,
         help="Path to the vqvae checkpoint to convert.",
@@ -713,31 +712,28 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--vqvae_original_config_file",
-        default=None,
         type=str,
         required=True,
         help="The YAML config file corresponding to the original architecture for the vqvae.",
     )
 
     parser.add_argument(
-        "--checkpoint_path", default=None, type=str, required=True, help="Path to the checkpoint to convert."
+        "--checkpoint_path", type=str, required=True, help="Path to the checkpoint to convert."
     )
 
     parser.add_argument(
         "--original_config_file",
-        default=None,
         type=str,
         required=True,
         help="The YAML config file corresponding to the original architecture.",
     )
 
-    parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output model.")
+    parser.add_argument("--dump_path", type=str, required=True, help="Path to the output model.")
 
     parser.add_argument(
         "--checkpoint_load_device",
         default="cpu",
         type=str,
-        required=False,
         help="The device passed to `map_location` when loading checkpoints.",
     )
 

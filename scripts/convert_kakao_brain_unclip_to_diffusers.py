@@ -1043,11 +1043,10 @@ def load_checkpoint_to_model(checkpoint, model, strict=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output model.")
+    parser.add_argument("--dump_path", type=str, required=True, help="Path to the output model.")
 
     parser.add_argument(
         "--prior_checkpoint_path",
-        default=None,
         type=str,
         required=True,
         help="Path to the prior checkpoint to convert.",
@@ -1055,7 +1054,6 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--decoder_checkpoint_path",
-        default=None,
         type=str,
         required=True,
         help="Path to the decoder checkpoint to convert.",
@@ -1063,21 +1061,19 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--super_res_unet_checkpoint_path",
-        default=None,
         type=str,
         required=True,
         help="Path to the super resolution checkpoint to convert.",
     )
 
     parser.add_argument(
-        "--clip_stat_path", default=None, type=str, required=True, help="Path to the clip stats checkpoint to convert."
+        "--clip_stat_path", type=str, required=True, help="Path to the clip stats checkpoint to convert."
     )
 
     parser.add_argument(
         "--checkpoint_load_device",
         default="cpu",
         type=str,
-        required=False,
         help="The device passed to `map_location` when loading checkpoints.",
     )
 
@@ -1085,7 +1081,6 @@ if __name__ == "__main__":
         "--debug",
         default=None,
         type=str,
-        required=False,
         help="Only run a specific stage of the convert script. Used for debugging",
     )
 

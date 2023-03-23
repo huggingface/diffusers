@@ -138,7 +138,6 @@ if __name__ == "__main__":
         "--checkpoint_path",
         default="/Users/arthurzucker/Work/diffusers/ArthurZ/diffusion_pytorch_model.bin",
         type=str,
-        required=False,
         help="Path to the checkpoint to convert.",
     )
 
@@ -146,7 +145,6 @@ if __name__ == "__main__":
         "--config_file",
         default="/Users/arthurzucker/Work/diffusers/ArthurZ/config.json",
         type=str,
-        required=False,
         help="The config json file corresponding to the architecture.",
     )
 
@@ -154,7 +152,6 @@ if __name__ == "__main__":
         "--dump_path",
         default="/Users/arthurzucker/Work/diffusers/ArthurZ/diffusion_model_new.pt",
         type=str,
-        required=False,
         help="Path to the output model.",
     )
 

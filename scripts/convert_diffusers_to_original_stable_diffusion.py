@@ -264,8 +264,8 @@ def convert_text_enc_state_dict(text_enc_dict):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--model_path", default=None, type=str, required=True, help="Path to the model to convert.")
-    parser.add_argument("--checkpoint_path", default=None, type=str, required=True, help="Path to the output model.")
+    parser.add_argument("--model_path", type=str, required=True, help="Path to the model to convert.")
+    parser.add_argument("--checkpoint_path", type=str, required=True, help="Path to the output model.")
     parser.add_argument("--half", action="store_true", help="Save weights in half precision.")
     parser.add_argument(
         "--use_safetensors", action="store_true", help="Save weights use safetensors, default is ckpt."

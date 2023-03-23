@@ -183,7 +183,6 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
-        default=None,
         required=True,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
@@ -198,7 +197,6 @@ def parse_args(input_args=None):
         "--revision",
         type=str,
         default=None,
-        required=False,
         help=(
             "Revision of pretrained model identifier from huggingface.co/models. Trainable model components should be"
             " float32 precision."
@@ -487,7 +485,6 @@ def parse_args(input_args=None):
         "--tracker_project_name",
         type=str,
         default="train_controlnet",
-        required=True,
         help=(
             "The `project_name` argument passed to Accelerator.init_trackers for"
             " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"

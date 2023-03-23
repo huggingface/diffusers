@@ -8,13 +8,12 @@ from diffusers import UnCLIPImageVariationPipeline, UnCLIPPipeline
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output model.")
+    parser.add_argument("--dump_path", type=str, required=True, help="Path to the output model.")
 
     parser.add_argument(
         "--txt2img_unclip",
         default="kakaobrain/karlo-v1-alpha",
         type=str,
-        required=False,
         help="The pretrained txt2img unclip.",
     )
 

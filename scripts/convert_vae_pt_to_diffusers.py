@@ -143,8 +143,8 @@ def vae_pt_to_vae_diffuser(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--vae_pt_path", default=None, type=str, required=True, help="Path to the VAE.pt to convert.")
-    parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the VAE.pt to convert.")
+    parser.add_argument("--vae_pt_path", type=str, required=True, help="Path to the VAE.pt to convert.")
+    parser.add_argument("--dump_path", type=str, required=True, help="Path to the VAE.pt to convert.")
 
     args = parser.parse_args()
 

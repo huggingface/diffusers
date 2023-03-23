@@ -329,11 +329,11 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--model_path", default=None, type=str, required=True, help="Path to the model to convert.")
+    parser.add_argument("--model_path", type=str, required=True, help="Path to the model to convert.")
     parser.add_argument(
-        "--save", default=True, type=bool, required=False, help="Whether to save the converted model or not."
+        "--save", default=True, type=bool, help="Whether to save the converted model or not."
     )
-    parser.add_argument("--checkpoint_path", default=None, type=str, required=True, help="Path to the output model.")
+    parser.add_argument("--checkpoint_path", type=str, required=True, help="Path to the output model.")
     args = parser.parse_args()
 
     main(args)

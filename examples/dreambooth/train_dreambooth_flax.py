@@ -49,7 +49,6 @@ def parse_args():
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
-        default=None,
         required=True,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
@@ -63,7 +62,6 @@ def parse_args():
         "--revision",
         type=str,
         default=None,
-        required=False,
         help="Revision of pretrained model identifier from huggingface.co/models.",
     )
     parser.add_argument(
@@ -75,7 +73,6 @@ def parse_args():
     parser.add_argument(
         "--instance_data_dir",
         type=str,
-        default=None,
         required=True,
         help="A folder containing the training data of instance images.",
     )
@@ -83,13 +80,12 @@ def parse_args():
         "--class_data_dir",
         type=str,
         default=None,
-        required=False,
         help="A folder containing the training data of class images.",
     )
     parser.add_argument(
         "--instance_prompt",
         type=str,
-        default=None,
+        required=True,
         help="The prompt with identifier specifying the instance",
     )
     parser.add_argument(

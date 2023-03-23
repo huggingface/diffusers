@@ -23,7 +23,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--checkpoint_path", default=None, type=str, required=True, help="Path to the checkpoint to convert."
+        "--checkpoint_path", type=str, required=True, help="Path to the checkpoint to convert."
     )
     # !wget https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml
     parser.add_argument(
@@ -98,20 +98,18 @@ if __name__ == "__main__":
         action="store_true",
         help="Whether to store pipeline in safetensors format or not.",
     )
-    parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output model.")
+    parser.add_argument("--dump_path", type=str, required=True, help="Path to the output model.")
     parser.add_argument("--device", type=str, help="Device to use (e.g. cpu, cuda:0, cuda:1, etc.)")
     parser.add_argument(
         "--stable_unclip",
         type=str,
         default=None,
-        required=False,
         help="Set if this is a stable unCLIP model. One of 'txt2img' or 'img2img'.",
     )
     parser.add_argument(
         "--stable_unclip_prior",
         type=str,
         default=None,
-        required=False,
         help="Set if this is a stable unCLIP txt2img model. Selects which prior to use. If `--stable_unclip` is set to `txt2img`, the karlo prior (https://huggingface.co/kakaobrain/karlo-v1-alpha/tree/main/prior) is selected by default.",
     )
     parser.add_argument(

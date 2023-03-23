@@ -105,7 +105,6 @@ def parse_args():
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
-        default=None,
         required=True,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
@@ -113,7 +112,6 @@ def parse_args():
         "--revision",
         type=str,
         default=None,
-        required=False,
         help="Revision of pretrained model identifier from huggingface.co/models.",
     )
     parser.add_argument(
@@ -123,17 +121,16 @@ def parse_args():
         help="Pretrained tokenizer name or path if not the same as model_name",
     )
     parser.add_argument(
-        "--train_data_dir", type=str, default=None, required=True, help="A folder containing the training data."
+        "--train_data_dir", type=str, required=True, help="A folder containing the training data."
     )
     parser.add_argument(
         "--placeholder_token",
         type=str,
-        default=None,
         required=True,
         help="A token to use as a placeholder for the concept.",
     )
     parser.add_argument(
-        "--initializer_token", type=str, default=None, required=True, help="A token to use as initializer word."
+        "--initializer_token", type=str, required=True, help="A token to use as initializer word."
     )
     parser.add_argument("--learnable_property", type=str, default="object", help="Choose between 'object' and 'style'")
     parser.add_argument("--repeats", type=int, default=100, help="How many times to repeat the training data.")
