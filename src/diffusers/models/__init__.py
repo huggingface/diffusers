@@ -21,6 +21,7 @@ if is_torch_available():
     from .dual_transformer_2d import DualTransformer2DModel
     from .modeling_utils import ModelMixin
     from .prior_transformer import PriorTransformer
+    from .t5_film_transformer import T5FilmDecoder
     from .transformer_2d import Transformer2DModel
     from .unet_1d import UNet1DModel
     from .unet_2d import UNet2DModel

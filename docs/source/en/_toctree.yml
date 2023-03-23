@@ -158,6 +158,8 @@
       title: Score SDE VE
     - local: api/pipelines/semantic_stable_diffusion
       title: Semantic Guidance
+    - local: api/pipelines/spectrogram_diffusion
+      title: "Spectrogram Diffusion"
     - sections:
       - local: api/pipelines/stable_diffusion/overview
         title: Overview

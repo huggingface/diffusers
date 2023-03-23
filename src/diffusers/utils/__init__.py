@@ -55,6 +55,7 @@ from .import_utils import (
     is_k_diffusion_available,
     is_k_diffusion_version,
     is_librosa_available,
+    is_note_seq_available,
     is_omegaconf_available,
     is_onnx_available,
     is_safetensors_available,

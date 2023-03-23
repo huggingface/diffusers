@@ -21,6 +21,7 @@ from .import_utils import (
     BACKENDS_MAPPING,
     is_compel_available,
     is_flax_available,
+    is_note_seq_available,
     is_onnx_available,
     is_opencv_available,
     is_torch_available,
@@ -196,6 +197,13 @@ def require_onnxruntime(test_case):
     Decorator marking a test that requires onnxruntime. These tests are skipped when onnxruntime isn't installed.
     """
     return unittest.skipUnless(is_onnx_available(), "test requires onnxruntime")(test_case)
+
+
+def require_note_seq(test_case):
+    """
+    Decorator marking a test that requires note_seq. These tests are skipped when note_seq isn't installed.
+    """
+    return unittest.skipUnless(is_note_seq_available(), "test requires note_seq")(test_case)
 
 
 def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -> np.ndarray:
