@@ -68,6 +68,8 @@
       title: Text-to-image
     - local: training/lora
       title: Low-Rank Adaptation of Large Language Models (LoRA)
+    - local: training/controlnet
+      title: ControlNet
     title: Training
   - sections:
     - local: using-diffusers/rl

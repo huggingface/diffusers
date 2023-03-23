@@ -69,7 +69,7 @@ class AttentionBlock(nn.Module):
         self.value = nn.Linear(channels, channels)
 
         self.rescale_output_factor = rescale_output_factor
-        self.proj_attn = nn.Linear(channels, channels, 1)
+        self.proj_attn = nn.Linear(channels, channels, bias=True)
 
         self._use_memory_efficient_attention_xformers = False
         self._attention_op = None

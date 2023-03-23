@@ -418,7 +418,7 @@ class ResnetBlock2D(nn.Module):
         time_embedding_norm (`str`, *optional*, default to `"default"` ): Time scale shift config.
             By default, apply timestep embedding conditioning with a simple shift mechanism. Choose "scale_shift" or
             "ada_group" for a stronger conditioning with scale and shift.
-        kernal (`torch.FloatTensor`, optional, default to None): FIR filter, see
+        kernel (`torch.FloatTensor`, optional, default to None): FIR filter, see
             [`~models.resnet.FirUpsample2D`] and [`~models.resnet.FirDownsample2D`].
         output_scale_factor (`float`, *optional*, default to be `1.0`): the scale factor to use for the output.
         use_in_shortcut (`bool`, *optional*, default to `True`):

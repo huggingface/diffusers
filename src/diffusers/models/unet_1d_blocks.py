@@ -331,7 +331,7 @@ class SelfAttention1d(nn.Module):
         self.key = nn.Linear(self.channels, self.channels)
         self.value = nn.Linear(self.channels, self.channels)
 
-        self.proj_attn = nn.Linear(self.channels, self.channels, 1)
+        self.proj_attn = nn.Linear(self.channels, self.channels, bias=True)
 
         self.dropout = nn.Dropout(dropout_rate, inplace=True)
 
