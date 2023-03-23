@@ -2684,7 +2684,7 @@ class KAttentionBlock(nn.Module):
                 dropout=dropout,
                 bias=attention_bias,
                 cross_attention_dim=None,
-                cross_attention_norm=None,
+                cross_attention_norm=False,
             )
 
         # 2. Cross-Attn

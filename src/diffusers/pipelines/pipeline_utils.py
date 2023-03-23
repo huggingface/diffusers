@@ -529,8 +529,13 @@ class DiffusionPipeline(ConfigMixin):
 
             save_method(os.path.join(save_directory, pipeline_component_name), **save_kwargs)
 
-    def to(self, torch_device: Optional[Union[str, torch.device]] = None, silence_dtype_warnings: bool = False):
-        if torch_device is None:
+    def to(
+        self,
+        torch_device: Optional[Union[str, torch.device]] = None,
+        torch_dtype: Optional[torch.dtype] = None,
+        silence_dtype_warnings: bool = False,
+    ):
+        if torch_device is None and torch_dtype is None:
             return self
 
         # throw warning if pipeline is in "offloaded"-mode but user tries to manually set to GPU.
@@ -567,6 +572,7 @@ class DiffusionPipeline(ConfigMixin):
         for name in module_names.keys():
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
+                module.to(torch_device, torch_dtype)
                 if (
                     module.dtype == torch.float16
                     and str(torch_device) in ["cpu"]
@@ -580,7 +586,6 @@ class DiffusionPipeline(ConfigMixin):
                         " support for`float16` operations on this device in PyTorch. Please, remove the"
                         " `torch_dtype=torch.float16` argument, or use another device for inference."
                     )
-                module.to(torch_device)
         return self
 
     @property
@@ -1368,7 +1373,7 @@ class DiffusionPipeline(ConfigMixin):
         Args:
             slice_size (`str` or `int`, *optional*, defaults to `"auto"`):
                 When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
-                `"max"`, maxium amount of memory will be saved by running only one slice at a time. If a number is
+                `"max"`, maximum amount of memory will be saved by running only one slice at a time. If a number is
                 provided, uses as many slices as `attention_head_dim // slice_size`. In this case, `attention_head_dim`
                 must be a multiple of `slice_size`.
         """
