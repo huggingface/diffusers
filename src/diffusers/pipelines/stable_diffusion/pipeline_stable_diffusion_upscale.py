@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,9 +16,8 @@ import inspect
 from typing import Callable, List, Optional, Union
 
 import numpy as np
-import torch
-
 import PIL
+import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel
@@ -89,21 +88,22 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
     ):
         super().__init__()
 
-        # check if vae has a config attribute `scaling_factor` and if it is set to 0.08333, else set it to 0.08333 and deprecate
-        is_vae_scaling_factor_set_to_0_08333 = (
-            hasattr(vae.config, "scaling_factor") and vae.config.scaling_factor == 0.08333
-        )
-        if not is_vae_scaling_factor_set_to_0_08333:
-            deprecation_message = (
-                "The configuration file of the vae does not contain `scaling_factor` or it is set to"
-                f" {vae.config.scaling_factor}, which seems highly unlikely. If your checkpoint is a fine-tuned"
-                " version of `stabilityai/stable-diffusion-x4-upscaler` you should change 'scaling_factor' to 0.08333"
-                " Please make sure to update the config accordingly, as not doing so might lead to incorrect results"
-                " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be"
-                " very nice if you could open a Pull Request for the `vae/config.json` file"
+        if hasattr(vae, "config"):
+            # check if vae has a config attribute `scaling_factor` and if it is set to 0.08333, else set it to 0.08333 and deprecate
+            is_vae_scaling_factor_set_to_0_08333 = (
+                hasattr(vae.config, "scaling_factor") and vae.config.scaling_factor == 0.08333
             )
-            deprecate("wrong scaling_factor", "1.0.0", deprecation_message, standard_warn=False)
-            vae.register_to_config(scaling_factor=0.08333)
+            if not is_vae_scaling_factor_set_to_0_08333:
+                deprecation_message = (
+                    "The configuration file of the vae does not contain `scaling_factor` or it is set to"
+                    f" {vae.config.scaling_factor}, which seems highly unlikely. If your checkpoint is a fine-tuned"
+                    " version of `stabilityai/stable-diffusion-x4-upscaler` you should change 'scaling_factor' to"
+                    " 0.08333 Please make sure to update the config accordingly, as not doing so might lead to"
+                    " incorrect results in future versions. If you have downloaded this checkpoint from the Hugging"
+                    " Face Hub, it would be very nice if you could open a Pull Request for the `vae/config.json` file"
+                )
+                deprecate("wrong scaling_factor", "1.0.0", deprecation_message, standard_warn=False)
+                vae.register_to_config(scaling_factor=0.08333)
 
         self.register_modules(
             vae=vae,
@@ -140,7 +140,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
         `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
         hooks.
         """
-        if self.device != torch.device("meta") or not hasattr(self.unet, "_hf_hook"):
+        if not hasattr(self.unet, "_hf_hook"):
             return self.device
         for module in self.unet.modules():
             if (
@@ -174,7 +174,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
                 number of images that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
-            negative_ prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
                 Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
@@ -313,7 +313,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
@@ -389,7 +389,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
     ):
         r"""
         Function invoked when calling the pipeline for generation.

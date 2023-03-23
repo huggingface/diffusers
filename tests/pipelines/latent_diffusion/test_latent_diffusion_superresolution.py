@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -118,7 +118,6 @@ class LDMSuperResolutionPipelineIntegrationTests(unittest.TestCase):
         init_image = init_image.resize((64, 64), resample=PIL_INTERPOLATION["lanczos"])
 
         ldm = LDMSuperResolutionPipeline.from_pretrained("duongna/ldm-super-resolution", device_map="auto")
-        ldm.to(torch_device)
         ldm.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)

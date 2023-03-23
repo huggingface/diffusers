@@ -6,10 +6,10 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models import ModelMixin
-from ...models.attention import CrossAttention
-from ...models.cross_attention import AttnProcessor, CrossAttnAddedKVProcessor
+from ...models.attention import Attention
+from ...models.attention_processor import AttentionProcessor, AttnAddedKVProcessor
 from ...models.dual_transformer_2d import DualTransformer2DModel
-from ...models.embeddings import TimestepEmbedding, Timesteps
+from ...models.embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from ...models.transformer_2d import Transformer2DModel
 from ...models.unet_2d_condition import UNet2DConditionOutput
 from ...utils import logging
@@ -151,9 +151,13 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlockFlat", "CrossAttnDownBlockFlat", "CrossAttnDownBlockFlat", "DownBlockFlat")`):
             The tuple of downsample blocks to use.
         mid_block_type (`str`, *optional*, defaults to `"UNetMidBlockFlatCrossAttn"`):
-            The mid block type. Choose from `UNetMidBlockFlatCrossAttn` or `UNetMidBlockFlatSimpleCrossAttn`.
+            The mid block type. Choose from `UNetMidBlockFlatCrossAttn` or `UNetMidBlockFlatSimpleCrossAttn`, will skip
+            the mid block layer if `None`.
         up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlockFlat", "CrossAttnUpBlockFlat", "CrossAttnUpBlockFlat", "CrossAttnUpBlockFlat",)`):
             The tuple of upsample blocks to use.
+        only_cross_attention(`bool` or `Tuple[bool]`, *optional*, default to `False`):
+            Whether to include self-attention in the basic transformer blocks, see
+            [`~models.attention.BasicTransformerBlock`].
         block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each block.
         layers_per_block (`int`, *optional*, defaults to 2): The number of layers per block.
@@ -161,16 +165,28 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         mid_block_scale_factor (`float`, *optional*, defaults to 1.0): The scale factor to use for the mid block.
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
         norm_num_groups (`int`, *optional*, defaults to 32): The number of groups to use for the normalization.
+            If `None`, it will skip the normalization and activation layers in post-processing
         norm_eps (`float`, *optional*, defaults to 1e-5): The epsilon to use for the normalization.
         cross_attention_dim (`int`, *optional*, defaults to 1280): The dimension of the cross attention features.
         attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
         resnet_time_scale_shift (`str`, *optional*, defaults to `"default"`): Time scale shift config
             for resnet blocks, see [`~models.resnet.ResnetBlockFlat`]. Choose from `default` or `scale_shift`.
-        class_embed_type (`str`, *optional*, defaults to None): The type of class embedding to use which is ultimately
-            summed with the time embeddings. Choose from `None`, `"timestep"`, or `"identity"`.
+        class_embed_type (`str`, *optional*, defaults to None):
+            The type of class embedding to use which is ultimately summed with the time embeddings. Choose from `None`,
+            `"timestep"`, `"identity"`, or `"projection"`.
         num_class_embeds (`int`, *optional*, defaults to None):
             Input dimension of the learnable embedding matrix to be projected to `time_embed_dim`, when performing
             class conditioning with `class_embed_type` equal to `None`.
+        time_embedding_type (`str`, *optional*, default to `positional`):
+            The type of position embedding to use for timesteps. Choose from `positional` or `fourier`.
+        timestep_post_act (`str, *optional*, default to `None`):
+            The second activation function to use in timestep embedding. Choose from `silu`, `mish` and `gelu`.
+        time_cond_proj_dim (`int`, *optional*, default to `None`):
+            The dimension of `cond_proj` layer in timestep embedding.
+        conv_in_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_in` layer.
+        conv_out_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_out` layer.
+        projection_class_embeddings_input_dim (`int`, *optional*): The dimension of the `class_labels` input when
+            using the "projection" `class_embed_type`. Required when using the "projection" `class_embed_type`.
     """
 
     _supports_gradient_checkpointing = True
@@ -190,7 +206,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             "CrossAttnDownBlockFlat",
             "DownBlockFlat",
         ),
-        mid_block_type: str = "UNetMidBlockFlatCrossAttn",
+        mid_block_type: Optional[str] = "UNetMidBlockFlatCrossAttn",
         up_block_types: Tuple[str] = (
             "UpBlockFlat",
             "CrossAttnUpBlockFlat",
@@ -203,7 +219,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
         act_fn: str = "silu",
-        norm_num_groups: int = 32,
+        norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1280,
         attention_head_dim: Union[int, Tuple[int]] = 8,
@@ -213,20 +229,74 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         num_class_embeds: Optional[int] = None,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
+        time_embedding_type: str = "positional",
+        timestep_post_act: Optional[str] = None,
+        time_cond_proj_dim: Optional[int] = None,
+        conv_in_kernel: int = 3,
+        conv_out_kernel: int = 3,
+        projection_class_embeddings_input_dim: Optional[int] = None,
     ):
         super().__init__()
 
         self.sample_size = sample_size
-        time_embed_dim = block_out_channels[0] * 4
+
+        # Check inputs
+        if len(down_block_types) != len(up_block_types):
+            raise ValueError(
+                "Must provide the same number of `down_block_types` as `up_block_types`. `down_block_types`:"
+                f" {down_block_types}. `up_block_types`: {up_block_types}."
+            )
+
+        if len(block_out_channels) != len(down_block_types):
+            raise ValueError(
+                "Must provide the same number of `block_out_channels` as `down_block_types`. `block_out_channels`:"
+                f" {block_out_channels}. `down_block_types`: {down_block_types}."
+            )
+
+        if not isinstance(only_cross_attention, bool) and len(only_cross_attention) != len(down_block_types):
+            raise ValueError(
+                "Must provide the same number of `only_cross_attention` as `down_block_types`."
+                f" `only_cross_attention`: {only_cross_attention}. `down_block_types`: {down_block_types}."
+            )
+
+        if not isinstance(attention_head_dim, int) and len(attention_head_dim) != len(down_block_types):
+            raise ValueError(
+                "Must provide the same number of `attention_head_dim` as `down_block_types`. `attention_head_dim`:"
+                f" {attention_head_dim}. `down_block_types`: {down_block_types}."
+            )
 
         # input
-        self.conv_in = LinearMultiDim(in_channels, block_out_channels[0], kernel_size=3, padding=(1, 1))
+        conv_in_padding = (conv_in_kernel - 1) // 2
+        self.conv_in = LinearMultiDim(
+            in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
+        )
 
         # time
-        self.time_proj = Timesteps(block_out_channels[0], flip_sin_to_cos, freq_shift)
-        timestep_input_dim = block_out_channels[0]
+        if time_embedding_type == "fourier":
+            time_embed_dim = block_out_channels[0] * 2
+            if time_embed_dim % 2 != 0:
+                raise ValueError(f"`time_embed_dim` should be divisible by 2, but is {time_embed_dim}.")
+            self.time_proj = GaussianFourierProjection(
+                time_embed_dim // 2, set_W_to_weight=False, log=False, flip_sin_to_cos=flip_sin_to_cos
+            )
+            timestep_input_dim = time_embed_dim
+        elif time_embedding_type == "positional":
+            time_embed_dim = block_out_channels[0] * 4
 
-        self.time_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim)
+            self.time_proj = Timesteps(block_out_channels[0], flip_sin_to_cos, freq_shift)
+            timestep_input_dim = block_out_channels[0]
+        else:
+            raise ValueError(
+                f"{time_embedding_type} does not exist. Please make sure to use one of `fourier` or `positional`."
+            )
+
+        self.time_embedding = TimestepEmbedding(
+            timestep_input_dim,
+            time_embed_dim,
+            act_fn=act_fn,
+            post_act_fn=timestep_post_act,
+            cond_proj_dim=time_cond_proj_dim,
+        )
 
         # class embedding
         if class_embed_type is None and num_class_embeds is not None:
@@ -235,11 +305,23 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             self.class_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim)
         elif class_embed_type == "identity":
             self.class_embedding = nn.Identity(time_embed_dim, time_embed_dim)
+        elif class_embed_type == "projection":
+            if projection_class_embeddings_input_dim is None:
+                raise ValueError(
+                    "`class_embed_type`: 'projection' requires `projection_class_embeddings_input_dim` be set"
+                )
+            # The projection `class_embed_type` is the same as the timestep `class_embed_type` except
+            # 1. the `class_labels` inputs are not first converted to sinusoidal embeddings
+            # 2. it projects from an arbitrary input dimension.
+            #
+            # Note that `TimestepEmbedding` is quite general, being mainly linear layers and activations.
+            # When used for embedding actual timesteps, the timesteps are first converted to sinusoidal embeddings.
+            # As a result, `TimestepEmbedding` can be passed arbitrary vectors.
+            self.class_embedding = TimestepEmbedding(projection_class_embeddings_input_dim, time_embed_dim)
         else:
             self.class_embedding = None
 
         self.down_blocks = nn.ModuleList([])
-        self.mid_block = None
         self.up_blocks = nn.ModuleList([])
 
         if isinstance(only_cross_attention, bool):
@@ -304,6 +386,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 resnet_groups=norm_num_groups,
                 resnet_time_scale_shift=resnet_time_scale_shift,
             )
+        elif mid_block_type is None:
+            self.mid_block = None
         else:
             raise ValueError(f"unknown mid_block_type : {mid_block_type}")
 
@@ -314,6 +398,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         reversed_block_out_channels = list(reversed(block_out_channels))
         reversed_attention_head_dim = list(reversed(attention_head_dim))
         only_cross_attention = list(reversed(only_cross_attention))
+
         output_channel = reversed_block_out_channels[0]
         for i, up_block_type in enumerate(up_block_types):
             is_final_block = i == len(block_out_channels) - 1
@@ -352,12 +437,22 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             prev_output_channel = output_channel
 
         # out
-        self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=norm_eps)
-        self.conv_act = nn.SiLU()
-        self.conv_out = LinearMultiDim(block_out_channels[0], out_channels, kernel_size=3, padding=1)
+        if norm_num_groups is not None:
+            self.conv_norm_out = nn.GroupNorm(
+                num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=norm_eps
+            )
+            self.conv_act = nn.SiLU()
+        else:
+            self.conv_norm_out = None
+            self.conv_act = None
+
+        conv_out_padding = (conv_out_kernel - 1) // 2
+        self.conv_out = LinearMultiDim(
+            block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
+        )
 
     @property
-    def attn_processors(self) -> Dict[str, AttnProcessor]:
+    def attn_processors(self) -> Dict[str, AttentionProcessor]:
         r"""
         Returns:
             `dict` of attention processors: A dictionary containing all attention processors used in the model with
@@ -366,7 +461,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         # set recursively
         processors = {}
 
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttnProcessor]):
+        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
             if hasattr(module, "set_processor"):
                 processors[f"{name}.processor"] = module.processor
 
@@ -380,13 +475,13 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
         return processors
 
-    def set_attn_processor(self, processor: Union[AttnProcessor, Dict[str, AttnProcessor]]):
+    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
         r"""
         Parameters:
-            `processor (`dict` of `AttnProcessor` or `AttnProcessor`):
+            `processor (`dict` of `AttentionProcessor` or `AttentionProcessor`):
                 The instantiated processor class or a dictionary of processor classes that will be set as the processor
-                of **all** `CrossAttention` layers.
-            In case `processor` is a dict, the key needs to define the path to the corresponding cross attention processor. This is strongly recommended when setting trainablae attention processors.:
+                of **all** `Attention` layers.
+            In case `processor` is a dict, the key needs to define the path to the corresponding cross attention processor. This is strongly recommended when setting trainable attention processors.:
 
         """
         count = len(self.attn_processors.keys())
@@ -420,24 +515,24 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         Args:
             slice_size (`str` or `int` or `list(int)`, *optional*, defaults to `"auto"`):
                 When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
-                `"max"`, maxium amount of memory will be saved by running only one slice at a time. If a number is
+                `"max"`, maximum amount of memory will be saved by running only one slice at a time. If a number is
                 provided, uses as many slices as `attention_head_dim // slice_size`. In this case, `attention_head_dim`
                 must be a multiple of `slice_size`.
         """
         sliceable_head_dims = []
 
-        def fn_recursive_retrieve_slicable_dims(module: torch.nn.Module):
+        def fn_recursive_retrieve_sliceable_dims(module: torch.nn.Module):
             if hasattr(module, "set_attention_slice"):
                 sliceable_head_dims.append(module.sliceable_head_dim)
 
             for child in module.children():
-                fn_recursive_retrieve_slicable_dims(child)
+                fn_recursive_retrieve_sliceable_dims(child)
 
         # retrieve number of attention layers
         for module in self.children():
-            fn_recursive_retrieve_slicable_dims(module)
+            fn_recursive_retrieve_sliceable_dims(module)
 
-        num_slicable_layers = len(sliceable_head_dims)
+        num_sliceable_layers = len(sliceable_head_dims)
 
         if slice_size == "auto":
             # half the attention head size is usually a good trade-off between
@@ -445,9 +540,9 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             slice_size = [dim // 2 for dim in sliceable_head_dims]
         elif slice_size == "max":
             # make smallest slice possible
-            slice_size = num_slicable_layers * [1]
+            slice_size = num_sliceable_layers * [1]
 
-        slice_size = num_slicable_layers * [slice_size] if not isinstance(slice_size, list) else slice_size
+        slice_size = num_sliceable_layers * [slice_size] if not isinstance(slice_size, list) else slice_size
 
         if len(slice_size) != len(sliceable_head_dims):
             raise ValueError(
@@ -485,8 +580,11 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
         class_labels: Optional[torch.Tensor] = None,
+        timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        down_block_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
+        mid_block_additional_residual: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> Union[UNet2DConditionOutput, Tuple]:
         r"""
@@ -497,7 +595,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
             cross_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttnProcessor` as defined under
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
 
@@ -507,7 +605,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             returning a tuple, the first element is the sample tensor.
         """
         # By default samples have to be AT least a multiple of the overall upsampling factor.
-        # The overall upsampling factor is equal to 2 ** (# num of upsampling layears).
+        # The overall upsampling factor is equal to 2 ** (# num of upsampling layers).
         # However, the upsampling interpolation output size can be forced to fit any upsampling size
         # on the fly if necessary.
         default_overall_up_factor = 2**self.num_upsamplers
@@ -552,7 +650,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         # but time_embedding might actually be running in fp16. so we need to cast here.
         # there might be better ways to encapsulate this.
         t_emb = t_emb.to(dtype=self.dtype)
-        emb = self.time_embedding(t_emb)
+
+        emb = self.time_embedding(t_emb, timestep_cond)
 
         if self.class_embedding is not None:
             if class_labels is None:
@@ -583,14 +682,29 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
             down_block_res_samples += res_samples
 
+        if down_block_additional_residuals is not None:
+            new_down_block_res_samples = ()
+
+            for down_block_res_sample, down_block_additional_residual in zip(
+                down_block_res_samples, down_block_additional_residuals
+            ):
+                down_block_res_sample = down_block_res_sample + down_block_additional_residual
+                new_down_block_res_samples += (down_block_res_sample,)
+
+            down_block_res_samples = new_down_block_res_samples
+
         # 4. mid
-        sample = self.mid_block(
-            sample,
-            emb,
-            encoder_hidden_states=encoder_hidden_states,
-            attention_mask=attention_mask,
-            cross_attention_kwargs=cross_attention_kwargs,
-        )
+        if self.mid_block is not None:
+            sample = self.mid_block(
+                sample,
+                emb,
+                encoder_hidden_states=encoder_hidden_states,
+                attention_mask=attention_mask,
+                cross_attention_kwargs=cross_attention_kwargs,
+            )
+
+        if mid_block_additional_residual is not None:
+            sample = sample + mid_block_additional_residual
 
         # 5. up
         for i, upsample_block in enumerate(self.up_blocks):
@@ -618,9 +732,11 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 sample = upsample_block(
                     hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size
                 )
+
         # 6. post-process
-        sample = self.conv_norm_out(sample)
-        sample = self.conv_act(sample)
+        if self.conv_norm_out:
+            sample = self.conv_norm_out(sample)
+            sample = self.conv_act(sample)
         sample = self.conv_out(sample)
 
         if not return_dict:
@@ -1309,7 +1425,7 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
 
         for _ in range(num_layers):
             attentions.append(
-                CrossAttention(
+                Attention(
                     query_dim=in_channels,
                     cross_attention_dim=in_channels,
                     heads=self.num_heads,
@@ -1318,7 +1434,7 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
                     norm_num_groups=resnet_groups,
                     bias=True,
                     upcast_softmax=True,
-                    processor=CrossAttnAddedKVProcessor(),
+                    processor=AttnAddedKVProcessor(),
                 )
             )
             resnets.append(

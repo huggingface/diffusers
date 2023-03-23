@@ -1,0 +1,75 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+# Attend and Excite: Attention-Based Semantic Guidance for Text-to-Image Diffusion Models
+
+## Overview
+
+Attend and Excite for Stable Diffusion was proposed in [Attend-and-Excite: Attention-Based Semantic Guidance for Text-to-Image Diffusion Models](https://attendandexcite.github.io/Attend-and-Excite/) and provides textual attention control over the image generation.
+
+The abstract of the paper is the following:
+
+*Text-to-image diffusion models have recently received a lot of interest for their astonishing ability to produce high-fidelity images from text only. However, achieving one-shot generation that aligns with the user's intent is nearly impossible, yet small changes to the input prompt often result in very different images. This leaves the user with little semantic control. To put the user in control, we show how to interact with the diffusion process to flexibly steer it along semantic directions. This semantic guidance (SEGA) allows for subtle and extensive edits, changes in composition and style, as well as optimizing the overall artistic conception. We demonstrate SEGA's effectiveness on a variety of tasks and provide evidence for its versatility and flexibility.*
+
+Resources
+
+* [Project Page](https://attendandexcite.github.io/Attend-and-Excite/)
+* [Paper](https://arxiv.org/abs/2301.13826)
+* [Original Code](https://github.com/AttendAndExcite/Attend-and-Excite)
+* [Demo](https://huggingface.co/spaces/AttendAndExcite/Attend-and-Excite)
+
+
+## Available Pipelines:
+
+| Pipeline | Tasks | Colab | Demo
+|---|---|:---:|:---:|
+| [pipeline_semantic_stable_diffusion_attend_and_excite.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_semantic_stable_diffusion_attend_and_excite) | *Text-to-Image Generation* | - | https://huggingface.co/spaces/AttendAndExcite/Attend-and-Excite
+
+
+### Usage example
+
+
+```python
+import torch
+from diffusers import StableDiffusionAttendAndExcitePipeline
+
+model_id = "CompVis/stable-diffusion-v1-4"
+pipe = StableDiffusionAttendAndExcitePipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
+pipe = pipe.to("cuda")
+
+prompt = "a cat and a frog"
+
+# use get_indices function to find out indices of the tokens you want to alter
+pipe.get_indices(prompt)
+
+token_indices = [2, 5]
+seed = 6141
+generator = torch.Generator("cuda").manual_seed(seed)
+
+images = pipe(
+    prompt=prompt,
+    token_indices=token_indices,
+    guidance_scale=7.5,
+    generator=generator,
+    num_inference_steps=50,
+    max_iter_to_alter=25,
+).images
+
+image = images[0]
+image.save(f"../images/{prompt}_{seed}.png")
+```
+
+
+## StableDiffusionAttendAndExcitePipeline
+[[autodoc]] StableDiffusionAttendAndExcitePipeline
+	- all
+	- __call__

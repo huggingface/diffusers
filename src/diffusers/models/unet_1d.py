@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             obj:`(32, 32, 64)`): Tuple of block output channels.
         mid_block_type (`str`, *optional*, defaults to "UNetMidBlock1D"): block type for middle of UNet.
         out_block_type (`str`, *optional*, defaults to `None`): optional output processing of UNet.
-        act_fn (`str`, *optional*, defaults to None): optional activitation function in UNet blocks.
+        act_fn (`str`, *optional*, defaults to None): optional activation function in UNet blocks.
         norm_num_groups (`int`, *optional*, defaults to 8): group norm member count in UNet blocks.
         layers_per_block (`int`, *optional*, defaults to 1): added number of layers in a UNet block.
         downsample_each_block (`int`, *optional*, defaults to False:
@@ -195,7 +195,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
     ) -> Union[UNet1DOutput, Tuple]:
         r"""
         Args:
-            sample (`torch.FloatTensor`): `(batch_size, sample_size, num_channels)` noisy inputs tensor
+            sample (`torch.FloatTensor`): `(batch_size, num_channels, sample_size)` noisy inputs tensor
             timestep (`torch.FloatTensor` or `float` or `int): (batch) timesteps
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.unet_1d.UNet1DOutput`] instead of a plain tuple.

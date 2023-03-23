@@ -169,3 +169,8 @@ tags
 
 # dependencies
 /transformers
+
+# ruff
+.ruff_cache
+
+wandb

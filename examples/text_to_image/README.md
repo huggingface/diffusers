@@ -127,7 +127,7 @@ on consumer GPUs like Tesla T4, Tesla V100.
 
 ### Training
 
-First, you need to set up your development environment as is explained in the [installation section](#installing-the-dependencies). Make sure to set the `MODEL_NAME` and `DATASET_NAME` environment variables. Here, we will use [Stable Diffusion v1-4](https://hf.co/CompVis/stable-diffusion-v1-4) and the [Pokemons dataset](https://hf.colambdalabs/pokemon-blip-captions).  
+First, you need to set up your development environment as is explained in the [installation section](#installing-the-dependencies). Make sure to set the `MODEL_NAME` and `DATASET_NAME` environment variables. Here, we will use [Stable Diffusion v1-4](https://hf.co/CompVis/stable-diffusion-v1-4) and the [Pokemons dataset](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions).  
 
 **___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
 
@@ -148,7 +148,7 @@ huggingface-cli login
 Now we can start training!
 
 ```bash
-accelerate --mixed_precision="fp16" launch train_text_to_image_lora.py \
+accelerate launch --mixed_precision="fp16" train_text_to_image_lora.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --dataset_name=$DATASET_NAME --caption_column="text" \
   --resolution=512 --random_flip \
@@ -157,7 +157,7 @@ accelerate --mixed_precision="fp16" launch train_text_to_image_lora.py \
   --learning_rate=1e-04 --lr_scheduler="constant" --lr_warmup_steps=0 \
   --seed=42 \
   --output_dir="sd-pokemon-model-lora" \
-  --save_sample_prompt="cute dragon creature" --report_to="wandb"
+  --validation_prompt="cute dragon creature" --report_to="wandb"
 ```
 
 The above command will also run inference as fine-tuning progresses and log the results to Weights and Biases.
@@ -235,5 +235,12 @@ python train_text_to_image_flax.py \
   --output_dir="sd-pokemon-model"
 ```
 
-### Training with xformers:
-You can enable memory efficient attention by [installing xFormers](https://github.com/facebookresearch/xformers#installing-xformers) and padding the `--enable_xformers_memory_efficient_attention` argument to the script. This is not available with the Flax/JAX implementation.
+### Training with xFormers:
+
+You can enable memory efficient attention by [installing xFormers](https://huggingface.co/docs/diffusers/main/en/optimization/xformers) and passing the `--enable_xformers_memory_efficient_attention` argument to the script.
+
+xFormers training is not available for Flax/JAX.
+
+**Note**:
+
+According to [this issue](https://github.com/huggingface/diffusers/issues/2234#issuecomment-1416931212), xFormers `v0.0.16` cannot be used for training in some GPUs. If you observe that problem, please install a development version as indicated in that comment.

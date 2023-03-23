@@ -6,15 +6,24 @@ import os
 from pathlib import Path
 from typing import Optional
 
-import numpy as np
-import torch
-import torch.utils.checkpoint
-from torch.utils.data import Dataset
-
 import jax
 import jax.numpy as jnp
+import numpy as np
 import optax
+import torch
+import torch.utils.checkpoint
 import transformers
+from flax import jax_utils
+from flax.training import train_state
+from flax.training.common_utils import shard
+from huggingface_hub import HfFolder, Repository, create_repo, whoami
+from jax.experimental.compilation_cache import compilation_cache as cc
+from PIL import Image
+from torch.utils.data import Dataset
+from torchvision import transforms
+from tqdm.auto import tqdm
+from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel, set_seed
+
 from diffusers import (
     FlaxAutoencoderKL,
     FlaxDDPMScheduler,
@@ -24,19 +33,10 @@ from diffusers import (
 )
 from diffusers.pipelines.stable_diffusion import FlaxStableDiffusionSafetyChecker
 from diffusers.utils import check_min_version
-from flax import jax_utils
-from flax.training import train_state
-from flax.training.common_utils import shard
-from huggingface_hub import HfFolder, Repository, create_repo, whoami
-from jax.experimental.compilation_cache import compilation_cache as cc
-from PIL import Image
-from torchvision import transforms
-from tqdm.auto import tqdm
-from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel, set_seed
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.13.0.dev0")
+check_min_version("0.15.0.dev0")
 
 # Cache compiled models across invocations of this script.
 cc.initialize_cache(os.path.expanduser("~/.cache/jax/compilation_cache"))
@@ -231,6 +231,7 @@ class DreamBoothDataset(Dataset):
         tokenizer,
         class_data_root=None,
         class_prompt=None,
+        class_num=None,
         size=512,
         center_crop=False,
     ):
@@ -251,7 +252,10 @@ class DreamBoothDataset(Dataset):
             self.class_data_root = Path(class_data_root)
             self.class_data_root.mkdir(parents=True, exist_ok=True)
             self.class_images_path = list(self.class_data_root.iterdir())
-            self.num_class_images = len(self.class_images_path)
+            if class_num is not None:
+                self.num_class_images = min(len(self.class_images_path), class_num)
+            else:
+                self.num_class_images = len(self.class_images_path)
             self._length = max(self.num_class_images, self.num_instance_images)
             self.class_prompt = class_prompt
         else:
@@ -419,6 +423,7 @@ def main():
         instance_prompt=args.instance_prompt,
         class_data_root=args.class_data_dir if args.with_prior_preservation else None,
         class_prompt=args.class_prompt,
+        class_num=args.num_class_images,
         tokenizer=tokenizer,
         size=args.resolution,
         center_crop=args.center_crop,

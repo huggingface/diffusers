@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,6 +23,10 @@ from diffusers import AutoencoderKL, DDIMScheduler, DiTPipeline, DPMSolverMultis
 from diffusers.utils import load_numpy, slow
 from diffusers.utils.testing_utils import require_torch_gpu
 
+from ...pipeline_params import (
+    CLASS_CONDITIONED_IMAGE_GENERATION_BATCH_PARAMS,
+    CLASS_CONDITIONED_IMAGE_GENERATION_PARAMS,
+)
 from ...test_pipelines_common import PipelineTesterMixin
 
 
@@ -31,6 +35,14 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = DiTPipeline
+    params = CLASS_CONDITIONED_IMAGE_GENERATION_PARAMS
+    required_optional_params = PipelineTesterMixin.required_optional_params - {
+        "latents",
+        "num_images_per_prompt",
+        "callback",
+        "callback_steps",
+    }
+    batch_params = CLASS_CONDITIONED_IMAGE_GENERATION_BATCH_PARAMS
     test_cpu_offload = False
 
     def get_dummy_components(self):
@@ -113,8 +125,8 @@ class DiTPipelineIntegrationTests(unittest.TestCase):
             )
             assert np.abs((expected_image - image).max()) < 1e-3
 
-    def test_dit_512_fp16(self):
-        pipe = DiTPipeline.from_pretrained("facebook/DiT-XL-2-512", torch_dtype=torch.float16)
+    def test_dit_512(self):
+        pipe = DiTPipeline.from_pretrained("facebook/DiT-XL-2-512")
         pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
         pipe.to("cuda")
 
@@ -127,7 +139,7 @@ class DiTPipelineIntegrationTests(unittest.TestCase):
         for word, image in zip(words, images):
             expected_image = load_numpy(
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-                f"/dit/{word}_fp16.npy"
+                f"/dit/{word}_512.npy"
             )
 
-            assert np.abs((expected_image - image).max()) < 7.5e-1
+            assert np.abs((expected_image - image).max()) < 1e-1

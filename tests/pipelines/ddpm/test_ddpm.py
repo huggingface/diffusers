@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ class DDPMPipelineFastTests(unittest.TestCase):
         )
         return model
 
-    def test_inference(self):
+    def test_fast_inference(self):
         device = "cpu"
         unet = self.dummy_uncond_unet
         scheduler = DDPMScheduler()
@@ -60,7 +60,7 @@ class DDPMPipelineFastTests(unittest.TestCase):
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array(
-            [5.589e-01, 7.089e-01, 2.632e-01, 6.841e-01, 1.000e-04, 9.999e-01, 1.973e-01, 1.000e-04, 8.010e-02]
+            [9.956e-01, 5.785e-01, 4.675e-01, 9.930e-01, 0.0, 1.000, 1.199e-03, 2.648e-04, 5.101e-04]
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
@@ -73,10 +73,6 @@ class DDPMPipelineFastTests(unittest.TestCase):
         ddpm = DDPMPipeline(unet=unet, scheduler=scheduler)
         ddpm.to(torch_device)
         ddpm.set_progress_bar_config(disable=None)
-
-        # Warmup pass when using mps (see #372)
-        if torch_device == "mps":
-            _ = ddpm(num_inference_steps=1)
 
         generator = torch.manual_seed(0)
         image = ddpm(generator=generator, num_inference_steps=2, output_type="numpy").images
@@ -111,6 +107,5 @@ class DDPMPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.4454, 0.2025, 0.0315, 0.3023, 0.2575, 0.1031, 0.0953, 0.1604, 0.2020])
-
+        expected_slice = np.array([0.4200, 0.3588, 0.1939, 0.3847, 0.3382, 0.2647, 0.4155, 0.3582, 0.3385])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

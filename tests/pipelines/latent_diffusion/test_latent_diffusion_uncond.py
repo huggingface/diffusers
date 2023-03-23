@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,10 +17,10 @@ import unittest
 
 import numpy as np
 import torch
+from transformers import CLIPTextConfig, CLIPTextModel
 
 from diffusers import DDIMScheduler, LDMPipeline, UNet2DModel, VQModel
 from diffusers.utils.testing_utils import require_torch, slow, torch_device
-from transformers import CLIPTextConfig, CLIPTextModel
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -78,11 +78,6 @@ class LDMPipelineFastTests(unittest.TestCase):
         ldm = LDMPipeline(unet=unet, vqvae=vae, scheduler=scheduler)
         ldm.to(torch_device)
         ldm.set_progress_bar_config(disable=None)
-
-        # Warmup pass when using mps (see #372)
-        if torch_device == "mps":
-            generator = torch.manual_seed(0)
-            _ = ldm(generator=generator, num_inference_steps=1, output_type="numpy").images
 
         generator = torch.manual_seed(0)
         image = ldm(generator=generator, num_inference_steps=2, output_type="numpy").images

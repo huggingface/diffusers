@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,17 +21,13 @@ import numpy as np
 import torch
 
 from diffusers import VersatileDiffusionDualGuidedPipeline
-from diffusers.utils.testing_utils import load_image, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import load_image, nightly, require_torch_gpu, torch_device
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class VersatileDiffusionDualGuidedPipelineFastTests(unittest.TestCase):
-    pass
-
-
-@slow
+@nightly
 @require_torch_gpu
 class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
@@ -48,7 +44,7 @@ class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         second_prompt = load_image(
-            "https://raw.githubusercontent.com/SHI-Labs/Versatile-Diffusion/master/assets/benz.jpg"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/versatile_diffusion/benz.jpg"
         )
 
         generator = torch.manual_seed(0)
@@ -90,7 +86,7 @@ class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
 
         first_prompt = "cyberpunk 2077"
         second_prompt = load_image(
-            "https://raw.githubusercontent.com/SHI-Labs/Versatile-Diffusion/master/assets/benz.jpg"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/versatile_diffusion/benz.jpg"
         )
         generator = torch.manual_seed(0)
         image = pipe(
