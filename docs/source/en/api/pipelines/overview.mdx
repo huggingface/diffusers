@@ -19,9 +19,9 @@ components - all of which are needed to have a functioning end-to-end diffusion 
 As an example, [Stable Diffusion](https://huggingface.co/blog/stable_diffusion) has three independently trained models:
 - [Autoencoder](./api/models#vae)
 - [Conditional Unet](./api/models#UNet2DConditionModel)
-- [CLIP text encoder](https://huggingface.co/docs/transformers/v4.21.2/en/model_doc/clip#transformers.CLIPTextModel)
+- [CLIP text encoder](https://huggingface.co/docs/transformers/v4.27.1/en/model_doc/clip#transformers.CLIPTextModel)
 - a scheduler component, [scheduler](./api/scheduler#pndm), 
-- a [CLIPFeatureExtractor](https://huggingface.co/docs/transformers/v4.21.2/en/model_doc/clip#transformers.CLIPFeatureExtractor),
+- a [CLIPImageProcessor](https://huggingface.co/docs/transformers/v4.27.1/en/model_doc/clip#transformers.CLIPImageProcessor),
 - as well as a [safety checker](./stable_diffusion#safety_checker).
 All of these components are necessary to run stable diffusion in inference even though they were trained 
 or created independently from each other.

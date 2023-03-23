@@ -74,10 +74,6 @@ class DDPMPipelineFastTests(unittest.TestCase):
         ddpm.to(torch_device)
         ddpm.set_progress_bar_config(disable=None)
 
-        # Warmup pass when using mps (see #372)
-        if torch_device == "mps":
-            _ = ddpm(num_inference_steps=1)
-
         generator = torch.manual_seed(0)
         image = ddpm(generator=generator, num_inference_steps=2, output_type="numpy").images
 

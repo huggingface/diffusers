@@ -121,10 +121,6 @@ class PipelineTesterMixin:
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        # Warmup pass when using mps (see #372)
-        if torch_device == "mps":
-            _ = pipe(**self.get_dummy_inputs(torch_device))
-
         inputs = self.get_dummy_inputs(torch_device)
         output = pipe(**inputs)[0]
 
@@ -327,10 +323,6 @@ class PipelineTesterMixin:
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        # Warmup pass when using mps (see #372)
-        if torch_device == "mps":
-            _ = pipe(**self.get_dummy_inputs(torch_device))
-
         output = pipe(**self.get_dummy_inputs(torch_device))[0]
         output_tuple = pipe(**self.get_dummy_inputs(torch_device), return_dict=False)[0]
 
@@ -402,10 +394,6 @@ class PipelineTesterMixin:
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        # Warmup pass when using mps (see #372)
-        if torch_device == "mps":
-            _ = pipe(**self.get_dummy_inputs(torch_device))
-
         # set all optional components to None
         for optional_component in pipe._optional_components:
             setattr(pipe, optional_component, None)
@@ -476,10 +464,6 @@ class PipelineTesterMixin:
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-
-        # Warmup pass when using mps (see #372)
-        if torch_device == "mps":
-            _ = pipe(**self.get_dummy_inputs(torch_device))
 
         inputs = self.get_dummy_inputs(torch_device)
         output_without_slicing = pipe(**inputs)[0]
