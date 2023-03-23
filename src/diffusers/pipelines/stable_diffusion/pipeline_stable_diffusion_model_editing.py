@@ -29,6 +29,8 @@ from .safety_checker import StableDiffusionSafetyChecker
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+augs_const = ["A photo of ", "An image of ", "A picture of "]
+
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
@@ -485,13 +487,11 @@ class StableDiffusionModelEditingPipeline(DiffusionPipeline):
         new_texts = [destination_prompt]
         if self.with_augs:
             base = old_texts[0] if old_texts[0][0:1] != "A" else "a" + old_texts[0][1:]
-            old_texts.append("A photo of " + base)
-            old_texts.append("An image of " + base)
-            old_texts.append("A picture of " + base)
+            for aug in augs_const:
+                old_texts.append(aug + base)
             base = new_texts[0] if new_texts[0][0:1] != "A" else "a" + new_texts[0][1:]
-            new_texts.append("A photo of " + base)
-            new_texts.append("An image of " + base)
-            new_texts.append("A picture of " + base)
+            for aug in augs_const:
+                new_texts.append(aug + base)
 
         # prepare input k* and v*
         old_embs, new_embs = [], []
