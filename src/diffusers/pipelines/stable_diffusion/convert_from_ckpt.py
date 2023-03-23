@@ -1195,7 +1195,7 @@ def download_from_original_stable_diffusion_ckpt(
                     requires_safety_checker=False,
                 )
             else:
-                if "LatentInpaintDiffusion" in original_config.model.target:
+                if hasattr(original_config, "model") and hasattr(original_config.model, "target") and "LatentInpaintDiffusion" in original_config.model.target:
                     pipe = StableDiffusionInpaintPipeline(
                         vae=vae,
                         text_encoder=text_model,
@@ -1314,7 +1314,7 @@ def download_from_original_stable_diffusion_ckpt(
                 feature_extractor=feature_extractor,
             )
         else:
-            if "LatentInpaintDiffusion" in original_config.model.target:
+            if hasattr(original_config, "model") and hasattr(original_config.model, "target") and "LatentInpaintDiffusion" in original_config.model.target:
                 pipe = StableDiffusionInpaintPipeline(
                     vae=vae,
                     text_encoder=text_model,
