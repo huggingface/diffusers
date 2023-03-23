@@ -92,6 +92,8 @@ if is_torch_available():
         torch_device,
     )
 
+from .testing_utils import export_to_video
+
 
 logger = get_logger(__name__)
 

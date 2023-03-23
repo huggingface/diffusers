@@ -24,7 +24,7 @@ import requests_mock
 import torch
 from requests.exceptions import HTTPError
 
-from diffusers.models import ModelMixin, UNet2DConditionModel
+from diffusers.models import UNet2DConditionModel
 from diffusers.models.attention_processor import AttnProcessor
 from diffusers.training_utils import EMAModel
 from diffusers.utils import torch_device
@@ -119,11 +119,6 @@ class ModelTesterMixin:
             new_model.to(torch_device)
 
         with torch.no_grad():
-            # Warmup pass when using mps (see #372)
-            if torch_device == "mps" and isinstance(model, ModelMixin):
-                _ = model(**self.dummy_input)
-                _ = new_model(**self.dummy_input)
-
             image = model(**inputs_dict)
             if isinstance(image, dict):
                 image = image.sample
@@ -161,11 +156,6 @@ class ModelTesterMixin:
             new_model.to(torch_device)
 
         with torch.no_grad():
-            # Warmup pass when using mps (see #372)
-            if torch_device == "mps" and isinstance(model, ModelMixin):
-                _ = model(**self.dummy_input)
-                _ = new_model(**self.dummy_input)
-
             image = model(**inputs_dict)
             if isinstance(image, dict):
                 image = image.sample
@@ -203,10 +193,6 @@ class ModelTesterMixin:
         model.eval()
 
         with torch.no_grad():
-            # Warmup pass when using mps (see #372)
-            if torch_device == "mps" and isinstance(model, ModelMixin):
-                model(**self.dummy_input)
-
             first = model(**inputs_dict)
             if isinstance(first, dict):
                 first = first.sample
@@ -377,10 +363,6 @@ class ModelTesterMixin:
         model.eval()
 
         with torch.no_grad():
-            # Warmup pass when using mps (see #372)
-            if torch_device == "mps" and isinstance(model, ModelMixin):
-                model(**self.dummy_input)
-
             outputs_dict = model(**inputs_dict)
             outputs_tuple = model(**inputs_dict, return_dict=False)
 
