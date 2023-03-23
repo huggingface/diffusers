@@ -207,6 +207,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
 
     def tiled_encode(self, x: torch.FloatTensor, return_dict: bool = True) -> AutoencoderKLOutput:
         r"""Encode a batch of images using a tiled encoder.
+
         Args:
         When this option is enabled, the VAE will split the input tensor into tiles to compute encoding in several
         steps. This is useful to keep memory use constant regardless of image size. The end result of tiled encoding is:
@@ -253,6 +254,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
 
     def tiled_decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
         r"""Decode a batch of images using a tiled decoder.
+
         Args:
         When this option is enabled, the VAE will split the input tensor into tiles to compute decoding in several
         steps. This is useful to keep memory use constant regardless of image size. The end result of tiled decoding is:
