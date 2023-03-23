@@ -1,4 +1,4 @@
-# Copyright 2023 MultiDiffusion Authors and The HuggingFace Team. All rights reserved."
+# Copyright 2023 TIME Authors and The HuggingFace Team. All rights reserved."
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -20,6 +20,7 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDIMScheduler, PNDMScheduler
+from ...schedulers.scheduling_utils import SchedulerMixin
 from ...utils import is_accelerate_available, is_accelerate_version, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
@@ -68,8 +69,7 @@ class StableDiffusionModelEditingPipeline(DiffusionPipeline):
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `unet` to denoise the encoded image latents. The original work
-            on Multi Diffsion used the [`DDIMScheduler`].
+            A scheduler to be used in combination with `unet` to denoise the encoded image latents.
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
@@ -88,7 +88,7 @@ class StableDiffusionModelEditingPipeline(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: DDIMScheduler,
+        scheduler: SchedulerMixin,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
         requires_safety_checker: bool = True,
@@ -141,6 +141,7 @@ class StableDiffusionModelEditingPipeline(DiffusionPipeline):
                 for net__ in net_.children():
                     append_ca(net__)
 
+        # recursively find all cross-attention layers in unet
         for net in self.unet.named_children():
             if "down" in net[0]:
                 append_ca(net[1])
@@ -466,6 +467,8 @@ class StableDiffusionModelEditingPipeline(DiffusionPipeline):
     @torch.no_grad()
     def edit_model(self, source_prompt, destination_prompt, lamb=0.1, restart_params=True):
         # Apply model editing via closed-form solution (see Eq. 5 in the TIME paper https://arxiv.org/abs/2303.08084)
+        # When `restart_params` is True (default), the model parameters restart to their pre-trained version.
+        # This is done to avoid edit compounding. When it is False, edits accumulate (behavior not studied in paper).
 
         # restart LDM parameters
         if restart_params:

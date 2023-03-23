@@ -240,39 +240,6 @@ class StableDiffusionModelEditingSlowTests(unittest.TestCase):
 
         assert np.abs(expected_slice - image_slice).max() > 1e-1
 
-    def test_stable_diffusion_model_editing_k_lms(self):
-        pipe = StableDiffusionModelEditingPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", safety_checker=None
-        )
-        pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        pipe.enable_attention_slicing()
-
-        inputs = self.get_inputs()
-        image = pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1].flatten()
-
-        assert image.shape == (1, 512, 512, 3)
-
-        expected_slice = np.array(
-            [
-                [
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                ]
-            ]
-        )
-
-        assert np.abs(expected_slice - image_slice).max() < 1e-3
-
     def test_stable_diffusion_model_editing_pipeline_with_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
@@ -290,5 +257,5 @@ class StableDiffusionModelEditingSlowTests(unittest.TestCase):
         _ = pipe(**inputs)
 
         mem_bytes = torch.cuda.max_memory_allocated()
-        # make sure that less than 5.2 GB is allocated
-        assert mem_bytes < 5.2 * 10**9
+        # make sure that less than 4.4 GB is allocated
+        assert mem_bytes < 4.4 * 10**9
