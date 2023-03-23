@@ -36,7 +36,6 @@ import diffusers
 
 from .. import __version__
 from ..configuration_utils import ConfigMixin
-from ..loaders import TextualInversionLoaderMixin
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
 from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
@@ -391,7 +390,7 @@ def load_sub_model(
     return loaded_sub_model
 
 
-class DiffusionPipeline(ConfigMixin, TextualInversionLoaderMixin):
+class DiffusionPipeline(ConfigMixin):
     r"""
     Base class for all models.
 

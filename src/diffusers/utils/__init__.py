@@ -37,6 +37,8 @@ from .doc_utils import replace_example_docstring
 from .dynamic_modules_utils import get_class_from_dynamic_module
 from .hub_utils import (
     HF_HUB_OFFLINE,
+    _add_variant,
+    _get_model_file,
     extract_commit_hash,
     http_user_agent,
 )

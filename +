@@ -13,12 +13,14 @@
 # limitations under the License.
 import os
 from collections import defaultdict
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Union, Optional
 
 import torch
-from transformers import PreTrainedModel, PreTrainedTokenizer
 
-from .utils import DIFFUSERS_CACHE, HF_HUB_OFFLINE, _get_model_file, deprecate, is_safetensors_available, logging
+from transformers import PreTrainedModel, PreTrainedTokenizer
+from .models.attention_processor import LoRAAttnProcessor
+from .models.modeling_utils import _get_model_file
+from .utils import DIFFUSERS_CACHE, HF_HUB_OFFLINE, deprecate, is_safetensors_available, logging
 
 
 if is_safetensors_available():
@@ -153,8 +155,6 @@ class UNet2DConditionLoadersMixin:
             "file_type": "attn_procs_weights",
             "framework": "pytorch",
         }
-
-        from .models.attention_processor import LoRAAttnProcessor
 
         model_file = None
         if not isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -302,10 +302,8 @@ class TextualInversionLoaderMixin:
     def maybe_convert_prompt(self, prompt: Union[str, List[str]], tokenizer: "PreTrainedTokenizer"):
         if not isinstance(prompt, List):
             prompts = [prompt]
-        else:
-            prompts = prompt
 
-        prompts = [self._maybe_convert_prompt(p, tokenizer) for p in prompts]
+        prompts = [self._maybe_convert_prompt(p) for p in prompts]
 
         if not isinstance(prompt, List):
             return prompts[0]
@@ -329,9 +327,7 @@ class TextualInversionLoaderMixin:
 
         return prompt
 
-    def load_textual_inversion(
-        self, pretrained_model_name_or_path: Union[str, Dict[str, torch.Tensor]], token: Optional[str] = None, **kwargs
-    ):
+    def load_textual_inversion(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], token: Optional[str] = None, **kwargs):
         r"""
         Load textual inversion embeddings into the text encoder of stable diffusion pipelines.
 
@@ -342,17 +338,19 @@ class TextualInversionLoaderMixin:
         </Tip>
 
         Parameters:
-
         </Tip>
 
         Parameters:
-             pretrained_model_name_or_path (`str` or `os.PathLike`):
+            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
                 Can be either:
 
                     - A string, the *model id* of a pretrained model hosted inside a model repo on huggingface.co.
                       Valid model ids should have an organization name, like `google/ddpm-celebahq-256`.
                     - A path to a *directory* containing model weights saved using [`~ModelMixin.save_config`], e.g.,
                       `./my_model_directory/`.
+                    - A [torch state
+                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
+
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory in which a downloaded pretrained model configuration should be cached if the
                 standard cache should not be used.
@@ -382,7 +380,6 @@ class TextualInversionLoaderMixin:
                 Mirror source to accelerate downloads in China. If you are from China and have an accessibility
                 problem, you can set this option to resolve it. Note that we do not guarantee the timeliness or safety.
                 Please refer to the mirror site for more information.
-
         <Tip>
 
          It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
@@ -420,14 +417,35 @@ class TextualInversionLoaderMixin:
 
         # 1. Load textual inversion file
         model_file = None
-        # Let's first try to load .safetensors weights
-        if (use_safetensors and weight_name is None) or (
-            weight_name is not None and weight_name.endswith(".safetensors")
-        ):
-            try:
+        if not isinstance(pretrained_model_name_or_path_or_dict, dict):
+            # Let's first try to load .safetensors weights
+            if (use_safetensors and weight_name is None) or (
+                weight_name is not None and weight_name.endswith(".safetensors")
+            ):
+                try:
+                    model_file = _get_model_file(
+                        pretrained_model_name_or_path_or_dict,
+                        weights_name=weight_name or TEXT_INVERSION_NAME_SAFE,
+                        cache_dir=cache_dir,
+                        force_download=force_download,
+                        resume_download=resume_download,
+                        proxies=proxies,
+                        local_files_only=local_files_only,
+                        use_auth_token=use_auth_token,
+                        revision=revision,
+                        subfolder=subfolder,
+                        user_agent=user_agent,
+                    )
+                    state_dict = safetensors.torch.load_file(model_file, device="cpu")
+                except IOError as e:
+                    if not allow_pickle:
+                        raise e
+                    # try loading non-safetensors weights
+                    pass
+            if model_file is None:
                 model_file = _get_model_file(
-                    pretrained_model_name_or_path,
-                    weights_name=weight_name or TEXT_INVERSION_NAME_SAFE,
+                    pretrained_model_name_or_path_or_dict,
+                    weights_name=weight_name or TEXT_INVERSION_NAME,
                     cache_dir=cache_dir,
                     force_download=force_download,
                     resume_download=resume_download,
@@ -438,62 +456,39 @@ class TextualInversionLoaderMixin:
                     subfolder=subfolder,
                     user_agent=user_agent,
                 )
-                state_dict = safetensors.torch.load_file(model_file, device="cpu")
-            except Exception as e:
-                if not allow_pickle:
-                    raise e
-
-                model_file = None
-                pass
-
-        if model_file is None:
-            model_file = _get_model_file(
-                pretrained_model_name_or_path,
-                weights_name=weight_name or TEXT_INVERSION_NAME,
-                cache_dir=cache_dir,
-                force_download=force_download,
-                resume_download=resume_download,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
-                revision=revision,
-                subfolder=subfolder,
-                user_agent=user_agent,
-            )
-            state_dict = torch.load(model_file, map_location="cpu")
+                state_dict = torch.load(model_file, map_location="cpu")
+        else:
+            state_dict = pretrained_model_name_or_path_or_dict
 
         # 2. Load token and embedding correcly from file
         if isinstance(state_dict, torch.Tensor):
             if token is None:
-                raise ValueError(
-                    "You are trying to load a textual inversion embedding that has been saved as a PyTorch tensor. Make sure to pass the name of the corresponding token in this case: `token=...`."
-                )
+                raise ValueError("You are trying to load a textual inversion embedding that has been saved as a PyTorch tensor. Make sure to pass the name of the corresponding token in this case: `token=...`.")
             embedding = state_dict
-        elif len(state_dict) == 1:
+
+        if len(state_dict) == 1:
             # diffusers
-            loaded_token, embedding = next(iter(state_dict.items()))
+            loaded_token, embedding = next(iter(state_dict))[0]
         elif "string_to_param" in state_dict:
             # A1111
-            loaded_token = self._extract_token_from_dict(state_dict)
-            embedding = self._extract_embedding_from_dict(state_dict)
+            loaded_token = self._extract_token_from_dict(embedding_dict)
+            embedding = self._extract_embedding_from_dict(embedding_dict)
 
         if token is not None and loaded_token != token:
             logger.warn(f"The loaded token: {loaded_token} is overwritten by the passed token {token}.")
         else:
             token = loaded_token
 
-        embedding = embedding.to(dtype=self.text_encoder.dtype, device=self.text_encoder.device)
-
         # 3. Make sure we don't mess up the tokenizer or text encoder
         vocab = self.tokenizer.get_vocab()
-        if token in vocab:
+        if token:
             raise ValueError(
                 f"Token {token} already in tokenizer vocabulary. Please choose a different token name or remove {token} and embedding from the tokenizer and text encoder."
             )
         elif f"{token}_1" in vocab:
             multi_vector_tokens = [token]
             i = 1
-            while f"{token}_{i}" in self.tokenizer.added_tokens_encoder:
+            while f"{token}_{i}" in tokenizer.added_tokens_encoder:
                 multi_vector_tokens.append(f"{token}_{i}")
                 i += 1
 
@@ -501,27 +496,30 @@ class TextualInversionLoaderMixin:
                 f"Multi-vector Token {token} already in tokenizer vocabulary. Please choose a different token name or remove the {multi_vector_tokens} and embedding from the tokenizer and text encoder."
             )
 
-        is_multi_vector = len(embedding.shape) > 1 and embedding.shape[0] > 1
+        is_multi_vector = embedding.ndims > 1 and embedding.shape[0] > 1
 
         if is_multi_vector:
-            tokens = [token] + [f"{token}_{i}" for i in range(1, embedding.shape[0])]
-            embeddings = [e for e in embedding]
+            tokens = [token] + [f"{token}_i" for i in range(1, embedding.shape[0])]
         else:
             tokens = [token]
-            embeddings = [embedding] if len(embedding.shape) > 1 else [embedding[0]]
 
-        # add tokens and get ids
         self.tokenizer.add_tokens(tokens)
-        token_ids = self.tokenizer.convert_tokens_to_ids(tokens)
+        token_ids = tokenizer.convert_tokens_to_ids(tokens)
 
-        # resize token embeddings and set new embeddings
+        # 4. Load token and embedding into tokenizer
+        embedding = embedding.to(dtype=self.text_encoder.dtype, device=self.text_encoder.device)
         self.text_encoder.resize_token_embeddings(len(self.tokenizer))
-        for token_id, embedding in zip(token_ids, embeddings):
+
+        if token in self.tokenizer.get_vocab():
+            # If user has allowed replacement and the token exists, we only need to
+            # extract the existing id and update the embedding
+            token_id = self.tokenizer.convert_tokens_to_ids(token)
             self.text_encoder.get_input_embeddings().weight.data[token_id] = embedding
+        else:
+            # If the token does not exist, we add it to the tokenizer, then resize and update the
+            # text encoder acccordingly
 
-        logger.info("Loaded textual inversion embedding for {token}.")
 
-    # TODO(to discuss) think we can remove this one
     def load_textual_inversion_embeddings(
         self, embedding_path_dict_or_list: Union[Dict[str, str], List[Dict[str, str]]], allow_replacement: bool = False
     ):
@@ -583,7 +581,6 @@ class TextualInversionLoaderMixin:
                         )
                 self.add_textual_inversion_embedding(token, embedding)
 
-    # TODO(to discuss) think we can remove this one
     def add_textual_inversion_embedding(self, token: str, embedding: torch.Tensor):
         r"""
         Adds a token to the tokenizer's vocabulary and an embedding to the text encoder's embedding matrix.
