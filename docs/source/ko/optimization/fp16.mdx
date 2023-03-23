@@ -182,9 +182,7 @@ image = pipe(prompt).images[0]
 ```python
 print(pipe.unet.conv_out.state_dict()["weight"].stride())  # (2880, 9, 3, 1)
 pipe.unet.to(memory_format=torch.channels_last)  # in-place 연산
-print(
-    pipe.unet.conv_out.state_dict()["weight"].stride()
-)  # 2번째 차원에서 스트라이드 1을 가지는 (2880, 1, 960, 320)로 작동함을 증명합니다.
+print(pipe.unet.conv_out.state_dict()["weight"].stride())  # 2번째 차원에서 스트라이드 1을 가지는 (2880, 1, 960, 320)로 작동함을 증명합니다.
 ```
 
 ## 추적
