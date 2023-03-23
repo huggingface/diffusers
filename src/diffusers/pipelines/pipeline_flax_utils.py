@@ -278,7 +278,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
         >>> from diffusers import FlaxDPMSolverMultistepScheduler
 
         >>> model_id = "runwayml/stable-diffusion-v1-5"
-        >>> sched, sched_state = FlaxDPMSolverMultistepScheduler.from_pretrained(
+        >>> dpmpp, dpmpp_state = FlaxDPMSolverMultistepScheduler.from_pretrained(
         ...     model_id,
         ...     subfolder="scheduler",
         ... )
@@ -365,7 +365,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
         # some modules can be passed directly to the init
         # in this case they are already instantiated in `kwargs`
         # extract them here
-        expected_modules = set(inspect.signature(pipeline_class.__init__).parameters.keys())
+        expected_modules, optional_kwargs = cls._get_signature_keys(pipeline_class)
         passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
 
         init_dict, _, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
@@ -469,6 +469,19 @@ class FlaxDiffusionPipeline(ConfigMixin):
                     loaded_sub_model = load_method(loadable_folder)
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
+
+        # 4. Potentially add passed objects if expected
+        missing_modules = set(expected_modules) - set(init_kwargs.keys())
+        passed_modules = list(passed_class_obj.keys())
+
+        if len(missing_modules) > 0 and missing_modules <= set(passed_modules):
+            for module in missing_modules:
+                init_kwargs[module] = passed_class_obj.get(module, None)
+        elif len(missing_modules) > 0:
+            passed_modules = set(list(init_kwargs.keys()) + list(passed_class_obj.keys())) - optional_kwargs
+            raise ValueError(
+                f"Pipeline {pipeline_class} expected {expected_modules}, but only {passed_modules} were passed."
+            )
 
         model = pipeline_class(**init_kwargs, dtype=dtype)
         return model, params
