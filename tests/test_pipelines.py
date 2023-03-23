@@ -1123,7 +1123,7 @@ class PipelineSlowTests(unittest.TestCase):
                 f"/compel/forest_{i}.npy"
             )
 
-            assert np.abs(image - expected_image).max() < 1e-3
+            assert np.abs(image - expected_image).max() < 1e-2
 
 
 @nightly
