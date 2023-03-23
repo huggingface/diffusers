@@ -1,4 +1,4 @@
-<!--Copyright 2022 The HuggingFace Team. All rights reserved.
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -19,17 +19,22 @@ specific language governing permissions and limitations under the License.
 - Mac computer with Apple silicon (M1/M2) hardware.
 - macOS 12.6 or later (13.0 or later recommended).
 - arm64 version of Python.
-- PyTorch 1.13. You can install it with `pip` or `conda` using the instructions in https://pytorch.org/get-started/locally/.
+- PyTorch 2.0 (recommended) or 1.13 (minimum version supported for `mps`). You can install it with `pip` or `conda` using the instructions in https://pytorch.org/get-started/locally/.
 
 
 ## Inference Pipeline
 
 The snippet below demonstrates how to use the `mps` backend using the familiar `to()` interface to move the Stable Diffusion pipeline to your M1 or M2 device.
 
-We recommend to "prime" the pipeline using an additional one-time pass through it. This is a temporary workaround for a weird issue we have detected: the first inference pass produces slightly different results than subsequent ones. You only need to do this pass once, and it's ok to use just one inference step and discard the result.
+<Tip warning={true}>
+
+**If you are using PyTorch 1.13** you need to "prime" the pipeline using an additional one-time pass through it. This is a temporary workaround for a weird issue we detected: the first inference pass produces slightly different results than subsequent ones. You only need to do this pass once, and it's ok to use just one inference step and discard the result.
+
+</Tip>
+
+We strongly recommend you use PyTorch 2 or better, as it solves a number of problems like the one described in the previous tip.
 
 ```python
-# make sure you're logged in with `huggingface-cli login`
 from diffusers import StableDiffusionPipeline
 
 pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
@@ -40,7 +45,7 @@ pipe.enable_attention_slicing()
 
 prompt = "a photo of an astronaut riding a horse on mars"
 
-# First-time "warmup" pass (see explanation above)
+# First-time "warmup" pass if PyTorch version is 1.13 (see explanation above)
 _ = pipe(prompt, num_inference_steps=1)
 
 # Results match those from the CPU device after the warmup pass.
@@ -51,7 +56,7 @@ image = pipe(prompt).images[0]
 
 M1/M2 performance is very sensitive to memory pressure. The system will automatically swap if it needs to, but performance will degrade significantly when it does.
 
-We recommend you use _attention slicing_ to reduce memory pressure during inference and prevent swapping, particularly if your computer has lass than 64 GB of system RAM, or if you generate images at non-standard resolutions larger than 512 × 512 pixels. Attention slicing performs the costly attention operation in multiple steps instead of all at once. It usually has a performance impact of ~20% in computers without universal memory, but we have observed _better performance_ in most Apple Silicon computers, unless you have 64 GB or more.
+We recommend you use _attention slicing_ to reduce memory pressure during inference and prevent swapping, particularly if your computer has less than 64 GB of system RAM, or if you generate images at non-standard resolutions larger than 512 × 512 pixels. Attention slicing performs the costly attention operation in multiple steps instead of all at once. It usually has a performance impact of ~20% in computers without universal memory, but we have observed _better performance_ in most Apple Silicon computers, unless you have 64 GB or more.
 
 ```python
 pipeline.enable_attention_slicing()
@@ -59,5 +64,4 @@ pipeline.enable_attention_slicing()
 
 ## Known Issues
 
-- As mentioned above, we are investigating a strange [first-time inference issue](https://github.com/huggingface/diffusers/issues/372).
 - Generating multiple prompts in a batch [crashes or doesn't work reliably](https://github.com/huggingface/diffusers/issues/363). We believe this is related to the [`mps` backend in PyTorch](https://github.com/pytorch/pytorch/issues/84039). This is being resolved, but for now we recommend to iterate instead of batching.

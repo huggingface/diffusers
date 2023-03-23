@@ -1,0 +1,98 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+# Weighting prompts
+
+Text-guided diffusion models generate images based on a given text prompt. The text prompt
+can include multiple concepts that the model should generate and it's often desirable to weight
+certain parts of the prompt more or less. 
+
+Diffusion models work by conditioning the cross attention layers of the diffusion model with contextualized text embeddings (see the [Stable Diffusion Guide for more information](../stable-diffusion)).
+Thus a simple way to emphasize (or de-emphasize) certain parts of the prompt is by increasing or reducing the scale of the text embedding vector that corresponds to the relevant part of the prompt.
+This is called "prompt-weighting" and has been a highly demanded feature by the community (see issue [here](https://github.com/huggingface/diffusers/issues/2431)).
+
+## How to do prompt-weighting in Diffusers
+
+We believe the role of `diffusers` is to be a toolbox that provides essential features that enable other projects, such as [InvokeAI](https://github.com/invoke-ai/InvokeAI) or [diffuzers](https://github.com/abhishekkrthakur/diffuzers), to build powerful UIs. In order to support arbitrary methods to manipulate prompts, `diffusers` exposes a [`prompt_embeds`](https://huggingface.co/docs/diffusers/v0.14.0/en/api/pipelines/stable_diffusion/text2img#diffusers.StableDiffusionPipeline.__call__.prompt_embeds) function argument to many pipelines such as [`StableDiffusionPipeline`], allowing to directly pass the "prompt-weighted"/scaled text embeddings to the pipeline.
+
+The [compel library](https://github.com/damian0815/compel) provides an easy way to emphasize or de-emphasize portions of the prompt for you. We strongly recommend it instead of preparing the embeddings yourself.
+
+Let's look at a simple example. Imagine you want to generate an image of `"a red cat playing with a ball"` as 
+follows:
+
+```py
+from diffusers import StableDiffusionPipeline, UniPCMultistepScheduler
+
+pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+
+prompt = "a red cat playing with a ball"
+
+generator = torch.Generator(device="cpu").manual_seed(33)
+
+image = pipe(prompt, generator=generator, num_inference_steps=20).images[0]
+image
+```
+
+This gives you:
+
+![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/compel/forest_0.png)
+
+As you can see, there is no "ball" in the image. Let's emphasize this part!
+
+For this we should install the `compel` library:
+
+```
+pip install compel
+```
+
+and then create a `Compel` object:
+
+```py
+from compel import Compel
+
+compel_proc = Compel(tokenizer=pipe.tokenizer, text_encoder=pipe.text_encoder)
+```
+
+Now we emphasize the part "ball" with the `"++"` syntax:
+
+```py
+prompt = "a red cat playing with a ball++"
+```
+
+and instead of passing this to the pipeline directly, we have to process it using `compel_proc`:
+
+```py
+prompt_embeds = compel_proc(prompt)
+```
+
+Now we can pass `prompt_embeds` directly to the pipeline:
+
+```py
+generator = torch.Generator(device="cpu").manual_seed(33)
+
+images = pipe(prompt_embeds=prompt_embeds, generator=generator, num_inference_steps=20).images[0]
+image
+```
+
+We now get the following image which has a "ball"!
+
+![img](https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/compel/forest_1.png)
+
+Similarly, we de-emphasize parts of the sentence by using the `--` suffix for words, feel free to give it 
+a try!
+
+If your favorite pipeline does not have a `prompt_embeds` input, please make sure to open an issue, the 
+diffusers team tries to be as responsive as possible.
+
+Also, please check out the documentation of the [compel](https://github.com/damian0815/compel) library for 
+more information.

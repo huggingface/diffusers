@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,8 +20,9 @@ import numpy as np
 import torch
 
 from diffusers import RePaintPipeline, RePaintScheduler, UNet2DModel
-from diffusers.utils.testing_utils import load_image, load_numpy, nightly, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import load_image, load_numpy, nightly, require_torch_gpu, skip_mps, torch_device
 
+from ...pipeline_params import IMAGE_INPAINTING_BATCH_PARAMS, IMAGE_INPAINTING_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin
 
 
@@ -30,6 +31,14 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 class RepaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = RePaintPipeline
+    params = IMAGE_INPAINTING_PARAMS - {"width", "height", "guidance_scale"}
+    required_optional_params = PipelineTesterMixin.required_optional_params - {
+        "latents",
+        "num_images_per_prompt",
+        "callback",
+        "callback_steps",
+    }
+    batch_params = IMAGE_INPAINTING_BATCH_PARAMS
     test_cpu_offload = False
 
     def get_dummy_components(self):
@@ -81,7 +90,30 @@ class RepaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([1.0000, 0.5426, 0.5497, 0.2200, 1.0000, 1.0000, 0.5623, 1.0000, 0.6274])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    @skip_mps
+    def test_save_load_local(self):
+        return super().test_save_load_local()
+
+    # RePaint can hardly be made deterministic since the scheduler is currently always
+    # nondeterministic
+    @unittest.skip("non-deterministic pipeline")
+    def test_inference_batch_single_identical(self):
+        return super().test_inference_batch_single_identical()
+
+    @skip_mps
+    def test_dict_tuple_outputs_equivalent(self):
+        return super().test_dict_tuple_outputs_equivalent()
+
+    @skip_mps
+    def test_save_load_optional_components(self):
+        return super().test_save_load_optional_components()
+
+    @skip_mps
+    def test_attention_slicing_forward_pass(self):
+        return super().test_attention_slicing_forward_pass()
 
 
 @nightly
@@ -113,7 +145,7 @@ class RepaintPipelineNightlyTests(unittest.TestCase):
         repaint.set_progress_bar_config(disable=None)
         repaint.enable_attention_slicing()
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         output = repaint(
             original_image,
             mask_image,

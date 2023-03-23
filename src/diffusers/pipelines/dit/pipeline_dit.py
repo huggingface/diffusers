@@ -4,7 +4,7 @@
 # Copyright (c) 2021 OpenAI
 # MIT License
 #
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -182,7 +182,7 @@ class DiTPipeline(DiffusionPipeline):
         else:
             latents = latent_model_input
 
-        latents = 1 / 0.18215 * latents
+        latents = 1 / self.vae.config.scaling_factor * latents
         samples = self.vae.decode(latents).sample
 
         samples = (samples / 2 + 0.5).clamp(0, 1)

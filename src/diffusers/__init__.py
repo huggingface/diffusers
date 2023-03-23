@@ -1,4 +1,4 @@
-__version__ = "0.12.0.dev0"
+__version__ = "0.15.0.dev0"
 
 from .configuration_utils import ConfigMixin
 from .utils import (
@@ -34,12 +34,14 @@ except OptionalDependencyNotAvailable:
 else:
     from .models import (
         AutoencoderKL,
+        ControlNetModel,
         ModelMixin,
         PriorTransformer,
         Transformer2DModel,
         UNet1DModel,
         UNet2DConditionModel,
         UNet2DModel,
+        UNet3DConditionModel,
         VQModel,
     )
     from .optimization import (
@@ -67,6 +69,7 @@ else:
         ScoreSdeVePipeline,
     )
     from .schedulers import (
+        DDIMInverseScheduler,
         DDIMScheduler,
         DDPMScheduler,
         DEISMultistepScheduler,
@@ -84,6 +87,7 @@ else:
         SchedulerMixin,
         ScoreSdeVeScheduler,
         UnCLIPScheduler,
+        UniPCMultistepScheduler,
         VQDiffusionScheduler,
     )
     from .training_utils import EMAModel
@@ -109,14 +113,25 @@ else:
         CycleDiffusionPipeline,
         LDMTextToImagePipeline,
         PaintByExamplePipeline,
+        SemanticStableDiffusionPipeline,
+        StableDiffusionAttendAndExcitePipeline,
+        StableDiffusionControlNetPipeline,
         StableDiffusionDepth2ImgPipeline,
         StableDiffusionImageVariationPipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
         StableDiffusionInpaintPipelineLegacy,
+        StableDiffusionInstructPix2PixPipeline,
+        StableDiffusionLatentUpscalePipeline,
+        StableDiffusionPanoramaPipeline,
         StableDiffusionPipeline,
         StableDiffusionPipelineSafe,
+        StableDiffusionPix2PixZeroPipeline,
+        StableDiffusionSAGPipeline,
         StableDiffusionUpscalePipeline,
+        StableUnCLIPImg2ImgPipeline,
+        StableUnCLIPPipeline,
+        TextToVideoSDPipeline,
         UnCLIPImageVariationPipeline,
         UnCLIPPipeline,
         VersatileDiffusionDualGuidedPipeline,
@@ -145,6 +160,7 @@ else:
         OnnxStableDiffusionInpaintPipeline,
         OnnxStableDiffusionInpaintPipelineLegacy,
         OnnxStableDiffusionPipeline,
+        OnnxStableDiffusionUpscalePipeline,
         StableDiffusionOnnxPipeline,
     )
 

@@ -6,4 +6,4 @@ torch
 torchvision
 ftfy
 tensorboard
-modelcards
+Jinja2
