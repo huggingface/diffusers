@@ -215,17 +215,7 @@ class StableDiffusionModelEditingSlowTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
 
         expected_slice = np.array(
-            [
-                0.6749496,
-                0.6386453,
-                0.51443267,
-                0.66094905,
-                0.61921215,
-                0.5491332,
-                0.5744417,
-                0.58075106,
-                0.5174658
-            ]
+            [0.6749496, 0.6386453, 0.51443267, 0.66094905, 0.61921215, 0.5491332, 0.5744417, 0.58075106, 0.5174658]
         )
 
         assert np.abs(expected_slice - image_slice).max() < 1e-2
@@ -280,7 +270,9 @@ class StableDiffusionModelEditingSlowTests(unittest.TestCase):
 
         model_ckpt = "CompVis/stable-diffusion-v1-4"
         scheduler = DDIMScheduler.from_pretrained(model_ckpt, subfolder="scheduler")
-        pipe = StableDiffusionModelEditingPipeline.from_pretrained(model_ckpt, scheduler=scheduler, safety_checker=None)
+        pipe = StableDiffusionModelEditingPipeline.from_pretrained(
+            model_ckpt, scheduler=scheduler, safety_checker=None
+        )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
