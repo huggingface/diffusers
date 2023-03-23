@@ -954,23 +954,6 @@ def stable_unclip_image_noising_components(
     return image_normalizer, image_noising_scheduler
 
 
-def cast_to_dtype(module, dtype: torch.dtype):
-    """
-    Converts the module to the given dtype
-
-    Args:
-        module:
-            The module to convert
-        dtype: (`torch.dtype`)
-            The dtype to convert to (e.g. `torch.float16`)
-    """
-
-    if dtype == torch.float16:
-        module.half()
-    elif dtype == torch.bfloat16:
-        module.bfloat16()
-
-
 def convert_controlnet_checkpoint(
     checkpoint, original_config, checkpoint_path, image_size, upcast_attention, extract_ema
 ):
@@ -1006,7 +989,6 @@ def download_from_original_stable_diffusion_ckpt(
     stable_unclip_prior: Optional[str] = None,
     clip_stats_path: Optional[str] = None,
     controlnet: Optional[bool] = None,
-    torch_dtype: torch.dtype = torch.float32,
     load_safety_checker: bool = True,
 ) -> StableDiffusionPipeline:
     """
@@ -1182,7 +1164,6 @@ def download_from_original_stable_diffusion_ckpt(
     )
 
     unet.load_state_dict(converted_unet_checkpoint)
-    cast_to_dtype(unet, dtype=torch_dtype)
 
     # Convert the VAE model.
     vae_config = create_vae_diffusers_config(original_config, image_size=image_size)
@@ -1190,7 +1171,6 @@ def download_from_original_stable_diffusion_ckpt(
 
     vae = AutoencoderKL(**vae_config)
     vae.load_state_dict(converted_vae_checkpoint)
-    cast_to_dtype(vae, dtype=torch_dtype)
 
     # Convert the text model.
     if model_type is None:
@@ -1199,8 +1179,6 @@ def download_from_original_stable_diffusion_ckpt(
 
     if model_type == "FrozenOpenCLIPEmbedder":
         text_model = convert_open_clip_checkpoint(checkpoint)
-        cast_to_dtype(text_model, dtype=torch_dtype)
-
         tokenizer = CLIPTokenizer.from_pretrained("stabilityai/stable-diffusion-2", subfolder="tokenizer")
 
         if stable_unclip is None:
@@ -1296,14 +1274,10 @@ def download_from_original_stable_diffusion_ckpt(
         )
     elif model_type == "FrozenCLIPEmbedder":
         text_model = convert_ldm_clip_checkpoint(checkpoint)
-        cast_to_dtype(text_model, dtype=torch_dtype)
-
         tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
 
         if load_safety_checker:
             safety_checker = StableDiffusionSafetyChecker.from_pretrained("CompVis/stable-diffusion-safety-checker")
-            cast_to_dtype(safety_checker, dtype=torch_dtype)
-
             feature_extractor = AutoFeatureExtractor.from_pretrained("CompVis/stable-diffusion-safety-checker")
         else:
             safety_checker = None
