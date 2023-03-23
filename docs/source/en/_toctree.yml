@@ -33,15 +33,15 @@
     - local: using-diffusers/pipeline_overview
       title: Overview
     - local: using-diffusers/unconditional_image_generation
-      title: Unconditional Image Generation
+      title: Unconditional image generation
     - local: using-diffusers/conditional_image_generation
-      title: Text-to-Image Generation
+      title: Text-to-image generation
     - local: using-diffusers/img2img
-      title: Text-Guided Image-to-Image
+      title: Text-guided image-to-image
     - local: using-diffusers/inpaint
-      title: Text-Guided Image-Inpainting
+      title: Text-guided image-inpainting
     - local: using-diffusers/depth2img
-      title: Text-Guided Depth-to-Image
+      title: Text-guided depth-to-image
     - local: using-diffusers/reusing_seeds
       title: Improve image quality with deterministic generation
     - local: using-diffusers/reproducibility
