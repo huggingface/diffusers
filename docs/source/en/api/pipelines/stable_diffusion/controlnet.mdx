@@ -147,9 +147,7 @@ It can also be helpful to vary the `controlnet_conditioning_scales` to emphasize
 
 The original image:
 
-<p align="center">
 <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/landscape.png/>
-</p>
 
 Prepare the conditioning:
 
@@ -180,17 +178,13 @@ canny_image = np.concatenate([canny_image, canny_image, canny_image], axis=2)
 canny_image = Image.fromarray(canny_image)
 ```
 
-<p align="center">
 <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/controlnet/landscape_canny_masked.png"/>
-</p>
 
 ### Openpose conditioning
 
 The original image:
 
-<p align="center">
-    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/person.png" width=600/>
-</p>
+<img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/person.png" width=600/>
 
 Prepare the conditioning:
 
@@ -206,9 +200,7 @@ openpose_image = load_image(
 openpose_image = openpose(openpose_image)
 ```
 
-<p align="center">
-    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/controlnet/person_pose.png" width=600/>
-</p>
+<img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/controlnet/person_pose.png" width=600/>
 
 ### Running ControlNet with multiple conditionings
 
@@ -248,9 +240,7 @@ image = pipe(
 image.save("./multi_controlnet_output.png")
 ```
 
-<p align="center">
-    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/controlnet/multi_controlnet_output.png" width=600/>
-</p>
+<img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/controlnet/multi_controlnet_output.png" width=600/>
 
 ## Available checkpoints
 
