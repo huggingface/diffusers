@@ -1,0 +1,21 @@
+{"dataset_json_file": "C:\\Users\\Jackson\\Documents\\research\\AudioTaggingDoneRight\\egs\\audioset\\data\\datafiles\\audioset_bal_train_data.json",
+"audio_conf": {
+    "num_mel_bins": 64, 
+    "freqm": 0, 
+    "timem": 0, 
+    "mixup": 0, 
+    "dataset": "balanced wav set", 
+    "skip_norm": "True", 
+    "noise": "False", 
+    "mode": "train", 
+    "target_length": 400,
+    "mean": 1,
+    "std": 1,
+    "channels": 3,
+    "n_fft": 1600, 
+    "win_length": 1200, 
+    "hop_length": 400,
+    "transpose": "True"
+},
+"label_csv": "C:\\Users\\Jackson\\Documents\\research\\AudioTaggingDoneRight\\egs\\audioset\\data\\class_labels_indices.csv"
+}

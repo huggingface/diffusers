@@ -20,6 +20,7 @@ import os
 import random
 from pathlib import Path
 from typing import Optional
+import json
 
 import accelerate
 import datasets
@@ -44,10 +45,10 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, deprecate
 from diffusers.utils.import_utils import is_xformers_available
+from audio_gen_files.AudiosetDataset import AudiosetDataset
 
-
-# Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.15.0.dev0")
+# # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
+# check_min_version("0.15.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -297,6 +298,13 @@ def parse_args():
     parser.add_argument(
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
+    parser.add_argument(
+        "--audio_conf",
+        type=str,
+        default=None,
+        required=False,
+        help="Path to audio dataloader config file, if left blank normal operation will be used",
+    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -304,8 +312,8 @@ def parse_args():
         args.local_rank = env_local_rank
 
     # Sanity checks
-    if args.dataset_name is None and args.train_data_dir is None:
-        raise ValueError("Need either a dataset name or a training folder.")
+    if args.dataset_name is None and args.train_data_dir is None and args.audio_conf is None:
+        raise ValueError("Need either a dataset name or a training folder or audio conf.")
 
     # default to using the same revision for the non-ema model if not specified
     if args.non_ema_revision is None:
@@ -331,7 +339,7 @@ dataset_name_mapping = {
 
 def main():
     args = parse_args()
-
+    print("ARGS: ", vars(args))
     if args.non_ema_revision is not None:
         deprecate(
             "non_ema_revision!=None",
@@ -501,104 +509,114 @@ def main():
 
     # In distributed training, the load_dataset function guarantees that only one local process can concurrently
     # download the dataset.
-    if args.dataset_name is not None:
-        # Downloading and loading a dataset from the hub.
-        dataset = load_dataset(
-            args.dataset_name,
-            args.dataset_config_name,
-            cache_dir=args.cache_dir,
-        )
-    else:
-        data_files = {}
-        if args.train_data_dir is not None:
-            data_files["train"] = os.path.join(args.train_data_dir, "**")
-        dataset = load_dataset(
-            "imagefolder",
-            data_files=data_files,
-            cache_dir=args.cache_dir,
-        )
-        # See more about loading custom images at
-        # https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder
-
-    # Preprocessing the datasets.
-    # We need to tokenize inputs and targets.
-    column_names = dataset["train"].column_names
-
-    # 6. Get the column names for input/target.
-    dataset_columns = dataset_name_mapping.get(args.dataset_name, None)
-    if args.image_column is None:
-        image_column = dataset_columns[0] if dataset_columns is not None else column_names[0]
-    else:
-        image_column = args.image_column
-        if image_column not in column_names:
-            raise ValueError(
-                f"--image_column' value '{args.image_column}' needs to be one of: {', '.join(column_names)}"
+    if args.train_data_dir is not None or args.dataset_name is not None:
+        if args.dataset_name is not None:
+            # Downloading and loading a dataset from the hub.
+            dataset = load_dataset(
+                args.dataset_name,
+                args.dataset_config_name,
+                cache_dir=args.cache_dir,
             )
-    if args.caption_column is None:
-        caption_column = dataset_columns[1] if dataset_columns is not None else column_names[1]
-    else:
-        caption_column = args.caption_column
-        if caption_column not in column_names:
-            raise ValueError(
-                f"--caption_column' value '{args.caption_column}' needs to be one of: {', '.join(column_names)}"
+        else:
+            data_files = {}
+            if args.train_data_dir is not None:
+                data_files["train"] = os.path.join(args.train_data_dir, "**")
+            dataset = load_dataset(
+                "imagefolder",
+                data_files=data_files,
+                cache_dir=args.cache_dir,
             )
+            # See more about loading custom images at
+            # https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder
 
-    # Preprocessing the datasets.
-    # We need to tokenize input captions and transform the images.
-    def tokenize_captions(examples, is_train=True):
-        captions = []
-        for caption in examples[caption_column]:
-            if isinstance(caption, str):
-                captions.append(caption)
-            elif isinstance(caption, (list, np.ndarray)):
-                # take a random caption if there are multiple
-                captions.append(random.choice(caption) if is_train else caption[0])
-            else:
+        # Preprocessing the datasets.
+        # We need to tokenize inputs and targets.
+        column_names = dataset["train"].column_names
+
+        # 6. Get the column names for input/target.
+        dataset_columns = dataset_name_mapping.get(args.dataset_name, None)
+        if args.image_column is None:
+            image_column = dataset_columns[0] if dataset_columns is not None else column_names[0]
+        else:
+            image_column = args.image_column
+            if image_column not in column_names:
                 raise ValueError(
-                    f"Caption column `{caption_column}` should contain either strings or lists of strings."
+                    f"--image_column' value '{args.image_column}' needs to be one of: {', '.join(column_names)}"
                 )
-        inputs = tokenizer(
-            captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
+        if args.caption_column is None:
+            caption_column = dataset_columns[1] if dataset_columns is not None else column_names[1]
+        else:
+            caption_column = args.caption_column
+            if caption_column not in column_names:
+                raise ValueError(
+                    f"--caption_column' value '{args.caption_column}' needs to be one of: {', '.join(column_names)}"
+                )
+
+        # Preprocessing the datasets.
+        # We need to tokenize input captions and transform the images.
+        def tokenize_captions(examples, is_train=True):
+            captions = []
+            for caption in examples[caption_column]:
+                if isinstance(caption, str):
+                    captions.append(caption)
+                elif isinstance(caption, (list, np.ndarray)):
+                    # take a random caption if there are multiple
+                    captions.append(random.choice(caption) if is_train else caption[0])
+                else:
+                    raise ValueError(
+                        f"Caption column `{caption_column}` should contain either strings or lists of strings."
+                    )
+            inputs = tokenizer(
+                captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
+            )
+            return inputs.input_ids
+
+        # Preprocessing the datasets.
+        train_transforms = transforms.Compose(
+            [
+                transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
+                transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
+                transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x),
+                transforms.ToTensor(),
+                transforms.Normalize([0.5], [0.5]),
+            ]
         )
-        return inputs.input_ids
 
-    # Preprocessing the datasets.
-    train_transforms = transforms.Compose(
-        [
-            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
-            transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x),
-            transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5]),
-        ]
-    )
+        def preprocess_train(examples):
+            images = [image.convert("RGB") for image in examples[image_column]]
+            examples["pixel_values"] = [train_transforms(image) for image in images]
+            examples["input_ids"] = tokenize_captions(examples)
+            return examples
 
-    def preprocess_train(examples):
-        images = [image.convert("RGB") for image in examples[image_column]]
-        examples["pixel_values"] = [train_transforms(image) for image in images]
-        examples["input_ids"] = tokenize_captions(examples)
-        return examples
+        with accelerator.main_process_first():
+            if args.max_train_samples is not None:
+                dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
+            # Set the training transforms
+            train_dataset = dataset["train"].with_transform(preprocess_train)
 
-    with accelerator.main_process_first():
-        if args.max_train_samples is not None:
-            dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
-        # Set the training transforms
-        train_dataset = dataset["train"].with_transform(preprocess_train)
+        def collate_fn(examples):
+            pixel_values = torch.stack([example["pixel_values"] for example in examples])
+            pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
+            input_ids = torch.stack([example["input_ids"] for example in examples])
+            return {"pixel_values": pixel_values, "input_ids": input_ids}
 
-    def collate_fn(examples):
-        pixel_values = torch.stack([example["pixel_values"] for example in examples])
-        pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
-        input_ids = torch.stack([example["input_ids"] for example in examples])
-        return {"pixel_values": pixel_values, "input_ids": input_ids}
-
-    # DataLoaders creation:
-    train_dataloader = torch.utils.data.DataLoader(
-        train_dataset,
-        shuffle=True,
-        collate_fn=collate_fn,
-        batch_size=args.train_batch_size,
-        num_workers=args.dataloader_num_workers,
-    )
+        # DataLoaders creation:
+        train_dataloader = torch.utils.data.DataLoader(
+            train_dataset,
+            shuffle=True,
+            collate_fn=collate_fn,
+            batch_size=args.train_batch_size,
+            num_workers=args.dataloader_num_workers,
+        )
+    else:
+        f = open(args.audio_conf)
+        data = json.load(f)
+        f.close()
+        dataset_json_file = data["dataset_json_file"]
+        audio_conf = data["audio_conf"]
+        label_csv=data["label_csv"]
+        train_dataloader = AudiosetDataset(dataset_json_file, audio_conf, label_csv, tokenizer)
+        
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -650,7 +668,7 @@ def main():
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
     logger.info("***** Running training *****")
-    logger.info(f"  Num examples = {len(train_dataset)}")
+    logger.info(f"  Num examples = {len(train_dataloader)}")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
