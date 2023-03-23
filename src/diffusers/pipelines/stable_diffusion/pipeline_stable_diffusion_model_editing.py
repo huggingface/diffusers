@@ -563,7 +563,6 @@ class StableDiffusionModelEditingPipeline(DiffusionPipeline):
             # update projection matrix
             self.projection_matrices[layer_num].weight = torch.nn.Parameter(mat1 @ torch.inverse(mat2))
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.__call__
     @torch.no_grad()
     def __call__(
         self,
