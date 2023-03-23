@@ -490,6 +490,15 @@ class AudioLDMPipeline(DiffusionPipeline):
 
         height = int(audio_length_in_s / vocoder_upsample_factor)
 
+        original_waveform_length = int(audio_length_in_s * self.vocoder.config.sampling_rate)
+        if height % self.vae_scale_factor != 0:
+            height = int(np.ceil(height / self.vae_scale_factor)) * self.vae_scale_factor
+            logger.info(
+                f"Audio length in seconds {audio_length_in_s} is increased to {height * vocoder_upsample_factor} "
+                f"so that it can be handled by the model. It will be cut to {audio_length_in_s} after the "
+                f"denoising process."
+            )
+
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
@@ -580,6 +589,8 @@ class AudioLDMPipeline(DiffusionPipeline):
         mel_spectrogram = self.decode_latents(latents)
 
         audio = self.mel_spectrogram_to_waveform(mel_spectrogram)
+
+        audio = audio[:, :original_waveform_length]
 
         if output_type == "np":
             audio = audio.numpy()
