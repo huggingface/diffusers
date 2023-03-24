@@ -485,7 +485,7 @@ class StableDiffusionModelEditingPipeline(DiffusionPipeline):
         # set up sentences
         old_texts = [source_prompt]
         new_texts = [destination_prompt]
-        #add augmentations
+        # add augmentations
         base = old_texts[0] if old_texts[0][0:1] != "A" else "a" + old_texts[0][1:]
         for aug in self.with_augs:
             old_texts.append(aug + base)
