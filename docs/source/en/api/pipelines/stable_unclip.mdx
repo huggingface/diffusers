@@ -68,7 +68,7 @@ Optionally, you can also pass a prompt to `pipe` such as:
 ```python 
 prompt = "A fantasy landscape, trending on artstation"
 
-images = pipe(prompt, init_image).images
+images = pipe(init_image, prompt=prompt).images
 images[0].save("fantasy_landscape.png")
 ```
 
