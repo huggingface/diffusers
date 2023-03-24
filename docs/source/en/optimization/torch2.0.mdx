@@ -70,9 +70,7 @@ pip install --upgrade torch torchvision diffusers
     import torch
     from diffusers import DiffusionPipeline
 
-    pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to(
-        "cuda"
-    )
+    pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
     pipe.unet = torch.compile(pipe.unet)
 
     batch_size = 10
