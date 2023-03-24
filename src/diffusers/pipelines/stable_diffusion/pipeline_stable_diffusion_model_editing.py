@@ -29,7 +29,7 @@ from .safety_checker import StableDiffusionSafetyChecker
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-augs_const = ["A photo of ", "An image of ", "A picture of "]
+AUGS_CONST = ["A photo of ", "An image of ", "A picture of "]
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -79,8 +79,8 @@ class StableDiffusionModelEditingPipeline(DiffusionPipeline):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
         with_to_k ([`bool`]):
             Whether to edit the key projection matrices along wiht the value projection matrices.
-        with_augs ([`bool`]):
-            Whether to apply textual augmentations while editing the text-to-image model.
+        with_augs ([`list`]):
+            Textual augmentations to apply while editing the text-to-image model. Set to empty list for no augmentations.
     """
     _optional_components = ["safety_checker", "feature_extractor"]
 
@@ -95,7 +95,7 @@ class StableDiffusionModelEditingPipeline(DiffusionPipeline):
         feature_extractor: CLIPFeatureExtractor,
         requires_safety_checker: bool = True,
         with_to_k: bool = True,
-        with_augs: bool = True,
+        with_augs: list = AUGS_CONST,
     ):
         super().__init__()
 
@@ -485,13 +485,13 @@ class StableDiffusionModelEditingPipeline(DiffusionPipeline):
         # set up sentences
         old_texts = [source_prompt]
         new_texts = [destination_prompt]
-        if self.with_augs:
-            base = old_texts[0] if old_texts[0][0:1] != "A" else "a" + old_texts[0][1:]
-            for aug in augs_const:
-                old_texts.append(aug + base)
-            base = new_texts[0] if new_texts[0][0:1] != "A" else "a" + new_texts[0][1:]
-            for aug in augs_const:
-                new_texts.append(aug + base)
+        #add augmentations
+        base = old_texts[0] if old_texts[0][0:1] != "A" else "a" + old_texts[0][1:]
+        for aug in self.with_augs:
+            old_texts.append(aug + base)
+        base = new_texts[0] if new_texts[0][0:1] != "A" else "a" + new_texts[0][1:]
+        for aug in self.with_augs:
+            new_texts.append(aug + base)
 
         # prepare input k* and v*
         old_embs, new_embs = [], []
