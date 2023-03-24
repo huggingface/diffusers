@@ -1,3 +1,18 @@
+#!/usr/bin/env python
+# coding=utf-8
+# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+
 import argparse
 import logging
 import math
@@ -17,18 +32,21 @@ from datasets import load_dataset
 from flax import jax_utils
 from flax.training import train_state
 from flax.training.common_utils import shard
+from flax.core.frozen_dict import unfreeze
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import CLIPImageProcessor, CLIPTokenizer, FlaxCLIPTextModel, set_seed
+from transformers import CLIPTokenizer, FlaxCLIPTextModel, set_seed
+from PIL import Image
 
 
 from diffusers import (
     FlaxAutoencoderKL,
     FlaxDDPMScheduler,
     FlaxPNDMScheduler,
-    FlaxStableDiffusionPipeline,
+    FlaxStableDiffusionControlNetPipeline,
     FlaxUNet2DConditionModel,
+    FlaxControlNetModel,
 )
 from diffusers.pipelines.stable_diffusion import FlaxStableDiffusionSafetyChecker
 from diffusers.utils import check_min_version, is_wandb_available
@@ -41,31 +59,51 @@ check_min_version("0.15.0.dev0")
 
 logger = logging.getLogger(__name__)
 
-def log_validation(unet, unet_params, args, rng, weight_dtype):
+def log_validation(controlnet, controlnet_params, tokenizer, args, rng, weight_dtype):
     logger.info("Running validation... ")
     
-    pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
+    pipeline, params = FlaxStableDiffusionControlNetPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
-        unet=unet,
+        tokenizer=tokenizer,
+        controlnet=controlnet,
         safety_checker=None,
-        torch_dtype=weight_dtype,
+        dtype=weight_dtype,
+        revision=args.revision
         )
     params = jax_utils.replicate(params)
-    params['unet'] = unet_params
-    
+    params['controlnet'] = controlnet_params
+
     num_samples = jax.device_count()
     prng_seed = jax.random.split(rng, jax.device_count())
 
     prompts = num_samples * [args.validation_prompt]
-    prompt_ids = pipeline.prepare_inputs(prompts)
+    prompt_ids = pipeline.prepare_text_inputs(prompts)
     prompt_ids = shard(prompt_ids)
+    
+    validation_image = Image.open(args.validation_image)
+    processed_image = pipeline.prepare_image_inputs(num_samples * [validation_image])
+    processed_image = shard(processed_image)
 
-    images = pipeline(prompt_ids, params, prng_seed, 50, jit=True).images
+    images = pipeline(
+        prompt_ids=prompt_ids, 
+        image=processed_image,
+        params=params, 
+        prng_seed=prng_seed, 
+        num_inference_steps=50, 
+        jit=True).images
+
     images = images.reshape((images.shape[0] * images.shape[1],) + images.shape[-3:])
     images = pipeline.numpy_to_pil(images)
-
+    
     if args.report_to == 'wandb':
-        wandb.log({"Validation Images": [wandb.Image(img, caption=f"{i}:{args.validation_prompt}") for i, img in enumerate(images)]})
+
+        images_log = []
+        images_log.append(wandb.Image(validation_image, caption="Controlnet conditioning"))
+        for i, image in enumerate(images):
+            image = wandb.Image(image, caption=f"{i}:{args.validation_prompt}")
+            images_log.append(image)
+
+        wandb.log({"Validation": images_log})
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
@@ -77,6 +115,13 @@ def parse_args():
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
+        "--controlnet_model_name_or_path",
+        type=str,
+        default=None,
+        help="Path to pretrained controlnet model or model identifier from huggingface.co/models."
+        " If not specified controlnet weights are initialized from unet.",
+    )
+    parser.add_argument(
         "--revision",
         type=str,
         default=None,
@@ -84,59 +129,15 @@ def parse_args():
         help="Revision of pretrained model identifier from huggingface.co/models.",
     )
     parser.add_argument(
-        "--dataset_name",
+        "--tokenizer_name",
         type=str,
         default=None,
-        help=(
-            "The name of the Dataset (from the HuggingFace hub) to train on (could be your own, possibly private,"
-            " dataset). It can also be a path pointing to a local copy of a dataset in your filesystem,"
-            " or to a folder containing files that 🤗 Datasets can understand."
-        ),
-    )
-    parser.add_argument(
-        "--dataset_config_name",
-        type=str,
-        default=None,
-        help="The config of the Dataset, leave as None if there's only one config.",
-    )
-    parser.add_argument(
-        "--train_data_dir",
-        type=str,
-        default=None,
-        help=(
-            "A folder containing the training data. Folder contents must follow the structure described in"
-            " https://huggingface.co/docs/datasets/image_dataset#imagefolder. In particular, a `metadata.jsonl` file"
-            " must exist to provide the captions for the images. Ignored if `dataset_name` is specified."
-        ),
-    )
-    parser.add_argument(
-        "--image_column", type=str, default="image", help="The column of the dataset containing an image."
-    )
-    parser.add_argument(
-        "--conditioning_image_column",
-        type=str,
-        default="conditioning_image",
-        help="The column of the dataset containing the controlnet conditioning image.",
-    )
-    parser.add_argument(
-        "--caption_column",
-        type=str,
-        default="text",
-        help="The column of the dataset containing a caption or a list of captions.",
-    )
-    parser.add_argument(
-        "--max_train_samples",
-        type=int,
-        default=None,
-        help=(
-            "For debugging purposes or quicker training, truncate the number of training examples to this "
-            "value if set."
-        ),
+        help="Pretrained tokenizer name or path if not the same as model_name",
     )
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="sd-model-finetuned",
+        default="controlnet-model",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument(
@@ -156,21 +157,7 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--center_crop",
-        default=False,
-        action="store_true",
-        help=(
-            "Whether to center crop the input images to the resolution. If not set, the images will be randomly"
-            " cropped. The images will be resized to the resolution first before cropping."
-        ),
-    )
-    parser.add_argument(
-        "--random_flip",
-        action="store_true",
-        help="whether to randomly flip images horizontally",
-    )
-    parser.add_argument(
-        "--train_batch_size", type=int, default=16, help="Batch size (per device) for the training dataloader."
+        "--train_batch_size", type=int, default=1, help="Batch size (per device) for the training dataloader."
     )
     parser.add_argument("--num_train_epochs", type=int, default=100)
     parser.add_argument(
@@ -206,29 +193,6 @@ def parse_args():
         default=0,
         help=(
             "Number of subprocesses to use for data loading. 0 means that the data will be loaded in the main process."
-        ),
-    )
-    parser.add_argument(
-        "--tracker_project_name",
-        type=str,
-        default="train_text_to_image",
-        help=(
-            "The `project` argument passed to wandb"),
-    )
-    parser.add_argument(
-        "--validation_prompt",
-        type=str,
-        default=None,
-        help=(
-            "A prompt evaluated every `--validation_steps` and logged to `--report_to`."),
-    )
-    parser.add_argument(
-        "--validation_steps",
-        type=int,
-        default=100,
-        help=(
-            "Run validation every X steps. Validation consists of running the prompt"
-            " `args.validation_prompt` and logging the images."
         ),
     )
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
@@ -273,6 +237,95 @@ def parse_args():
             "and an Nvidia Ampere GPU."
         ),
     )
+    parser.add_argument(
+        "--dataset_name",
+        type=str,
+        default=None,
+        help=(
+            "The name of the Dataset (from the HuggingFace hub) to train on (could be your own, possibly private,"
+            " dataset). It can also be a path pointing to a local copy of a dataset in your filesystem,"
+            " or to a folder containing files that 🤗 Datasets can understand."
+        ),
+    )
+    parser.add_argument(
+        "--dataset_config_name",
+        type=str,
+        default=None,
+        help="The config of the Dataset, leave as None if there's only one config.",
+    )
+    parser.add_argument(
+        "--train_data_dir",
+        type=str,
+        default=None,
+        help=(
+            "A folder containing the training data. Folder contents must follow the structure described in"
+            " https://huggingface.co/docs/datasets/image_dataset#imagefolder. In particular, a `metadata.jsonl` file"
+            " must exist to provide the captions for the images. Ignored if `dataset_name` is specified."
+        ),
+    )
+    parser.add_argument(
+        "--image_column", type=str, default="image", help="The column of the dataset containing the target image."
+    )
+    parser.add_argument(
+        "--conditioning_image_column",
+        type=str,
+        default="conditioning_image",
+        help="The column of the dataset containing the controlnet conditioning image.",
+    )
+    parser.add_argument(
+        "--caption_column",
+        type=str,
+        default="text",
+        help="The column of the dataset containing a caption or a list of captions.",
+    )
+    parser.add_argument(
+        "--max_train_samples",
+        type=int,
+        default=None,
+        help=(
+            "For debugging purposes or quicker training, truncate the number of training examples to this "
+            "value if set."
+        ),
+    )
+    parser.add_argument(
+        "--proportion_empty_prompts",
+        type=float,
+        default=0,
+        help="Proportion of image prompts to be replaced with empty strings. Defaults to 0 (no prompt replacement).",
+    )
+    parser.add_argument(
+        "--validation_prompt",
+        type=str,
+        default=None,
+        help=(
+            "A prompt evaluated every `--validation_steps` and logged to `--report_to`."
+            " Used with `--validation_image` "),
+    )
+    parser.add_argument(
+        "--validation_image",
+        type=str,
+        default=None,
+        help=(
+            "path to the controlnet conditioning image evaluated every `--validation_steps`"
+            " and logged to `--report_to`. Used with `--validation_prompt` "
+        ),
+    )
+    parser.add_argument(
+        "--validation_steps",
+        type=int,
+        default=100,
+        help=(
+            "Run validation every X steps. Validation consists of running the prompt"
+            " `args.validation_prompt` and logging the images."
+        ),
+    )
+    parser.add_argument(
+        "--tracker_project_name",
+        type=str,
+        default="train_controlnet_flax",
+        help=(
+            "The `project` argument passed to wandb"),
+    )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
 
     args = parser.parse_args()
@@ -285,6 +338,7 @@ def parse_args():
         raise ValueError("Need either a dataset name or a training folder.")
 
     return args
+
 
 def make_train_dataset(args, tokenizer):
     # Get the datasets: you can either provide your own training and evaluation files (see below)
@@ -411,11 +465,13 @@ def collate_fn(examples):
 
     input_ids = torch.stack([example["input_ids"] for example in examples])
 
-    return {
+    batch = {
         "pixel_values": pixel_values,
         "conditioning_pixel_values": conditioning_pixel_values,
         "input_ids": input_ids,
     }
+    batch = {k: v.numpy() for k, v in batch.items()}
+    return batch
 
 
 def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
@@ -457,9 +513,8 @@ def main():
 
     if args.seed is not None:
         set_seed(args.seed)
-        rng = jax.random.PRNGKey(args.seed)
-    else:
-        rng = jax.random.PRNGKey(0)
+
+    rng = jax.random.PRNGKey(0)
 
     # Handle the repository creation
     if jax.process_index() == 0:
@@ -528,10 +583,21 @@ def main():
         logger.info("Initializing controlnet weights from unet")
         rng, rng_params = jax.random.split(rng)
 
-        controlnet_config = FlaxControlNetModel.load_config(args.controlnet_model_name_or_path)
-        controlnet = FlaxControlNetModel.from_config(controlnet_config)
+        controlnet = FlaxControlNetModel(
+            in_channels=unet.config.in_channels,
+            down_block_types=unet.config.down_block_types,
+            only_cross_attention=unet.config.only_cross_attention,
+            block_out_channels=unet.config.block_out_channels,
+            layers_per_block=unet.config.layers_per_block,
+            attention_head_dim=unet.config.attention_head_dim,
+            cross_attention_dim=unet.config.cross_attention_dim,
+            use_linear_projection=unet.config.use_linear_projection,
+            flip_sin_to_cos=unet.config.flip_sin_to_cos,
+            freq_shift=unet.config.freq_shift,
+        )
         controlnet_params = controlnet.init_weights(rng=rng_params)
-        for key in ['conv_in', 'time_proj', 'time_embedding', 'down_blocks','mid_block']:
+        controlnet_params = unfreeze(controlnet_params)
+        for key in ['conv_in', 'time_embedding', 'down_blocks_0', 'down_blocks_1', 'down_blocks_2', 'down_blocks_3', 'mid_block']:
             controlnet_params[key] = unet_params[key]
 
     # Optimization
@@ -561,9 +627,10 @@ def main():
     noise_scheduler_state = noise_scheduler.create_state()
 
     # Initialize our training
-    train_rngs = jax.random.split(rng, jax.local_device_count())
+    validation_rng, train_rngs = jax.random.split(rng)
+    train_rngs = jax.random.split(train_rngs, jax.local_device_count())
 
-    def train_step(state, unet_param, text_encoder_params, vae_params, batch, train_rng):
+    def train_step(state, unet_params, text_encoder_params, vae_params, batch, train_rng):
         dropout_rng, sample_rng, new_train_rng = jax.random.split(train_rng, 3)
 
         def compute_loss(params):
@@ -599,7 +666,7 @@ def main():
                 train=False,
             )[0]
 
-            controlnet_image = batch["conditioning_pixel_values"]
+            controlnet_cond = batch["conditioning_pixel_values"]
 
             # Predict the noise residual and compute loss
             down_block_res_samples, mid_block_res_sample = controlnet.apply(
@@ -682,7 +749,7 @@ def main():
         # train
         for batch in train_dataloader:
             batch = shard(batch)
-            state, train_metric, train_rngs = p_train_step(state, text_encoder_params, vae_params, batch, train_rngs)
+            state, train_metric, train_rngs = p_train_step(state, unet_params, text_encoder_params, vae_params, batch, train_rngs)
             train_metrics.append(train_metric)
 
             train_step_progress_bar.update(1)
@@ -690,7 +757,7 @@ def main():
             global_step += 1
 
             if args.validation_prompt is not None and global_step % args.validation_steps == 0 and jax.process_index() == 0:
-                log_validation(unet, state.params, args, rng, weight_dtype)
+                log_validation(controlnet, state.params, tokenizer, args, validation_rng, weight_dtype)
 
             if global_step >= args.max_train_steps:
                 break
@@ -706,30 +773,9 @@ def main():
 
     # Create the pipeline using using the trained modules and save it.
     if jax.process_index() == 0:
-        scheduler = FlaxPNDMScheduler(
-            beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", skip_prk_steps=True
-        )
-        safety_checker = FlaxStableDiffusionSafetyChecker.from_pretrained(
-            "CompVis/stable-diffusion-safety-checker", from_pt=True
-        )
-        pipeline = FlaxStableDiffusionPipeline(
-            text_encoder=text_encoder,
-            vae=vae,
-            unet=unet,
-            tokenizer=tokenizer,
-            scheduler=scheduler,
-            safety_checker=safety_checker,
-            feature_extractor=CLIPImageProcessor.from_pretrained("openai/clip-vit-base-patch32"),
-        )
-
-        pipeline.save_pretrained(
+        controlnet.save_pretrained(
             args.output_dir,
-            params={
-                "text_encoder": get_params_to_save(text_encoder_params),
-                "vae": get_params_to_save(vae_params),
-                "unet": get_params_to_save(state.params),
-                "safety_checker": safety_checker.params,
-            },
+            params=get_params_to_save(state.params),
         )
 
         if args.push_to_hub:
