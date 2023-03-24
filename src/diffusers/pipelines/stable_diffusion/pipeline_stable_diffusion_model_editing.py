@@ -467,10 +467,28 @@ class StableDiffusionModelEditingPipeline(DiffusionPipeline):
         return latents
 
     @torch.no_grad()
-    def edit_model(self, source_prompt, destination_prompt, lamb=0.1, restart_params=True):
-        # Apply model editing via closed-form solution (see Eq. 5 in the TIME paper https://arxiv.org/abs/2303.08084)
-        # When `restart_params` is True (default), the model parameters restart to their pre-trained version.
-        # This is done to avoid edit compounding. When it is False, edits accumulate (behavior not studied in paper).
+    def edit_model(
+        self,
+        source_prompt: str,
+        destination_prompt: str,
+        lamb: float = 0.1,
+        restart_params: bool = True,
+    ):
+        r"""
+        Apply model editing via closed-form solution (see Eq. 5 in the TIME paper https://arxiv.org/abs/2303.08084)
+
+        Args:
+            source_prompt (`str`):
+                The source prompt containing the concept to be edited.
+            destination_prompt (`str`):
+                The destination prompt. Must contain all words from source_prompt with additional ones to specify the
+                target edit.
+            lamb (`float`, *optional*, defaults to 0.1):
+                The lambda parameter specifying the regularization intesity. Smaller values increase the editing power.
+            restart_params (`bool`, *optional*, defaults to True):
+                Restart the model parameters to their pre-trained version before editing. This is done to avoid edit
+                compounding. When it is False, edits accumulate.
+        """
 
         # restart LDM parameters
         if restart_params:
