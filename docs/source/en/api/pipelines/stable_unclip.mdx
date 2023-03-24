@@ -54,7 +54,7 @@ pipe = StableUnCLIPImg2ImgPipeline.from_pretrained(
 )
 pipe = pipe.to("cuda")
 
-url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
+url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/stable_unclip/tarsila_do_amaral.png"
 
 response = requests.get(url)
 init_image = Image.open(BytesIO(response.content)).convert("RGB")
