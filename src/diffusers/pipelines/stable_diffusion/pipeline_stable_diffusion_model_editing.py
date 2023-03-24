@@ -488,11 +488,6 @@ class StableDiffusionModelEditingPipeline(DiffusionPipeline):
             restart_params (`bool`, *optional*, defaults to True):
                 Restart the model parameters to their pre-trained version before editing. This is done to avoid edit
                 compounding. When it is False, edits accumulate.
-
-        Examples:
-
-        Returns:
-
         """
 
         # restart LDM parameters
