@@ -269,6 +269,7 @@ torch.set_grad_enabled(False)
 n_experiments = 2
 unet_runs_per_experiment = 50
 
+
 # 입력 불러오기
 def generate_inputs():
     sample = torch.randn(2, 4, 64, 64).half().cuda()
