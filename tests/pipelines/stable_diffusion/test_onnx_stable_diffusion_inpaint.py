@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -94,6 +94,7 @@ class OnnxStableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
 
         assert images.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.2514, 0.3007, 0.3517, 0.1790, 0.2382, 0.3167, 0.1944, 0.2273, 0.2464])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_inference_k_lms(self):
@@ -136,4 +137,5 @@ class OnnxStableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
 
         assert images.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.0086, 0.0077, 0.0083, 0.0093, 0.0107, 0.0139, 0.0094, 0.0097, 0.0125])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3

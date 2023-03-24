@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,12 +20,12 @@ import unittest
 
 import numpy as np
 import torch
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion_safe import StableDiffusionPipelineSafe as StableDiffusionPipeline
-from diffusers.utils import floats_tensor, slow, torch_device
+from diffusers.utils import floats_tensor, nightly, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -201,6 +201,7 @@ class SafeDiffusionPipelineFastTests(unittest.TestCase):
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5095, 0.5674, 0.4668, 0.5126, 0.5697, 0.4675, 0.5278, 0.4964, 0.4945])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -253,13 +254,12 @@ class SafeDiffusionPipelineFastTests(unittest.TestCase):
         sd_pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = sd_pipe([prompt], generator=generator, num_inference_steps=2, output_type="np").images
+        image = sd_pipe([prompt], num_inference_steps=2, output_type="np").images
 
         assert image.shape == (1, 64, 64, 3)
 
 
-@slow
+@nightly
 @require_torch_gpu
 class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
@@ -284,7 +284,7 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         guidance_scale = 7
 
         # without safety guidance (sld_guidance_scale = 0)
-        generator = torch.Generator(device=torch_device).manual_seed(seed)
+        generator = torch.manual_seed(seed)
         output = sd_pipe(
             [prompt],
             generator=generator,
@@ -301,10 +301,11 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         expected_slice = [0.2278, 0.2231, 0.2249, 0.2333, 0.2303, 0.1885, 0.2273, 0.2144, 0.2176]
 
         assert image.shape == (1, 512, 512, 3)
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
         # without safety guidance (strong configuration)
-        generator = torch.Generator(device=torch_device).manual_seed(seed)
+        generator = torch.manual_seed(seed)
         output = sd_pipe(
             [prompt],
             generator=generator,
@@ -325,6 +326,7 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         expected_slice = [0.2383, 0.2276, 0.236, 0.2192, 0.2186, 0.2053, 0.1971, 0.1901, 0.1719]
 
         assert image.shape == (1, 512, 512, 3)
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_nudity_safe_stable_diffusion(self):
@@ -337,7 +339,7 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         seed = 2734971755
         guidance_scale = 7
 
-        generator = torch.Generator(device=torch_device).manual_seed(seed)
+        generator = torch.manual_seed(seed)
         output = sd_pipe(
             [prompt],
             generator=generator,
@@ -354,9 +356,10 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         expected_slice = [0.3502, 0.3622, 0.3396, 0.3642, 0.3478, 0.3318, 0.35, 0.3348, 0.3297]
 
         assert image.shape == (1, 512, 512, 3)
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-        generator = torch.Generator(device=torch_device).manual_seed(seed)
+        generator = torch.manual_seed(seed)
         output = sd_pipe(
             [prompt],
             generator=generator,
@@ -377,6 +380,7 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         expected_slice = [0.5531, 0.5206, 0.4895, 0.5156, 0.5182, 0.4751, 0.4802, 0.4803, 0.4443]
 
         assert image.shape == (1, 512, 512, 3)
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_nudity_safetychecker_safe_stable_diffusion(self):
@@ -391,7 +395,7 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         seed = 1044355234
         guidance_scale = 12
 
-        generator = torch.Generator(device=torch_device).manual_seed(seed)
+        generator = torch.manual_seed(seed)
         output = sd_pipe(
             [prompt],
             generator=generator,
@@ -408,9 +412,10 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         expected_slice = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 
         assert image.shape == (1, 512, 512, 3)
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-7
 
-        generator = torch.Generator(device=torch_device).manual_seed(seed)
+        generator = torch.manual_seed(seed)
         output = sd_pipe(
             [prompt],
             generator=generator,
@@ -430,4 +435,5 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
         expected_slice = np.array([0.5818, 0.6285, 0.6835, 0.6019, 0.625, 0.6754, 0.6096, 0.6334, 0.6561])
         assert image.shape == (1, 512, 512, 3)
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

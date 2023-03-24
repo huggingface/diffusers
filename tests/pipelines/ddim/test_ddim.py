@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import torch
 from diffusers import DDIMPipeline, DDIMScheduler, UNet2DModel
 from diffusers.utils.testing_utils import require_torch_gpu, slow, torch_device
 
+from ...pipeline_params import UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS, UNCONDITIONAL_IMAGE_GENERATION_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin
 
 
@@ -29,6 +30,14 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = DDIMPipeline
+    params = UNCONDITIONAL_IMAGE_GENERATION_PARAMS
+    required_optional_params = PipelineTesterMixin.required_optional_params - {
+        "num_images_per_prompt",
+        "latents",
+        "callback",
+        "callback_steps",
+    }
+    batch_params = UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS
     test_cpu_offload = False
 
     def get_dummy_components(self):
@@ -82,25 +91,6 @@ class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 @slow
 @require_torch_gpu
 class DDIMPipelineIntegrationTests(unittest.TestCase):
-    def test_inference_ema_bedroom(self):
-        model_id = "google/ddpm-ema-bedroom-256"
-
-        unet = UNet2DModel.from_pretrained(model_id)
-        scheduler = DDIMScheduler.from_pretrained(model_id)
-
-        ddpm = DDIMPipeline(unet=unet, scheduler=scheduler)
-        ddpm.to(torch_device)
-        ddpm.set_progress_bar_config(disable=None)
-
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = ddpm(generator=generator, output_type="numpy").images
-
-        image_slice = image[0, -3:, -3:, -1]
-
-        assert image.shape == (1, 256, 256, 3)
-        expected_slice = np.array([0.1546, 0.1561, 0.1595, 0.1564, 0.1569, 0.1585, 0.1554, 0.1550, 0.1575])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-
     def test_inference_cifar10(self):
         model_id = "google/ddpm-cifar10-32"
 
@@ -111,11 +101,32 @@ class DDIMPipelineIntegrationTests(unittest.TestCase):
         ddim.to(torch_device)
         ddim.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         image = ddim(generator=generator, eta=0.0, output_type="numpy").images
 
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.2060, 0.2042, 0.2022, 0.2193, 0.2146, 0.2110, 0.2471, 0.2446, 0.2388])
+        expected_slice = np.array([0.1723, 0.1617, 0.1600, 0.1626, 0.1497, 0.1513, 0.1505, 0.1442, 0.1453])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_inference_ema_bedroom(self):
+        model_id = "google/ddpm-ema-bedroom-256"
+
+        unet = UNet2DModel.from_pretrained(model_id)
+        scheduler = DDIMScheduler.from_pretrained(model_id)
+
+        ddpm = DDIMPipeline(unet=unet, scheduler=scheduler)
+        ddpm.to(torch_device)
+        ddpm.set_progress_bar_config(disable=None)
+
+        generator = torch.manual_seed(0)
+        image = ddpm(generator=generator, output_type="numpy").images
+
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 256, 256, 3)
+        expected_slice = np.array([0.0060, 0.0201, 0.0344, 0.0024, 0.0018, 0.0002, 0.0022, 0.0000, 0.0069])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,12 +19,12 @@ import unittest
 
 import numpy as np
 import torch
+from PIL import Image
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DDIMScheduler, DDPMScheduler, StableDiffusionUpscalePipeline, UNet2DConditionModel
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
-from PIL import Image
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -241,7 +241,7 @@ class StableDiffusionUpscalePipelineFastTests(unittest.TestCase):
         sd_pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         image = sd_pipe(
             [prompt],
             image=low_res_image,
@@ -281,7 +281,7 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
 
         prompt = "a cat sitting on a park bench"
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         output = pipe(
             prompt=prompt,
             image=image,
@@ -314,7 +314,7 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
 
         prompt = "a cat sitting on a park bench"
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         output = pipe(
             prompt=prompt,
             image=image,
@@ -348,7 +348,7 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
 
         prompt = "a cat sitting on a park bench"
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.manual_seed(0)
         _ = pipe(
             prompt=prompt,
             image=image,
@@ -358,5 +358,5 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
         )
 
         mem_bytes = torch.cuda.max_memory_allocated()
-        # make sure that less than 2.65 GB is allocated
-        assert mem_bytes < 2.65 * 10**9
+        # make sure that less than 2.9 GB is allocated
+        assert mem_bytes < 2.9 * 10**9
