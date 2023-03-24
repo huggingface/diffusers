@@ -20,7 +20,7 @@ import numpy as np
 import torch
 
 from diffusers import AutoencoderKL, DDIMScheduler, DiTPipeline, DPMSolverMultistepScheduler, Transformer2DModel
-from diffusers.utils import load_numpy, slow
+from diffusers.utils import load_numpy, slow, torch_device, is_xformers_available
 from diffusers.utils.testing_utils import require_torch_gpu
 
 from ...pipeline_params import (
@@ -97,7 +97,14 @@ class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertLessEqual(max_diff, 1e-3)
 
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(relax_max_difference=True)
+        self._test_inference_batch_single_identical(relax_max_difference=True, expected_max_diff=1e-3)
+
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_xformers_attention_forwardGenerator_pass(self):
+        self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=1e-3)
 
 
 @require_torch_gpu
