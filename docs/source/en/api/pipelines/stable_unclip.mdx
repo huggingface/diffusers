@@ -58,7 +58,6 @@ url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/st
 
 response = requests.get(url)
 init_image = Image.open(BytesIO(response.content)).convert("RGB")
-init_image = init_image.resize((768, 512))
 
 images = pipe(init_image).images
 images[0].save("fantasy_landscape.png")
