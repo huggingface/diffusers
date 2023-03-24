@@ -597,8 +597,8 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]] = None,
         image: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        prompt: Union[str, List[str]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 20,
@@ -623,8 +623,8 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
-                instead.
+                The prompt or prompts to guide the image generation. If not defined, either `prompt_embeds` will be
+                used or prompt is initialized to `""`.
             image (`torch.FloatTensor` or `PIL.Image.Image`):
                 `Image`, or tensor representing an image batch. The image will be encoded to its CLIP embedding which
                 the unet will be conditioned on. Note that the image is _not_ encoded by the vae and then used as the
@@ -699,6 +699,9 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
+
+        if prompt is None and prompt_embeds is None:
+            prompt = ""
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
