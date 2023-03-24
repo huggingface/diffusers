@@ -60,6 +60,13 @@ response = requests.get(url)
 init_image = Image.open(BytesIO(response.content)).convert("RGB")
 init_image = init_image.resize((768, 512))
 
+images = pipe(init_image).images
+images[0].save("fantasy_landscape.png")
+```
+
+Optionally, you can also pass a prompt to `pipe` such as:
+
+```python 
 prompt = "A fantasy landscape, trending on artstation"
 
 images = pipe(prompt, init_image).images
