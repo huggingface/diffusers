@@ -30,26 +30,24 @@ import torch.utils.checkpoint
 import transformers
 from datasets import load_dataset
 from flax import jax_utils
+from flax.core.frozen_dict import unfreeze
 from flax.training import train_state
 from flax.training.common_utils import shard
-from flax.core.frozen_dict import unfreeze
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
+from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTokenizer, FlaxCLIPTextModel, set_seed
-from PIL import Image
-
 
 from diffusers import (
     FlaxAutoencoderKL,
+    FlaxControlNetModel,
     FlaxDDPMScheduler,
-    FlaxPNDMScheduler,
     FlaxStableDiffusionControlNetPipeline,
     FlaxUNet2DConditionModel,
-    FlaxControlNetModel,
 )
-from diffusers.pipelines.stable_diffusion import FlaxStableDiffusionSafetyChecker
 from diffusers.utils import check_min_version, is_wandb_available
+
 
 if is_wandb_available():
     import wandb
@@ -59,19 +57,20 @@ check_min_version("0.15.0.dev0")
 
 logger = logging.getLogger(__name__)
 
+
 def log_validation(controlnet, controlnet_params, tokenizer, args, rng, weight_dtype):
     logger.info("Running validation... ")
-    
+
     pipeline, params = FlaxStableDiffusionControlNetPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
         tokenizer=tokenizer,
         controlnet=controlnet,
         safety_checker=None,
         dtype=weight_dtype,
-        revision=args.revision
-        )
+        revision=args.revision,
+    )
     params = jax_utils.replicate(params)
-    params['controlnet'] = controlnet_params
+    params["controlnet"] = controlnet_params
 
     num_samples = jax.device_count()
     prng_seed = jax.random.split(rng, jax.device_count())
@@ -79,24 +78,24 @@ def log_validation(controlnet, controlnet_params, tokenizer, args, rng, weight_d
     prompts = num_samples * [args.validation_prompt]
     prompt_ids = pipeline.prepare_text_inputs(prompts)
     prompt_ids = shard(prompt_ids)
-    
+
     validation_image = Image.open(args.validation_image)
     processed_image = pipeline.prepare_image_inputs(num_samples * [validation_image])
     processed_image = shard(processed_image)
 
     images = pipeline(
-        prompt_ids=prompt_ids, 
+        prompt_ids=prompt_ids,
         image=processed_image,
-        params=params, 
-        prng_seed=prng_seed, 
-        num_inference_steps=50, 
-        jit=True).images
+        params=params,
+        prng_seed=prng_seed,
+        num_inference_steps=50,
+        jit=True,
+    ).images
 
     images = images.reshape((images.shape[0] * images.shape[1],) + images.shape[-3:])
     images = pipeline.numpy_to_pil(images)
-    
-    if args.report_to == 'wandb':
 
+    if args.report_to == "wandb":
         images_log = []
         images_log.append(wandb.Image(validation_image, caption="Controlnet conditioning"))
         for i, image in enumerate(images):
@@ -104,6 +103,7 @@ def log_validation(controlnet, controlnet_params, tokenizer, args, rng, weight_d
             images_log.append(image)
 
         wandb.log({"Validation": images_log})
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
@@ -299,7 +299,8 @@ def parse_args():
         default=None,
         help=(
             "A prompt evaluated every `--validation_steps` and logged to `--report_to`."
-            " Used with `--validation_image` "),
+            " Used with `--validation_image` "
+        ),
     )
     parser.add_argument(
         "--validation_image",
@@ -323,8 +324,7 @@ def parse_args():
         "--tracker_project_name",
         type=str,
         default="train_controlnet_flax",
-        help=(
-            "The `project` argument passed to wandb"),
+        help=("The `project` argument passed to wandb"),
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
 
@@ -502,14 +502,14 @@ def main():
         transformers.utils.logging.set_verbosity_info()
     else:
         transformers.utils.logging.set_verbosity_error()
-    
+
     # handle wandb init
-    if jax.process_index() == 0 and args.report_to == 'wandb':
+    if jax.process_index() == 0 and args.report_to == "wandb":
         wandb.init(
             project=args.tracker_project_name,
             job_type="train",
             config=args,
-            )
+        )
 
     if args.seed is not None:
         set_seed(args.seed)
@@ -547,15 +547,15 @@ def main():
     # Get the datasets: you can either provide your own training and evaluation files (see below)
     train_dataset = make_train_dataset(args, tokenizer)
     total_train_batch_size = args.train_batch_size * jax.local_device_count()
-    
+
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, 
-        shuffle=True, 
-        collate_fn=collate_fn, 
-        batch_size=total_train_batch_size, 
+        train_dataset,
+        shuffle=True,
+        collate_fn=collate_fn,
+        batch_size=total_train_batch_size,
         num_workers=args.dataloader_num_workers,
     )
-    
+
     weight_dtype = jnp.float32
     if args.mixed_precision == "fp16":
         weight_dtype = jnp.float16
@@ -573,12 +573,14 @@ def main():
         args.pretrained_model_name_or_path, subfolder="unet", dtype=weight_dtype, revision=args.revision
     )
 
-    # to-do: 
-      # 1. add an argument for from_pt
-      # 2. check trainable models (controlnet) are in full precision
+    # to-do:
+    # 1. add an argument for from_pt
+    # 2. check trainable models (controlnet) are in full precision
     if args.controlnet_model_name_or_path:
         logger.info("Loading existing controlnet weights")
-        controlnet, controlnet_params = FlaxControlNetModel.from_pretrained(args.controlnet_model_name_or_path, from_pt=True, dtype=jnp.float32)
+        controlnet, controlnet_params = FlaxControlNetModel.from_pretrained(
+            args.controlnet_model_name_or_path, from_pt=True, dtype=jnp.float32
+        )
     else:
         logger.info("Initializing controlnet weights from unet")
         rng, rng_params = jax.random.split(rng)
@@ -597,7 +599,15 @@ def main():
         )
         controlnet_params = controlnet.init_weights(rng=rng_params)
         controlnet_params = unfreeze(controlnet_params)
-        for key in ['conv_in', 'time_embedding', 'down_blocks_0', 'down_blocks_1', 'down_blocks_2', 'down_blocks_3', 'mid_block']:
+        for key in [
+            "conv_in",
+            "time_embedding",
+            "down_blocks_0",
+            "down_blocks_1",
+            "down_blocks_2",
+            "down_blocks_3",
+            "mid_block",
+        ]:
             controlnet_params[key] = unet_params[key]
 
     # Optimization
@@ -670,21 +680,22 @@ def main():
 
             # Predict the noise residual and compute loss
             down_block_res_samples, mid_block_res_sample = controlnet.apply(
-                {'params': params}, 
-                noisy_latents, 
-                timesteps, 
-                encoder_hidden_states, 
-                controlnet_cond, 
-                train=True,
-                return_dict=False,)
-
-            model_pred = unet.apply(
-                {"params": unet_params}, 
-                noisy_latents, 
+                {"params": params},
+                noisy_latents,
                 timesteps,
                 encoder_hidden_states,
-                down_block_additional_residuals = down_block_res_samples,
-                mid_block_additional_residual = mid_block_res_sample,
+                controlnet_cond,
+                train=True,
+                return_dict=False,
+            )
+
+            model_pred = unet.apply(
+                {"params": unet_params},
+                noisy_latents,
+                timesteps,
+                encoder_hidden_states,
+                down_block_additional_residuals=down_block_res_samples,
+                mid_block_additional_residual=mid_block_res_sample,
             ).sample
 
             # Get the target for loss depending on the prediction type
@@ -738,25 +749,42 @@ def main():
 
     global_step = 0
 
-    epochs = tqdm(range(args.num_train_epochs), desc="Epoch ... ", position=0, disable=jax.process_index() > 0,)
+    epochs = tqdm(
+        range(args.num_train_epochs),
+        desc="Epoch ... ",
+        position=0,
+        disable=jax.process_index() > 0,
+    )
     for epoch in epochs:
         # ======================== Training ================================
 
         train_metrics = []
 
         steps_per_epoch = len(train_dataset) // total_train_batch_size
-        train_step_progress_bar = tqdm(total=steps_per_epoch, desc="Training...", position=1, leave=False, disable=jax.process_index() > 0,)
+        train_step_progress_bar = tqdm(
+            total=steps_per_epoch,
+            desc="Training...",
+            position=1,
+            leave=False,
+            disable=jax.process_index() > 0,
+        )
         # train
         for batch in train_dataloader:
             batch = shard(batch)
-            state, train_metric, train_rngs = p_train_step(state, unet_params, text_encoder_params, vae_params, batch, train_rngs)
+            state, train_metric, train_rngs = p_train_step(
+                state, unet_params, text_encoder_params, vae_params, batch, train_rngs
+            )
             train_metrics.append(train_metric)
 
             train_step_progress_bar.update(1)
 
             global_step += 1
 
-            if args.validation_prompt is not None and global_step % args.validation_steps == 0 and jax.process_index() == 0:
+            if (
+                args.validation_prompt is not None
+                and global_step % args.validation_steps == 0
+                and jax.process_index() == 0
+            ):
                 log_validation(controlnet, state.params, tokenizer, args, validation_rng, weight_dtype)
 
             if global_step >= args.max_train_steps:
@@ -765,11 +793,9 @@ def main():
         train_metric = jax_utils.unreplicate(train_metric)
 
         train_step_progress_bar.close()
-        epochs.write(f"Epoch... ({epoch + 1}/{args.num_train_epochs} | Loss: {train_metric['loss']})")  
-        if args.report_to == 'wandb' and jax.process_index() == 0:
-                wandb.log({
-                    "train/epoch": epoch, 
-                    "train/loss": train_metric['loss']})
+        epochs.write(f"Epoch... ({epoch + 1}/{args.num_train_epochs} | Loss: {train_metric['loss']})")
+        if args.report_to == "wandb" and jax.process_index() == 0:
+            wandb.log({"train/epoch": epoch, "train/loss": train_metric["loss"]})
 
     # Create the pipeline using using the trained modules and save it.
     if jax.process_index() == 0:
