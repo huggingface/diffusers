@@ -80,7 +80,7 @@ class StableDiffusionModelEditingPipeline(DiffusionPipeline):
         with_to_k ([`bool`]):
             Whether to edit the key projection matrices along wiht the value projection matrices.
         with_augs ([`list`]):
-            Textual augmentations to apply while editing the text-to-image model. Set to empty list for no augmentations.
+            Textual augmentations to apply while editing the text-to-image model. Set to [] for no augmentations.
     """
     _optional_components = ["safety_checker", "feature_extractor"]
 
