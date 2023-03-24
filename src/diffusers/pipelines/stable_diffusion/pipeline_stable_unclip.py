@@ -606,6 +606,7 @@ class StableUnCLIPPipeline(DiffusionPipeline):
 
         noise_level = torch.tensor([noise_level] * image_embeds.shape[0], device=image_embeds.device)
 
+        self.image_normalizer.to(image_embeds.device)
         image_embeds = self.image_normalizer.scale(image_embeds)
 
         image_embeds = self.image_noising_scheduler.add_noise(image_embeds, timesteps=noise_level, noise=noise)
