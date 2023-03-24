@@ -191,6 +191,8 @@
         title: MultiDiffusion Panorama
       - local: api/pipelines/stable_diffusion/controlnet
         title: Text-to-Image Generation with ControlNet Conditioning
+      - local: api/pipelines/stable_diffusion/model_editing
+        title: Text-to-Image Model Editing
       title: Stable Diffusion
     - local: api/pipelines/stable_diffusion_2
       title: Stable Diffusion 2
