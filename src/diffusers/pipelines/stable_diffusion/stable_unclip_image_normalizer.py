@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Optional, Union
+
 import torch
 from torch import nn
 
@@ -36,6 +38,15 @@ class StableUnCLIPImageNormalizer(ModelMixin, ConfigMixin):
 
         self.mean = nn.Parameter(torch.zeros(1, embedding_dim))
         self.std = nn.Parameter(torch.ones(1, embedding_dim))
+
+    def to(
+        self,
+        torch_device: Optional[Union[str, torch.device]] = None,
+        torch_dtype: Optional[torch.dtype] = None,
+    ):
+        self.mean = nn.Parameter(self.mean.to(torch_device).to(torch_dtype))
+        self.std = nn.Parameter(self.std.to(torch_device).to(torch_dtype))
+        return self
 
     def scale(self, embeds):
         embeds = (embeds - self.mean) * 1.0 / self.std
