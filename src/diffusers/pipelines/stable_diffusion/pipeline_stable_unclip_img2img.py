@@ -701,7 +701,7 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
         width = width or self.unet.config.sample_size * self.vae_scale_factor
 
         if prompt is None and prompt_embeds is None:
-            prompt = ""
+            prompt = len(image) * [""] if isinstance(image, list) else ""
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
