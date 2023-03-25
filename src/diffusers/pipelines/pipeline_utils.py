@@ -50,6 +50,7 @@ from ..utils import (
     get_class_from_dynamic_module,
     is_accelerate_available,
     is_accelerate_version,
+    is_compiled_module,
     is_safetensors_available,
     is_torch_version,
     is_transformers_available,
@@ -259,7 +260,7 @@ def maybe_raise_or_warn(
         # I didn't find a public API to get the original class.
         sub_model = passed_class_obj[name]
         model_cls = sub_model.__class__
-        if "_dynamo.eval_frame" in str(model_cls):
+        if is_compiled_module(sub_model):
             model_cls = sub_model._orig_mod.__class__
 
         if not issubclass(model_cls, expected_class_obj):
@@ -427,7 +428,7 @@ class DiffusionPipeline(ConfigMixin):
                 register_dict = {name: (None, None)}
             else:
                 # register the original module, not the dynamo compiled one
-                if "_dynamo.eval_frame" in str(module.__class__):
+                if is_compiled_module(module):
                     module = module._orig_mod
 
                 library = module.__module__.split(".")[0]
@@ -497,7 +498,7 @@ class DiffusionPipeline(ConfigMixin):
 
             # Dynamo wraps the original model in a private class.
             # I didn't find a public API to get the original class.
-            if "_dynamo.eval_frame" in str(model_cls):
+            if is_compiled_module(sub_model):
                 sub_model = sub_model._orig_mod
                 model_cls = sub_model.__class__
 
