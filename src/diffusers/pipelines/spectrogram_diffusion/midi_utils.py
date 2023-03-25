@@ -166,7 +166,7 @@ class Codec:
         self._shift_range = EventRange(type="shift", min_value=0, max_value=max_shift_steps)
         self._event_ranges = [self._shift_range] + event_ranges
         # Ensure all event types have unique names.
-        assert len(self._event_ranges) == len(set([er.type for er in self._event_ranges]))
+        assert len(self._event_ranges) == len({er.type for er in self._event_ranges})
 
     @property
     def num_classes(self) -> int:

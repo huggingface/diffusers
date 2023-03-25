@@ -530,7 +530,7 @@ def unshard(x: jnp.ndarray):
 def preprocess(image, dtype):
     image = image.convert("RGB")
     w, h = image.size
-    w, h = map(lambda x: x - x % 64, (w, h))  # resize to integer multiple of 64
+    w, h = (x - x % 64 for x in (w, h))  # resize to integer multiple of 64
     image = image.resize((w, h), resample=PIL_INTERPOLATION["lanczos"])
     image = jnp.array(image).astype(dtype) / 255.0
     image = image[None].transpose(0, 3, 1, 2)

@@ -204,11 +204,11 @@ def variant_compatible_siblings(filenames, variant=None) -> Union[List[os.PathLi
     non_variant_file_regex = re.compile(f"{'|'.join(weight_names)}")
 
     if variant is not None:
-        variant_filenames = set(f for f in filenames if variant_file_regex.match(f.split("/")[-1]) is not None)
+        variant_filenames = {f for f in filenames if variant_file_regex.match(f.split("/")[-1]) is not None}
     else:
         variant_filenames = set()
 
-    non_variant_filenames = set(f for f in filenames if non_variant_file_regex.match(f.split("/")[-1]) is not None)
+    non_variant_filenames = {f for f in filenames if non_variant_file_regex.match(f.split("/")[-1]) is not None}
 
     usable_filenames = set(variant_filenames)
     for f in non_variant_filenames:
@@ -225,7 +225,7 @@ def warn_deprecated_model_variant(pretrained_model_name_or_path, use_auth_token,
         use_auth_token=use_auth_token,
         revision=None,
     )
-    filenames = set(sibling.rfilename for sibling in info.siblings)
+    filenames = {sibling.rfilename for sibling in info.siblings}
     comp_model_filenames, _ = variant_compatible_siblings(filenames, variant=revision)
     comp_model_filenames = [".".join(f.split(".")[:1] + f.split(".")[2:]) for f in comp_model_filenames]
 
@@ -1115,7 +1115,7 @@ class DiffusionPipeline(ConfigMixin):
             # retrieve all folder_names that contain relevant files
             folder_names = [k for k, v in config_dict.items() if isinstance(v, list)]
 
-            filenames = set(sibling.rfilename for sibling in info.siblings)
+            filenames = {sibling.rfilename for sibling in info.siblings}
             model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
 
             # if the whole pipeline is cached we don't have to ping the Hub
@@ -1126,7 +1126,7 @@ class DiffusionPipeline(ConfigMixin):
                     pretrained_model_name, use_auth_token, variant, revision, model_filenames
                 )
 
-            model_folder_names = set([os.path.split(f)[0] for f in model_filenames])
+            model_folder_names = {os.path.split(f)[0] for f in model_filenames}
 
             # all filenames compatible with variant will be added
             allow_patterns = list(model_filenames)
@@ -1157,8 +1157,8 @@ class DiffusionPipeline(ConfigMixin):
             elif use_safetensors and is_safetensors_compatible(model_filenames, variant=variant):
                 ignore_patterns = ["*.bin", "*.msgpack"]
 
-                safetensors_variant_filenames = set([f for f in variant_filenames if f.endswith(".safetensors")])
-                safetensors_model_filenames = set([f for f in model_filenames if f.endswith(".safetensors")])
+                safetensors_variant_filenames = {f for f in variant_filenames if f.endswith(".safetensors")}
+                safetensors_model_filenames = {f for f in model_filenames if f.endswith(".safetensors")}
                 if (
                     len(safetensors_variant_filenames) > 0
                     and safetensors_model_filenames != safetensors_variant_filenames
@@ -1169,8 +1169,8 @@ class DiffusionPipeline(ConfigMixin):
             else:
                 ignore_patterns = ["*.safetensors", "*.msgpack"]
 
-                bin_variant_filenames = set([f for f in variant_filenames if f.endswith(".bin")])
-                bin_model_filenames = set([f for f in model_filenames if f.endswith(".bin")])
+                bin_variant_filenames = {f for f in variant_filenames if f.endswith(".bin")}
+                bin_model_filenames = {f for f in model_filenames if f.endswith(".bin")}
                 if len(bin_variant_filenames) > 0 and bin_model_filenames != bin_variant_filenames:
                     logger.warn(
                         f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(bin_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(bin_model_filenames - bin_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
@@ -1215,7 +1215,7 @@ class DiffusionPipeline(ConfigMixin):
         parameters = inspect.signature(obj.__init__).parameters
         required_parameters = {k: v for k, v in parameters.items() if v.default == inspect._empty}
         optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
-        expected_modules = set(required_parameters.keys()) - set(["self"])
+        expected_modules = set(required_parameters.keys()) - {"self"}
         return expected_modules, optional_parameters
 
     @property
