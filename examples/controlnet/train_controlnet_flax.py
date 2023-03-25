@@ -369,6 +369,12 @@ def parse_args():
         default="train_controlnet_flax",
         help=("The `project` argument passed to wandb"),
     )
+    parser.add_argument(
+        "--gradient_accumulation_steps", 
+        type=int, 
+        default=1,
+        help="Number of steps to accumulate gradients over"
+    )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
 
     args = parser.parse_args()
@@ -612,7 +618,7 @@ def main():
 
     # Get the datasets: you can either provide your own training and evaluation files (see below)
     train_dataset = make_train_dataset(args, tokenizer)
-    total_train_batch_size = args.train_batch_size * jax.local_device_count()
+    total_train_batch_size = args.train_batch_size * jax.local_device_count() * args.gradient_accumulation_steps
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
@@ -716,12 +722,21 @@ def main():
     train_rngs = jax.random.split(train_rngs, jax.local_device_count())
 
     def train_step(state, unet_params, text_encoder_params, vae_params, batch, train_rng):
-        dropout_rng, sample_rng, new_train_rng = jax.random.split(train_rng, 3)
+        
+        print("yiyi testing batch shape, before + after")
+        print(jax.tree_map(lambda x:x.shape, batch))
+        print('  ')
+        # reshape batch, add grad_step_dim if gradient_accumulation_steps > 1 
+        if args.gradient_accumulation_steps > 1:
+            G = args.gradient_accumulation_steps 
+            batch = jax.tree_map(
+                lambda x: x.reshape((G, x.shape[0]//G) + x.shape[1:]), batch)
+        print(jax.tree_map(lambda x:x.shape, batch))
 
-        def compute_loss(params):
+        def compute_loss(params, minibatch, sample_rng):
             # Convert images to latent space
             vae_outputs = vae.apply(
-                {"params": vae_params}, batch["pixel_values"], deterministic=True, method=vae.encode
+                {"params": vae_params}, minibatch["pixel_values"], deterministic=True, method=vae.encode
             )
             latents = vae_outputs.latent_dist.sample(sample_rng)
             # (NHWC) -> (NCHW)
@@ -746,12 +761,12 @@ def main():
 
             # Get the text embedding for conditioning
             encoder_hidden_states = text_encoder(
-                batch["input_ids"],
+                minibatch["input_ids"],
                 params=text_encoder_params,
                 train=False,
             )[0]
 
-            controlnet_cond = batch["conditioning_pixel_values"]
+            controlnet_cond = minibatch["conditioning_pixel_values"]
 
             # Predict the noise residual and compute loss
             down_block_res_samples, mid_block_res_sample = controlnet.apply(
@@ -787,7 +802,47 @@ def main():
             return loss
 
         grad_fn = jax.value_and_grad(compute_loss)
-        loss, grad = grad_fn(state.params)
+
+        # get a minibatch (one gradient accumulation slice)
+        def get_minibatch(batch, grad_idx):
+            return jax.tree_util.tree_map(
+                lambda x: jax.lax.dynamic_index_in_dim(x, grad_idx, keepdims=False),
+                batch,
+            )
+        
+        def loss_and_grad(grad_idx, train_rng):
+            #create minibatch for the grad step
+            minibatch = (get_minibatch(batch, grad_idx) if grad_idx is not None else batch)
+            sample_rng, train_rng = jax.random.split(train_rng, 2)
+            loss, grads = grad_fn(state.params, minibatch, sample_rng)
+            return loss, grads, train_rng
+        
+        if args.gradient_accumulation_steps ==1:
+            loss, grads, new_train_rng = loss_and_grad(None, train_rng)
+        else:
+            init_loss_grad_rng = (
+                0.0, # initial value for cumul_loss
+                jax.tree_map(jnp.zeros_like, state.params), # initial value for cumul_grads
+                train_rng # initial value for train_rng
+                )
+            
+            def cumul_grad_step(grad_idx, loss_grads_rng):
+                cumul_loss, cumul_grads, train_rng = loss_grads_rng
+                loss,grads,new_train_rng = loss_and_grad(grad_idx, train_rng)
+                cumul_loss, cumul_grads = jax.tree_map(
+                    jnp.add, (cumul_loss, cumul_grads),(loss,grads))
+                return cumul_loss, cumul_grads, new_train_rng
+            
+            loss, grads, new_train_rng = jax.lax.fori_loop(
+                0,
+                args.gradient_accumulation_steps, 
+                cumul_grad_step,
+                init_loss_grad_rng,
+            )
+            loss, grads = jax.tree_map(
+                lambda x: x / args.gradient_accumulation_steps, (loss, grads)
+            )
+
         grad = jax.lax.pmean(grad, "batch")
 
         new_state = state.apply_gradients(grads=grad)
@@ -865,21 +920,20 @@ def main():
                 log_validation(controlnet, state.params, tokenizer, args, validation_rng, weight_dtype)
 
             if global_step % args.logging_steps == 0 and jax.process_index() == 0:
-                train_metric = jax_utils.unreplicate(train_metric)
-                train_step_progress_bar.write(f"Loss: {train_metric['loss']}")
                 if args.report_to == "wandb":
                     wandb.log(
                         {   
                             "train/step": global_step,
                             "train/epoch": epoch,
                             "time/seconds_per_step": (time.time() - train_metrics_last_t) / args.logging_steps,
-                            "train/loss": train_metric["loss"],
+                            "train/loss": jax_utils.unreplicate(train_metric)["loss"],
                         }
                     )
                     train_metrics_last_t = time.time()
-
+        
+        train_metric = jax_utils.unreplicate(train_metric)
         train_step_progress_bar.close()
-        epochs.write(f"Epoch... ({epoch + 1}/{args.num_train_epochs})")
+        epochs.write(f"Epoch... ({epoch + 1}/{args.num_train_epochs} | Loss: {train_metric['loss']})")
 
     # Create the pipeline using using the trained modules and save it.
     if jax.process_index() == 0:
