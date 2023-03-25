@@ -46,7 +46,7 @@ def unet(hor):
     hf_value_function = UNet1DModel(**config)
     print(f"length of state dict: {len(state_dict.keys())}")
     print(f"length of value function dict: {len(hf_value_function.state_dict().keys())}")
-    mapping = {k: hfk for k, hfk in zip(model.state_dict().keys(), hf_value_function.state_dict().keys())}
+    mapping = dict(zip(model.state_dict().keys(), hf_value_function.state_dict().keys()))
     for k, v in mapping.items():
         state_dict[v] = state_dict.pop(k)
     hf_value_function.load_state_dict(state_dict)
@@ -83,7 +83,7 @@ def value_function():
     print(f"length of state dict: {len(state_dict.keys())}")
     print(f"length of value function dict: {len(hf_value_function.state_dict().keys())}")
 
-    mapping = {k: hfk for k, hfk in zip(state_dict.keys(), hf_value_function.state_dict().keys())}
+    mapping = dict(zip(state_dict.keys(), hf_value_function.state_dict().keys()))
     for k, v in mapping.items():
         state_dict[v] = state_dict.pop(k)
 
