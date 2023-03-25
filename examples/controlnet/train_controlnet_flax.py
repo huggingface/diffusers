@@ -18,7 +18,6 @@ import logging
 import math
 import os
 import random
-import time
 from pathlib import Path
 from typing import Optional
 
@@ -70,7 +69,6 @@ def log_validation(controlnet, controlnet_params, tokenizer, args, rng, weight_d
         dtype=weight_dtype,
         revision=args.revision,
         from_pt=args.from_pt,
-
     )
     params = jax_utils.replicate(params)
     params["controlnet"] = controlnet_params
@@ -370,10 +368,7 @@ def parse_args():
         help=("The `project` argument passed to wandb"),
     )
     parser.add_argument(
-        "--gradient_accumulation_steps", 
-        type=int, 
-        default=1,
-        help="Number of steps to accumulate gradients over"
+        "--gradient_accumulation_steps", type=int, default=1, help="Number of steps to accumulate gradients over"
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
 
@@ -575,7 +570,7 @@ def main():
     else:
         transformers.utils.logging.set_verbosity_error()
 
-    # handle wandb init
+    # wandb init
     if jax.process_index() == 0 and args.report_to == "wandb":
         wandb.init(
             project=args.tracker_project_name,
@@ -626,6 +621,7 @@ def main():
         collate_fn=collate_fn,
         batch_size=total_train_batch_size,
         num_workers=args.dataloader_num_workers,
+        drop_last=True,
     )
 
     weight_dtype = jnp.float32
@@ -722,16 +718,10 @@ def main():
     train_rngs = jax.random.split(train_rngs, jax.local_device_count())
 
     def train_step(state, unet_params, text_encoder_params, vae_params, batch, train_rng):
-        
-        print("yiyi testing batch shape, before + after")
-        print(jax.tree_map(lambda x:x.shape, batch))
-        print('  ')
-        # reshape batch, add grad_step_dim if gradient_accumulation_steps > 1 
+        # reshape batch, add grad_step_dim if gradient_accumulation_steps > 1
         if args.gradient_accumulation_steps > 1:
-            G = args.gradient_accumulation_steps 
-            batch = jax.tree_map(
-                lambda x: x.reshape((G, x.shape[0]//G) + x.shape[1:]), batch)
-        print(jax.tree_map(lambda x:x.shape, batch))
+            G = args.gradient_accumulation_steps
+            batch = jax.tree_map(lambda x: x.reshape((G, x.shape[0] // G) + x.shape[1:]), batch)
 
         def compute_loss(params, minibatch, sample_rng):
             # Convert images to latent space
@@ -809,39 +799,36 @@ def main():
                 lambda x: jax.lax.dynamic_index_in_dim(x, grad_idx, keepdims=False),
                 batch,
             )
-        
+
         def loss_and_grad(grad_idx, train_rng):
-            #create minibatch for the grad step
-            minibatch = (get_minibatch(batch, grad_idx) if grad_idx is not None else batch)
+            # create minibatch for the grad step
+            minibatch = get_minibatch(batch, grad_idx) if grad_idx is not None else batch
             sample_rng, train_rng = jax.random.split(train_rng, 2)
-            loss, grads = grad_fn(state.params, minibatch, sample_rng)
-            return loss, grads, train_rng
-        
-        if args.gradient_accumulation_steps ==1:
-            loss, grads, new_train_rng = loss_and_grad(None, train_rng)
+            loss, grad = grad_fn(state.params, minibatch, sample_rng)
+            return loss, grad, train_rng
+
+        if args.gradient_accumulation_steps == 1:
+            loss, grad, new_train_rng = loss_and_grad(None, train_rng)
         else:
             init_loss_grad_rng = (
-                0.0, # initial value for cumul_loss
-                jax.tree_map(jnp.zeros_like, state.params), # initial value for cumul_grads
-                train_rng # initial value for train_rng
-                )
-            
-            def cumul_grad_step(grad_idx, loss_grads_rng):
-                cumul_loss, cumul_grads, train_rng = loss_grads_rng
-                loss,grads,new_train_rng = loss_and_grad(grad_idx, train_rng)
-                cumul_loss, cumul_grads = jax.tree_map(
-                    jnp.add, (cumul_loss, cumul_grads),(loss,grads))
-                return cumul_loss, cumul_grads, new_train_rng
-            
-            loss, grads, new_train_rng = jax.lax.fori_loop(
+                0.0,  # initial value for cumul_loss
+                jax.tree_map(jnp.zeros_like, state.params),  # initial value for cumul_grad
+                train_rng,  # initial value for train_rng
+            )
+
+            def cumul_grad_step(grad_idx, loss_grad_rng):
+                cumul_loss, cumul_grad, train_rng = loss_grad_rng
+                loss, grad, new_train_rng = loss_and_grad(grad_idx, train_rng)
+                cumul_loss, cumul_grad = jax.tree_map(jnp.add, (cumul_loss, cumul_grad), (loss, grad))
+                return cumul_loss, cumul_grad, new_train_rng
+
+            loss, grad, new_train_rng = jax.lax.fori_loop(
                 0,
-                args.gradient_accumulation_steps, 
+                args.gradient_accumulation_steps,
                 cumul_grad_step,
                 init_loss_grad_rng,
             )
-            loss, grads = jax.tree_map(
-                lambda x: x / args.gradient_accumulation_steps, (loss, grads)
-            )
+            loss, grad = jax.tree_map(lambda x: x / args.gradient_accumulation_steps, (loss, grad))
 
         grad = jax.lax.pmean(grad, "batch")
 
@@ -862,7 +849,7 @@ def main():
     vae_params = jax_utils.replicate(vae_params)
 
     # Train!
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader))
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
 
     # Scheduler and math around the number of training steps.
     if args.max_train_steps is None:
@@ -875,10 +862,20 @@ def main():
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
     logger.info(f"  Total train batch size (w. parallel & distributed) = {total_train_batch_size}")
-    logger.info(f"  Total optimization steps = {args.max_train_steps}")
+    logger.info(f"  Total optimization steps = {args.num_train_epochs * num_update_steps_per_epoch}")
+
+    if jax.process_index() == 0:
+        wandb.define_metric("*", step_metric="train/step")
+        wandb.config.update(
+            {
+                "num_train_examples": len(train_dataset),
+                "total_train_batch_size": total_train_batch_size,
+                "total_optimization_step": args.num_train_epochs * num_update_steps_per_epoch, 
+                "num_devices": jax.device_count(),
+            }
+        )
 
     global_step = 0
-    train_metrics_last_t = time.time()
     epochs = tqdm(
         range(args.num_train_epochs),
         desc="Epoch ... ",
@@ -922,15 +919,13 @@ def main():
             if global_step % args.logging_steps == 0 and jax.process_index() == 0:
                 if args.report_to == "wandb":
                     wandb.log(
-                        {   
+                        {
                             "train/step": global_step,
                             "train/epoch": epoch,
-                            "time/seconds_per_step": (time.time() - train_metrics_last_t) / args.logging_steps,
                             "train/loss": jax_utils.unreplicate(train_metric)["loss"],
                         }
                     )
-                    train_metrics_last_t = time.time()
-        
+
         train_metric = jax_utils.unreplicate(train_metric)
         train_step_progress_bar.close()
         epochs.write(f"Epoch... ({epoch + 1}/{args.num_train_epochs} | Loss: {train_metric['loss']})")
