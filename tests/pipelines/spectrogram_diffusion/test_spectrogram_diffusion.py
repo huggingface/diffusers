@@ -153,6 +153,10 @@ class SpectrogramDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
     def test_inference_batch_consistent(self):
         pass
 
+    @skip_mps
+    def test_progress_bar(self):
+        return super().test_progress_bar()
+
 
 @slow
 @require_torch_gpu
