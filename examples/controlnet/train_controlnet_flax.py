@@ -18,6 +18,7 @@ import logging
 import math
 import os
 import random
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -68,6 +69,8 @@ def log_validation(controlnet, controlnet_params, tokenizer, args, rng, weight_d
         safety_checker=None,
         dtype=weight_dtype,
         revision=args.revision,
+        from_pt=args.from_pt,
+
     )
     params = jax_utils.replicate(params)
     params["controlnet"] = controlnet_params
@@ -75,34 +78,61 @@ def log_validation(controlnet, controlnet_params, tokenizer, args, rng, weight_d
     num_samples = jax.device_count()
     prng_seed = jax.random.split(rng, jax.device_count())
 
-    prompts = num_samples * [args.validation_prompt]
-    prompt_ids = pipeline.prepare_text_inputs(prompts)
-    prompt_ids = shard(prompt_ids)
+    if len(args.validation_image) == len(args.validation_prompt):
+        validation_images = args.validation_image
+        validation_prompts = args.validation_prompt
+    elif len(args.validation_image) == 1:
+        validation_images = args.validation_image * len(args.validation_prompt)
+        validation_prompts = args.validation_prompt
+    elif len(args.validation_prompt) == 1:
+        validation_images = args.validation_image
+        validation_prompts = args.validation_prompt * len(args.validation_image)
+    else:
+        raise ValueError(
+            "number of `args.validation_image` and `args.validation_prompt` should be checked in `parse_args`"
+        )
 
-    validation_image = Image.open(args.validation_image)
-    processed_image = pipeline.prepare_image_inputs(num_samples * [validation_image])
-    processed_image = shard(processed_image)
+    image_logs = []
 
-    images = pipeline(
-        prompt_ids=prompt_ids,
-        image=processed_image,
-        params=params,
-        prng_seed=prng_seed,
-        num_inference_steps=50,
-        jit=True,
-    ).images
+    for validation_prompt, validation_image in zip(validation_prompts, validation_images):
+        prompts = num_samples * [validation_prompt]
+        prompt_ids = pipeline.prepare_text_inputs(prompts)
+        prompt_ids = shard(prompt_ids)
 
-    images = images.reshape((images.shape[0] * images.shape[1],) + images.shape[-3:])
-    images = pipeline.numpy_to_pil(images)
+        validation_image = Image.open(validation_image)
+        processed_image = pipeline.prepare_image_inputs(num_samples * [validation_image])
+        processed_image = shard(processed_image)
+        images = pipeline(
+            prompt_ids=prompt_ids,
+            image=processed_image,
+            params=params,
+            prng_seed=prng_seed,
+            num_inference_steps=50,
+            jit=True,
+        ).images
+
+        images = images.reshape((images.shape[0] * images.shape[1],) + images.shape[-3:])
+        images = pipeline.numpy_to_pil(images)
+
+        image_logs.append(
+            {"validation_image": validation_image, "images": images, "validation_prompt": validation_prompt}
+        )
 
     if args.report_to == "wandb":
-        images_log = []
-        images_log.append(wandb.Image(validation_image, caption="Controlnet conditioning"))
-        for i, image in enumerate(images):
-            image = wandb.Image(image, caption=f"{i}:{args.validation_prompt}")
-            images_log.append(image)
+        formatted_images = []
+        for log in image_logs:
+            images = log["images"]
+            validation_prompt = log["validation_prompt"]
+            validation_image = log["validation_image"]
 
-        wandb.log({"Validation": images_log})
+            formatted_images.append(wandb.Image(validation_image, caption="Controlnet conditioning"))
+            for image in images:
+                image = wandb.Image(image, caption=validation_prompt)
+                formatted_images.append(image)
+
+        wandb.log({"validation": formatted_images})
+    else:
+        logger.warn(f"image logging not implemented for {args.report_to}")
 
 
 def parse_args():
@@ -110,7 +140,6 @@ def parse_args():
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
-        default=None,
         required=True,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
@@ -125,8 +154,12 @@ def parse_args():
         "--revision",
         type=str,
         default=None,
-        required=False,
         help="Revision of pretrained model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--from_pt",
+        action="store_true",
+        help="Load the pretrained model from a pytorch checkpoint.",
     )
     parser.add_argument(
         "--tokenizer_name",
@@ -164,7 +197,7 @@ def parse_args():
         "--max_train_steps",
         type=int,
         default=None,
-        help="Total number of training steps to perform.  If provided, overrides num_train_epochs.",
+        help="Total number of training steps to perform.",
     )
     parser.add_argument(
         "--learning_rate",
@@ -175,7 +208,6 @@ def parse_args():
     parser.add_argument(
         "--scale_lr",
         action="store_true",
-        default=False,
         help="Scale the learning rate by the number of GPUs, gradient accumulation steps, and batch size.",
     )
     parser.add_argument(
@@ -216,6 +248,12 @@ def parse_args():
             "[TensorBoard](https://www.tensorflow.org/tensorboard) log directory. Will default to"
             " *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***."
         ),
+    )
+    parser.add_argument(
+        "--logging_steps",
+        type=int,
+        default=100,
+        help=("log training metric every X steps to `--report_t`"),
     )
     parser.add_argument(
         "--report_to",
@@ -297,18 +335,23 @@ def parse_args():
         "--validation_prompt",
         type=str,
         default=None,
+        nargs="+",
         help=(
-            "A prompt evaluated every `--validation_steps` and logged to `--report_to`."
-            " Used with `--validation_image` "
+            "A set of prompts evaluated every `--validation_steps` and logged to `--report_to`."
+            " Provide either a matching number of `--validation_image`s, a single `--validation_image`"
+            " to be used with all prompts, or a single prompt that will be used with all `--validation_image`s."
         ),
     )
     parser.add_argument(
         "--validation_image",
         type=str,
         default=None,
+        nargs="+",
         help=(
-            "path to the controlnet conditioning image evaluated every `--validation_steps`"
-            " and logged to `--report_to`. Used with `--validation_prompt` "
+            "A set of paths to the controlnet conditioning image be evaluated every `--validation_steps`"
+            " and logged to `--report_to`. Provide either a matching number of `--validation_prompt`s, a"
+            " a single `--validation_prompt` to be used with all `--validation_image`s, or a single"
+            " `--validation_image` that will be used with all `--validation_prompt`s."
         ),
     )
     parser.add_argument(
@@ -336,6 +379,29 @@ def parse_args():
     # Sanity checks
     if args.dataset_name is None and args.train_data_dir is None:
         raise ValueError("Need either a dataset name or a training folder.")
+    if args.dataset_name is not None and args.train_data_dir is not None:
+        raise ValueError("Specify only one of `--dataset_name` or `--train_data_dir`")
+
+    if args.proportion_empty_prompts < 0 or args.proportion_empty_prompts > 1:
+        raise ValueError("`--proportion_empty_prompts` must be in the range [0, 1].")
+
+    if args.validation_prompt is not None and args.validation_image is None:
+        raise ValueError("`--validation_image` must be set if `--validation_prompt` is set")
+
+    if args.validation_prompt is None and args.validation_image is not None:
+        raise ValueError("`--validation_prompt` must be set if `--validation_image` is set")
+
+    if (
+        args.validation_image is not None
+        and args.validation_prompt is not None
+        and len(args.validation_image) != 1
+        and len(args.validation_prompt) != 1
+        and len(args.validation_image) != len(args.validation_prompt)
+    ):
+        raise ValueError(
+            "Must provide either 1 `--validation_image`, 1 `--validation_prompt`,"
+            " or the same number of `--validation_prompt`s and `--validation_image`s"
+        )
 
     return args
 
@@ -564,18 +630,27 @@ def main():
 
     # Load models and create wrapper for stable diffusion
     text_encoder = FlaxCLIPTextModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", dtype=weight_dtype, revision=args.revision
+        args.pretrained_model_name_or_path,
+        subfolder="text_encoder",
+        dtype=weight_dtype,
+        revision=args.revision,
+        from_pt=args.from_pt,
     )
     vae, vae_params = FlaxAutoencoderKL.from_pretrained(
-        args.pretrained_model_name_or_path, revision=args.revision, subfolder="vae", dtype=weight_dtype
+        args.pretrained_model_name_or_path,
+        revision=args.revision,
+        subfolder="vae",
+        dtype=weight_dtype,
+        from_pt=args.from_pt,
     )
     unet, unet_params = FlaxUNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", dtype=weight_dtype, revision=args.revision
+        args.pretrained_model_name_or_path,
+        subfolder="unet",
+        dtype=weight_dtype,
+        revision=args.revision,
+        from_pt=args.from_pt,
     )
 
-    # to-do:
-    # 1. add an argument for from_pt
-    # 2. check trainable models (controlnet) are in full precision
     if args.controlnet_model_name_or_path:
         logger.info("Loading existing controlnet weights")
         controlnet, controlnet_params = FlaxControlNetModel.from_pretrained(
@@ -748,7 +823,7 @@ def main():
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
 
     global_step = 0
-
+    train_metrics_last_t = time.time()
     epochs = tqdm(
         range(args.num_train_epochs),
         desc="Epoch ... ",
@@ -779,6 +854,8 @@ def main():
             train_step_progress_bar.update(1)
 
             global_step += 1
+            if global_step >= args.max_train_steps:
+                break
 
             if (
                 args.validation_prompt is not None
@@ -787,15 +864,22 @@ def main():
             ):
                 log_validation(controlnet, state.params, tokenizer, args, validation_rng, weight_dtype)
 
-            if global_step >= args.max_train_steps:
-                break
-
-        train_metric = jax_utils.unreplicate(train_metric)
+            if global_step % args.logging_steps == 0 and jax.process_index() == 0:
+                train_metric = jax_utils.unreplicate(train_metric)
+                train_step_progress_bar.write(f"Loss: {train_metric['loss']}")
+                if args.report_to == "wandb":
+                    wandb.log(
+                        {   
+                            "train/step": global_step,
+                            "train/epoch": epoch,
+                            "time/seconds_per_step": (time.time() - train_metrics_last_t) / args.logging_steps,
+                            "train/loss": train_metric["loss"],
+                        }
+                    )
+                    train_metrics_last_t = time.time()
 
         train_step_progress_bar.close()
-        epochs.write(f"Epoch... ({epoch + 1}/{args.num_train_epochs} | Loss: {train_metric['loss']})")
-        if args.report_to == "wandb" and jax.process_index() == 0:
-            wandb.log({"train/epoch": epoch, "train/loss": train_metric["loss"]})
+        epochs.write(f"Epoch... ({epoch + 1}/{args.num_train_epochs})")
 
     # Create the pipeline using using the trained modules and save it.
     if jax.process_index() == 0:
