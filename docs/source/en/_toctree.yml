@@ -33,15 +33,15 @@
     - local: using-diffusers/pipeline_overview
       title: Overview
     - local: using-diffusers/unconditional_image_generation
-      title: Unconditional Image Generation
+      title: Unconditional image generation
     - local: using-diffusers/conditional_image_generation
-      title: Text-to-Image Generation
+      title: Text-to-image generation
     - local: using-diffusers/img2img
-      title: Text-Guided Image-to-Image
+      title: Text-guided image-to-image
     - local: using-diffusers/inpaint
-      title: Text-Guided Image-Inpainting
+      title: Text-guided image-inpainting
     - local: using-diffusers/depth2img
-      title: Text-Guided Depth-to-Image
+      title: Text-guided depth-to-image
     - local: using-diffusers/reusing_seeds
       title: Improve image quality with deterministic generation
     - local: using-diffusers/reproducibility
@@ -134,6 +134,8 @@
       title: AltDiffusion
     - local: api/pipelines/audio_diffusion
       title: Audio Diffusion
+    - local: api/pipelines/audioldm
+      title: AudioLDM
     - local: api/pipelines/cycle_diffusion
       title: Cycle Diffusion
     - local: api/pipelines/dance_diffusion
@@ -189,6 +191,8 @@
         title: MultiDiffusion Panorama
       - local: api/pipelines/stable_diffusion/controlnet
         title: Text-to-Image Generation with ControlNet Conditioning
+      - local: api/pipelines/stable_diffusion/model_editing
+        title: Text-to-Image Model Editing
       title: Stable Diffusion
     - local: api/pipelines/stable_diffusion_2
       title: Stable Diffusion 2

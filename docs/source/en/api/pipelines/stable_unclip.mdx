@@ -16,6 +16,10 @@ Stable unCLIP checkpoints are finetuned from [stable diffusion 2.1](./stable_dif
 Stable unCLIP also still conditions on text embeddings. Given the two separate conditionings, stable unCLIP can be used
 for text guided image variation. When combined with an unCLIP prior, it can also be used for full text to image generation.
 
+To know more about the unCLIP process, check out the following paper:
+
+[Hierarchical Text-Conditional Image Generation with CLIP Latents](https://arxiv.org/abs/2204.06125) by Aditya Ramesh, Prafulla Dhariwal, Alex Nichol, Casey Chu, Mark Chen.
+
 ## Tips
 
 Stable unCLIP takes a `noise_level` as input during inference. `noise_level` determines how much noise is added 
@@ -24,23 +28,15 @@ we do not add any additional noise to the image embeddings i.e. `noise_level = 0
 
 ### Available checkpoints:
 
-TODO
+* Image variation
+	* [stabilityai/stable-diffusion-2-1-unclip](https://hf.co/stabilityai/stable-diffusion-2-1-unclip)
+	* [stabilityai/stable-diffusion-2-1-unclip-small](https://hf.co/stabilityai/stable-diffusion-2-1-unclip-small)
+* Text-to-image 
+	* Coming soon!
 
 ### Text-to-Image Generation
 
-```python
-import torch
-from diffusers import StableUnCLIPPipeline
-
-pipe = StableUnCLIPPipeline.from_pretrained(
-    "fusing/stable-unclip-2-1-l", torch_dtype=torch.float16
-)  # TODO update model path
-pipe = pipe.to("cuda")
-
-prompt = "a photo of an astronaut riding a horse on mars"
-images = pipe(prompt).images
-images[0].save("astronaut_horse.png")
-```
+Coming soon!
 
 
 ### Text guided Image-to-Image Variation
@@ -54,19 +50,25 @@ from io import BytesIO
 from diffusers import StableUnCLIPImg2ImgPipeline
 
 pipe = StableUnCLIPImg2ImgPipeline.from_pretrained(
-    "fusing/stable-unclip-2-1-l-img2img", torch_dtype=torch.float16
-)  # TODO update model path
+    "stabilityai/stable-diffusion-2-1-unclip", torch_dtype=torch.float16, variation="fp16"
+)
 pipe = pipe.to("cuda")
 
-url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
+url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/stable_unclip/tarsila_do_amaral.png"
 
 response = requests.get(url)
 init_image = Image.open(BytesIO(response.content)).convert("RGB")
-init_image = init_image.resize((768, 512))
 
+images = pipe(init_image).images
+images[0].save("fantasy_landscape.png")
+```
+
+Optionally, you can also pass a prompt to `pipe` such as:
+
+```python 
 prompt = "A fantasy landscape, trending on artstation"
 
-images = pipe(prompt, init_image).images
+images = pipe(init_image, prompt=prompt).images
 images[0].save("fantasy_landscape.png")
 ```
 

@@ -112,6 +112,7 @@ else:
     from .pipelines import (
         AltDiffusionImg2ImgPipeline,
         AltDiffusionPipeline,
+        AudioLDMPipeline,
         CycleDiffusionPipeline,
         LDMTextToImagePipeline,
         PaintByExamplePipeline,
@@ -125,6 +126,7 @@ else:
         StableDiffusionInpaintPipelineLegacy,
         StableDiffusionInstructPix2PixPipeline,
         StableDiffusionLatentUpscalePipeline,
+        StableDiffusionModelEditingPipeline,
         StableDiffusionPanoramaPipeline,
         StableDiffusionPipeline,
         StableDiffusionPipelineSafe,
@@ -188,6 +190,7 @@ try:
 except OptionalDependencyNotAvailable:
     from .utils.dummy_flax_objects import *  # noqa F403
 else:
+    from .models.controlnet_flax import FlaxControlNetModel
     from .models.modeling_flax_utils import FlaxModelMixin
     from .models.unet_2d_condition_flax import FlaxUNet2DConditionModel
     from .models.vae_flax import FlaxAutoencoderKL
@@ -211,6 +214,7 @@ except OptionalDependencyNotAvailable:
     from .utils.dummy_flax_and_transformers_objects import *  # noqa F403
 else:
     from .pipelines import (
+        FlaxStableDiffusionControlNetPipeline,
         FlaxStableDiffusionImg2ImgPipeline,
         FlaxStableDiffusionInpaintPipeline,
         FlaxStableDiffusionPipeline,

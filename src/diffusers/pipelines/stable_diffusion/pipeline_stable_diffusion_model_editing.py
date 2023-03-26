@@ -1,5 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
-#
+# Copyright 2023 TIME Authors and The HuggingFace Team. All rights reserved."
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -12,131 +11,154 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import PIL
 import torch
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
-
-from diffusers.utils.import_utils import is_accelerate_available
+from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...models.embeddings import get_timestep_embedding
-from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import is_accelerate_version, logging, randn_tensor, replace_example_docstring
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
+from ...schedulers import PNDMScheduler
+from ...schedulers.scheduling_utils import SchedulerMixin
+from ...utils import is_accelerate_available, is_accelerate_version, logging, randn_tensor
+from ..pipeline_utils import DiffusionPipeline
+from . import StableDiffusionPipelineOutput
+from .safety_checker import StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+AUGS_CONST = ["A photo of ", "An image of ", "A picture of "]
+
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> import requests
         >>> import torch
-        >>> from PIL import Image
-        >>> from io import BytesIO
+        >>> from diffusers import StableDiffusionModelEditingPipeline
 
-        >>> from diffusers import StableUnCLIPImg2ImgPipeline
+        >>> model_ckpt = "CompVis/stable-diffusion-v1-4"
+        >>> pipe = StableDiffusionModelEditingPipeline.from_pretrained(model_ckpt)
 
-        >>> pipe = StableUnCLIPImg2ImgPipeline.from_pretrained(
-        ...     "fusing/stable-unclip-2-1-l-img2img", torch_dtype=torch.float16
-        ... )  # TODO update model path
         >>> pipe = pipe.to("cuda")
 
-        >>> url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
+        >>> source_prompt = "A pack of roses"
+        >>> destination_prompt = "A pack of blue roses"
+        >>> pipe.edit_model(source_prompt, destination_prompt)
 
-        >>> response = requests.get(url)
-        >>> init_image = Image.open(BytesIO(response.content)).convert("RGB")
-        >>> init_image = init_image.resize((768, 512))
-
-        >>> prompt = "A fantasy landscape, trending on artstation"
-
-        >>> images = pipe(prompt, init_image).images
-        >>> images[0].save("fantasy_landscape.png")
+        >>> prompt = "A field of roses"
+        >>> image = pipe(prompt).images[0]
         ```
 """
 
 
-class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
-    """
-    Pipeline for text-guided image to image generation using stable unCLIP.
+class StableDiffusionModelEditingPipeline(DiffusionPipeline):
+    r"""
+    Pipeline for text-to-image model editing using "Editing Implicit Assumptions in Text-to-Image Diffusion Models".
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.).
 
     Args:
-        feature_extractor ([`CLIPImageProcessor`]):
-            Feature extractor for image pre-processing before being encoded.
-        image_encoder ([`CLIPVisionModelWithProjection`]):
-            CLIP vision model for encoding images.
-        image_normalizer ([`StableUnCLIPImageNormalizer`]):
-            Used to normalize the predicted image embeddings before the noise is applied and un-normalize the image
-            embeddings after the noise has been applied.
-        image_noising_scheduler ([`KarrasDiffusionSchedulers`]):
-            Noise schedule for adding noise to the predicted image embeddings. The amount of noise to add is determined
-            by `noise_level` in `StableUnCLIPPipeline.__call__`.
+        vae ([`AutoencoderKL`]):
+            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
+        text_encoder ([`CLIPTextModel`]):
+            Frozen text-encoder. Stable Diffusion uses the text portion of
+            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
+            the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
         tokenizer (`CLIPTokenizer`):
             Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
-        text_encoder ([`CLIPTextModel`]):
-            Frozen text-encoder.
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
-        scheduler ([`KarrasDiffusionSchedulers`]):
+        scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents.
-        vae ([`AutoencoderKL`]):
-            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
+        safety_checker ([`StableDiffusionSafetyChecker`]):
+            Classification module that estimates whether generated images could be considered offensive or harmful.
+            Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
+        feature_extractor ([`CLIPFeatureExtractor`]):
+            Model that extracts features from generated images to be used as inputs for the `safety_checker`.
+        with_to_k ([`bool`]):
+            Whether to edit the key projection matrices along wiht the value projection matrices.
+        with_augs ([`list`]):
+            Textual augmentations to apply while editing the text-to-image model. Set to [] for no augmentations.
     """
-
-    # image encoding components
-    feature_extractor: CLIPImageProcessor
-    image_encoder: CLIPVisionModelWithProjection
-
-    # image noising components
-    image_normalizer: StableUnCLIPImageNormalizer
-    image_noising_scheduler: KarrasDiffusionSchedulers
-
-    # regular denoising components
-    tokenizer: CLIPTokenizer
-    text_encoder: CLIPTextModel
-    unet: UNet2DConditionModel
-    scheduler: KarrasDiffusionSchedulers
-
-    vae: AutoencoderKL
+    _optional_components = ["safety_checker", "feature_extractor"]
 
     def __init__(
         self,
-        # image encoding components
-        feature_extractor: CLIPImageProcessor,
-        image_encoder: CLIPVisionModelWithProjection,
-        # image noising components
-        image_normalizer: StableUnCLIPImageNormalizer,
-        image_noising_scheduler: KarrasDiffusionSchedulers,
-        # regular denoising components
-        tokenizer: CLIPTokenizer,
-        text_encoder: CLIPTextModel,
-        unet: UNet2DConditionModel,
-        scheduler: KarrasDiffusionSchedulers,
-        # vae
         vae: AutoencoderKL,
+        text_encoder: CLIPTextModel,
+        tokenizer: CLIPTokenizer,
+        unet: UNet2DConditionModel,
+        scheduler: SchedulerMixin,
+        safety_checker: StableDiffusionSafetyChecker,
+        feature_extractor: CLIPFeatureExtractor,
+        requires_safety_checker: bool = True,
+        with_to_k: bool = True,
+        with_augs: list = AUGS_CONST,
     ):
         super().__init__()
 
+        if isinstance(scheduler, PNDMScheduler):
+            logger.error("PNDMScheduler for this pipeline is currently not supported.")
+
+        if safety_checker is None and requires_safety_checker:
+            logger.warning(
+                f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
+                " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
+                " results in services or applications open to the public. Both the diffusers team and Hugging Face"
+                " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
+                " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
+                " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
+            )
+
+        if safety_checker is not None and feature_extractor is None:
+            raise ValueError(
+                "Make sure to define a feature extractor when loading {self.__class__} if you want to use the safety"
+                " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
+            )
+
         self.register_modules(
-            feature_extractor=feature_extractor,
-            image_encoder=image_encoder,
-            image_normalizer=image_normalizer,
-            image_noising_scheduler=image_noising_scheduler,
-            tokenizer=tokenizer,
+            vae=vae,
             text_encoder=text_encoder,
+            tokenizer=tokenizer,
             unet=unet,
             scheduler=scheduler,
-            vae=vae,
+            safety_checker=safety_checker,
+            feature_extractor=feature_extractor,
         )
-
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.register_to_config(requires_safety_checker=requires_safety_checker)
+
+        self.with_to_k = with_to_k
+        self.with_augs = with_augs
+
+        # get cross-attention layers
+        ca_layers = []
+
+        def append_ca(net_):
+            if net_.__class__.__name__ == "CrossAttention":
+                ca_layers.append(net_)
+            elif hasattr(net_, "children"):
+                for net__ in net_.children():
+                    append_ca(net__)
+
+        # recursively find all cross-attention layers in unet
+        for net in self.unet.named_children():
+            if "down" in net[0]:
+                append_ca(net[1])
+            elif "up" in net[0]:
+                append_ca(net[1])
+            elif "mid" in net[0]:
+                append_ca(net[1])
+
+        # get projection matrices
+        self.ca_clip_layers = [l for l in ca_layers if l.to_v.in_features == 768]
+        self.projection_matrices = [l.to_v for l in self.ca_clip_layers]
+        self.og_matrices = [copy.deepcopy(l.to_v) for l in self.ca_clip_layers]
+        if self.with_to_k:
+            self.projection_matrices = self.projection_matrices + [l.to_k for l in self.ca_clip_layers]
+            self.og_matrices = self.og_matrices + [copy.deepcopy(l.to_k) for l in self.ca_clip_layers]
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
@@ -156,41 +178,19 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
         """
         self.vae.disable_slicing()
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, the pipeline's
-        models have their state dicts saved to CPU and then are moved to a `torch.device('meta') and loaded to GPU only
-        when their specific submodule has its `forward` method called.
+        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
+        text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
+        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
+        Note that offloading happens on a submodule basis. Memory savings are higher than with
+        `enable_model_cpu_offload`, but performance is lower.
         """
-        if is_accelerate_available():
+        if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
             from accelerate import cpu_offload
         else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        # TODO: self.image_normalizer.{scale,unscale} are not covered by the offload hooks, so they fails if added to the list
-        models = [
-            self.image_encoder,
-            self.text_encoder,
-            self.unet,
-            self.vae,
-        ]
-        for cpu_offloaded_model in models:
-            if cpu_offloaded_model is not None:
-                cpu_offload(cpu_offloaded_model, device)
-
-    def enable_model_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate import cpu_offload_with_hook
-        else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
+            raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
 
         device = torch.device(f"cuda:{gpu_id}")
 
@@ -198,12 +198,11 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
             self.to("cpu", silence_dtype_warnings=True)
             torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
-        hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.image_encoder, self.unet, self.vae]:
-            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
+        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
+            cpu_offload(cpu_offloaded_model, device)
 
-        # We'll offload the last model manually.
-        self.final_offload_hook = hook
+        if self.safety_checker is not None:
+            cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
 
     @property
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
@@ -363,60 +362,16 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
 
         return prompt_embeds
 
-    def _encode_image(
-        self,
-        image,
-        device,
-        batch_size,
-        num_images_per_prompt,
-        do_classifier_free_guidance,
-        noise_level,
-        generator,
-        image_embeds,
-    ):
-        dtype = next(self.image_encoder.parameters()).dtype
-
-        if isinstance(image, PIL.Image.Image):
-            # the image embedding should repeated so it matches the total batch size of the prompt
-            repeat_by = batch_size
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
+    def run_safety_checker(self, image, device, dtype):
+        if self.safety_checker is not None:
+            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
+            image, has_nsfw_concept = self.safety_checker(
+                images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
+            )
         else:
-            # assume the image input is already properly batched and just needs to be repeated so
-            # it matches the num_images_per_prompt.
-            #
-            # NOTE(will) this is probably missing a few number of side cases. I.e. batched/non-batched
-            # `image_embeds`. If those happen to be common use cases, let's think harder about
-            # what the expected dimensions of inputs should be and how we handle the encoding.
-            repeat_by = num_images_per_prompt
-
-        if not image_embeds:
-            if not isinstance(image, torch.Tensor):
-                image = self.feature_extractor(images=image, return_tensors="pt").pixel_values
-
-            image = image.to(device=device, dtype=dtype)
-            image_embeds = self.image_encoder(image).image_embeds
-
-        image_embeds = self.noise_image_embeddings(
-            image_embeds=image_embeds,
-            noise_level=noise_level,
-            generator=generator,
-        )
-
-        # duplicate image embeddings for each generation per prompt, using mps friendly method
-        image_embeds = image_embeds.unsqueeze(1)
-        bs_embed, seq_len, _ = image_embeds.shape
-        image_embeds = image_embeds.repeat(1, repeat_by, 1)
-        image_embeds = image_embeds.view(bs_embed * repeat_by, seq_len, -1)
-        image_embeds = image_embeds.squeeze(1)
-
-        if do_classifier_free_guidance:
-            negative_prompt_embeds = torch.zeros_like(image_embeds)
-
-            # For classifier free guidance, we need to do two forward passes.
-            # Here we concatenate the unconditional and text embeddings into a single batch
-            # to avoid doing two forward passes
-            image_embeds = torch.cat([negative_prompt_embeds, image_embeds])
-
-        return image_embeds
+            has_nsfw_concept = None
+        return image, has_nsfw_concept
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
@@ -445,18 +400,16 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
-        image,
         height,
         width,
         callback_steps,
-        noise_level,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
-        image_embeds=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -471,28 +424,21 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
 
         if prompt is not None and prompt_embeds is not None:
             raise ValueError(
-                "Provide either `prompt` or `prompt_embeds`. Please make sure to define only one of the two."
+                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
             )
-
-        if prompt is None and prompt_embeds is None:
+        elif prompt is None and prompt_embeds is None:
             raise ValueError(
                 "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
             )
-
-        if prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
         if negative_prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
-                "Provide either `negative_prompt` or `negative_prompt_embeds`. Cannot leave both `negative_prompt` and `negative_prompt_embeds` undefined."
+                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
+                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
             )
-
-        if prompt is not None and negative_prompt is not None:
-            if type(prompt) is not type(negative_prompt):
-                raise TypeError(
-                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
-                    f" {type(prompt)}."
-                )
 
         if prompt_embeds is not None and negative_prompt_embeds is not None:
             if prompt_embeds.shape != negative_prompt_embeds.shape:
@@ -500,32 +446,6 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
                     "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
-                )
-
-        if noise_level < 0 or noise_level >= self.image_noising_scheduler.config.num_train_timesteps:
-            raise ValueError(
-                f"`noise_level` must be between 0 and {self.image_noising_scheduler.config.num_train_timesteps - 1}, inclusive."
-            )
-
-        if image is not None and image_embeds is not None:
-            raise ValueError(
-                "Provide either `image` or `image_embeds`. Please make sure to define only one of the two."
-            )
-
-        if image is None and image_embeds is None:
-            raise ValueError(
-                "Provide either `image` or `image_embeds`. Cannot leave both `image` and `image_embeds` undefined."
-            )
-
-        if image is not None:
-            if (
-                not isinstance(image, torch.Tensor)
-                and not isinstance(image, PIL.Image.Image)
-                and not isinstance(image, list)
-            ):
-                raise ValueError(
-                    "`image` has to be of type `torch.FloatTensor` or `PIL.Image.Image` or `List[PIL.Image.Image]` but is"
-                    f" {type(image)}"
                 )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
@@ -546,67 +466,136 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_unclip.StableUnCLIPPipeline.noise_image_embeddings
-    def noise_image_embeddings(
+    @torch.no_grad()
+    def edit_model(
         self,
-        image_embeds: torch.Tensor,
-        noise_level: int,
-        noise: Optional[torch.FloatTensor] = None,
-        generator: Optional[torch.Generator] = None,
+        source_prompt: str,
+        destination_prompt: str,
+        lamb: float = 0.1,
+        restart_params: bool = True,
     ):
+        r"""
+        Apply model editing via closed-form solution (see Eq. 5 in the TIME paper https://arxiv.org/abs/2303.08084)
+
+        Args:
+            source_prompt (`str`):
+                The source prompt containing the concept to be edited.
+            destination_prompt (`str`):
+                The destination prompt. Must contain all words from source_prompt with additional ones to specify the
+                target edit.
+            lamb (`float`, *optional*, defaults to 0.1):
+                The lambda parameter specifying the regularization intesity. Smaller values increase the editing power.
+            restart_params (`bool`, *optional*, defaults to True):
+                Restart the model parameters to their pre-trained version before editing. This is done to avoid edit
+                compounding. When it is False, edits accumulate.
         """
-        Add noise to the image embeddings. The amount of noise is controlled by a `noise_level` input. A higher
-        `noise_level` increases the variance in the final un-noised images.
 
-        The noise is applied in two ways
-        1. A noise schedule is applied directly to the embeddings
-        2. A vector of sinusoidal time embeddings are appended to the output.
+        # restart LDM parameters
+        if restart_params:
+            num_ca_clip_layers = len(self.ca_clip_layers)
+            for idx_, l in enumerate(self.ca_clip_layers):
+                l.to_v = copy.deepcopy(self.og_matrices[idx_])
+                self.projection_matrices[idx_] = l.to_v
+                if self.with_to_k:
+                    l.to_k = copy.deepcopy(self.og_matrices[num_ca_clip_layers + idx_])
+                    self.projection_matrices[num_ca_clip_layers + idx_] = l.to_k
 
-        In both cases, the amount of noise is controlled by the same `noise_level`.
+        # set up sentences
+        old_texts = [source_prompt]
+        new_texts = [destination_prompt]
+        # add augmentations
+        base = old_texts[0] if old_texts[0][0:1] != "A" else "a" + old_texts[0][1:]
+        for aug in self.with_augs:
+            old_texts.append(aug + base)
+        base = new_texts[0] if new_texts[0][0:1] != "A" else "a" + new_texts[0][1:]
+        for aug in self.with_augs:
+            new_texts.append(aug + base)
 
-        The embeddings are normalized before the noise is applied and un-normalized after the noise is applied.
-        """
-        if noise is None:
-            noise = randn_tensor(
-                image_embeds.shape, generator=generator, device=image_embeds.device, dtype=image_embeds.dtype
+        # prepare input k* and v*
+        old_embs, new_embs = [], []
+        for old_text, new_text in zip(old_texts, new_texts):
+            text_input = self.tokenizer(
+                [old_text, new_text],
+                padding="max_length",
+                max_length=self.tokenizer.model_max_length,
+                truncation=True,
+                return_tensors="pt",
+            )
+            text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
+            old_emb, new_emb = text_embeddings
+            old_embs.append(old_emb)
+            new_embs.append(new_emb)
+
+        # identify corresponding destinations for each token in old_emb
+        idxs_replaces = []
+        for old_text, new_text in zip(old_texts, new_texts):
+            tokens_a = self.tokenizer(old_text).input_ids
+            tokens_b = self.tokenizer(new_text).input_ids
+            tokens_a = [self.tokenizer.encode("a ")[1] if self.tokenizer.decode(t) == "an" else t for t in tokens_a]
+            tokens_b = [self.tokenizer.encode("a ")[1] if self.tokenizer.decode(t) == "an" else t for t in tokens_b]
+            num_orig_tokens = len(tokens_a)
+            idxs_replace = []
+            j = 0
+            for i in range(num_orig_tokens):
+                curr_token = tokens_a[i]
+                while tokens_b[j] != curr_token:
+                    j += 1
+                idxs_replace.append(j)
+                j += 1
+            while j < 77:
+                idxs_replace.append(j)
+                j += 1
+            while len(idxs_replace) < 77:
+                idxs_replace.append(76)
+            idxs_replaces.append(idxs_replace)
+
+        # prepare batch: for each pair of setences, old context and new values
+        contexts, valuess = [], []
+        for old_emb, new_emb, idxs_replace in zip(old_embs, new_embs, idxs_replaces):
+            context = old_emb.detach()
+            values = []
+            with torch.no_grad():
+                for layer in self.projection_matrices:
+                    values.append(layer(new_emb[idxs_replace]).detach())
+            contexts.append(context)
+            valuess.append(values)
+
+        # edit the model
+        for layer_num in range(len(self.projection_matrices)):
+            # mat1 = \lambda W + \sum{v k^T}
+            mat1 = lamb * self.projection_matrices[layer_num].weight
+
+            # mat2 = \lambda I + \sum{k k^T}
+            mat2 = lamb * torch.eye(
+                self.projection_matrices[layer_num].weight.shape[1],
+                device=self.projection_matrices[layer_num].weight.device,
             )
 
-        noise_level = torch.tensor([noise_level] * image_embeds.shape[0], device=image_embeds.device)
+            # aggregate sums for mat1, mat2
+            for context, values in zip(contexts, valuess):
+                context_vector = context.reshape(context.shape[0], context.shape[1], 1)
+                context_vector_T = context.reshape(context.shape[0], 1, context.shape[1])
+                value_vector = values[layer_num].reshape(values[layer_num].shape[0], values[layer_num].shape[1], 1)
+                for_mat1 = (value_vector @ context_vector_T).sum(dim=0)
+                for_mat2 = (context_vector @ context_vector_T).sum(dim=0)
+                mat1 += for_mat1
+                mat2 += for_mat2
 
-        self.image_normalizer.to(image_embeds.device)
-        image_embeds = self.image_normalizer.scale(image_embeds)
-
-        image_embeds = self.image_noising_scheduler.add_noise(image_embeds, timesteps=noise_level, noise=noise)
-
-        image_embeds = self.image_normalizer.unscale(image_embeds)
-
-        noise_level = get_timestep_embedding(
-            timesteps=noise_level, embedding_dim=image_embeds.shape[-1], flip_sin_to_cos=True, downscale_freq_shift=0
-        )
-
-        # `get_timestep_embeddings` does not contain any weights and will always return f32 tensors,
-        # but we might actually be running in fp16. so we need to cast here.
-        # there might be better ways to encapsulate this.
-        noise_level = noise_level.to(image_embeds.dtype)
-
-        image_embeds = torch.cat((image_embeds, noise_level), 1)
-
-        return image_embeds
+            # update projection matrix
+            self.projection_matrices[layer_num].weight = torch.nn.Parameter(mat1 @ torch.inverse(mat2))
 
     @torch.no_grad()
-    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        image: Union[torch.FloatTensor, PIL.Image.Image] = None,
         prompt: Union[str, List[str]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        num_inference_steps: int = 20,
-        guidance_scale: float = 10,
+        num_inference_steps: int = 50,
+        guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[torch.Generator] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -615,29 +604,22 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        noise_level: int = 0,
-        image_embeds: Optional[torch.FloatTensor] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide the image generation. If not defined, either `prompt_embeds` will be
-                used or prompt is initialized to `""`.
-            image (`torch.FloatTensor` or `PIL.Image.Image`):
-                `Image`, or tensor representing an image batch. The image will be encoded to its CLIP embedding which
-                the unet will be conditioned on. Note that the image is _not_ encoded by the vae and then used as the
-                latents in the denoising process such as in the standard stable diffusion text guided image variation
-                process.
+                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
+                instead.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image.
-            num_inference_steps (`int`, *optional*, defaults to 20):
+            num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            guidance_scale (`float`, *optional*, defaults to 10.0):
+            guidance_scale (`float`, *optional*, defaults to 7.5):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
@@ -682,39 +664,23 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
-            noise_level (`int`, *optional*, defaults to `0`):
-                The amount of noise to add to the image embeddings. A higher `noise_level` increases the variance in
-                the final un-noised images. See `StableUnCLIPPipeline.noise_image_embeddings` for details.
-            image_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated CLIP embeddings to condition the unet on. Note that these are not latents to be used in
-                the denoising process. If you want to provide pre-generated latents, pass them to `__call__` as
-                `latents`.
 
         Examples:
 
         Returns:
-            [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~ pipeline_utils.ImagePipelineOutput`] if `return_dict` is
-            True, otherwise a `tuple`. When returning a tuple, the first element is a list with the generated images.
+            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
+            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
+            When returning a tuple, the first element is a list with the generated images, and the second element is a
+            list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
+            (nsfw) content, according to the `safety_checker`.
         """
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
 
-        if prompt is None and prompt_embeds is None:
-            prompt = len(image) * [""] if isinstance(image, list) else ""
-
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            prompt=prompt,
-            image=image,
-            height=height,
-            width=width,
-            callback_steps=callback_steps,
-            noise_level=noise_level,
-            negative_prompt=negative_prompt,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            image_embeds=image_embeds,
+            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
         )
 
         # 2. Define call parameters
@@ -725,10 +691,7 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
         else:
             batch_size = prompt_embeds.shape[0]
 
-        batch_size = batch_size * num_images_per_prompt
-
         device = self._execution_device
-
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
@@ -736,85 +699,89 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
 
         # 3. Encode input prompt
         prompt_embeds = self._encode_prompt(
-            prompt=prompt,
-            device=device,
-            num_images_per_prompt=num_images_per_prompt,
-            do_classifier_free_guidance=do_classifier_free_guidance,
-            negative_prompt=negative_prompt,
+            prompt,
+            device,
+            num_images_per_prompt,
+            do_classifier_free_guidance,
+            negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
         )
 
-        # 4. Encoder input image
-        noise_level = torch.tensor([noise_level], device=device)
-        image_embeds = self._encode_image(
-            image=image,
-            device=device,
-            batch_size=batch_size,
-            num_images_per_prompt=num_images_per_prompt,
-            do_classifier_free_guidance=do_classifier_free_guidance,
-            noise_level=noise_level,
-            generator=generator,
-            image_embeds=image_embeds,
-        )
-
-        # 5. Prepare timesteps
+        # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
-        # 6. Prepare latent variables
+        # 5. Prepare latent variables
         num_channels_latents = self.unet.in_channels
         latents = self.prepare_latents(
-            batch_size=batch_size,
-            num_channels_latents=num_channels_latents,
-            height=height,
-            width=width,
-            dtype=prompt_embeds.dtype,
-            device=device,
-            generator=generator,
-            latents=latents,
+            batch_size * num_images_per_prompt,
+            num_channels_latents,
+            height,
+            width,
+            prompt_embeds.dtype,
+            device,
+            generator,
+            latents,
         )
 
-        # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 8. Denoising loop
-        for i, t in enumerate(self.progress_bar(timesteps)):
-            latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-            latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+        # 7. Denoising loop
+        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for i, t in enumerate(timesteps):
+                # expand the latents if we are doing classifier free guidance
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-            # predict the noise residual
-            noise_pred = self.unet(
-                latent_model_input,
-                t,
-                encoder_hidden_states=prompt_embeds,
-                class_labels=image_embeds,
-                cross_attention_kwargs=cross_attention_kwargs,
-            ).sample
+                # predict the noise residual
+                noise_pred = self.unet(
+                    latent_model_input,
+                    t,
+                    encoder_hidden_states=prompt_embeds,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                ).sample
 
-            # perform guidance
-            if do_classifier_free_guidance:
-                noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                # perform guidance
+                if do_classifier_free_guidance:
+                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
-            # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+                # compute the previous noisy sample x_t -> x_t-1
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
-            if callback is not None and i % callback_steps == 0:
-                callback(i, t, latents)
+                # call the callback, if provided
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    progress_bar.update()
+                    if callback is not None and i % callback_steps == 0:
+                        callback(i, t, latents)
 
-        # 9. Post-processing
-        image = self.decode_latents(latents)
+        if output_type == "latent":
+            image = latents
+            has_nsfw_concept = None
+        elif output_type == "pil":
+            # 8. Post-processing
+            image = self.decode_latents(latents)
+
+            # 9. Run safety checker
+            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+
+            # 10. Convert to PIL
+            image = self.numpy_to_pil(image)
+        else:
+            # 8. Post-processing
+            image = self.decode_latents(latents)
+
+            # 9. Run safety checker
+            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.final_offload_hook.offload()
 
-        # 10. Convert to PIL
-        if output_type == "pil":
-            image = self.numpy_to_pil(image)
-
         if not return_dict:
-            return (image,)
+            return (image, has_nsfw_concept)
 
-        return ImagePipelineOutput(images=image)
+        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
