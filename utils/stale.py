@@ -38,7 +38,7 @@ def main():
     open_issues = repo.get_issues(state="open")
 
     for issue in open_issues:
-        comments = sorted([comment for comment in issue.get_comments()], key=lambda i: i.created_at, reverse=True)
+        comments = sorted(issue.get_comments(), key=lambda i: i.created_at, reverse=True)
         last_comment = comments[0] if len(comments) > 0 else None
         if (
             last_comment is not None
