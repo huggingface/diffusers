@@ -708,7 +708,7 @@ def main():
 
     state = train_state.TrainState.create(apply_fn=controlnet.__call__, params=controlnet_params, tx=optimizer)
 
-    noise_scheduler = FlaxDDPMScheduler(
+    noise_scheduler = FlaxDDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
         beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000
     )
     noise_scheduler_state = noise_scheduler.create_state()
@@ -720,8 +720,8 @@ def main():
     def train_step(state, unet_params, text_encoder_params, vae_params, batch, train_rng):
         # reshape batch, add grad_step_dim if gradient_accumulation_steps > 1
         if args.gradient_accumulation_steps > 1:
-            G = args.gradient_accumulation_steps
-            batch = jax.tree_map(lambda x: x.reshape((G, x.shape[0] // G) + x.shape[1:]), batch)
+            grad_steps = args.gradient_accumulation_steps
+            batch = jax.tree_map(lambda x: x.reshape((grad_steps, x.shape[0] // grad_steps) + x.shape[1:]), batch)
 
         def compute_loss(params, minibatch, sample_rng):
             # Convert images to latent space
