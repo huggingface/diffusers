@@ -521,7 +521,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, List[str]],
+        prompt: Union[str, List[str]] = None,
         image: Union[torch.FloatTensor, PIL.Image.Image] = None,
         mask_image: Union[torch.FloatTensor, PIL.Image.Image] = None,
         strength: float = 0.8,
@@ -611,10 +611,16 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             (nsfw) content, according to the `safety_checker`.
         """
         # 1. Check inputs
-        self.check_inputs(prompt, strength, callback_steps)
+        self.check_inputs(prompt, strength, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
 
         # 2. Define call parameters
-        batch_size = 1 if isinstance(prompt, str) else len(prompt)
+        if prompt is not None and isinstance(prompt, str):
+            batch_size = 1
+        elif prompt is not None and isinstance(prompt, list):
+            batch_size = len(prompt)
+        else:
+            batch_size = prompt_embeds.shape[0]
+
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
