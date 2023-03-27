@@ -11,6 +11,26 @@ We accelereate the fine-tuning for textual inversion with Intel Extension for Py
 ## Accelerating the inference for Stable Diffusion using Bfloat16
 
 We start the inference acceleration with Bfloat16 using Intel Extension for PyTorch. The [script](inference_bf16.py) is generally designed to support standard Stable Diffusion models with Bfloat16 support.
+```bash
+export KMP_BLOCKTIME=1
+export KMP_SETTINGS=1
+export KMP_AFFINITY=granularity=fine,compact,1,0
+
+# Intel OpenMP
+export OMP_NUM_THREADS=< Cores to use >
+export LD_PRELOAD=${LD_PRELOAD}:/path/to/lib/libiomp5.so
+# Jemalloc is a recommended malloc implementation that emphasizes fragmentation avoidance and scalable concurrency support.
+export LD_PRELOAD=${LD_PRELOAD}:/path/to/lib/libjemalloc.so
+export MALLOC_CONF="oversize_threshold:1,background_thread:true,metadata_thp:auto,dirty_decay_ms:-1,muzzy_decay_ms:9000000000"
+
+# Launch
+numactl --membind <node N> -C <cpu list> python python inference_bf16.py
+# Launch with DPMSolver
+numactl --membind <node N> -C <cpu list> python python inference_bf16.py --dpm-solver
+
+# Note: Inference performance speedup with Intel DL Boost (VNNI/AMX) on Intel(R) Xeon(R) hardware, Please refer to [Performance Tuning Guide](https://intel.github.io/intel-extension-for-pytorch/cpu/latest/tutorials/performance_tuning/tuning_guide.html) for more optimizations.
+
+```
 
 ## Accelerating the inference for Stable Diffusion using INT8
 

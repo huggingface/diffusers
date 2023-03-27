@@ -1,9 +1,15 @@
+
 import intel_extension_for_pytorch as ipex
 import torch
 from PIL import Image
+import argparse
 
-from diffusers import StableDiffusionPipeline
+from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
 
+
+parser = argparse.ArgumentParser('Stable Diffusion script with intel optimization', add_help=False)
+parser.add_argument('--dpm-solver', action='store_true', help="Enable DPMSolver or not")
+args = parser.parse_args()
 
 def image_grid(imgs, rows, cols):
     assert len(imgs) == rows * cols
@@ -24,6 +30,8 @@ prompt = prompt * batch_size
 device = "cpu"
 model_id = "path-to-your-trained-model"
 model = StableDiffusionPipeline.from_pretrained(model_id)
+if args.dpm_solver:
+    model.scheduler = DPMSolverMultistepScheduler.from_config(model.scheduler.config)
 model = model.to(device)
 
 # to channels last
@@ -33,7 +41,11 @@ model.text_encoder = model.text_encoder.to(memory_format=torch.channels_last)
 model.safety_checker = model.safety_checker.to(memory_format=torch.channels_last)
 
 # optimize with ipex
-model.unet = ipex.optimize(model.unet.eval(), dtype=torch.bfloat16, inplace=True)
+sample = torch.randn(2,4,64,64)
+timestep = torch.rand(1)*999
+encoder_hidden_status = torch.randn(2,77,768)
+input_example = (sample, timestep, encoder_hidden_status)
+model.unet = ipex.optimize(model.unet.eval(), dtype=torch.bfloat16, inplace=True, sample_input=input_example)
 model.vae = ipex.optimize(model.vae.eval(), dtype=torch.bfloat16, inplace=True)
 model.text_encoder = ipex.optimize(model.text_encoder.eval(), dtype=torch.bfloat16, inplace=True)
 model.safety_checker = ipex.optimize(model.safety_checker.eval(), dtype=torch.bfloat16, inplace=True)
@@ -42,7 +54,7 @@ model.safety_checker = ipex.optimize(model.safety_checker.eval(), dtype=torch.bf
 seed = 666
 generator = torch.Generator(device).manual_seed(seed)
 with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
-    images = model(prompt, guidance_scale=7.5, num_inference_steps=50, generator=generator).images
+    images = model(prompt, generator=generator).images[0]
 
     # save image
     grid = image_grid(images, rows=2, cols=4)
