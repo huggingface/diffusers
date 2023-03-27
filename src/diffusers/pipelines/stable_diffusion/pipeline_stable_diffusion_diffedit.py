@@ -81,7 +81,7 @@ def kl_divergence(hidden_states):
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.preprocess
-def preprocess(image):
+def preprocess_image(image):
     if isinstance(image, torch.Tensor):
         return image
     elif isinstance(image, PIL.Image.Image):
@@ -102,93 +102,10 @@ def preprocess(image):
     return image
 
 
-def preprocess_image_and_mask(image, mask):
-    """
-    Prepares a pair (image, mask) to be consumed by the Stable Diffusion pipeline. This means that those inputs will be
-    converted to ``torch.Tensor`` with shapes ``batch x channels x height x width`` where ``channels`` is ``3`` for the
-    ``image`` and ``1`` for the ``mask``.
-
-    The ``image`` will be converted to ``torch.float32`` and normalized to be in ``[-1, 1]``. The ``mask`` will be
-    binarized (``mask > 0.5``) and cast to ``torch.float32`` too.
-
-    Args:
-        image (Union[np.array, PIL.Image, torch.Tensor]): The image to inpaint.
-            It can be a ``PIL.Image``, or a ``height x width x 3`` ``np.array`` or a ``channels x height x width``
-            ``torch.Tensor`` or a ``batch x channels x height x width`` ``torch.Tensor``.
-        mask (Union[np.array, PIL.Image, torch.Tensor], *optional*):
-            The mask to apply to the image, i.e. regions to inpaint. It can be a ``PIL.Image``, or a ``height x width``
-            ``np.array`` or a ``1 x height x width`` ``torch.Tensor`` or a ``batch x 1 x height x width``
-            ``torch.Tensor``.
-
-    Raises:
-        ValueError: ``torch.Tensor`` images should be in the ``[-1, 1]`` range. ValueError: ``torch.Tensor`` mask
-        should be in the ``[0, 1]`` range. ValueError: ``mask`` and ``image`` should have the same spatial dimensions.
-        TypeError: ``mask`` is a ``torch.Tensor`` but ``image`` is not
-            (ot the other way around).
-
-    Returns:
-        tuple[torch.Tensor]: The pair (mask, masked_image) as ``torch.Tensor`` with 4
-            dimensions: ``batch x channels x height x width``.
-    """
-    if isinstance(image, torch.Tensor):
-        if not isinstance(mask, torch.Tensor):
-            raise TypeError(f"`image` is a torch.Tensor but `mask` (type: {type(mask)} is not")
-
-        # Batch single image
-        if image.ndim == 3:
-            assert image.shape[0] == 3, "Image outside a batch should be of shape (3, H, W)"
-            image = image.unsqueeze(0)
-
-        # Batch and add channel dim for single mask
-        if mask.ndim == 2:
-            mask = mask.unsqueeze(0).unsqueeze(0)
-
-        # Batch single mask or add channel dim
-        if mask.ndim == 3:
-            # Single batched mask, no channel dim or single mask not batched but channel dim
-            if mask.shape[0] == 1:
-                mask = mask.unsqueeze(0)
-
-            # Batched masks no channel dim
-            else:
-                mask = mask.unsqueeze(1)
-
-        assert image.ndim == 4 and mask.ndim == 4, "Image and Mask must have 4 dimensions"
-        assert image.shape[-2:] == mask.shape[-2:], "Image and Mask must have the same spatial dimensions"
-        assert image.shape[0] == mask.shape[0], "Image and Mask must have the same batch size"
-
-        # Check image is in [-1, 1]
-        if image.min() < -1 or image.max() > 1:
-            raise ValueError("Image should be in [-1, 1] range")
-
-        # Check mask is in [0, 1]
-        if mask.min() < 0 or mask.max() > 1:
-            raise ValueError("Mask should be in [0, 1] range")
-
-        # Binarize mask
-        mask[mask < 0.5] = 0
-        mask[mask >= 0.5] = 1
-
-        # Image as float32
-        image = image.to(dtype=torch.float32)
-    elif isinstance(mask, torch.Tensor):
-        raise TypeError(f"`mask` is a torch.Tensor but `image` (type: {type(image)} is not")
-    else:
-        # preprocess image
-        if isinstance(image, (PIL.Image.Image, np.ndarray)):
-            image = [image]
-
-        if isinstance(image, list) and isinstance(image[0], PIL.Image.Image):
-            image = [np.array(i.convert("RGB"))[None, :] for i in image]
-            image = np.concatenate(image, axis=0)
-        elif isinstance(image, list) and isinstance(image[0], np.ndarray):
-            image = np.concatenate([i[None, :] for i in image], axis=0)
-
-        image = image.transpose(0, 3, 1, 2)
-        image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
-
+def preprocess_mask(mask):
+    if not isinstance(mask, torch.Tensor):
         # preprocess mask
-        if isinstance(mask, (PIL.Image.Image, np.ndarray)):
+        if isinstance(mask, PIL.Image.Image) or (isinstance(mask, np.ndarray) and mask.ndim < 3):
             mask = [mask]
 
         if isinstance(mask, list) and isinstance(mask[0], PIL.Image.Image):
@@ -197,11 +114,31 @@ def preprocess_image_and_mask(image, mask):
         elif isinstance(mask, list) and isinstance(mask[0], np.ndarray):
             mask = np.concatenate([m[None, None, :] for m in mask], axis=0)
 
-        mask[mask < 0.5] = 0
-        mask[mask >= 0.5] = 1
         mask = torch.from_numpy(mask)
 
-    return mask, image
+    # Batch and add channel dim for single mask
+    if mask.ndim == 2:
+        mask = mask.unsqueeze(0).unsqueeze(0)
+
+    # Batch single mask or add channel dim
+    if mask.ndim == 3:
+        # Single batched mask, no channel dim or single mask not batched but channel dim
+        if mask.shape[0] == 1:
+            mask = mask.unsqueeze(0)
+
+        # Batched masks no channel dim
+        else:
+            mask = mask.unsqueeze(1)
+
+    # Check mask is in [0, 1]
+    if mask.min() < 0 or mask.max() > 1:
+        raise ValueError("Mask should be in [0, 1] range")
+
+    # Binarize mask
+    mask[mask < 0.5] = 0
+    mask[mask >= 0.5] = 1
+
+    return mask
 
 
 class StableDiffusionDiffEditPipeline(DiffusionPipeline):
@@ -666,37 +603,39 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
                     f" {negative_prompt_embeds.shape}."
                 )
 
-    def check_mask_inputs(
+    def check_source_inputs(
         self,
-        mask_prompt=None,
-        mask_negative_prompt=None,
-        mask_prompt_embeds=None,
-        mask_negative_prompt_embeds=None,
+        source_prompt=None,
+        source_negative_prompt=None,
+        source_prompt_embeds=None,
+        source_negative_prompt_embeds=None,
     ):
-        if mask_prompt is not None and mask_prompt_embeds is not None:
+        if source_prompt is not None and source_prompt_embeds is not None:
             raise ValueError(
-                f"Cannot forward both `mask_prompt`: {mask_prompt} and `mask_prompt_embeds`: {mask_prompt_embeds}."
+                f"Cannot forward both `source_prompt`: {source_prompt} and `source_prompt_embeds`: {source_prompt_embeds}."
                 "  Please make sure to only forward one of the two."
             )
-        elif mask_prompt is None and mask_prompt_embeds is None:
+        elif source_prompt is None and source_prompt_embeds is None:
             raise ValueError(
-                "Provide either `mask_image` or `mask_prompt_embeds`. Cannot leave all both of the arguments undefined."
+                "Provide either `source_image` or `source_prompt_embeds`. Cannot leave all both of the arguments undefined."
             )
-        elif mask_prompt is not None and (not isinstance(mask_prompt, str) and not isinstance(mask_prompt, list)):
-            raise ValueError(f"`mask_prompt` has to be of type `str` or `list` but is {type(mask_prompt)}")
+        elif source_prompt is not None and (
+            not isinstance(source_prompt, str) and not isinstance(source_prompt, list)
+        ):
+            raise ValueError(f"`source_prompt` has to be of type `str` or `list` but is {type(source_prompt)}")
 
-        if mask_negative_prompt is not None and mask_negative_prompt_embeds is not None:
+        if source_negative_prompt is not None and source_negative_prompt_embeds is not None:
             raise ValueError(
-                f"Cannot forward both `mask_negative_prompt`: {mask_negative_prompt} and `mask_negative_prompt_embeds`:"
-                f" {mask_negative_prompt_embeds}. Please make sure to only forward one of the two."
+                f"Cannot forward both `source_negative_prompt`: {source_negative_prompt} and `source_negative_prompt_embeds`:"
+                f" {source_negative_prompt_embeds}. Please make sure to only forward one of the two."
             )
 
-        if mask_prompt_embeds is not None and mask_negative_prompt_embeds is not None:
-            if mask_prompt_embeds.shape != mask_negative_prompt_embeds.shape:
+        if source_prompt_embeds is not None and source_negative_prompt_embeds is not None:
+            if source_prompt_embeds.shape != source_negative_prompt_embeds.shape:
                 raise ValueError(
-                    "`mask_prompt_embeds` and `mask_negative_prompt_embeds` must have the same shape when passed"
-                    f" directly, but got: `mask_prompt_embeds` {mask_prompt_embeds.shape} !="
-                    f" `mask_negative_prompt_embeds` {mask_negative_prompt_embeds.shape}."
+                    "`source_prompt_embeds` and `source_negative_prompt_embeds` must have the same shape when passed"
+                    f" directly, but got: `source_prompt_embeds` {source_prompt_embeds.shape} !="
+                    f" `source_negative_prompt_embeds` {source_negative_prompt_embeds.shape}."
                 )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.get_timesteps
@@ -706,6 +645,15 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
 
         t_start = max(num_inference_steps - init_timestep, 0)
         timesteps = self.scheduler.timesteps[t_start:]
+
+        return timesteps, num_inference_steps - t_start
+
+    def get_inverse_timesteps(self, num_inference_steps, strength, device):
+        # get the original timestep using init_timestep
+        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
+
+        t_start = max(num_inference_steps - init_timestep, 0)
+        timesteps = self.inverse_scheduler.timesteps[:-t_start]
 
         return timesteps, num_inference_steps - t_start
 
@@ -781,15 +729,15 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
     @torch.no_grad()
     def compute_mask(
         self,
-        prompt: Optional[Union[str, List[str]]] = None,
         image: Union[torch.FloatTensor, PIL.Image.Image] = None,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        mask_prompt: Optional[Union[str, List[str]]] = None,
-        mask_negative_prompt: Optional[Union[str, List[str]]] = None,
-        mask_prompt_embeds: Optional[torch.FloatTensor] = None,
-        mask_negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        target_prompt: Optional[Union[str, List[str]]] = None,
+        target_negative_prompt: Optional[Union[str, List[str]]] = None,
+        target_prompt_embeds: Optional[torch.FloatTensor] = None,
+        target_negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        source_prompt: Optional[Union[str, List[str]]] = None,
+        source_negative_prompt: Optional[Union[str, List[str]]] = None,
+        source_prompt_embeds: Optional[torch.FloatTensor] = None,
+        source_negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         num_maps_per_mask: Optional[int] = 10,
         mask_encode_strength: Optional[float] = 0.5,
         mask_thresholding_ratio: Optional[float] = 3.0,
@@ -806,29 +754,36 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
         Args:
             image (`PIL.Image.Image`):
                 `Image`, or tensor representing an image batch which will be used for computing the mask.
-            prompt (`str` or `List[str]`, *optional*):
+            target_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the semantic mask generation. If not defined, one has to pass
                 `prompt_embeds`. instead.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            target_negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds`. instead. Ignored when not using guidance (i.e., ignored if `guidance_scale`
                 is less than `1`).
-            mask_prompt (`str` or `List[str]`, *optional*):
+            target_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
+                provided, text embeddings will be generated from `prompt` input argument.
+            target_negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
+                argument.
+            source_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the semantic mask generation using the method in [DiffEdit:
                 Diffusion-Based Semantic Image Editing with Mask Guidance](https://arxiv.org/pdf/2210.11427.pdf). If
-                not defined, one has to pass `mask_prompt_embeds` or `mask_image` instead.
-            mask_negative_prompt (`str` or `List[str]`, *optional*):
+                not defined, one has to pass `source_prompt_embeds` or `source_image` instead.
+            source_negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the semantic mask generation away from using the method in [DiffEdit:
                 Diffusion-Based Semantic Image Editing with Mask Guidance](https://arxiv.org/pdf/2210.11427.pdf). If
-                not defined, one has to pass `mask_negative_prompt_embeds` or `mask_image` instead.
-            mask_prompt_embeds (`torch.FloatTensor`, *optional*):
+                not defined, one has to pass `source_negative_prompt_embeds` or `source_image` instead.
+            source_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings to guide the semantic mask generation. Can be used to easily tweak text
-                inputs, *e.g.* prompt weighting. If not provided, text embeddings will be generated from `mask_prompt`
-                input argument.
-            mask_negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+                inputs, *e.g.* prompt weighting. If not provided, text embeddings will be generated from
+                `source_prompt` input argument.
+            source_negative_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings to negatively guide the semantic mask generation. Can be used to easily
                 tweak text inputs, *e.g.* prompt weighting. If not provided, text embeddings will be generated from
-                `mask_negative_prompt` input argument.
+                `source_negative_prompt` input argument.
             num_maps_per_mask (`int`, *optional*, defaults to 10):
                 The number of noise maps sampled to generate the semantic mask using the method in [DiffEdit:
                 Diffusion-Based Semantic Image Editing with Mask Guidance](https://arxiv.org/pdf/2210.11427.pdf).
@@ -854,13 +809,6 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
-                argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -871,7 +819,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
             `List[PIL.Image.Image]` or `np.array`: `List[PIL.Image.Image]` if `output_type` is `"pil"`, otherwise a
             `np.array`. When returning a `List[PIL.Image.Image]`, the list will consist of a batch of single-channel
             binary image with dimensions `(height // self.vae_scale_factor, width // self.vae_scale_factor)`, otherwise
-            the `np.array` will have shape `(batch_size, 1, height // self.vae_scale_factor, width //
+            the `np.array` will have shape `(batch_size, height // self.vae_scale_factor, width //
             self.vae_scale_factor)`.
         """
 
@@ -881,21 +829,21 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
 
         # 1. Check inputs
         self.check_inputs(
-            prompt,
+            target_prompt,
             height,
             width,
             mask_encode_strength,
             1,
-            negative_prompt,
-            prompt_embeds,
-            negative_prompt_embeds,
+            target_negative_prompt,
+            target_prompt_embeds,
+            target_negative_prompt_embeds,
         )
 
-        self.check_mask_inputs(
-            mask_prompt,
-            mask_negative_prompt,
-            mask_prompt_embeds,
-            mask_negative_prompt_embeds,
+        self.check_source_inputs(
+            source_prompt,
+            source_negative_prompt,
+            source_prompt_embeds,
+            source_negative_prompt_embeds,
         )
 
         if (num_maps_per_mask is None) or (
@@ -913,12 +861,12 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
             )
 
         # 2. Define call parameters
-        if prompt is not None and isinstance(prompt, str):
+        if target_prompt is not None and isinstance(target_prompt, str):
             batch_size = 1
-        elif prompt is not None and isinstance(prompt, list):
-            batch_size = len(prompt)
+        elif target_prompt is not None and isinstance(target_prompt, list):
+            batch_size = len(target_prompt)
         else:
-            batch_size = prompt_embeds.shape[0]
+            batch_size = target_prompt_embeds.shape[0]
 
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
@@ -927,66 +875,66 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompts
-        prompt_embeds = self._encode_prompt(
-            prompt,
+        target_prompt_embeds = self._encode_prompt(
+            target_prompt,
             device,
             num_maps_per_mask,
             do_classifier_free_guidance,
-            negative_prompt,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
+            target_negative_prompt,
+            prompt_embeds=target_prompt_embeds,
+            negative_prompt_embeds=target_negative_prompt_embeds,
         )
 
-        mask_prompt_embeds = self._encode_prompt(
-            mask_prompt,
+        source_prompt_embeds = self._encode_prompt(
+            source_prompt,
             device,
             num_maps_per_mask,
             do_classifier_free_guidance,
-            mask_negative_prompt,
-            prompt_embeds=mask_prompt_embeds,
-            negative_prompt_embeds=mask_negative_prompt_embeds,
+            source_negative_prompt,
+            prompt_embeds=source_prompt_embeds,
+            negative_prompt_embeds=source_negative_prompt_embeds,
         )
 
         # 4. Preprocess image
-        image = preprocess(image)
+        image = preprocess_image(image)
 
         # 5. Set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps = self.scheduler.timesteps
+        timesteps, _ = self.get_timesteps(num_inference_steps, mask_encode_strength, device)
+        encode_timestep = timesteps[0]
 
         # 6. Prepare image latents and add noise with specified strength
         image_latents = self.prepare_image_latents(
             image, batch_size * num_maps_per_mask, self.vae.dtype, device, generator
         )
         noise = torch.randn_like(image_latents)
-        encode_timestep = torch.tensor(timesteps[int(mask_encode_strength * num_inference_steps)])
-        latent_model_input = self.scheduler.add_noise(image_latents, noise, encode_timestep)
+        image_latents = self.scheduler.add_noise(image_latents, noise, encode_timestep)
 
         latent_model_input = torch.cat([image_latents] * (4 if do_classifier_free_guidance else 2))
         latent_model_input = self.scheduler.scale_model_input(latent_model_input, encode_timestep)
 
         # 7. Predict the noise residual
-        prompt_embeds = torch.cat([mask_prompt_embeds, prompt_embeds])
+        prompt_embeds = torch.cat([source_prompt_embeds, target_prompt_embeds])
         noise_pred = self.unet(latent_model_input, encode_timestep, encoder_hidden_states=prompt_embeds).sample
 
         if do_classifier_free_guidance:
-            noise_pred_neg_mask, noise_pred_mask, noise_pred_uncond, noise_pred_target = noise_pred.chunk(4)
-            noise_pred_mask = noise_pred_neg_mask + guidance_scale * (noise_pred_mask - noise_pred_neg_mask)
+            noise_pred_neg_src, noise_pred_source, noise_pred_uncond, noise_pred_target = noise_pred.chunk(4)
+            noise_pred_source = noise_pred_neg_src + guidance_scale * (noise_pred_source - noise_pred_neg_src)
             noise_pred_target = noise_pred_uncond + guidance_scale * (noise_pred_target - noise_pred_uncond)
         else:
-            noise_pred_mask, noise_pred_target = noise_pred.chunk(2)
+            noise_pred_source, noise_pred_target = noise_pred.chunk(2)
 
         # 8. Compute the mask from the absolute difference of predicted noise residuals
         # TODO: Consider smoothing mask guidance map
         mask_guidance_map = (
-            torch.abs(noise_pred_mask - noise_pred_target)
-            .reshape(batch_size, num_maps_per_mask, noise_pred_target.shape[:-3])
-            .mean(1, 2)
+            torch.abs(noise_pred_target - noise_pred_source)
+            .reshape(batch_size, num_maps_per_mask, *noise_pred_target.shape[-3:])
+            .mean([1, 2])
         )
         clamp_magnitude = mask_guidance_map.mean() * mask_thresholding_ratio
         semantic_mask_image = mask_guidance_map.clamp(0, clamp_magnitude) / clamp_magnitude
-        semantic_mask_image = torch.where(semantic_mask_image <= 0.5, 0, 1).unsqueeze(1)
-        mask_image = semantic_mask_image.detach().clone().numpy()
+        semantic_mask_image = torch.where(semantic_mask_image <= 0.5, 0, 1)
+        mask_image = semantic_mask_image.cpu().numpy()
 
         # 9. Convert to Numpy array or PIL.
         if output_type == "pil":
@@ -1097,7 +1045,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
 
         >>> img_url = "https://github.com/Xiang-cd/DiffEdit-stable-diffusion/raw/main/assets/origin.png"
 
-        >>> init_image = download_image(img_url).resize((512, 512))
+        >>> init_image = download_image(img_url).resize((768, 768))
 
         >>> pipe = StableDiffusionDiffEditPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16
@@ -1119,7 +1067,23 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
             if `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is the inverted
             latents tensors ordered by increasing noise, and then second is the corresponding decoded images.
         """
-        # 1. Define call parameters
+
+        # 1. Check inputs
+        self.check_inputs(
+            prompt,
+            0,
+            0,
+            inpaint_strength,
+            callback_steps,
+            negative_prompt,
+            prompt_embeds,
+            negative_prompt_embeds,
+        )
+
+        if image is None:
+            raise ValueError("`image` input cannot be undefined.")
+
+        # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -1134,7 +1098,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Preprocess image
-        image = preprocess(image)
+        image = preprocess_image(image)
 
         # 4. Prepare latent variables
         num_images_per_prompt = 1
@@ -1155,7 +1119,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
 
         # 6. Prepare timesteps
         self.inverse_scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, inpaint_strength, device)
+        timesteps, num_inference_steps = self.get_inverse_timesteps(num_inference_steps, inpaint_strength, device)
 
         # 7. Noising loop where we obtain the intermediate noised latent image for each timestep.
         num_warmup_steps = len(timesteps) - num_inference_steps * self.inverse_scheduler.order
@@ -1217,7 +1181,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
                         callback(i, t, latents)
 
         assert len(inverted_latents) == len(timesteps)
-        latents = torch.stack(inverted_latents, 0)[::-1]
+        latents = torch.cat(list(reversed(inverted_latents)))
 
         # 8. Post-processing
         image = self.decode_latents(latents.detach())
@@ -1239,10 +1203,8 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        image: Union[torch.FloatTensor, PIL.Image.Image] = None,
-        mask_image: Optional[Union[torch.FloatTensor, PIL.Image.Image]] = None,
-        inverted_latents: Optional[torch.FloatTensor] = None,
-        num_maps_per_mask: Optional[int] = 10,
+        mask: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        image_latents: torch.FloatTensor = None,
         inpaint_strength: Optional[float] = 0.8,
         height: Optional[int] = None,
         width: Optional[int] = None,
@@ -1259,10 +1221,6 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
-        lambda_auto_corr: float = 20.0,
-        lambda_kl: float = 20.0,
-        num_reg_steps: int = 0,
-        num_auto_corr_rolls: int = 5,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -1271,21 +1229,18 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            image (`PIL.Image.Image`):
-                `Image`, or tensor representing an image batch which will be inpainted, *i.e.* parts of the image will
-                be masked out with `mask_image` and repainted according to `prompt`.
-            mask_image (`PIL.Image.Image`):
-                `Image`, or tensor representing an image batch, to mask `image`. White pixels in the mask will be
-                repainted, while black pixels will be preserved. If `mask_image` is a PIL image, it will be converted
+            mask (`PIL.Image.Image`):
+                `Image`, or tensor representing an image batch, to mask the generated image. White pixels in the mask
+                will be repainted, while black pixels will be preserved. If `mask` is a PIL image, it will be converted
                 to a single channel (luminance) before use. If it's a tensor, it should contain one color channel (L)
                 instead of 3, so the expected shape would be `(B, 1, H, W)`.
-            inverted_latents (`torch.FloatTensor`):
-                Pre-generated partially noised latents inverted from `image` to be used as inputs for image generation.
+            image_latents (`torch.FloatTensor`):
+                Partially noised image latents from the inversion process to be used as inputs for image generation.
             inpaint_strength (`float`, *optional*, defaults to 0.8):
                 Conceptually, indicates how much to inpaint the masked area. Must be between 0 and 1. When `strength`
                 is 1, the denoising process will be run on the masked area for the full number of iterations specified
-                in `num_inference_steps`. `image` will be used as a reference for the masked area, adding more noise to
-                that region the larger the `strength`. If `strength` is 0, no inpainting will occur.
+                in `num_inference_steps`. `image_latents` will be used as a reference for the masked area, adding more
+                noise to that region the larger the `strength`. If `strength` is 0, no inpainting will occur.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -1330,14 +1285,6 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
-            lambda_auto_corr (`float`, *optional*, defaults to 20.0):
-                Lambda parameter to control auto correction
-            lambda_kl (`float`, *optional*, defaults to 20.0):
-                Lambda parameter to control Kullback–Leibler divergence output
-            num_reg_steps (`int`, *optional*, defaults to 0):
-                Number of regularization loss steps
-            num_auto_corr_rolls (`int`, *optional*, defaults to 5):
-                Number of auto correction roll steps
 
         Examples:
 
@@ -1356,7 +1303,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
 
         >>> img_url = "https://github.com/Xiang-cd/DiffEdit-stable-diffusion/raw/main/assets/origin.png"
 
-        >>> init_image = download_image(img_url).resize((512, 512))
+        >>> init_image = download_image(img_url).resize((768, 768))
 
         >>> pipe = StableDiffusionDiffEditPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16
@@ -1370,11 +1317,9 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
         >>> mask_prompt = "A bowl of fruits"
         >>> prompt = "A bowl of pears"
 
-        >>> mask_image = pipe.compute_mask(image=init_image, prompt=prompt, mask_prompt=mask_prompt)
-        >>> inverted_latents = pipe.invert(image=invert_image, prompt=mask_prompt).latents
-        >>> image = pipe(
-        ...     prompt=prompt, image=init_image, mask_image=mask_image, inverted_latents=inverted_latents
-        ... ).images[0]
+        >>> mask_image = pipe.compute_mask(image=init_image, source_prompt=prompt, target_prompt=mask_prompt)
+        >>> image_latents = pipe.invert(image=init_image, prompt=mask_prompt).latents
+        >>> image = pipe(prompt=prompt, mask=mask_image, image_latents=image_latents).images[0]
         ```
 
         Returns:
@@ -1387,6 +1332,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
+        vae_latent_size = (height // self.vae_scale_factor, width // self.vae_scale_factor)
 
         # 1. Check inputs
         self.check_inputs(
@@ -1400,12 +1346,12 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
             negative_prompt_embeds,
         )
 
-        if image is None:
-            raise ValueError("`image` input cannot be undefined.")
-        if mask_image is None:
+        if mask is None:
             raise ValueError(
-                "`mask_image` input cannot be undefined. Use `compute_mask()` to compute `mask_image` from text prompts."
+                "`mask` input cannot be undefined. Use `compute_mask()` to compute `mask` from text prompts."
             )
+        if image_latents is None:
+            raise ValueError("`image_latents` input cannot be undefined. Use `invert()` to compute `image_latents` from input images.")
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -1432,51 +1378,39 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
             negative_prompt_embeds=negative_prompt_embeds,
         )
 
-        # 4. Preprocess mask and image
-        image, mask_image = preprocess_image_and_mask(image, mask_image)
-
-        mask_image = torch.cat([mask_image] * num_images_per_prompt)
-        vae_latent_size = (height // self.vae_scale_factor, width // self.vae_scale_factor)
-        mask_image = torch.nn.functional.interpolate(mask_image, size=vae_latent_size)
-        mask_image = mask_image.to(device=device, dtype=prompt_embeds.dtype)
+        # 4. Preprocess mask
+        mask = preprocess_mask(mask)
+        mask_shape = (batch_size, 1, *vae_latent_size)
+        if mask.shape != mask_shape:
+            raise ValueError(f"`mask` must have shape {mask_shape}, but has shape {mask.shape}")
+        mask = torch.cat([mask] * num_images_per_prompt)
+        mask = mask.to(device=device, dtype=prompt_embeds.dtype)
 
         # 5. Set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        self.inverse_scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, inpaint_strength, device)
 
-        # 6. Prepare latent variables
+        # 6. Preprocess image latents
         num_channels_latents = self.vae.config.latent_channels
-        latents = self.prepare_latents(
-            batch_size * num_images_per_prompt,
-            num_channels_latents,
-            height,
-            width,
-            prompt_embeds.dtype,
-            device,
-            generator,
-            latents,
+        image_latents_shape = (len(timesteps) * batch_size, num_channels_latents, *vae_latent_size)
+        if image_latents.shape != image_latents_shape:
+            raise ValueError(
+                f"`image_latents` must have shape {image_latents_shape}, but has shape {image_latents.shape}"
+            )
+        if isinstance(image_latents, np.ndarray):
+            image_latents = torch.from_numpy(image_latents)
+        image_latents = torch.cat(
+            [image_latents.reshape(-1, batch_size, num_channels_latents, *vae_latent_size)] * num_images_per_prompt,
+            1,
         )
+        image_latents = image_latents.to(device=device, dtype=prompt_embeds.dtype)
 
-        # 7. Preprocess inverted latents
-        inverted_latents_shape = (len(timesteps), batch_size, num_channels_latents, *vae_latent_size)
-        if inverted_latents is None:
-            raise ValueError(
-                "`inverted_latents` input cannot be undefined. Use `invert()` to compute `inverted_latents`."
-            )
-        elif inverted_latents.shape != inverted_latents_shape:
-            raise ValueError(
-                f"`inverted_latents` must have shape {inverted_latents_shape}, but has shape {inverted_latents.shape}"
-            )
-        if isinstance(inverted_latents, np.ndarray):
-            inverted_latents = torch.from_numpy(inverted_latents)
-        inverted_latents = inverted_latents.to(device=device, dtype=prompt_embeds.dtype)
-
-        # 8. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 9. Denoising loop
-        num_warmup_steps = len(timesteps) - num_inference_steps * self.inverse_scheduler.order
+        # 8. Denoising loop
+        latents = image_latents[0].detach().clone()
+        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
@@ -1495,7 +1429,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
                 # mask with inverted latents from appropriate timestep - use original image latent for last step
-                latents = latents * mask_image + inverted_latents[i] * (1 - mask_image)
+                latents = latents * mask + image_latents[i] * (1 - mask)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
@@ -1503,13 +1437,13 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
-        # 10. Post-processing
+        # 9. Post-processing
         image = self.decode_latents(latents)
 
-        # 11. Run safety checker
+        # 10. Run safety checker
         image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
-        # 12. Convert to PIL
+        # 11. Convert to PIL
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
