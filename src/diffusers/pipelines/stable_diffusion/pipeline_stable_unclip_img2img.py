@@ -388,7 +388,7 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
             # what the expected dimensions of inputs should be and how we handle the encoding.
             repeat_by = num_images_per_prompt
 
-        if not image_embeds:
+        if image_embeds is None:
             if not isinstance(image, torch.Tensor):
                 image = self.feature_extractor(images=image, return_tensors="pt").pixel_values
 
