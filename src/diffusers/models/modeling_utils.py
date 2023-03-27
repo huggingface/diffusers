@@ -392,6 +392,10 @@ class ModelMixin(torch.nn.Module):
             variant (`str`, *optional*):
                 If specified load weights from `variant` filename, *e.g.* pytorch_model.<variant>.bin. `variant` is
                 ignored when using `from_flax`.
+            use_safetensors (`bool`, *optional* ):
+                If set to `True`, the pipeline will forcibly load the models from `safetensors` weights. If set to
+                `None` (the default). The pipeline will load using `safetensors` if safetensors weights are available
+                *and* if `safetensors` is installed. If the to `False` the pipeline will *not* use `safetensors`.
 
         <Tip>
 
@@ -423,6 +427,17 @@ class ModelMixin(torch.nn.Module):
         device_map = kwargs.pop("device_map", None)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+
+        if use_safetensors and not is_safetensors_available():
+            raise ValueError(
+                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetenstors"
+            )
+
+        allow_pickle = False
+        if use_safetensors is None:
+            use_safetensors = is_safetensors_available()
+            allow_pickle = True
 
         if low_cpu_mem_usage and not is_accelerate_available():
             low_cpu_mem_usage = False
@@ -509,7 +524,7 @@ class ModelMixin(torch.nn.Module):
 
             model = load_flax_checkpoint_in_pytorch_model(model, model_file)
         else:
-            if is_safetensors_available():
+            if use_safetensors:
                 try:
                     model_file = _get_model_file(
                         pretrained_model_name_or_path,
@@ -525,7 +540,9 @@ class ModelMixin(torch.nn.Module):
                         user_agent=user_agent,
                         commit_hash=commit_hash,
                     )
-                except:  # noqa: E722
+                except IOError as e:
+                    if not allow_pickle:
+                        raise e
                     pass
             if model_file is None:
                 model_file = _get_model_file(
@@ -558,7 +575,7 @@ class ModelMixin(torch.nn.Module):
                         raise ValueError(
                             f"Cannot load {cls} from {pretrained_model_name_or_path} because the following keys are"
                             f" missing: \n {', '.join(missing_keys)}. \n Please make sure to pass"
-                            " `low_cpu_mem_usage=False` and `device_map=None` if you want to randomely initialize"
+                            " `low_cpu_mem_usage=False` and `device_map=None` if you want to randomly initialize"
                             " those weights or else make sure your checkpoint file is correct."
                         )
 
@@ -574,7 +591,7 @@ class ModelMixin(torch.nn.Module):
                             set_module_tensor_to_device(model, param_name, param_device, value=param)
                 else:  # else let accelerate handle loading and dispatching.
                     # Load weights and dispatch according to the device_map
-                    # by deafult the device_map is None and the weights are loaded on the CPU
+                    # by default the device_map is None and the weights are loaded on the CPU
                     accelerate.load_checkpoint_and_dispatch(model, model_file, device_map, dtype=torch_dtype)
 
                 loading_info = {

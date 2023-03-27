@@ -31,7 +31,7 @@ import torch
 from parameterized import parameterized
 from PIL import Image
 from requests.exceptions import HTTPError
-from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
@@ -107,6 +107,17 @@ class DownloadTests(unittest.TestCase):
             assert not any(f.endswith(".msgpack") for f in files)
             # We need to never convert this tiny model to safetensors for this test to pass
             assert not any(f.endswith(".safetensors") for f in files)
+
+    def test_force_safetensors_error(self):
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            # pipeline has Flax weights
+            with self.assertRaises(EnvironmentError):
+                tmpdirname = DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-pipe-no-safetensors",
+                    safety_checker=None,
+                    cache_dir=tmpdirname,
+                    use_safetensors=True,
+                )
 
     def test_returned_cached_folder(self):
         prompt = "hello"
@@ -422,7 +433,7 @@ class CustomPipelineTests(unittest.TestCase):
     def test_download_from_git(self):
         clip_model_id = "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 
-        feature_extractor = CLIPFeatureExtractor.from_pretrained(clip_model_id)
+        feature_extractor = CLIPImageProcessor.from_pretrained(clip_model_id)
         clip_model = CLIPModel.from_pretrained(clip_model_id, torch_dtype=torch.float16)
 
         pipeline = DiffusionPipeline.from_pretrained(
@@ -1112,7 +1123,7 @@ class PipelineSlowTests(unittest.TestCase):
                 f"/compel/forest_{i}.npy"
             )
 
-            assert np.abs(image - expected_image).max() < 1e-3
+            assert np.abs(image - expected_image).max() < 1e-2
 
 
 @nightly

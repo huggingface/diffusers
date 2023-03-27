@@ -512,8 +512,13 @@ class DiffusionPipeline(ConfigMixin):
 
             save_method(os.path.join(save_directory, pipeline_component_name), **save_kwargs)
 
-    def to(self, torch_device: Optional[Union[str, torch.device]] = None, silence_dtype_warnings: bool = False):
-        if torch_device is None:
+    def to(
+        self,
+        torch_device: Optional[Union[str, torch.device]] = None,
+        torch_dtype: Optional[torch.dtype] = None,
+        silence_dtype_warnings: bool = False,
+    ):
+        if torch_device is None and torch_dtype is None:
             return self
 
         # throw warning if pipeline is in "offloaded"-mode but user tries to manually set to GPU.
@@ -550,6 +555,7 @@ class DiffusionPipeline(ConfigMixin):
         for name in module_names.keys():
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
+                module.to(torch_device, torch_dtype)
                 if (
                     module.dtype == torch.float16
                     and str(torch_device) in ["cpu"]
@@ -563,7 +569,6 @@ class DiffusionPipeline(ConfigMixin):
                         " support for`float16` operations on this device in PyTorch. Please, remove the"
                         " `torch_dtype=torch.float16` argument, or use another device for inference."
                     )
-                module.to(torch_device)
         return self
 
     @property
@@ -694,6 +699,10 @@ class DiffusionPipeline(ConfigMixin):
                 also tries to not use more than 1x model size in CPU memory (including peak memory) while loading the
                 model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
                 setting this argument to `True` will raise an error.
+            use_safetensors (`bool`, *optional* ):
+                If set to `True`, the pipeline will be loaded from `safetensors` weights. If set to `None` (the
+                default). The pipeline will load using `safetensors` if the safetensors weights are available *and* if
+                `safetensors` is installed. If the to `False` the pipeline will *not* use `safetensors`.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load - and saveable variables - *i.e.* the pipeline components - of the
                 specific pipeline class. The overwritten components are then directly passed to the pipelines
@@ -752,6 +761,7 @@ class DiffusionPipeline(ConfigMixin):
         device_map = kwargs.pop("device_map", None)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
+        kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -1068,6 +1078,17 @@ class DiffusionPipeline(ConfigMixin):
         from_flax = kwargs.pop("from_flax", False)
         custom_pipeline = kwargs.pop("custom_pipeline", None)
         variant = kwargs.pop("variant", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+
+        if use_safetensors and not is_safetensors_available():
+            raise ValueError(
+                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetenstors"
+            )
+
+        allow_pickle = False
+        if use_safetensors is None:
+            use_safetensors = is_safetensors_available()
+            allow_pickle = True
 
         pipeline_is_cached = False
         allow_patterns = None
@@ -1123,9 +1144,17 @@ class DiffusionPipeline(ConfigMixin):
                 CUSTOM_PIPELINE_FILE_NAME,
             ]
 
+            if (
+                use_safetensors
+                and not allow_pickle
+                and not is_safetensors_compatible(model_filenames, variant=variant)
+            ):
+                raise EnvironmentError(
+                    f"Could not found the necessary `safetensors` weights in {model_filenames} (variant={variant})"
+                )
             if from_flax:
                 ignore_patterns = ["*.bin", "*.safetensors", "*.onnx", "*.pb"]
-            elif is_safetensors_available() and is_safetensors_compatible(model_filenames, variant=variant):
+            elif use_safetensors and is_safetensors_compatible(model_filenames, variant=variant):
                 ignore_patterns = ["*.bin", "*.msgpack"]
 
                 safetensors_variant_filenames = set([f for f in variant_filenames if f.endswith(".safetensors")])
@@ -1327,7 +1356,7 @@ class DiffusionPipeline(ConfigMixin):
         Args:
             slice_size (`str` or `int`, *optional*, defaults to `"auto"`):
                 When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
-                `"max"`, maxium amount of memory will be saved by running only one slice at a time. If a number is
+                `"max"`, maximum amount of memory will be saved by running only one slice at a time. If a number is
                 provided, uses as many slices as `attention_head_dim // slice_size`. In this case, `attention_head_dim`
                 must be a multiple of `slice_size`.
         """

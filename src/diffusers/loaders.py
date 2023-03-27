@@ -142,6 +142,17 @@ class UNet2DConditionLoadersMixin:
         revision = kwargs.pop("revision", None)
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+
+        if use_safetensors and not is_safetensors_available():
+            raise ValueError(
+                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetenstors"
+            )
+
+        allow_pickle = False
+        if use_safetensors is None:
+            use_safetensors = is_safetensors_available()
+            allow_pickle = True
 
         user_agent = {
             "file_type": "attn_procs_weights",
@@ -151,7 +162,7 @@ class UNet2DConditionLoadersMixin:
         model_file = None
         if not isinstance(pretrained_model_name_or_path_or_dict, dict):
             # Let's first try to load .safetensors weights
-            if (is_safetensors_available() and weight_name is None) or (
+            if (use_safetensors and weight_name is None) or (
                 weight_name is not None and weight_name.endswith(".safetensors")
             ):
                 try:
@@ -169,10 +180,11 @@ class UNet2DConditionLoadersMixin:
                         user_agent=user_agent,
                     )
                     state_dict = safetensors.torch.load_file(model_file, device="cpu")
-                except EnvironmentError:
+                except IOError as e:
+                    if not allow_pickle:
+                        raise e
                     # try loading non-safetensors weights
                     pass
-
             if model_file is None:
                 model_file = _get_model_file(
                     pretrained_model_name_or_path_or_dict,
