@@ -443,6 +443,17 @@ class DiffusionPipeline(ConfigMixin):
             # set models
             setattr(self, name, module)
 
+    def __setattr__(self, name: str, value: Any):
+        if hasattr(self, name) and hasattr(self.config, name):
+            # We need to overwrite the config if name exists in config
+            if isinstance(getattr(self.config, name), (tuple, list)):
+                class_library_tuple = (value.__module__.split(".")[0], value.__class__.__name__)
+                self.register_to_config(**{name: class_library_tuple})
+            else:
+                self.register_to_config(**{name: value})
+
+        super().__setattr__(name, value)
+
     def save_pretrained(
         self,
         save_directory: Union[str, os.PathLike],
