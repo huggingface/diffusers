@@ -35,7 +35,6 @@ from diffusers import (
     UNet2DConditionModel,
     logging,
 )
-from diffusers.models.attention_processor import AttnProcessor
 from diffusers.utils import load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
 
@@ -843,7 +842,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
             "CompVis/stable-diffusion-v1-4",
             torch_dtype=torch.float16,
         )
-        pipe.unet.set_attn_processor(AttnProcessor())
+        pipe.unet.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         outputs = pipe(**inputs)
@@ -856,7 +855,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
             "CompVis/stable-diffusion-v1-4",
             torch_dtype=torch.float16,
         )
-        pipe.unet.set_attn_processor(AttnProcessor())
+        pipe.unet.set_default_attn_processor()
 
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
