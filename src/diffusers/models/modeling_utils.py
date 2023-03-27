@@ -579,10 +579,17 @@ class ModelMixin(torch.nn.Module):
                             " those weights or else make sure your checkpoint file is correct."
                         )
 
+                    empty_state_dict = model.state_dict()
                     for param_name, param in state_dict.items():
                         accepts_dtype = "dtype" in set(
                             inspect.signature(set_module_tensor_to_device).parameters.keys()
                         )
+
+                        if empty_state_dict[param_name].shape != param.shape:
+                            raise ValueError(
+                                f"Cannot load {pretrained_model_name_or_path} because {param_name} expected shape {empty_state_dict[param_name]}, but got {param.shape}. If you want to instead overwrite randomly initialized weights, please make sure to pass both `low_cpu_mem_usage=False` and `ignore_mismatched_sizes=True`. For more information, see also: https://github.com/huggingface/diffusers/issues/1619#issuecomment-1345604389 as an example."
+                            )
+
                         if accepts_dtype:
                             set_module_tensor_to_device(
                                 model, param_name, param_device, value=param, dtype=torch_dtype
