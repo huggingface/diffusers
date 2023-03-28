@@ -81,7 +81,7 @@ def kl_divergence(hidden_states):
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.preprocess
-def preprocess_image(image):
+def preprocess(image):
     if isinstance(image, torch.Tensor):
         return image
     elif isinstance(image, PIL.Image.Image):
@@ -89,7 +89,7 @@ def preprocess_image(image):
 
     if isinstance(image[0], PIL.Image.Image):
         w, h = image[0].size
-        w, h = map(lambda x: x - x % 8, (w, h))  # resize to integer multiple of 8
+        w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
 
         image = [np.array(i.resize((w, h), resample=PIL_INTERPOLATION["lanczos"]))[None, :] for i in image]
         image = np.concatenate(image, axis=0)
@@ -900,7 +900,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
         )
 
         # 4. Preprocess image
-        image = preprocess_image(image)
+        image = preprocess(image)
 
         # 5. Set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -1106,7 +1106,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Preprocess image
-        image = preprocess_image(image)
+        image = preprocess(image)
 
         # 4. Prepare latent variables
         num_images_per_prompt = 1
