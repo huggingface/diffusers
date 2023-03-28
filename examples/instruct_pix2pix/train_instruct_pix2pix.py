@@ -673,7 +673,7 @@ def main():
         examples["edited_pixel_values"] = edited_images
 
         # Preprocess the captions.
-        captions = [caption for caption in examples[edit_prompt_column]]
+        captions = list(examples[edit_prompt_column])
         examples["input_ids"] = tokenize_captions(captions)
         return examples
 

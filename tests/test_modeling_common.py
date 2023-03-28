@@ -25,9 +25,9 @@ import torch
 from requests.exceptions import HTTPError
 
 from diffusers.models import UNet2DConditionModel
-from diffusers.models.attention_processor import AttnProcessor
 from diffusers.training_utils import EMAModel
 from diffusers.utils import torch_device
+from diffusers.utils.testing_utils import require_torch_gpu
 
 
 class ModelUtilsTest(unittest.TestCase):
@@ -106,16 +106,16 @@ class ModelTesterMixin:
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict)
-        if hasattr(model, "set_attn_processor"):
-            model.set_attn_processor(AttnProcessor())
+        if hasattr(model, "set_default_attn_processor"):
+            model.set_default_attn_processor()
         model.to(torch_device)
         model.eval()
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_pretrained(tmpdirname)
             new_model = self.model_class.from_pretrained(tmpdirname)
-            if hasattr(new_model, "set_attn_processor"):
-                new_model.set_attn_processor(AttnProcessor())
+            if hasattr(new_model, "set_default_attn_processor"):
+                new_model.set_default_attn_processor()
             new_model.to(torch_device)
 
         with torch.no_grad():
@@ -135,16 +135,16 @@ class ModelTesterMixin:
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict)
-        if hasattr(model, "set_attn_processor"):
-            model.set_attn_processor(AttnProcessor())
+        if hasattr(model, "set_default_attn_processor"):
+            model.set_default_attn_processor()
         model.to(torch_device)
         model.eval()
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_pretrained(tmpdirname, variant="fp16")
             new_model = self.model_class.from_pretrained(tmpdirname, variant="fp16")
-            if hasattr(new_model, "set_attn_processor"):
-                new_model.set_attn_processor(AttnProcessor())
+            if hasattr(new_model, "set_default_attn_processor"):
+                new_model.set_default_attn_processor()
 
             # non-variant cannot be loaded
             with self.assertRaises(OSError) as error_context:
@@ -167,6 +167,21 @@ class ModelTesterMixin:
 
         max_diff = (image - new_image).abs().sum().item()
         self.assertLessEqual(max_diff, 5e-5, "Models give different forward passes")
+
+    @require_torch_gpu
+    def test_from_save_pretrained_dynamo(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model = torch.compile(model)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            model.save_pretrained(tmpdirname)
+            new_model = self.model_class.from_pretrained(tmpdirname)
+            new_model.to(torch_device)
+
+        assert new_model.__class__ == self.model_class
 
     def test_from_save_pretrained_dtype(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
