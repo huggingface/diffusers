@@ -35,9 +35,9 @@ pip install --upgrade torch torchvision diffusers
 
     ```Python
     import torch
-    from diffusers import StableDiffusionPipeline
+    from diffusers import DiffusionPipeline
 
-    pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+    pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
     pipe = pipe.to("cuda")
 
     prompt = "a photo of an astronaut riding a horse on mars"
@@ -48,10 +48,10 @@ pip install --upgrade torch torchvision diffusers
 
     ```Python
     import torch
-    from diffusers import StableDiffusionPipeline
+    from diffusers import DiffusionPipeline
     from diffusers.models.attention_processor import AttnProcessor2_0
 
-    pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
+    pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
     pipe.unet.set_attn_processor(AttnProcessor2_0())
 
     prompt = "a photo of an astronaut riding a horse on mars"
@@ -68,11 +68,9 @@ pip install --upgrade torch torchvision diffusers
 
     ```python
     import torch
-    from diffusers import StableDiffusionPipeline
+    from diffusers import DiffusionPipeline
 
-    pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to(
-        "cuda"
-    )
+    pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
     pipe.unet = torch.compile(pipe.unet)
 
     batch_size = 10
