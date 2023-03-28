@@ -938,7 +938,7 @@ def main():
         wandb.define_metric("*", step_metric="train/step")
         wandb.config.update(
             {
-                "num_train_examples": len(train_dataset),
+                "num_train_examples": args.max_train_samples if args.streaming else len(train_dataset),
                 "total_train_batch_size": total_train_batch_size,
                 "total_optimization_step": args.num_train_epochs * num_update_steps_per_epoch,
                 "num_devices": jax.device_count(),
