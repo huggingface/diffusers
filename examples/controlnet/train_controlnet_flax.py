@@ -684,7 +684,7 @@ def main():
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
-        shuffle=True,
+        shuffle=not args.streaming,
         collate_fn=collate_fn,
         batch_size=total_train_batch_size,
         num_workers=args.dataloader_num_workers,
