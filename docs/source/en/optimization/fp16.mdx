@@ -19,7 +19,6 @@ We'll discuss how the following settings impact performance and memory.
 |                  | Latency | Speedup |
 | ---------------- | ------- | ------- |
 | original         | 9.50s   | x1      |
-| cuDNN auto-tuner | 9.37s   | x1.01   |
 | fp16             | 3.61s   | x2.63   |
 | channels last    | 3.30s   | x2.88   |
 | traced UNet      | 3.21s   | x2.96   |
@@ -30,18 +29,6 @@ We'll discuss how the following settings impact performance and memory.
   the prompt "a photo of an astronaut riding a horse on mars" with 50 DDIM
   steps.
 </em>
-
-## Enable cuDNN auto-tuner
-
-[NVIDIA cuDNN](https://developer.nvidia.com/cudnn) supports many algorithms to compute a convolution. Autotuner runs a short benchmark and selects the kernel with the best performance on a given hardware for a given input size.
-
-Since we’re using **convolutional networks** (other types currently not supported), we can enable cuDNN autotuner before launching the inference by setting:
-
-```python
-import torch
-
-torch.backends.cudnn.benchmark = True
-```
 
 ### Use tf32 instead of fp32 (on Ampere and later CUDA devices)
 
