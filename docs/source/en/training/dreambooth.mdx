@@ -457,11 +457,11 @@ If you have **`"accelerate>=0.16.0"`** installed, you can use the following code
 inference from an intermediate checkpoint:
 
 ```python
-from diffusers import StableDiffusionPipeline
+from diffusers import DiffusionPipeline
 import torch
 
 model_id = "path_to_saved_model"
-pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
+pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 
 prompt = "A photo of sks dog in a bucket"
 image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
