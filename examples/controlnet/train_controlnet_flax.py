@@ -35,6 +35,7 @@ from flax.training import train_state
 from flax.training.common_utils import shard
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from PIL import Image
+from torch.utils.data import IterableDataset
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTokenizer, FlaxCLIPTextModel, set_seed
@@ -490,7 +491,10 @@ def make_train_dataset(args, tokenizer, batch_size=None):
 
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
-    column_names = dataset["train"].column_names
+    if isinstance(dataset["train"], IterableDataset):
+        column_names = next(iter(dataset["train"])).keys()
+    else:
+        column_names = dataset["train"].column_names
 
     # 6. Get the column names for input/target.
     if args.image_column is None:
@@ -1006,7 +1010,8 @@ def main():
 
     # Create the pipeline using using the trained modules and save it.
     if jax.process_index() == 0:
-        image_logs = log_validation(controlnet, state.params, tokenizer, args, validation_rng, weight_dtype)
+        if args.validation_prompt is not None:
+            image_logs = log_validation(controlnet, state.params, tokenizer, args, validation_rng, weight_dtype)
 
         controlnet.save_pretrained(
             args.output_dir,
