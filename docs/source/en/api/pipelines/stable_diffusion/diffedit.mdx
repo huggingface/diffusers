@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 ## Overview
 
-[DiffEdit: Diffusion-based semantic image editing with mask guidance](https://arxiv.org/abs/2210.11427).
+[DiffEdit: Diffusion-based semantic image editing with mask guidance](https://arxiv.org/abs/2210.11427) by Guillaume Couairon, Jakob Verbeek, Holger Schwenk, and Matthieu Cord.
 
 The abstract of the paper is the following:
 
@@ -37,14 +37,17 @@ that let you control the locations of the semantic edits in the final image to b
 you wanted to translate from "cat" to "dog". In this case, the edit direction will be "cat -> dog". To reflect
 this in the generated mask, you simply have to set the embeddings related to the phrases including "cat" to
 `source_prompt_embeds` and "dog" to `target_prompt_embeds`. Refer to the code example below for more details.
-* When generating partially inverted latents using `invert`, specify a caption describing the overall image for the `prompt` 
-argument. Taking the above example, a valid input prompt would be: "a high resolution painting of a cat in the style of van gough".
-* Note that the caption provided for `invert` can be automatically generated. Please refer to [this code example](#generating-image-captions-for-inversion) for more details.
-* When calling the pipeline to generate the final edited image, assign the source concept to `negative_prompt` and the target concept to `prompt`. Taking the above example, you simply have to set the embeddings related to the phrases including "cat" to
-`negative_prompt_embeds` and "dog" to `prompt_embeds`. Refer to the code example below for more details.
+* When generating partially inverted latents using `invert`, assign a caption or text embedding describing the
+overall image to the `prompt` argument to help guide the inverse latent sampling process. In most cases, the
+source concept is sufficently descriptive to yield good results, but feel free to explore alternatives.
+Please refer to [this code example](#generating-image-captions-for-inversion) for more details.
+* When calling the pipeline to generate the final edited image, assign the source concept to `negative_prompt`
+and the target concept to `prompt`. Taking the above example, you simply have to set the embeddings related to
+the phrases including "cat" to `negative_prompt_embeds` and "dog" to `prompt_embeds`. Refer to the code example
+below for more details.
 * If you wanted to reverse the direction in the example above, i.e., "dog -> cat", then it's recommended to:
     * Swap the `source_prompt` and `target_prompt` in the arguments to `generate_mask`.
-    * Change the input prompt for `invert` to include "dog".  
+    * Change the input prompt for `invert` to include "dog".
     * Swap the `prompt` and `negative_prompt` in the arguments to call the pipeline to generate the final edited image.
 * Note that the source and target prompts, or their corresponding embeddings, can also be automatically generated. Please, refer to [this discussion](#generating-source-and-target-embeddings) for more details.
 
@@ -228,7 +231,7 @@ And then we just call it to generate our captions:
 
 ```py
 source_captions = generate_captions(source_text)
-target_captions = generate_captions(target_concept)
+target_captions = generate_captions(target_text)
 ```
 
 We encourage you to play around with the different parameters supported by the
@@ -309,7 +312,7 @@ images[0].save("edited_image_dog.png")
 
 ## StableDiffusionDiffEditPipeline
 [[autodoc]] StableDiffusionDiffEditPipeline
-	- __call__
+    - all
     - generate_mask
     - invert
-	- all
+	- __call__

@@ -161,7 +161,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents.
-        inverse_scheduler (`Union[]`):
+        inverse_scheduler (`[DDIMInverseScheduler]`):
             A scheduler to be used in combination with `unet` to fill in the unmasked part of the input latents
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
@@ -1065,7 +1065,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
 
         >>> prompt = "A bowl of fruits"
 
-        >>> inverted_latents = pipe.invert(image=invert_image, prompt=mask_prompt).latents
+        >>> inverted_latents = pipe.invert(image=init_image, prompt=prompt).latents
         ```
 
         Returns:
@@ -1077,6 +1077,8 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
         """
 
         # 1. Check inputs
+        # provide dummy height and width arguments to check_inputs, as the spatial dimensions of the inverted latents
+        # will be determined by the spatial dimensions of the input image.
         self.check_inputs(
             prompt,
             0,
