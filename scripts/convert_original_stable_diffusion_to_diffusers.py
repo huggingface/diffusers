@@ -14,6 +14,7 @@
 # limitations under the License.
 """ Conversion script for the LDM checkpoints. """
 
+import torch
 import argparse
 
 from diffusers.pipelines.stable_diffusion.convert_from_ckpt import download_from_original_stable_diffusion_ckpt
@@ -123,6 +124,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--controlnet", action="store_true", default=None, help="Set flag if this is a controlnet checkpoint."
     )
+    parser.add_argument("--half", action="store_true", help="Save weights in half precision.")
     args = parser.parse_args()
 
     pipe = download_from_original_stable_diffusion_ckpt(
@@ -142,6 +144,9 @@ if __name__ == "__main__":
         clip_stats_path=args.clip_stats_path,
         controlnet=args.controlnet,
     )
+
+    if args.half:
+        pipe.to(torch_dtype=torch.float16)
 
     if args.controlnet:
         # only save the controlnet model
