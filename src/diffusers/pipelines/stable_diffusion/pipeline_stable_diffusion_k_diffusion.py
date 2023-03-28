@@ -499,8 +499,8 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline):
 
         # 5. Prepare sigmas
         if use_karras_sigmas:
-            sigma_min: float = self.k_diffusion_model.sigmas[0].item()
-            sigma_max: float = self.k_diffusion_model.sigmas[-1].item()
+            sigma_min: float = self.scheduler.sigmas[0].item()
+            sigma_max: float = self.scheduler.sigmas[-1].item()
             sigmas = get_sigmas_karras(n=num_inference_steps, sigma_min=sigma_min, sigma_max=sigma_max)
         else:
             sigmas = self.scheduler.sigmas
