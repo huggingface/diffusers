@@ -653,6 +653,10 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
         init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
 
         t_start = max(num_inference_steps - init_timestep, 0)
+
+        # safety for t_start overflow to prevent empty timsteps slice
+        if t_start == num_inference_steps:
+            return self.inverse_scheduler.timesteps, num_inference_steps
         timesteps = self.inverse_scheduler.timesteps[:-t_start]
 
         return timesteps, num_inference_steps - t_start
@@ -958,6 +962,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        decode_latents: bool = False,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
@@ -975,13 +980,12 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
             image (`PIL.Image.Image`):
-                `Image`, or tensor representing an image batch which will be inpainted, *i.e.* parts of the image will
-                be masked out with `mask_image` and repainted according to `prompt`.
+                `Image`, or tensor representing an image batch to produce the inverted latents, guided by `prompt`.
             inpaint_strength (`float`, *optional*, defaults to 0.8):
-                Conceptually, indicates how much to inpaint the masked area. Must be between 0 and 1. When `strength`
-                is 1, the denoising process will be run on the masked area for the full number of iterations specified
-                in `num_inference_steps`. `image` will be used as a reference for the masked area, adding more noise to
-                that region the larger the `strength`. If `strength` is 0, no inpainting will occur.
+                Conceptually, indicates how far into the noising process to run latent inversion. Must be between 0 and
+                1. When `strength` is 1, the inversion process will be run for the full number of iterations specified
+                in `num_inference_steps`. `image` will be used as a reference for the inversion process, adding more
+                noise the larger the `strength`. If `strength` is 0, no inpainting will occur.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -1007,11 +1011,14 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            decode_latents (`bool`, *optional*, defaults to `False`):
+                Whether or not to decode the inverted latents into a generated image. Setting this argument to `True`
+                will decode all inverted latents for each timestep into a list of generated images.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
+                Whether or not to return a [`~pipelines.stable_diffusion.DiffEditInversionPipelineOutput`] instead of a
                 plain tuple.
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_steps` steps during inference. The function will be
@@ -1064,8 +1071,9 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
         Returns:
             [`~pipelines.stable_diffusion.pipeline_stable_diffusion_diffedit.DiffEditInversionPipelineOutput`] or
             `tuple`: [`~pipelines.stable_diffusion.pipeline_stable_diffusion_diffedit.DiffEditInversionPipelineOutput`]
-            if `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is the inverted
-            latents tensors ordered by increasing noise, and then second is the corresponding decoded images.
+            if `return_dict` is `True`, otherwise a `tuple`. When returning a tuple, the first element is the inverted
+            latents tensors ordered by increasing noise, and then second is the corresponding decoded images if
+            `decode_latents` is `True`, otherwise `None`.
         """
 
         # 1. Check inputs
@@ -1184,10 +1192,12 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
         latents = torch.cat(list(reversed(inverted_latents)))
 
         # 8. Post-processing
-        image = self.decode_latents(latents.detach())
+        image = None
+        if decode_latents:
+            image = self.decode_latents(latents.detach())
 
         # 9. Convert to PIL.
-        if output_type == "pil":
+        if decode_latents and output_type == "pil":
             image = self.numpy_to_pil(image)
 
         # Offload last model to CPU
@@ -1351,7 +1361,9 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
                 "`mask` input cannot be undefined. Use `compute_mask()` to compute `mask` from text prompts."
             )
         if image_latents is None:
-            raise ValueError("`image_latents` input cannot be undefined. Use `invert()` to compute `image_latents` from input images.")
+            raise ValueError(
+                "`image_latents` input cannot be undefined. Use `invert()` to compute `image_latents` from input images."
+            )
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
