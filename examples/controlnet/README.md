@@ -324,7 +324,6 @@ Now let's downloading two conditioning images that we will use to run validation
 
 ```
 wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_1.png
-
 wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_2.png
 ```
 
@@ -339,7 +338,7 @@ Make sure you have the `MODEL_DIR`,`OUTPUT_DIR` and `HUB_MODEL_ID` environment v
 ```
 export MODEL_DIR="runwayml/stable-diffusion-v1-5"
 export OUTPUT_DIR="control_out"
-export HUB_MODEL_ID="yiyixu/fill-circle-controlnet"
+export HUB_MODEL_ID="fill-circle-controlnet"
 ```
 
 And finally start the training
