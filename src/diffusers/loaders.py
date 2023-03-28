@@ -548,7 +548,7 @@ class TextualInversionLoaderMixin:
 
         if is_multi_vector:
             tokens = [token] + [f"{token}_{i}" for i in range(1, embedding.shape[0])]
-            embeddings = [e for e in embedding]
+            embeddings = [e for e in embedding]  # noqa: C416
         else:
             tokens = [token]
             embeddings = [embedding] if len(embedding.shape) > 1 else [embedding[0]]
