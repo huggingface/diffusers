@@ -731,7 +731,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
             )
 
     @torch.no_grad()
-    def compute_mask(
+    def generate_mask(
         self,
         image: Union[torch.FloatTensor, PIL.Image.Image] = None,
         target_prompt: Optional[Union[str, List[str]]] = None,
@@ -1327,7 +1327,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
         >>> mask_prompt = "A bowl of fruits"
         >>> prompt = "A bowl of pears"
 
-        >>> mask_image = pipe.compute_mask(image=init_image, source_prompt=prompt, target_prompt=mask_prompt)
+        >>> mask_image = pipe.generate_mask(image=init_image, source_prompt=prompt, target_prompt=mask_prompt)
         >>> image_latents = pipe.invert(image=init_image, prompt=mask_prompt).latents
         >>> image = pipe(prompt=prompt, mask=mask_image, image_latents=image_latents).images[0]
         ```
@@ -1358,7 +1358,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
 
         if mask is None:
             raise ValueError(
-                "`mask` input cannot be undefined. Use `compute_mask()` to compute `mask` from text prompts."
+                "`mask` input cannot be undefined. Use `generate_mask()` to compute `mask` from text prompts."
             )
         if image_latents is None:
             raise ValueError(
