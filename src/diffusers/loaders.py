@@ -294,12 +294,27 @@ class UNet2DConditionLoadersMixin:
 
 class TextualInversionLoaderMixin:
     r"""
-    Mixin class for adding textual inversion tokens and embeddings to the tokenizer and text encoder with methods:
-    - [`~TextualInversionLoaderMixin.load_textual_inversion_embeddings`]
-    - [`~TextualInversionLoaderMixin.add_textual_inversion_embedding`]
+    Mixin class for loading textual inversion tokens and embeddings to the tokenizer and text encoder.
     """
 
     def maybe_convert_prompt(self, prompt: Union[str, List[str]], tokenizer: "PreTrainedTokenizer"):
+        r"""
+        Maybe convert a prompt into a "multi vector"-compatible prompt. If the prompt includes a token that
+        corresponds to a multi-vector textual inversion embedding, this function will process the prompt
+        so that the special token is replaced with multiple special tokens each corresponding to one of the
+        vectors. If the prompt has no textual inversion token or a textual inversion token that is a single vector,
+        the input prompt is simply returned.
+
+        Parameters:
+            prompt (`str` or list of `str`):
+                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
+                instead.
+            tokenizer (`PreTrainedTokenizer`):
+                The tokenizer responsible for encoding the prompt into input tokens.
+
+        Returns:
+            `str` or list of `str`: The converted prompt
+        """
         if not isinstance(prompt, List):
             prompts = [prompt]
         else:
@@ -313,6 +328,23 @@ class TextualInversionLoaderMixin:
         return prompts
 
     def _maybe_convert_prompt(self, prompt: str, tokenizer: "PreTrainedTokenizer"):
+        r"""
+        Maybe convert a prompt into a "multi vector"-compatible prompt. If the prompt includes a token that
+        corresponds to a multi-vector textual inversion embedding, this function will process the prompt
+        so that the special token is replaced with multiple special tokens each corresponding to one of the
+        vectors. If the prompt has no textual inversion token or a textual inversion token that is a single vector,
+        the input prompt is simply returned.
+
+        Parameters:
+            prompt (`str`):
+                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
+                instead.
+            tokenizer (`PreTrainedTokenizer`):
+                The tokenizer responsible for encoding the prompt into input tokens.
+
+        Returns:
+            `str`: The converted prompt
+        """
         tokens = tokenizer.tokenize(prompt)
         if not any(t in tokenizer.added_tokens_encoder for t in tokens):
             return prompt
@@ -342,15 +374,17 @@ class TextualInversionLoaderMixin:
         </Tip>
 
         Parameters:
-
-        Parameters:
              pretrained_model_name_or_path (`str` or `os.PathLike`):
                 Can be either:
 
                     - A string, the *model id* of a pretrained model hosted inside a model repo on huggingface.co.
-                      Valid model ids should have an organization name, like `google/ddpm-celebahq-256`.
-                    - A path to a *directory* containing model weights saved using [`~ModelMixin.save_config`], e.g.,
-                      `./my_model_directory/`.
+                      Valid model ids should have an organization name, like `"sd-concepts-library/low-poly-hd-logos-icons"`.
+                    - A path to a *directory* containing textual inversion weights, e.g. `./my_text_inversion_directory/`.
+            weight_name (`str`, *optional*):
+                Name of a custom weight file. This should be used in two cases:
+
+                    - The saved textual inversion file is in `diffusers` format, but has was saved under a specific weight name, such as `text_inv.bin`.
+                    - The saved textual inversion file is in the "Automatic1111" form.
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory in which a downloaded pretrained model configuration should be cached if the
                 standard cache should not be used.
@@ -388,7 +422,17 @@ class TextualInversionLoaderMixin:
 
         </Tip>
         """
-        self._validate_method_call(self.load_textual_inversion)
+        if not hasattr(self, "tokenizer") or not isinstance(self.tokenizer, PreTrainedTokenizer):
+            raise ValueError(
+                f"{self.__class__.__name__} requires `self.tokenizer` of type `PreTrainedTokenizer` for calling"
+                f" `{self.load_textual_inversion.__name__}`"
+            )
+
+        if not hasattr(self, "text_encoder") or not isinstance(self.text_encoder, PreTrainedModel):
+            raise ValueError(
+                f"{self.__class__.__name__} requires `self.text_encoder` of type `PreTrainedModel` for calling"
+                f" `{self.load_textual_inversion.__name__}`"
+            )
 
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         force_download = kwargs.pop("force_download", False)
@@ -472,8 +516,8 @@ class TextualInversionLoaderMixin:
             loaded_token, embedding = next(iter(state_dict.items()))
         elif "string_to_param" in state_dict:
             # A1111
-            loaded_token = self._extract_token_from_dict(state_dict)
-            embedding = self._extract_embedding_from_dict(state_dict)
+            loaded_token = state_dict["name"]
+            embedding = state_dict["string_to_param"]["*"]
 
         if token is not None and loaded_token != token:
             logger.warn(f"The loaded token: {loaded_token} is overwritten by the passed token {token}.")
@@ -518,166 +562,3 @@ class TextualInversionLoaderMixin:
             self.text_encoder.get_input_embeddings().weight.data[token_id] = embedding
 
         logger.info("Loaded textual inversion embedding for {token}.")
-
-    # TODO(to discuss) think we can remove this one
-    def load_textual_inversion_embeddings(
-        self, embedding_path_dict_or_list: Union[Dict[str, str], List[Dict[str, str]]], allow_replacement: bool = False
-    ):
-        r"""
-        Loads textual inversion embeddings and adds them to the tokenizer's vocabulary and the text encoder's
-        embeddings.
-
-        Arguments:
-            embeddings_path_dict_or_list (`Dict[str, str]` or `List[str]`):
-                Dictionary of token to embedding path or List of embedding paths to embedding dictionaries. The
-                dictionary must have the following keys:
-                    - `token`: name of the token to be added to the tokenizers' vocabulary
-                    - `embedding`: path to the embedding of the token to be added to the text encoder's embedding
-                      matrix
-                The list must contain paths to embedding dictionaries where the keys are the tokens and the values are
-                the embeddings (same as above dictionary definition).
-
-        Returns:
-            None
-        """
-        # Validate that inheriting class instance contains required attributes
-        self._validate_method_call(self.load_textual_inversion_embeddings)
-
-        if isinstance(embedding_path_dict_or_list, dict):
-            for token, embedding_path in embedding_path_dict_or_list.items():
-                # check if token in tokenizer vocab
-                if token in self.tokenizer.get_vocab():
-                    if allow_replacement:
-                        logger.info(
-                            f"Token {token} already in tokenizer vocabulary. Overwriting existing token and embedding"
-                            " with the new one."
-                        )
-                    else:
-                        raise ValueError(
-                            f"Token {token} already in tokenizer vocabulary. Please choose a different token name or set `allow_replacement=True`."
-                        )
-
-                embedding_dict = torch.load(embedding_path, map_location=self.text_encoder.device)
-                embedding = self._extract_embedding_from_dict(embedding_dict)
-
-                self.add_textual_inversion_embedding(token, embedding)
-
-        elif isinstance(embedding_path_dict_or_list, list):
-            for embedding_path in embedding_path_dict_or_list:
-                embedding_dict = torch.load(embedding_path, map_location=self.text_encoder.device)
-                token = self._extract_token_from_dict(embedding_dict)
-                embedding = self._extract_embedding_from_dict(embedding_dict)
-
-                # check if token in tokenizer vocab
-                if token in self.tokenizer.get_vocab():
-                    if allow_replacement:
-                        logger.info(
-                            f"Token {token} already in tokenizer vocabulary. Overwriting existing token and embedding"
-                            " with the new one."
-                        )
-                    else:
-                        raise ValueError(
-                            f"Token {token} already in tokenizer vocabulary. Please choose a different token name."
-                        )
-                self.add_textual_inversion_embedding(token, embedding)
-
-    # TODO(to discuss) think we can remove this one
-    def add_textual_inversion_embedding(self, token: str, embedding: torch.Tensor):
-        r"""
-        Adds a token to the tokenizer's vocabulary and an embedding to the text encoder's embedding matrix.
-
-        Arguments:
-            token (`str`):
-                The token to be added to the tokenizers' vocabulary
-            embedding (`torch.Tensor`):
-                The embedding of the token to be added to the text encoder's embedding matrix
-        """
-        # NOTE: Not clear to me that we intend for this to be a public/exposed method.
-        # Validate that inheriting class instance contains required attributes
-        self._validate_method_call(self.load_textual_inversion_embeddings)
-
-        embedding = embedding.to(self.text_encoder.dtype)
-
-        if token in self.tokenizer.get_vocab():
-            # If user has allowed replacement and the token exists, we only need to
-            # extract the existing id and update the embedding
-            token_id = self.tokenizer.convert_tokens_to_ids(token)
-            self.text_encoder.get_input_embeddings().weight.data[token_id] = embedding
-        else:
-            # If the token does not exist, we add it to the tokenizer, then resize and update the
-            # text encoder acccordingly
-            self.tokenizer.add_tokens([token])
-
-            token_id = self.tokenizer.convert_tokens_to_ids(token)
-            # NOTE: len() does't start at 0, so we shouldn't need to +1
-            # since we already updated the tokenizer and it's new length
-            # should be old length + 1
-            self.text_encoder.resize_token_embeddings(len(self.tokenizer))
-            self.text_encoder.get_input_embeddings().weight.data[token_id] = embedding
-
-    def _extract_embedding_from_dict(self, embedding_dict: Dict[str, str]) -> torch.Tensor:
-        r"""
-        Extracts the embedding from the embedding dictionary.
-
-        Arguments:
-            embedding_dict (`Dict[str, str]`):
-                The embedding dictionary loaded from the embedding path
-
-        Returns:
-            embedding (`torch.Tensor`):
-                The embedding to be added to the text encoder's embedding matrix
-        """
-        # auto1111 embedding case
-        if "string_to_param" in embedding_dict:
-            embedding_dict = embedding_dict["string_to_param"]
-            embedding = embedding_dict["*"]
-            return embedding
-
-        return list(embedding_dict.values())[0]
-
-    def _extract_token_from_dict(self, embedding_dict: Dict[str, str]) -> str:
-        r"""
-        Extracts the token from the embedding dictionary.
-
-        Arguments:
-            embedding_dict (`Dict[str, str]`):
-                The embedding dictionary loaded from the embedding path
-
-        Returns:
-            token (`str`):
-                The token to be added to the tokenizers' vocabulary
-        """
-        # auto1111 embedding case
-        if "string_to_param" in embedding_dict:
-            token = embedding_dict["name"]
-            return token
-
-        return list(embedding_dict.keys())[0]
-
-    def _validate_can_load_textual_inversion(self, method: Callable):
-        r"""
-        Validates that the method is being called from a class instance that has the required attributes.
-
-        Arguments:
-            method (`function`):
-                The class's method being called
-
-        Raises:
-            ValueError:
-                If the method is being called from a class instance that does not have the required attributes, the
-                method will not be callable.
-
-        Returns:
-            None
-        """
-        if not hasattr(self, "tokenizer") or not isinstance(self.tokenizer, PreTrainedTokenizer):
-            raise ValueError(
-                f"{self.__class__.__name__} requires `self.tokenizer` of type `PreTrainedTokenizer` for calling"
-                f" `{method.__name__}`"
-            )
-
-        if not hasattr(self, "text_encoder") or not isinstance(self.text_encoder, PreTrainedModel):
-            raise ValueError(
-                f"{self.__class__.__name__} requires `self.text_encoder` of type `PreTrainedModel` for calling"
-                f" `{method.__name__}`"
-            )
