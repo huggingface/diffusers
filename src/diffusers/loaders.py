@@ -294,7 +294,7 @@ class UNet2DConditionLoadersMixin:
 
 class TextualInversionLoaderMixin:
     r"""
-    Mixin class for adding textual inversion tokens and embeddings to the tokenizer and text encoder with method:
+    Mixin class for adding textual inversion tokens and embeddings to the tokenizer and text encoder with methods:
     - [`~TextualInversionLoaderMixin.load_textual_inversion_embeddings`]
     - [`~TextualInversionLoaderMixin.add_textual_inversion_embedding`]
     """
@@ -342,8 +342,6 @@ class TextualInversionLoaderMixin:
         </Tip>
 
         Parameters:
-
-        </Tip>
 
         Parameters:
              pretrained_model_name_or_path (`str` or `os.PathLike`):
@@ -498,7 +496,7 @@ class TextualInversionLoaderMixin:
                 i += 1
 
             raise ValueError(
-                f"Multi-vector Token {token} already in tokenizer vocabulary. Please choose a different token name or remove the {multi_vector_tokens} and embedding from the tokenizer and text encoder."
+                f"Multi-vector Token {multi_vector_tokens} already in tokenizer vocabulary. Please choose a different token name or remove the {multi_vector_tokens} and embedding from the tokenizer and text encoder."
             )
 
         is_multi_vector = len(embedding.shape) > 1 and embedding.shape[0] > 1
@@ -656,7 +654,7 @@ class TextualInversionLoaderMixin:
 
         return list(embedding_dict.keys())[0]
 
-    def _validate_method_call(self, method: Callable):
+    def _validate_can_load_textual_inversion(self, method: Callable):
         r"""
         Validates that the method is being called from a class instance that has the required attributes.
 
