@@ -335,6 +335,11 @@ def parse_args(input_args=None):
         help="The name of the repository to keep in sync with the local `output_dir`.",
     )
     parser.add_argument(
+        "--private_hub",
+        action="store_true",
+        help="Whether or not this is a private hub",
+    )
+    parser.add_argument(
         "--logging_dir",
         type=str,
         default="logs",
@@ -672,7 +677,7 @@ def main(args):
                 repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
             else:
                 repo_name = args.hub_model_id
-            create_repo(repo_name, exist_ok=True, token=args.hub_token)
+            create_repo(repo_name, exist_ok=True, token=args.hub_token, private=args.private_hub)
             repo = Repository(args.output_dir, clone_from=repo_name, token=args.hub_token)
 
             with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
