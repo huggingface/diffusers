@@ -332,7 +332,7 @@ def parse_args():
             " or to a folder containing files that 🤗 Datasets can understand."
         ),
     )
-    parser.add_argument("--streaming", store_action=True, help="To stream a large dataset from Hub.")
+    parser.add_argument("--streaming", action="store_true", help="To stream a large dataset from Hub.")
     parser.add_argument(
         "--dataset_config_name",
         type=str,
