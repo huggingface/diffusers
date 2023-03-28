@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -84,7 +84,7 @@ class BaseOutput(OrderedDict):
 
     def __getitem__(self, k):
         if isinstance(k, str):
-            inner_dict = {k: v for (k, v) in self.items()}
+            inner_dict = dict(self.items())
             return inner_dict[k]
         else:
             return self.to_tuple()[k]

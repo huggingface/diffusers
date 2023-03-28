@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ import numpy as np
 import PIL
 import torch
 from packaging import version
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
@@ -42,7 +42,7 @@ logger = logging.get_logger(__name__)
 
 def preprocess_image(image):
     w, h = image.size
-    w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
+    w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
     image = image.resize((w, h), resample=PIL_INTERPOLATION["lanczos"])
     image = np.array(image).astype(np.float32) / 255.0
     image = image[None].transpose(0, 3, 1, 2)
@@ -54,7 +54,7 @@ def preprocess_mask(mask, scale_factor=8):
     if not isinstance(mask, torch.FloatTensor):
         mask = mask.convert("L")
         w, h = mask.size
-        w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
+        w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
         mask = mask.resize((w // scale_factor, h // scale_factor), resample=PIL_INTERPOLATION["nearest"])
         mask = np.array(mask).astype(np.float32) / 255.0
         mask = np.tile(mask, (4, 1, 1))
@@ -76,7 +76,7 @@ def preprocess_mask(mask, scale_factor=8):
         # (potentially) reduce mask channel dimension from 3 to 1 for broadcasting to latent shape
         mask = mask.mean(dim=1, keepdim=True)
         h, w = mask.shape[-2:]
-        h, w = map(lambda x: x - x % 32, (h, w))  # resize to integer multiple of 32
+        h, w = (x - x % 8 for x in (h, w))  # resize to integer multiple of 8
         mask = torch.nn.functional.interpolate(mask, (h // scale_factor, w // scale_factor))
         return mask
 
@@ -105,7 +105,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
-        feature_extractor ([`CLIPFeatureExtractor`]):
+        feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
     _optional_components = ["feature_extractor"]
@@ -119,7 +119,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -209,12 +209,16 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         Note that offloading happens on a submodule basis. Memory savings are higher than with
         `enable_model_cpu_offload`, but performance is lower.
         """
-        if is_accelerate_available():
+        if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
             from accelerate import cpu_offload
         else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
+            raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
 
         device = torch.device(f"cuda:{gpu_id}")
+
+        if self.device.type != "cpu":
+            self.to("cpu", silence_dtype_warnings=True)
+            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
             cpu_offload(cpu_offloaded_model, device)
@@ -233,9 +237,13 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
             from accelerate import cpu_offload_with_hook
         else:
-            raise ImportError("`enable_model_offload` requires `accelerate v0.17.0` or higher.")
+            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
 
         device = torch.device(f"cuda:{gpu_id}")
+
+        if self.device.type != "cpu":
+            self.to("cpu", silence_dtype_warnings=True)
+            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         hook = None
         for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae]:
@@ -291,8 +299,8 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
                 whether to use classifier free guidance or not
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
-                Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
@@ -513,7 +521,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, List[str]],
+        prompt: Union[str, List[str]] = None,
         image: Union[torch.FloatTensor, PIL.Image.Image] = None,
         mask_image: Union[torch.FloatTensor, PIL.Image.Image] = None,
         strength: float = 0.8,
@@ -603,10 +611,16 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             (nsfw) content, according to the `safety_checker`.
         """
         # 1. Check inputs
-        self.check_inputs(prompt, strength, callback_steps)
+        self.check_inputs(prompt, strength, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
 
         # 2. Define call parameters
-        batch_size = 1 if isinstance(prompt, str) else len(prompt)
+        if prompt is not None and isinstance(prompt, str):
+            batch_size = 1
+        elif prompt is not None and isinstance(prompt, list):
+            batch_size = len(prompt)
+        else:
+            batch_size = prompt_embeds.shape[0]
+
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`

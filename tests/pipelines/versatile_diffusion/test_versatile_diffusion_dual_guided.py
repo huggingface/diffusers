@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,17 +21,13 @@ import numpy as np
 import torch
 
 from diffusers import VersatileDiffusionDualGuidedPipeline
-from diffusers.utils.testing_utils import load_image, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import load_image, nightly, require_torch_gpu, torch_device
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class VersatileDiffusionDualGuidedPipelineFastTests(unittest.TestCase):
-    pass
-
-
-@slow
+@nightly
 @require_torch_gpu
 class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):

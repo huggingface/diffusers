@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ from typing import Callable, List, Optional, Union
 
 import torch
 import torch.utils.checkpoint
-from transformers import CLIPFeatureExtractor, CLIPTextModelWithProjection, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTokenizer
 
 from ...models import AutoencoderKL, Transformer2DModel, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
@@ -48,7 +48,7 @@ class VersatileDiffusionTextToImagePipeline(DiffusionPipeline):
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
     tokenizer: CLIPTokenizer
-    image_feature_extractor: CLIPFeatureExtractor
+    image_feature_extractor: CLIPImageProcessor
     text_encoder: CLIPTextModelWithProjection
     image_unet: UNet2DConditionModel
     text_unet: UNetFlatConditionModel

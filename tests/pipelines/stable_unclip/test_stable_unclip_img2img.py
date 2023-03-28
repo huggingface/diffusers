@@ -2,9 +2,10 @@ import gc
 import random
 import unittest
 
+import numpy as np
 import torch
 from transformers import (
-    CLIPFeatureExtractor,
+    CLIPImageProcessor,
     CLIPTextConfig,
     CLIPTextModel,
     CLIPTokenizer,
@@ -18,11 +19,17 @@ from diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer import 
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import floats_tensor, load_image, load_numpy, require_torch_gpu, slow, torch_device
 
-from ...test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
+from ...pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
+from ...test_pipelines_common import (
+    PipelineTesterMixin,
+    assert_mean_pixel_difference,
+)
 
 
 class StableUnCLIPImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableUnCLIPImg2ImgPipeline
+    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
+    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
 
     def get_dummy_components(self):
         embedder_hidden_size = 32
@@ -30,7 +37,7 @@ class StableUnCLIPImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
 
         # image encoding components
 
-        feature_extractor = CLIPFeatureExtractor(crop_size=32, size=32)
+        feature_extractor = CLIPImageProcessor(crop_size=32, size=32)
 
         image_encoder = CLIPVisionModelWithProjection(
             CLIPVisionConfig(
@@ -140,6 +147,25 @@ class StableUnCLIPImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
             "output_type": "np",
         }
 
+    def test_image_embeds_none(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = StableUnCLIPImg2ImgPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs.update({"image_embeds": None})
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 32, 32, 3)
+        expected_slice = np.array(
+            [0.34588397, 0.7747054, 0.5453714, 0.5227859, 0.57656777, 0.6532228, 0.5177634, 0.49932978, 0.56626225]
+        )
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
     # Overriding PipelineTesterMixin::test_attention_slicing_forward_pass
     # because GPU undeterminism requires a looser check.
     def test_attention_slicing_forward_pass(self):
@@ -191,7 +217,7 @@ class StableUnCLIPImg2ImgPipelineIntegrationTests(unittest.TestCase):
         pipe.enable_sequential_cpu_offload()
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        output = pipe("anime turle", image=input_image, generator=generator, output_type="np")
+        output = pipe(input_image, "anime turle", generator=generator, output_type="np")
 
         image = output.images[0]
 
@@ -219,7 +245,7 @@ class StableUnCLIPImg2ImgPipelineIntegrationTests(unittest.TestCase):
         pipe.enable_sequential_cpu_offload()
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        output = pipe("anime turle", image=input_image, generator=generator, output_type="np")
+        output = pipe(input_image, "anime turle", generator=generator, output_type="np")
 
         image = output.images[0]
 
@@ -245,8 +271,8 @@ class StableUnCLIPImg2ImgPipelineIntegrationTests(unittest.TestCase):
         pipe.enable_sequential_cpu_offload()
 
         _ = pipe(
+            input_image,
             "anime turtle",
-            image=input_image,
             num_inference_steps=2,
             output_type="np",
         )

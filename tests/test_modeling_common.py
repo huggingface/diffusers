@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,15 +20,24 @@ import unittest.mock as mock
 from typing import Dict, List, Tuple
 
 import numpy as np
+import requests_mock
 import torch
 from requests.exceptions import HTTPError
 
-from diffusers.models import ModelMixin, UNet2DConditionModel
+from diffusers.models import UNet2DConditionModel
 from diffusers.training_utils import EMAModel
 from diffusers.utils import torch_device
+from diffusers.utils.testing_utils import require_torch_gpu
 
 
 class ModelUtilsTest(unittest.TestCase):
+    def tearDown(self):
+        super().tearDown()
+
+        import diffusers
+
+        diffusers.utils.import_utils._safetensors_available = True
+
     def test_accelerate_loading_error_message(self):
         with self.assertRaises(ValueError) as error_context:
             UNet2DConditionModel.from_pretrained("hf-internal-testing/stable-diffusion-broken", subfolder="unet")
@@ -60,26 +69,80 @@ class ModelUtilsTest(unittest.TestCase):
             if p1.data.ne(p2.data).sum() > 0:
                 assert False, "Parameters not the same!"
 
+    def test_one_request_upon_cached(self):
+        # TODO: For some reason this test fails on MPS where no HEAD call is made.
+        if torch_device == "mps":
+            return
+
+        import diffusers
+
+        diffusers.utils.import_utils._safetensors_available = False
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with requests_mock.mock(real_http=True) as m:
+                UNet2DConditionModel.from_pretrained(
+                    "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="unet", cache_dir=tmpdirname
+                )
+
+            download_requests = [r.method for r in m.request_history]
+            assert download_requests.count("HEAD") == 2, "2 HEAD requests one for config, one for model"
+            assert download_requests.count("GET") == 2, "2 GET requests one for config, one for model"
+
+            with requests_mock.mock(real_http=True) as m:
+                UNet2DConditionModel.from_pretrained(
+                    "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="unet", cache_dir=tmpdirname
+                )
+
+            cache_requests = [r.method for r in m.request_history]
+            assert (
+                "HEAD" == cache_requests[0] and len(cache_requests) == 1
+            ), "We should call only `model_info` to check for _commit hash and `send_telemetry`"
+
+        diffusers.utils.import_utils._safetensors_available = True
+
+    def test_weight_overwrite(self):
+        with tempfile.TemporaryDirectory() as tmpdirname, self.assertRaises(ValueError) as error_context:
+            UNet2DConditionModel.from_pretrained(
+                "hf-internal-testing/tiny-stable-diffusion-torch",
+                subfolder="unet",
+                cache_dir=tmpdirname,
+                in_channels=9,
+            )
+
+        # make sure that error message states what keys are missing
+        assert "Cannot load" in str(error_context.exception)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            model = UNet2DConditionModel.from_pretrained(
+                "hf-internal-testing/tiny-stable-diffusion-torch",
+                subfolder="unet",
+                cache_dir=tmpdirname,
+                in_channels=9,
+                low_cpu_mem_usage=False,
+                ignore_mismatched_sizes=True,
+            )
+
+        assert model.config.in_channels == 9
+
 
 class ModelTesterMixin:
     def test_from_save_pretrained(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict)
+        if hasattr(model, "set_default_attn_processor"):
+            model.set_default_attn_processor()
         model.to(torch_device)
         model.eval()
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_pretrained(tmpdirname)
             new_model = self.model_class.from_pretrained(tmpdirname)
+            if hasattr(new_model, "set_default_attn_processor"):
+                new_model.set_default_attn_processor()
             new_model.to(torch_device)
 
         with torch.no_grad():
-            # Warmup pass when using mps (see #372)
-            if torch_device == "mps" and isinstance(model, ModelMixin):
-                _ = model(**self.dummy_input)
-                _ = new_model(**self.dummy_input)
-
             image = model(**inputs_dict)
             if isinstance(image, dict):
                 image = image.sample
@@ -96,12 +159,16 @@ class ModelTesterMixin:
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict)
+        if hasattr(model, "set_default_attn_processor"):
+            model.set_default_attn_processor()
         model.to(torch_device)
         model.eval()
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_pretrained(tmpdirname, variant="fp16")
             new_model = self.model_class.from_pretrained(tmpdirname, variant="fp16")
+            if hasattr(new_model, "set_default_attn_processor"):
+                new_model.set_default_attn_processor()
 
             # non-variant cannot be loaded
             with self.assertRaises(OSError) as error_context:
@@ -113,11 +180,6 @@ class ModelTesterMixin:
             new_model.to(torch_device)
 
         with torch.no_grad():
-            # Warmup pass when using mps (see #372)
-            if torch_device == "mps" and isinstance(model, ModelMixin):
-                _ = model(**self.dummy_input)
-                _ = new_model(**self.dummy_input)
-
             image = model(**inputs_dict)
             if isinstance(image, dict):
                 image = image.sample
@@ -129,6 +191,21 @@ class ModelTesterMixin:
 
         max_diff = (image - new_image).abs().sum().item()
         self.assertLessEqual(max_diff, 5e-5, "Models give different forward passes")
+
+    @require_torch_gpu
+    def test_from_save_pretrained_dynamo(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model = torch.compile(model)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            model.save_pretrained(tmpdirname)
+            new_model = self.model_class.from_pretrained(tmpdirname)
+            new_model.to(torch_device)
+
+        assert new_model.__class__ == self.model_class
 
     def test_from_save_pretrained_dtype(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -155,10 +232,6 @@ class ModelTesterMixin:
         model.eval()
 
         with torch.no_grad():
-            # Warmup pass when using mps (see #372)
-            if torch_device == "mps" and isinstance(model, ModelMixin):
-                model(**self.dummy_input)
-
             first = model(**inputs_dict)
             if isinstance(first, dict):
                 first = first.sample
@@ -329,10 +402,6 @@ class ModelTesterMixin:
         model.eval()
 
         with torch.no_grad():
-            # Warmup pass when using mps (see #372)
-            if torch_device == "mps" and isinstance(model, ModelMixin):
-                model(**self.dummy_input)
-
             outputs_dict = model(**inputs_dict)
             outputs_tuple = model(**inputs_dict, return_dict=False)
 
