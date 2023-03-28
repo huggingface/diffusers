@@ -99,7 +99,7 @@ class VaeImageProcessor(ConfigMixin):
         Resize a PIL image. Both height and width will be downscaled to the next integer multiple of `vae_scale_factor`
         """
         w, h = images.size
-        w, h = map(lambda x: x - x % self.vae_scale_factor, (w, h))  # resize to integer multiple of vae_scale_factor
+        w, h = (x - x % self.vae_scale_factor for x in (w, h))  # resize to integer multiple of vae_scale_factor
         images = images.resize((w, h), resample=PIL_INTERPOLATION[self.resample])
         return images
 

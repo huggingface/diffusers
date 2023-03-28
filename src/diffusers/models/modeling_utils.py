@@ -647,7 +647,7 @@ class ModelMixin(torch.nn.Module):
     ):
         # Retrieve missing & unexpected_keys
         model_state_dict = model.state_dict()
-        loaded_keys = [k for k in state_dict.keys()]
+        loaded_keys = list(state_dict.keys())
 
         expected_keys = list(model_state_dict.keys())
 

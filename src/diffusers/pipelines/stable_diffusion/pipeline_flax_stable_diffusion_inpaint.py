@@ -563,7 +563,7 @@ def unshard(x: jnp.ndarray):
 
 def preprocess_image(image, dtype):
     w, h = image.size
-    w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
+    w, h = (x - x % 32 for x in (w, h))  # resize to integer multiple of 32
     image = image.resize((w, h), resample=PIL_INTERPOLATION["lanczos"])
     image = jnp.array(image).astype(dtype) / 255.0
     image = image[None].transpose(0, 3, 1, 2)
@@ -572,7 +572,7 @@ def preprocess_image(image, dtype):
 
 def preprocess_mask(mask, dtype):
     w, h = mask.size
-    w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
+    w, h = (x - x % 32 for x in (w, h))  # resize to integer multiple of 32
     mask = mask.resize((w, h))
     mask = jnp.array(mask.convert("L")).astype(dtype) / 255.0
     mask = jnp.expand_dims(mask, axis=(0, 1))
