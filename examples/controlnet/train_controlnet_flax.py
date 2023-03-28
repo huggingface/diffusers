@@ -957,7 +957,11 @@ def main():
 
         train_metrics = []
 
-        steps_per_epoch = len(train_dataset) // total_train_batch_size
+        steps_per_epoch = (
+            args.max_train_samples // total_train_batch_size
+            if args.streaming
+            else len(train_dataset) // total_train_batch_size
+        )
         train_step_progress_bar = tqdm(
             total=steps_per_epoch,
             desc="Training...",
