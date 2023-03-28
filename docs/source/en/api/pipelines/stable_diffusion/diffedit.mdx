@@ -22,27 +22,31 @@ The abstract of the paper is the following:
 
 Resources:
 
-* [Project Page](https://pix2pixzero.github.io/).
 * [Paper](https://arxiv.org/abs/2210.11427).
 * [Blog Post with Demo](https://blog.problemsolversguild.com/technical/research/2022/11/02/DiffEdit-Implementation.html).
-* [Implementation on Github](https://github.com/Xiang-cd/DiffEdit-stable-diffusion/blob/main/assets/origin.png).
+* [Implementation on Github](https://github.com/Xiang-cd/DiffEdit-stable-diffusion/).
 
 ## Tips 
 
-* The pipeline can be conditioned on real input images. Check out the code examples below to know more.
-* The pipeline exposes two arguments namely `source_embeds` and `target_embeds`
-that let you control the direction of the semantic edits in the final image to be generated. Let's say,
+* The pipeline can generate masks that can be fed into other inpainting pipelines. Check out the code examples below to know more.
+* In order to generate an image using this pipeline, both an image mask (manually specified or generated using `generate_mask`)
+and a set of partially inverted latents (generated using `invert`) _must_ be provided as arguments when calling the pipeline to generate the final edited image.
+Refer to the code examples below for more details.
+* The function `generate_mask` exposes two prompt arguments, `source_prompt` and `target_prompt`,
+that let you control the locations of the semantic edits in the final image to be generated. Let's say,
 you wanted to translate from "cat" to "dog". In this case, the edit direction will be "cat -> dog". To reflect
-this in the pipeline, you simply have to set the embeddings related to the phrases including "cat" to
-`source_embeds` and "dog" to `target_embeds`. Refer to the code example below for more details.
-* When you're using this pipeline from a prompt, specify the _source_ concept in the prompt. Taking
-the above example, a valid input prompt would be: "a high resolution painting of a **cat** in the style of van gough".
+this in the generated mask, you simply have to set the embeddings related to the phrases including "cat" to
+`source_prompt_embeds` and "dog" to `target_prompt_embeds`. Refer to the code example below for more details.
+* When generating partially inverted latents using `invert`, specify a caption describing the overall image for the `prompt` 
+argument. Taking the above example, a valid input prompt would be: "a high resolution painting of a cat in the style of van gough".
+* Note that the caption provided for `invert` can be automatically generated. Please refer to [this code example](#generating-image-captions-for-inversion) for more details.
+* When calling the pipeline to generate the final edited image, assign the source concept to `negative_prompt` and the target concept to `prompt`. Taking the above example, you simply have to set the embeddings related to the phrases including "cat" to
+`negative_prompt_embeds` and "dog" to `prompt_embeds`. Refer to the code example below for more details.
 * If you wanted to reverse the direction in the example above, i.e., "dog -> cat", then it's recommended to:
-    * Swap the `source_embeds` and `target_embeds`.
-    * Change the input prompt to include "dog".  
-* To learn more about how the source and target embeddings are generated, refer to the [original 
-paper](https://arxiv.org/abs/2302.03027). Below, we also provide some directions on how to generate the embeddings.
-* Note that the quality of the outputs generated with this pipeline is dependent on how good the `source_embeds` and `target_embeds` are. Please, refer to [this discussion](#generating-source-and-target-embeddings) for some suggestions on the topic.
+    * Swap the `source_prompt` and `target_prompt` in the arguments to `generate_mask`.
+    * Change the input prompt for `invert` to include "dog".  
+    * Swap the `prompt` and `negative_prompt` in the arguments to call the pipeline to generate the final edited image.
+* Note that the source and target prompts, or their corresponding embeddings, can also be automatically generated. Please, refer to [this discussion](#generating-source-and-target-embeddings) for more details.
 
 ## Available Pipelines:
 
@@ -54,34 +58,91 @@ paper](https://arxiv.org/abs/2302.03027). Below, we also provide some directions
 
 ## Usage example
 
-### Based on an input image
+### Based on an input image with a caption
 
-When the pipeline is conditioned on an input image, we first obtain an inverted
-noise from it using a `DDIMInverseScheduler` with the help of a generated caption. Then 
-the inverted noise is used to start the generation process. 
+When the pipeline is conditioned on an input image, we first obtain partially inverted latents from the input image using a
+`DDIMInverseScheduler` with the help of a caption. Then we generate an editing mask to identify relevant regions in the image using the source and target prompts. Finally, 
+the inverted noise and generated mask is used to start the generation process. 
 
 First, let's load our pipeline: 
 
 ```py
 import torch
-from transformers import BlipForConditionalGeneration, BlipProcessor
 from diffusers import DDIMScheduler, DDIMInverseScheduler, StableDiffusionPix2PixZeroPipeline
 
-captioner_id = "Salesforce/blip-image-captioning-base"
-processor = BlipProcessor.from_pretrained(captioner_id)
-model = BlipForConditionalGeneration.from_pretrained(captioner_id, torch_dtype=torch.float16, low_cpu_mem_usage=True)
-
-sd_model_ckpt = "CompVis/stable-diffusion-2-1"
-pipeline = StableDiffusionPix2PixZeroPipeline.from_pretrained(
+sd_model_ckpt = "stabilityai/stable-diffusion-2-1"
+pipeline = StableDiffusionDiffEditPipeline.from_pretrained(
     sd_model_ckpt,
-    caption_generator=model,
-    caption_processor=processor,
     torch_dtype=torch.float16,
     safety_checker=None,
 )
 pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
 pipeline.inverse_scheduler = DDIMInverseScheduler.from_config(pipeline.scheduler.config)
 pipeline.enable_model_cpu_offload()
+pipeline.enable_vae_slicing()
+```
+
+Then, we load an input image for conditioning and provide a suitable caption for it: 
+
+```py
+import requests
+from diffusers.utils import load_image
+
+img_url = "https://github.com/Xiang-cd/DiffEdit-stable-diffusion/raw/main/assets/origin.png"
+raw_image = load_image(img_url).convert("RGB").resize((768, 768))
+```
+
+Then, we employ the source and target prompts to generate the editing mask:
+
+```py
+# See the "Generating source and target embeddings" section below to
+# automate the generation of these captions with a pre-trained model like Flan-T5 as explained below.
+
+source_prompt = "a bowl of fruits"
+target_prompt = "a basket of fruits"
+mask_image = pipeline.generate_mask(
+    image=raw_image,
+    source_prompt=source_prompt,
+    target_prompt=target_prompt,
+    generator=generator,
+)
+```
+
+Then, we employ the caption and the input image to get the inverted latents: 
+
+```py 
+generator = torch.manual_seed(0)
+inv_latents = pipeline.invert(prompt=source_prompt, image=raw_image, generator=generator).latents
+```
+
+Now, generate the image with the inverted latents and semantically generated mask: 
+
+```py
+image = pipeline(
+    prompt=target_prompt,
+    mask=mask_image,
+    image_latents=inv_latents,
+    generator=generator,
+    negative_prompt=source_prompt,
+).images[0]
+image.save("edited_image.png")
+```
+
+## Generating image captions for inversion
+
+The authors originally used the source concept prompt as the caption for generating the partially inverted latents. However, we can also leverage open source and public image captioning models for the same purpose.
+Below, we provide an end-to-end example with the [Flan-T5](https://huggingface.co/docs/transformers/model_doc/flan-t5) model
+for generating captions.
+
+First, let's load our automatic image captioning model:
+
+```py
+import torch
+from transformers import BlipForConditionalGeneration, BlipProcessor
+
+captioner_id = "Salesforce/blip-image-captioning-base"
+processor = BlipProcessor.from_pretrained(captioner_id)
+model = BlipForConditionalGeneration.from_pretrained(captioner_id, torch_dtype=torch.float16, low_cpu_mem_usage=True)
 ```
 
 Then, we load an input image for conditioning and obtain a suitable caption for it: 
@@ -89,54 +150,36 @@ Then, we load an input image for conditioning and obtain a suitable caption for 
 ```py
 import requests
 from PIL import Image
+from diffusers.utils import load_image
 
 img_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/test_images/cats/cat_6.png"
-raw_image = Image.open(requests.get(img_url, stream=True).raw).convert("RGB").resize((512, 512))
-caption = pipeline.generate_caption(raw_image)
+raw_image = load_image(img_url).convert("RGB").resize((768, 768))
+caption = None
 ```
 
-Then we employ the generated caption and the input image to get the inverted latents: 
+Then, we employ the generated caption and the input image to get the inverted latents: 
 
 ```py 
 generator = torch.manual_seed(0)
-inv_latents = pipeline.invert(caption, image=raw_image, generator=generator).latents
+inv_latents = pipeline.invert(prompt=source_prompt, image=raw_image, generator=generator).latents
 ```
 
-Then we employ the source and target prompts to generate the editing mask:
-
-```py
-# See the "Generating source and target embeddings" section below to
-# automate the generation of these captions with a pre-trained model like Flan-T5 as explained below.
-source_prompts = ["a cat sitting on the street", "a cat playing in the field", "a face of a cat"]
-target_prompts = ["a dog sitting on the street", "a dog playing in the field", "a face of a dog"]
-
-source_embeds = pipeline.get_embeds(source_prompts, batch_size=2)
-target_embeds = pipeline.get_embeds(target_prompts, batch_size=2)
-mask_image = pipeline.compute_mask(
-    image=raw_image,
-    prompt_embeds=target_embeds,
-    mask_prompt_embeds=source_embeds,
-    generator=generator,
-)
-```
-
-Now, generate the image with the inverted latents and semantically generated mask: 
+Now, generate the image with the inverted latents and semantically generated mask from the previous section: 
 
 ```py
 image = pipeline(
-    prompt_embeds=target_embeds,
-    num_inference_steps=50,
+    prompt=target_prompt,
+    mask=mask_image,
+    image_latents=inv_latents,
     generator=generator,
-    inverted_latents=inv_latents,
-    mask_image=mask_image,
-    negative_prompt=caption,
+    negative_prompt=source_prompt,
 ).images[0]
 image.save("edited_image.png")
 ```
 
 ## Generating source and target embeddings 
 
-The authors originally used the [GPT-3 API](https://openai.com/api/) to generate the source and target captions for discovering
+The authors originally required the user to manually provide the source and target prompts for discovering
 edit directions. However, we can also leverage open source and public models for the same purpose.
 Below, we provide an end-to-end example with the [Flan-T5](https://huggingface.co/docs/transformers/model_doc/flan-t5) model
 for generating captions and [CLIP](https://huggingface.co/docs/transformers/model_doc/clip) for
@@ -196,14 +239,14 @@ We encourage you to play around with the different parameters supported by the
 Here, we need to use the same text encoder model used by the subsequent Stable Diffusion model.
 
 ```py 
-from diffusers import StableDiffusionPix2PixZeroPipeline 
+from diffusers import StableDiffusionDiffEditPipeline 
 
-pipeline = StableDiffusionPix2PixZeroPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16
+pipeline = StableDiffusionDiffEditPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16
 )
 pipeline = pipeline.to("cuda")
-tokenizer = pipeline.tokenizer
-text_encoder = pipeline.text_encoder
+pipeline.enable_model_cpu_offload()
+pipeline.enable_vae_slicing()
 ```
 
 **5. Compute embeddings**:
@@ -227,25 +270,39 @@ def embed_captions(sentences, tokenizer, text_encoder, device="cuda"):
             embeddings.append(prompt_embeds)
     return torch.concatenate(embeddings, dim=0).mean(dim=0).unsqueeze(0)
 
-source_embeddings = embed_captions(source_captions, tokenizer, text_encoder)
-target_embeddings = embed_captions(target_captions, tokenizer, text_encoder)
+source_embeddings = embed_captions(source_captions, pipeline.tokenizer, pipeline.text_encoder)
+target_embeddings = embed_captions(target_captions, pipeline.tokenizer, pipeline.text_encoder)
 ```
 
-And you're done! [Here](https://colab.research.google.com/drive/1tz2C1EdfZYAPlzXXbTnf-5PRBiR8_R1F?usp=sharing) is a Colab Notebook that you can use to interact with the entire process.
-
-Now, you can use these embeddings directly while calling the pipeline: 
+And you're done! Now, you can use these embeddings directly while calling the pipeline: 
 
 ```py
-from diffusers import DDIMScheduler
+from diffusers import DDIMInverseScheduler, DDIMScheduler
+from diffusers.utils import load_image
 
 pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
+pipeline.inverse_scheduler = DDIMInverseScheduler.from_config(pipeline.scheduler.config)
+
+img_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/test_images/cats/cat_6.png"
+raw_image = load_image(img_url).convert("RGB").resize((768, 768))
+
+
+mask = pipeline.generate_mask(
+    image=raw_image,
+    source_prompt_embeds=source_embeds,
+    target_prompt_embeds=target_embeds,
+)
+
+inv_latents = pipeline.invert(
+    prompt=caption,
+    image=raw_image,
+).latents
 
 images = pipeline(
-    prompt,
-    source_embeds=source_embeddings,
-    target_embeds=target_embeddings,
-    num_inference_steps=50,
-    cross_attention_guidance_amount=0.15,
+    mask=mask,
+    image_latents=inv_latents,
+    prompt_embeds=target_embeddings,
+    negative_prompt_embeds=source_embeddings,
 ).images
 images[0].save("edited_image_dog.png")
 ```
@@ -253,4 +310,6 @@ images[0].save("edited_image_dog.png")
 ## StableDiffusionDiffEditPipeline
 [[autodoc]] StableDiffusionDiffEditPipeline
 	- __call__
+    - generate_mask
+    - invert
 	- all
