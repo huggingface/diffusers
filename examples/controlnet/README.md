@@ -362,4 +362,4 @@ python3 train_controlnet_flax.py \
  --hub_model_id=$HUB_MODEL_ID
  ```
 
-By the end of training, the final checkpoint will be automatically stored on your huggingface hub account, under `$HUB_MODEL_ID` (see an example [here](https://huggingface.co/YiYiXu/fill-circle-controlnet))
+Since we passed the `--push_to_hub` flag, it will automatically create a model repo under your huggingface account based on `$HUB_MODEL_ID`. By the end of training, the final checkpoint will be automatically stored on the hub. You can find an example model repo [here](https://huggingface.co/YiYiXu/fill-circle-controlnet).
