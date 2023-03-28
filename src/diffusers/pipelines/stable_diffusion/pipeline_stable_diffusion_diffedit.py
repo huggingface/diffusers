@@ -953,7 +953,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
     @torch.no_grad()
     def invert(
         self,
-        prompt: Optional[str] = None,
+        prompt: Optional[Union[str, List[str]]] = None,
         image: Union[torch.FloatTensor, PIL.Image.Image] = None,
         num_inference_steps: int = 50,
         inpaint_strength: float = 0.8,
@@ -1212,7 +1212,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, List[str]] = None,
+        prompt: Optional[Union[str, List[str]]] = None,
         mask: Union[torch.FloatTensor, PIL.Image.Image] = None,
         image_latents: torch.FloatTensor = None,
         inpaint_strength: Optional[float] = 0.8,
