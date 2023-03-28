@@ -58,6 +58,18 @@ check_min_version("0.15.0.dev0")
 logger = logging.getLogger(__name__)
 
 
+def image_grid(imgs, rows, cols):
+    assert len(imgs) == rows * cols
+
+    w, h = imgs[0].size
+    grid = Image.new("RGB", size=(cols * w, rows * h))
+    grid_w, grid_h = grid.size
+
+    for i, img in enumerate(imgs):
+        grid.paste(img, box=(i % cols * w, i // cols * h))
+    return grid
+
+
 def log_validation(controlnet, controlnet_params, tokenizer, args, rng, weight_dtype):
     logger.info("Running validation... ")
 
@@ -131,6 +143,43 @@ def log_validation(controlnet, controlnet_params, tokenizer, args, rng, weight_d
         wandb.log({"validation": formatted_images})
     else:
         logger.warn(f"image logging not implemented for {args.report_to}")
+
+    return image_logs
+
+
+def save_model_card(repo_name, image_logs=None, base_model=str, repo_folder=None):
+    img_str = ""
+    for i, log in enumerate(image_logs):
+        images = log["images"]
+        validation_prompt = log["validation_prompt"]
+        validation_image = log["validation_image"]
+        validation_image.save(os.path.join(repo_folder, "image_control.png"))
+        img_str += f"prompt: {validation_prompt}\n"
+        images = [validation_image] + images
+        image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images_{i}.png"))
+        img_str += f"![images_{i})](./images_{i}.png)\n"
+
+    yaml = f"""
+---
+license: creativeml-openrail-m
+base_model: {base_model}
+tags:
+- stable-diffusion
+- stable-diffusion-diffusers
+- text-to-image
+- diffusers
+- controlnet
+inference: true
+---
+    """
+    model_card = f"""
+# controlnet- {repo_name}
+
+These are controlnet weights trained on {base_model} with new type of conditioning. You can find some example images in the following. \n
+{img_str}
+"""
+    with open(os.path.join(repo_folder, "README.md"), "w") as f:
+        f.write(yaml + model_card)
 
 
 def parse_args():
@@ -590,8 +639,8 @@ def main():
                 repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
             else:
                 repo_name = args.hub_model_id
-            create_repo(repo_name, exist_ok=True, token=args.hub_token)
-            repo = Repository(args.output_dir, clone_from=repo_name, token=args.hub_token)
+            repo_url = create_repo(repo_name, exist_ok=True, token=args.hub_token)
+            repo = Repository(args.output_dir, clone_from=repo_url, token=args.hub_token)
 
             with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
                 if "step_*" not in gitignore:
@@ -708,10 +757,9 @@ def main():
 
     state = train_state.TrainState.create(apply_fn=controlnet.__call__, params=controlnet_params, tx=optimizer)
 
-    noise_scheduler = FlaxDDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
-        beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000
+    noise_scheduler, noise_scheduler_state = FlaxDDPMScheduler.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="scheduler"
     )
-    noise_scheduler_state = noise_scheduler.create_state()
 
     # Initialize our training
     validation_rng, train_rngs = jax.random.split(rng)
@@ -870,7 +918,7 @@ def main():
             {
                 "num_train_examples": len(train_dataset),
                 "total_train_batch_size": total_train_batch_size,
-                "total_optimization_step": args.num_train_epochs * num_update_steps_per_epoch, 
+                "total_optimization_step": args.num_train_epochs * num_update_steps_per_epoch,
                 "num_devices": jax.device_count(),
             }
         )
@@ -914,7 +962,7 @@ def main():
                 and global_step % args.validation_steps == 0
                 and jax.process_index() == 0
             ):
-                log_validation(controlnet, state.params, tokenizer, args, validation_rng, weight_dtype)
+                _ = log_validation(controlnet, state.params, tokenizer, args, validation_rng, weight_dtype)
 
             if global_step % args.logging_steps == 0 and jax.process_index() == 0:
                 if args.report_to == "wandb":
@@ -932,12 +980,20 @@ def main():
 
     # Create the pipeline using using the trained modules and save it.
     if jax.process_index() == 0:
+        image_logs = log_validation(controlnet, state.params, tokenizer, args, validation_rng, weight_dtype)
+
         controlnet.save_pretrained(
             args.output_dir,
             params=get_params_to_save(state.params),
         )
 
         if args.push_to_hub:
+            save_model_card(
+                repo_name,
+                image_logs=image_logs,
+                base_model=args.pretrained_model_name_or_path,
+                repo_folder=args.output_dir,
+            )
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
 
 
