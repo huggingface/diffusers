@@ -18,7 +18,7 @@ from typing import Callable, List, Optional, Union
 import PIL
 import torch
 from packaging import version
-from transformers import CLIPFeatureExtractor, CLIPVisionModelWithProjection
+from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
@@ -53,7 +53,7 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
-        feature_extractor ([`CLIPFeatureExtractor`]):
+        feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
     # TODO: feature_extractor is required to encode images (if they are in PIL format),
@@ -67,7 +67,7 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -284,7 +284,7 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
                 The image or images to guide the image generation. If you provide a tensor, it needs to comply with the
                 configuration of
                 [this](https://huggingface.co/lambdalabs/sd-image-variations-diffusers/blob/main/feature_extractor/preprocessor_config.json)
-                `CLIPFeatureExtractor`
+                `CLIPImageProcessor`
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):

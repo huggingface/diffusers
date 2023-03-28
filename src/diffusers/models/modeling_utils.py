@@ -575,14 +575,21 @@ class ModelMixin(torch.nn.Module):
                         raise ValueError(
                             f"Cannot load {cls} from {pretrained_model_name_or_path} because the following keys are"
                             f" missing: \n {', '.join(missing_keys)}. \n Please make sure to pass"
-                            " `low_cpu_mem_usage=False` and `device_map=None` if you want to randomely initialize"
+                            " `low_cpu_mem_usage=False` and `device_map=None` if you want to randomly initialize"
                             " those weights or else make sure your checkpoint file is correct."
                         )
 
+                    empty_state_dict = model.state_dict()
                     for param_name, param in state_dict.items():
                         accepts_dtype = "dtype" in set(
                             inspect.signature(set_module_tensor_to_device).parameters.keys()
                         )
+
+                        if empty_state_dict[param_name].shape != param.shape:
+                            raise ValueError(
+                                f"Cannot load {pretrained_model_name_or_path} because {param_name} expected shape {empty_state_dict[param_name]}, but got {param.shape}. If you want to instead overwrite randomly initialized weights, please make sure to pass both `low_cpu_mem_usage=False` and `ignore_mismatched_sizes=True`. For more information, see also: https://github.com/huggingface/diffusers/issues/1619#issuecomment-1345604389 as an example."
+                            )
+
                         if accepts_dtype:
                             set_module_tensor_to_device(
                                 model, param_name, param_device, value=param, dtype=torch_dtype
@@ -591,7 +598,7 @@ class ModelMixin(torch.nn.Module):
                             set_module_tensor_to_device(model, param_name, param_device, value=param)
                 else:  # else let accelerate handle loading and dispatching.
                     # Load weights and dispatch according to the device_map
-                    # by deafult the device_map is None and the weights are loaded on the CPU
+                    # by default the device_map is None and the weights are loaded on the CPU
                     accelerate.load_checkpoint_and_dispatch(model, model_file, device_map, dtype=torch_dtype)
 
                 loading_info = {
@@ -647,7 +654,7 @@ class ModelMixin(torch.nn.Module):
     ):
         # Retrieve missing & unexpected_keys
         model_state_dict = model.state_dict()
-        loaded_keys = [k for k in state_dict.keys()]
+        loaded_keys = list(state_dict.keys())
 
         expected_keys = list(model_state_dict.keys())
 

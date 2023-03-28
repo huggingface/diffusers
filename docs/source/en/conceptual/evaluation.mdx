@@ -310,7 +310,7 @@ for idx in range(len(dataset)):
     edited_images.append(edited_image)
 ```
 
-To measure the directional similarity, we first load CLIP's image and text encoders.
+To measure the directional similarity, we first load CLIP's image and text encoders:
 
 ```python
 from transformers import (
@@ -329,7 +329,7 @@ image_encoder = CLIPVisionModelWithProjection.from_pretrained(clip_id).to(device
 
 Notice that we are using a particular CLIP checkpoint, i.e., `openai/clip-vit-large-patch14`. This is because the Stable Diffusion pre-training was performed with this CLIP variant. For more details, refer to the [documentation](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/pix2pix#diffusers.StableDiffusionInstructPix2PixPipeline.text_encoder).
 
-Next, we prepare a PyTorch `nn.module` to compute directional similarity:
+Next, we prepare a PyTorch `nn.Module` to compute directional similarity:
 
 ```python
 import torch.nn as nn
@@ -410,7 +410,7 @@ It should be noted that the `StableDiffusionInstructPix2PixPipeline` exposes t
 
 We can extend the idea of this metric to measure how similar the original image and edited version are. To do that, we can just do `F.cosine_similarity(img_feat_two, img_feat_one)`. For these kinds of edits, we would still want the primary semantics of the images to be preserved as much as possible, i.e., a high similarity score.
 
-We can use these metrics for similar pipelines such as the[`StableDiffusionPix2PixZeroPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/pix2pix_zero#diffusers.StableDiffusionPix2PixZeroPipeline)`.
+We can use these metrics for similar pipelines such as the [`StableDiffusionPix2PixZeroPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/pix2pix_zero#diffusers.StableDiffusionPix2PixZeroPipeline).
 
 <Tip>
 
@@ -550,7 +550,7 @@ FID results tend to be fragile as they depend on a lot of factors:
 * The image format (not the same if we start from PNGs vs JPGs).
 
 Keeping that in mind, FID is often most useful when comparing similar runs, but it is 
-hard to to reproduce paper results unless the authors carefully disclose the FID 
+hard to reproduce paper results unless the authors carefully disclose the FID 
 measurement code.
 
 These points apply to other related metrics too, such as KID and IS. 

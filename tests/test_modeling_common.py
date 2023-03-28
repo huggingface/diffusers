@@ -24,10 +24,10 @@ import requests_mock
 import torch
 from requests.exceptions import HTTPError
 
-from diffusers.models import ModelMixin, UNet2DConditionModel
-from diffusers.models.attention_processor import AttnProcessor
+from diffusers.models import UNet2DConditionModel
 from diffusers.training_utils import EMAModel
 from diffusers.utils import torch_device
+from diffusers.utils.testing_utils import require_torch_gpu
 
 
 class ModelUtilsTest(unittest.TestCase):
@@ -100,30 +100,49 @@ class ModelUtilsTest(unittest.TestCase):
 
         diffusers.utils.import_utils._safetensors_available = True
 
+    def test_weight_overwrite(self):
+        with tempfile.TemporaryDirectory() as tmpdirname, self.assertRaises(ValueError) as error_context:
+            UNet2DConditionModel.from_pretrained(
+                "hf-internal-testing/tiny-stable-diffusion-torch",
+                subfolder="unet",
+                cache_dir=tmpdirname,
+                in_channels=9,
+            )
+
+        # make sure that error message states what keys are missing
+        assert "Cannot load" in str(error_context.exception)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            model = UNet2DConditionModel.from_pretrained(
+                "hf-internal-testing/tiny-stable-diffusion-torch",
+                subfolder="unet",
+                cache_dir=tmpdirname,
+                in_channels=9,
+                low_cpu_mem_usage=False,
+                ignore_mismatched_sizes=True,
+            )
+
+        assert model.config.in_channels == 9
+
 
 class ModelTesterMixin:
     def test_from_save_pretrained(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict)
-        if hasattr(model, "set_attn_processor"):
-            model.set_attn_processor(AttnProcessor())
+        if hasattr(model, "set_default_attn_processor"):
+            model.set_default_attn_processor()
         model.to(torch_device)
         model.eval()
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_pretrained(tmpdirname)
             new_model = self.model_class.from_pretrained(tmpdirname)
-            if hasattr(new_model, "set_attn_processor"):
-                new_model.set_attn_processor(AttnProcessor())
+            if hasattr(new_model, "set_default_attn_processor"):
+                new_model.set_default_attn_processor()
             new_model.to(torch_device)
 
         with torch.no_grad():
-            # Warmup pass when using mps (see #372)
-            if torch_device == "mps" and isinstance(model, ModelMixin):
-                _ = model(**self.dummy_input)
-                _ = new_model(**self.dummy_input)
-
             image = model(**inputs_dict)
             if isinstance(image, dict):
                 image = image.sample
@@ -140,16 +159,16 @@ class ModelTesterMixin:
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict)
-        if hasattr(model, "set_attn_processor"):
-            model.set_attn_processor(AttnProcessor())
+        if hasattr(model, "set_default_attn_processor"):
+            model.set_default_attn_processor()
         model.to(torch_device)
         model.eval()
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_pretrained(tmpdirname, variant="fp16")
             new_model = self.model_class.from_pretrained(tmpdirname, variant="fp16")
-            if hasattr(new_model, "set_attn_processor"):
-                new_model.set_attn_processor(AttnProcessor())
+            if hasattr(new_model, "set_default_attn_processor"):
+                new_model.set_default_attn_processor()
 
             # non-variant cannot be loaded
             with self.assertRaises(OSError) as error_context:
@@ -161,11 +180,6 @@ class ModelTesterMixin:
             new_model.to(torch_device)
 
         with torch.no_grad():
-            # Warmup pass when using mps (see #372)
-            if torch_device == "mps" and isinstance(model, ModelMixin):
-                _ = model(**self.dummy_input)
-                _ = new_model(**self.dummy_input)
-
             image = model(**inputs_dict)
             if isinstance(image, dict):
                 image = image.sample
@@ -177,6 +191,21 @@ class ModelTesterMixin:
 
         max_diff = (image - new_image).abs().sum().item()
         self.assertLessEqual(max_diff, 5e-5, "Models give different forward passes")
+
+    @require_torch_gpu
+    def test_from_save_pretrained_dynamo(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model = torch.compile(model)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            model.save_pretrained(tmpdirname)
+            new_model = self.model_class.from_pretrained(tmpdirname)
+            new_model.to(torch_device)
+
+        assert new_model.__class__ == self.model_class
 
     def test_from_save_pretrained_dtype(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -203,10 +232,6 @@ class ModelTesterMixin:
         model.eval()
 
         with torch.no_grad():
-            # Warmup pass when using mps (see #372)
-            if torch_device == "mps" and isinstance(model, ModelMixin):
-                model(**self.dummy_input)
-
             first = model(**inputs_dict)
             if isinstance(first, dict):
                 first = first.sample
@@ -377,10 +402,6 @@ class ModelTesterMixin:
         model.eval()
 
         with torch.no_grad():
-            # Warmup pass when using mps (see #372)
-            if torch_device == "mps" and isinstance(model, ModelMixin):
-                model(**self.dummy_input)
-
             outputs_dict = model(**inputs_dict)
             outputs_tuple = model(**inputs_dict, return_dict=False)
 
