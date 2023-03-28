@@ -50,6 +50,7 @@ from ..utils import (
     get_class_from_dynamic_module,
     is_accelerate_available,
     is_accelerate_version,
+    is_compiled_module,
     is_safetensors_available,
     is_torch_version,
     is_transformers_available,
@@ -255,7 +256,14 @@ def maybe_raise_or_warn(
             if class_candidate is not None and issubclass(class_obj, class_candidate):
                 expected_class_obj = class_candidate
 
-        if not issubclass(passed_class_obj[name].__class__, expected_class_obj):
+        # Dynamo wraps the original model in a private class.
+        # I didn't find a public API to get the original class.
+        sub_model = passed_class_obj[name]
+        model_cls = sub_model.__class__
+        if is_compiled_module(sub_model):
+            model_cls = sub_model._orig_mod.__class__
+
+        if not issubclass(model_cls, expected_class_obj):
             raise ValueError(
                 f"{passed_class_obj[name]} is of type: {type(passed_class_obj[name])}, but should be"
                 f" {expected_class_obj}"
@@ -419,6 +427,10 @@ class DiffusionPipeline(ConfigMixin):
             if module is None:
                 register_dict = {name: (None, None)}
             else:
+                # register the original module, not the dynamo compiled one
+                if is_compiled_module(module):
+                    module = module._orig_mod
+
                 library = module.__module__.split(".")[0]
 
                 # check if the module is a pipeline module
@@ -483,6 +495,12 @@ class DiffusionPipeline(ConfigMixin):
         for pipeline_component_name in model_index_dict.keys():
             sub_model = getattr(self, pipeline_component_name)
             model_cls = sub_model.__class__
+
+            # Dynamo wraps the original model in a private class.
+            # I didn't find a public API to get the original class.
+            if is_compiled_module(sub_model):
+                sub_model = sub_model._orig_mod
+                model_cls = sub_model.__class__
 
             save_method_name = None
             # search for the model's base class in LOADABLE_CLASSES
