@@ -274,18 +274,18 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
         else:
             raise NotImplementedError(f"Unknown conditional unet num_classes config: {unet_params.num_classes}")
 
-    config = dict(
-        sample_size=image_size // vae_scale_factor,
-        in_channels=unet_params.in_channels,
-        down_block_types=tuple(down_block_types),
-        block_out_channels=tuple(block_out_channels),
-        layers_per_block=unet_params.num_res_blocks,
-        cross_attention_dim=unet_params.context_dim,
-        attention_head_dim=head_dim,
-        use_linear_projection=use_linear_projection,
-        class_embed_type=class_embed_type,
-        projection_class_embeddings_input_dim=projection_class_embeddings_input_dim,
-    )
+    config = {
+        "sample_size": image_size // vae_scale_factor,
+        "in_channels": unet_params.in_channels,
+        "down_block_types": tuple(down_block_types),
+        "block_out_channels": tuple(block_out_channels),
+        "layers_per_block": unet_params.num_res_blocks,
+        "cross_attention_dim": unet_params.context_dim,
+        "attention_head_dim": head_dim,
+        "use_linear_projection": use_linear_projection,
+        "class_embed_type": class_embed_type,
+        "projection_class_embeddings_input_dim": projection_class_embeddings_input_dim,
+    }
 
     if not controlnet:
         config["out_channels"] = unet_params.out_channels
@@ -305,16 +305,16 @@ def create_vae_diffusers_config(original_config, image_size: int):
     down_block_types = ["DownEncoderBlock2D"] * len(block_out_channels)
     up_block_types = ["UpDecoderBlock2D"] * len(block_out_channels)
 
-    config = dict(
-        sample_size=image_size,
-        in_channels=vae_params.in_channels,
-        out_channels=vae_params.out_ch,
-        down_block_types=tuple(down_block_types),
-        up_block_types=tuple(up_block_types),
-        block_out_channels=tuple(block_out_channels),
-        latent_channels=vae_params.z_channels,
-        layers_per_block=vae_params.num_res_blocks,
-    )
+    config = {
+        "sample_size": image_size,
+        "in_channels": vae_params.in_channels,
+        "out_channels": vae_params.out_ch,
+        "down_block_types": tuple(down_block_types),
+        "up_block_types": tuple(up_block_types),
+        "block_out_channels": tuple(block_out_channels),
+        "latent_channels": vae_params.z_channels,
+        "layers_per_block": vae_params.num_res_blocks,
+    }
     return config
 
 

@@ -22,7 +22,7 @@ import torch
 from parameterized import parameterized
 
 from diffusers import UNet2DConditionModel
-from diffusers.models.attention_processor import AttnProcessor, LoRAAttnProcessor
+from diffusers.models.attention_processor import LoRAAttnProcessor
 from diffusers.utils import (
     floats_tensor,
     load_hf_numpy,
@@ -599,7 +599,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             sample = model(**inputs_dict, cross_attention_kwargs={"scale": 0.0}).sample
 
-        model.set_attn_processor(AttnProcessor())
+        model.set_default_attn_processor()
 
         with torch.no_grad():
             new_sample = model(**inputs_dict).sample
