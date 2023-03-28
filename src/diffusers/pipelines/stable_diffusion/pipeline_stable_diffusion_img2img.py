@@ -38,6 +38,7 @@ from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
+from .convert_from_ckpt import FromCkptMixin
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -91,7 +92,7 @@ def preprocess(image):
     return image
 
 
-class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
+class StableDiffusionImg2ImgPipeline(DiffusionPipeline, FromCkptMixin):
     r"""
     Pipeline for text-guided image to image generation using Stable Diffusion.
 

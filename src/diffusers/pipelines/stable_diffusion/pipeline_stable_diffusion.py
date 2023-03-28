@@ -34,6 +34,7 @@ from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
+from .convert_from_ckpt import FromCkptMixin
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -52,7 +53,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class StableDiffusionPipeline(DiffusionPipeline):
+class StableDiffusionPipeline(DiffusionPipeline, FromCkptMixin):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.
 

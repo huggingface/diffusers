@@ -362,6 +362,27 @@ class DownloadTests(unittest.TestCase):
 
         diffusers.utils.import_utils._safetensors_available = True
 
+    def test_download_from_ckpt(self):
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            ckpt_paths = [
+                "runwayml/stable-diffusion-v1-5/v1-5-pruned-emaonly.ckpt",
+                "WarriorMama777/OrangeMixs/blob/main/Models/AbyssOrangeMix/AbyssOrangeMix_base.ckpt",
+            ]
+
+            for ckpt_path in ckpt_paths:
+                StableDiffusionPipeline.from_ckpt(ckpt_path, cache_dir=tmpdirname)
+
+            ckpt_names = [os.path.basename(ckpt_path) for ckpt_path in ckpt_paths]
+
+            files = []
+            for cache in os.listdir(tmpdirname):
+                snapshots = os.path.join(tmpdirname, cache, "snapshots")
+                all_root_files = [t[-1] for t in os.walk(snapshots)]
+                files += [item for sublist in all_root_files for item in sublist]
+
+            # check that downloaded filenames match checkpoint filenames
+            assert set(ckpt_names) == set(files)
+
 
 class CustomPipelineTests(unittest.TestCase):
     def test_load_custom_pipeline(self):

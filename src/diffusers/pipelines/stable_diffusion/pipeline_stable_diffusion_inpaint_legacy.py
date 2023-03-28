@@ -36,6 +36,7 @@ from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
+from .convert_from_ckpt import FromCkptMixin
 
 logger = logging.get_logger(__name__)
 
@@ -81,7 +82,7 @@ def preprocess_mask(mask, scale_factor=8):
         return mask
 
 
-class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
+class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline, FromCkptMixin):
     r"""
     Pipeline for text-guided image inpainting using Stable Diffusion. *This is an experimental feature*.
 
