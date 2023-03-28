@@ -252,6 +252,7 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
         edit_mom_beta: Optional[float] = 0.4,
         edit_weights: Optional[List[float]] = None,
         sem_guidance: Optional[List[torch.Tensor]] = None,
+        low_memory_mode: bool = False,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -338,6 +339,8 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
             sem_guidance (`List[torch.Tensor]`, *optional*):
                 List of pre-generated guidance vectors to be applied at generation. Length of the list has to
                 correspond to `num_inference_steps`.
+            low_memory_mode (`bool`, *optional*, defaults to `False`):
+                Whether the unet should be ran in a loop, saving memory footprint, or in one go, saving inference time.
 
         Returns:
             [`~pipelines.semantic_stable_diffusion.SemanticStableDiffusionPipelineOutput`] or `tuple`:
@@ -507,7 +510,16 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
             # predict the noise residual
-            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
+            if low_memory_mode:
+                # predict noise for uncond, text, concept1, concept2, ... in a loop
+                noise_pred = []
+                for embedding in text_embeddings:
+                    cur_pred = self.unet(latent_model_input[0].unsqueeze(0), t, encoder_hidden_states=embedding.unsqueeze(0)).sample
+                    noise_pred.append(cur_pred)
+                noise_pred = torch.cat(noise_pred)
+            else:
+                # do the same in one go. requires more device memory but is faster
+                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
 
             # perform guidance
             if do_classifier_free_guidance:
