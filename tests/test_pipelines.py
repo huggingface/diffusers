@@ -418,7 +418,12 @@ class DownloadTests(unittest.TestCase):
 
         # multi token load a1111
         with tempfile.TemporaryDirectory() as tmpdirname:
-            ten = {"string_to_param": {"*": torch.cat([3 * torch.ones((1, 32)), 4 * torch.ones((1, 32)), 5 * torch.ones((1, 32))])}, "name": "<****>"}
+            ten = {
+                "string_to_param": {
+                    "*": torch.cat([3 * torch.ones((1, 32)), 4 * torch.ones((1, 32)), 5 * torch.ones((1, 32))])
+                },
+                "name": "<****>",
+            }
             torch.save(ten, os.path.join(tmpdirname, "a1111.bin"))
 
             pipe.load_textual_inversion(tmpdirname, weight_name="a1111.bin")

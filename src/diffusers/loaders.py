@@ -299,11 +299,10 @@ class TextualInversionLoaderMixin:
 
     def maybe_convert_prompt(self, prompt: Union[str, List[str]], tokenizer: "PreTrainedTokenizer"):
         r"""
-        Maybe convert a prompt into a "multi vector"-compatible prompt. If the prompt includes a token that
-        corresponds to a multi-vector textual inversion embedding, this function will process the prompt
-        so that the special token is replaced with multiple special tokens each corresponding to one of the
-        vectors. If the prompt has no textual inversion token or a textual inversion token that is a single vector,
-        the input prompt is simply returned.
+        Maybe convert a prompt into a "multi vector"-compatible prompt. If the prompt includes a token that corresponds
+        to a multi-vector textual inversion embedding, this function will process the prompt so that the special token
+        is replaced with multiple special tokens each corresponding to one of the vectors. If the prompt has no textual
+        inversion token or a textual inversion token that is a single vector, the input prompt is simply returned.
 
         Parameters:
             prompt (`str` or list of `str`):
@@ -329,11 +328,10 @@ class TextualInversionLoaderMixin:
 
     def _maybe_convert_prompt(self, prompt: str, tokenizer: "PreTrainedTokenizer"):
         r"""
-        Maybe convert a prompt into a "multi vector"-compatible prompt. If the prompt includes a token that
-        corresponds to a multi-vector textual inversion embedding, this function will process the prompt
-        so that the special token is replaced with multiple special tokens each corresponding to one of the
-        vectors. If the prompt has no textual inversion token or a textual inversion token that is a single vector,
-        the input prompt is simply returned.
+        Maybe convert a prompt into a "multi vector"-compatible prompt. If the prompt includes a token that corresponds
+        to a multi-vector textual inversion embedding, this function will process the prompt so that the special token
+        is replaced with multiple special tokens each corresponding to one of the vectors. If the prompt has no textual
+        inversion token or a textual inversion token that is a single vector, the input prompt is simply returned.
 
         Parameters:
             prompt (`str`):
@@ -378,12 +376,15 @@ class TextualInversionLoaderMixin:
                 Can be either:
 
                     - A string, the *model id* of a pretrained model hosted inside a model repo on huggingface.co.
-                      Valid model ids should have an organization name, like `"sd-concepts-library/low-poly-hd-logos-icons"`.
-                    - A path to a *directory* containing textual inversion weights, e.g. `./my_text_inversion_directory/`.
+                      Valid model ids should have an organization name, like
+                      `"sd-concepts-library/low-poly-hd-logos-icons"`.
+                    - A path to a *directory* containing textual inversion weights, e.g.
+                      `./my_text_inversion_directory/`.
             weight_name (`str`, *optional*):
                 Name of a custom weight file. This should be used in two cases:
 
-                    - The saved textual inversion file is in `diffusers` format, but has was saved under a specific weight name, such as `text_inv.bin`.
+                    - The saved textual inversion file is in `diffusers` format, but has was saved under a specific
+                      weight name, such as `text_inv.bin`.
                     - The saved textual inversion file is in the "Automatic1111" form.
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory in which a downloaded pretrained model configuration should be cached if the

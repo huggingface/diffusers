@@ -897,12 +897,13 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         pipe.to("cuda")
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        image = pipe("An logo of a turtle in Style-Winter with <low-poly-hd-logos-icons>", generator=generator, output_type="np").images[0]
+        image = pipe(
+            "An logo of a turtle in Style-Winter with <low-poly-hd-logos-icons>", generator=generator, output_type="np"
+        ).images[0]
         # np.save("/home/patrick/diffusers-images/text_inv/winter_logo_style.npy", image)
 
         expected_image = load_numpy(
-            "https://huggingface.co/datasets/diffusers/test-images/resolve/main"
-            "/text_inv/winter_logo_style.npy"
+            "https://huggingface.co/datasets/diffusers/test-images/resolve/main" "/text_inv/winter_logo_style.npy"
         )
 
         max_diff = np.abs(expected_image - image).max()
