@@ -158,7 +158,7 @@ class StableUnCLIPImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         inputs.update({"image_embeds": None})
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
-        
+
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array(
             [0.34588397, 0.7747054, 0.5453714, 0.5227859, 0.57656777, 0.6532228, 0.5177634, 0.49932978, 0.56626225]
