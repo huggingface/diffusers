@@ -458,7 +458,9 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline):
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
-
+            use_karras_sigmas (`bool`, *optional*, defaults to `False`):
+                Use karras sigmas. For example, specifying `sample_dpmpp_2m` to `set_scheduler` will be equivalent to
+                `DPM++2M` in stable-diffusion-webui. On top of that, setting this option to True will make it `DPM++2M Karras`.
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
