@@ -54,7 +54,7 @@ def _query_chunk_attention(query, key, value, precision, key_chunk_size: int = 4
 
     return all_values / all_weights
 
-def memory_efficient_attention(
+def jax_memory_efficient_attention(
     query, 
     key, 
     value, 

@@ -14,7 +14,7 @@
 
 import flax.linen as nn
 import jax.numpy as jnp
-from .memory_efficient_attention_jax import memory_efficient_attention
+from .memory_efficient_attention_jax import jax_memory_efficient_attention
 
 
 class FlaxAttention(nn.Module):
@@ -99,7 +99,7 @@ class FlaxAttention(nn.Module):
             else:
                 query_chunk_size = int(flatten_latent_dim)
                 
-            hidden_states=memory_efficient_attention(
+            hidden_states=jax_memory_efficient_attention(
                 query_states, 
                 key_states, 
                 value_states,
