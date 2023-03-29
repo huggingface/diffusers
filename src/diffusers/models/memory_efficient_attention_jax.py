@@ -1,6 +1,5 @@
 import functools, jax, math
 from jax import numpy as jnp
-import numpy as np
 
 def _query_chunk_attention(query, key, value, precision, key_chunk_size: int = 4096):
     """Multi-head dot product attention with a limited number of queries."""
@@ -23,14 +22,14 @@ def _query_chunk_attention(query, key, value, precision, key_chunk_size: int = 4
         return (exp_values, exp_weights.sum(axis=-1), max_score)
 
     def chunk_scanner(chunk_idx):
-        #julienne key array 
+        # julienne key array 
         key_chunk = jax.lax.dynamic_slice(  
             operand=key, 
             start_indices=[0] * (key.ndim - 3) + [chunk_idx, 0, 0],  #[...,k,h,d]
             slice_sizes=list(key.shape[:-3]) + [key_chunk_size, num_heads, k_features]  #[...,k,h,d]
         )
 
-        #julienne value array 
+        # julienne value array 
         value_chunk = jax.lax.dynamic_slice(
             operand=value, 
             start_indices=[0] * (value.ndim - 3) + [chunk_idx, 0, 0], #[...,v,h,d]
@@ -86,7 +85,7 @@ def memory_efficient_attention(
     num_q, num_heads, q_features = query.shape[-3:]
 
     def chunk_scanner(chunk_idx, _):
-        #julienne query array 
+        # julienne query array 
         query_chunk = jax.lax.dynamic_slice(
             operand=query, 
             start_indices=([0] * (query.ndim - 3)) + [chunk_idx, 0, 0], #[...,q,h,d]
@@ -94,21 +93,21 @@ def memory_efficient_attention(
         )
 
         return(
-            chunk_idx + query_chunk_size, #unused ignore it
+            chunk_idx + query_chunk_size, # unused ignore it
             _query_chunk_attention( 
                 query=query_chunk, 
                 key=key, 
                 value=value, 
                 precision=precision,
-                key_chunk_size=4096
+                key_chunk_size=key_chunk_size
             )
         )
 
     _, res = jax.lax.scan(  
         f=chunk_scanner, 
-        init=0, #start counter
+        init=0, # start counter
         xs=None, 
-        length=math.ceil(num_q / query_chunk_size) #stop counter
+        length=math.ceil(num_q / query_chunk_size) # stop counter
     )
 
-    return jnp.concatenate(res, axis=-3) #fuse the chunked result back
+    return jnp.concatenate(res, axis=-3) # fuse the chunked result back
