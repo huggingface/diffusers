@@ -144,8 +144,8 @@ stable_diffusion_img2img = StableDiffusionImg2ImgPipeline(**components)
 
 A checkpoint variant is usually a checkpoint where it's weights are:
 
-- Stored in a different floating point type for lower precision and lower storage, such as [`torch.float16`](https://pytorch.org/docs/stable/tensors.html#data-types), because it only requires half the bandwidth and storage when downloading it. You can't use this variant if you're continuing training or using a CPU.
-- Non-exponential mean averaged (EMA) weights which shouldn't be used for inference.
+- Stored in a different floating point type for lower precision and lower storage, such as [`torch.float16`](https://pytorch.org/docs/stable/tensors.html#data-types), because it only requires half the bandwidth and storage to download. You can't use this variant if you're continuing training or using a CPU.
+- Non-exponential mean averaged (EMA) weights which shouldn't be used for inference. You should use these to continue finetuning a model.
 
 <Tip>
 
@@ -153,17 +153,25 @@ A checkpoint variant is usually a checkpoint where it's weights are:
 
 </Tip>
 
-Otherwise, a variant is **identical** to the original checkpoint. They have exactly the same serialization format (such as [Safetensors](./using-diffusers/using_safetensors)), model structure, and weights have identical tensor shapes.
+Otherwise, a variant is **identical** to the original checkpoint. They have exactly the same serialization format (like [Safetensors](./using-diffusers/using_safetensors)), model structure, and weights have identical tensor shapes.
 
-Load a variant by specifying the `variant` argument in [`DiffusionPipeline.from_pretrained`]. 🧨 Diffusers won't download a variant unless it is explicitly specified, so you don't have to worry about downloading and caching more checkpoints than you need.
+| **checkpoint type** | **weight name**                     | **argument for loading weights** |
+|---------------------|-------------------------------------|----------------------------------|
+| original            | diffusion_pytorch_model.bin         |                                  |
+| floating point      | diffusion_pytorch_model.fp16.bin    | `variant`, `torch_dtype`         |
+| non-EMA             | diffusion_pytorch_model.non_ema.bin | `variant`                        |
+
+Load a variant by specifying the `variant` argument in [`DiffusionPipeline.from_pretrained`], and the `torch_dtype` if the variant is a different floating point type. 🧨 Diffusers won't download a variant unless it is explicitly specified, so you don't have to worry about downloading and caching more checkpoints than you need.
 
 ```python
 from diffusers import DiffusionPipeline
 
 # load fp16 variant
-stable_diffusion = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", variant="fp16")
+stable_diffusion = DiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", variant="fp16", torch_dtype=torch.float16
+)
 # load non_ema variant
-stable_diffusion = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", variant="non-ema")
+stable_diffusion = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", variant="non_ema")
 ```
 
 To save a checkpoint stored in a different floating point type or as a non-EMA variant, use the [`DiffusionPipeline.save_pretrained`] method and specify the `variant` argument. You should try and save a variant to the same folder as the original checkpoint, so you can load both from the same folder:
@@ -173,18 +181,16 @@ from diffusers import DiffusionPipeline
 
 # save as fp16 variant
 stable_diffusion.save_pretrained("runwayml/stable-diffusion-v1-5", variant="fp16")
-# reload fp16 variant
-stable_diffusion.save_pretrained("runwayml/stable-diffusion-v1-5", variant="fp16")
-# reload original checkpoint
-stable_diffusion.save_pretrained("runwayml/stable-diffusion-v1-5")
+# save as non-ema variant
+stable_diffusion.save_pretrained("runwayml/stable-diffusion-v1-5", variant="non_ema")
 ```
 
-If you don't save the variant to an existing folder, you'll notice the weights in the new folder have `.fp16.bin` or `.non-ema.bin` appended to the end of the file name. In this case, you must specify the `variant` argument otherwise it'll throw an `Exception` because it can't find the original checkpoint:
+If you don't save the variant to an existing folder, you must specify the `variant` argument otherwise it'll throw an `Exception` because it can't find the original checkpoint:
 
 ```python
-# reload original checkpoint
+# 👎 this won't work
 stable_diffusion = DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5", torch_dtype=torch.float16)
-# reload fp16 variant
+# 👍 this works
 stable_diffusion = DiffusionPipeline.from_pretrained(
     "./stable-diffusion-v1-5", variant="fp16", torch_dtype=torch.float16
 )
