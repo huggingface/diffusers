@@ -201,12 +201,12 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         images = images.cpu().permute(0, 2, 3, 1).numpy()
         images = (images * 255).round().astype("uint8")
         images = list(
-            map(lambda _: Image.fromarray(_[:, :, 0]), images)
+            (Image.fromarray(_[:, :, 0]) for _ in images)
             if images.shape[3] == 1
-            else map(lambda _: Image.fromarray(_, mode="RGB").convert("L"), images)
+            else (Image.fromarray(_, mode="RGB").convert("L") for _ in images)
         )
 
-        audios = list(map(lambda _: self.mel.image_to_audio(_), images))
+        audios = [self.mel.image_to_audio(_) for _ in images]
         if not return_dict:
             return images, (self.mel.get_sample_rate(), audios)
 

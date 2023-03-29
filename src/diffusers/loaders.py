@@ -37,7 +37,7 @@ class AttnProcsLayers(torch.nn.Module):
     def __init__(self, state_dict: Dict[str, torch.Tensor]):
         super().__init__()
         self.layers = torch.nn.ModuleList(state_dict.values())
-        self.mapping = {k: v for k, v in enumerate(state_dict.keys())}
+        self.mapping = dict(enumerate(state_dict.keys()))
         self.rev_mapping = {v: k for k, v in enumerate(state_dict.keys())}
 
         # we add a hook to state_dict() and load_state_dict() so that the

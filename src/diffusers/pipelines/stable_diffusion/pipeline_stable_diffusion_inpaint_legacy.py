@@ -42,7 +42,7 @@ logger = logging.get_logger(__name__)
 
 def preprocess_image(image):
     w, h = image.size
-    w, h = map(lambda x: x - x % 8, (w, h))  # resize to integer multiple of 8
+    w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
     image = image.resize((w, h), resample=PIL_INTERPOLATION["lanczos"])
     image = np.array(image).astype(np.float32) / 255.0
     image = image[None].transpose(0, 3, 1, 2)
@@ -54,7 +54,7 @@ def preprocess_mask(mask, scale_factor=8):
     if not isinstance(mask, torch.FloatTensor):
         mask = mask.convert("L")
         w, h = mask.size
-        w, h = map(lambda x: x - x % 8, (w, h))  # resize to integer multiple of 8
+        w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
         mask = mask.resize((w // scale_factor, h // scale_factor), resample=PIL_INTERPOLATION["nearest"])
         mask = np.array(mask).astype(np.float32) / 255.0
         mask = np.tile(mask, (4, 1, 1))
@@ -76,7 +76,7 @@ def preprocess_mask(mask, scale_factor=8):
         # (potentially) reduce mask channel dimension from 3 to 1 for broadcasting to latent shape
         mask = mask.mean(dim=1, keepdim=True)
         h, w = mask.shape[-2:]
-        h, w = map(lambda x: x - x % 8, (h, w))  # resize to integer multiple of 8
+        h, w = (x - x % 8 for x in (h, w))  # resize to integer multiple of 8
         mask = torch.nn.functional.interpolate(mask, (h // scale_factor, w // scale_factor))
         return mask
 
@@ -299,8 +299,8 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
                 whether to use classifier free guidance or not
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
-                Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
@@ -521,7 +521,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, List[str]],
+        prompt: Union[str, List[str]] = None,
         image: Union[torch.FloatTensor, PIL.Image.Image] = None,
         mask_image: Union[torch.FloatTensor, PIL.Image.Image] = None,
         strength: float = 0.8,
@@ -611,10 +611,16 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             (nsfw) content, according to the `safety_checker`.
         """
         # 1. Check inputs
-        self.check_inputs(prompt, strength, callback_steps)
+        self.check_inputs(prompt, strength, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
 
         # 2. Define call parameters
-        batch_size = 1 if isinstance(prompt, str) else len(prompt)
+        if prompt is not None and isinstance(prompt, str):
+            batch_size = 1
+        elif prompt is not None and isinstance(prompt, list):
+            batch_size = len(prompt)
+        else:
+            batch_size = prompt_embeds.shape[0]
+
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
