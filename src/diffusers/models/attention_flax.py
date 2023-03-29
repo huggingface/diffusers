@@ -32,7 +32,7 @@ class FlaxAttentionBlock(nn.Module):
             Dropout rate
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
-        use_memory_efficient (`bool`, *optional*, defaults to `False`):
+        use_memory_efficient_attention (`bool`, *optional*, defaults to `False`):
             enable memory efficient attention https://arxiv.org/abs/2112.05682
 
     """
@@ -41,7 +41,7 @@ class FlaxAttentionBlock(nn.Module):
     dim_head: int = 64
     dropout: float = 0.0
     dtype: jnp.dtype = jnp.float32
-    use_memory_efficient: bool = False
+    use_memory_efficient_attention: bool = False
 
     def setup(self):
         inner_dim = self.dim_head * self.heads
@@ -81,8 +81,7 @@ class FlaxAttentionBlock(nn.Module):
         key_states = self.reshape_heads_to_batch_dim(key_proj)
         value_states = self.reshape_heads_to_batch_dim(value_proj)
 
-        if self.use_memory_efficient:
-            
+        if self.use_memory_efficient_attention:
             query_states = query_states.transpose(1,0,2)
             key_states =key_states.transpose(1,0,2)
             value_states =value_states.transpose(1,0,2)
@@ -109,9 +108,7 @@ class FlaxAttentionBlock(nn.Module):
             )
             
             hidden_states=hidden_states.transpose(1,0,2)
-            
         else:
-
             # compute attentions
             attention_scores = jnp.einsum("b i d, b j d->b i j", query_states, key_states)
             attention_scores = attention_scores * self.scale
@@ -144,7 +141,7 @@ class FlaxBasicTransformerBlock(nn.Module):
             Whether to only apply cross attention.
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
-        use_memory_efficient (`bool`, *optional*, defaults to `False`):
+        use_memory_efficient_attention (`bool`, *optional*, defaults to `False`):
             enable memory efficient attention https://arxiv.org/abs/2112.05682
     """
     dim: int
@@ -153,7 +150,7 @@ class FlaxBasicTransformerBlock(nn.Module):
     dropout: float = 0.0
     only_cross_attention: bool = False
     dtype: jnp.dtype = jnp.float32
-    use_memory_efficient: bool = False
+    use_memory_efficient_attention: bool = False
 
     def setup(self):
         # self attention (or cross_attention if only_cross_attention is True)
@@ -162,7 +159,7 @@ class FlaxBasicTransformerBlock(nn.Module):
                                         self.d_head, 
                                         self.dropout,
                                         dtype=self.dtype, 
-                                        use_memory_efficient=self.use_memory_efficient,
+                                        use_memory_efficient_attention=self.use_memory_efficient_attention,
         )
         # cross attention
         self.attn2 = FlaxAttentionBlock(self.dim, 
@@ -170,7 +167,7 @@ class FlaxBasicTransformerBlock(nn.Module):
                                         self.d_head, 
                                         self.dropout, 
                                         dtype=self.dtype, 
-                                        use_memory_efficient=self.use_memory_efficient,
+                                        use_memory_efficient_attention=self.use_memory_efficient_attention,
         )
         self.ff = FlaxGluFeedForward(dim=self.dim, dropout=self.dropout, dtype=self.dtype)
         self.norm1 = nn.LayerNorm(epsilon=1e-5, dtype=self.dtype)
@@ -220,7 +217,7 @@ class FlaxTransformer2DModel(nn.Module):
         only_cross_attention (`bool`, defaults to `False`): tbd
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
-        use_memory_efficient (`bool`, *optional*, defaults to `False`):
+        use_memory_efficient_attention (`bool`, *optional*, defaults to `False`):
             enable memory efficient attention https://arxiv.org/abs/2112.05682
     """
     in_channels: int
@@ -231,7 +228,7 @@ class FlaxTransformer2DModel(nn.Module):
     use_linear_projection: bool = False
     only_cross_attention: bool = False
     dtype: jnp.dtype = jnp.float32
-    use_memory_efficient: bool = False
+    use_memory_efficient_attention: bool = False
 
     def setup(self):
         self.norm = nn.GroupNorm(num_groups=32, epsilon=1e-5)
@@ -256,7 +253,7 @@ class FlaxTransformer2DModel(nn.Module):
                 dropout=self.dropout,
                 only_cross_attention=self.only_cross_attention,
                 dtype=self.dtype,
-                use_memory_efficient=self.use_memory_efficient,
+                use_memory_efficient_attention=self.use_memory_efficient_attention,
             )
             for _ in range(self.depth)
         ]
