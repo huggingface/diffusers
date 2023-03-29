@@ -14,6 +14,7 @@
 
 import flax.linen as nn
 import jax.numpy as jnp
+
 from .memory_efficient_attention_jax import jax_memory_efficient_attention
 
 
@@ -82,32 +83,28 @@ class FlaxAttention(nn.Module):
         value_states = self.reshape_heads_to_batch_dim(value_proj)
 
         if self.use_memory_efficient_attention:
-            query_states = query_states.transpose(1,0,2)
-            key_states =key_states.transpose(1,0,2)
-            value_states =value_states.transpose(1,0,2)
-            
-            #this if statement create a chunk size for each layer of the unet
-            #the chunk size is equal to the query_length dimension of the deepest layer of the unet
-            
+            query_states = query_states.transpose(1, 0, 2)
+            key_states = key_states.transpose(1, 0, 2)
+            value_states = value_states.transpose(1, 0, 2)
+
+            # this if statement create a chunk size for each layer of the unet
+            # the chunk size is equal to the query_length dimension of the deepest layer of the unet
+
             flatten_latent_dim = query_states.shape[-3]
             if flatten_latent_dim % 64 == 0:
-                query_chunk_size = int(flatten_latent_dim/64)
+                query_chunk_size = int(flatten_latent_dim / 64)
             elif flatten_latent_dim % 16 == 0:
-                query_chunk_size = int(flatten_latent_dim/16)
+                query_chunk_size = int(flatten_latent_dim / 16)
             elif flatten_latent_dim % 4 == 0:
-                query_chunk_size = int(flatten_latent_dim/4)
+                query_chunk_size = int(flatten_latent_dim / 4)
             else:
                 query_chunk_size = int(flatten_latent_dim)
-                
-            hidden_states=jax_memory_efficient_attention(
-                query_states, 
-                key_states, 
-                value_states,
-                query_chunk_size=query_chunk_size,
-                key_chunk_size=4096*4
+
+            hidden_states = jax_memory_efficient_attention(
+                query_states, key_states, value_states, query_chunk_size=query_chunk_size, key_chunk_size=4096 * 4
             )
-            
-            hidden_states=hidden_states.transpose(1,0,2)
+
+            hidden_states = hidden_states.transpose(1, 0, 2)
         else:
             # compute attentions
             attention_scores = jnp.einsum("b i d, b j d->b i j", query_states, key_states)
@@ -154,9 +151,13 @@ class FlaxBasicTransformerBlock(nn.Module):
 
     def setup(self):
         # self attention (or cross_attention if only_cross_attention is True)
-        self.attn1 = FlaxAttention(self.dim, self.n_heads, self.d_head, self.dropout, self.use_memory_efficient_attention, dtype=self.dtype)
+        self.attn1 = FlaxAttention(
+            self.dim, self.n_heads, self.d_head, self.dropout, self.use_memory_efficient_attention, dtype=self.dtype
+        )
         # cross attention
-        self.attn2 = FlaxAttention(self.dim, self.n_heads, self.d_head, self.dropout, self.use_memory_efficient_attention, dtype=self.dtype)
+        self.attn2 = FlaxAttention(
+            self.dim, self.n_heads, self.d_head, self.dropout, self.use_memory_efficient_attention, dtype=self.dtype
+        )
         self.ff = FlaxFeedForward(dim=self.dim, dropout=self.dropout, dtype=self.dtype)
         self.norm1 = nn.LayerNorm(epsilon=1e-5, dtype=self.dtype)
         self.norm2 = nn.LayerNorm(epsilon=1e-5, dtype=self.dtype)

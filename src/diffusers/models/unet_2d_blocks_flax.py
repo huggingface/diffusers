@@ -51,7 +51,7 @@ class FlaxCrossAttnDownBlock2D(nn.Module):
     use_linear_projection: bool = False
     only_cross_attention: bool = False
     dtype: jnp.dtype = jnp.float32
-    use_memory_efficient:bool = False
+    use_memory_efficient: bool = False
 
     def setup(self):
         resnets = []
@@ -191,7 +191,7 @@ class FlaxCrossAttnUpBlock2D(nn.Module):
     use_linear_projection: bool = False
     only_cross_attention: bool = False
     dtype: jnp.dtype = jnp.float32
-    use_memory_efficient:bool = False
+    use_memory_efficient: bool = False
 
     def setup(self):
         resnets = []
@@ -330,7 +330,7 @@ class FlaxUNetMidBlock2DCrossAttn(nn.Module):
     attn_num_head_channels: int = 1
     use_linear_projection: bool = False
     dtype: jnp.dtype = jnp.float32
-    use_memory_efficient:bool = False
+    use_memory_efficient: bool = False
 
     def setup(self):
         # there is always at least one resnet

@@ -113,7 +113,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     dtype: jnp.dtype = jnp.float32
     flip_sin_to_cos: bool = True
     freq_shift: int = 0
-    use_memory_efficient:bool = False
+    use_memory_efficient: bool = False
 
     def init_weights(self, rng: jax.random.KeyArray) -> FrozenDict:
         # init input tensors
