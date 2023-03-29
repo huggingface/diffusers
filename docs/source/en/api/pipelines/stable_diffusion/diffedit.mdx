@@ -85,7 +85,7 @@ pipeline.enable_model_cpu_offload()
 pipeline.enable_vae_slicing()
 ```
 
-Then, we load an input image for conditioning and provide a suitable caption for it: 
+Then, we load an input image to edit using our method: 
 
 ```py
 import requests
@@ -134,7 +134,7 @@ image.save("edited_image.png")
 ## Generating image captions for inversion
 
 The authors originally used the source concept prompt as the caption for generating the partially inverted latents. However, we can also leverage open source and public image captioning models for the same purpose.
-Below, we provide an end-to-end example with the [Flan-T5](https://huggingface.co/docs/transformers/model_doc/flan-t5) model
+Below, we provide an end-to-end example with the [BLIP](https://huggingface.co/docs/transformers/model_doc/blip) model
 for generating captions.
 
 First, let's load our automatic image captioning model:
@@ -148,28 +148,55 @@ processor = BlipProcessor.from_pretrained(captioner_id)
 model = BlipForConditionalGeneration.from_pretrained(captioner_id, torch_dtype=torch.float16, low_cpu_mem_usage=True)
 ```
 
+Then, we define a utility to generate captions from an input image using the model:
+
+```py
+@torch.no_grad()
+def generate_caption(images, caption_generator, caption_processor):
+    text = "a photograph of"
+
+    inputs = caption_processor(images, text, return_tensors="pt").to(
+        device="cuda", dtype=caption_generator.dtype
+    )
+    caption_generator.to("cuda")
+    outputs = caption_generator.generate(**inputs, max_new_tokens=128)
+
+    # offload caption generator
+    caption_generator.to("cpu")
+
+    caption = caption_processor.batch_decode(outputs, skip_special_tokens=True)[0]
+    return caption
+```
+
 Then, we load an input image for conditioning and obtain a suitable caption for it: 
 
 ```py
-import requests
-from PIL import Image
 from diffusers.utils import load_image
 
-img_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/test_images/cats/cat_6.png"
+img_url = "https://github.com/Xiang-cd/DiffEdit-stable-diffusion/raw/main/assets/origin.png"
 raw_image = load_image(img_url).convert("RGB").resize((768, 768))
-caption = None
+caption = generate_caption(raw_image, model, processor)
 ```
 
 Then, we employ the generated caption and the input image to get the inverted latents: 
 
 ```py 
 generator = torch.manual_seed(0)
-inv_latents = pipeline.invert(prompt=source_prompt, image=raw_image, generator=generator).latents
+inv_latents = pipeline.invert(prompt=caption, image=raw_image, generator=generator).latents
 ```
 
-Now, generate the image with the inverted latents and semantically generated mask from the previous section: 
+Now, generate the image with the inverted latents and semantically generated mask from our source and target prompts: 
 
 ```py
+source_prompt = "a bowl of fruits"
+target_prompt = "a basket of fruits"
+
+mask_image = pipeline.generate_mask(
+    image=raw_image,
+    source_prompt=source_prompt,
+    target_prompt=target_prompt,
+)
+
 image = pipeline(
     prompt=target_prompt,
     mask=mask_image,
@@ -185,8 +212,7 @@ image.save("edited_image.png")
 The authors originally required the user to manually provide the source and target prompts for discovering
 edit directions. However, we can also leverage open source and public models for the same purpose.
 Below, we provide an end-to-end example with the [Flan-T5](https://huggingface.co/docs/transformers/model_doc/flan-t5) model
-for generating captions and [CLIP](https://huggingface.co/docs/transformers/model_doc/clip) for
-computing embeddings on the generated captions.  
+for generating source an target embeddings.
 
 **1. Load the generation model**:
 
@@ -201,8 +227,8 @@ model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-xl", device_m
 **2. Construct a starting prompt**: 
 
 ```py
-source_concept = "cat"
-target_concept = "dog"
+source_concept = "bowl"
+target_concept = "basket"
 
 source_text = f"Provide a caption for images containing a {source_concept}. "
 "The captions should be in English and should be no longer than 150 characters."
@@ -211,14 +237,15 @@ target_text = f"Provide a caption for images containing a {target_concept}. "
 "The captions should be in English and should be no longer than 150 characters."
 ```
 
-Here, we're interested in the "cat -> dog" direction. 
+Here, we're interested in the "bowl -> basket" direction. 
 
-**3. Generate captions**:
+**3. Generate prompts**:
 
 We can use a utility like so for this purpose. 
 
 ```py
-def generate_captions(input_prompt):
+@torch.no_grad
+def generate_prompts(input_prompt):
     input_ids = tokenizer(input_prompt, return_tensors="pt").input_ids.to("cuda")
 
     outputs = model.generate(
@@ -227,11 +254,11 @@ def generate_captions(input_prompt):
     return tokenizer.batch_decode(outputs, skip_special_tokens=True)
 ```
 
-And then we just call it to generate our captions:
+And then we just call it to generate our prompts:
 
 ```py
-source_captions = generate_captions(source_text)
-target_captions = generate_captions(target_text)
+source_prompts = generate_prompts(source_text)
+target_prompts = generate_prompts(target_text)
 ```
 
 We encourage you to play around with the different parameters supported by the
@@ -257,24 +284,24 @@ pipeline.enable_vae_slicing()
 ```py 
 import torch 
 
-def embed_captions(sentences, tokenizer, text_encoder, device="cuda"):
-    with torch.no_grad():
-        embeddings = []
-        for sent in sentences:
-            text_inputs = tokenizer(
-                sent,
-                padding="max_length",
-                max_length=tokenizer.model_max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
-            text_input_ids = text_inputs.input_ids
-            prompt_embeds = text_encoder(text_input_ids.to(device), attention_mask=None)[0]
-            embeddings.append(prompt_embeds)
+@torch.no_grad()
+def embed_prompts(sentences, tokenizer, text_encoder, device="cuda"):
+    embeddings = []
+    for sent in sentences:
+        text_inputs = tokenizer(
+            sent,
+            padding="max_length",
+            max_length=tokenizer.model_max_length,
+            truncation=True,
+            return_tensors="pt",
+        )
+        text_input_ids = text_inputs.input_ids
+        prompt_embeds = text_encoder(text_input_ids.to(device), attention_mask=None)[0]
+        embeddings.append(prompt_embeds)
     return torch.concatenate(embeddings, dim=0).mean(dim=0).unsqueeze(0)
 
-source_embeddings = embed_captions(source_captions, pipeline.tokenizer, pipeline.text_encoder)
-target_embeddings = embed_captions(target_captions, pipeline.tokenizer, pipeline.text_encoder)
+source_embeddings = embed_prompts(source_prompts, pipeline.tokenizer, pipeline.text_encoder)
+target_embeddings = embed_prompts(target_captions, pipeline.tokenizer, pipeline.text_encoder)
 ```
 
 And you're done! Now, you can use these embeddings directly while calling the pipeline: 
@@ -286,7 +313,7 @@ from diffusers.utils import load_image
 pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
 pipeline.inverse_scheduler = DDIMInverseScheduler.from_config(pipeline.scheduler.config)
 
-img_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/test_images/cats/cat_6.png"
+img_url = "https://github.com/Xiang-cd/DiffEdit-stable-diffusion/raw/main/assets/origin.png"
 raw_image = load_image(img_url).convert("RGB").resize((768, 768))
 
 
@@ -297,7 +324,7 @@ mask = pipeline.generate_mask(
 )
 
 inv_latents = pipeline.invert(
-    prompt=caption,
+    prompt_embeds=source_embeds,
     image=raw_image,
 ).latents
 
@@ -307,7 +334,7 @@ images = pipeline(
     prompt_embeds=target_embeddings,
     negative_prompt_embeds=source_embeddings,
 ).images
-images[0].save("edited_image_dog.png")
+images[0].save("edited_image.png")
 ```
 
 ## StableDiffusionDiffEditPipeline
