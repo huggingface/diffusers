@@ -70,7 +70,7 @@ class TextEncoderLoRATests(unittest.TestCase):
             original_outputs = text_encoder(inputs)[0]
 
         with tempfile.TemporaryDirectory() as tmpdirname:
-            text_encoder_lora_wrapper.save_attn_procs(tmpdirname)
+            text_encoder_lora_wrapper.save_attn_procs(tmpdirname, text_encoder_lora_wrapper.text_encoder_lora_layers)
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_text_encoder_lora_weights.bin")))
             text_encoder_lora = text_encoder_lora_wrapper.load_attn_procs(tmpdirname)
 
@@ -88,7 +88,9 @@ class TextEncoderLoRATests(unittest.TestCase):
             original_outputs = text_encoder(inputs)[0]
 
         with tempfile.TemporaryDirectory() as tmpdirname:
-            text_encoder_lora_wrapper.save_attn_procs(tmpdirname, safe_serialization=True)
+            text_encoder_lora_wrapper.save_attn_procs(
+                tmpdirname, text_encoder_lora_wrapper.text_encoder_lora_layers, safe_serialization=True
+            )
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_text_encoder_lora_weights.safetensors")))
             text_encoder_lora = text_encoder_lora_wrapper.load_attn_procs(tmpdirname)
 
