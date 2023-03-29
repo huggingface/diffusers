@@ -57,6 +57,7 @@ from .import_utils import (
     is_k_diffusion_available,
     is_k_diffusion_version,
     is_librosa_available,
+    is_note_seq_available,
     is_omegaconf_available,
     is_onnx_available,
     is_safetensors_available,
@@ -75,7 +76,7 @@ from .import_utils import (
 from .logging import get_logger
 from .outputs import BaseOutput
 from .pil_utils import PIL_INTERPOLATION
-from .torch_utils import randn_tensor
+from .torch_utils import is_compiled_module, randn_tensor
 
 
 if is_torch_available():
@@ -87,6 +88,7 @@ if is_torch_available():
         nightly,
         parse_flag_from_env,
         print_tensor_test,
+        require_torch_2,
         require_torch_gpu,
         skip_mps,
         slow,

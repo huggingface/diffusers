@@ -23,6 +23,7 @@ from diffusers.models.attention_processor import LoRAAttnProcessor
 from diffusers.utils import (
     floats_tensor,
     logging,
+    skip_mps,
     torch_device,
 )
 from diffusers.utils.import_utils import is_xformers_available
@@ -60,6 +61,7 @@ def create_lora_layers(model):
     return lora_attn_procs
 
 
+@skip_mps
 class UNet3DConditionModelTests(ModelTesterMixin, unittest.TestCase):
     model_class = UNet3DConditionModel
 
