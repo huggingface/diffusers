@@ -520,7 +520,15 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
         """
 
         # 1. Check inputs
-        self.check_inputs(prompt, image, noise_level, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
+        self.check_inputs(
+            prompt,
+            image,
+            noise_level,
+            callback_steps,
+            negative_prompt,
+            prompt_embeds,
+            negative_prompt_embeds,
+        )
 
         if image is None:
             raise ValueError("`image` input cannot be undefined.")
