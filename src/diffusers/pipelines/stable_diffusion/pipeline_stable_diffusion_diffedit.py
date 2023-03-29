@@ -796,7 +796,8 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
                 [DiffEdit: Diffusion-Based Semantic Image Editing with Mask Guidance](
                 https://arxiv.org/pdf/2210.11427.pdf). Must be between 0 and 1.
             mask_thresholding_ratio (`float`, *optional*, defaults to 3.0):
-                AAAAAA.
+                The maximum multiple of the mean absolute difference used to clamp the semantic guidance map before
+                mask binarization.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
