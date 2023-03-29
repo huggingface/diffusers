@@ -5,14 +5,8 @@ from typing import Any, Dict, Iterable, Optional, Union
 
 import numpy as np
 import torch
-import torch.nn as nn
 
-from .loaders import AttnProcsLayers
-from .models.attention_processor import LoRAAttnProcessor
 from .utils import deprecate
-
-
-TEXT_ENCODER_TARGET_MODULES = ["q_proj", "v_proj", "k_proj", "out_proj"]
 
 
 def enable_full_determinism(seed: int):
@@ -46,35 +40,6 @@ def set_seed(seed: int):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     # ^^ safe to call this function even if cuda is not available
-
-
-def get_lora_layer_attribute(module_name: str) -> str:
-    """
-    Helper function to return the layer name in the `LoRAAttnProcessor` class corresponding to the original attention
-    layer module.
-    """
-    if "q_proj" in module_name:
-        return "to_q_lora"
-    elif "v_proj" in module_name:
-        return "to_v_lora"
-    elif "k_proj" in module_name:
-        return "to_k_lora"
-    else:
-        return "to_out_lora"
-
-
-def get_lora_layers_for_text_encoder(text_encoder: nn.Module):
-    """
-    Helper function to prepare the LoRA attention processors for the text encoder which almost always comes from
-    `transformers`.
-    """
-    lora_attn_procs = {}
-    for name, module in text_encoder.named_modules():
-        if any([x in name for x in TEXT_ENCODER_TARGET_MODULES]):
-            lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=module.out_features, cross_attention_dim=None)
-
-    text_encoder_lora_layers = AttnProcsLayers(lora_attn_procs)
-    return text_encoder_lora_layers
 
 
 # Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14
