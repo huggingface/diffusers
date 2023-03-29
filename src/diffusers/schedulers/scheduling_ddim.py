@@ -1,4 +1,4 @@
-# Copyright 2022 Stanford University Team and The HuggingFace Team. All rights reserved.
+# Copyright 2023 Stanford University Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -46,6 +46,7 @@ class DDIMSchedulerOutput(BaseOutput):
     pred_original_sample: Optional[torch.FloatTensor] = None
 
 
+# Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> torch.Tensor:
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
@@ -72,7 +73,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> torch.Tensor
         t1 = i / num_diffusion_timesteps
         t2 = (i + 1) / num_diffusion_timesteps
         betas.append(min(1 - alpha_bar(t2) / alpha_bar(t1), max_beta))
-    return torch.tensor(betas)
+    return torch.tensor(betas, dtype=torch.float32)
 
 
 class DDIMScheduler(SchedulerMixin, ConfigMixin):
@@ -97,7 +98,9 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         trained_betas (`np.ndarray`, optional):
             option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
         clip_sample (`bool`, default `True`):
-            option to clip predicted sample between -1 and 1 for numerical stability.
+            option to clip predicted sample for numerical stability.
+        clip_sample_range (`float`, default `1.0`):
+            the maximum magnitude for sample clipping. Valid only when `clip_sample=True`.
         set_alpha_to_one (`bool`, default `True`):
             each diffusion step uses the value of alphas product at that step and at the previous one. For the final
             step there is no previous alpha. When this option is `True` the previous alpha product is fixed to `1`,
@@ -110,6 +113,15 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
             process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
             https://imagen.research.google/video/paper.pdf)
+        thresholding (`bool`, default `False`):
+            whether to use the "dynamic thresholding" method (introduced by Imagen, https://arxiv.org/abs/2205.11487).
+            Note that the thresholding method is unsuitable for latent-space diffusion models (such as
+            stable-diffusion).
+        dynamic_thresholding_ratio (`float`, default `0.995`):
+            the ratio for the dynamic thresholding method. Default is `0.995`, the same as Imagen
+            (https://arxiv.org/abs/2205.11487). Valid only when `thresholding=True`.
+        sample_max_value (`float`, default `1.0`):
+            the threshold value for dynamic thresholding. Valid only when `thresholding=True`.
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -127,6 +139,10 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         set_alpha_to_one: bool = True,
         steps_offset: int = 0,
         prediction_type: str = "epsilon",
+        thresholding: bool = False,
+        dynamic_thresholding_ratio: float = 0.995,
+        clip_sample_range: float = 1.0,
+        sample_max_value: float = 1.0,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -182,6 +198,18 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         variance = (beta_prod_t_prev / beta_prod_t) * (1 - alpha_prod_t / alpha_prod_t_prev)
 
         return variance
+
+    # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
+    def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
+        # Dynamic thresholding in https://arxiv.org/abs/2205.11487
+        dynamic_max_val = (
+            sample.flatten(1)
+            .abs()
+            .quantile(self.config.dynamic_thresholding_ratio, dim=1)
+            .clamp_min(self.config.sample_max_value)
+            .view(-1, *([1] * (sample.ndim - 1)))
+        )
+        return sample.clamp(-dynamic_max_val, dynamic_max_val) / dynamic_max_val
 
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
@@ -273,21 +301,27 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
         if self.config.prediction_type == "epsilon":
             pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
+            pred_epsilon = model_output
         elif self.config.prediction_type == "sample":
             pred_original_sample = model_output
+            pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
         elif self.config.prediction_type == "v_prediction":
             pred_original_sample = (alpha_prod_t**0.5) * sample - (beta_prod_t**0.5) * model_output
-            # predict V
-            model_output = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
+            pred_epsilon = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
         else:
             raise ValueError(
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, or"
                 " `v_prediction`"
             )
 
-        # 4. Clip "predicted x_0"
+        # 4. Clip or threshold "predicted x_0"
         if self.config.clip_sample:
-            pred_original_sample = torch.clamp(pred_original_sample, -1, 1)
+            pred_original_sample = pred_original_sample.clamp(
+                -self.config.clip_sample_range, self.config.clip_sample_range
+            )
+
+        if self.config.thresholding:
+            pred_original_sample = self._threshold_sample(pred_original_sample)
 
         # 5. compute variance: "sigma_t(η)" -> see formula (16)
         # σ_t = sqrt((1 − α_t−1)/(1 − α_t)) * sqrt(1 − α_t/α_t−1)
@@ -295,17 +329,16 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         std_dev_t = eta * variance ** (0.5)
 
         if use_clipped_model_output:
-            # the model_output is always re-derived from the clipped x_0 in Glide
-            model_output = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
+            # the pred_epsilon is always re-derived from the clipped x_0 in Glide
+            pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
 
         # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * model_output
+        pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * pred_epsilon
 
         # 7. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
         prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
 
         if eta > 0:
-            device = model_output.device
             if variance_noise is not None and generator is not None:
                 raise ValueError(
                     "Cannot pass both generator and variance_noise. Please make sure that either `generator` or"
@@ -314,7 +347,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
             if variance_noise is None:
                 variance_noise = randn_tensor(
-                    model_output.shape, generator=generator, device=device, dtype=model_output.dtype
+                    model_output.shape, generator=generator, device=model_output.device, dtype=model_output.dtype
                 )
             variance = std_dev_t * variance_noise
 

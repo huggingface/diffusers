@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -80,12 +80,14 @@ from setuptools import find_packages, setup
 _deps = [
     "Pillow",  # keep the PIL.Image.Resampling deprecation away
     "accelerate>=0.11.0",
+    "compel==0.1.8",
     "black~=23.1",
     "datasets",
     "filelock",
     "flax>=0.4.1",
     "hf-doc-builder>=0.3.0",
-    "huggingface-hub>=0.10.0",
+    "huggingface-hub>=0.13.2",
+    "requests-mock==1.10.0",
     "importlib_metadata",
     "isort>=5.5.4",
     "jax>=0.2.8,!=0.3.2",
@@ -93,8 +95,10 @@ _deps = [
     "Jinja2",
     "k-diffusion>=0.0.12",
     "librosa",
+    "note-seq",
     "numpy",
     "parameterized",
+    "protobuf>=3.20.3,<4",
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
@@ -180,16 +184,19 @@ extras = {}
 extras = {}
 extras["quality"] = deps_list("black", "isort", "ruff", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
-extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "Jinja2")
+extras["training"] = deps_list("accelerate", "datasets", "protobuf", "tensorboard", "Jinja2")
 extras["test"] = deps_list(
+    "compel",
     "datasets",
     "Jinja2",
     "k-diffusion",
     "librosa",
+    "note-seq",
     "parameterized",
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
+    "requests-mock",
     "safetensors",
     "sentencepiece",
     "scipy",
@@ -219,7 +226,7 @@ install_requires = [
 
 setup(
     name="diffusers",
-    version="0.13.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.15.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="Diffusers",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import PIL
 import torch
 import torch.utils.checkpoint
 from transformers import (
-    CLIPFeatureExtractor,
+    CLIPImageProcessor,
     CLIPTextModelWithProjection,
     CLIPTokenizer,
     CLIPVisionModelWithProjection,
@@ -55,7 +55,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
     tokenizer: CLIPTokenizer
-    image_feature_extractor: CLIPFeatureExtractor
+    image_feature_extractor: CLIPImageProcessor
     text_encoder: CLIPTextModelWithProjection
     image_encoder: CLIPVisionModelWithProjection
     image_unet: UNet2DConditionModel
@@ -68,7 +68,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
     def __init__(
         self,
         tokenizer: CLIPTokenizer,
-        image_feature_extractor: CLIPFeatureExtractor,
+        image_feature_extractor: CLIPImageProcessor,
         text_encoder: CLIPTextModelWithProjection,
         image_encoder: CLIPVisionModelWithProjection,
         image_unet: UNet2DConditionModel,
@@ -170,7 +170,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
         hooks.
         """
-        if self.device != torch.device("meta") or not hasattr(self.image_unet, "_hf_hook"):
+        if not hasattr(self.image_unet, "_hf_hook"):
             return self.device
         for module in self.image_unet.modules():
             if (
@@ -419,7 +419,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
         **kwargs,
     ):
         r"""

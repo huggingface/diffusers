@@ -1,4 +1,4 @@
-# Copyright 2022 Peter Willemsen <peter@codebuffet.co>. All rights reserved.
+# Copyright 2023 Peter Willemsen <peter@codebuffet.co>. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -195,7 +195,7 @@ class StableDiffusionTiledUpscalePipeline(StableDiffusionUpscalePipeline):
         generator: Optional[torch.Generator] = None,
         latents: Optional[torch.FloatTensor] = None,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
         tile_size: int = 128,
         tile_border: int = 32,
         original_image_slice: int = 32,

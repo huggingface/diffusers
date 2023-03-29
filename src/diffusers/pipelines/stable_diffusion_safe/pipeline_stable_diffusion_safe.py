@@ -5,7 +5,7 @@ from typing import Callable, List, Optional, Union
 import numpy as np
 import torch
 from packaging import version
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
@@ -45,7 +45,7 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
-        feature_extractor ([`CLIPFeatureExtractor`]):
+        feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
 
@@ -59,7 +59,7 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: SafeStableDiffusionSafetyChecker,
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -192,7 +192,7 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
         `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
         hooks.
         """
-        if self.device != torch.device("meta") or not hasattr(self.unet, "_hf_hook"):
+        if not hasattr(self.unet, "_hf_hook"):
             return self.device
         for module in self.unet.modules():
             if (
@@ -512,7 +512,7 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
         sld_guidance_scale: Optional[float] = 1000,
         sld_warmup_steps: Optional[int] = 10,
         sld_threshold: Optional[float] = 0.01,

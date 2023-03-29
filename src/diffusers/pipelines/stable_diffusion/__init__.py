@@ -36,16 +36,29 @@ class StableDiffusionPipelineOutput(BaseOutput):
     nsfw_content_detected: Optional[List[bool]]
 
 
-if is_transformers_available() and is_torch_available():
+try:
+    if not (is_transformers_available() and is_torch_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
+else:
     from .pipeline_cycle_diffusion import CycleDiffusionPipeline
     from .pipeline_stable_diffusion import StableDiffusionPipeline
+    from .pipeline_stable_diffusion_attend_and_excite import StableDiffusionAttendAndExcitePipeline
+    from .pipeline_stable_diffusion_controlnet import StableDiffusionControlNetPipeline
     from .pipeline_stable_diffusion_img2img import StableDiffusionImg2ImgPipeline
     from .pipeline_stable_diffusion_inpaint import StableDiffusionInpaintPipeline
     from .pipeline_stable_diffusion_inpaint_legacy import StableDiffusionInpaintPipelineLegacy
     from .pipeline_stable_diffusion_instruct_pix2pix import StableDiffusionInstructPix2PixPipeline
     from .pipeline_stable_diffusion_latent_upscale import StableDiffusionLatentUpscalePipeline
+    from .pipeline_stable_diffusion_model_editing import StableDiffusionModelEditingPipeline
+    from .pipeline_stable_diffusion_panorama import StableDiffusionPanoramaPipeline
+    from .pipeline_stable_diffusion_sag import StableDiffusionSAGPipeline
     from .pipeline_stable_diffusion_upscale import StableDiffusionUpscalePipeline
+    from .pipeline_stable_unclip import StableUnCLIPPipeline
+    from .pipeline_stable_unclip_img2img import StableUnCLIPImg2ImgPipeline
     from .safety_checker import StableDiffusionSafetyChecker
+    from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
 try:
     if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.25.0")):
@@ -60,24 +73,39 @@ try:
     if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.26.0")):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from ...utils.dummy_torch_and_transformers_objects import StableDiffusionDepth2ImgPipeline
+    from ...utils.dummy_torch_and_transformers_objects import (
+        StableDiffusionDepth2ImgPipeline,
+        StableDiffusionPix2PixZeroPipeline,
+    )
 else:
     from .pipeline_stable_diffusion_depth2img import StableDiffusionDepth2ImgPipeline
+    from .pipeline_stable_diffusion_pix2pix_zero import StableDiffusionPix2PixZeroPipeline
 
 
 try:
-    if not (is_torch_available() and is_transformers_available() and is_k_diffusion_version(">=", "0.0.12")):
+    if not (
+        is_torch_available()
+        and is_transformers_available()
+        and is_k_diffusion_available()
+        and is_k_diffusion_version(">=", "0.0.12")
+    ):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from ...utils.dummy_torch_and_transformers_and_k_diffusion_objects import *  # noqa F403
 else:
     from .pipeline_stable_diffusion_k_diffusion import StableDiffusionKDiffusionPipeline
 
-if is_transformers_available() and is_onnx_available():
+try:
+    if not (is_transformers_available() and is_onnx_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ...utils.dummy_onnx_objects import *  # noqa F403
+else:
     from .pipeline_onnx_stable_diffusion import OnnxStableDiffusionPipeline, StableDiffusionOnnxPipeline
     from .pipeline_onnx_stable_diffusion_img2img import OnnxStableDiffusionImg2ImgPipeline
     from .pipeline_onnx_stable_diffusion_inpaint import OnnxStableDiffusionInpaintPipeline
     from .pipeline_onnx_stable_diffusion_inpaint_legacy import OnnxStableDiffusionInpaintPipelineLegacy
+    from .pipeline_onnx_stable_diffusion_upscale import OnnxStableDiffusionUpscalePipeline
 
 if is_transformers_available() and is_flax_available():
     import flax
@@ -100,6 +128,7 @@ if is_transformers_available() and is_flax_available():
 
     from ...schedulers.scheduling_pndm_flax import PNDMSchedulerState
     from .pipeline_flax_stable_diffusion import FlaxStableDiffusionPipeline
+    from .pipeline_flax_stable_diffusion_controlnet import FlaxStableDiffusionControlNetPipeline
     from .pipeline_flax_stable_diffusion_img2img import FlaxStableDiffusionImg2ImgPipeline
     from .pipeline_flax_stable_diffusion_inpaint import FlaxStableDiffusionInpaintPipeline
     from .safety_checker_flax import FlaxStableDiffusionSafetyChecker

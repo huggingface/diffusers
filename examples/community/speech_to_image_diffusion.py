@@ -3,7 +3,7 @@ from typing import Callable, List, Optional, Union
 
 import torch
 from transformers import (
-    CLIPFeatureExtractor,
+    CLIPImageProcessor,
     CLIPTextModel,
     CLIPTokenizer,
     WhisperForConditionalGeneration,
@@ -37,7 +37,7 @@ class SpeechToImagePipeline(DiffusionPipeline):
         unet: UNet2DConditionModel,
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
         safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
     ):
         super().__init__()
 
@@ -87,7 +87,7 @@ class SpeechToImagePipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
         **kwargs,
     ):
         inputs = self.speech_processor.feature_extractor(

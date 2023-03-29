@@ -1,4 +1,4 @@
-<!--Copyright 2022 The HuggingFace Team. All rights reserved.
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -41,7 +41,7 @@ is safe 🔒. Make sure to check out the code online before loading & running it
 
 ## Loading official community pipelines
 
-Community pipelines are summarized in the [community examples folder](https://github.com/huggingface/diffusers/tree/main/examples/community) 
+Community pipelines are summarized in the [community examples folder](https://github.com/huggingface/diffusers/tree/main/examples/community). 
 
 Similarly, you need to pass both the *repo id* from where you wish to load the weights as well as the `custom_pipeline` argument. Here the `custom_pipeline` argument should consist simply of the filename of the community pipeline excluding the `.py` suffix, *e.g.* `clip_guided_stable_diffusion`.
 
@@ -50,11 +50,11 @@ and passing pipeline modules directly.
 
 ```python
 from diffusers import DiffusionPipeline
-from transformers import CLIPFeatureExtractor, CLIPModel
+from transformers import CLIPImageProcessor, CLIPModel
 
 clip_model_id = "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 
-feature_extractor = CLIPFeatureExtractor.from_pretrained(clip_model_id)
+feature_extractor = CLIPImageProcessor.from_pretrained(clip_model_id)
 clip_model = CLIPModel.from_pretrained(clip_model_id)
 
 pipeline = DiffusionPipeline.from_pretrained(

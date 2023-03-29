@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -37,21 +37,20 @@ from diffusers import (
 )
 from diffusers.pipelines.unclip.text_proj import UnCLIPTextProjModel
 from diffusers.utils import floats_tensor, load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import load_image, require_torch_gpu
+from diffusers.utils.testing_utils import load_image, require_torch_gpu, skip_mps
 
+from ...pipeline_params import IMAGE_VARIATION_BATCH_PARAMS, IMAGE_VARIATION_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 
 
 class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = UnCLIPImageVariationPipeline
+    params = IMAGE_VARIATION_PARAMS - {"height", "width", "guidance_scale"}
+    batch_params = IMAGE_VARIATION_BATCH_PARAMS
 
     required_optional_params = [
         "generator",
         "return_dict",
-        "decoder_num_inference_steps",
-        "super_res_num_inference_steps",
-    ]
-    num_inference_steps_args = [
         "decoder_num_inference_steps",
         "super_res_num_inference_steps",
     ]
@@ -362,59 +361,6 @@ class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
-    def test_unclip_image_variation_input_num_images_per_prompt(self):
-        device = "cpu"
-
-        components = self.get_dummy_components()
-
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-
-        pipe.set_progress_bar_config(disable=None)
-
-        pipeline_inputs = self.get_dummy_inputs(device, pil_image=True)
-        pipeline_inputs["image"] = [
-            pipeline_inputs["image"],
-            pipeline_inputs["image"],
-        ]
-
-        output = pipe(**pipeline_inputs, num_images_per_prompt=2)
-        image = output.images
-
-        tuple_pipeline_inputs = self.get_dummy_inputs(device, pil_image=True)
-        tuple_pipeline_inputs["image"] = [
-            tuple_pipeline_inputs["image"],
-            tuple_pipeline_inputs["image"],
-        ]
-
-        image_from_tuple = pipe(
-            **tuple_pipeline_inputs,
-            num_images_per_prompt=2,
-            return_dict=False,
-        )[0]
-
-        image_slice = image[0, -3:, -3:, -1]
-        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
-
-        assert image.shape == (4, 64, 64, 3)
-
-        expected_slice = np.array(
-            [
-                0.9980,
-                0.9997,
-                0.0023,
-                0.0029,
-                0.9997,
-                0.9985,
-                0.9997,
-                0.0010,
-                0.9995,
-            ]
-        )
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
-
     def test_unclip_passed_image_embed(self):
         device = torch.device("cpu")
 
@@ -470,7 +416,7 @@ class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCa
 
     # Overriding PipelineTesterMixin::test_attention_slicing_forward_pass
     # because UnCLIP GPU undeterminism requires a looser check.
-    @unittest.skipIf(torch_device == "mps", reason="MPS inconsistent")
+    @skip_mps
     def test_attention_slicing_forward_pass(self):
         test_max_difference = torch_device == "cpu"
 
@@ -478,32 +424,48 @@ class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCa
 
     # Overriding PipelineTesterMixin::test_inference_batch_single_identical
     # because UnCLIP undeterminism requires a looser check.
-    @unittest.skipIf(torch_device == "mps", reason="MPS inconsistent")
+    @skip_mps
     def test_inference_batch_single_identical(self):
         test_max_difference = torch_device == "cpu"
         relax_max_difference = True
+        additional_params_copy_to_batched_inputs = [
+            "decoder_num_inference_steps",
+            "super_res_num_inference_steps",
+        ]
 
         self._test_inference_batch_single_identical(
-            test_max_difference=test_max_difference, relax_max_difference=relax_max_difference
+            test_max_difference=test_max_difference,
+            relax_max_difference=relax_max_difference,
+            additional_params_copy_to_batched_inputs=additional_params_copy_to_batched_inputs,
         )
 
     def test_inference_batch_consistent(self):
+        additional_params_copy_to_batched_inputs = [
+            "decoder_num_inference_steps",
+            "super_res_num_inference_steps",
+        ]
+
         if torch_device == "mps":
             # TODO: MPS errors with larger batch sizes
             batch_sizes = [2, 3]
-            self._test_inference_batch_consistent(batch_sizes=batch_sizes)
+            self._test_inference_batch_consistent(
+                batch_sizes=batch_sizes,
+                additional_params_copy_to_batched_inputs=additional_params_copy_to_batched_inputs,
+            )
         else:
-            self._test_inference_batch_consistent()
+            self._test_inference_batch_consistent(
+                additional_params_copy_to_batched_inputs=additional_params_copy_to_batched_inputs
+            )
 
-    @unittest.skipIf(torch_device == "mps", reason="MPS inconsistent")
+    @skip_mps
     def test_dict_tuple_outputs_equivalent(self):
         return super().test_dict_tuple_outputs_equivalent()
 
-    @unittest.skipIf(torch_device == "mps", reason="MPS inconsistent")
+    @skip_mps
     def test_save_load_local(self):
         return super().test_save_load_local()
 
-    @unittest.skipIf(torch_device == "mps", reason="MPS inconsistent")
+    @skip_mps
     def test_save_load_optional_components(self):
         return super().test_save_load_optional_components()
 
@@ -527,7 +489,7 @@ class UnCLIPImageVariationPipelineIntegrationTests(unittest.TestCase):
         )
 
         pipeline = UnCLIPImageVariationPipeline.from_pretrained(
-            "fusing/karlo-image-variations-diffusers", torch_dtype=torch.float16
+            "kakaobrain/karlo-v1-alpha-image-variations", torch_dtype=torch.float16
         )
         pipeline = pipeline.to(torch_device)
         pipeline.set_progress_bar_config(disable=None)

@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -153,9 +153,12 @@ if _onnx_available:
     candidates = (
         "onnxruntime",
         "onnxruntime-gpu",
+        "ort_nightly_gpu",
         "onnxruntime-directml",
         "onnxruntime-openvino",
         "ort_nightly_directml",
+        "onnxruntime-rocm",
+        "onnxruntime-training",
     )
     _onnxruntime_version = None
     # For the metadata, we have to look for both onnxruntime and onnxruntime-gpu
@@ -169,6 +172,14 @@ if _onnx_available:
     if _onnx_available:
         logger.debug(f"Successfully imported onnxruntime version {_onnxruntime_version}")
 
+# (sayakpaul): importlib.util.find_spec("opencv-python") returns None even when it's installed.
+# _opencv_available = importlib.util.find_spec("opencv-python") is not None
+try:
+    _opencv_version = importlib_metadata.version("opencv-python")
+    _opencv_available = True
+    logger.debug(f"Successfully imported cv2 version {_opencv_version}")
+except importlib_metadata.PackageNotFoundError:
+    _opencv_available = False
 
 _scipy_available = importlib.util.find_spec("scipy") is not None
 try:
@@ -210,6 +221,13 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _k_diffusion_available = False
 
+_note_seq_available = importlib.util.find_spec("note_seq") is not None
+try:
+    _note_seq_version = importlib_metadata.version("note_seq")
+    logger.debug(f"Successfully imported note-seq version {_note_seq_version}")
+except importlib_metadata.PackageNotFoundError:
+    _note_seq_available = False
+
 _wandb_available = importlib.util.find_spec("wandb") is not None
 try:
     _wandb_version = importlib_metadata.version("wandb")
@@ -230,6 +248,14 @@ try:
     logger.debug(f"Successfully imported tensorboard version {_tensorboard_version}")
 except importlib_metadata.PackageNotFoundError:
     _tensorboard_available = False
+
+
+_compel_available = importlib.util.find_spec("compel")
+try:
+    _compel_version = importlib_metadata.version("compel")
+    logger.debug(f"Successfully imported compel version {_compel_version}")
+except importlib_metadata.PackageNotFoundError:
+    _compel_available = False
 
 
 def is_torch_available():
@@ -264,6 +290,10 @@ def is_onnx_available():
     return _onnx_available
 
 
+def is_opencv_available():
+    return _opencv_available
+
+
 def is_scipy_available():
     return _scipy_available
 
@@ -284,6 +314,10 @@ def is_k_diffusion_available():
     return _k_diffusion_available
 
 
+def is_note_seq_available():
+    return _note_seq_available
+
+
 def is_wandb_available():
     return _wandb_available
 
@@ -294,6 +328,10 @@ def is_omegaconf_available():
 
 def is_tensorboard_available():
     return _tensorboard_available
+
+
+def is_compel_available():
+    return _compel_available
 
 
 # docstyle-ignore
@@ -318,6 +356,12 @@ installation page: https://pytorch.org/get-started/locally/ and follow the ones 
 ONNX_IMPORT_ERROR = """
 {0} requires the onnxruntime library but it was not found in your environment. You can install it with pip: `pip
 install onnxruntime`
+"""
+
+# docstyle-ignore
+OPENCV_IMPORT_ERROR = """
+{0} requires the OpenCV library but it was not found in your environment. You can install it with pip: `pip
+install opencv-python`
 """
 
 # docstyle-ignore
@@ -351,6 +395,12 @@ install k-diffusion`
 """
 
 # docstyle-ignore
+NOTE_SEQ_IMPORT_ERROR = """
+{0} requires the note-seq library but it was not found in your environment. You can install it with pip: `pip
+install note-seq`
+"""
+
+# docstyle-ignore
 WANDB_IMPORT_ERROR = """
 {0} requires the wandb library but it was not found in your environment. You can install it with pip: `pip
 install wandb`
@@ -368,20 +418,29 @@ TENSORBOARD_IMPORT_ERROR = """
 install tensorboard`
 """
 
+
+# docstyle-ignore
+COMPEL_IMPORT_ERROR = """
+{0} requires the compel library but it was not found in your environment. You can install it with pip: `pip install compel`
+"""
+
 BACKENDS_MAPPING = OrderedDict(
     [
         ("flax", (is_flax_available, FLAX_IMPORT_ERROR)),
         ("inflect", (is_inflect_available, INFLECT_IMPORT_ERROR)),
         ("onnx", (is_onnx_available, ONNX_IMPORT_ERROR)),
+        ("opencv", (is_opencv_available, OPENCV_IMPORT_ERROR)),
         ("scipy", (is_scipy_available, SCIPY_IMPORT_ERROR)),
         ("torch", (is_torch_available, PYTORCH_IMPORT_ERROR)),
         ("transformers", (is_transformers_available, TRANSFORMERS_IMPORT_ERROR)),
         ("unidecode", (is_unidecode_available, UNIDECODE_IMPORT_ERROR)),
         ("librosa", (is_librosa_available, LIBROSA_IMPORT_ERROR)),
         ("k_diffusion", (is_k_diffusion_available, K_DIFFUSION_IMPORT_ERROR)),
+        ("note_seq", (is_note_seq_available, NOTE_SEQ_IMPORT_ERROR)),
         ("wandb", (is_wandb_available, WANDB_IMPORT_ERROR)),
         ("omegaconf", (is_omegaconf_available, OMEGACONF_IMPORT_ERROR)),
         ("tensorboard", (_tensorboard_available, TENSORBOARD_IMPORT_ERROR)),
+        ("compel", (_compel_available, COMPEL_IMPORT_ERROR)),
     ]
 )
 
@@ -408,9 +467,9 @@ def requires_backends(obj, backends):
             " --upgrade transformers \n```"
         )
 
-    if name in [
-        "StableDiffusionDepth2ImgPipeline",
-    ] and is_transformers_version("<", "4.26.0"):
+    if name in ["StableDiffusionDepth2ImgPipeline", "StableDiffusionPix2PixZeroPipeline"] and is_transformers_version(
+        "<", "4.26.0"
+    ):
         raise ImportError(
             f"You need to install `transformers>=4.26` in order to use {name}: \n```\n pip install"
             " --upgrade transformers \n```"
@@ -474,6 +533,20 @@ def is_transformers_version(operation: str, version: str):
     if not _transformers_available:
         return False
     return compare_versions(parse(_transformers_version), operation, version)
+
+
+def is_accelerate_version(operation: str, version: str):
+    """
+    Args:
+    Compares the current Accelerate version to a given reference with an operation.
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _accelerate_available:
+        return False
+    return compare_versions(parse(_accelerate_version), operation, version)
 
 
 def is_k_diffusion_version(operation: str, version: str):

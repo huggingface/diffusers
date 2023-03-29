@@ -6,13 +6,13 @@ import numpy as np
 import PIL
 import torch
 from packaging import version
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 import diffusers
 from diffusers import SchedulerMixin, StableDiffusionPipeline
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
-from diffusers.utils import deprecate, logging
+from diffusers.utils import logging
 
 
 try:
@@ -179,14 +179,14 @@ def get_prompts_with_weights(pipe: StableDiffusionPipeline, prompt: List[str], m
     return tokens, weights
 
 
-def pad_tokens_and_weights(tokens, weights, max_length, bos, eos, no_boseos_middle=True, chunk_length=77):
+def pad_tokens_and_weights(tokens, weights, max_length, bos, eos, pad, no_boseos_middle=True, chunk_length=77):
     r"""
     Pad the tokens (with starting and ending tokens) and weights (with 1.0) to max_length.
     """
     max_embeddings_multiples = (max_length - 2) // (chunk_length - 2)
     weights_length = max_length if no_boseos_middle else max_embeddings_multiples * chunk_length
     for i in range(len(tokens)):
-        tokens[i] = [bos] + tokens[i] + [eos] * (max_length - 1 - len(tokens[i]))
+        tokens[i] = [bos] + tokens[i] + [pad] * (max_length - 1 - len(tokens[i]) - 1) + [eos]
         if no_boseos_middle:
             weights[i] = [1.0] + weights[i] + [1.0] * (max_length - 1 - len(weights[i]))
         else:
@@ -252,7 +252,6 @@ def get_weighted_text_embeddings(
     no_boseos_middle: Optional[bool] = False,
     skip_parsing: Optional[bool] = False,
     skip_weighting: Optional[bool] = False,
-    **kwargs,
 ):
     r"""
     Prompts can be assigned with local weights using brackets. For example,
@@ -318,12 +317,14 @@ def get_weighted_text_embeddings(
     # pad the length of tokens and weights
     bos = pipe.tokenizer.bos_token_id
     eos = pipe.tokenizer.eos_token_id
+    pad = getattr(pipe.tokenizer, "pad_token_id", eos)
     prompt_tokens, prompt_weights = pad_tokens_and_weights(
         prompt_tokens,
         prompt_weights,
         max_length,
         bos,
         eos,
+        pad,
         no_boseos_middle=no_boseos_middle,
         chunk_length=pipe.tokenizer.model_max_length,
     )
@@ -335,6 +336,7 @@ def get_weighted_text_embeddings(
             max_length,
             bos,
             eos,
+            pad,
             no_boseos_middle=no_boseos_middle,
             chunk_length=pipe.tokenizer.model_max_length,
         )
@@ -377,7 +379,7 @@ def get_weighted_text_embeddings(
 
 def preprocess_image(image):
     w, h = image.size
-    w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
+    w, h = (x - x % 32 for x in (w, h))  # resize to integer multiple of 32
     image = image.resize((w, h), resample=PIL_INTERPOLATION["lanczos"])
     image = np.array(image).astype(np.float32) / 255.0
     image = image[None].transpose(0, 3, 1, 2)
@@ -388,7 +390,7 @@ def preprocess_image(image):
 def preprocess_mask(mask, scale_factor=8):
     mask = mask.convert("L")
     w, h = mask.size
-    w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
+    w, h = (x - x % 32 for x in (w, h))  # resize to integer multiple of 32
     mask = mask.resize((w // scale_factor, h // scale_factor), resample=PIL_INTERPOLATION["nearest"])
     mask = np.array(mask).astype(np.float32) / 255.0
     mask = np.tile(mask, (4, 1, 1))
@@ -423,7 +425,7 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-4) for details.
-        feature_extractor ([`CLIPFeatureExtractor`]):
+        feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
 
@@ -437,7 +439,7 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
             unet: UNet2DConditionModel,
             scheduler: SchedulerMixin,
             safety_checker: StableDiffusionSafetyChecker,
-            feature_extractor: CLIPFeatureExtractor,
+            feature_extractor: CLIPImageProcessor,
             requires_safety_checker: bool = True,
         ):
             super().__init__(
@@ -462,7 +464,7 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
             unet: UNet2DConditionModel,
             scheduler: SchedulerMixin,
             safety_checker: StableDiffusionSafetyChecker,
-            feature_extractor: CLIPFeatureExtractor,
+            feature_extractor: CLIPImageProcessor,
         ):
             super().__init__(
                 vae=vae,
@@ -681,8 +683,7 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         is_cancelled_callback: Optional[Callable[[], bool]] = None,
-        callback_steps: Optional[int] = 1,
-        **kwargs,
+        callback_steps: int = 1,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -758,10 +759,6 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
-        message = "Please use `image` instead of `init_image`."
-        init_image = deprecate("init_image", "0.14.0", message, take_from=kwargs)
-        image = init_image or image
-
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
@@ -883,8 +880,7 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         is_cancelled_callback: Optional[Callable[[], bool]] = None,
-        callback_steps: Optional[int] = 1,
-        **kwargs,
+        callback_steps: int = 1,
     ):
         r"""
         Function for text-to-image generation.
@@ -960,7 +956,6 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
             callback=callback,
             is_cancelled_callback=is_cancelled_callback,
             callback_steps=callback_steps,
-            **kwargs,
         )
 
     def img2img(
@@ -979,8 +974,7 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         is_cancelled_callback: Optional[Callable[[], bool]] = None,
-        callback_steps: Optional[int] = 1,
-        **kwargs,
+        callback_steps: int = 1,
     ):
         r"""
         Function for image-to-image generation.
@@ -1056,7 +1050,6 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
             callback=callback,
             is_cancelled_callback=is_cancelled_callback,
             callback_steps=callback_steps,
-            **kwargs,
         )
 
     def inpaint(
@@ -1076,8 +1069,7 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         is_cancelled_callback: Optional[Callable[[], bool]] = None,
-        callback_steps: Optional[int] = 1,
-        **kwargs,
+        callback_steps: int = 1,
     ):
         r"""
         Function for inpaint.
@@ -1158,5 +1150,4 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
             callback=callback,
             is_cancelled_callback=is_cancelled_callback,
             callback_steps=callback_steps,
-            **kwargs,
         )

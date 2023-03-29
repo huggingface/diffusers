@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2022 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ import torch.utils.checkpoint
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
-from accelerate.utils import set_seed
+from accelerate.utils import ProjectConfiguration, set_seed
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from onnxruntime.training.ortmodule import ORTModule
 
@@ -291,6 +291,16 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--checkpoints_total_limit",
+        type=int,
+        default=None,
+        help=(
+            "Max number of checkpoints to store. Passed as `total_limit` to the `Accelerator` `ProjectConfiguration`."
+            " See Accelerator::save_state https://huggingface.co/docs/accelerate/package_reference/accelerator#accelerate.Accelerator.save_state"
+            " for more docs"
+        ),
+    )
+    parser.add_argument(
         "--resume_from_checkpoint",
         type=str,
         default=None,
@@ -467,11 +477,14 @@ def main():
     args = parse_args()
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
 
+    accelerator_project_config = ProjectConfiguration(total_limit=args.checkpoints_total_limit)
+
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
         logging_dir=logging_dir,
+        project_config=accelerator_project_config,
     )
 
     if args.report_to == "wandb":
@@ -777,7 +790,7 @@ def main():
             if global_step >= args.max_train_steps:
                 break
 
-        if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
+        if accelerator.is_main_process and args.validation_prompt is not None and epoch % args.validation_epochs == 0:
             logger.info(
                 f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
                 f" {args.validation_prompt}."

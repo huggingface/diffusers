@@ -3,7 +3,7 @@ from typing import Callable, List, Optional, Union
 import PIL
 import torch
 from transformers import (
-    CLIPFeatureExtractor,
+    CLIPImageProcessor,
     CLIPSegForImageSegmentation,
     CLIPSegProcessor,
     CLIPTextModel,
@@ -52,7 +52,7 @@ class TextInpainting(DiffusionPipeline):
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
-        feature_extractor ([`CLIPFeatureExtractor`]):
+        feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
 
@@ -66,7 +66,7 @@ class TextInpainting(DiffusionPipeline):
         unet: UNet2DConditionModel,
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
         safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
     ):
         super().__init__()
 
@@ -201,7 +201,7 @@ class TextInpainting(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
         **kwargs,
     ):
         r"""

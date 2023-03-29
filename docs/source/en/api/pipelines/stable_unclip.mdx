@@ -1,0 +1,137 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+# Stable unCLIP
+
+Stable unCLIP checkpoints are finetuned from [stable diffusion 2.1](./stable_diffusion_2) checkpoints to condition on CLIP image embeddings.
+Stable unCLIP also still conditions on text embeddings. Given the two separate conditionings, stable unCLIP can be used
+for text guided image variation. When combined with an unCLIP prior, it can also be used for full text to image generation.
+
+To know more about the unCLIP process, check out the following paper:
+
+[Hierarchical Text-Conditional Image Generation with CLIP Latents](https://arxiv.org/abs/2204.06125) by Aditya Ramesh, Prafulla Dhariwal, Alex Nichol, Casey Chu, Mark Chen.
+
+## Tips
+
+Stable unCLIP takes a `noise_level` as input during inference. `noise_level` determines how much noise is added 
+to the image embeddings. A higher `noise_level` increases variation in the final un-noised images. By default, 
+we do not add any additional noise to the image embeddings i.e. `noise_level = 0`.
+
+### Available checkpoints:
+
+* Image variation
+	* [stabilityai/stable-diffusion-2-1-unclip](https://hf.co/stabilityai/stable-diffusion-2-1-unclip)
+	* [stabilityai/stable-diffusion-2-1-unclip-small](https://hf.co/stabilityai/stable-diffusion-2-1-unclip-small)
+* Text-to-image 
+	* Coming soon!
+
+### Text-to-Image Generation
+
+Coming soon!
+
+
+### Text guided Image-to-Image Variation
+
+```python
+from diffusers import StableUnCLIPImg2ImgPipeline
+from diffusers.utils import load_image
+import torch
+
+pipe = StableUnCLIPImg2ImgPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-2-1-unclip", torch_dtype=torch.float16, variation="fp16"
+)
+pipe = pipe.to("cuda")
+
+url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/stable_unclip/tarsila_do_amaral.png"
+init_image = load_image(url)
+
+images = pipe(init_image).images
+images[0].save("variation_image.png")
+```
+
+Optionally, you can also pass a prompt to `pipe` such as:
+
+```python 
+prompt = "A fantasy landscape, trending on artstation"
+
+images = pipe(init_image, prompt=prompt).images
+images[0].save("variation_image_two.png")
+```
+
+### Memory optimization
+
+If you are short on GPU memory, you can enable smart CPU offloading so that models that are not needed
+immediately for a computation can be offloaded to CPU:
+
+```python 
+from diffusers import StableUnCLIPImg2ImgPipeline
+from diffusers.utils import load_image
+import torch
+
+pipe = StableUnCLIPImg2ImgPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-2-1-unclip", torch_dtype=torch.float16, variation="fp16"
+)
+# Offload to CPU.
+pipe.enable_model_cpu_offload()
+
+url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/stable_unclip/tarsila_do_amaral.png"
+init_image = load_image(url)
+
+images = pipe(init_image).images
+images[0]
+```
+
+Further memory optimizations are possible by enabling VAE slicing on the pipeline: 
+
+```python 
+from diffusers import StableUnCLIPImg2ImgPipeline
+from diffusers.utils import load_image
+import torch
+
+pipe = StableUnCLIPImg2ImgPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-2-1-unclip", torch_dtype=torch.float16, variation="fp16"
+)
+pipe.enable_model_cpu_offload()
+pipe.enable_vae_slicing()
+
+url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/stable_unclip/tarsila_do_amaral.png"
+init_image = load_image(url)
+
+images = pipe(init_image).images
+images[0]
+```
+
+### StableUnCLIPPipeline
+
+[[autodoc]] StableUnCLIPPipeline
+	- all
+	- __call__
+	- enable_attention_slicing
+	- disable_attention_slicing
+	- enable_vae_slicing
+	- disable_vae_slicing
+	- enable_xformers_memory_efficient_attention
+	- disable_xformers_memory_efficient_attention
+
+
+### StableUnCLIPImg2ImgPipeline
+
+[[autodoc]] StableUnCLIPImg2ImgPipeline
+	- all
+	- __call__
+	- enable_attention_slicing
+	- disable_attention_slicing
+	- enable_vae_slicing
+	- disable_vae_slicing
+	- enable_xformers_memory_efficient_attention
+	- disable_xformers_memory_efficient_attention
+    

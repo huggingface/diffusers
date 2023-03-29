@@ -3,6 +3,7 @@ from ..utils import (
     is_flax_available,
     is_k_diffusion_available,
     is_librosa_available,
+    is_note_seq_available,
     is_onnx_available,
     is_torch_available,
     is_transformers_available,
@@ -25,6 +26,7 @@ else:
     from .pndm import PNDMPipeline
     from .repaint import RePaintPipeline
     from .score_sde_ve import ScoreSdeVePipeline
+    from .spectrogram_diffusion import SpectrogramDiffusionPipeline
     from .stochastic_karras_ve import KarrasVePipeline
 
 try:
@@ -42,10 +44,14 @@ except OptionalDependencyNotAvailable:
     from ..utils.dummy_torch_and_transformers_objects import *  # noqa F403
 else:
     from .alt_diffusion import AltDiffusionImg2ImgPipeline, AltDiffusionPipeline
+    from .audioldm import AudioLDMPipeline
     from .latent_diffusion import LDMTextToImagePipeline
     from .paint_by_example import PaintByExamplePipeline
+    from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
     from .stable_diffusion import (
         CycleDiffusionPipeline,
+        StableDiffusionAttendAndExcitePipeline,
+        StableDiffusionControlNetPipeline,
         StableDiffusionDepth2ImgPipeline,
         StableDiffusionImageVariationPipeline,
         StableDiffusionImg2ImgPipeline,
@@ -53,10 +59,17 @@ else:
         StableDiffusionInpaintPipelineLegacy,
         StableDiffusionInstructPix2PixPipeline,
         StableDiffusionLatentUpscalePipeline,
+        StableDiffusionModelEditingPipeline,
+        StableDiffusionPanoramaPipeline,
         StableDiffusionPipeline,
+        StableDiffusionPix2PixZeroPipeline,
+        StableDiffusionSAGPipeline,
         StableDiffusionUpscalePipeline,
+        StableUnCLIPImg2ImgPipeline,
+        StableUnCLIPPipeline,
     )
     from .stable_diffusion_safe import StableDiffusionPipelineSafe
+    from .text_to_video_synthesis import TextToVideoSDPipeline
     from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline
     from .versatile_diffusion import (
         VersatileDiffusionDualGuidedPipeline,
@@ -85,6 +98,7 @@ else:
         OnnxStableDiffusionInpaintPipeline,
         OnnxStableDiffusionInpaintPipelineLegacy,
         OnnxStableDiffusionPipeline,
+        OnnxStableDiffusionUpscalePipeline,
         StableDiffusionOnnxPipeline,
     )
 
@@ -112,7 +126,15 @@ except OptionalDependencyNotAvailable:
     from ..utils.dummy_flax_and_transformers_objects import *  # noqa F403
 else:
     from .stable_diffusion import (
+        FlaxStableDiffusionControlNetPipeline,
         FlaxStableDiffusionImg2ImgPipeline,
         FlaxStableDiffusionInpaintPipeline,
         FlaxStableDiffusionPipeline,
     )
+try:
+    if not (is_note_seq_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils.dummy_note_seq_objects import *  # noqa F403
+else:
+    from .spectrogram_diffusion import MidiProcessor

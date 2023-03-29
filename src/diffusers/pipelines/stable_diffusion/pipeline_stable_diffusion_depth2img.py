@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ def preprocess(image):
 
     if isinstance(image[0], PIL.Image.Image):
         w, h = image[0].size
-        w, h = map(lambda x: x - x % 8, (w, h))  # resize to integer multiple of 8
+        w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
 
         image = [np.array(i.resize((w, h), resample=PIL_INTERPOLATION["lanczos"]))[None, :] for i in image]
         image = np.concatenate(image, axis=0)
@@ -146,7 +146,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
         `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
         hooks.
         """
-        if self.device != torch.device("meta") or not hasattr(self.unet, "_hf_hook"):
+        if not hasattr(self.unet, "_hf_hook"):
             return self.device
         for module in self.unet.modules():
             if (
@@ -182,8 +182,8 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
                 whether to use classifier free guidance or not
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
-                Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
@@ -442,12 +442,12 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
         if isinstance(image, PIL.Image.Image):
             image = [image]
         else:
-            image = [img for img in image]
+            image = list(image)
 
         if isinstance(image[0], PIL.Image.Image):
             width, height = image[0].size
         else:
-            width, height = image[0].shape[-2:]
+            height, width = image[0].shape[-2:]
 
         if depth_map is None:
             pixel_values = self.feature_extractor(images=image, return_tensors="pt").pixel_values
@@ -474,7 +474,8 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
 
         # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
         if depth_map.shape[0] < batch_size:
-            depth_map = depth_map.repeat(batch_size, 1, 1, 1)
+            repeat_by = batch_size // depth_map.shape[0]
+            depth_map = depth_map.repeat(repeat_by, 1, 1, 1)
 
         depth_map = torch.cat([depth_map] * 2) if do_classifier_free_guidance else depth_map
         return depth_map
@@ -497,7 +498,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -587,13 +588,26 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline):
             (nsfw) content, according to the `safety_checker`.
         """
         # 1. Check inputs
-        self.check_inputs(prompt, strength, callback_steps)
+        self.check_inputs(
+            prompt,
+            strength,
+            callback_steps,
+            negative_prompt=negative_prompt,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+        )
 
         if image is None:
             raise ValueError("`image` input cannot be undefined.")
 
         # 2. Define call parameters
-        batch_size = 1 if isinstance(prompt, str) else len(prompt)
+        if prompt is not None and isinstance(prompt, str):
+            batch_size = 1
+        elif prompt is not None and isinstance(prompt, list):
+            batch_size = len(prompt)
+        else:
+            batch_size = prompt_embeds.shape[0]
+
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`

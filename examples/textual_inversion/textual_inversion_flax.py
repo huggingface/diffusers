@@ -25,7 +25,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel, set_seed
+from transformers import CLIPImageProcessor, CLIPTokenizer, FlaxCLIPTextModel, set_seed
 
 from diffusers import (
     FlaxAutoencoderKL,
@@ -57,7 +57,7 @@ else:
 # ------------------------------------------------------------------------------
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.13.0.dev0")
+check_min_version("0.15.0.dev0")
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +122,12 @@ def parse_args():
         help="Total number of training steps to perform.  If provided, overrides num_train_epochs.",
     )
     parser.add_argument(
+        "--save_steps",
+        type=int,
+        default=500,
+        help="Save learned_embeds.bin every X updates steps.",
+    )
+    parser.add_argument(
         "--learning_rate",
         type=float,
         default=1e-4,
@@ -135,6 +141,13 @@ def parse_args():
     )
     parser.add_argument(
         "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
+    )
+    parser.add_argument(
+        "--revision",
+        type=str,
+        default=None,
+        required=False,
+        help="Revision of pretrained model identifier from huggingface.co/models.",
     )
     parser.add_argument(
         "--lr_scheduler",
@@ -420,9 +433,15 @@ def main():
     placeholder_token_id = tokenizer.convert_tokens_to_ids(args.placeholder_token)
 
     # Load models and create wrapper for stable diffusion
-    text_encoder = FlaxCLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder")
-    vae, vae_params = FlaxAutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
-    unet, unet_params = FlaxUNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
+    text_encoder = FlaxCLIPTextModel.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
+    )
+    vae, vae_params = FlaxAutoencoderKL.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision
+    )
+    unet, unet_params = FlaxUNet2DConditionModel.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
+    )
 
     # Create sampling rng
     rng = jax.random.PRNGKey(args.seed)
@@ -619,6 +638,14 @@ def main():
 
             if global_step >= args.max_train_steps:
                 break
+            if global_step % args.save_steps == 0:
+                learned_embeds = get_params_to_save(state.params)["text_model"]["embeddings"]["token_embedding"][
+                    "embedding"
+                ][placeholder_token_id]
+                learned_embeds_dict = {args.placeholder_token: learned_embeds}
+                jnp.save(
+                    os.path.join(args.output_dir, "learned_embeds-" + str(global_step) + ".npy"), learned_embeds_dict
+                )
 
         train_metric = jax_utils.unreplicate(train_metric)
 
@@ -640,7 +667,7 @@ def main():
             tokenizer=tokenizer,
             scheduler=scheduler,
             safety_checker=safety_checker,
-            feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
+            feature_extractor=CLIPImageProcessor.from_pretrained("openai/clip-vit-base-patch32"),
         )
 
         pipeline.save_pretrained(

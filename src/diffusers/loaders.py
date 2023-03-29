@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,22 +17,27 @@ from typing import Callable, Dict, Union
 
 import torch
 
-from .models.cross_attention import LoRACrossAttnProcessor
+from .models.attention_processor import LoRAAttnProcessor
 from .models.modeling_utils import _get_model_file
-from .utils import DIFFUSERS_CACHE, HF_HUB_OFFLINE, logging
+from .utils import DIFFUSERS_CACHE, HF_HUB_OFFLINE, deprecate, is_safetensors_available, logging
+
+
+if is_safetensors_available():
+    import safetensors
 
 
 logger = logging.get_logger(__name__)
 
 
 LORA_WEIGHT_NAME = "pytorch_lora_weights.bin"
+LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
 
 
 class AttnProcsLayers(torch.nn.Module):
     def __init__(self, state_dict: Dict[str, torch.Tensor]):
         super().__init__()
         self.layers = torch.nn.ModuleList(state_dict.values())
-        self.mapping = {k: v for k, v in enumerate(state_dict.keys())}
+        self.mapping = dict(enumerate(state_dict.keys()))
         self.rev_mapping = {v: k for k, v in enumerate(state_dict.keys())}
 
         # we add a hook to state_dict() and load_state_dict() so that the
@@ -136,28 +141,65 @@ class UNet2DConditionLoadersMixin:
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
         subfolder = kwargs.pop("subfolder", None)
-        weight_name = kwargs.pop("weight_name", LORA_WEIGHT_NAME)
+        weight_name = kwargs.pop("weight_name", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+
+        if use_safetensors and not is_safetensors_available():
+            raise ValueError(
+                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetenstors"
+            )
+
+        allow_pickle = False
+        if use_safetensors is None:
+            use_safetensors = is_safetensors_available()
+            allow_pickle = True
 
         user_agent = {
             "file_type": "attn_procs_weights",
             "framework": "pytorch",
         }
 
+        model_file = None
         if not isinstance(pretrained_model_name_or_path_or_dict, dict):
-            model_file = _get_model_file(
-                pretrained_model_name_or_path_or_dict,
-                weights_name=weight_name,
-                cache_dir=cache_dir,
-                force_download=force_download,
-                resume_download=resume_download,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
-                revision=revision,
-                subfolder=subfolder,
-                user_agent=user_agent,
-            )
-            state_dict = torch.load(model_file, map_location="cpu")
+            # Let's first try to load .safetensors weights
+            if (use_safetensors and weight_name is None) or (
+                weight_name is not None and weight_name.endswith(".safetensors")
+            ):
+                try:
+                    model_file = _get_model_file(
+                        pretrained_model_name_or_path_or_dict,
+                        weights_name=weight_name or LORA_WEIGHT_NAME_SAFE,
+                        cache_dir=cache_dir,
+                        force_download=force_download,
+                        resume_download=resume_download,
+                        proxies=proxies,
+                        local_files_only=local_files_only,
+                        use_auth_token=use_auth_token,
+                        revision=revision,
+                        subfolder=subfolder,
+                        user_agent=user_agent,
+                    )
+                    state_dict = safetensors.torch.load_file(model_file, device="cpu")
+                except IOError as e:
+                    if not allow_pickle:
+                        raise e
+                    # try loading non-safetensors weights
+                    pass
+            if model_file is None:
+                model_file = _get_model_file(
+                    pretrained_model_name_or_path_or_dict,
+                    weights_name=weight_name or LORA_WEIGHT_NAME,
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    resume_download=resume_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    use_auth_token=use_auth_token,
+                    revision=revision,
+                    subfolder=subfolder,
+                    user_agent=user_agent,
+                )
+                state_dict = torch.load(model_file, map_location="cpu")
         else:
             state_dict = pretrained_model_name_or_path_or_dict
 
@@ -177,7 +219,7 @@ class UNet2DConditionLoadersMixin:
                 cross_attention_dim = value_dict["to_k_lora.down.weight"].shape[1]
                 hidden_size = value_dict["to_k_lora.up.weight"].shape[0]
 
-                attn_processors[key] = LoRACrossAttnProcessor(
+                attn_processors[key] = LoRAAttnProcessor(
                     hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, rank=rank
                 )
                 attn_processors[key].load_state_dict(value_dict)
@@ -195,8 +237,10 @@ class UNet2DConditionLoadersMixin:
         self,
         save_directory: Union[str, os.PathLike],
         is_main_process: bool = True,
-        weights_name: str = LORA_WEIGHT_NAME,
+        weight_name: str = None,
         save_function: Callable = None,
+        safe_serialization: bool = False,
+        **kwargs,
     ):
         r"""
         Save an attention processor to a directory, so that it can be re-loaded using the
@@ -214,12 +258,24 @@ class UNet2DConditionLoadersMixin:
                 need to replace `torch.save` by another method. Can be configured with the environment variable
                 `DIFFUSERS_SAVE_MODE`.
         """
+        weight_name = weight_name or deprecate(
+            "weights_name",
+            "0.18.0",
+            "`weights_name` is deprecated, please use `weight_name` instead.",
+            take_from=kwargs,
+        )
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
 
         if save_function is None:
-            save_function = torch.save
+            if safe_serialization:
+
+                def save_function(weights, filename):
+                    return safetensors.torch.save_file(weights, filename, metadata={"format": "pt"})
+
+            else:
+                save_function = torch.save
 
         os.makedirs(save_directory, exist_ok=True)
 
@@ -228,16 +284,13 @@ class UNet2DConditionLoadersMixin:
         # Save the model
         state_dict = model_to_save.state_dict()
 
-        # Clean the folder from a previous save
-        for filename in os.listdir(save_directory):
-            full_filename = os.path.join(save_directory, filename)
-            # If we have a shard file that is not going to be replaced, we delete it, but only from the main process
-            # in distributed settings to avoid race conditions.
-            weights_no_suffix = weights_name.replace(".bin", "")
-            if filename.startswith(weights_no_suffix) and os.path.isfile(full_filename) and is_main_process:
-                os.remove(full_filename)
+        if weight_name is None:
+            if safe_serialization:
+                weight_name = LORA_WEIGHT_NAME_SAFE
+            else:
+                weight_name = LORA_WEIGHT_NAME
 
         # Save the model
-        save_function(state_dict, os.path.join(save_directory, weights_name))
+        save_function(state_dict, os.path.join(save_directory, weight_name))
 
-        logger.info(f"Model weights saved in {os.path.join(save_directory, weights_name)}")
+        logger.info(f"Model weights saved in {os.path.join(save_directory, weight_name)}")

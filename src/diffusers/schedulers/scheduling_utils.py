@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,6 +25,10 @@ from ..utils import BaseOutput
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
 
 
+# NOTE: We make this type an enum because it simplifies usage in docs and prevents
+# circular imports when used for `_compatibles` within the schedulers module.
+# When it's used as a type in pipelines, it really is a Union because the actual
+# scheduler instance is passed in.
 class KarrasDiffusionSchedulers(Enum):
     DDIMScheduler = 1
     DDPMScheduler = 2
@@ -38,6 +42,7 @@ class KarrasDiffusionSchedulers(Enum):
     KDPM2DiscreteScheduler = 10
     KDPM2AncestralDiscreteScheduler = 11
     DEISMultistepScheduler = 12
+    UniPCMultistepScheduler = 13
 
 
 @dataclass
@@ -131,10 +136,11 @@ class SchedulerMixin:
         </Tip>
 
         """
-        config, kwargs = cls.load_config(
+        config, kwargs, commit_hash = cls.load_config(
             pretrained_model_name_or_path=pretrained_model_name_or_path,
             subfolder=subfolder,
             return_unused_kwargs=True,
+            return_commit_hash=True,
             **kwargs,
         )
         return cls.from_config(config, return_unused_kwargs=return_unused_kwargs, **kwargs)

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ from diffusers import (
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 
+from ...pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin
 
 
@@ -39,6 +40,15 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 class StableDiffusionLatentUpscalePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionLatentUpscalePipeline
+    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {
+        "height",
+        "width",
+        "cross_attention_kwargs",
+        "negative_prompt_embeds",
+        "prompt_embeds",
+    }
+    required_optional_params = PipelineTesterMixin.required_optional_params - {"num_images_per_prompt"}
+    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
     test_cpu_offload = True
 
     @property
@@ -89,7 +99,7 @@ class StableDiffusionLatentUpscalePipelineFastTests(PipelineTesterMixin, unittes
             up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"],
             latent_channels=4,
         )
-        scheduler = EulerDiscreteScheduler(prediction_type="original_sample")
+        scheduler = EulerDiscreteScheduler(prediction_type="sample")
         text_config = CLIPTextConfig(
             bos_token_id=0,
             eos_token_id=2,
@@ -188,7 +198,7 @@ class StableDiffusionLatentUpscalePipelineIntegrationTests(unittest.TestCase):
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/latent-upscaler/astronaut_1024.npy"
         )
-        assert np.abs((expected_image - image).max()) < 5e-1
+        assert np.abs((expected_image - image).mean()) < 5e-2
 
     def test_latent_upscaler_fp16_image(self):
         generator = torch.manual_seed(33)

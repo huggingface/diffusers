@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,13 @@ import numpy as np
 import torch
 from transformers import XLMRobertaTokenizer
 
-from diffusers import AltDiffusionImg2ImgPipeline, AutoencoderKL, PNDMScheduler, UNet2DConditionModel
+from diffusers import (
+    AltDiffusionImg2ImgPipeline,
+    AutoencoderKL,
+    PNDMScheduler,
+    UNet2DConditionModel,
+)
+from diffusers.image_processor import VaeImageProcessor
 from diffusers.pipelines.alt_diffusion.modeling_roberta_series import (
     RobertaSeriesConfig,
     RobertaSeriesModelWithTransformation,
@@ -128,6 +134,7 @@ class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
         )
+        alt_pipe.image_processor = VaeImageProcessor(vae_scale_factor=alt_pipe.vae_scale_factor, do_normalize=False)
         alt_pipe = alt_pipe.to(device)
         alt_pipe.set_progress_bar_config(disable=None)
 
@@ -191,6 +198,7 @@ class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
         )
+        alt_pipe.image_processor = VaeImageProcessor(vae_scale_factor=alt_pipe.vae_scale_factor, do_normalize=False)
         alt_pipe = alt_pipe.to(torch_device)
         alt_pipe.set_progress_bar_config(disable=None)
 

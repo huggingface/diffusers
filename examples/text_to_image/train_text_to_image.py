@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2022 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ import torch.utils.checkpoint
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
-from accelerate.utils import set_seed
+from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from packaging import version
@@ -47,7 +47,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.13.0.dev0")
+check_min_version("0.15.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -276,6 +276,16 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--checkpoints_total_limit",
+        type=int,
+        default=None,
+        help=(
+            "Max number of checkpoints to store. Passed as `total_limit` to the `Accelerator` `ProjectConfiguration`."
+            " See Accelerator::save_state https://huggingface.co/docs/accelerate/package_reference/accelerator#accelerate.Accelerator.save_state"
+            " for more docs"
+        ),
+    )
+    parser.add_argument(
         "--resume_from_checkpoint",
         type=str,
         default=None,
@@ -287,6 +297,7 @@ def parse_args():
     parser.add_argument(
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
+    parser.add_argument("--noise_offset", type=float, default=0, help="The scale of noise offset.")
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -333,11 +344,14 @@ def main():
         )
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
 
+    accelerator_project_config = ProjectConfiguration(total_limit=args.checkpoints_total_limit)
+
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
         logging_dir=logging_dir,
+        project_config=accelerator_project_config,
     )
 
     # Make one log on every process with the configuration for debugging.
@@ -400,10 +414,17 @@ def main():
         ema_unet = UNet2DConditionModel.from_pretrained(
             args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
         )
-        ema_unet = EMAModel(ema_unet.parameters())
+        ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config)
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
+            import xformers
+
+            xformers_version = version.parse(xformers.__version__)
+            if xformers_version == version.parse("0.0.16"):
+                logger.warn(
+                    "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
+                )
             unet.enable_xformers_memory_efficient_attention()
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
@@ -425,6 +446,7 @@ def main():
             if args.use_ema:
                 load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), UNet2DConditionModel)
                 ema_unet.load_state_dict(load_model.state_dict())
+                ema_unet.to(accelerator.device)
                 del load_model
 
             for i in range(len(models)):
@@ -684,6 +706,12 @@ def main():
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents)
+                if args.noise_offset:
+                    # https://www.crosslabs.org//blog/diffusion-with-offset-noise
+                    noise += args.noise_offset * torch.randn(
+                        (latents.shape[0], latents.shape[1], 1, 1), device=latents.device
+                    )
+
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
                 timesteps = torch.randint(0, noise_scheduler.num_train_timesteps, (bsz,), device=latents.device)

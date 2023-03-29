@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -52,13 +52,13 @@ class ValueGuidedRLPipeline(DiffusionPipeline):
         self.scheduler = scheduler
         self.env = env
         self.data = env.get_dataset()
-        self.means = dict()
+        self.means = {}
         for key in self.data.keys():
             try:
                 self.means[key] = self.data[key].mean()
             except:  # noqa: E722
                 pass
-        self.stds = dict()
+        self.stds = {}
         for key in self.data.keys():
             try:
                 self.stds[key] = self.data[key].std()

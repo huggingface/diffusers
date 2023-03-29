@@ -12,6 +12,7 @@ import torch
 import torch.nn.functional as F
 from accelerate import Accelerator
 from accelerate.logging import get_logger
+from accelerate.utils import ProjectConfiguration
 from datasets import load_dataset
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from packaging import version
@@ -22,11 +23,12 @@ import diffusers
 from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
-from diffusers.utils import check_min_version, is_tensorboard_available
+from diffusers.utils import check_min_version, is_accelerate_version, is_tensorboard_available, is_wandb_available
+from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.13.0.dev0")
+check_min_version("0.15.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -240,6 +242,16 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--checkpoints_total_limit",
+        type=int,
+        default=None,
+        help=(
+            "Max number of checkpoints to store. Passed as `total_limit` to the `Accelerator` `ProjectConfiguration`."
+            " See Accelerator::save_state https://huggingface.co/docs/accelerate/package_reference/accelerator#accelerate.Accelerator.save_state"
+            " for more docs"
+        ),
+    )
+    parser.add_argument(
         "--resume_from_checkpoint",
         type=str,
         default=None,
@@ -247,6 +259,9 @@ def parse_args():
             "Whether training should be resumed from a previous checkpoint. Use a path saved by"
             ' `--checkpointing_steps`, or `"latest"` to automatically select the last available checkpoint.'
         ),
+    )
+    parser.add_argument(
+        "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
 
     args = parser.parse_args()
@@ -273,12 +288,24 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 def main(args):
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
 
+    accelerator_project_config = ProjectConfiguration(total_limit=args.checkpoints_total_limit)
+
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.logger,
         logging_dir=logging_dir,
+        project_config=accelerator_project_config,
     )
+
+    if args.logger == "tensorboard":
+        if not is_tensorboard_available():
+            raise ImportError("Make sure to install tensorboard if you want to use it for logging during training.")
+
+    elif args.logger == "wandb":
+        if not is_wandb_available():
+            raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
+        import wandb
 
     # `accelerate` 0.16.0 will have better support for customized saving
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
@@ -386,6 +413,19 @@ def main(args):
             model_cls=UNet2DModel,
             model_config=model.config,
         )
+
+    if args.enable_xformers_memory_efficient_attention:
+        if is_xformers_available():
+            import xformers
+
+            xformers_version = version.parse(xformers.__version__)
+            if xformers_version == version.parse("0.0.16"):
+                logger.warn(
+                    "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
+                )
+            model.enable_xformers_memory_efficient_attention()
+        else:
+            raise ValueError("xformers is not available. Make sure it is installed correctly")
 
     # Initialize the scheduler
     accepts_prediction_type = "prediction_type" in set(inspect.signature(DDPMScheduler.__init__).parameters.keys())
@@ -585,8 +625,11 @@ def main(args):
         if accelerator.is_main_process:
             if epoch % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
                 unet = accelerator.unwrap_model(model)
+
                 if args.use_ema:
+                    ema_model.store(unet.parameters())
                     ema_model.copy_to(unet.parameters())
+
                 pipeline = DDPMPipeline(
                     unet=unet,
                     scheduler=noise_scheduler,
@@ -601,17 +644,43 @@ def main(args):
                     output_type="numpy",
                 ).images
 
+                if args.use_ema:
+                    ema_model.restore(unet.parameters())
+
                 # denormalize the images and save to tensorboard
                 images_processed = (images * 255).round().astype("uint8")
 
-                if args.logger == "tensorboard" and is_tensorboard_available():
-                    accelerator.get_tracker("tensorboard").add_images(
-                        "test_samples", images_processed.transpose(0, 3, 1, 2), epoch
+                if args.logger == "tensorboard":
+                    if is_accelerate_version(">=", "0.17.0.dev0"):
+                        tracker = accelerator.get_tracker("tensorboard", unwrap=True)
+                    else:
+                        tracker = accelerator.get_tracker("tensorboard")
+                    tracker.add_images("test_samples", images_processed.transpose(0, 3, 1, 2), epoch)
+                elif args.logger == "wandb":
+                    # Upcoming `log_images` helper coming in https://github.com/huggingface/accelerate/pull/962/files
+                    accelerator.get_tracker("wandb").log(
+                        {"test_samples": [wandb.Image(img) for img in images_processed], "epoch": epoch},
+                        step=global_step,
                     )
 
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
                 # save the model
+                unet = accelerator.unwrap_model(model)
+
+                if args.use_ema:
+                    ema_model.store(unet.parameters())
+                    ema_model.copy_to(unet.parameters())
+
+                pipeline = DDPMPipeline(
+                    unet=unet,
+                    scheduler=noise_scheduler,
+                )
+
                 pipeline.save_pretrained(args.output_dir)
+
+                if args.use_ema:
+                    ema_model.restore(unet.parameters())
+
                 if args.push_to_hub:
                     repo.push_to_hub(commit_message=f"Epoch {epoch}", blocking=False)
 
