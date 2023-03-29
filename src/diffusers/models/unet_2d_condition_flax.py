@@ -172,8 +172,8 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     add_downsample=not is_final_block,
                     use_linear_projection=self.use_linear_projection,
                     only_cross_attention=only_cross_attention[i],
-                    dtype=self.dtype,
                     use_memory_efficient_attention=self.use_memory_efficient_attention,
+                    dtype=self.dtype,
                 )
             else:
                 down_block = FlaxDownBlock2D(
@@ -194,8 +194,8 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             dropout=self.dropout,
             attn_num_head_channels=attention_head_dim[-1],
             use_linear_projection=self.use_linear_projection,
-            dtype=self.dtype,
             use_memory_efficient_attention=self.use_memory_efficient_attention,
+            dtype=self.dtype,
         )
 
         # up
@@ -222,8 +222,8 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     dropout=self.dropout,
                     use_linear_projection=self.use_linear_projection,
                     only_cross_attention=only_cross_attention[i],
-                    dtype=self.dtype,
                     use_memory_efficient_attention=self.use_memory_efficient_attention,
+                    dtype=self.dtype,
                 )
             else:
                 up_block = FlaxUpBlock2D(
