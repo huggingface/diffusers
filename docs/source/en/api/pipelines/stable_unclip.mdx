@@ -42,12 +42,9 @@ Coming soon!
 ### Text guided Image-to-Image Variation
 
 ```python
-import requests
-import torch
-from PIL import Image
-from io import BytesIO
-
 from diffusers import StableUnCLIPImg2ImgPipeline
+from diffusers.utils import load_image
+import torch
 
 pipe = StableUnCLIPImg2ImgPipeline.from_pretrained(
     "stabilityai/stable-diffusion-2-1-unclip", torch_dtype=torch.float16, variation="fp16"
@@ -55,12 +52,10 @@ pipe = StableUnCLIPImg2ImgPipeline.from_pretrained(
 pipe = pipe.to("cuda")
 
 url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/stable_unclip/tarsila_do_amaral.png"
-
-response = requests.get(url)
-init_image = Image.open(BytesIO(response.content)).convert("RGB")
+init_image = load_image(url)
 
 images = pipe(init_image).images
-images[0].save("fantasy_landscape.png")
+images[0].save("variation_image.png")
 ```
 
 Optionally, you can also pass a prompt to `pipe` such as:
@@ -69,7 +64,50 @@ Optionally, you can also pass a prompt to `pipe` such as:
 prompt = "A fantasy landscape, trending on artstation"
 
 images = pipe(init_image, prompt=prompt).images
-images[0].save("fantasy_landscape.png")
+images[0].save("variation_image_two.png")
+```
+
+### Memory optimization
+
+If you are short on GPU memory, you can enable smart CPU offloading so that models that are not needed
+immediately for a computation can be offloaded to CPU:
+
+```python 
+from diffusers import StableUnCLIPImg2ImgPipeline
+from diffusers.utils import load_image
+import torch
+
+pipe = StableUnCLIPImg2ImgPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-2-1-unclip", torch_dtype=torch.float16, variation="fp16"
+)
+# Offload to CPU.
+pipe.enable_model_cpu_offload()
+
+url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/stable_unclip/tarsila_do_amaral.png"
+init_image = load_image(url)
+
+images = pipe(init_image).images
+images[0]
+```
+
+Further memory optimizations are possible by enabling VAE slicing on the pipeline: 
+
+```python 
+from diffusers import StableUnCLIPImg2ImgPipeline
+from diffusers.utils import load_image
+import torch
+
+pipe = StableUnCLIPImg2ImgPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-2-1-unclip", torch_dtype=torch.float16, variation="fp16"
+)
+pipe.enable_model_cpu_offload()
+pipe.enable_vae_slicing()
+
+url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/stable_unclip/tarsila_do_amaral.png"
+init_image = load_image(url)
+
+images = pipe(init_image).images
+images[0]
 ```
 
 ### StableUnCLIPPipeline

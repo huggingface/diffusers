@@ -4,17 +4,17 @@ import tqdm
 from diffusers.experimental import ValueGuidedRLPipeline
 
 
-config = dict(
-    n_samples=64,
-    horizon=32,
-    num_inference_steps=20,
-    n_guide_steps=2,  # can set to 0 for faster sampling, does not use value network
-    scale_grad_by_std=True,
-    scale=0.1,
-    eta=0.0,
-    t_grad_cutoff=2,
-    device="cpu",
-)
+config = {
+    "n_samples": 64,
+    "horizon": 32,
+    "num_inference_steps": 20,
+    "n_guide_steps": 2,  # can set to 0 for faster sampling, does not use value network
+    "scale_grad_by_std": True,
+    "scale": 0.1,
+    "eta": 0.0,
+    "t_grad_cutoff": 2,
+    "device": "cpu",
+}
 
 
 if __name__ == "__main__":
