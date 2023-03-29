@@ -898,9 +898,6 @@ class StableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline):
             generator,
         )
 
-        # if do_classifier_free_guidance:
-        #     controlnet_conditioning_image = torch.cat([controlnet_conditioning_image] * 2)
-
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
