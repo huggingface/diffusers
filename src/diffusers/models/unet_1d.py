@@ -47,6 +47,9 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         sample_size (`int`, *optional*): Default length of sample. Should be adaptable at runtime.
         in_channels (`int`, *optional*, defaults to 2): Number of channels in the input sample.
         out_channels (`int`, *optional*, defaults to 2): Number of channels in the output.
+        extra_in_channels (`int`, *optional*, defaults to 0):
+            Number of additional channels to be added to the input of the first down block. Useful for cases where the
+            input data has more channels than what the model is initially designed for.
         time_embedding_type (`str`, *optional*, defaults to `"fourier"`): Type of time embedding to use.
         freq_shift (`float`, *optional*, defaults to 0.0): Frequency shift for fourier time embedding.
         flip_sin_to_cos (`bool`, *optional*, defaults to :
