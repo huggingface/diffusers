@@ -548,6 +548,7 @@ class TextEncoderLoRAMixin:
     def save_attn_procs(
         self,
         save_directory: Union[str, os.PathLike],
+        text_encoder_lora_layers: nn.Module,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -556,11 +557,13 @@ class TextEncoderLoRAMixin:
     ):
         r"""
         Save an attention processor to a directory, so that it can be re-loaded using the
-        `[`~loaders.UNet2DConditionLoadersMixin.load_attn_procs`]` method.
+        [`~loaders.TextEncoderLoRAMixin.load_attn_procs`] method.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
                 Directory to which to save. Will be created if it doesn't exist.
+            text_encoder_lora_layers (`nn.Module`):
+                LoRA trainable parameters provided as `nn.Module`.
             is_main_process (`bool`, *optional*, defaults to `True`):
                 Whether the process calling this is the main process or not. Useful when in distributed training like
                 TPUs and need to call this function on all processes. In this case, set `is_main_process=True` only on
@@ -591,7 +594,7 @@ class TextEncoderLoRAMixin:
 
         os.makedirs(save_directory, exist_ok=True)
 
-        model_to_save = self.text_encoder_lora_layers
+        model_to_save = text_encoder_lora_layers
 
         # Save the model
         state_dict = model_to_save.state_dict()
