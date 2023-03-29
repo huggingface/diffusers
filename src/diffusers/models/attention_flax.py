@@ -30,18 +30,18 @@ class FlaxAttention(nn.Module):
             Hidden states dimension inside each head
         dropout (:obj:`float`, *optional*, defaults to 0.0):
             Dropout rate
-        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
-            Parameters `dtype`
         use_memory_efficient_attention (`bool`, *optional*, defaults to `False`):
             enable memory efficient attention https://arxiv.org/abs/2112.05682
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
 
     """
     query_dim: int
     heads: int = 8
     dim_head: int = 64
     dropout: float = 0.0
-    dtype: jnp.dtype = jnp.float32
     use_memory_efficient_attention: bool = False
+    dtype: jnp.dtype = jnp.float32
 
     def setup(self):
         inner_dim = self.dim_head * self.heads
@@ -154,9 +154,9 @@ class FlaxBasicTransformerBlock(nn.Module):
 
     def setup(self):
         # self attention (or cross_attention if only_cross_attention is True)
-        self.attn1 = FlaxAttention(self.dim, self.n_heads, self.d_head, self.dropout, dtype=self.dtype, use_memory_efficient_attention=self.use_memory_efficient_attention)
+        self.attn1 = FlaxAttention(self.dim, self.n_heads, self.d_head, self.dropout, self.use_memory_efficient_attention, dtype=self.dtype)
         # cross attention
-        self.attn2 = FlaxAttention(self.dim, self.n_heads, self.d_head, self.dropout, dtype=self.dtype, use_memory_efficient_attention=self.use_memory_efficient_attention)
+        self.attn2 = FlaxAttention(self.dim, self.n_heads, self.d_head, self.dropout, self.use_memory_efficient_attention, dtype=self.dtype)
         self.ff = FlaxFeedForward(dim=self.dim, dropout=self.dropout, dtype=self.dtype)
         self.norm1 = nn.LayerNorm(epsilon=1e-5, dtype=self.dtype)
         self.norm2 = nn.LayerNorm(epsilon=1e-5, dtype=self.dtype)
