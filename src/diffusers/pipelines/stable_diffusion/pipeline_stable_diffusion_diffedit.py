@@ -1192,7 +1192,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
                         callback(i, t, latents)
 
         assert len(inverted_latents) == len(timesteps)
-        latents = torch.cat(list(reversed(inverted_latents)))
+        latents = torch.stack(list(reversed(inverted_latents)), 1)
 
         # 8. Post-processing
         image = None
@@ -1407,17 +1407,14 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
 
         # 6. Preprocess image latents
         num_channels_latents = self.vae.config.latent_channels
-        image_latents_shape = (len(timesteps) * batch_size, num_channels_latents, *vae_latent_size)
+        image_latents_shape = (batch_size, len(timesteps), num_channels_latents, *vae_latent_size)
         if image_latents.shape != image_latents_shape:
             raise ValueError(
                 f"`image_latents` must have shape {image_latents_shape}, but has shape {image_latents.shape}"
             )
         if isinstance(image_latents, np.ndarray):
             image_latents = torch.from_numpy(image_latents)
-        image_latents = torch.cat(
-            [image_latents.reshape(-1, batch_size, num_channels_latents, *vae_latent_size)] * num_images_per_prompt,
-            1,
-        )
+        image_latents = torch.cat([image_latents.transpose(0, 1)] * num_images_per_prompt, 1)
         image_latents = image_latents.to(device=device, dtype=prompt_embeds.dtype)
 
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
