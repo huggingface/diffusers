@@ -29,9 +29,9 @@ if pipe.requires_safety_checker:
     pipe.safety_checker = pipe.safety_checker.to(memory_format=torch.channels_last)
 
 # optimize with ipex
-sample = torch.randn(2,4,64,64)
-timestep = torch.rand(1)*999
-encoder_hidden_status = torch.randn(2,77,768)
+sample = torch.randn(2, 4, 64, 64)
+timestep = torch.rand(1) * 999
+encoder_hidden_status = torch.randn(2, 77, 768)
 input_example = (sample, timestep, encoder_hidden_status)
 try:
     pipe.unet = ipex.optimize(pipe.unet.eval(), dtype=torch.bfloat16, inplace=True, sample_input=input_example)
