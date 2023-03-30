@@ -502,14 +502,14 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
 
         return timesteps, num_inference_steps - t_start
 
-    def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator):
+    def prepare_latents(self, image, timestep, num_images_per_prompt, dtype, device, generator):
         image = image.to(device=self.device, dtype=dtype)
         init_latent_dist = self.vae.encode(image).latent_dist
         init_latents = init_latent_dist.sample(generator=generator)
         init_latents = self.vae.config.scaling_factor * init_latents
 
         # Expand init_latents for batch_size and num_images_per_prompt
-        init_latents = torch.cat([init_latents] * batch_size * num_images_per_prompt, dim=0)
+        init_latents = torch.cat([init_latents] * num_images_per_prompt, dim=0)
         init_latents_orig = init_latents
 
         # add noise to latents using the timesteps
@@ -652,12 +652,12 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         # 6. Prepare latent variables
         # encode the init image into latents and scale the latents
         latents, init_latents_orig, noise = self.prepare_latents(
-            image, latent_timestep, batch_size, num_images_per_prompt, prompt_embeds.dtype, device, generator
+            image, latent_timestep, num_images_per_prompt, prompt_embeds.dtype, device, generator
         )
 
         # 7. Prepare mask latent
         mask = mask_image.to(device=self.device, dtype=latents.dtype)
-        mask = torch.cat([mask] * batch_size * num_images_per_prompt)
+        mask = torch.cat([mask] * num_images_per_prompt)
 
         # 8. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
