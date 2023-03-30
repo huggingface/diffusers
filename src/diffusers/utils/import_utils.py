@@ -175,9 +175,22 @@ if _onnx_available:
 # (sayakpaul): importlib.util.find_spec("opencv-python") returns None even when it's installed.
 # _opencv_available = importlib.util.find_spec("opencv-python") is not None
 try:
-    _opencv_version = importlib_metadata.version("opencv-python")
-    _opencv_available = True
-    logger.debug(f"Successfully imported cv2 version {_opencv_version}")
+    candidates = (
+        "opencv-python",
+        "opencv-contrib-python",
+        "opencv-python-headless",
+        "opencv-contrib-python-headless",
+    )
+    _opencv_version = None
+    for pkg in candidates:
+        try:
+            _opencv_version = importlib_metadata.version(pkg)
+            break
+        except importlib_metadata.PackageNotFoundError:
+            pass
+    _opencv_available = _opencv_version is not None
+    if _opencv_available:
+        logger.debug(f"Successfully imported cv2 version {_opencv_version}")
 except importlib_metadata.PackageNotFoundError:
     _opencv_available = False
 
