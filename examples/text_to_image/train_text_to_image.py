@@ -121,7 +121,7 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--validation_promptss",
+        "--validation_prompts",
         type=str,
         default=None,
         nargs="+",
