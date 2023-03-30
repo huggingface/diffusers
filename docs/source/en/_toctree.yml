@@ -4,7 +4,7 @@
   - local: quicktour
     title: Quicktour
   - local: stable_diffusion
-    title: Stable Diffusion
+    title: Effective and efficient diffusion
   - local: installation
     title: Installation
   title: Get started

@@ -439,7 +439,7 @@ Push the changes to your account using:
  $ git push -u origin a-descriptive-name-for-my-changes
  ```
 
-6. Once you are satisfied (**and the checklist below is happy too**), go to the
+6. Once you are satisfied, go to the
 webpage of your fork on GitHub. Click on 'Pull request' to send your changes
 to the project maintainers for review.
 

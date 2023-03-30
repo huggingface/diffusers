@@ -45,7 +45,10 @@ torch.backends.cuda.matmul.allow_tf32 = True
 To save more GPU memory and get more speed, you can load and run the model weights directly in half precision. This involves loading the float16 version of the weights, which was saved to a branch named `fp16`, and telling PyTorch to use the `float16` type when loading them:
 
 ```Python
-pipe = StableDiffusionPipeline.from_pretrained(
+import torch
+from diffusers import DiffusionPipeline
+
+pipe = DiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
     
     torch_dtype=torch.float16,
@@ -72,13 +75,13 @@ For even additional memory savings, you can use a sliced version of attention th
   each head which can save a significant amount of memory.
 </Tip>
 
-To perform the attention computation sequentially over each head, you only need to invoke [`~StableDiffusionPipeline.enable_attention_slicing`] in your pipeline before inference, like here:
+To perform the attention computation sequentially over each head, you only need to invoke [`~DiffusionPipeline.enable_attention_slicing`] in your pipeline before inference, like here:
 
 ```Python
 import torch
-from diffusers import StableDiffusionPipeline
+from diffusers import DiffusionPipeline
 
-pipe = StableDiffusionPipeline.from_pretrained(
+pipe = DiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
     
     torch_dtype=torch.float16,
@@ -402,10 +405,10 @@ To leverage it just make sure you have:
  - Cuda available
  - [Installed the xformers library](xformers).
 ```python
-from diffusers import StableDiffusionPipeline
+from diffusers import DiffusionPipeline
 import torch
 
-pipe = StableDiffusionPipeline.from_pretrained(
+pipe = DiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
     torch_dtype=torch.float16,
 ).to("cuda")

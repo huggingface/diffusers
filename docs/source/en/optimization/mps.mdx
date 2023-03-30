@@ -35,9 +35,9 @@ The snippet below demonstrates how to use the `mps` backend using the familiar `
 We strongly recommend you use PyTorch 2 or better, as it solves a number of problems like the one described in the previous tip.
 
 ```python
-from diffusers import StableDiffusionPipeline
+from diffusers import DiffusionPipeline
 
-pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
 pipe = pipe.to("mps")
 
 # Recommended if your computer has < 64 GB of RAM

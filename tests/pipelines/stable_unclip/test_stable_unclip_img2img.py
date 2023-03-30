@@ -2,6 +2,7 @@ import gc
 import random
 import unittest
 
+import numpy as np
 import torch
 from transformers import (
     CLIPImageProcessor,
@@ -145,6 +146,25 @@ class StableUnCLIPImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
             "num_inference_steps": 2,
             "output_type": "np",
         }
+
+    def test_image_embeds_none(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = StableUnCLIPImg2ImgPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs.update({"image_embeds": None})
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 32, 32, 3)
+        expected_slice = np.array(
+            [0.34588397, 0.7747054, 0.5453714, 0.5227859, 0.57656777, 0.6532228, 0.5177634, 0.49932978, 0.56626225]
+        )
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     # Overriding PipelineTesterMixin::test_attention_slicing_forward_pass
     # because GPU undeterminism requires a looser check.
