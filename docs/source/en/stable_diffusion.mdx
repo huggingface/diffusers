@@ -1,333 +1,271 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.                                                                                                                                                                                 
-                                                                                                                                                                                                                                              
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with                                                                                                                           
-the License. You may obtain a copy of the License at                                                                                                                                                                                          
-                                                                                                                                                                                                                                              
-http://www.apache.org/licenses/LICENSE-2.0                                                                                                                                                                                                    
-                                                                                                                                                                                                                                              
-Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on                                                                                                                           
-an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the                                                                                                                            
-specific language governing permissions and limitations under the License.                                                                                                                                                                    
--->                                                                                                                                                                                                                                           
-                                                                                                                                                                                                                                              
-# The Stable Diffusion Guide 🎨                                                                                                                                                                                                           
-<a target="_blank" href="https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/sd_101_guide.ipynb">                                                                                                                                                                                                                                                                                                                                                            
-    <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>                                                                                                                                                 
-</a>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    
-
-## Intro                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
-
-Stable Diffusion is a [Latent Diffusion model](https://github.com/CompVis/latent-diffusion) developed by researchers from the Machine Vision and Learning group at LMU Munich, *a.k.a* CompVis.                                                                                                                                                                                                                                                                                             
-Model checkpoints were publicly released at the end of August 2022 by a collaboration of Stability AI, CompVis, and Runway with support from EleutherAI and LAION. For more information, you can check out [the official blog post](https://stability.ai/blog/stable-diffusion-public-release).                                                                                                                                                                                                  
-                                                                                                                                                                                                                                              
-Since its public release the community has done an incredible job at working together to make the stable diffusion checkpoints **faster**, **more memory efficient**, and **more performant**.                                                                                                                                                                                                                                                                                              
-                                                                                                                                                                                                                                              
-🧨 Diffusers offers a simple API to run stable diffusion with all memory, computing, and quality improvements.                                                                                                                                   
-                                                                                                                                                                                                                                              
-This notebook walks you through the improvements one-by-one so you can best leverage [`StableDiffusionPipeline`] for **inference**.                                                                                                          
-                                                                                                                                                                                                                                              
-## Prompt Engineering 🎨                                                                                                                                                                                                                      
-                                                                                                                                                                                                                                              
-When running *Stable Diffusion* in inference, we usually want to generate a certain type, or style of image and then improve upon it. Improving upon a previously generated image means running inference over and over again with a different prompt and potentially a different seed until we are happy with our generation.                                                                                                                                                                 
-
-So to begin with, it is most important to speed up stable diffusion as much as possible to generate as many pictures as possible in a given amount of time.                                                                                   
-
-This can be done by both improving the **computational efficiency** (speed) and the **memory efficiency** (GPU RAM).                                                                                                                          
-
-Let's start by looking into computational efficiency first.                                                                                                                                                                               
-
-Throughout the notebook, we will focus on [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5):                                                                                                           
-
-``` python                                                                                                                                                                                                                                    
-model_id = "runwayml/stable-diffusion-v1-5"                                                                                                                                                                                                   
-```                                                                                                                                                                                                                                           
-
-Let's load the pipeline.                                                                                                                                                                                                                      
-
-## Speed Optimization                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
-
-``` python                                                                                                                                                                                                                                    
-from diffusers import DiffusionPipeline                                                                                                                                                                                                 
-                                                                                                                                                                                                                                              
-pipe = DiffusionPipeline.from_pretrained(model_id)                                                                                                                                                                                      
-```                                                                                                                                                                                                                                           
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            
-We aim at generating a beautiful photograph of an *old warrior chief* and will later try to find the best prompt to generate such a photograph. For now, let's keep the prompt simple:                                                                                                                                                                                                                                                                                                      
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            
-``` python                                                                                                                                                                                                                                    
-prompt = "portrait photo of a old warrior chief"                                                                                                                                                                                                                                                                                                                                                                                                                                            
-```                                                                                                                                                                                                                                           
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            
-To begin with, we should make sure we run inference on GPU, so let's move the pipeline to GPU, just like you would with any PyTorch module.                                                                                                   
-                                                                                                                                                                                                                                              
-``` python                                                                                                                                                                                                                                    
-pipe = pipe.to("cuda")                                                                                                                                                                                                                                                                                                                                                                                                                                                                      
-```                                                                                                                                                                                                                                           
-                                                                                                                                                                                                                                              
-To generate an image, you should use the [~`StableDiffusionPipeline.__call__`] method.                                                                                                                                                        
-                                                                                                                                                                                                                                              
-To make sure we can reproduce more or less the same image in every call, let's make use of the generator. See the documentation on reproducibility [here](./conceptual/reproducibility) for more information.                                                                                                                                                                                                                                                                                   
-
-``` python                                                                                                                                                                                                                                    
-generator = torch.Generator("cuda").manual_seed(0)                                                                                                                                                                                            
-```                                                                                                                                                                                                                                           
-                                                                                                                                                                                                                                              
-Now, let's take a spin on it.                                                                                                                                                                                                                 
-                                                                                                                                                                                                                                              
-``` python                                                                                                                                                                                                                                    
-image = pipe(prompt, generator=generator).images[0]                                                                                                                                                                                           
-image                                                                                                                                                                                                                                         
-```                                                                                                                                                                                                                                           
-
-![img](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_1.png)                                                                                                                                  
-                                                                                                                                                                                                                                              
-Cool, this now took roughly 30 seconds on a T4 GPU (you might see faster inference if your allocated GPU is better than a T4).                                                                                                              
-                                                                                                                                                                                                                                              
-The default run we did above used full float32 precision and ran the default number of inference steps (50). The easiest speed-ups come from switching to float16 (or half) precision and simply running fewer inference steps. Let's load the model now in float16 instead.                                                                                                                                                                                                                            
-                                                                                                                                                                                                                                              
-``` python                                                                                                                                                                                                                                    
-import torch                                                                                                                                                                                                                                  
-
-pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)                                                                                                                                                           
-pipe = pipe.to("cuda")                                                                                                                                                                                                                        
-```                                                                                                                                                                                                                                           
-
-And we can again call the pipeline to generate an image.                                                                                                                                                                                      
-
-``` python                                                                                                                                                                                                                                    
-generator = torch.Generator("cuda").manual_seed(0)                                                                                                                                                                                            
-
-image = pipe(prompt, generator=generator).images[0]                                                                                                                                                                                           
-image                                                                                                                                                                                                                                         
-```                                                                                                                                                                                                                                           
-![img](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_2.png)                                                                                                                                  
-
-Cool, this is almost three times as fast for arguably the same image quality.                                                                                                                                                           
-                                                                                                                                                                                                                                              
-We strongly suggest always running your pipelines in float16 as so far we have very rarely seen degradations in quality because of it.                                                                                                         
-
-Next, let's see if we need to use 50 inference steps or whether we could use significantly fewer. The number of inference steps is associated with the denoising scheduler we use. Choosing a more efficient scheduler could help us decrease the number of steps.
-
-Let's have a look at all the schedulers the stable diffusion pipeline is compatible with.                                                                                                                                                        
-                                                                                                                                                                                                                                              
-``` python                                                                                                                                                                                                                                    
-pipe.scheduler.compatibles                                                                                                                                                                                                                    
-```                                                                                                                                                                                                                                           
-                                                                                                                                                                                                                                              
-```                                                                                                                                                                                                                                           
-    [diffusers.schedulers.scheduling_dpmsolver_singlestep.DPMSolverSinglestepScheduler,                                                                                                                                                       
-     diffusers.schedulers.scheduling_lms_discrete.LMSDiscreteScheduler,                                                                                                                                                                       
-     diffusers.schedulers.scheduling_heun_discrete.HeunDiscreteScheduler,                                                                                                                                                                     
-     diffusers.schedulers.scheduling_pndm.PNDMScheduler,                                                                                                                                                                                      
-     diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler,                                                                                                                                                                   
-     diffusers.schedulers.scheduling_euler_ancestral_discrete.EulerAncestralDiscreteScheduler,                                                                                                                                                
-     diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler,                                                                                                                                                         
-     diffusers.schedulers.scheduling_ddpm.DDPMScheduler,                                                                                                                                                                                      
-     diffusers.schedulers.scheduling_ddim.DDIMScheduler]                                                                                                                                                                                      
-```                                                                                                                                                                                                                                           
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
 
-Cool, that's a lot of schedulers.                                                                                                                                                                                                                                                                                                                                                                                                                                                           
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
 
-🧨 Diffusers is constantly adding a bunch of novel schedulers/samplers that can be used with Stable Diffusion. For more information, we recommend taking a look at the official documentation [here](https://huggingface.co/docs/diffusers/main/en/api/schedulers/overview).                                                                                                                                                                                                              
-                                                                                                                                                                                                                                              
-Alright, right now Stable Diffusion is using the `PNDMScheduler` which usually requires around 50 inference steps. However, other schedulers such as `DPMSolverMultistepScheduler` or `DPMSolverSinglestepScheduler` seem to get away with just 20 to 25 inference steps. Let's try them out.                                                                                                                                                                                               
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            
-You can set a new scheduler by making use of the [from_config](https://huggingface.co/docs/diffusers/main/en/api/configuration#diffusers.ConfigMixin.from_config) function.                                                                                                                                                                                                                                                                                                                 
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            
-``` python                                                                                                                                                                                                                                    
-from diffusers import DPMSolverMultistepScheduler                                                                                                                                                                                             
-                                                                                                                                                                                                                                              
-pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)                                                                                                                                                               
-```                                                                                                                                                                                                                                           
-                                                                                                                                                                                                                                              
-Now, let's try to reduce the number of inference steps to just 20.                                                                                                                                                                            
+http://www.apache.org/licenses/LICENSE-2.0
 
-``` python                                                                                                                                                                                                                                    
-generator = torch.Generator("cuda").manual_seed(0)                                                                                                                                                                                            
-                                                                                                                                                                                                                                              
-image = pipe(prompt, generator=generator, num_inference_steps=20).images[0]                                                                                                                                                                   
-image                                                                                                                                                                                                                                         
-```                                                                                                                                                                                                                                           
-                                                                                                                                                                                                                                              
-![img](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_3.png)                                                                                                                                                                                                                                                                                                                                                                                
-                                                                                                                                                                                                                                              
-The image now does look a little different, but it's arguably still of equally high quality. We now cut inference time to just 4 seconds though 😍. 
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+                                                               
+# Effective and efficient diffusion
 
-## Memory Optimization                                                                                                                                                                                                                        
+[[open-in-colab]]
 
-Less memory used in generation indirectly implies more speed, since we're often trying to maximize how many images we can generate per second. Usually, the more images per inference run, the more images per second too.                                                                                                                                              
+Getting the [`DiffusionPipeline`] to generate images in a certain style or include what you want can be tricky. Often times, you have to run the [`DiffusionPipeline`] several times before you end up with an image you're happy with. But generating something out of nothing is a computationally intensive process, especially if you're running inference over and over again. 
 
-The easiest way to see how many images we can generate at once is to simply try it out, and see when we get a *"Out-of-memory (OOM)"* error.                                                                                                          
+This is why it's important to get the most *computational* (speed) and *memory* (GPU RAM) efficiency from the pipeline to reduce the time between inference cycles so you can iterate faster.
 
-We can run batched inference by simply passing a list of prompts and generators. Let's define a quick function that generates a batch for us.                                                                                                
+This tutorial walks you through how to generate faster and better with the [`DiffusionPipeline`].
 
-``` python                                                                                                                                                                                                                                    
-def get_inputs(batch_size=1):                                                                                                                                                                                                                 
-  generator = [torch.Generator("cuda").manual_seed(i) for i in range(batch_size)]                                                                                                                                                             
-  prompts = batch_size * [prompt]                                                                                                                                                                                                             
-  num_inference_steps = 20                                                                                                                                                                                                                    
+Begin by loading the [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) model:
 
-  return {"prompt": prompts, "generator": generator, "num_inference_steps": num_inference_steps}                                                                                                                                              
-```                                                                                                                                                                                                                                           
-This function returns a list of prompts and a list of generators, so we can reuse the generator that produced a result we like.
+```python
+from diffusers import DiffusionPipeline
 
-We also need a method that allows us to easily display a batch of images.                                                                                                                                                                     
+model_id = "runwayml/stable-diffusion-v1-5"
+pipeline = DiffusionPipeline.from_pretrained(model_id)
+```
 
-``` python                                                                                                                                                                                                                                    
-from PIL import Image                                                                                                                                                                                                                         
+The example prompt you'll use is a portrait of an old warrior chief, but feel free to use your own prompt:
 
-def image_grid(imgs, rows=2, cols=2):                                                                                                                                                                                                         
-    w, h = imgs[0].size                                                                                                                                                                                                                       
-    grid = Image.new('RGB', size=(cols*w, rows*h))                                                                                                                                                                                            
-                                                                                                                                                                                                                                              
-    for i, img in enumerate(imgs):                                                                                                                                                                                                            
-        grid.paste(img, box=(i%cols*w, i//cols*h))                                                                                                                                                                                            
-    return grid                                                                                                                                                                                                                               
-```                                                                                                                                                                                                                                           
+```python
+prompt = "portrait photo of a old warrior chief"
+```
 
-Cool, let's see how much memory we can use starting with `batch_size=4`.                                                                                                                                                                      
+## Speed
 
-``` python                                                                                                                                                                                                                                    
-images = pipe(**get_inputs(batch_size=4)).images                                                                                                                                                                                              
-image_grid(images)                                                                                                                                                                                                                            
-```                                                                                                                                                                                                                                           
+<Tip>
 
-![img](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_4.png)                                                                                                                                  
+💡 If you don't have access to a GPU, you can use one for free from a GPU provider like [Colab](https://colab.research.google.com/)!
 
-Going over a batch_size of 4 will error out in this notebook (assuming we are running it on a T4 GPU). Also, we can see we only generate slightly more images per second (3.75s/image) compared to 4s/image previously.                                                                                                                                                                                                                                                                                                                   
+</Tip>
 
-However, the community has found some nice tricks to improve the memory constraints further. After stable diffusion was released, the community found improvements within days and shared them freely over GitHub - open-source at its finest! I believe the original idea came from [this](https://github.com/basujindal/stable-diffusion/pull/117) GitHub thread.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    
+One of the simplest ways to speed up inference is to place the pipeline on a GPU the same way you would with any PyTorch module:
 
-By far most of the memory is taken up by the cross-attention layers. Instead of running this operation in batch, one can run it sequentially to save a significant amount of memory.                                                                                                                                                                                                                                                                                                         
+```python
+pipeline = pipeline.to("cuda")
+```
 
-It can easily be enabled by calling `enable_attention_slicing` as is documented [here](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/text2img#diffusers.StableDiffusionPipeline.enable_attention_slicing).                                                                                                                                                                                                                                                   
+To make sure you can use the same image and improve on it, use a [`Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) and set a seed for [reproducibility](./using-diffusers/reproducibility):
 
-``` python                                                                                                                                                                                                                                    
-pipe.enable_attention_slicing()                                                                                                                                                                                                               
-```                                                                                                                                                                                                                                           
+```python
+generator = torch.Generator("cuda").manual_seed(0)
+```
 
-Great, now that attention slicing is enabled, let's try to double the batch size again, going for `batch_size=8`.                                                                                                                              
+Now you can generate an image:
 
-``` python                                                                                                                                                                                                                                    
-images = pipe(**get_inputs(batch_size=8)).images                                                                                                                                                                                              
-image_grid(images, rows=2, cols=4)                                                                                                                                                                                                            
-```                                                                                                                                                                                                                                           
+```python
+image = pipeline(prompt, generator=generator).images[0]
+image
+```
 
-![img](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_5.png)                                                                                                                                  
+<div class="flex justify-center">
+    <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_1.png">
+</div>
 
-Nice, it works. However, the speed gain is again not very big (it might however be much more significant on other GPUs).                                                                                                                      
+This process took ~30 seconds on a T4 GPU (it might be faster if your allocated GPU is better than a T4). By default, the [`DiffusionPipeline`] runs inference with full `float32` precision for 50 inference steps. You can speed this up by switching to a lower precision like `float16` or running fewer inference steps. 
 
-We're at roughly 3.5 seconds per image 🔥 which is probably the fastest we can be with a simple T4 without sacrificing quality.                                                                                                               
+Let's start by loading the model in `float16` and generate an image:
 
-Next, let's look into how to improve the quality!                                                                                                                                                                                             
+```python
+import torch
 
-## Quality Improvements                                                                                                                                                                                                                       
+pipeline = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
+pipeline = pipeline.to("cuda")
+generator = torch.Generator("cuda").manual_seed(0)
+image = pipeline(prompt, generator=generator).images[0]
+image
+```
 
-Now that our image generation pipeline is blazing fast, let's try to get maximum image quality.                                                                                                                                               
+<div class="flex justify-center">
+    <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_2.png">
+</div>
 
-First of all, image quality is extremely subjective, so it's difficult to make general claims here.                                                                                                                                           
+This time, it only took ~11 seconds to generate the image, which is almost 3x faster than before!
 
-The most obvious step to take to improve quality is to use *better checkpoints*. Since the release of Stable Diffusion, many improved versions have been released, which are summarized here:                                                                                                                                                                                                                                                                                                
+<Tip>
 
--   *Official Release - 22 Aug 2022*: [Stable-Diffusion 1.4](https://huggingface.co/CompVis/stable-diffusion-v1-4)                                                                                                                            
--   *20 October 2022*: [Stable-Diffusion 1.5](https://huggingface.co/runwayml/stable-diffusion-v1-5)                                                                                                                                          
--   *24 Nov 2022*: [Stable-Diffusion 2.0](https://huggingface.co/stabilityai/stable-diffusion-2-0)                                                                                                                                            
--   *7 Dec 2022*: [Stable-Diffusion 2.1](https://huggingface.co/stabilityai/stable-diffusion-2-1)                                                                                                                                             
+💡 We strongly suggest always running your pipelines in `float16`, and so far, we've rarely seen any degradation in output quality.
 
-Newer versions don't necessarily mean better image quality with the same parameters. People mentioned that *2.0* is slightly worse than *1.5* for certain prompts, but given the right prompt engineering *2.0* and *2.1* seem to be better.                                                                                                                                                                                                                                                 
+</Tip>
 
-Overall, we strongly recommend just trying the models out and reading up on advice online (e.g. it has been shown that using negative prompts is very important for 2.0 and 2.1 to get the highest possible quality. See for example [this nice blog post](https://minimaxir.com/2022/11/stable-diffusion-negative-prompt/).                                                                                                                                                                   
+Another option is to reduce the number of inference steps. Choosing a more efficient scheduler could help decrease the number of steps without sacrificing output quality. You can find which schedulers are compatible with the current model in the [`DiffusionPipeline`] by calling the `compatibles` method:
 
-Additionally, the community has started fine-tuning many of the above versions on certain styles with some of them having an extremely high quality and gaining a lot of traction.                                                                                                                                                                                                                                                                                                          
+```python
+pipeline.scheduler.compatibles
+[
+    diffusers.schedulers.scheduling_lms_discrete.LMSDiscreteScheduler,
+    diffusers.schedulers.scheduling_unipc_multistep.UniPCMultistepScheduler,
+    diffusers.schedulers.scheduling_k_dpm_2_discrete.KDPM2DiscreteScheduler,
+    diffusers.schedulers.scheduling_deis_multistep.DEISMultistepScheduler,
+    diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler,
+    diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler,
+    diffusers.schedulers.scheduling_ddpm.DDPMScheduler,
+    diffusers.schedulers.scheduling_dpmsolver_singlestep.DPMSolverSinglestepScheduler,
+    diffusers.schedulers.scheduling_k_dpm_2_ancestral_discrete.KDPM2AncestralDiscreteScheduler,
+    diffusers.schedulers.scheduling_heun_discrete.HeunDiscreteScheduler,
+    diffusers.schedulers.scheduling_pndm.PNDMScheduler,
+    diffusers.schedulers.scheduling_euler_ancestral_discrete.EulerAncestralDiscreteScheduler,
+    diffusers.schedulers.scheduling_ddim.DDIMScheduler,
+]
+```
 
-We recommend having a look at all [diffusers checkpoints sorted by downloads and trying out the different checkpoints](https://huggingface.co/models?library=diffusers).                                                                                                                                                                                                                                                                                                               
+The Stable Diffusion model uses the [`PNDMScheduler`] by default which usually requires ~50 inference steps, but more performant schedulers like [`DPMSolverMultistepScheduler`], require only ~20 or 25 inference steps. Use the [`ConfigMixin.from_config`] method to load a new scheduler:
 
-For the following, we will stick to v1.5 for simplicity.                                                                                                                                                                                      
+```python
+from diffusers import DPMSolverMultistepScheduler
 
-Next, we can also try to optimize single components of the pipeline, e.g. switching out the latent decoder. For more details on how the whole Stable Diffusion pipeline works, please have a look at [this blog post](https://huggingface.co/blog/stable_diffusion).                                                                                                                                                                                                                        
+pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
+```
 
-Let's load [stabilityai's newest auto-decoder](https://huggingface.co/stabilityai/stable-diffusion-2-1).                                                                                                                                      
+Now set the `num_inference_steps` to 20:
 
-``` python                                                                                                                                                                                                                                    
-from diffusers import AutoencoderKL                                                                                                                                                                                                           
+```python
+generator = torch.Generator("cuda").manual_seed(0)
+image = pipeline(prompt, generator=generator, num_inference_steps=20).images[0]
+image
+```
 
-vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16).to("cuda")                                                                                                                                        
-```                                                                                                                                                                                                                                           
+<div class="flex justify-center">
+    <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_3.png">
+</div>
 
-Now we can set it to the vae of the pipeline to use it.                                                                                                                                                                                       
+Great, you've managed to cut the inference time to just 4 seconds! ⚡️
 
-``` python                                                                                                                                                                                                                                    
-pipe.vae = vae                                                                                                                                                                                                                                
-```                                                                                                                                                                                                                                           
+## Memory
 
-Let's run the same prompt as before to compare quality.                                                                                                                                                                                       
+The other key to improving pipeline performance is consuming less memory, which indirectly implies more speed, since you're often trying to maximize the number of images generated per second. The easiest way to see how many images you can generate at once is to try out different batch sizes until you get an `OutOfMemoryError` (OOM).
 
-``` python                                                                                                                                                                                                                                    
-images = pipe(**get_inputs(batch_size=8)).images                                                                                                                                                                                              
-image_grid(images, rows=2, cols=4)                                                                                                                                                                                                            
-```                                                                                                                                                                                                                                           
+Create a function that'll generate a batch of images from a list of prompts and `Generators`. Make sure to assign each `Generator` a seed so you can reuse it if it produces a good result.
 
-![img](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_6.png)                                                                                                                                  
+```python
+def get_inputs(batch_size=1):
+    generator = [torch.Generator("cuda").manual_seed(i) for i in range(batch_size)]
+    prompts = batch_size * [prompt]
+    num_inference_steps = 20
 
-Seems like the difference is only very minor, but the new generations are arguably a bit *sharper*.                                                                                                                                           
+    return {"prompt": prompts, "generator": generator, "num_inference_steps": num_inference_steps}
+```
 
-Cool, finally, let's look a bit into prompt engineering.                                                                                                                                                                                      
+You'll also need a function that'll display each batch of images:
 
-Our goal was to generate a photo of an old warrior chief. Let's now try to bring a bit more color into the photos and make the look more impressive.                                                                                          
+```python
+from PIL import image
 
-Originally our prompt was "*portrait photo of an old warrior chief*".                                                                                                                                                                          
 
-To improve the prompt, it often helps to add cues that could have been used online to save high-quality photos, as well as add more details.                                                                                         
-Essentially, when doing prompt engineering, one has to think:                                                                                                                                                                                 
+def image_grid(imgs, rows=2, cols=2):
+    w, h = imgs[0].size
+    grid = Image.new("RGB", size=(cols * w, rows * h))
 
--   How was the photo or similar photos of the one I want probably stored on the internet?                                                                                                                                                    
--   What additional detail can I give that steers the models into the style that I want?                                                                                                                                                      
+    for i, img in enumerate(imgs):
+        grid.paste(img, box=(i % cols * w, i // cols * h))
+    return grid
+```
 
-Cool, let's add more details.                                                                                                                                                                                                                 
+Start with `batch_size=4` and see how much memory you've consumed:
 
-``` python                                                                                                                                                                                                                                    
-prompt += ", tribal panther make up, blue on red, side profile, looking away, serious eyes"                                                                                                                                                   
-```                                                                                                                                                                                                                                           
+```python
+images = pipeline(**get_inputs(batch_size=4)).images
+image_grid(images)
+```
 
-and let's also add some cues that usually help to generate higher quality images.                                                                                                                                                             
+Unless you have a GPU with more RAM, the code above probably returned an `OOM` error! Most of the memory is taken up by the cross-attention layers. Instead of running this operation in a batch, you can run it sequentially to save a significant amount of memory. All you have to do is configure the pipeline to use the [`~DiffusionPipeline.enable_attention_slicing`] function:
 
-``` python                                                                                                                                                                                                                                    
-prompt += " 50mm portrait photography, hard rim lighting photography--beta --ar 2:3  --beta --upbeta"                                                                                                                                         
-prompt                                                                                                                                                                                                                                        
-```                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
+```python
+pipeline.enable_attention_slicing()
+```
 
-Cool, let's now try this prompt.                                                                                                                                                                                                              
+Now try increasing the `batch_size` to 8!
 
-``` python                                                                                                                                                                                                                                    
-images = pipe(**get_inputs(batch_size=8)).images                                                                                                                                                                                              
-image_grid(images, rows=2, cols=4)                                                                                                                                                                                                            
-```                                                                                                                                                                                                                                           
+```python
+images = pipeline(**get_inputs(batch_size=8)).images
+image_grid(images, rows=2, cols=4)
+```
 
-![img](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_7.png)                                                                                                                                  
+<div class="flex justify-center">
+    <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_5.png">
+</div>
 
-Pretty impressive! We got some very high-quality image generations there. The 2nd image is my personal favorite, so I'll re-use this seed and see whether I can tweak the prompts slightly by using "oldest warrior", "old", "", and "young" instead of "old".                                                                                                                                                                                                                    
+Whereas before you couldn't even generate a batch of 4 images, now you can generate a batch of 8 images at ~3.5 seconds per image! This is probably the fastest you can go on a T4 GPU without sacrificing quality.
 
-``` python                                                                                                                                                                                                                                    
-prompts = [                                                                                                                                                                                                                                   
-    "portrait photo of the oldest warrior chief, tribal panther make up, blue on red, side profile, looking away, serious eyes 50mm portrait photography, hard rim lighting photography--beta --ar 2:3  --beta --upbeta",                                                                                                                                                                                                                                                                   
-    "portrait photo of a old warrior chief, tribal panther make up, blue on red, side profile, looking away, serious eyes 50mm portrait photography, hard rim lighting photography--beta --ar 2:3  --beta --upbeta",                                                                                                                                                                                                                                                                        
-    "portrait photo of a warrior chief, tribal panther make up, blue on red, side profile, looking away, serious eyes 50mm portrait photography, hard rim lighting photography--beta --ar 2:3  --beta --upbeta",                                                                                                                                                                                                                                                                            
-    "portrait photo of a young warrior chief, tribal panther make up, blue on red, side profile, looking away, serious eyes 50mm portrait photography, hard rim lighting photography--beta --ar 2:3  --beta --upbeta",                                                                                                                                                                                                                                                                      
-]                                                                                                                                                                                                                                             
+## Quality
 
-generator = [torch.Generator("cuda").manual_seed(1) for _ in range(len(prompts))]  # 1 because we want the 2nd image                                                                                                                          
+In the last two sections, you learned how to optimize the speed of your pipeline by using `fp16`, reducing the number of inference steps by using a more performant scheduler, and enabling attention slicing to reduce memory consumption. Now you're going to focus on how to improve the quality of generated images.
 
-images = pipe(prompt=prompts, generator=generator, num_inference_steps=25).images                                                                                                                                                             
-image_grid(images)                                                                                                                                                                                                                            
-```                                                                                                                                                                                                                                           
+### Better checkpoints
 
-![img](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_8.png)                                                                                                                                  
+The most obvious step is to use better checkpoints. The Stable Diffusion model is a good starting point, and since its official launch, several improved versions have also been released. However, using a newer version doesn't automatically mean you'll get better results. You'll still have to experiment with different checkpoints yourself, and do a little research (such as using [negative prompts](https://minimaxir.com/2022/11/stable-diffusion-negative-prompt/)) to get the best results.
 
-The first picture looks nice! The eye movement slightly changed and looks nice. This finished up our 101-guide on how to use Stable Diffusion 🤗.                                                                                              
+As the field grows, there are more and more high-quality checkpoints finetuned to produce certain styles. Try exploring the [Hub](https://huggingface.co/models?library=diffusers&sort=downloads) and [Diffusers Gallery](https://huggingface.co/spaces/huggingface-projects/diffusers-gallery) to find one you're interested in!
 
-For more information on optimization or other guides, I recommend taking a look at the following:                                                                                                                                            
+### Better pipeline components
 
--   [Blog post about Stable Diffusion](https://huggingface.co/blog/stable_diffusion): In-detail blog post explaining Stable Diffusion.                                                                                                        
--   [FlashAttention](https://huggingface.co/docs/diffusers/optimization/xformers): XFormers flash attention can optimize your model even further with more speed and memory improvements.                                                                                                                                                                                                                                                                                                   
--   [Dreambooth](https://huggingface.co/docs/diffusers/training/dreambooth) - Quickly customize the model by fine-tuning it.                                                                                                                  
--   [General info on Stable Diffusion](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/overview) - Info on other tasks that are powered by Stable Diffusion.
+You can also try replacing the current pipeline components with a newer version. Let's try loading the latest [autodecoder](https://huggingface.co/stabilityai/stable-diffusion-2-1/tree/main/vae) from Stability AI into the pipeline, and generate some images:
+
+```python
+from diffusers import AutoencoderKL
+
+vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16).to("cuda")
+pipeline.vae = vae
+images = pipeline(**get_inputs(batch_size=8)).images
+image_grid(images, rows=2, cols=4)
+```
+
+<div class="flex justify-center">
+    <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_6.png">
+</div>
+
+### Better prompt engineering
+
+The text prompt you use to generate an image is super important, so much so that it is called *prompt engineering*. Some considerations to keep during prompt engineering are:
+
+- How is the image or similar images of the one I want to generate stored on the internet?
+- What additional detail can I give that steers the model towards the style I want?
+
+With this in mind, let's improve the prompt to include color and higher quality details:
+
+```python
+prompt += ", tribal panther make up, blue on red, side profile, looking away, serious eyes"
+prompt += " 50mm portrait photography, hard rim lighting photography--beta --ar 2:3  --beta --upbeta"
+```
+
+Generate a batch of images with the new prompt:
+
+```python
+images = pipeline(**get_inputs(batch_size=8)).images
+image_grid(images, rows=2, cols=4)
+```
+
+<div class="flex justify-center">
+    <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_7.png">
+</div>
+
+Pretty impressive! Let's tweak the second image - corresponding to the `Generator` with a seed of `1` - a bit more by adding some text about the age of the subject:
+
+```python
+prommpts = [
+    "portrait photo of the oldest warrior chief, tribal panther make up, blue on red, side profile, looking away, serious eyes 50mm portrait photography, hard rim lighting photography--beta --ar 2:3  --beta --upbeta",
+    "portrait photo of a old warrior chief, tribal panther make up, blue on red, side profile, looking away, serious eyes 50mm portrait photography, hard rim lighting photography--beta --ar 2:3  --beta --upbeta",
+    "portrait photo of a warrior chief, tribal panther make up, blue on red, side profile, looking away, serious eyes 50mm portrait photography, hard rim lighting photography--beta --ar 2:3  --beta --upbeta",
+    "portrait photo of a young warrior chief, tribal panther make up, blue on red, side profile, looking away, serious eyes 50mm portrait photography, hard rim lighting photography--beta --ar 2:3  --beta --upbeta",
+]
+
+generator = [torch.Generator("cuda").manual_seed(1) for _ in range(len(prompts))]
+images = pipeline(prompt=prompts, generator=generator, num_inference_steps=25).images
+image_grid(images)
+```
+
+<div class="flex justify-center">
+    <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_8.png">
+</div>
+
+## Next steps
+
+In this tutorial, you learned how to optimize a [`DiffusionPipeline`] for computational and memory efficiency as well as improving the quality of generated outputs. If you're interested in making your pipeline even faster, take a look at the following resources:
+
+- Enable [xFormers](./optimization/xformers) memory efficient attention mechanism for faster speed and reduced memory consumption.
+- Learn how in [PyTorch 2.0](./optimization/torch2.0), [`torch.compile`](https://pytorch.org/docs/stable/generated/torch.compile.html) can yield 2-9% faster inference speed.
+- Many optimization techniques for inference are also included in this memory and speed [guide](./optimization/fp16), such as memory offloading.
