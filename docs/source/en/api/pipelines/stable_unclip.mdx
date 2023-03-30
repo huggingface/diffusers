@@ -35,6 +35,7 @@ we do not add any additional noise to the image embeddings i.e. `noise_level = 0
 	* [stabilityai/stable-diffusion-2-1-unclip-small](https://hf.co/stabilityai/stable-diffusion-2-1-unclip-small)
 
 ### Text-to-Image Generation
+Stable unCLIP can be leveraged for text-to-image generation by pipelining it with the prior model of KakaoBrain's open source DALL-E 2 replication [Karlo](https://huggingface.co/kakaobrain/karlo-v1-alpha)
 
 ```python
 import torch
@@ -72,7 +73,7 @@ images[0].save("waves.png")
 ```
 <Tip warning={true}>
 
-Note that the details of using [stabilityai/stable-diffusion-2-1-unclip](https://hf.co/stabilityai/stable-diffusion-2-1-unclip) is unclear to us as of now, so we don't recommend its use. 
+For text-to-image we use `stabilityai/stable-diffusion-2-1-unclip-small` as it was trained on CLIP ViT-L/14 embedding, the same as the Karlo model prior. [stabilityai/stable-diffusion-2-1-unclip](https://hf.co/stabilityai/stable-diffusion-2-1-unclip) was trained on OpenCLIP ViT-H, so we don't recommend its use. 
 
 </Tip>
 
