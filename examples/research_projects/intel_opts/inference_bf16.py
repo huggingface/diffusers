@@ -45,7 +45,7 @@ if pipe.requires_safety_checker:
 # compute
 seed = 666
 generator = torch.Generator(device).manual_seed(seed)
-generate_kwargs = dict(generator=generator)
+generate_kwargs = {"generator": generator}
 if args.steps is not None:
     generate_kwargs["num_inference_steps"] = args.steps
 
