@@ -1,4 +1,3 @@
-
 import intel_extension_for_pytorch as ipex
 import torch
 import argparse
@@ -6,8 +5,8 @@ import argparse
 from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
 
 
-parser = argparse.ArgumentParser('Stable Diffusion script with intel optimization', add_help=False)
-parser.add_argument('--dpm', action='store_true', help="Enable DPMSolver or not")
+parser = argparse.ArgumentParser("Stable Diffusion script with intel optimization", add_help=False)
+parser.add_argument("--dpm", action="store_true", help="Enable DPMSolver or not")
 parser.add_argument("--steps", default=None, type=int, help="Num inference steps")
 args = parser.parse_args()
 
@@ -47,7 +46,7 @@ seed = 666
 generator = torch.Generator(device).manual_seed(seed)
 generate_kwargs = dict(generator=generator)
 if args.steps is not None:
-    generate_kwargs['num_inference_steps'] = args.steps
+    generate_kwargs["num_inference_steps"] = args.steps
 
 with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
     image = pipe(prompt, **generate_kwargs).images[0]
