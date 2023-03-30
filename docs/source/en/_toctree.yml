@@ -4,7 +4,7 @@
   - local: quicktour
     title: Quicktour
   - local: stable_diffusion
-    title: Stable Diffusion
+    title: Effective and efficient diffusion
   - local: installation
     title: Installation
   title: Get started
@@ -33,19 +33,19 @@
     - local: using-diffusers/pipeline_overview
       title: Overview
     - local: using-diffusers/unconditional_image_generation
-      title: Unconditional Image Generation
+      title: Unconditional image generation
     - local: using-diffusers/conditional_image_generation
-      title: Text-to-Image Generation
+      title: Text-to-image generation
     - local: using-diffusers/img2img
-      title: Text-Guided Image-to-Image
+      title: Text-guided image-to-image
     - local: using-diffusers/inpaint
-      title: Text-Guided Image-Inpainting
+      title: Text-guided image-inpainting
     - local: using-diffusers/depth2img
-      title: Text-Guided Depth-to-Image
+      title: Text-guided depth-to-image
     - local: using-diffusers/reusing_seeds
-      title: Reusing seeds for deterministic generation
+      title: Improve image quality with deterministic generation
     - local: using-diffusers/reproducibility
-      title: Reproducibility
+      title: Create reproducible pipelines
     - local: using-diffusers/custom_pipeline_examples
       title: Community Pipelines
     - local: using-diffusers/contribute_pipeline
@@ -68,6 +68,10 @@
       title: Text-to-image
     - local: training/lora
       title: Low-Rank Adaptation of Large Language Models (LoRA)
+    - local: training/controlnet
+      title: ControlNet
+    - local: training/instructpix2pix
+      title: InstructPix2Pix Training
     title: Training
   - sections:
     - local: using-diffusers/rl
@@ -130,6 +134,8 @@
       title: AltDiffusion
     - local: api/pipelines/audio_diffusion
       title: Audio Diffusion
+    - local: api/pipelines/audioldm
+      title: AudioLDM
     - local: api/pipelines/cycle_diffusion
       title: Cycle Diffusion
     - local: api/pipelines/dance_diffusion
@@ -154,6 +160,8 @@
       title: Score SDE VE
     - local: api/pipelines/semantic_stable_diffusion
       title: Semantic Guidance
+    - local: api/pipelines/spectrogram_diffusion
+      title: "Spectrogram Diffusion"
     - sections:
       - local: api/pipelines/stable_diffusion/overview
         title: Overview
@@ -183,6 +191,8 @@
         title: MultiDiffusion Panorama
       - local: api/pipelines/stable_diffusion/controlnet
         title: Text-to-Image Generation with ControlNet Conditioning
+      - local: api/pipelines/stable_diffusion/model_editing
+        title: Text-to-Image Model Editing
       title: Stable Diffusion
     - local: api/pipelines/stable_diffusion_2
       title: Stable Diffusion 2
@@ -190,6 +200,8 @@
       title: Stable unCLIP
     - local: api/pipelines/stochastic_karras_ve
       title: Stochastic Karras VE
+    - local: api/pipelines/text_to_video
+      title: Text-to-Video
     - local: api/pipelines/unclip
       title: UnCLIP
     - local: api/pipelines/latent_diffusion_uncond
