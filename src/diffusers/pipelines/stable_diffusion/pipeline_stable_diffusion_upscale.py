@@ -51,7 +51,7 @@ def preprocess(image):
     return image
 
 
-class StableDiffusionUpscalePipeline(DiffusionPipeline):
+class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMixin):
     r"""
     Pipeline for text-guided image super-resolution using Stable Diffusion 2.
 

@@ -16,13 +16,24 @@ from collections import defaultdict
 from typing import Callable, Dict, List, Optional, Union
 
 import torch
-from transformers import PreTrainedModel, PreTrainedTokenizer
 
-from .utils import DIFFUSERS_CACHE, HF_HUB_OFFLINE, _get_model_file, deprecate, is_safetensors_available, logging
+from .models.attention_processor import LoRAAttnProcessor
+from .utils import (
+    DIFFUSERS_CACHE,
+    HF_HUB_OFFLINE,
+    _get_model_file,
+    deprecate,
+    is_safetensors_available,
+    is_transformers_available,
+    logging,
+)
 
 
 if is_safetensors_available():
     import safetensors
+
+if is_transformers_available():
+    from transformers import PreTrainedModel, PreTrainedTokenizer
 
 
 logger = logging.get_logger(__name__)
@@ -153,8 +164,6 @@ class UNet2DConditionLoadersMixin:
             "file_type": "attn_procs_weights",
             "framework": "pytorch",
         }
-
-        from .models.attention_processor import LoRAAttnProcessor
 
         model_file = None
         if not isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -342,9 +351,6 @@ class TextualInversionLoaderMixin:
             `str`: The converted prompt
         """
         tokens = tokenizer.tokenize(prompt)
-        if not any(t in tokenizer.added_tokens_encoder for t in tokens):
-            return prompt
-
         for token in tokens:
             if token in tokenizer.added_tokens_encoder:
                 replacement = token
@@ -361,8 +367,8 @@ class TextualInversionLoaderMixin:
         self, pretrained_model_name_or_path: Union[str, Dict[str, torch.Tensor]], token: Optional[str] = None, **kwargs
     ):
         r"""
-        Load textual inversion embeddings into the text encoder of stable diffusion pipelines.
-        Both `diffusers` and `Automatic1111` formats are supported.
+        Load textual inversion embeddings into the text encoder of stable diffusion pipelines. Both `diffusers` and
+        `Automatic1111` formats are supported.
 
         <Tip warning={true}>
 
@@ -382,8 +388,8 @@ class TextualInversionLoaderMixin:
             weight_name (`str`, *optional*):
                 Name of a custom weight file. This should be used in two cases:
 
-                    - The saved textual inversion file is in `diffusers` format, but was saved under a specific
-                      weight name, such as `text_inv.bin`.
+                    - The saved textual inversion file is in `diffusers` format, but was saved under a specific weight
+                      name, such as `text_inv.bin`.
                     - The saved textual inversion file is in the "Automatic1111" form.
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory in which a downloaded pretrained model configuration should be cached if the

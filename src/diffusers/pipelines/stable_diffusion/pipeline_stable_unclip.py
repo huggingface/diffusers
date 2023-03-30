@@ -48,7 +48,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class StableUnCLIPPipeline(DiffusionPipeline):
+class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
     """
     Pipeline for text-to-image generation using stable unCLIP.
 
