@@ -330,7 +330,6 @@ def parse_args():
         "--tracker_project_name",
         type=str,
         default="text2image-fine-tune",
-        required=True,
         help=(
             "The `project_name` argument passed to Accelerator.init_trackers for"
             " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
