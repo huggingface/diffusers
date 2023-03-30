@@ -655,7 +655,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
         t_start = max(num_inference_steps - init_timestep, 0)
 
         # safety for t_start overflow to prevent empty timsteps slice
-        if t_start == num_inference_steps:
+        if t_start == 0:
             return self.inverse_scheduler.timesteps, num_inference_steps
         timesteps = self.inverse_scheduler.timesteps[:-t_start]
 
@@ -1197,7 +1197,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
         # 8. Post-processing
         image = None
         if decode_latents:
-            image = self.decode_latents(latents.detach())
+            image = self.decode_latents(latents.flatten(0, 1).detach())
 
         # 9. Convert to PIL.
         if decode_latents and output_type == "pil":

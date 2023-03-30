@@ -19,7 +19,7 @@ import unittest
 
 import numpy as np
 import torch
-from PIL.Image import Image
+from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
@@ -114,6 +114,26 @@ class StableDiffusionDiffEditPipelineFastTests(PipelineTesterMixin, unittest.Tes
         return components
 
     def get_dummy_inputs(self, device, seed=0):
+        mask = floats_tensor((1, 16, 16), rng=random.Random(seed)).to(device)
+        latents = floats_tensor((2, 4, 16, 16), rng=random.Random(seed)).to(device)
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
+        inputs = {
+            "prompt": "a dog and a newt",
+            "mask": mask,
+            "image_latents": latents,
+            "generator": generator,
+            "num_inference_steps": 2,
+            "inpaint_strength": 1.0,
+            "guidance_scale": 6.0,
+            "output_type": "numpy",
+        }
+
+        return inputs
+
+    def get_dummy_mask_inputs(self, device, seed=0):
         image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
         image = image.cpu().permute(0, 2, 3, 1)[0]
         image = Image.fromarray(np.uint8(image)).convert("RGB")
@@ -121,7 +141,7 @@ class StableDiffusionDiffEditPipelineFastTests(PipelineTesterMixin, unittest.Tes
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
-        mask_inputs = {
+        inputs = {
             "image": image,
             "source_prompt": "a cat and a frog",
             "target_prompt": "a dog and a newt",
@@ -133,7 +153,17 @@ class StableDiffusionDiffEditPipelineFastTests(PipelineTesterMixin, unittest.Tes
             "output_type": "numpy",
         }
 
-        invert_inputs = {
+        return inputs
+
+    def get_dummy_inversion_inputs(self, device, seed=0):
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        image = image.cpu().permute(0, 2, 3, 1)[0]
+        image = Image.fromarray(np.uint8(image)).convert("RGB")
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
+        inputs = {
             "image": image,
             "prompt": "a cat and a frog",
             "generator": generator,
@@ -143,7 +173,7 @@ class StableDiffusionDiffEditPipelineFastTests(PipelineTesterMixin, unittest.Tes
             "decode_latents": True,
             "output_type": "numpy",
         }
-        return mask_inputs, invert_inputs
+        return inputs
 
     def test_mask(self):
         device = "cpu"
@@ -153,14 +183,15 @@ class StableDiffusionDiffEditPipelineFastTests(PipelineTesterMixin, unittest.Tes
         pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
-        inputs, _ = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_mask_inputs(device)
         mask = pipe.generate_mask(**inputs)
         mask_slice = mask[0, -3:, -3:]
 
-        self.assertEqual(mask.shape, (1, 96, 96))
+        self.assertEqual(mask.shape, (1, 16, 16))
         expected_slice = np.array([0] * 9)
         max_diff = np.abs(mask_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
+        self.assertEqual(mask[0, -3, -4], 1)
 
     def test_inversion(self):
         device = "cpu"
@@ -170,32 +201,13 @@ class StableDiffusionDiffEditPipelineFastTests(PipelineTesterMixin, unittest.Tes
         pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
-        _, inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inversion_inputs(device)
         image = pipe.invert(**inputs).images
-        image_slice = image[0, :, -1, -3:, -3:]
+        image_slice = image[0, -1, -3:, -3:]
 
-        self.assertEqual(image.shape, (1, 2, 4, 96, 96))
+        self.assertEqual(image.shape, (2, 32, 32, 3))
         expected_slice = np.array(
-            [
-                0.5644937,
-                0.60543084,
-                0.48239064,
-                0.5206757,
-                0.55623394,
-                0.46045133,
-                0.5100435,
-                0.48919064,
-                0.4759359,
-                0.5644937,
-                0.60543084,
-                0.48239064,
-                0.5206757,
-                0.55623394,
-                0.46045133,
-                0.5100435,
-                0.48919064,
-                0.4759359,
-            ],
+            [0.5588859, 0.535619, 0.52224344, 0.55604255, 0.48608556, 0.51105076, 0.50301707, 0.44348782, 0.48488846],
         )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
