@@ -1075,9 +1075,7 @@ def download_from_original_stable_diffusion_ckpt(
         key_name = "model.diffusion_model.input_blocks.2.1.transformer_blocks.0.attn2.to_k.weight"
 
         # model_type = "v1"
-        config_url = (
-            "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml"
-        )
+        config_url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml"
 
         if key_name in checkpoint and checkpoint[key_name].shape[-1] == 1024:
             # model_type = "v2"
