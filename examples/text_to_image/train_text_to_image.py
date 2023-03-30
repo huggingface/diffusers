@@ -895,24 +895,25 @@ def main():
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
-                        if args.validation_prompt is not None and global_step % args.validation_steps == 0:
-                            if args.use_ema:
-                                # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
-                                ema_unet.store(unet.parameters())
-                                ema_unet.copy_to(unet.parameters())
-                            log_validation(
-                                vae,
-                                text_encoder,
-                                tokenizer,
-                                unet,
-                                args,
-                                accelerator,
-                                weight_dtype,
-                                global_step,
-                            )
-                            if args.use_ema:
-                                # Switch back to the original UNet parameters.
-                                ema_unet.restore(unet.parameters())
+            if accelerator.is_main_process:
+                if args.validation_prompts is not None and global_step % args.validation_steps == 0:
+                    if args.use_ema:
+                        # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
+                        ema_unet.store(unet.parameters())
+                        ema_unet.copy_to(unet.parameters())
+                    log_validation(
+                        vae,
+                        text_encoder,
+                        tokenizer,
+                        unet,
+                        args,
+                        accelerator,
+                        weight_dtype,
+                        global_step,
+                    )
+                    if args.use_ema:
+                        # Switch back to the original UNet parameters.
+                        ema_unet.restore(unet.parameters())
 
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
