@@ -297,7 +297,7 @@ class TextualInversionLoaderMixin:
     Mixin class for loading textual inversion tokens and embeddings to the tokenizer and text encoder.
     """
 
-    def maybe_convert_prompt(self, prompt: Union[str, List[str]], tokenizer: "PreTrainedTokenizer"):
+    def maybe_convert_prompt(self, prompt: Union[str, List[str]], tokenizer: PreTrainedTokenizer):
         r"""
         Maybe convert a prompt into a "multi vector"-compatible prompt. If the prompt includes a token that corresponds
         to a multi-vector textual inversion embedding, this function will process the prompt so that the special token
@@ -306,8 +306,7 @@ class TextualInversionLoaderMixin:
 
         Parameters:
             prompt (`str` or list of `str`):
-                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
-                instead.
+                The prompt or prompts to guide the image generation.
             tokenizer (`PreTrainedTokenizer`):
                 The tokenizer responsible for encoding the prompt into input tokens.
 
@@ -326,7 +325,7 @@ class TextualInversionLoaderMixin:
 
         return prompts
 
-    def _maybe_convert_prompt(self, prompt: str, tokenizer: "PreTrainedTokenizer"):
+    def _maybe_convert_prompt(self, prompt: str, tokenizer: PreTrainedTokenizer):
         r"""
         Maybe convert a prompt into a "multi vector"-compatible prompt. If the prompt includes a token that corresponds
         to a multi-vector textual inversion embedding, this function will process the prompt so that the special token
@@ -335,8 +334,7 @@ class TextualInversionLoaderMixin:
 
         Parameters:
             prompt (`str`):
-                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
-                instead.
+                The prompt to guide the image generation.
             tokenizer (`PreTrainedTokenizer`):
                 The tokenizer responsible for encoding the prompt into input tokens.
 
@@ -364,6 +362,7 @@ class TextualInversionLoaderMixin:
     ):
         r"""
         Load textual inversion embeddings into the text encoder of stable diffusion pipelines.
+        Both `diffusers` and `Automatic1111` formats are supported.
 
         <Tip warning={true}>
 
@@ -383,7 +382,7 @@ class TextualInversionLoaderMixin:
             weight_name (`str`, *optional*):
                 Name of a custom weight file. This should be used in two cases:
 
-                    - The saved textual inversion file is in `diffusers` format, but has was saved under a specific
+                    - The saved textual inversion file is in `diffusers` format, but was saved under a specific
                       weight name, such as `text_inv.bin`.
                     - The saved textual inversion file is in the "Automatic1111" form.
             cache_dir (`Union[str, os.PathLike]`, *optional*):
@@ -487,7 +486,6 @@ class TextualInversionLoaderMixin:
                     raise e
 
                 model_file = None
-                pass
 
         if model_file is None:
             model_file = _get_model_file(
