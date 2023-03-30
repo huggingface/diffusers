@@ -1,8 +1,9 @@
-import intel_extension_for_pytorch as ipex
-import torch
 import argparse
 
-from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
+import intel_extension_for_pytorch as ipex
+import torch
+
+from diffusers import DPMSolverMultistepScheduler, StableDiffusionPipeline
 
 
 parser = argparse.ArgumentParser("Stable Diffusion script with intel optimization", add_help=False)
@@ -34,7 +35,7 @@ encoder_hidden_status = torch.randn(2, 77, 768)
 input_example = (sample, timestep, encoder_hidden_status)
 try:
     pipe.unet = ipex.optimize(pipe.unet.eval(), dtype=torch.bfloat16, inplace=True, sample_input=input_example)
-except:
+except Exception:
     pipe.unet = ipex.optimize(pipe.unet.eval(), dtype=torch.bfloat16, inplace=True)
 pipe.vae = ipex.optimize(pipe.vae.eval(), dtype=torch.bfloat16, inplace=True)
 pipe.text_encoder = ipex.optimize(pipe.text_encoder.eval(), dtype=torch.bfloat16, inplace=True)
