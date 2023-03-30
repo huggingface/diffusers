@@ -83,12 +83,12 @@ pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
 pipeline.inverse_scheduler = DDIMInverseScheduler.from_config(pipeline.scheduler.config)
 pipeline.enable_model_cpu_offload()
 pipeline.enable_vae_slicing()
+generator = torch.manual_seed(0)
 ```
 
 Then, we load an input image to edit using our method: 
 
 ```py
-import requests
 from diffusers.utils import load_image
 
 img_url = "https://github.com/Xiang-cd/DiffEdit-stable-diffusion/raw/main/assets/origin.png"
@@ -114,7 +114,6 @@ mask_image = pipeline.generate_mask(
 Then, we employ the caption and the input image to get the inverted latents: 
 
 ```py 
-generator = torch.manual_seed(0)
 inv_latents = pipeline.invert(prompt=source_prompt, image=raw_image, generator=generator).latents
 ```
 
@@ -180,7 +179,19 @@ caption = generate_caption(raw_image, model, processor)
 
 Then, we employ the generated caption and the input image to get the inverted latents: 
 
-```py 
+```py
+from diffusers import DDIMInverseScheduler, DDIMScheduler
+
+pipeline = StableDiffusionDiffEditPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16
+)
+pipeline = pipeline.to("cuda")
+pipeline.enable_model_cpu_offload()
+pipeline.enable_vae_slicing()
+
+pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
+pipeline.inverse_scheduler = DDIMInverseScheduler.from_config(pipeline.scheduler.config)
+
 generator = torch.manual_seed(0)
 inv_latents = pipeline.invert(prompt=caption, image=raw_image, generator=generator).latents
 ```
@@ -195,6 +206,7 @@ mask_image = pipeline.generate_mask(
     image=raw_image,
     source_prompt=source_prompt,
     target_prompt=target_prompt,
+    generator=generator,
 )
 
 image = pipeline(
@@ -277,6 +289,8 @@ pipeline = StableDiffusionDiffEditPipeline.from_pretrained(
 pipeline = pipeline.to("cuda")
 pipeline.enable_model_cpu_offload()
 pipeline.enable_vae_slicing()
+
+generator = torch.manual_seed(0)
 ```
 
 **5. Compute embeddings**:
@@ -321,11 +335,13 @@ mask = pipeline.generate_mask(
     image=raw_image,
     source_prompt_embeds=source_embeds,
     target_prompt_embeds=target_embeds,
+    generator=generator,
 )
 
 inv_latents = pipeline.invert(
     prompt_embeds=source_embeds,
     image=raw_image,
+    generator=generator,
 ).latents
 
 images = pipeline(
@@ -333,6 +349,7 @@ images = pipeline(
     image_latents=inv_latents,
     prompt_embeds=target_embeddings,
     negative_prompt_embeds=source_embeddings,
+    generator=generator,
 ).images
 images[0].save("edited_image.png")
 ```
