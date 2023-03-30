@@ -54,8 +54,9 @@ model.safety_checker = ipex.optimize(model.safety_checker.eval(), dtype=torch.bf
 seed = 666
 generator = torch.Generator(device).manual_seed(seed)
 with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
-    images = model(prompt, generator=generator).images[0]
+    images = model(prompt, generator=generator).images
 
     # save image
     grid = image_grid(images, rows=2, cols=4)
-    grid.save(model_id + ".png")
+    
+    grid.save("generated.png")

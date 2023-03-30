@@ -23,13 +23,12 @@ export LD_PRELOAD=${LD_PRELOAD}:/path/to/lib/libiomp5.so
 export LD_PRELOAD=${LD_PRELOAD}:/path/to/lib/libjemalloc.so
 export MALLOC_CONF="oversize_threshold:1,background_thread:true,metadata_thp:auto,dirty_decay_ms:-1,muzzy_decay_ms:9000000000"
 
-# Launch
+# Launch with default configs
 numactl --membind <node N> -C <cpu list> python python inference_bf16.py
 # Launch with DPMSolver
 numactl --membind <node N> -C <cpu list> python python inference_bf16.py --dpm-solver
 
 ```
->**Note**: Inference performance speedup with Intel DL Boost (VNNI/AMX) on Intel(R) Xeon(R) hardware, Please refer to [Performance Tuning Guide](https://intel.github.io/intel-extension-for-pytorch/cpu/latest/tutorials/performance_tuning/tuning_guide.html) for more optimizations.
 
 ## Accelerating the inference for Stable Diffusion using INT8
 
