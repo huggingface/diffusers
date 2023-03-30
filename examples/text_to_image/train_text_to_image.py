@@ -42,8 +42,12 @@ import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
-from diffusers.utils import check_min_version, deprecate
+from diffusers.utils import check_min_version, deprecate, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
+
+
+if is_wandb_available():
+    import wandb
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -115,6 +119,13 @@ def parse_args():
             "For debugging purposes or quicker training, truncate the number of training examples to this "
             "value if set."
         ),
+    )
+    parser.add_argument(
+        "--validation_promptss",
+        type=str,
+        default=None,
+        nargs="+",
+        help=("A set of prompts evaluated every `--validation_steps` and logged to `--report_to`."),
     )
     parser.add_argument(
         "--output_dir",
@@ -309,6 +320,22 @@ def parse_args():
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
     parser.add_argument("--noise_offset", type=float, default=0, help="The scale of noise offset.")
+    parser.add_argument(
+        "--validation_steps",
+        type=int,
+        default=100,
+        help="Run validation every X steps.",
+    )
+    parser.add_argument(
+        "--tracker_project_name",
+        type=str,
+        default="text2image-fine-tune",
+        required=True,
+        help=(
+            "The `project_name` argument passed to Accelerator.init_trackers for"
+            " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
+        ),
+    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -362,6 +389,57 @@ def compute_snr(noise_scheduler):
         return snr
 
     return fn
+
+
+def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight_dtype, step):
+    logger.info("Running validation... ")
+
+    pipeline = StableDiffusionPipeline.from_pretrained(
+        args.pretrained_model_name_or_path,
+        vae=vae,
+        text_encoder=text_encoder,
+        tokenizer=tokenizer,
+        unet=accelerate.unwrap(unet),
+        safety_checker=None,
+        revision=args.revision,
+        torch_dtype=weight_dtype,
+    )
+    pipeline = pipeline.to(accelerator.device)
+    pipeline.set_progress_bar_config(disable=True)
+
+    if args.enable_xformers_memory_efficient_attention:
+        pipeline.enable_xformers_memory_efficient_attention()
+
+    if args.seed is None:
+        generator = None
+    else:
+        generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+
+    images = []
+    for i in range(len(args.validation_prompts)):
+        with torch.autocast("cuda"):
+            image = pipeline(args.validation_prompts[i], num_inference_steps=20, generator=generator).images[0]
+
+        images.append(image)
+
+    for tracker in accelerator.trackers:
+        if tracker.name == "tensorboard":
+            np_images = np.stack([np.asarray(img) for img in images])
+            tracker.writer.add_images("validation", np_images, step, dataformats="NHWC")
+        elif tracker.name == "wandb":
+            tracker.log(
+                {
+                    "validation": [
+                        wandb.Image(image, caption=f"{i}: {args.validation_prompts[i]}")
+                        for i, image in enumerate(images)
+                    ]
+                }
+            )
+        else:
+            logger.warn(f"image logging not implemented for {tracker.name}")
+
+    del pipeline
+    torch.cuda.empty_cache()
 
 
 def main():
@@ -682,7 +760,9 @@ def main():
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        accelerator.init_trackers("text2image-fine-tune", config=vars(args))
+        tracker_config = dict(vars(args))
+        tracker_config.pop("validation_prompt")
+        accelerator.init_trackers(args.tracker_project_name, tracker_config)
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -815,6 +895,25 @@ def main():
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
+
+                        if args.validation_prompt is not None and global_step % args.validation_steps == 0:
+                            if args.use_ema:
+                                # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
+                                ema_unet.store(unet.parameters())
+                                ema_unet.copy_to(unet.parameters())
+                            log_validation(
+                                vae,
+                                text_encoder,
+                                tokenizer,
+                                unet,
+                                args,
+                                accelerator,
+                                weight_dtype,
+                                global_step,
+                            )
+                            if args.use_ema:
+                                # Switch back to the original UNet parameters.
+                                ema_unet.restore(unet.parameters())
 
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
