@@ -500,6 +500,8 @@ def main():
                     gitignore.write("step_*\n")
                 if "epoch_*" not in gitignore:
                     gitignore.write("epoch_*\n")
+                if "checkpoint-*" not in gitignore:
+                    gitignore.write("checkpoint-*\n")
         elif args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
 
@@ -938,7 +940,7 @@ def main():
         pipeline.save_pretrained(args.output_dir)
 
         if args.push_to_hub:
-            repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
+            repo.push_to_hub(commit_message="End of training", blocking=True, auto_lfs_prune=True)
 
     accelerator.end_training()
 
