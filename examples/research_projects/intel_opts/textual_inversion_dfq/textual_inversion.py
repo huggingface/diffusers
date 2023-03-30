@@ -54,7 +54,7 @@ def save_progress(text_encoder, placeholder_token_id, accelerator, args, save_pa
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Simple example of a training script.")
+    parser = argparse.ArgumentParser(description="Example of distillation for quantization on Textual Inversion.")
     parser.add_argument(
         "--save_steps",
         type=int,
@@ -198,9 +198,7 @@ def parse_args():
     parser.add_argument("--do_quantization", action="store_true", help="Whether or not to do quantization.")
     parser.add_argument("--do_distillation", action="store_true", help="Whether or not to do distillation.")
     parser.add_argument(
-        "--verify_loading",
-        action="store_true",
-        help="Whether or not to verify the loading of the quantized model."
+        "--verify_loading", action="store_true", help="Whether or not to verify the loading of the quantized model."
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
 
@@ -395,7 +393,10 @@ class TextualInversionDataset(Dataset):
 
         if self.center_crop:
             crop = min(img.shape[0], img.shape[1])
-            h, w, = (
+            (
+                h,
+                w,
+            ) = (
                 img.shape[0],
                 img.shape[1],
             )
@@ -440,14 +441,7 @@ def image_grid(imgs, rows, cols):
     return grid
 
 
-def generate_images(
-    pipeline,
-    prompt="",
-    guidance_scale=7.5,
-    num_inference_steps=50,
-    num_images_per_prompt=1,
-    seed=42
-):
+def generate_images(pipeline, prompt="", guidance_scale=7.5, num_inference_steps=50, num_images_per_prompt=1, seed=42):
     generator = torch.Generator(pipeline.device).manual_seed(seed)
     images = pipeline(
         prompt,
@@ -601,7 +595,7 @@ def main():
         num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
-    
+
     if not train_unet:
         text_encoder = accelerator.prepare(text_encoder)
         unet.to(accelerator.device)
@@ -610,9 +604,7 @@ def main():
         unet = accelerator.prepare(unet)
         text_encoder.to(accelerator.device)
         text_encoder.eval()
-    optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        optimizer, train_dataloader, lr_scheduler
-    )
+    optimizer, train_dataloader, lr_scheduler = accelerator.prepare(optimizer, train_dataloader, lr_scheduler)
 
     # Move vae to device
     vae.to(accelerator.device)
@@ -621,6 +613,7 @@ def main():
     vae.eval()
 
     compression_manager = None
+
     def train_func(model):
         if train_unet:
             unet_ = model
@@ -688,9 +681,9 @@ def main():
                     loss = F.mse_loss(model_pred, noise, reduction="none").mean([1, 2, 3]).mean()
                     if train_unet and compression_manager:
                         unet_inputs = {
-                            'sample':noisy_latents,
-                            'timestep':timesteps, 
-                            'encoder_hidden_states':encoder_hidden_states
+                            "sample": noisy_latents,
+                            "timestep": timesteps,
+                            "encoder_hidden_states": encoder_hidden_states,
                         }
                         loss = compression_manager.callbacks.on_after_compute_loss(unet_inputs, model_pred, loss)
 
@@ -745,81 +738,208 @@ def main():
         if not train_unet:
             return text_encoder_
 
-
     if not train_unet:
         text_encoder = train_func(text_encoder)
     else:
         import copy
+
         model = copy.deepcopy(unet)
         confs = []
-        if args.do_quantization:                               
+        if args.do_quantization:
             from neural_compressor import QuantizationAwareTrainingConfig
+
             q_conf = QuantizationAwareTrainingConfig()
             confs.append(q_conf)
 
         if args.do_distillation:
             teacher_model = copy.deepcopy(model)
-            attention_fetcher = lambda x:x.sample
-            layer_mappings=[
-                [['conv_in', ]],
-                [['time_embedding', ]],
-                [['down_blocks.0.attentions.0', attention_fetcher]],
-                [['down_blocks.0.attentions.1', attention_fetcher]],
-                [['down_blocks.0.resnets.0',]],
-                [['down_blocks.0.resnets.1',]],
-                [['down_blocks.0.downsamplers.0',]],
-                [['down_blocks.1.attentions.0', attention_fetcher]],
-                [['down_blocks.1.attentions.1', attention_fetcher]],
-                [['down_blocks.1.resnets.0',]],
-                [['down_blocks.1.resnets.1',]],
-                [['down_blocks.1.downsamplers.0',]],
-                [['down_blocks.2.attentions.0', attention_fetcher]],
-                [['down_blocks.2.attentions.1', attention_fetcher]],
-                [['down_blocks.2.resnets.0',]],
-                [['down_blocks.2.resnets.1',]],
-                [['down_blocks.2.downsamplers.0',]],
-                [['down_blocks.3.resnets.0',]],
-                [['down_blocks.3.resnets.1',]],
-                [['up_blocks.0.resnets.0', ]],
-                [['up_blocks.0.resnets.1', ]],
-                [['up_blocks.0.resnets.2', ]],
-                [['up_blocks.0.upsamplers.0', ]],
-                [['up_blocks.1.attentions.0', attention_fetcher]],
-                [['up_blocks.1.attentions.1', attention_fetcher]],
-                [['up_blocks.1.attentions.2', attention_fetcher]],
-                [['up_blocks.1.resnets.0', ]],
-                [['up_blocks.1.resnets.1', ]],
-                [['up_blocks.1.resnets.2', ]],
-                [['up_blocks.1.upsamplers.0', ]],
-                [['up_blocks.2.attentions.0', attention_fetcher]],
-                [['up_blocks.2.attentions.1', attention_fetcher]],
-                [['up_blocks.2.attentions.2', attention_fetcher]],
-                [['up_blocks.2.resnets.0', ]],
-                [['up_blocks.2.resnets.1', ]],
-                [['up_blocks.2.resnets.2', ]],
-                [['up_blocks.2.upsamplers.0', ]],
-                [['up_blocks.3.attentions.0', attention_fetcher]],
-                [['up_blocks.3.attentions.1', attention_fetcher]],
-                [['up_blocks.3.attentions.2', attention_fetcher]],
-                [['up_blocks.3.resnets.0', ]],
-                [['up_blocks.3.resnets.1', ]],
-                [['up_blocks.3.resnets.2', ]],
-                [['mid_block.attentions.0', attention_fetcher]],
-                [['mid_block.resnets.0', ]],
-                [['mid_block.resnets.1', ]],
-                [['conv_out', ]],
+            attention_fetcher = lambda x: x.sample
+            layer_mappings = [
+                [
+                    [
+                        "conv_in",
+                    ]
+                ],
+                [
+                    [
+                        "time_embedding",
+                    ]
+                ],
+                [["down_blocks.0.attentions.0", attention_fetcher]],
+                [["down_blocks.0.attentions.1", attention_fetcher]],
+                [
+                    [
+                        "down_blocks.0.resnets.0",
+                    ]
+                ],
+                [
+                    [
+                        "down_blocks.0.resnets.1",
+                    ]
+                ],
+                [
+                    [
+                        "down_blocks.0.downsamplers.0",
+                    ]
+                ],
+                [["down_blocks.1.attentions.0", attention_fetcher]],
+                [["down_blocks.1.attentions.1", attention_fetcher]],
+                [
+                    [
+                        "down_blocks.1.resnets.0",
+                    ]
+                ],
+                [
+                    [
+                        "down_blocks.1.resnets.1",
+                    ]
+                ],
+                [
+                    [
+                        "down_blocks.1.downsamplers.0",
+                    ]
+                ],
+                [["down_blocks.2.attentions.0", attention_fetcher]],
+                [["down_blocks.2.attentions.1", attention_fetcher]],
+                [
+                    [
+                        "down_blocks.2.resnets.0",
+                    ]
+                ],
+                [
+                    [
+                        "down_blocks.2.resnets.1",
+                    ]
+                ],
+                [
+                    [
+                        "down_blocks.2.downsamplers.0",
+                    ]
+                ],
+                [
+                    [
+                        "down_blocks.3.resnets.0",
+                    ]
+                ],
+                [
+                    [
+                        "down_blocks.3.resnets.1",
+                    ]
+                ],
+                [
+                    [
+                        "up_blocks.0.resnets.0",
+                    ]
+                ],
+                [
+                    [
+                        "up_blocks.0.resnets.1",
+                    ]
+                ],
+                [
+                    [
+                        "up_blocks.0.resnets.2",
+                    ]
+                ],
+                [
+                    [
+                        "up_blocks.0.upsamplers.0",
+                    ]
+                ],
+                [["up_blocks.1.attentions.0", attention_fetcher]],
+                [["up_blocks.1.attentions.1", attention_fetcher]],
+                [["up_blocks.1.attentions.2", attention_fetcher]],
+                [
+                    [
+                        "up_blocks.1.resnets.0",
+                    ]
+                ],
+                [
+                    [
+                        "up_blocks.1.resnets.1",
+                    ]
+                ],
+                [
+                    [
+                        "up_blocks.1.resnets.2",
+                    ]
+                ],
+                [
+                    [
+                        "up_blocks.1.upsamplers.0",
+                    ]
+                ],
+                [["up_blocks.2.attentions.0", attention_fetcher]],
+                [["up_blocks.2.attentions.1", attention_fetcher]],
+                [["up_blocks.2.attentions.2", attention_fetcher]],
+                [
+                    [
+                        "up_blocks.2.resnets.0",
+                    ]
+                ],
+                [
+                    [
+                        "up_blocks.2.resnets.1",
+                    ]
+                ],
+                [
+                    [
+                        "up_blocks.2.resnets.2",
+                    ]
+                ],
+                [
+                    [
+                        "up_blocks.2.upsamplers.0",
+                    ]
+                ],
+                [["up_blocks.3.attentions.0", attention_fetcher]],
+                [["up_blocks.3.attentions.1", attention_fetcher]],
+                [["up_blocks.3.attentions.2", attention_fetcher]],
+                [
+                    [
+                        "up_blocks.3.resnets.0",
+                    ]
+                ],
+                [
+                    [
+                        "up_blocks.3.resnets.1",
+                    ]
+                ],
+                [
+                    [
+                        "up_blocks.3.resnets.2",
+                    ]
+                ],
+                [["mid_block.attentions.0", attention_fetcher]],
+                [
+                    [
+                        "mid_block.resnets.0",
+                    ]
+                ],
+                [
+                    [
+                        "mid_block.resnets.1",
+                    ]
+                ],
+                [
+                    [
+                        "conv_out",
+                    ]
+                ],
             ]
             from neural_compressor.config import DistillationConfig, IntermediateLayersKnowledgeDistillationLossConfig
+
             distillation_criterion = IntermediateLayersKnowledgeDistillationLossConfig(
                 layer_mappings=layer_mappings,
-                loss_types=['MSE']*len(layer_mappings),
-                loss_weights=[1.0 / len(layer_mappings)]*len(layer_mappings),
-                add_origin_loss=True
+                loss_types=["MSE"] * len(layer_mappings),
+                loss_weights=[1.0 / len(layer_mappings)] * len(layer_mappings),
+                add_origin_loss=True,
             )
             d_conf = DistillationConfig(teacher_model=teacher_model, criterion=distillation_criterion)
             confs.append(d_conf)
 
         from neural_compressor.training import prepare_compression
+
         compression_manager = prepare_compression(model, confs)
         compression_manager.callbacks.on_train_begin()
         model = compression_manager.model
@@ -829,9 +949,7 @@ def main():
         # Save the resulting model and its corresponding configuration in the given directory
         model.save(args.output_dir)
 
-        logger.info(
-            f"Optimized model saved to: {args.output_dir}."
-        )
+        logger.info(f"Optimized model saved to: {args.output_dir}.")
 
         # change to framework model for further use
         model = model.model
@@ -864,7 +982,7 @@ def main():
             setattr(pipeline, "unet", accelerator.unwrap_model(model))
             if args.do_quantization:
                 pipeline = pipeline.to(torch.device("cpu"))
-            
+
             optimized_model_images = generate_images(pipeline, prompt=prompt, seed=args.seed)
             optimized_model_images.save(
                 os.path.join(args.output_dir, "{}_optimized_model.png".format("_".join(prompt.split())))
@@ -878,18 +996,20 @@ def main():
     if args.do_quantization and args.verify_loading:
         # Load the model obtained after Intel Neural Compressor quantization
         from neural_compressor.utils.pytorch import load
+
         loaded_model = load(args.output_dir, model=unet)
         loaded_model.eval()
 
         setattr(pipeline, "unet", loaded_model)
         if args.do_quantization:
             pipeline = pipeline.to(torch.device("cpu"))
-        
+
         loaded_model_images = generate_images(pipeline, prompt=prompt, seed=args.seed)
         if loaded_model_images != optimized_model_images:
             logger.info("The quantized model was not successfully loaded.")
         else:
             logger.info(f"The quantized model was successfully loaded.")
+
 
 if __name__ == "__main__":
     main()

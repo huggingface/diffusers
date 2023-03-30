@@ -1,4 +1,3 @@
-
 import argparse
 import math
 import os
@@ -8,6 +7,7 @@ from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from neural_compressor.utils.pytorch import load
 from PIL import Image
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
@@ -70,7 +70,7 @@ def generate_images(
     guidance_scale=7.5,
     num_inference_steps=50,
     num_images_per_prompt=1,
-    seed=42
+    seed=42,
 ):
     generator = torch.Generator(pipeline.device).manual_seed(seed)
     images = pipeline(
@@ -83,6 +83,7 @@ def generate_images(
     _rows = int(math.sqrt(num_images_per_prompt))
     grid = image_grid(images, rows=_rows, cols=num_images_per_prompt // _rows)
     return grid, images
+
 
 args = parse_args()
 # Load models and create wrapper for stable diffusion
@@ -109,10 +110,8 @@ else:
     unet = unet.to(torch.device("cuda", args.cuda_id))
 pipeline = pipeline.to(unet.device)
 grid, images = generate_images(pipeline, prompt=args.caption, num_images_per_prompt=args.images_num, seed=args.seed)
-grid.save(
-    os.path.join(args.pretrained_model_name_or_path, "{}.png".format("_".join(args.caption.split())))
-)
+grid.save(os.path.join(args.pretrained_model_name_or_path, "{}.png".format("_".join(args.caption.split()))))
 dirname = os.path.join(args.pretrained_model_name_or_path, "_".join(args.caption.split()))
 os.makedirs(dirname, exist_ok=True)
 for idx, image in enumerate(images):
-    image.save(os.path.join(dirname, "{}.png".format(idx+1)))
+    image.save(os.path.join(dirname, "{}.png".format(idx + 1)))
