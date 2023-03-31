@@ -689,6 +689,7 @@ class BasicSparseTransformerBlock(nn.Module):
             upcast_attention=upcast_attention,
             processor=TuneAVideoCrossAttnProcessor(),
         )
+        print(f"use_ada_layer_norm is {use_ada_layer_norm} and {dim} {num_embeds_ada_norm}")
         self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
 
         # Cross-Attn
