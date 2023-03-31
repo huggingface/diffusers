@@ -362,6 +362,97 @@ class DownloadTests(unittest.TestCase):
 
         diffusers.utils.import_utils._safetensors_available = True
 
+    def test_text_inversion_download(self):
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+        pipe = pipe.to(torch_device)
+
+        num_tokens = len(pipe.tokenizer)
+
+        # single token load local
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            ten = {"<*>": torch.ones((32,))}
+            torch.save(ten, os.path.join(tmpdirname, "learned_embeds.bin"))
+
+            pipe.load_textual_inversion(tmpdirname)
+
+            token = pipe.tokenizer.convert_tokens_to_ids("<*>")
+            assert token == num_tokens, "Added token must be at spot `num_tokens`"
+            assert pipe.text_encoder.get_input_embeddings().weight[-1].sum().item() == 32
+            assert pipe._maybe_convert_prompt("<*>", pipe.tokenizer) == "<*>"
+
+            prompt = "hey <*>"
+            out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
+            assert out.shape == (1, 128, 128, 3)
+
+        # single token load local with weight name
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            ten = {"<**>": 2 * torch.ones((1, 32))}
+            torch.save(ten, os.path.join(tmpdirname, "learned_embeds.bin"))
+
+            pipe.load_textual_inversion(tmpdirname, weight_name="learned_embeds.bin")
+
+            token = pipe.tokenizer.convert_tokens_to_ids("<**>")
+            assert token == num_tokens + 1, "Added token must be at spot `num_tokens`"
+            assert pipe.text_encoder.get_input_embeddings().weight[-1].sum().item() == 64
+            assert pipe._maybe_convert_prompt("<**>", pipe.tokenizer) == "<**>"
+
+            prompt = "hey <**>"
+            out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
+            assert out.shape == (1, 128, 128, 3)
+
+        # multi token load
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            ten = {"<***>": torch.cat([3 * torch.ones((1, 32)), 4 * torch.ones((1, 32)), 5 * torch.ones((1, 32))])}
+            torch.save(ten, os.path.join(tmpdirname, "learned_embeds.bin"))
+
+            pipe.load_textual_inversion(tmpdirname)
+
+            token = pipe.tokenizer.convert_tokens_to_ids("<***>")
+            token_1 = pipe.tokenizer.convert_tokens_to_ids("<***>_1")
+            token_2 = pipe.tokenizer.convert_tokens_to_ids("<***>_2")
+
+            assert token == num_tokens + 2, "Added token must be at spot `num_tokens`"
+            assert token_1 == num_tokens + 3, "Added token must be at spot `num_tokens`"
+            assert token_2 == num_tokens + 4, "Added token must be at spot `num_tokens`"
+            assert pipe.text_encoder.get_input_embeddings().weight[-3].sum().item() == 96
+            assert pipe.text_encoder.get_input_embeddings().weight[-2].sum().item() == 128
+            assert pipe.text_encoder.get_input_embeddings().weight[-1].sum().item() == 160
+            assert pipe._maybe_convert_prompt("<***>", pipe.tokenizer) == "<***><***>_1<***>_2"
+
+            prompt = "hey <***>"
+            out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
+            assert out.shape == (1, 128, 128, 3)
+
+        # multi token load a1111
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            ten = {
+                "string_to_param": {
+                    "*": torch.cat([3 * torch.ones((1, 32)), 4 * torch.ones((1, 32)), 5 * torch.ones((1, 32))])
+                },
+                "name": "<****>",
+            }
+            torch.save(ten, os.path.join(tmpdirname, "a1111.bin"))
+
+            pipe.load_textual_inversion(tmpdirname, weight_name="a1111.bin")
+
+            token = pipe.tokenizer.convert_tokens_to_ids("<****>")
+            token_1 = pipe.tokenizer.convert_tokens_to_ids("<****>_1")
+            token_2 = pipe.tokenizer.convert_tokens_to_ids("<****>_2")
+
+            assert token == num_tokens + 5, "Added token must be at spot `num_tokens`"
+            assert token_1 == num_tokens + 6, "Added token must be at spot `num_tokens`"
+            assert token_2 == num_tokens + 7, "Added token must be at spot `num_tokens`"
+            assert pipe.text_encoder.get_input_embeddings().weight[-3].sum().item() == 96
+            assert pipe.text_encoder.get_input_embeddings().weight[-2].sum().item() == 128
+            assert pipe.text_encoder.get_input_embeddings().weight[-1].sum().item() == 160
+            assert pipe._maybe_convert_prompt("<****>", pipe.tokenizer) == "<****><****>_1<****>_2"
+
+            prompt = "hey <****>"
+            out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
+            assert out.shape == (1, 128, 128, 3)
+
 
 class CustomPipelineTests(unittest.TestCase):
     def test_load_custom_pipeline(self):
