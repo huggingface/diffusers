@@ -55,7 +55,7 @@ def get_down_block(
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
             resnet_time_scale_shift=resnet_time_scale_shift,
-            use_temporal_conv=True, #True for Text2VideoSD. False for TuneAVideo
+            use_temporal_conv=use_temporal_conv, #True for Text2VideoSD. False for TuneAVideo
             sub_blocks_type=sub_blocks_type #2d for Text2VideoSD. #3d for TuneAVideo
         )
     elif down_block_type == "CrossAttnDownBlock3D":
@@ -78,8 +78,8 @@ def get_down_block(
             only_cross_attention=only_cross_attention,
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
-            use_temporal_transformer=True, #True for Text2VideoSD. False for TuneAVideo
-            use_temporal_conv=True, #True for Text2VideoSD. False for TuneAVideo
+            use_temporal_transformer=use_temporal_transformer, #True for Text2VideoSD. False for TuneAVideo
+            use_temporal_conv=use_temporal_conv, #True for Text2VideoSD. False for TuneAVideo
             sub_blocks_type=sub_blocks_type #2d for Text2VideoSD. #3d for TuneAVideo
         )
     raise ValueError(f"{down_block_type} does not exist.")
@@ -105,7 +105,7 @@ def get_up_block(
     resnet_time_scale_shift="default",
     use_temporal_transformer=True, #True for Text2VideoSD. False for TuneAVideo
     use_temporal_conv=True, #True for Text2VideoSD. False for TuneAVideo
-    sub_blocks_type=sub_blocks_type #2d for Text2VideoSD. #3d for TuneAVideo
+    sub_blocks_type='2d' #2d for Text2VideoSD. #3d for TuneAVideo
 ):
     if up_block_type == "UpBlock3D":
         return UpBlock3D(
@@ -119,8 +119,8 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             resnet_time_scale_shift=resnet_time_scale_shift,
-            use_temporal_transformer=True, #True for Text2VideoSD. False for TuneAVideo
-            use_temporal_conv=True, #True for Text2VideoSD. False for TuneAVideo
+            use_temporal_transformer=use_temporal_transformer, #True for Text2VideoSD. False for TuneAVideo
+            use_temporal_conv=use_temporal_conv, #True for Text2VideoSD. False for TuneAVideo
             sub_blocks_type=sub_blocks_type #2d for Text2VideoSD. #3d for TuneAVideo
         )
     elif up_block_type == "CrossAttnUpBlock3D":
@@ -143,8 +143,8 @@ def get_up_block(
             only_cross_attention=only_cross_attention,
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
-            use_temporal_transformer=True, #True for Text2VideoSD. False for TuneAVideo
-            use_temporal_conv=True, #True for Text2VideoSD. False for TuneAVideo
+            use_temporal_transformer=use_temporal_transformer, #True for Text2VideoSD. False for TuneAVideo
+            use_temporal_conv=use_temporal_conv, #True for Text2VideoSD. False for TuneAVideo
             sub_blocks_type=sub_blocks_type #2d for Text2VideoSD. #3d for TuneAVideo
         )
     raise ValueError(f"{up_block_type} does not exist.")
