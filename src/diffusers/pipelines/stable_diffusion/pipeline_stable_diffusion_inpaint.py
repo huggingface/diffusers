@@ -310,15 +310,15 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
             self.to("cpu", silence_dtype_warnings=True)
             torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
-        hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae]:
-            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
+            hook = None
+            for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae]:
+                _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
 
-        if self.safety_checker is not None:
-            _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
+            if self.safety_checker is not None:
+                _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
 
-        # We'll offload the last model manually.
-        self.final_offload_hook = hook
+            # We'll offload the last model manually.
+            self.final_offload_hook = hook
 
     @property
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
