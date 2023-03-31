@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The HuggingFace Inc. team.
+# Copyright 2023 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ from argparse import Namespace
 
 import torch
 from transformers import (
-    CLIPFeatureExtractor,
+    CLIPImageProcessor,
     CLIPTextModelWithProjection,
     CLIPTokenizer,
     CLIPVisionModelWithProjection,
@@ -280,17 +280,17 @@ def create_image_unet_diffusers_config(unet_params):
     if not all(n == unet_params.num_noattn_blocks[0] for n in unet_params.num_noattn_blocks):
         raise ValueError("Not all num_res_blocks are equal, which is not supported in this script.")
 
-    config = dict(
-        sample_size=None,
-        in_channels=unet_params.input_channels,
-        out_channels=unet_params.output_channels,
-        down_block_types=tuple(down_block_types),
-        up_block_types=tuple(up_block_types),
-        block_out_channels=tuple(block_out_channels),
-        layers_per_block=unet_params.num_noattn_blocks[0],
-        cross_attention_dim=unet_params.context_dim,
-        attention_head_dim=unet_params.num_heads,
-    )
+    config = {
+        "sample_size": None,
+        "in_channels": unet_params.input_channels,
+        "out_channels": unet_params.output_channels,
+        "down_block_types": tuple(down_block_types),
+        "up_block_types": tuple(up_block_types),
+        "block_out_channels": tuple(block_out_channels),
+        "layers_per_block": unet_params.num_noattn_blocks[0],
+        "cross_attention_dim": unet_params.context_dim,
+        "attention_head_dim": unet_params.num_heads,
+    }
 
     return config
 
@@ -319,17 +319,17 @@ def create_text_unet_diffusers_config(unet_params):
     if not all(n == unet_params.num_noattn_blocks[0] for n in unet_params.num_noattn_blocks):
         raise ValueError("Not all num_res_blocks are equal, which is not supported in this script.")
 
-    config = dict(
-        sample_size=None,
-        in_channels=(unet_params.input_channels, 1, 1),
-        out_channels=(unet_params.output_channels, 1, 1),
-        down_block_types=tuple(down_block_types),
-        up_block_types=tuple(up_block_types),
-        block_out_channels=tuple(block_out_channels),
-        layers_per_block=unet_params.num_noattn_blocks[0],
-        cross_attention_dim=unet_params.context_dim,
-        attention_head_dim=unet_params.num_heads,
-    )
+    config = {
+        "sample_size": None,
+        "in_channels": (unet_params.input_channels, 1, 1),
+        "out_channels": (unet_params.output_channels, 1, 1),
+        "down_block_types": tuple(down_block_types),
+        "up_block_types": tuple(up_block_types),
+        "block_out_channels": tuple(block_out_channels),
+        "layers_per_block": unet_params.num_noattn_blocks[0],
+        "cross_attention_dim": unet_params.context_dim,
+        "attention_head_dim": unet_params.num_heads,
+    }
 
     return config
 
@@ -343,16 +343,16 @@ def create_vae_diffusers_config(vae_params):
     down_block_types = ["DownEncoderBlock2D"] * len(block_out_channels)
     up_block_types = ["UpDecoderBlock2D"] * len(block_out_channels)
 
-    config = dict(
-        sample_size=vae_params.resolution,
-        in_channels=vae_params.in_channels,
-        out_channels=vae_params.out_ch,
-        down_block_types=tuple(down_block_types),
-        up_block_types=tuple(up_block_types),
-        block_out_channels=tuple(block_out_channels),
-        latent_channels=vae_params.z_channels,
-        layers_per_block=vae_params.num_res_blocks,
-    )
+    config = {
+        "sample_size": vae_params.resolution,
+        "in_channels": vae_params.in_channels,
+        "out_channels": vae_params.out_ch,
+        "down_block_types": tuple(down_block_types),
+        "up_block_types": tuple(up_block_types),
+        "block_out_channels": tuple(block_out_channels),
+        "latent_channels": vae_params.z_channels,
+        "layers_per_block": vae_params.num_res_blocks,
+    }
     return config
 
 
@@ -774,7 +774,7 @@ if __name__ == "__main__":
         vae.load_state_dict(converted_vae_checkpoint)
 
     tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
-    image_feature_extractor = CLIPFeatureExtractor.from_pretrained("openai/clip-vit-large-patch14")
+    image_feature_extractor = CLIPImageProcessor.from_pretrained("openai/clip-vit-large-patch14")
     text_encoder = CLIPTextModelWithProjection.from_pretrained("openai/clip-vit-large-patch14")
     image_encoder = CLIPVisionModelWithProjection.from_pretrained("openai/clip-vit-large-patch14")
 

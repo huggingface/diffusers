@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -47,6 +47,9 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         sample_size (`int`, *optional*): Default length of sample. Should be adaptable at runtime.
         in_channels (`int`, *optional*, defaults to 2): Number of channels in the input sample.
         out_channels (`int`, *optional*, defaults to 2): Number of channels in the output.
+        extra_in_channels (`int`, *optional*, defaults to 0):
+            Number of additional channels to be added to the input of the first down block. Useful for cases where the
+            input data has more channels than what the model is initially designed for.
         time_embedding_type (`str`, *optional*, defaults to `"fourier"`): Type of time embedding to use.
         freq_shift (`float`, *optional*, defaults to 0.0): Frequency shift for fourier time embedding.
         flip_sin_to_cos (`bool`, *optional*, defaults to :
@@ -59,7 +62,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             obj:`(32, 32, 64)`): Tuple of block output channels.
         mid_block_type (`str`, *optional*, defaults to "UNetMidBlock1D"): block type for middle of UNet.
         out_block_type (`str`, *optional*, defaults to `None`): optional output processing of UNet.
-        act_fn (`str`, *optional*, defaults to None): optional activitation function in UNet blocks.
+        act_fn (`str`, *optional*, defaults to None): optional activation function in UNet blocks.
         norm_num_groups (`int`, *optional*, defaults to 8): group norm member count in UNet blocks.
         layers_per_block (`int`, *optional*, defaults to 1): added number of layers in a UNet block.
         downsample_each_block (`int`, *optional*, defaults to False:
@@ -195,7 +198,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
     ) -> Union[UNet1DOutput, Tuple]:
         r"""
         Args:
-            sample (`torch.FloatTensor`): `(batch_size, sample_size, num_channels)` noisy inputs tensor
+            sample (`torch.FloatTensor`): `(batch_size, num_channels, sample_size)` noisy inputs tensor
             timestep (`torch.FloatTensor` or `float` or `int): (batch) timesteps
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.unet_1d.UNet1DOutput`] instead of a plain tuple.

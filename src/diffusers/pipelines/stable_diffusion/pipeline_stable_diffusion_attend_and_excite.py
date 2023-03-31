@@ -19,12 +19,13 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import numpy as np
 import torch
 from torch.nn import functional as F
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
+from ...loaders import TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...models.cross_attention import CrossAttention
+from ...models.attention_processor import Attention
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import is_accelerate_available, logging, randn_tensor, replace_example_docstring
+from ...utils import is_accelerate_available, is_accelerate_version, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
@@ -121,13 +122,13 @@ class AttentionStore:
         self.attn_res = attn_res
 
 
-class AttendExciteCrossAttnProcessor:
+class AttendExciteAttnProcessor:
     def __init__(self, attnstore, place_in_unet):
         super().__init__()
         self.attnstore = attnstore
         self.place_in_unet = place_in_unet
 
-    def __call__(self, attn: CrossAttention, hidden_states, encoder_hidden_states=None, attention_mask=None):
+    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
         batch_size, sequence_length, _ = hidden_states.shape
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
@@ -159,7 +160,7 @@ class AttendExciteCrossAttnProcessor:
         return hidden_states
 
 
-class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
+class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline, TextualInversionLoaderMixin):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion and Attend and Excite.
 
@@ -183,7 +184,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
-        feature_extractor ([`CLIPFeatureExtractor`]):
+        feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
     _optional_components = ["safety_checker", "feature_extractor"]
@@ -196,7 +197,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -256,12 +257,16 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
         Note that offloading happens on a submodule basis. Memory savings are higher than with
         `enable_model_cpu_offload`, but performance is lower.
         """
-        if is_accelerate_available():
+        if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
             from accelerate import cpu_offload
         else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
+            raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
 
         device = torch.device(f"cuda:{gpu_id}")
+
+        if self.device.type != "cpu":
+            self.to("cpu", silence_dtype_warnings=True)
+            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
             cpu_offload(cpu_offloaded_model, device)
@@ -313,8 +318,8 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
                 whether to use classifier free guidance or not
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
-                Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
@@ -331,6 +336,10 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
+
             text_inputs = self.tokenizer(
                 prompt,
                 padding="max_length",
@@ -390,6 +399,10 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
                 )
             else:
                 uncond_tokens = negative_prompt
+
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 
             max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(
@@ -513,8 +526,30 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
                     f" {negative_prompt_embeds.shape}."
                 )
 
-        if (indices is None) or (indices is not None and not isinstance(indices, List)):
-            raise ValueError(f"`indices` has to be a list but is {type(indices)}")
+        indices_is_list_ints = isinstance(indices, list) and isinstance(indices[0], int)
+        indices_is_list_list_ints = (
+            isinstance(indices, list) and isinstance(indices[0], list) and isinstance(indices[0][0], int)
+        )
+
+        if not indices_is_list_ints and not indices_is_list_list_ints:
+            raise TypeError("`indices` must be a list of ints or a list of a list of ints")
+
+        if indices_is_list_ints:
+            indices_batch_size = 1
+        elif indices_is_list_list_ints:
+            indices_batch_size = len(indices)
+
+        if prompt is not None and isinstance(prompt, str):
+            prompt_batch_size = 1
+        elif prompt is not None and isinstance(prompt, list):
+            prompt_batch_size = len(prompt)
+        elif prompt_embeds is not None:
+            prompt_batch_size = prompt_embeds.shape[0]
+
+        if indices_batch_size != prompt_batch_size:
+            raise ValueError(
+                f"indices batch size must be same as prompt batch size. indices batch size: {indices_batch_size}, prompt batch size: {prompt_batch_size}"
+            )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
@@ -653,9 +688,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
                 continue
 
             cross_att_count += 1
-            attn_procs[name] = AttendExciteCrossAttnProcessor(
-                attnstore=self.attention_store, place_in_unet=place_in_unet
-            )
+            attn_procs[name] = AttendExciteAttnProcessor(attnstore=self.attention_store, place_in_unet=place_in_unet)
 
         self.unet.set_attn_processor(attn_procs)
         self.attention_store.num_att_layers = cross_att_count
@@ -671,7 +704,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        token_indices: List[int],
+        token_indices: Union[List[int], List[List[int]]],
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -691,6 +724,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
         max_iter_to_alter: int = 25,
         thresholds: dict = {0: 0.05, 10: 0.5, 20: 0.8},
         scale_factor: int = 20,
+        attn_res: int = 16,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -716,8 +750,8 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
                 usually at the expense of lower image quality.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
-                Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
@@ -750,7 +784,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
             cross_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttnProcessor` as defined under
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
             max_iter_to_alter (`int`, *optional*, defaults to `25`):
@@ -762,6 +796,8 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
                 Dictionary defining the iterations and desired thresholds to apply iterative latent refinement in.
             scale_factor (`int`, *optional*, default to 20):
                 Scale factor that controls the step size of each Attend and Excite update.
+            attn_res (`int`, *optional*, default to 16):
+                The resolution of most semantic attention map.
 
         Examples:
 
@@ -834,7 +870,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        self.attention_store = AttentionStore()
+        self.attention_store = AttentionStore(attn_res=attn_res)
         self.register_attention_control()
 
         # default config for step size from original repo
@@ -847,7 +883,9 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline):
 
         if isinstance(token_indices[0], int):
             token_indices = [token_indices]
+
         indices = []
+
         for ind in token_indices:
             indices = indices + [ind] * num_images_per_prompt
 

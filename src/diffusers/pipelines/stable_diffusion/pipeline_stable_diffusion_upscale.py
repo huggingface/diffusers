@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import PIL
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
+from ...loaders import TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDPMScheduler, KarrasDiffusionSchedulers
 from ...utils import deprecate, is_accelerate_available, logging, randn_tensor
@@ -37,7 +38,7 @@ def preprocess(image):
 
     if isinstance(image[0], PIL.Image.Image):
         w, h = image[0].size
-        w, h = map(lambda x: x - x % 64, (w, h))  # resize to integer multiple of 64
+        w, h = (x - x % 64 for x in (w, h))  # resize to integer multiple of 64
 
         image = [np.array(i.resize((w, h)))[None, :] for i in image]
         image = np.concatenate(image, axis=0)
@@ -50,7 +51,7 @@ def preprocess(image):
     return image
 
 
-class StableDiffusionUpscalePipeline(DiffusionPipeline):
+class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMixin):
     r"""
     Pipeline for text-guided image super-resolution using Stable Diffusion 2.
 
@@ -88,21 +89,22 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
     ):
         super().__init__()
 
-        # check if vae has a config attribute `scaling_factor` and if it is set to 0.08333, else set it to 0.08333 and deprecate
-        is_vae_scaling_factor_set_to_0_08333 = (
-            hasattr(vae.config, "scaling_factor") and vae.config.scaling_factor == 0.08333
-        )
-        if not is_vae_scaling_factor_set_to_0_08333:
-            deprecation_message = (
-                "The configuration file of the vae does not contain `scaling_factor` or it is set to"
-                f" {vae.config.scaling_factor}, which seems highly unlikely. If your checkpoint is a fine-tuned"
-                " version of `stabilityai/stable-diffusion-x4-upscaler` you should change 'scaling_factor' to 0.08333"
-                " Please make sure to update the config accordingly, as not doing so might lead to incorrect results"
-                " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be"
-                " very nice if you could open a Pull Request for the `vae/config.json` file"
+        if hasattr(vae, "config"):
+            # check if vae has a config attribute `scaling_factor` and if it is set to 0.08333, else set it to 0.08333 and deprecate
+            is_vae_scaling_factor_set_to_0_08333 = (
+                hasattr(vae.config, "scaling_factor") and vae.config.scaling_factor == 0.08333
             )
-            deprecate("wrong scaling_factor", "1.0.0", deprecation_message, standard_warn=False)
-            vae.register_to_config(scaling_factor=0.08333)
+            if not is_vae_scaling_factor_set_to_0_08333:
+                deprecation_message = (
+                    "The configuration file of the vae does not contain `scaling_factor` or it is set to"
+                    f" {vae.config.scaling_factor}, which seems highly unlikely. If your checkpoint is a fine-tuned"
+                    " version of `stabilityai/stable-diffusion-x4-upscaler` you should change 'scaling_factor' to"
+                    " 0.08333 Please make sure to update the config accordingly, as not doing so might lead to"
+                    " incorrect results in future versions. If you have downloaded this checkpoint from the Hugging"
+                    " Face Hub, it would be very nice if you could open a Pull Request for the `vae/config.json` file"
+                )
+                deprecate("wrong scaling_factor", "1.0.0", deprecation_message, standard_warn=False)
+                vae.register_to_config(scaling_factor=0.08333)
 
         self.register_modules(
             vae=vae,
@@ -175,8 +177,8 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
                 whether to use classifier free guidance or not
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
-                Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
@@ -193,6 +195,10 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
+
             text_inputs = self.tokenizer(
                 prompt,
                 padding="max_length",
@@ -252,6 +258,10 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
                 )
             else:
                 uncond_tokens = negative_prompt
+
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 
             max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(

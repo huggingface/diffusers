@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 HuggingFace Inc.
+# Copyright 2023 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ from diffusers import (
 from diffusers.utils import slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 
+from ...pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin
 
 
@@ -37,6 +38,8 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 class StableDiffusionSAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionSAGPipeline
+    params = TEXT_TO_IMAGE_PARAMS
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     test_cpu_offload = False
 
     def get_dummy_components(self):
@@ -157,3 +160,25 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         expected_slice = np.array([0.3459, 0.2876, 0.2537, 0.3002, 0.2671, 0.2160, 0.3026, 0.2262, 0.2371])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-2
+
+    def test_stable_diffusion_2_non_square(self):
+        sag_pipe = StableDiffusionSAGPipeline.from_pretrained("stabilityai/stable-diffusion-2-1-base")
+        sag_pipe = sag_pipe.to(torch_device)
+        sag_pipe.set_progress_bar_config(disable=None)
+
+        prompt = "."
+        generator = torch.manual_seed(0)
+        output = sag_pipe(
+            [prompt],
+            width=768,
+            height=512,
+            generator=generator,
+            guidance_scale=7.5,
+            sag_scale=1.0,
+            num_inference_steps=20,
+            output_type="np",
+        )
+
+        image = output.images
+
+        assert image.shape == (1, 512, 768, 3)

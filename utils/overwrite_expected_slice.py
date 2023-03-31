@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The HuggingFace Inc. team.
+# Copyright 2023 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -67,7 +67,7 @@ def overwrite_file(file, class_name, test_name, correct_line, done_test):
 def main(correct, fail=None):
     if fail is not None:
         with open(fail, "r") as f:
-            test_failures = set([l.strip() for l in f.readlines()])
+            test_failures = {l.strip() for l in f.readlines()}
     else:
         test_failures = None
 
