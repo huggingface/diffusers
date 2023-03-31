@@ -21,7 +21,7 @@ from k_diffusion.external import CompVisDenoiser, CompVisVDenoiser
 from ...image_processor import VaeImageProcessor
 from ...pipelines import DiffusionPipeline
 from ...schedulers import LMSDiscreteScheduler
-from ...utils import is_accelerate_available, is_accelerate_version, deprecate, logging, randn_tensor
+from ...utils import deprecate, is_accelerate_available, is_accelerate_version, logging, randn_tensor
 from . import StableDiffusionPipelineOutput
 
 

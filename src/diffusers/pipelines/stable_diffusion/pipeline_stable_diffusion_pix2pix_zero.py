@@ -36,12 +36,12 @@ from ...schedulers.scheduling_ddim_inverse import DDIMInverseScheduler
 from ...utils import (
     PIL_INTERPOLATION,
     BaseOutput,
+    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     logging,
     randn_tensor,
     replace_example_docstring,
-    deprecate
 )
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
@@ -1257,7 +1257,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
         # 9. Convert to PIL.
         if output_type == "pil":
-            image = self.image_processor.postprocess(image, output_type='pil')
+            image = self.image_processor.postprocess(image, output_type="pil")
 
         if not return_dict:
             return (inverted_latents, image)

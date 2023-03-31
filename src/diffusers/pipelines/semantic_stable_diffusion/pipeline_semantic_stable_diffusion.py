@@ -6,7 +6,6 @@ import torch
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...image_processor import VaeImageProcessor
-
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
 from ...pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
@@ -133,7 +132,7 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
-    
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
         feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
@@ -706,7 +705,7 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
             image = self.decode_latents(latents)
 
             if self.safety_checker is not None:
-                image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+                image, has_nsfw_concept = self.run_safety_checker(image, self.device, text_embedding.dtype)
             else:
                 has_nsfw_concept = False
 

@@ -962,7 +962,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
             image = latents
             has_nsfw_concept = None
 
-        else: 
+        else:
             image = self.decode_latents(latents)
 
             if self.safety_checker is not None:

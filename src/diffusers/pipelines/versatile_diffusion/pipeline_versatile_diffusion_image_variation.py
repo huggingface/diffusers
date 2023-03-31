@@ -24,7 +24,7 @@ from transformers import CLIPFeatureExtractor, CLIPVisionModelWithProjection
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import is_accelerate_available, logging, randn_tensor
+from ...utils import deprecate, is_accelerate_available, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
@@ -425,9 +425,9 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
         if output_type == "latent":
             image = latents
 
-        image = self.decode_latents(latents)
-
-        image = self.image_processor.postprocess(image, output_type=output_type)
+        else:
+            image = self.decode_latents(latents)
+            image = self.image_processor.postprocess(image, output_type=output_type)
 
         if not return_dict:
             return (image,)

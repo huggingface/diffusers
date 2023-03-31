@@ -22,11 +22,17 @@ from torch.nn import functional as F
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...image_processor import VaeImageProcessor
-
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention_processor import Attention
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import deprecate, is_accelerate_available, is_accelerate_version, logging, randn_tensor, replace_example_docstring
+from ...utils import (
+    deprecate,
+    is_accelerate_available,
+    is_accelerate_version,
+    logging,
+    randn_tensor,
+    replace_example_docstring,
+)
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker

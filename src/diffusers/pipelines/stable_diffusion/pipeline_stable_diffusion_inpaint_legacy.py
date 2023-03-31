@@ -690,7 +690,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
 
         # use original latents corresponding to unmasked portions of the image
         latents = (init_latents_orig * mask) + (latents * (1 - mask))
-        
+
         if output_type not in ["latent", "pt", "np", "pil"]:
             deprecation_message = (
                 f"the output_type {output_type} is outdated. Please make sure to set it to one of these instead: "

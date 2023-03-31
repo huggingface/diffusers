@@ -25,7 +25,7 @@ from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.embeddings import get_timestep_embedding
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import logging, randn_tensor, replace_example_docstring
+from ...utils import deprecate, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
@@ -774,7 +774,7 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 callback(i, t, latents)
 
-        # 9. Post-processing 
+        # 9. Post-processing
         if output_type not in ["latent", "pt", "np", "pil"]:
             deprecation_message = (
                 f"the output_type {output_type} is outdated. Please make sure to set it to one of these instead: "

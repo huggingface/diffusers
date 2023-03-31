@@ -22,7 +22,14 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import is_accelerate_available, is_accelerate_version, deprecate, logging, randn_tensor, replace_example_docstring
+from ...utils import (
+    deprecate,
+    is_accelerate_available,
+    is_accelerate_version,
+    logging,
+    randn_tensor,
+    replace_example_docstring,
+)
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker

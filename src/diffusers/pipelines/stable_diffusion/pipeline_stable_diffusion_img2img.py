@@ -119,7 +119,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
     _optional_components = ["safety_checker", "feature_extractor"]
-    
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.__init__
     def __init__(
         self,
@@ -423,7 +423,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         return prompt_embeds
-    
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
         feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
@@ -432,7 +432,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
         )
         return image, has_nsfw_concept
-    
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
         latents = 1 / self.vae.config.scaling_factor * latents

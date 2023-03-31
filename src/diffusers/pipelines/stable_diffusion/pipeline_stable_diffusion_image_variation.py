@@ -412,7 +412,7 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
             image = self.decode_latents(latents)
 
             if self.safety_checker is not None:
-                image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+                image, has_nsfw_concept = self.run_safety_checker(image, device, image_embeddings.dtype)
             else:
                 has_nsfw_concept = False
 

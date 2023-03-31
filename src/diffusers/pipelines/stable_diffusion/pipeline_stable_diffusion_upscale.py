@@ -588,7 +588,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
             )
             deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
             output_type = "np"
-        
+
         if output_type == "latent":
             image = latents
         else:
