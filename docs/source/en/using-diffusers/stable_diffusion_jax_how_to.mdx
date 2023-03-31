@@ -133,7 +133,7 @@ The Flax pipeline can compile the code for us if we pass `jit = True` as an argu
 
 The first time we run the following cell it will take a long time to compile, but subequent calls (even with different inputs) will be much faster. For example, it took more than a minute to compile in a TPU v2-8 when I tested, but then it takes about **`7s`** for future inference runs.
 
-```python
+```
 %%time
 images = pipeline(prompt_ids, p_params, rng, jit=True)[0]
 ```
