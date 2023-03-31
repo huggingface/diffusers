@@ -659,7 +659,7 @@ class CrossAttnUpBlock3D(nn.Module):
             attention_head_dim = attn_num_head_channels
         elif sub_blocks_type == '3d':
             num_attention_heads = attn_num_head_channels
-            attention_head_dim = out_channels // attn_num_head_channels,
+            attention_head_dim = out_channels // attn_num_head_channels
                     
 
         for i in range(num_layers):
