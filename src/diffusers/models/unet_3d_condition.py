@@ -537,7 +537,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
             emb = emb + class_emb
         
         #If not using inflated_conv_3d and temporal transfomer, use num_frames in unet
-        if conv_type != 'inflated_conv_3d' and use_temporal_transformer:
+        if isinstance(self.conv_in, InflatedConv3d) and self.transformer_in:
             emb = emb.repeat_interleave(repeats=num_frames, dim=0)
             encoder_hidden_states = encoder_hidden_states.repeat_interleave(repeats=num_frames, dim=0)
             #2. pre-process
@@ -552,29 +552,29 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         down_block_res_samples = (sample,)
         for downsample_block in self.down_blocks:
             if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
-                if sub_blocks_type == '2d':
-                    sample, res_samples = downsample_block(
-                        hidden_states=sample,
-                        temb=emb,
-                        encoder_hidden_states=encoder_hidden_states,
-                        attention_mask=attention_mask,
-                        num_frames=num_frames,
-                        cross_attention_kwargs=cross_attention_kwargs,
-                    )
-                elif sub_blocks_type == '3d':
-                    sample, res_samples = downsample_block(
-                        hidden_states=sample,
-                        temb=emb,
-                        encoder_hidden_states=encoder_hidden_states,
-                        attention_mask=attention_mask,
-                    )
-                else:
-                    raise NotImplementedError(f'Unsupported sub_block_type: {sub_blocks_type}. Expected `2d` or `3d`')
+                # if sub_blocks_type == '2d':
+                sample, res_samples = downsample_block(
+                    hidden_states=sample,
+                    temb=emb,
+                    encoder_hidden_states=encoder_hidden_states,
+                    attention_mask=attention_mask,
+                    num_frames=num_frames,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                )
+                # elif sub_blocks_type == '3d':
+                #     sample, res_samples = downsample_block(
+                #         hidden_states=sample,
+                #         temb=emb,
+                #         encoder_hidden_states=encoder_hidden_states,
+                #         attention_mask=attention_mask,
+                #     )
+                # else:
+                #     raise NotImplementedError(f'Unsupported sub_block_type: {sub_blocks_type}. Expected `2d` or `3d`')
             else:
-                if sub_blocks_type == '2d':
-                    sample, res_samples = downsample_block(hidden_states=sample, temb=emb, num_frames=num_frames)
-                elif sub_blocks_type == '3d':
-                    sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
+                # if sub_blocks_type == '2d':
+                sample, res_samples = downsample_block(hidden_states=sample, temb=emb, num_frames=num_frames)
+                # elif sub_blocks_type == '3d':
+                #     sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
 
             down_block_res_samples += res_samples
         
@@ -591,22 +591,23 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
 
         # 4. mid
         if self.mid_block is not None:
-            if sub_blocks_type == '2d':
-                sample = self.mid_block(
-                    sample,
-                    emb,
-                    encoder_hidden_states=encoder_hidden_states,
-                    attention_mask=attention_mask,
-                    num_frames=num_frames,
-                    cross_attention_kwargs=cross_attention_kwargs,
-                )
-            elif sub_blocks_type == '3d': 
-                sample = self.mid_block(
-                    sample,
-                    emb,
-                    encoder_hidden_states=encoder_hidden_states,
-                    attention_mask=attention_mask
-                )
+            # if sub_blocks_type == '2d':
+            #Mid block can handle num_frames being passed 2d or 3d
+            sample = self.mid_block(
+                sample,
+                emb,
+                encoder_hidden_states=encoder_hidden_states,
+                attention_mask=attention_mask,
+                num_frames=num_frames,
+                cross_attention_kwargs=cross_attention_kwargs,
+            )
+            # elif sub_blocks_type == '3d': 
+            #     sample = self.mid_block(
+            #         sample,
+            #         emb,
+            #         encoder_hidden_states=encoder_hidden_states,
+            #         attention_mask=attention_mask
+            #     )
                 
         if mid_block_additional_residual is not None:
             sample = sample + mid_block_additional_residual
@@ -625,42 +626,42 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
 
             if hasattr(upsample_block, "has_cross_attention") and upsample_block.has_cross_attention:
                 #TODO: DO what you did for down blocks here.
-                if sub_blocks_type == '2d':
-                    sample = upsample_block(
-                        hidden_states=sample,
-                        temb=emb,
-                        res_hidden_states_tuple=res_samples,
-                        encoder_hidden_states=encoder_hidden_states,
-                        upsample_size=upsample_size,
-                        attention_mask=attention_mask,
-                        num_frames=num_frames,
-                        cross_attention_kwargs=cross_attention_kwargs,
-                    )
-                elif sub_blocks_type == '3d':
-                    sample = upsample_block(
-                        hidden_states=sample,
-                        temb=emb,
-                        res_hidden_states_tuple=res_samples,
-                        encoder_hidden_states=encoder_hidden_states,
-                        upsample_size=upsample_size,
-                        attention_mask=attention_mask,
-                    )
+                # if isinstance(upsample_block,UpBlock2D) == '2d':
+                sample = upsample_block(
+                    hidden_states=sample,
+                    temb=emb,
+                    res_hidden_states_tuple=res_samples,
+                    encoder_hidden_states=encoder_hidden_states,
+                    upsample_size=upsample_size,
+                    attention_mask=attention_mask,
+                    num_frames=num_frames,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                )
+                # elif sub_blocks_type == '3d':
+                #     sample = upsample_block(
+                #         hidden_states=sample,
+                #         temb=emb,
+                #         res_hidden_states_tuple=res_samples,
+                #         encoder_hidden_states=encoder_hidden_states,
+                #         upsample_size=upsample_size,
+                #         attention_mask=attention_mask,
+                #     )
             else:
-                if sub_blocks_type == '2d':
-                    sample = upsample_block(
-                        hidden_states=sample,
-                        temb=emb,
-                        res_hidden_states_tuple=res_samples,
-                        upsample_size=upsample_size,
-                        num_frames=num_frames,
-                    )
-                elif sub_blocks_type == '3d':
-                    sample = upsample_block(
-                        hidden_states=sample,
-                        temb=emb,
-                        res_hidden_states_tuple=res_samples,
-                        upsample_size=upsample_size
-                    )
+                # if sub_blocks_type == '2d':
+                sample = upsample_block(
+                    hidden_states=sample,
+                    temb=emb,
+                    res_hidden_states_tuple=res_samples,
+                    upsample_size=upsample_size,
+                    num_frames=num_frames,
+                )
+                # elif sub_blocks_type == '3d':
+                #     sample = upsample_block(
+                #         hidden_states=sample,
+                #         temb=emb,
+                #         res_hidden_states_tuple=res_samples,
+                #         upsample_size=upsample_size
+                #     )
 
         # 6. post-process
         if self.conv_norm_out:
@@ -669,10 +670,12 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         
         sample = self.conv_out(sample)
 
-        if sub_blocks_type == '2d':
-            # reshape to (batch, channel, framerate, width, height)
-            sample = sample[None, :].reshape((-1, num_frames) + sample.shape[1:]).permute(0, 2, 1, 3, 4)
-
+        # if sub_blocks_type == '2d':
+        print(f" Before reshaping the shape was {sample.shape}")
+        # reshape to (batch, channel, framerate, width, height)
+        sample = sample[None, :].reshape((-1, num_frames) + sample.shape[1:]).permute(0, 2, 1, 3, 4)
+        
+        print(f" After reshaping the shape is {sample.shape}")
         if not return_dict:
             return (sample,)
 
