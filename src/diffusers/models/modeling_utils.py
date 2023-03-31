@@ -564,9 +564,14 @@ class ModelMixin(torch.nn.Module):
                             " `low_cpu_mem_usage=False` and `device_map=None` if you want to randomly initialize"
                             " those weights or else make sure your checkpoint file is correct."
                         )
-
+                    
+                    unexpected_keys = set(state_dict.keys()) - set(model.state_dict().keys())
                     empty_state_dict = model.state_dict()
                     for param_name, param in state_dict.items():
+                        
+                        if param_name in unexpected_keys:
+                            continue
+                        
                         accepts_dtype = "dtype" in set(
                             inspect.signature(set_module_tensor_to_device).parameters.keys()
                         )
