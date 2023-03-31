@@ -566,11 +566,12 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
 
         # Define input layers
         self.in_channels = in_channels
-
+        
         self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
         if use_linear_projection:
             self.proj_in = nn.Linear(in_channels, inner_dim)
         else:
+            print(f"Inputs to conv2d {in_channels}, {inner_dim }")
             self.proj_in = nn.Conv2d(in_channels, inner_dim, kernel_size=1, stride=1, padding=0)
 
         # Define transformers blocks
