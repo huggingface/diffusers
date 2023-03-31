@@ -272,7 +272,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
                 self.num_upsamplers += 1
             else:
                 add_upsample = False
-
+            print(f"get_up_block in: { input_channel} and out: { output_channel }")
             up_block = get_up_block(
                 up_block_type,
                 num_layers=layers_per_block + 1,
