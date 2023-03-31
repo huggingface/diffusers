@@ -682,6 +682,63 @@ class SlicedAttnAddedKVProcessor:
         hidden_states = hidden_states + residual
 
         return hidden_states
+    
+class TuneAVideoAttnProcessor:
+    def __call__(
+        self, attn: "Attention", hidden_states, encoder_hidden_states=None, attention_mask=None, video_length=None
+    ):
+        batch_size, sequence_length, _ = hidden_states.shape
+
+        encoder_hidden_states = encoder_hidden_states
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+
+        query = attn.to_q(hidden_states)
+        query.shape[-1]
+        query = attn.head_to_batch_dim(query)
+
+        if attn.added_kv_proj_dim is not None:
+            raise NotImplementedError
+
+        encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        former_frame_index = torch.arange(video_length) - 1
+        former_frame_index[0] = 0
+
+        # key = rearrange(key, "(b f) d c -> b f d c", f=video_length)
+        key = key.reshape([-1, video_length, *key.shape[1:]])
+        key = torch.cat([key[:, [0] * video_length], key[:, former_frame_index]], dim=2)
+        # key = rearrange(key, "b f d c -> (b f) d c")
+        key = key.flatten(0, 1)
+
+        # value = rearrange(value, "(b f) d c -> b f d c", f=video_length)
+        value = value.reshape([-1, video_length, *value.shape[1:]])
+        value = torch.cat([value[:, [0] * video_length], value[:, former_frame_index]], dim=2)
+        # value = rearrange(value, "b f d c -> (b f) d c")
+        value = value.flatten(0, 1)
+
+        key = attn.head_to_batch_dim(key)
+        value = attn.head_to_batch_dim(value)
+
+        if attention_mask is not None:
+            if attention_mask.shape[-1] != query.shape[1]:
+                target_length = query.shape[1]
+                attention_mask = F.pad(attention_mask, (0, target_length), value=0.0)
+                attention_mask = attention_mask.repeat_interleave(self.heads, dim=0)
+
+        attention_probs = attn.get_attention_scores(query, key, attention_mask)
+        hidden_states = torch.bmm(attention_probs, value)
+        hidden_states = attn.batch_to_head_dim(hidden_states)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+        return hidden_states
 
 
 AttentionProcessor = Union[
@@ -692,4 +749,5 @@ AttentionProcessor = Union[
     SlicedAttnAddedKVProcessor,
     LoRAAttnProcessor,
     LoRAXFormersAttnProcessor,
+    TuneAVideoAttnProcessor
 ]

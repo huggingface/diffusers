@@ -277,7 +277,7 @@ class TuneAVideoPipeline(DiffusionPipeline):
 
     def prepare_latents(
         self, batch_size, num_channels_latents, video_length, height, width, dtype, device, generator, latents=None
-    ):
+    ):  
         shape = (
             batch_size,
             num_channels_latents,
@@ -331,7 +331,7 @@ class TuneAVideoPipeline(DiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
         **kwargs,
-    ):
+    ):  
         # Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
@@ -358,6 +358,8 @@ class TuneAVideoPipeline(DiffusionPipeline):
 
         # Prepare latent variables
         num_channels_latents = self.unet.in_channels
+        #TODO: Remove after verification:
+        #latents shape is now: ( batch, num_frames, channel, height, width)
         latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,
             num_channels_latents,

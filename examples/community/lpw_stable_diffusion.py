@@ -6,7 +6,7 @@ import numpy as np
 import PIL
 import torch
 from packaging import version
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 import diffusers
 from diffusers import SchedulerMixin, StableDiffusionPipeline
@@ -422,7 +422,7 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-4) for details.
-        feature_extractor ([`CLIPFeatureExtractor`]):
+        feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
 
@@ -436,7 +436,7 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
             unet: UNet2DConditionModel,
             scheduler: SchedulerMixin,
             safety_checker: StableDiffusionSafetyChecker,
-            feature_extractor: CLIPFeatureExtractor,
+            feature_extractor: CLIPImageProcessor,
             requires_safety_checker: bool = True,
         ):
             super().__init__(
@@ -461,7 +461,7 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
             unet: UNet2DConditionModel,
             scheduler: SchedulerMixin,
             safety_checker: StableDiffusionSafetyChecker,
-            feature_extractor: CLIPFeatureExtractor,
+            feature_extractor: CLIPImageProcessor,
         ):
             super().__init__(
                 vae=vae,

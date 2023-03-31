@@ -118,7 +118,7 @@ python train_dreambooth_flax.py \
 
 Prior preservation is used to avoid overfitting and language-drift (check out the [paper](https://arxiv.org/abs/2208.12242) to learn more if you're interested). For prior preservation, you use other images of the same class as part of the training process. The nice thing is that you can generate those images using the Stable Diffusion model itself! The training script will save the generated images to a local path you specify.
 
-The author's recommend generating `num_epochs * num_samples` images for prior preservation. In most cases, 200-300 images work well.
+The authors recommend generating `num_epochs * num_samples` images for prior preservation. In most cases, 200-300 images work well.
 
 <frameworkcontent>
 <pt>
@@ -321,7 +321,7 @@ Depending on your hardware, there are a few different ways to optimize DreamBoot
 
 ### xFormers
 
-[xFormers](https://github.com/facebookresearch/xformers) is a toolbox for optimizing Transformers, and it include a [memory-efficient attention](https://facebookresearch.github.io/xformers/components/ops.html#module-xformers.ops) mechanism that is used in 🧨 Diffusers. You'll need to [install xFormers](./optimization/xformers) and then add the following argument to your training script:
+[xFormers](https://github.com/facebookresearch/xformers) is a toolbox for optimizing Transformers, and it includes a [memory-efficient attention](https://facebookresearch.github.io/xformers/components/ops.html#module-xformers.ops) mechanism that is used in 🧨 Diffusers. You'll need to [install xFormers](./optimization/xformers) and then add the following argument to your training script:
 
 ```bash
   --enable_xformers_memory_efficient_attention
