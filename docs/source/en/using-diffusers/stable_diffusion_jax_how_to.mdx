@@ -227,7 +227,7 @@ We can code `_generate` completely ignoring the fact that it will be invoked in 
 
 The same way as when we used the pipeline call, the first time we run the following cell it will take a while, but then it will be much faster.
 
-```python
+```
 %%time
 images = p_generate(prompt_ids, p_params, rng)
 images = images.block_until_ready()
