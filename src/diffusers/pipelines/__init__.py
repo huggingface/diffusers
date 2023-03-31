@@ -136,5 +136,4 @@ try:
 except OptionalDependencyNotAvailable:
     from ..utils.dummy_transformers_and_torch_and_note_seq_objects import *  # noqa F403
 else:
-    from .spectrogram_diffusion import SpectrogramDiffusionPipeline
-    from .spectrogram_diffusion import MidiProcessor
+    from .spectrogram_diffusion import MidiProcessor, SpectrogramDiffusionPipeline
