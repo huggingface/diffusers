@@ -537,7 +537,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
             emb = emb + class_emb
         
         #If not using inflated_conv_3d and temporal transfomer, use num_frames in unet
-        if isinstance(self.conv_in, InflatedConv3d) and self.transformer_in:
+        if not isinstance(self.conv_in, InflatedConv3d) and self.transformer_in:
             emb = emb.repeat_interleave(repeats=num_frames, dim=0)
             encoder_hidden_states = encoder_hidden_states.repeat_interleave(repeats=num_frames, dim=0)
             #2. pre-process
@@ -553,6 +553,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         for downsample_block in self.down_blocks:
             if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
                 # if sub_blocks_type == '2d':
+                print(f"Input to {type(downsample_block)} is {sample.shape}")
                 sample, res_samples = downsample_block(
                     hidden_states=sample,
                     temb=emb,
@@ -673,6 +674,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         # if sub_blocks_type == '2d':
         print(f" Before reshaping the shape was {sample.shape}")
         # reshape to (batch, channel, framerate, width, height)
+        # TODO: This is only needed if the original permute is being done. 
         sample = sample[None, :].reshape((-1, num_frames) + sample.shape[1:]).permute(0, 2, 1, 3, 4)
         
         print(f" After reshaping the shape is {sample.shape}")
