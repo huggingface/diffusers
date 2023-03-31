@@ -37,6 +37,8 @@ from .doc_utils import replace_example_docstring
 from .dynamic_modules_utils import get_class_from_dynamic_module
 from .hub_utils import (
     HF_HUB_OFFLINE,
+    _add_variant,
+    _get_model_file,
     extract_commit_hash,
     http_user_agent,
 )
@@ -55,6 +57,7 @@ from .import_utils import (
     is_k_diffusion_available,
     is_k_diffusion_version,
     is_librosa_available,
+    is_note_seq_available,
     is_omegaconf_available,
     is_onnx_available,
     is_safetensors_available,
@@ -73,7 +76,7 @@ from .import_utils import (
 from .logging import get_logger
 from .outputs import BaseOutput
 from .pil_utils import PIL_INTERPOLATION
-from .torch_utils import randn_tensor
+from .torch_utils import is_compiled_module, randn_tensor
 
 
 if is_torch_available():
@@ -85,12 +88,15 @@ if is_torch_available():
         nightly,
         parse_flag_from_env,
         print_tensor_test,
+        require_torch_2,
         require_torch_gpu,
         skip_mps,
         slow,
         torch_all_close,
         torch_device,
     )
+
+from .testing_utils import export_to_video
 
 
 logger = get_logger(__name__)

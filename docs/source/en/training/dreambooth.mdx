@@ -118,7 +118,7 @@ python train_dreambooth_flax.py \
 
 Prior preservation is used to avoid overfitting and language-drift (check out the [paper](https://arxiv.org/abs/2208.12242) to learn more if you're interested). For prior preservation, you use other images of the same class as part of the training process. The nice thing is that you can generate those images using the Stable Diffusion model itself! The training script will save the generated images to a local path you specify.
 
-The author's recommend generating `num_epochs * num_samples` images for prior preservation. In most cases, 200-300 images work well.
+The authors recommend generating `num_epochs * num_samples` images for prior preservation. In most cases, 200-300 images work well.
 
 <frameworkcontent>
 <pt>
@@ -237,7 +237,7 @@ python train_dreambooth_flax.py \
 
 ## Finetuning with LoRA
 
-You can also use Low-Rank Adaptation of Large Language Models (LoRA), a fine-tuning technique for accelerating training large models, on DreamBooth. For more details, take a look at the [LoRA training](training/lora#dreambooth) guide.
+You can also use Low-Rank Adaptation of Large Language Models (LoRA), a fine-tuning technique for accelerating training large models, on DreamBooth. For more details, take a look at the [LoRA training](./lora#dreambooth) guide.
 
 ## Saving checkpoints while training
 
@@ -321,7 +321,7 @@ Depending on your hardware, there are a few different ways to optimize DreamBoot
 
 ### xFormers
 
-[xFormers](https://github.com/facebookresearch/xformers) is a toolbox for optimizing Transformers, and it include a [memory-efficient attention](https://facebookresearch.github.io/xformers/components/ops.html#module-xformers.ops) mechanism that is used in 🧨 Diffusers. You'll need to [install xFormers](./optimization/xformers) and then add the following argument to your training script:
+[xFormers](https://github.com/facebookresearch/xformers) is a toolbox for optimizing Transformers, and it includes a [memory-efficient attention](https://facebookresearch.github.io/xformers/components/ops.html#module-xformers.ops) mechanism that is used in 🧨 Diffusers. You'll need to [install xFormers](./optimization/xformers) and then add the following argument to your training script:
 
 ```bash
   --enable_xformers_memory_efficient_attention
@@ -457,11 +457,11 @@ If you have **`"accelerate>=0.16.0"`** installed, you can use the following code
 inference from an intermediate checkpoint:
 
 ```python
-from diffusers import StableDiffusionPipeline
+from diffusers import DiffusionPipeline
 import torch
 
 model_id = "path_to_saved_model"
-pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
+pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 
 prompt = "A photo of sks dog in a bucket"
 image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
