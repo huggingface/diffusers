@@ -599,7 +599,16 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
         else:
             self.proj_out = nn.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
 
-    def forward(self, hidden_states, encoder_hidden_states=None, timestep=None, return_dict: bool = True):
+    def forward(
+        self,
+        hidden_states, 
+        encoder_hidden_states=None, 
+        timestep=None,
+        class_labels=None,
+        cross_attention_kwargs=None,
+        return_dict: bool = True
+    ):
+        #TODO: Deal with class_labels, cross_attention_kwargs
         # Input
         assert hidden_states.dim() == 5, f"Expected hidden_states to have ndim=5, but got ndim={hidden_states.dim()}."
         video_length = hidden_states.shape[2]
