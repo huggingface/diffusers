@@ -698,7 +698,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
             if isinstance(image, PIL.Image.Image):
                 height = image.height
             elif isinstance(image, torch.Tensor):
-                height = image.shape[3]
+                height = image.shape[2]
 
             height = (height // 8) * 8  # round down to nearest multiple of 8
 
@@ -706,7 +706,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
             if isinstance(image, PIL.Image.Image):
                 width = image.width
             elif isinstance(image, torch.Tensor):
-                width = image.shape[2]
+                width = image.shape[3]
 
             width = (width // 8) * 8  # round down to nearest multiple of 8
 
