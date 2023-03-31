@@ -692,6 +692,7 @@ class CrossAttnUpBlock3D(nn.Module):
                         dropout=0.1,
                     )
                 )
+            print(f"Loading UpBlock attn num_attention_heads,attention_head_dim,in_channels{num_attention_heads,attention_head_dim,out_channels}")
             attentions.append(
                 transformer_class(
                     num_attention_heads=num_attention_heads,
