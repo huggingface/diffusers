@@ -26,7 +26,6 @@ else:
     from .pndm import PNDMPipeline
     from .repaint import RePaintPipeline
     from .score_sde_ve import ScoreSdeVePipeline
-    from .spectrogram_diffusion import SpectrogramDiffusionPipeline
     from .stochastic_karras_ve import KarrasVePipeline
 
 try:
@@ -132,9 +131,9 @@ else:
         FlaxStableDiffusionPipeline,
     )
 try:
-    if not (is_note_seq_available()):
+    if not (is_transformers_available() and is_torch_available() and is_note_seq_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from ..utils.dummy_note_seq_objects import *  # noqa F403
+    from ..utils.dummy_transformers_and_torch_and_note_seq_objects import *  # noqa F403
 else:
-    from .spectrogram_diffusion import MidiProcessor
+    from .spectrogram_diffusion import SpectrogramDiffusionPipeline
