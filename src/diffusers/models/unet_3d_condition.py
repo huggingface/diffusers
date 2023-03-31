@@ -291,6 +291,9 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
                 only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
+                use_temporal_conv=use_temporal_conv,
+                use_temporal_transformer=use_temporal_transformer,
+                sub_blocks_type=sub_blocks_type
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
