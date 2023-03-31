@@ -555,7 +555,7 @@ class TextualInversionLoaderMixin:
             embeddings = [e for e in embedding]  # noqa: C416
         else:
             tokens = [token]
-            embeddings = [embedding] if len(embedding.shape) > 1 else [embedding[0]]
+            embeddings = [embedding[0]] if len(embedding.shape) > 1 else [embedding]
 
         # add tokens and get ids
         self.tokenizer.add_tokens(tokens)
