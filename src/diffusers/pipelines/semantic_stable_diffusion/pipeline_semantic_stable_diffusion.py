@@ -705,7 +705,7 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
             image = self.decode_latents(latents)
 
             if self.safety_checker is not None:
-                image, has_nsfw_concept = self.run_safety_checker(image, self.device, text_embedding.dtype)
+                image, has_nsfw_concept = self.run_safety_checker(image, self.device, text_embeddings.dtype)
             else:
                 has_nsfw_concept = False
 
