@@ -272,7 +272,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
                 self.num_upsamplers += 1
             else:
                 add_upsample = False
-            print(f"get_up_block in: { input_channel} and out: { output_channel }")
+            print(f"get_up_block in: { input_channel} and out: { output_channel },attn_num_head_channels {reversed_attention_head_dim[i]}")
             up_block = get_up_block(
                 up_block_type,
                 num_layers=layers_per_block + 1,
