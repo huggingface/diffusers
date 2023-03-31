@@ -22,6 +22,7 @@ from transformers import CLIPImageProcessor, XLMRobertaTokenizer
 from diffusers.utils import is_accelerate_available, is_accelerate_version
 
 from ...configuration_utils import FrozenDict
+from ...loaders import TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import deprecate, logging, randn_tensor, replace_example_docstring
@@ -49,7 +50,7 @@ EXAMPLE_DOC_STRING = """
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline with Stable->Alt, CLIPTextModel->RobertaSeriesModelWithTransformation, CLIPTokenizer->XLMRobertaTokenizer, AltDiffusionSafetyChecker->StableDiffusionSafetyChecker
-class AltDiffusionPipeline(DiffusionPipeline):
+class AltDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
     r"""
     Pipeline for text-to-image generation using Alt Diffusion.
 
@@ -312,6 +313,10 @@ class AltDiffusionPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
+
             text_inputs = self.tokenizer(
                 prompt,
                 padding="max_length",
@@ -371,6 +376,10 @@ class AltDiffusionPipeline(DiffusionPipeline):
                 )
             else:
                 uncond_tokens = negative_prompt
+
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 
             max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(

@@ -20,6 +20,7 @@ from packaging import version
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
+from ...loaders import TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -52,7 +53,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class StableDiffusionPipeline(DiffusionPipeline):
+class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.
 
@@ -315,6 +316,10 @@ class StableDiffusionPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
+
             text_inputs = self.tokenizer(
                 prompt,
                 padding="max_length",
@@ -374,6 +379,10 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 )
             else:
                 uncond_tokens = negative_prompt
+
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 
             max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(

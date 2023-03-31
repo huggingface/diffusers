@@ -28,6 +28,7 @@ from transformers import (
     CLIPTokenizer,
 )
 
+from ...loaders import TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention_processor import Attention
 from ...schedulers import DDIMScheduler, DDPMScheduler, EulerAncestralDiscreteScheduler, LMSDiscreteScheduler
@@ -50,7 +51,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 @dataclass
-class Pix2PixInversionPipelineOutput(BaseOutput):
+class Pix2PixInversionPipelineOutput(BaseOutput, TextualInversionLoaderMixin):
     """
     Output class for Stable Diffusion pipelines.
 
@@ -470,6 +471,10 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
+
             text_inputs = self.tokenizer(
                 prompt,
                 padding="max_length",
@@ -529,6 +534,10 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 )
             else:
                 uncond_tokens = negative_prompt
+
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 
             max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(
