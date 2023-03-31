@@ -452,6 +452,7 @@ class CrossAttnDownBlock3D(nn.Module):
                 self.resnets, self.temp_convs, self.attentions, self.temp_attentions
             ):
                 hidden_states = resnet(hidden_states, temb)
+                print(f"In CrossAttnDownBlock3D, for {attn}, input {hidden_states.shape} with temp_conv")
                 hidden_states = temp_conv(hidden_states, num_frames=num_frames)
                 hidden_states = attn(
                     hidden_states,
@@ -483,6 +484,7 @@ class CrossAttnDownBlock3D(nn.Module):
             #     )[0]
             # else:
                 hidden_states = resnet(hidden_states, temb)
+                print(f"In CrossAttnDownBlock3D, for {attn}, input {hidden_states.shape}")
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -754,6 +756,7 @@ class CrossAttnUpBlock3D(nn.Module):
                 
                 hidden_states = resnet(hidden_states, temb)
                 hidden_states = temp_conv(hidden_states, num_frames=num_frames)
+                print(f"In CrossAttnUpBlock3D, for {attn}, input {hidden_states.shape} with temp_conv")
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -771,6 +774,7 @@ class CrossAttnUpBlock3D(nn.Module):
                 hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
                 
                 hidden_states = resnet(hidden_states, temb)
+                print(f"In CrossAttnUpBlock3D, for {attn}, input {hidden_states.shape}")
                 hidden_states = attn(hidden_states, encoder_hidden_states=encoder_hidden_states,cross_attention_kwargs=cross_attention_kwargs).sample
 
         if self.upsamplers is not None:
