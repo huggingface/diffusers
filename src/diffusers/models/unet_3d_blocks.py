@@ -119,7 +119,6 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             resnet_time_scale_shift=resnet_time_scale_shift,
-            use_temporal_transformer=use_temporal_transformer, #True for Text2VideoSD. False for TuneAVideo
             use_temporal_conv=use_temporal_conv, #True for Text2VideoSD. False for TuneAVideo
             sub_blocks_type=sub_blocks_type #2d for Text2VideoSD. #3d for TuneAVideo
         )
