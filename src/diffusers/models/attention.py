@@ -758,7 +758,7 @@ class BasicSparseTransformerBlock(nn.Module):
     def forward(
         self, hidden_states, encoder_hidden_states=None, timestep=None, attention_mask=None, video_length=None
     ):  
-        print(f"self.norm1 is {self.norm1} and input is {hidden_states}")
+        print(f"self.norm1 is {self.norm1} and input is {hidden_states.shape}")
         # SparseCausal-Attention
         norm_hidden_states = (
             self.norm1(hidden_states, timestep) if self.use_ada_layer_norm else self.norm1(hidden_states)
