@@ -14,7 +14,7 @@
 
 import inspect
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import PIL
@@ -751,6 +751,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
         guidance_scale: float = 7.5,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_type: Optional[str] = "np",
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
     ):
         r"""
         Function used to generate a latent mask given a mask prompt, a target prompt, and an image.
@@ -817,6 +818,10 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
 
         Examples:
 
@@ -872,6 +877,8 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
             batch_size = len(target_prompt)
         else:
             batch_size = target_prompt_embeds.shape[0]
+        if cross_attention_kwargs is None:
+            cross_attention_kwargs = {}
 
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
@@ -920,7 +927,12 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
 
         # 7. Predict the noise residual
         prompt_embeds = torch.cat([source_prompt_embeds, target_prompt_embeds])
-        noise_pred = self.unet(latent_model_input, encode_timestep, encoder_hidden_states=prompt_embeds).sample
+        noise_pred = self.unet(
+            latent_model_input,
+            encode_timestep,
+            encoder_hidden_states=prompt_embeds,
+            cross_attention_kwargs=cross_attention_kwargs,
+        ).sample
 
         if do_classifier_free_guidance:
             noise_pred_neg_src, noise_pred_source, noise_pred_uncond, noise_pred_target = noise_pred.chunk(4)
@@ -968,6 +980,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         lambda_auto_corr: float = 20.0,
         lambda_kl: float = 20.0,
         num_reg_steps: int = 0,
@@ -1027,6 +1040,10 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
             lambda_auto_corr (`float`, *optional*, defaults to 20.0):
                 Lambda parameter to control auto correction
             lambda_kl (`float`, *optional*, defaults to 20.0):
@@ -1101,6 +1118,8 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
+        if cross_attention_kwargs is None:
+            cross_attention_kwargs = {}
 
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
@@ -1142,7 +1161,12 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
                 latent_model_input = self.inverse_scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=prompt_embeds).sample
+                noise_pred = self.unet(
+                    latent_model_input,
+                    t,
+                    encoder_hidden_states=prompt_embeds,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                ).sample
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -1234,6 +1258,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -1298,6 +1323,10 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
 
         Examples:
 
@@ -1375,6 +1404,8 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
+        if cross_attention_kwargs is None:
+            cross_attention_kwargs = {}
 
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
@@ -1430,7 +1461,12 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=prompt_embeds).sample
+                noise_pred = self.unet(
+                    latent_model_input,
+                    t,
+                    encoder_hidden_states=prompt_embeds,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                ).sample
 
                 # perform guidance
                 if do_classifier_free_guidance:
