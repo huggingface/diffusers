@@ -447,7 +447,7 @@ class CrossAttnDownBlock3D(nn.Module):
         # TODO(Patrick, William) - attention mask is not used
         output_states = ()
         
-        if self.temp_conv and self.temp_attn:
+        if self.temp_convs and self.temp_attentions:
             for resnet, temp_conv, attn, temp_attn in zip(
                 self.resnets, self.temp_convs, self.attentions, self.temp_attentions
             ):
@@ -462,7 +462,7 @@ class CrossAttnDownBlock3D(nn.Module):
 
                 output_states += (hidden_states,)
         
-        elif not self.temp_conv and not self.temp_attn:
+        elif not self.temp_convs and not self.temp_attentions:
             for resnet, attn in zip(self.resnets, self.attentions):
             # if self.training and self.gradient_checkpointing:
 
@@ -576,7 +576,7 @@ class DownBlock3D(nn.Module):
     def forward(self, hidden_states, temb=None, num_frames=1):
         output_states = ()
         
-        if self.temp_conv:
+        if self.temp_convs:
             for resnet, temp_conv in zip(self.resnets, self.temp_convs):
                 hidden_states = resnet(hidden_states, temb)
                 hidden_states = temp_conv(hidden_states, num_frames=num_frames)
@@ -743,7 +743,7 @@ class CrossAttnUpBlock3D(nn.Module):
     ):  
         # TODO(Patrick, William) - attention mask is not used
 
-        if self.temp_conv and self.temp_attn:
+        if self.temp_convs and self.temp_attentions:
             for resnet, temp_conv, attn, temp_attn in zip(
                 self.resnets, self.temp_convs, self.attentions, self.temp_attentions
             ):
@@ -761,7 +761,7 @@ class CrossAttnUpBlock3D(nn.Module):
                 ).sample
                 hidden_states = temp_attn(hidden_states, num_frames=num_frames).sample
         
-        elif not self.temp_conv and not self.temp_attn:
+        elif not self.temp_convs and not self.temp_attentions:
             for resnet, attn in zip(
                 self.resnets, self.attentions
             ):  
