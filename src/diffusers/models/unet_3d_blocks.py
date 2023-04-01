@@ -386,12 +386,13 @@ class CrossAttnDownBlock3D(nn.Module):
                 )
             
             #TODO: Verify if this is a typo. Because TuneAVideo implementation is opposite
+            # wwas using in_channels here earlier. Replaced to out_channels. Can move it out of loop now.
             if sub_blocks_type == '2d':
-                num_attention_heads = in_channels // attn_num_head_channels
+                num_attention_heads = out_channels // attn_num_head_channels
                 attention_head_dim = attn_num_head_channels
             elif sub_blocks_type == '3d':
                 num_attention_heads = attn_num_head_channels
-                attention_head_dim = in_channels // attn_num_head_channels
+                attention_head_dim = out_channels // attn_num_head_channels
             
             attentions.append(
                 transformer_class(
