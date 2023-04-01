@@ -216,10 +216,10 @@ class UNetMidBlock3DCrossAttn(nn.Module):
         temp_attentions = []
         
         #TODO: Verify if this is a typo. Because TuneAVideo implementation is opposite
-        if sub_blocks_type == '2d' or sub_blocks_type == '3d':
+        if sub_blocks_type == '2d':
             num_attention_heads = in_channels // attn_num_head_channels
             attention_head_dim = attn_num_head_channels
-        elif sub_blocks_type == '3d' and False:
+        elif sub_blocks_type == '3d':
             num_attention_heads = attn_num_head_channels
             attention_head_dim = in_channels // attn_num_head_channels
 
@@ -357,10 +357,10 @@ class CrossAttnDownBlock3D(nn.Module):
             raise NotImplementedError(f'Unexpected sub_blocks_type {sub_blocks_type}. Only `2d` or `3d` is expected')
 
         #TODO: Verify if this is a typo. Because TuneAVideo implementation is opposite
-        if sub_blocks_type == '2d' or sub_blocks_type == '3d':
+        if sub_blocks_type == '2d':
             num_attention_heads = in_channels // attn_num_head_channels
             attention_head_dim = attn_num_head_channels
-        elif sub_blocks_type == '3d' and False:
+        elif sub_blocks_type == '3d':
             num_attention_heads = attn_num_head_channels
             attention_head_dim = in_channels // attn_num_head_channels
 
@@ -656,10 +656,10 @@ class CrossAttnUpBlock3D(nn.Module):
             raise NotImplementedError
             
         #TODO: Verify if this is a typo. Because TuneAVideo implementation is opposite
-        if sub_blocks_type == '2d' or sub_blocks_type == '3d':
+        if sub_blocks_type == '2d':
             num_attention_heads = out_channels // attn_num_head_channels
             attention_head_dim = attn_num_head_channels
-        elif sub_blocks_type == '3d' and False:
+        elif sub_blocks_type == '3d':
             num_attention_heads = attn_num_head_channels
             attention_head_dim = out_channels // attn_num_head_channels
                     
