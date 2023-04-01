@@ -516,7 +516,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         # num_frames is equivalent to video_length in TuneAVideo
         num_frames = sample.shape[2]
         timesteps = timesteps.expand(sample.shape[0])
-
+        print(f"Expected input shape is (batch, channel, num_frames, height, width) where num_frames = {num_frames}, received {sample.shape}")
         t_emb = self.time_proj(timesteps)
 
         # timesteps does not contain any weights and will always return f32 tensors
@@ -535,19 +535,21 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
 
             class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
             emb = emb + class_emb
-        
+
+        #2. pre-process
         #If not using inflated_conv_3d and temporal transfomer, use num_frames in unet
         if not isinstance(self.conv_in, InflatedConv3d) and self.transformer_in:
             emb = emb.repeat_interleave(repeats=num_frames, dim=0)
             encoder_hidden_states = encoder_hidden_states.repeat_interleave(repeats=num_frames, dim=0)
-            #2. pre-process
+            
             sample = sample.permute(0, 2, 1, 3, 4).reshape((sample.shape[0] * num_frames, -1) + sample.shape[3:])
             sample = self.conv_in(sample)
 
             sample = self.transformer_in(sample, num_frames=num_frames).sample
         else:
             sample = self.conv_in(sample)
-
+        
+        print(f"Output of preprocessing is {sample.shape}")
         # 3. down
         down_block_res_samples = (sample,)
         for downsample_block in self.down_blocks:
@@ -578,7 +580,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
                 #     sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
 
             down_block_res_samples += res_samples
-        
+        print(f"Output of downsampling is {sample.shape}")
         if down_block_additional_residuals is not None:
             new_down_block_res_samples = ()
 
@@ -609,7 +611,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
             #         encoder_hidden_states=encoder_hidden_states,
             #         attention_mask=attention_mask
             #     )
-                
+        print(f"Output of mid blocks is {sample.shape}")
         if mid_block_additional_residual is not None:
             sample = sample + mid_block_additional_residual
 
@@ -628,6 +630,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
             if hasattr(upsample_block, "has_cross_attention") and upsample_block.has_cross_attention:
                 #TODO: DO what you did for down blocks here.
                 # if isinstance(upsample_block,UpBlock2D) == '2d':
+                print(f"Upsampling block {type(upsample_block)} received {sample.shape}")
                 sample = upsample_block(
                     hidden_states=sample,
                     temb=emb,
@@ -649,6 +652,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
                 #     )
             else:
                 # if sub_blocks_type == '2d':
+                print(f"Upsampling block {type(upsample_block)} received {sample.shape} no cross attn")
                 sample = upsample_block(
                     hidden_states=sample,
                     temb=emb,
@@ -663,7 +667,8 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
                 #         res_hidden_states_tuple=res_samples,
                 #         upsample_size=upsample_size
                 #     )
-
+        
+        print(f"Postprocessing ip received {sample.shape}")
         # 6. post-process
         if self.conv_norm_out:
             sample = self.conv_norm_out(sample)
