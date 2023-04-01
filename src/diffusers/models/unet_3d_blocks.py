@@ -356,14 +356,6 @@ class CrossAttnDownBlock3D(nn.Module):
         else:
             raise NotImplementedError(f'Unexpected sub_blocks_type {sub_blocks_type}. Only `2d` or `3d` is expected')
 
-        #TODO: Verify if this is a typo. Because TuneAVideo implementation is opposite
-        if sub_blocks_type == '2d':
-            num_attention_heads = in_channels // attn_num_head_channels
-            attention_head_dim = attn_num_head_channels
-        elif sub_blocks_type == '3d':
-            num_attention_heads = attn_num_head_channels
-            attention_head_dim = in_channels // attn_num_head_channels
-
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
             resnets.append(
@@ -392,6 +384,14 @@ class CrossAttnDownBlock3D(nn.Module):
                         dropout=0.1,
                     )
                 )
+            
+            #TODO: Verify if this is a typo. Because TuneAVideo implementation is opposite
+            if sub_blocks_type == '2d':
+                num_attention_heads = in_channels // attn_num_head_channels
+                attention_head_dim = attn_num_head_channels
+            elif sub_blocks_type == '3d':
+                num_attention_heads = attn_num_head_channels
+                attention_head_dim = in_channels // attn_num_head_channels
             
             attentions.append(
                 transformer_class(
