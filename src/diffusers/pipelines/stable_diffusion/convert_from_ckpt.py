@@ -363,6 +363,8 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
             if key.startswith("model.diffusion_model"):
                 flat_ema_key = "model_ema." + "".join(key.split(".")[1:])
                 unet_state_dict[key.replace(unet_key, "")] = checkpoint.pop(flat_ema_key)
+            else:
+                unet_state_dict[key] = checkpoint.pop(key)
     else:
         if sum(k.startswith("model_ema") for k in keys) > 100:
             print(
@@ -373,7 +375,9 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
         for key in keys:
             if key.startswith(unet_key):
                 unet_state_dict[key.replace(unet_key, "")] = checkpoint.pop(key)
-
+            else:
+                unet_state_dict[key] = checkpoint.pop(key)
+                
     new_checkpoint = {}
 
     new_checkpoint["time_embedding.linear_1.weight"] = unet_state_dict["time_embed.0.weight"]
