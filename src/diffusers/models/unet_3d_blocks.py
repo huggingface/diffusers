@@ -16,7 +16,7 @@ import torch
 from torch import nn
 
 from .attention import Transformer3DModel
-from .resnet import Downsample3D, ResnetBlock3D, Upsample3D, Downsample2D, ResnetBlock2D, TemporalConvLayer, Upsample2D
+from .resnet import Downsample2D, Downsample3D, ResnetBlock2D, ResnetBlock3D, TemporalConvLayer, Upsample2D, Upsample3D
 from .transformer_2d import Transformer2DModel
 from .transformer_temporal import TransformerTemporalModel
 
@@ -39,9 +39,9 @@ def get_down_block(
     only_cross_attention=False,
     upcast_attention=False,
     resnet_time_scale_shift="default",
-    use_temporal_transformer=True, #True for Text2VideoSD. False for TuneAVideo
-    use_temporal_conv=True, #True for Text2VideoSD. False for TuneAVideo
-    sub_blocks_type='2d' #2d for Text2VideoSD. #3d for TuneAVideo
+    use_temporal_transformer=True,  # True for Text2VideoSD. False for TuneAVideo
+    use_temporal_conv=True,  # True for Text2VideoSD. False for TuneAVideo
+    sub_blocks_type="2d",  # 2d for Text2VideoSD. #3d for TuneAVideo
 ):
     if down_block_type == "DownBlock3D":
         return DownBlock3D(
@@ -55,8 +55,8 @@ def get_down_block(
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
             resnet_time_scale_shift=resnet_time_scale_shift,
-            use_temporal_conv=use_temporal_conv, #True for Text2VideoSD. False for TuneAVideo
-            sub_blocks_type=sub_blocks_type #2d for Text2VideoSD. #3d for TuneAVideo
+            use_temporal_conv=use_temporal_conv,  # True for Text2VideoSD. False for TuneAVideo
+            sub_blocks_type=sub_blocks_type,  # 2d for Text2VideoSD. #3d for TuneAVideo
         )
     elif down_block_type == "CrossAttnDownBlock3D":
         if cross_attention_dim is None:
@@ -78,9 +78,9 @@ def get_down_block(
             only_cross_attention=only_cross_attention,
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
-            use_temporal_transformer=use_temporal_transformer, #True for Text2VideoSD. False for TuneAVideo
-            use_temporal_conv=use_temporal_conv, #True for Text2VideoSD. False for TuneAVideo
-            sub_blocks_type=sub_blocks_type #2d for Text2VideoSD. #3d for TuneAVideo
+            use_temporal_transformer=use_temporal_transformer,  # True for Text2VideoSD. False for TuneAVideo
+            use_temporal_conv=use_temporal_conv,  # True for Text2VideoSD. False for TuneAVideo
+            sub_blocks_type=sub_blocks_type,  # 2d for Text2VideoSD. #3d for TuneAVideo
         )
     raise ValueError(f"{down_block_type} does not exist.")
 
@@ -103,9 +103,9 @@ def get_up_block(
     only_cross_attention=False,
     upcast_attention=False,
     resnet_time_scale_shift="default",
-    use_temporal_transformer=True, #True for Text2VideoSD. False for TuneAVideo
-    use_temporal_conv=True, #True for Text2VideoSD. False for TuneAVideo
-    sub_blocks_type='2d' #2d for Text2VideoSD. #3d for TuneAVideo
+    use_temporal_transformer=True,  # True for Text2VideoSD. False for TuneAVideo
+    use_temporal_conv=True,  # True for Text2VideoSD. False for TuneAVideo
+    sub_blocks_type="2d",  # 2d for Text2VideoSD. #3d for TuneAVideo
 ):
     if up_block_type == "UpBlock3D":
         return UpBlock3D(
@@ -119,8 +119,8 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             resnet_time_scale_shift=resnet_time_scale_shift,
-            use_temporal_conv=use_temporal_conv, #True for Text2VideoSD. False for TuneAVideo
-            sub_blocks_type=sub_blocks_type #2d for Text2VideoSD. #3d for TuneAVideo
+            use_temporal_conv=use_temporal_conv,  # True for Text2VideoSD. False for TuneAVideo
+            sub_blocks_type=sub_blocks_type,  # 2d for Text2VideoSD. #3d for TuneAVideo
         )
     elif up_block_type == "CrossAttnUpBlock3D":
         if cross_attention_dim is None:
@@ -142,9 +142,9 @@ def get_up_block(
             only_cross_attention=only_cross_attention,
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
-            use_temporal_transformer=use_temporal_transformer, #True for Text2VideoSD. False for TuneAVideo
-            use_temporal_conv=use_temporal_conv, #True for Text2VideoSD. False for TuneAVideo
-            sub_blocks_type=sub_blocks_type #2d for Text2VideoSD. #3d for TuneAVideo
+            use_temporal_transformer=use_temporal_transformer,  # True for Text2VideoSD. False for TuneAVideo
+            use_temporal_conv=use_temporal_conv,  # True for Text2VideoSD. False for TuneAVideo
+            sub_blocks_type=sub_blocks_type,  # 2d for Text2VideoSD. #3d for TuneAVideo
         )
     raise ValueError(f"{up_block_type} does not exist.")
 
@@ -167,22 +167,22 @@ class UNetMidBlock3DCrossAttn(nn.Module):
         dual_cross_attention=False,
         use_linear_projection=True,
         upcast_attention=False,
-        use_temporal_transformer=True, #False for TuneAVideo
-        use_temporal_conv=True, #False for TuneAVideo
-        sub_blocks_type='2d' #2d for Text2VideoSD. #3d for TuneAVideo
+        use_temporal_transformer=True,  # False for TuneAVideo
+        use_temporal_conv=True,  # False for TuneAVideo
+        sub_blocks_type="2d",  # 2d for Text2VideoSD. #3d for TuneAVideo
     ):
         super().__init__()
 
         self.has_cross_attention = True
         self.attn_num_head_channels = attn_num_head_channels
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
-        
+
         resnet_class = None
         transformer_class = None
-        if sub_blocks_type == '2d':
+        if sub_blocks_type == "2d":
             resnet_class = ResnetBlock2D
             transformer_class = Transformer2DModel
-        elif sub_blocks_type == '3d':
+        elif sub_blocks_type == "3d":
             resnet_class = ResnetBlock3D
             transformer_class = Transformer3DModel
 
@@ -201,7 +201,7 @@ class UNetMidBlock3DCrossAttn(nn.Module):
                 pre_norm=resnet_pre_norm,
             )
         ]
-        
+
         temp_convs = []
 
         if use_temporal_conv:
@@ -214,12 +214,12 @@ class UNetMidBlock3DCrossAttn(nn.Module):
             ]
         attentions = []
         temp_attentions = []
-        
-        #TODO: Verify if this is a typo. Because TuneAVideo implementation is opposite
-        if sub_blocks_type == '2d':
+
+        # TODO: Verify if this is a typo. Because TuneAVideo implementation is opposite
+        if sub_blocks_type == "2d":
             num_attention_heads = in_channels // attn_num_head_channels
             attention_head_dim = attn_num_head_channels
-        elif sub_blocks_type == '3d':
+        elif sub_blocks_type == "3d":
             num_attention_heads = attn_num_head_channels
             attention_head_dim = in_channels // attn_num_head_channels
 
@@ -285,11 +285,11 @@ class UNetMidBlock3DCrossAttn(nn.Module):
         attention_mask=None,
         num_frames=1,
         cross_attention_kwargs=None,
-    ):  
+    ):
         hidden_states = self.resnets[0](hidden_states, temb)
         if self.temp_convs:
             hidden_states = self.temp_convs[0](hidden_states, num_frames=num_frames)
-        #TODO: Uncouple temp_conv and temp_attention
+        # TODO: Uncouple temp_conv and temp_attention
         if self.temp_convs and self.temp_attentions:
             for attn, temp_attn, resnet, temp_conv in zip(
                 self.attentions, self.temp_attentions, self.resnets[1:], self.temp_convs[1:]
@@ -302,16 +302,16 @@ class UNetMidBlock3DCrossAttn(nn.Module):
                 hidden_states = temp_attn(hidden_states, num_frames=num_frames).sample
                 hidden_states = resnet(hidden_states, temb)
                 hidden_states = temp_conv(hidden_states, num_frames=num_frames)
-        
+
         elif not self.temp_convs and not self.temp_attentions:
             for attn, resnet in zip(self.attentions, self.resnets[1:]):
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
-                    cross_attention_kwargs=cross_attention_kwargs
-                    ).sample
+                    cross_attention_kwargs=cross_attention_kwargs,
+                ).sample
                 hidden_states = resnet(hidden_states, temb)
-        
+
         else:
             NotImplementedError("If using temp_conv, make sure temp_attentions are also setup")
 
@@ -340,9 +340,9 @@ class CrossAttnDownBlock3D(nn.Module):
         use_linear_projection=False,
         only_cross_attention=False,
         upcast_attention=False,
-        use_temporal_transformer=True, #True for Text2VideoSD. False for TuneAVideo
-        use_temporal_conv=True, #True for Text2VideoSD. False for TuneAVideo
-        sub_blocks_type='2d', #2d for Text2VideoSD, 3d for TuneAVideo
+        use_temporal_transformer=True,  # True for Text2VideoSD. False for TuneAVideo
+        use_temporal_conv=True,  # True for Text2VideoSD. False for TuneAVideo
+        sub_blocks_type="2d",  # 2d for Text2VideoSD, 3d for TuneAVideo
     ):
         super().__init__()
         resnets = []
@@ -353,16 +353,16 @@ class CrossAttnDownBlock3D(nn.Module):
         self.has_cross_attention = True
         self.attn_num_head_channels = attn_num_head_channels
 
-        if sub_blocks_type == '2d':
+        if sub_blocks_type == "2d":
             resnet_class = ResnetBlock2D
             transformer_class = Transformer2DModel
             downsampler_class = Downsample2D
-        elif sub_blocks_type == '3d':
+        elif sub_blocks_type == "3d":
             resnet_class = ResnetBlock3D
             transformer_class = Transformer3DModel
             downsampler_class = Downsample3D
         else:
-            raise NotImplementedError(f'Unexpected sub_blocks_type {sub_blocks_type}. Only `2d` or `3d` is expected')
+            raise NotImplementedError(f"Unexpected sub_blocks_type {sub_blocks_type}. Only `2d` or `3d` is expected")
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -380,10 +380,10 @@ class CrossAttnDownBlock3D(nn.Module):
                     pre_norm=resnet_pre_norm,
                 )
             )
-            
+
             if dual_cross_attention:
                 raise NotImplementedError
-            
+
             if use_temporal_conv:
                 temp_convs.append(
                     TemporalConvLayer(
@@ -392,16 +392,16 @@ class CrossAttnDownBlock3D(nn.Module):
                         dropout=0.1,
                     )
                 )
-            
-            #TODO: Verify if this is a typo. Because TuneAVideo implementation is opposite
+
+            # TODO: Verify if this is a typo. Because TuneAVideo implementation is opposite
             # wwas using in_channels here earlier. Replaced to out_channels. Can move it out of loop now.
-            if sub_blocks_type == '2d':
+            if sub_blocks_type == "2d":
                 num_attention_heads = out_channels // attn_num_head_channels
                 attention_head_dim = attn_num_head_channels
-            elif sub_blocks_type == '3d':
+            elif sub_blocks_type == "3d":
                 num_attention_heads = attn_num_head_channels
                 attention_head_dim = out_channels // attn_num_head_channels
-            
+
             attentions.append(
                 transformer_class(
                     num_attention_heads=num_attention_heads,
@@ -455,7 +455,7 @@ class CrossAttnDownBlock3D(nn.Module):
     ):
         # TODO(Patrick, William) - attention mask is not used
         output_states = ()
-        
+
         if self.temp_convs and self.temp_attentions:
             for resnet, temp_conv, attn, temp_attn in zip(
                 self.resnets, self.temp_convs, self.attentions, self.temp_attentions
@@ -471,33 +471,33 @@ class CrossAttnDownBlock3D(nn.Module):
                 hidden_states = temp_attn(hidden_states, num_frames=num_frames).sample
 
                 output_states += (hidden_states,)
-        
+
         elif not self.temp_convs and not self.temp_attentions:
             for resnet, attn in zip(self.resnets, self.attentions):
-            # if self.training and self.gradient_checkpointing:
+                # if self.training and self.gradient_checkpointing:
 
-            #     def create_custom_forward(module, return_dict=None):
-            #         def custom_forward(*inputs):
-            #             if return_dict is not None:
-            #                 return module(*inputs, return_dict=return_dict)
-            #             else:
-            #                 return module(*inputs)
+                #     def create_custom_forward(module, return_dict=None):
+                #         def custom_forward(*inputs):
+                #             if return_dict is not None:
+                #                 return module(*inputs, return_dict=return_dict)
+                #             else:
+                #                 return module(*inputs)
 
-            #         return custom_forward
+                #         return custom_forward
 
-            #     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
-            #     hidden_states = torch.utils.checkpoint.checkpoint(
-            #         create_custom_forward(attn, return_dict=False),
-            #         hidden_states,
-            #         encoder_hidden_states,
-            #     )[0]
-            # else:
+                #     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
+                #     hidden_states = torch.utils.checkpoint.checkpoint(
+                #         create_custom_forward(attn, return_dict=False),
+                #         hidden_states,
+                #         encoder_hidden_states,
+                #     )[0]
+                # else:
                 hidden_states = resnet(hidden_states, temb)
                 print(f"In CrossAttnDownBlock3D, for {attn}, input {hidden_states.shape}")
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
-                    cross_attention_kwargs=cross_attention_kwargs
+                    cross_attention_kwargs=cross_attention_kwargs,
                 ).sample
 
                 output_states += (hidden_states,)
@@ -527,17 +527,17 @@ class DownBlock3D(nn.Module):
         output_scale_factor=1.0,
         add_downsample=True,
         downsample_padding=1,
-        use_temporal_conv:bool = True, #Use false for TuneAVideo
-        sub_blocks_type: str = '2d' #Use 2d for ResNet2D, Transformer2D blocks in DownBlock3D. This is in TuneAVideo
+        use_temporal_conv: bool = True,  # Use false for TuneAVideo
+        sub_blocks_type: str = "2d",  # Use 2d for ResNet2D, Transformer2D blocks in DownBlock3D. This is in TuneAVideo
     ):
         super().__init__()
         resnets = []
         temp_convs = []
 
-        if sub_blocks_type == '2d':
+        if sub_blocks_type == "2d":
             resnet_class = ResnetBlock2D
             downsampler_class = Downsample2D
-        elif sub_blocks_type == '3d':
+        elif sub_blocks_type == "3d":
             resnet_class = ResnetBlock3D
             downsampler_class = Downsample3D
         else:
@@ -586,7 +586,7 @@ class DownBlock3D(nn.Module):
 
     def forward(self, hidden_states, temb=None, num_frames=1):
         output_states = ()
-        
+
         if self.temp_convs:
             for resnet, temp_conv in zip(self.resnets, self.temp_convs):
                 hidden_states = resnet(hidden_states, temb)
@@ -607,7 +607,6 @@ class DownBlock3D(nn.Module):
                 # else:
                 hidden_states = resnet(hidden_states, temb)
                 output_states += (hidden_states,)
-
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
@@ -640,9 +639,9 @@ class CrossAttnUpBlock3D(nn.Module):
         use_linear_projection=False,
         only_cross_attention=False,
         upcast_attention=False,
-        use_temporal_transformer: bool = True, #Use false for TuneAVideo
-        use_temporal_conv:bool = True, #Use false for TuneAVideo
-        sub_blocks_type: str = '2d' #Use 2d for ResNet2D, Transformer2D blocks in DownBlock3D. This is in TuneAVideo
+        use_temporal_transformer: bool = True,  # Use false for TuneAVideo
+        use_temporal_conv: bool = True,  # Use false for TuneAVideo
+        sub_blocks_type: str = "2d",  # Use 2d for ResNet2D, Transformer2D blocks in DownBlock3D. This is in TuneAVideo
     ):
         super().__init__()
         resnets = []
@@ -653,25 +652,24 @@ class CrossAttnUpBlock3D(nn.Module):
         self.has_cross_attention = True
         self.attn_num_head_channels = attn_num_head_channels
 
-        if sub_blocks_type == '2d':
+        if sub_blocks_type == "2d":
             resnet_class = ResnetBlock2D
             transformer_class = Transformer2DModel
             upsampler_class = Upsample2D
-        elif sub_blocks_type == '3d':
+        elif sub_blocks_type == "3d":
             resnet_class = ResnetBlock3D
             transformer_class = Transformer3DModel
             upsampler_class = Upsample3D
         else:
             raise NotImplementedError
-            
-        #TODO: Verify if this is a typo. Because TuneAVideo implementation is opposite
-        if sub_blocks_type == '2d':
+
+        # TODO: Verify if this is a typo. Because TuneAVideo implementation is opposite
+        if sub_blocks_type == "2d":
             num_attention_heads = out_channels // attn_num_head_channels
             attention_head_dim = attn_num_head_channels
-        elif sub_blocks_type == '3d':
+        elif sub_blocks_type == "3d":
             num_attention_heads = attn_num_head_channels
             attention_head_dim = out_channels // attn_num_head_channels
-                    
 
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
@@ -694,7 +692,7 @@ class CrossAttnUpBlock3D(nn.Module):
 
             if dual_cross_attention:
                 raise NotImplementedError
-            
+
             if use_temporal_conv:
                 temp_convs.append(
                     TemporalConvLayer(
@@ -703,7 +701,9 @@ class CrossAttnUpBlock3D(nn.Module):
                         dropout=0.1,
                     )
                 )
-            print(f"Loading UpBlock attn num_attention_heads,attention_head_dim,in_channels{num_attention_heads,attention_head_dim,out_channels}")
+            print(
+                f"Loading UpBlock attn num_attention_heads,attention_head_dim,in_channels{num_attention_heads,attention_head_dim,out_channels}"
+            )
             attentions.append(
                 transformer_class(
                     num_attention_heads=num_attention_heads,
@@ -751,7 +751,7 @@ class CrossAttnUpBlock3D(nn.Module):
         attention_mask=None,
         num_frames=1,
         cross_attention_kwargs=None,
-    ):  
+    ):
         # TODO(Patrick, William) - attention mask is not used
 
         if self.temp_convs and self.temp_attentions:
@@ -762,7 +762,7 @@ class CrossAttnUpBlock3D(nn.Module):
                 res_hidden_states = res_hidden_states_tuple[-1]
                 res_hidden_states_tuple = res_hidden_states_tuple[:-1]
                 hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
-                
+
                 hidden_states = resnet(hidden_states, temb)
                 hidden_states = temp_conv(hidden_states, num_frames=num_frames)
                 print(f"In CrossAttnUpBlock3D, for {attn}, input {hidden_states.shape} with temp_conv")
@@ -772,19 +772,21 @@ class CrossAttnUpBlock3D(nn.Module):
                     cross_attention_kwargs=cross_attention_kwargs,
                 ).sample
                 hidden_states = temp_attn(hidden_states, num_frames=num_frames).sample
-        
+
         elif not self.temp_convs and not self.temp_attentions:
-            for resnet, attn in zip(
-                self.resnets, self.attentions
-            ):  
+            for resnet, attn in zip(self.resnets, self.attentions):
                 # pop res hidden states
                 res_hidden_states = res_hidden_states_tuple[-1]
                 res_hidden_states_tuple = res_hidden_states_tuple[:-1]
                 hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
-                
+
                 hidden_states = resnet(hidden_states, temb)
                 print(f"In CrossAttnUpBlock3D, for {attn}, input {hidden_states.shape}")
-                hidden_states = attn(hidden_states, encoder_hidden_states=encoder_hidden_states,cross_attention_kwargs=cross_attention_kwargs).sample
+                hidden_states = attn(
+                    hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                ).sample
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -809,20 +811,19 @@ class UpBlock3D(nn.Module):
         resnet_pre_norm: bool = True,
         output_scale_factor=1.0,
         add_upsample=True,
-        use_temporal_conv:bool = True, #Use false for TuneAVideo
-        sub_blocks_type: str = '2d' #Use 2d for ResNet2D, Transformer2D blocks in DownBlock3D. This is in TuneAVideo
+        use_temporal_conv: bool = True,  # Use false for TuneAVideo
+        sub_blocks_type: str = "2d",  # Use 2d for ResNet2D, Transformer2D blocks in DownBlock3D. This is in TuneAVideo
     ):
         super().__init__()
         resnets = []
         temp_convs = []
-        
-        if sub_blocks_type == '2d':
+
+        if sub_blocks_type == "2d":
             resnet_class = ResnetBlock2D
             upsampler_class = Upsample2D
-        elif sub_blocks_type == '3d':
+        elif sub_blocks_type == "3d":
             resnet_class = ResnetBlock3D
             upsampler_class = Upsample3D
-
 
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
@@ -868,7 +869,7 @@ class UpBlock3D(nn.Module):
                 res_hidden_states = res_hidden_states_tuple[-1]
                 res_hidden_states_tuple = res_hidden_states_tuple[:-1]
                 hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
-                
+
                 hidden_states = resnet(hidden_states, temb)
                 hidden_states = temp_conv(hidden_states, num_frames=num_frames)
         else:
@@ -889,7 +890,7 @@ class UpBlock3D(nn.Module):
 
             #     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
             # else:
-                # hidden_states = resnet(hidden_states, temb)
+            # hidden_states = resnet(hidden_states, temb)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:

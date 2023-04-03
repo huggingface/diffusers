@@ -277,7 +277,7 @@ class TuneAVideoPipeline(DiffusionPipeline):
 
     def prepare_latents(
         self, batch_size, num_channels_latents, video_length, height, width, dtype, device, generator, latents=None
-    ):  
+    ):
         shape = (
             batch_size,
             num_channels_latents,
@@ -331,7 +331,7 @@ class TuneAVideoPipeline(DiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
         **kwargs,
-    ):  
+    ):
         # Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
@@ -358,8 +358,8 @@ class TuneAVideoPipeline(DiffusionPipeline):
 
         # Prepare latent variables
         num_channels_latents = self.unet.in_channels
-        #TODO: Remove after verification:
-        #latents shape is now: ( batch, num_frames, channel, height, width)
+        # TODO: Remove after verification:
+        # latents shape is now: ( batch, num_frames, channel, height, width)
         latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,
             num_channels_latents,
@@ -383,8 +383,10 @@ class TuneAVideoPipeline(DiffusionPipeline):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-                
-                print(f"Debugging shapes to unet input {latent_model_input.shape}, {t.shape}, {text_embeddings.shape} ")
+
+                print(
+                    f"Debugging shapes to unet input {latent_model_input.shape}, {t.shape}, {text_embeddings.shape} "
+                )
                 # predict the noise residual
                 noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample.to(
                     dtype=latents_dtype

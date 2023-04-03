@@ -566,7 +566,7 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
 
         # Define input layers
         self.in_channels = in_channels
-        
+
         self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
         if use_linear_projection:
             self.proj_in = nn.Linear(in_channels, inner_dim)
@@ -601,14 +601,14 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
 
     def forward(
         self,
-        hidden_states, 
-        encoder_hidden_states=None, 
+        hidden_states,
+        encoder_hidden_states=None,
         timestep=None,
         class_labels=None,
         cross_attention_kwargs=None,
-        return_dict: bool = True
+        return_dict: bool = True,
     ):
-        #TODO: Deal with class_labels, cross_attention_kwargs
+        # TODO: Deal with class_labels, cross_attention_kwargs
         # Input
         assert hidden_states.dim() == 5, f"Expected hidden_states to have ndim=5, but got ndim={hidden_states.dim()}."
         video_length = hidden_states.shape[2]
@@ -757,7 +757,7 @@ class BasicSparseTransformerBlock(nn.Module):
 
     def forward(
         self, hidden_states, encoder_hidden_states=None, timestep=None, attention_mask=None, video_length=None
-    ):  
+    ):
         print(f"self.norm1 is {self.norm1} and input is {hidden_states.shape}")
         # SparseCausal-Attention
         norm_hidden_states = (

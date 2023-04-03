@@ -682,7 +682,8 @@ class SlicedAttnAddedKVProcessor:
         hidden_states = hidden_states + residual
 
         return hidden_states
-    
+
+
 class TuneAVideoAttnProcessor:
     def __call__(
         self, attn: "Attention", hidden_states, encoder_hidden_states=None, attention_mask=None, video_length=None
@@ -749,5 +750,5 @@ AttentionProcessor = Union[
     SlicedAttnAddedKVProcessor,
     LoRAAttnProcessor,
     LoRAXFormersAttnProcessor,
-    TuneAVideoAttnProcessor
+    TuneAVideoAttnProcessor,
 ]

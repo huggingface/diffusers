@@ -28,7 +28,6 @@ from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
 from .resnet import InflatedConv3d
 from .transformer_temporal import TransformerTemporalModel
-
 from .unet_3d_blocks import (
     CrossAttnDownBlock3D,
     CrossAttnUpBlock3D,
@@ -114,15 +113,15 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         cross_attention_dim: int = 1024,
         attention_head_dim: Union[int, Tuple[int]] = 64,
         dual_cross_attention: bool = False,
-        use_linear_projection: bool = True, #Use default as True for text2videoSD
+        use_linear_projection: bool = True,  # Use default as True for text2videoSD
         class_embed_type: Optional[str] = None,
         num_class_embeds: Optional[int] = None,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
-        conv_type: str = None, #Use inflated_conv_3d for TuneAVideo,
-        use_temporal_transformer: bool = True, #Use false for TuneAVideo
-        use_temporal_conv:bool = True, #Use false for TuneAVideo
-        sub_blocks_type: str = '2d' #Use 2d for ResNet2D, Transformer2D blocks in DownBlock3D. This is in TuneAVideo
+        conv_type: str = None,  # Use inflated_conv_3d for TuneAVideo,
+        use_temporal_transformer: bool = True,  # Use false for TuneAVideo
+        use_temporal_conv: bool = True,  # Use false for TuneAVideo
+        sub_blocks_type: str = "2d",  # Use 2d for ResNet2D, Transformer2D blocks in DownBlock3D. This is in TuneAVideo
     ):
         super().__init__()
 
@@ -149,12 +148,17 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         conv_out_kernel = 3
         conv_in_padding = (conv_in_kernel - 1) // 2
         # TODO: pass 'inflated_conv_3d' for Text2Video
-        if conv_type == 'inflated_conv_3d':
-            self.conv_in = InflatedConv3d(in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=(conv_in_padding, conv_in_padding))
+        if conv_type == "inflated_conv_3d":
+            self.conv_in = InflatedConv3d(
+                in_channels,
+                block_out_channels[0],
+                kernel_size=conv_in_kernel,
+                padding=(conv_in_padding, conv_in_padding),
+            )
         else:
             self.conv_in = nn.Conv2d(
-            in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
-        )
+                in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
+            )
         # time
         time_embed_dim = block_out_channels[0] * 4
         self.time_proj = Timesteps(block_out_channels[0], flip_sin_to_cos, freq_shift)
@@ -165,8 +169,8 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
             time_embed_dim,
             act_fn=act_fn,
         )
-        
-        #TODO: use_temporal_transformer is True for Text2VideoSD
+
+        # TODO: use_temporal_transformer is True for Text2VideoSD
         if use_temporal_transformer:
             self.transformer_in = TransformerTemporalModel(
                 num_attention_heads=8,
@@ -176,8 +180,8 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
             )
         else:
             self.transformer_in = None
-        
-        #class embeds. 
+
+        # class embeds.
         # TODO: Used by TuneAVideo I guess
         if class_embed_type is None and num_class_embeds is not None:
             self.class_embedding = nn.Embedding(num_class_embeds, time_embed_dim)
@@ -225,7 +229,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 use_temporal_conv=use_temporal_conv,
                 use_temporal_transformer=use_temporal_transformer,
-                sub_blocks_type = sub_blocks_type #2d for Text2VideoSD. #3d for TuneAVideo
+                sub_blocks_type=sub_blocks_type,  # 2d for Text2VideoSD. #3d for TuneAVideo
             )
             self.down_blocks.append(down_block)
 
@@ -246,7 +250,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
                 upcast_attention=upcast_attention,
                 use_temporal_transformer=use_temporal_transformer,
                 use_temporal_conv=use_temporal_conv,
-                sub_blocks_type = sub_blocks_type #2d for Text2VideoSD. #3d for TuneAVideo
+                sub_blocks_type=sub_blocks_type,  # 2d for Text2VideoSD. #3d for TuneAVideo
             )
         else:
             raise ValueError(f"unknown mid_block_type : {mid_block_type}")
@@ -272,7 +276,9 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
                 self.num_upsamplers += 1
             else:
                 add_upsample = False
-            print(f"get_up_block in: { input_channel} and out: { output_channel },attn_num_head_channels {reversed_attention_head_dim[i]}")
+            print(
+                f"get_up_block in: { input_channel} and out: { output_channel },attn_num_head_channels {reversed_attention_head_dim[i]}"
+            )
             up_block = get_up_block(
                 up_block_type,
                 num_layers=layers_per_block + 1,
@@ -293,7 +299,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 use_temporal_conv=use_temporal_conv,
                 use_temporal_transformer=use_temporal_transformer,
-                sub_blocks_type=sub_blocks_type
+                sub_blocks_type=sub_blocks_type,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -309,14 +315,15 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
             self.conv_act = None
 
         conv_out_padding = (conv_out_kernel - 1) // 2
-        #TODO: Verify for TuneAVideo
-        if conv_type == 'inflated_conv_3d':
-            self.conv_out = InflatedConv3d(block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding)
+        # TODO: Verify for TuneAVideo
+        if conv_type == "inflated_conv_3d":
+            self.conv_out = InflatedConv3d(
+                block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
+            )
         else:
             self.conv_out = nn.Conv2d(
                 block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
             )
-             
 
     @property
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.attn_processors
@@ -457,7 +464,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         mid_block_additional_residual: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> Union[UNet3DConditionOutput, Tuple]:
-        #TODO: Verify sample input shape
+        # TODO: Verify sample input shape
         r"""
         Args:
             sample (`torch.FloatTensor`): (batch, channel, num_frames, height, width) noisy inputs tensor
@@ -516,14 +523,16 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         # num_frames is equivalent to video_length in TuneAVideo
         num_frames = sample.shape[2]
         timesteps = timesteps.expand(sample.shape[0])
-        print(f"Expected input shape is (batch, channel, num_frames, height, width) where num_frames = {num_frames}, received {sample.shape}")
+        print(
+            f"Expected input shape is (batch, channel, num_frames, height, width) where num_frames = {num_frames}, received {sample.shape}"
+        )
         t_emb = self.time_proj(timesteps)
 
         # timesteps does not contain any weights and will always return f32 tensors
         # but time_embedding might actually be running in fp16. so we need to cast here.
         # there might be better ways to encapsulate this.
         t_emb = t_emb.to(dtype=self.dtype)
-        #TODO: Text2Video uses timestep_cond
+        # TODO: Text2Video uses timestep_cond
         emb = self.time_embedding(t_emb, timestep_cond)
 
         if self.class_embedding is not None:
@@ -536,19 +545,19 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
             class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
             emb = emb + class_emb
 
-        #2. pre-process
-        #If not using inflated_conv_3d and temporal transfomer, use num_frames in unet
+        # 2. pre-process
+        # If not using inflated_conv_3d and temporal transfomer, use num_frames in unet
         if not isinstance(self.conv_in, InflatedConv3d) and self.transformer_in:
             emb = emb.repeat_interleave(repeats=num_frames, dim=0)
             encoder_hidden_states = encoder_hidden_states.repeat_interleave(repeats=num_frames, dim=0)
-            
+
             sample = sample.permute(0, 2, 1, 3, 4).reshape((sample.shape[0] * num_frames, -1) + sample.shape[3:])
             sample = self.conv_in(sample)
 
             sample = self.transformer_in(sample, num_frames=num_frames).sample
         else:
             sample = self.conv_in(sample)
-        
+
         print(f"Output of preprocessing is {sample.shape}")
         # 3. down
         down_block_res_samples = (sample,)
@@ -595,7 +604,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         # 4. mid
         if self.mid_block is not None:
             # if sub_blocks_type == '2d':
-            #Mid block can handle num_frames being passed 2d or 3d
+            # Mid block can handle num_frames being passed 2d or 3d
             sample = self.mid_block(
                 sample,
                 emb,
@@ -604,7 +613,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
                 num_frames=num_frames,
                 cross_attention_kwargs=cross_attention_kwargs,
             )
-            # elif sub_blocks_type == '3d': 
+            # elif sub_blocks_type == '3d':
             #     sample = self.mid_block(
             #         sample,
             #         emb,
@@ -628,7 +637,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
                 upsample_size = down_block_res_samples[-1].shape[2:]
 
             if hasattr(upsample_block, "has_cross_attention") and upsample_block.has_cross_attention:
-                #TODO: DO what you did for down blocks here.
+                # TODO: DO what you did for down blocks here.
                 # if isinstance(upsample_block,UpBlock2D) == '2d':
                 print(f"Upsampling block {type(upsample_block)} received {sample.shape}")
                 sample = upsample_block(
@@ -667,30 +676,29 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
                 #         res_hidden_states_tuple=res_samples,
                 #         upsample_size=upsample_size
                 #     )
-        
+
         print(f"Postprocessing ip received {sample.shape}")
         # 6. post-process
         if self.conv_norm_out:
             sample = self.conv_norm_out(sample)
-            sample = self.conv_act(sample)   
-        
+            sample = self.conv_act(sample)
+
         sample = self.conv_out(sample)
 
         # if sub_blocks_type == '2d':
         print(f" Before reshaping the shape was {sample.shape}")
         # reshape to (batch, channel, framerate, width, height)
-        # TODO: This is only needed if the original permute is being done. 
+        # TODO: This is only needed if the original permute is being done.
         if not isinstance(self.conv_in, InflatedConv3d) and self.transformer_in:
             sample = sample[None, :].reshape((-1, num_frames) + sample.shape[1:]).permute(0, 2, 1, 3, 4)
-        
+
         print(f" After reshaping the shape is {sample.shape}")
         if not return_dict:
             return (sample,)
 
         return UNet3DConditionOutput(sample=sample)
 
-    
-    #TODO: Check if to retain this or remove.
+    # TODO: Check if to retain this or remove.
     @classmethod
     def from_pretrained_2d(cls, pretrained_model_path, subfolder=None):
         if subfolder is not None:
