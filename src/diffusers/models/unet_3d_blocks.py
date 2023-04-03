@@ -263,6 +263,14 @@ class UNetMidBlock3DCrossAttn(nn.Module):
                     pre_norm=resnet_pre_norm,
                 )
             )
+            if use_temporal_conv:
+                temp_convs.append(
+                    TemporalConvLayer(
+                        in_channels,
+                        in_channels,
+                        dropout=0.1,
+                    )
+                )
 
         self.resnets = nn.ModuleList(resnets)
         self.temp_convs = nn.ModuleList(temp_convs)
