@@ -571,7 +571,6 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
         if use_linear_projection:
             self.proj_in = nn.Linear(in_channels, inner_dim)
         else:
-            print(f"Inputs to conv2d {in_channels}, {inner_dim }")
             self.proj_in = nn.Conv2d(in_channels, inner_dim, kernel_size=1, stride=1, padding=0)
 
         # Define transformers blocks
@@ -689,7 +688,6 @@ class BasicSparseTransformerBlock(nn.Module):
             upcast_attention=upcast_attention,
             processor=TuneAVideoCrossAttnProcessor(),
         )
-        print(f"use_ada_layer_norm is {self.use_ada_layer_norm} and {dim} {num_embeds_ada_norm}")
         self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
 
         # Cross-Attn
@@ -729,7 +727,6 @@ class BasicSparseTransformerBlock(nn.Module):
 
     def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
         if not is_xformers_available():
-            print("Here is how to install it")
             raise ModuleNotFoundError(
                 "Refer to https://github.com/facebookresearch/xformers for more information on how to install"
                 " xformers",
@@ -758,7 +755,6 @@ class BasicSparseTransformerBlock(nn.Module):
     def forward(
         self, hidden_states, encoder_hidden_states=None, timestep=None, attention_mask=None, video_length=None
     ):
-        print(f"self.norm1 is {self.norm1} and input is {hidden_states.shape}")
         # SparseCausal-Attention
         norm_hidden_states = (
             self.norm1(hidden_states, timestep) if self.use_ada_layer_norm else self.norm1(hidden_states)

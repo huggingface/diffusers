@@ -384,9 +384,6 @@ class TuneAVideoPipeline(DiffusionPipeline):
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                print(
-                    f"Debugging shapes to unet input {latent_model_input.shape}, {t.shape}, {text_embeddings.shape} "
-                )
                 # predict the noise residual
                 noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample.to(
                     dtype=latents_dtype

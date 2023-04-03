@@ -394,7 +394,7 @@ class CrossAttnDownBlock3D(nn.Module):
                 )
 
             # TODO: Verify if this is a typo. Because TuneAVideo implementation is opposite
-            # wwas using in_channels here earlier. Replaced to out_channels. Can move it out of loop now.
+            # was using in_channels here earlier. Replaced to out_channels. Can move it out of loop now.
             if sub_blocks_type == "2d":
                 num_attention_heads = out_channels // attn_num_head_channels
                 attention_head_dim = attn_num_head_channels
@@ -461,7 +461,6 @@ class CrossAttnDownBlock3D(nn.Module):
                 self.resnets, self.temp_convs, self.attentions, self.temp_attentions
             ):
                 hidden_states = resnet(hidden_states, temb)
-                print(f"In CrossAttnDownBlock3D, for {attn}, input {hidden_states.shape} with temp_conv")
                 hidden_states = temp_conv(hidden_states, num_frames=num_frames)
                 hidden_states = attn(
                     hidden_states,
@@ -474,26 +473,7 @@ class CrossAttnDownBlock3D(nn.Module):
 
         elif not self.temp_convs and not self.temp_attentions:
             for resnet, attn in zip(self.resnets, self.attentions):
-                # if self.training and self.gradient_checkpointing:
-
-                #     def create_custom_forward(module, return_dict=None):
-                #         def custom_forward(*inputs):
-                #             if return_dict is not None:
-                #                 return module(*inputs, return_dict=return_dict)
-                #             else:
-                #                 return module(*inputs)
-
-                #         return custom_forward
-
-                #     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
-                #     hidden_states = torch.utils.checkpoint.checkpoint(
-                #         create_custom_forward(attn, return_dict=False),
-                #         hidden_states,
-                #         encoder_hidden_states,
-                #     )[0]
-                # else:
                 hidden_states = resnet(hidden_states, temb)
-                print(f"In CrossAttnDownBlock3D, for {attn}, input {hidden_states.shape}")
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -527,8 +507,8 @@ class DownBlock3D(nn.Module):
         output_scale_factor=1.0,
         add_downsample=True,
         downsample_padding=1,
-        use_temporal_conv: bool = True,  # Use false for TuneAVideo
-        sub_blocks_type: str = "2d",  # Use 2d for ResNet2D, Transformer2D blocks in DownBlock3D. This is in TuneAVideo
+        use_temporal_conv: bool = True,
+        sub_blocks_type: str = "2d",
     ):
         super().__init__()
         resnets = []
@@ -595,16 +575,6 @@ class DownBlock3D(nn.Module):
                 output_states += (hidden_states,)
         else:
             for resnet in self.resnets:
-                # if self.training and self.gradient_checkpointing:
-
-                #     def create_custom_forward(module):
-                #         def custom_forward(*inputs):
-                #             return module(*inputs)
-
-                #         return custom_forward
-
-                #     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
-                # else:
                 hidden_states = resnet(hidden_states, temb)
                 output_states += (hidden_states,)
 
@@ -639,9 +609,9 @@ class CrossAttnUpBlock3D(nn.Module):
         use_linear_projection=False,
         only_cross_attention=False,
         upcast_attention=False,
-        use_temporal_transformer: bool = True,  # Use false for TuneAVideo
-        use_temporal_conv: bool = True,  # Use false for TuneAVideo
-        sub_blocks_type: str = "2d",  # Use 2d for ResNet2D, Transformer2D blocks in DownBlock3D. This is in TuneAVideo
+        use_temporal_transformer: bool = True,
+        use_temporal_conv: bool = True,
+        sub_blocks_type: str = "2d",
     ):
         super().__init__()
         resnets = []
@@ -701,9 +671,7 @@ class CrossAttnUpBlock3D(nn.Module):
                         dropout=0.1,
                     )
                 )
-            print(
-                f"Loading UpBlock attn num_attention_heads,attention_head_dim,in_channels{num_attention_heads,attention_head_dim,out_channels}"
-            )
+
             attentions.append(
                 transformer_class(
                     num_attention_heads=num_attention_heads,
@@ -765,7 +733,7 @@ class CrossAttnUpBlock3D(nn.Module):
 
                 hidden_states = resnet(hidden_states, temb)
                 hidden_states = temp_conv(hidden_states, num_frames=num_frames)
-                print(f"In CrossAttnUpBlock3D, for {attn}, input {hidden_states.shape} with temp_conv")
+
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -781,7 +749,7 @@ class CrossAttnUpBlock3D(nn.Module):
                 hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
                 hidden_states = resnet(hidden_states, temb)
-                print(f"In CrossAttnUpBlock3D, for {attn}, input {hidden_states.shape}")
+
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -880,17 +848,6 @@ class UpBlock3D(nn.Module):
                 hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
                 hidden_states = resnet(hidden_states, temb)
-            # if self.training and self.gradient_checkpointing:
-
-            #     def create_custom_forward(module):
-            #         def custom_forward(*inputs):
-            #             return module(*inputs)
-
-            #         return custom_forward
-
-            #     hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
-            # else:
-            # hidden_states = resnet(hidden_states, temb)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
