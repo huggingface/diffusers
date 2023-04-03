@@ -161,7 +161,11 @@ Otherwise, a variant is **identical** to the original checkpoint. They have exac
 | floating point      | diffusion_pytorch_model.fp16.bin    | `variant`, `torch_dtype`         |
 | non-EMA             | diffusion_pytorch_model.non_ema.bin | `variant`                        |
 
-Load a variant by specifying the `variant` argument in [`DiffusionPipeline.from_pretrained`], and the `torch_dtype` if the variant is a different floating point type. 🧨 Diffusers won't download a variant unless it is explicitly specified, so you don't have to worry about downloading and caching more checkpoints than you need.
+There are two important arguments to know for loading variants:
+
+- `torch_dtype` defines the floating point precision of the loaded checkpoints. For example, if you want to save bandwidth by loading a `fp16` variant, you should specify `torch_dtype=torch.float16` to *convert the weights* to `fp16`. Otherwise, the `fp16` weights are converted to the default `fp32` precision. You can also load the original checkpoint without defining the `variant` argument, and convert it to `fp16` with `torch_dtype=torch.float16`. In this case, the default `fp32` weights are downloaded first, and then they're converted to `fp16` after loading.
+
+- `variant` defines which files should be loaded from the repository. For example, if you want to load a `non_ema` variant from the [`diffusers/stable-diffusion-variants`](https://huggingface.co/diffusers/stable-diffusion-variants/tree/main/unet) repository, you should specify `variant="non_ema"` to download the `non_ema` files.
 
 ```python
 from diffusers import DiffusionPipeline
