@@ -29,14 +29,13 @@ from diffusers import (
     StableDiffusionDiffEditPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import load_image, load_numpy, skip_mps, slow
+from diffusers.utils import load_image, load_numpy, slow
 from diffusers.utils.testing_utils import floats_tensor, require_torch_gpu
 
 from ...pipeline_params import TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin
 
 
-@skip_mps
 class StableDiffusionDiffEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionDiffEditPipeline
     params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS - {"height", "width", "image"} | {"image_latents"}
