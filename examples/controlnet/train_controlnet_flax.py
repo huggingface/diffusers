@@ -34,7 +34,7 @@ from flax.core.frozen_dict import unfreeze
 from flax.training import train_state
 from flax.training.common_utils import shard
 from huggingface_hub import HfFolder, Repository, create_repo, whoami
-from PIL import Image
+from PIL import Image, PngImagePlugin
 from torch.utils.data import IterableDataset
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -49,7 +49,7 @@ from diffusers import (
 )
 from diffusers.utils import check_min_version, is_wandb_available
 
-from PIL import PngImagePlugin
+
 LARGE_ENOUGH_NUMBER = 100
 PngImagePlugin.MAX_TEXT_CHUNK = LARGE_ENOUGH_NUMBER * (1024**2)
 
@@ -254,9 +254,7 @@ def parse_args():
         "--checkpointing_steps",
         type=int,
         default=5000,
-        help=(
-            "Save a checkpoint of the training state every X updates."
-        ),
+        help=("Save a checkpoint of the training state every X updates."),
     )
     parser.add_argument(
         "--learning_rate",
@@ -362,9 +360,9 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--load_from_disk", 
-        action="store_true", 
-        help="If True, will load a dataset that was previously saved using [`save_to_disk`] from `--train_data_dir`"
+        "--load_from_disk",
+        action="store_true",
+        help="If True, will load a dataset that was previously saved using [`save_to_disk`] from `--train_data_dir`",
     )
     parser.add_argument(
         "--image_column", type=str, default="image", help="The column of the dataset containing the target image."
@@ -610,7 +608,6 @@ def make_train_dataset(args, tokenizer, batch_size=None):
             )
         else:
             train_dataset = dataset["train"].with_transform(preprocess_train)
-
 
     return train_dataset
 
@@ -958,7 +955,6 @@ def main():
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
     logger.info(f"  Total train batch size (w. parallel & distributed) = {total_train_batch_size}")
     logger.info(f"  Total optimization steps = {args.num_train_epochs * num_update_steps_per_epoch}")
-    
 
     if jax.process_index() == 0:
         wandb.define_metric("*", step_metric="train/step")
@@ -1030,7 +1026,6 @@ def main():
                     f"{args.output_dir}/{global_step}",
                     params=get_params_to_save(state.params),
                 )
-
 
         train_metric = jax_utils.unreplicate(train_metric)
         train_step_progress_bar.close()
