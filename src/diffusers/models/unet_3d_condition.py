@@ -114,7 +114,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         cross_attention_dim: int = 1024,
         attention_head_dim: Union[int, Tuple[int]] = 64,
         dual_cross_attention: bool = False,
-        use_linear_projection: bool = False,
+        use_linear_projection: bool = True, #Use default as True for text2videoSD
         class_embed_type: Optional[str] = None,
         num_class_embeds: Optional[int] = None,
         upcast_attention: bool = False,
