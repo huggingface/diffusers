@@ -358,6 +358,8 @@ class TuneAVideoPipeline(DiffusionPipeline):
 
         # Prepare latent variables
         num_channels_latents = self.unet.in_channels
+        # TODO: Remove after verification:
+        # latents shape is now: ( batch, num_frames, channel, height, width)
         latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,
             num_channels_latents,

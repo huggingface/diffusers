@@ -199,6 +199,74 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         expected_shape = inputs_dict["sample"].shape
         self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
+    def test_model_with_cross_attention_dim_tuple(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        init_dict["cross_attention_dim"] = (32, 32)
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)
+
+            if isinstance(output, dict):
+                output = output.sample
+
+        self.assertIsNotNone(output)
+        expected_shape = inputs_dict["sample"].shape
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+
+    def test_model_with_simple_projection(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        batch_size, _, _, sample_size = inputs_dict["sample"].shape
+
+        init_dict["class_embed_type"] = "simple_projection"
+        init_dict["projection_class_embeddings_input_dim"] = sample_size
+
+        inputs_dict["class_labels"] = floats_tensor((batch_size, sample_size)).to(torch_device)
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)
+
+            if isinstance(output, dict):
+                output = output.sample
+
+        self.assertIsNotNone(output)
+        expected_shape = inputs_dict["sample"].shape
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+
+    def test_model_with_class_embeddings_concat(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        batch_size, _, _, sample_size = inputs_dict["sample"].shape
+
+        init_dict["class_embed_type"] = "simple_projection"
+        init_dict["projection_class_embeddings_input_dim"] = sample_size
+        init_dict["class_embeddings_concat"] = True
+
+        inputs_dict["class_labels"] = floats_tensor((batch_size, sample_size)).to(torch_device)
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)
+
+            if isinstance(output, dict):
+                output = output.sample
+
+        self.assertIsNotNone(output)
+        expected_shape = inputs_dict["sample"].shape
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+
     def test_model_attention_slicing(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -223,23 +291,23 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
             output = model(**inputs_dict)
         assert output is not None
 
-    def test_model_slicable_head_dim(self):
+    def test_model_sliceable_head_dim(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         init_dict["attention_head_dim"] = (8, 16)
 
         model = self.model_class(**init_dict)
 
-        def check_slicable_dim_attr(module: torch.nn.Module):
+        def check_sliceable_dim_attr(module: torch.nn.Module):
             if hasattr(module, "set_attention_slice"):
                 assert isinstance(module.sliceable_head_dim, int)
 
             for child in module.children():
-                check_slicable_dim_attr(child)
+                check_sliceable_dim_attr(child)
 
         # retrieve number of attention layers
         for module in model.children():
-            check_slicable_dim_attr(module)
+            check_sliceable_dim_attr(module)
 
     def test_special_attn_proc(self):
         class AttnEasyProc(torch.nn.Module):
@@ -658,7 +726,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         torch.cuda.reset_max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()
 
-        # there are 32 slicable layers
+        # there are 32 sliceable layers
         slice_list = 16 * [2, 3]
         unet = self.get_unet_model()
         unet.set_attention_slice(slice_list)
