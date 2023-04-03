@@ -109,9 +109,6 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             new_config["steps_offset"] = 1
             scheduler._internal_dict = FrozenDict(new_config)
 
-            self.text_encoder_name = text_encoder.config["architectures"].lower()
-            self.unet_name = unet.config["_class_name"].lower()
-
         if hasattr(scheduler.config, "clip_sample") and scheduler.config.clip_sample is True:
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} has not set the configuration `clip_sample`."

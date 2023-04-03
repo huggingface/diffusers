@@ -288,7 +288,7 @@ class UNet2DConditionLoadersMixin:
         model_to_save = AttnProcsLayers(self.attn_processors)
 
         # Save the model
-        state_dict = {"unet": model_to_save.state_dict()}
+        state_dict = model_to_save.state_dict()
 
         if weight_name is None:
             if safe_serialization:
@@ -714,16 +714,32 @@ class LoraLoaderMixin:
         else:
             state_dict = pretrained_model_name_or_path_or_dict
 
-        # Load the layers corresponding to UNet.
-        if state_dict.get(self.unet_name, None) is not None:
-            logger.info(f"Loading {self.unet_name}.")
-            self.unet.load_attn_procs(state_dict[self.unet_name])
+        # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
+        # then the `state_dict` should either have
+        # (1) two keys at the root-level: `unet` and `text_encoder`.
+        # (2) OR, one of the two keys: `unet` or `text_encoder`.
+        if len(list(state_dict.keys())) in [1, 2]:
+            # Load the layers corresponding to UNet.
+            if state_dict.get(self.unet_name, None) is not None:
+                logger.info(f"Loading {self.unet_name}.")
+                self.unet.load_attn_procs(state_dict[self.unet_name])
 
-        # Load the layers corresponding to text encoder and make necessary adjustments.
-        if state_dict.get(self.text_encoder_name, None) is not None:
-            logger.info(f"Loading {self.text_encoder_name}.")
-            attn_procs_text_encoder = self.load_attn_procs(state_dict[self.text_encoder_name], **kwargs)
-            self._modify_text_encoder(attn_procs_text_encoder)
+            # Load the layers corresponding to text encoder and make necessary adjustments.
+            if state_dict.get(self.text_encoder_name, None) is not None:
+                logger.info(f"Loading {self.text_encoder_name}.")
+                attn_procs_text_encoder = self.load_attn_procs(state_dict[self.text_encoder_name])
+                self._modify_text_encoder(attn_procs_text_encoder)
+        # Otherwise, we're dealing with the old format. This means the `state_dict` should only
+        # contain the module names of the `unet` as its keys WITHOUT any high-level keys like
+        # `unet`.
+        else:
+            self.unet.load_attn_procs(state_dict)
+            logger.warning(
+                "You have saved the LoRA weights using the old format. This will be"
+                " deprecated soon. To convert the old LoRA weights to the new format, you can first load them"
+                " in a dictionary and then create a new dictionary like the following:"
+                " `{new_dictionary.update('unet': old_dictionary)}`."
+            )
 
     def _modify_text_encoder(self, attn_processors: Dict[str, LoRAAttnProcessor]):
         r"""
@@ -928,7 +944,6 @@ class LoraLoaderMixin:
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = False,
-        **kwargs,
     ):
         r"""
         Save the LoRA parameters corresponding to the UNet and the text encoder.
@@ -952,12 +967,6 @@ class LoraLoaderMixin:
                 need to replace `torch.save` by another method. Can be configured with the environment variable
                 `DIFFUSERS_SAVE_MODE`.
         """
-        weight_name = weight_name or deprecate(
-            "weights_name",
-            "0.18.0",
-            "`weights_name` is deprecated, please use `weight_name` instead.",
-            take_from=kwargs,
-        )
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
