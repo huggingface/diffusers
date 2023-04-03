@@ -32,16 +32,15 @@ from diffusers import (
 from diffusers.utils import load_image, load_numpy, skip_mps, slow
 from diffusers.utils.testing_utils import floats_tensor, require_torch_gpu
 
-from ...pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ...pipeline_params import TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
 from ...test_pipelines_common import PipelineTesterMixin
 
 
 @skip_mps
 class StableDiffusionDiffEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionDiffEditPipeline
-    test_attention_slicing = False
-    params = TEXT_TO_IMAGE_PARAMS
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS.union({"token_indices"})
+    params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS - {"height", "width", "image"} | {"image_latents"}
+    batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS - {"image"} | {"image_latents"}
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -115,14 +114,14 @@ class StableDiffusionDiffEditPipelineFastTests(PipelineTesterMixin, unittest.Tes
 
     def get_dummy_inputs(self, device, seed=0):
         mask = floats_tensor((1, 16, 16), rng=random.Random(seed)).to(device)
-        latents = floats_tensor((2, 4, 16, 16), rng=random.Random(seed)).to(device)
+        latents = floats_tensor((1, 2, 4, 16, 16), rng=random.Random(seed)).to(device)
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "prompt": "a dog and a newt",
-            "mask": mask,
+            "mask_image": mask,
             "image_latents": latents,
             "generator": generator,
             "num_inference_steps": 2,

@@ -122,7 +122,7 @@ Now, generate the image with the inverted latents and semantically generated mas
 ```py
 image = pipeline(
     prompt=target_prompt,
-    mask=mask_image,
+    mask_image=mask_image,
     image_latents=inv_latents,
     generator=generator,
     negative_prompt=source_prompt,
@@ -211,7 +211,7 @@ mask_image = pipeline.generate_mask(
 
 image = pipeline(
     prompt=target_prompt,
-    mask=mask_image,
+    mask_image=mask_image,
     image_latents=inv_latents,
     generator=generator,
     negative_prompt=source_prompt,
@@ -331,7 +331,7 @@ img_url = "https://github.com/Xiang-cd/DiffEdit-stable-diffusion/raw/main/assets
 raw_image = load_image(img_url).convert("RGB").resize((768, 768))
 
 
-mask = pipeline.generate_mask(
+mask_image = pipeline.generate_mask(
     image=raw_image,
     source_prompt_embeds=source_embeds,
     target_prompt_embeds=target_embeds,
@@ -345,7 +345,7 @@ inv_latents = pipeline.invert(
 ).latents
 
 images = pipeline(
-    mask=mask,
+    mask_image=mask_image,
     image_latents=inv_latents,
     prompt_embeds=target_embeddings,
     negative_prompt_embeds=source_embeddings,

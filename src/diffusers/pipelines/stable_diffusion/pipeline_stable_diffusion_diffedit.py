@@ -103,19 +103,20 @@ def preprocess(image):
     return image
 
 
-def preprocess_mask(mask):
+def preprocess_mask(mask, batch_size: int = 1):
     if not isinstance(mask, torch.Tensor):
         # preprocess mask
         if isinstance(mask, PIL.Image.Image) or (isinstance(mask, np.ndarray) and mask.ndim < 3):
             mask = [mask]
 
-        if isinstance(mask, list) and isinstance(mask[0], PIL.Image.Image):
-            mask = np.concatenate([np.array(m.convert("L"))[None, None, :] for m in mask], axis=0)
-            mask = mask.astype(np.float32) / 255.0
-        elif isinstance(mask, list) and isinstance(mask[0], np.ndarray):
-            mask = np.concatenate([m[None, None, :] for m in mask], axis=0)
-
-        mask = torch.from_numpy(mask)
+        if isinstance(mask, list):
+            if isinstance(mask[0], PIL.Image.Image):
+                mask = [np.array(m.convert("L")).astype(np.float32) / 255.0 for m in mask]
+            if isinstance(mask[0], np.ndarray):
+                mask = np.stack(mask, axis=0)
+                mask = torch.from_numpy(mask)
+            elif isinstance(mask[0], torch.Tensor):
+                mask = torch.stack(mask, dim=0)
 
     # Batch and add channel dim for single mask
     if mask.ndim == 2:
@@ -131,9 +132,22 @@ def preprocess_mask(mask):
         else:
             mask = mask.unsqueeze(1)
 
+    # Check mask shape
+    if batch_size > 1:
+        if mask.shape[0] == 1:
+            mask = torch.cat([mask] * batch_size)
+        elif mask.shape[0] > 1 and mask.shape[0] != batch_size:
+            raise ValueError(
+                f"`mask_image` with batch size {mask.shape[0]} cannot be broadcasted to batch size {batch_size} "
+                f"inferred by prompt inputs"
+            )
+
+    if mask.shape[1] != 1:
+        raise ValueError(f"`mask_image` must have 1 channel, but has {mask.shape[1]} channels")
+
     # Check mask is in [0, 1]
     if mask.min() < 0 or mask.max() > 1:
-        raise ValueError("Mask should be in [0, 1] range")
+        raise ValueError("`mask_image` should be in [0, 1] range")
 
     # Binarize mask
     mask[mask < 0.5] = 0
@@ -562,17 +576,12 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
     def check_inputs(
         self,
         prompt,
-        height,
-        width,
         strength,
         callback_steps,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
     ):
-        if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
-
         if (strength is None) or (strength is not None and (strength < 0 or strength > 1)):
             raise ValueError(
                 f"The value of `strength` should in [0.0, 1.0] but is, but is {strength} of type {type(strength)}."
@@ -754,8 +763,6 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
         num_maps_per_mask: Optional[int] = 10,
         mask_encode_strength: Optional[float] = 0.5,
         mask_thresholding_ratio: Optional[float] = 3.0,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -808,10 +815,6 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
             mask_thresholding_ratio (`float`, *optional*, defaults to 3.0):
                 The maximum multiple of the mean absolute difference used to clamp the semantic guidance map before
                 mask binarization.
-            height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The width in pixels of the generated image.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -842,15 +845,9 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
             self.vae_scale_factor)`.
         """
 
-        # 0. Default height and width to unet
-        height = height or self.unet.config.sample_size * self.vae_scale_factor
-        width = width or self.unet.config.sample_size * self.vae_scale_factor
-
-        # 1. Check inputs
+        # 1. Check inputs (Provide dummy argument for callback_steps)
         self.check_inputs(
             target_prompt,
-            height,
-            width,
             mask_encode_strength,
             1,
             target_negative_prompt,
@@ -1104,12 +1101,8 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
         """
 
         # 1. Check inputs
-        # provide dummy height and width arguments to check_inputs, as the spatial dimensions of the inverted latents
-        # will be determined by the spatial dimensions of the input image.
         self.check_inputs(
             prompt,
-            0,
-            0,
             inpaint_strength,
             callback_steps,
             negative_prompt,
@@ -1249,11 +1242,9 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Optional[Union[str, List[str]]] = None,
-        mask: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        mask_image: Union[torch.FloatTensor, PIL.Image.Image] = None,
         image_latents: torch.FloatTensor = None,
         inpaint_strength: Optional[float] = 0.8,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -1276,12 +1267,12 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            mask (`PIL.Image.Image`):
+            mask_image (`PIL.Image.Image`):
                 `Image`, or tensor representing an image batch, to mask the generated image. White pixels in the mask
-                will be repainted, while black pixels will be preserved. If `mask` is a PIL image, it will be converted
-                to a single channel (luminance) before use. If it's a tensor, it should contain one color channel (L)
-                instead of 3, so the expected shape would be `(B, 1, H, W)`.
-            image_latents (`torch.FloatTensor`):
+                will be repainted, while black pixels will be preserved. If `mask_image` is a PIL image, it will be
+                converted to a single channel (luminance) before use. If it's a tensor, it should contain one color
+                channel (L) instead of 3, so the expected shape would be `(B, 1, H, W)`.
+            image_latents (`PIL.Image.Image` or `torch.FloatTensor`):
                 Partially noised image latents from the inversion process to be used as inputs for image generation.
             inpaint_strength (`float`, *optional*, defaults to 0.8):
                 Conceptually, indicates how much to inpaint the masked area. Must be between 0 and 1. When `strength`
@@ -1370,7 +1361,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
 
         >>> mask_image = pipe.generate_mask(image=init_image, source_prompt=prompt, target_prompt=mask_prompt)
         >>> image_latents = pipe.invert(image=init_image, prompt=mask_prompt).latents
-        >>> image = pipe(prompt=prompt, mask=mask_image, image_latents=image_latents).images[0]
+        >>> image = pipe(prompt=prompt, mask_image=mask_image, image_latents=image_latents).images[0]
         ```
 
         Returns:
@@ -1380,16 +1371,10 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
-        # 0. Default height and width to unet
-        height = height or self.unet.config.sample_size * self.vae_scale_factor
-        width = width or self.unet.config.sample_size * self.vae_scale_factor
-        vae_latent_size = (height // self.vae_scale_factor, width // self.vae_scale_factor)
 
         # 1. Check inputs
         self.check_inputs(
             prompt,
-            height,
-            width,
             inpaint_strength,
             callback_steps,
             negative_prompt,
@@ -1397,9 +1382,9 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
             negative_prompt_embeds,
         )
 
-        if mask is None:
+        if mask_image is None:
             raise ValueError(
-                "`mask` input cannot be undefined. Use `generate_mask()` to compute `mask` from text prompts."
+                "`mask_image` input cannot be undefined. Use `generate_mask()` to compute `mask_image` from text prompts."
             )
         if image_latents is None:
             raise ValueError(
@@ -1434,26 +1419,30 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
         )
 
         # 4. Preprocess mask
-        mask = preprocess_mask(mask)
-        mask_shape = (batch_size, 1, *vae_latent_size)
-        if mask.shape != mask_shape:
-            raise ValueError(f"`mask` must have shape {mask_shape}, but has shape {mask.shape}")
-        mask = torch.cat([mask] * num_images_per_prompt)
-        mask = mask.to(device=device, dtype=prompt_embeds.dtype)
+        mask_image = preprocess_mask(mask_image, batch_size)
+        latent_height, latent_width = mask_image.shape[-2:]
+        mask_image = torch.cat([mask_image] * num_images_per_prompt)
+        mask_image = mask_image.to(device=device, dtype=prompt_embeds.dtype)
 
         # 5. Set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, inpaint_strength, device)
 
         # 6. Preprocess image latents
-        num_channels_latents = self.vae.config.latent_channels
-        image_latents_shape = (batch_size, len(timesteps), num_channels_latents, *vae_latent_size)
-        if image_latents.shape != image_latents_shape:
+        image_latents = preprocess(image_latents)
+        latent_shape = (self.vae.config.latent_channels, latent_height, latent_width)
+        if image_latents.shape[-3:] != latent_shape:
             raise ValueError(
-                f"`image_latents` must have shape {image_latents_shape}, but has shape {image_latents.shape}"
+                f"Each latent image in `image_latents` must have shape {latent_shape}, "
+                f"but has shape {image_latents.shape[-3:]}"
             )
-        if isinstance(image_latents, np.ndarray):
-            image_latents = torch.from_numpy(image_latents)
+        if image_latents.ndim == 4:
+            image_latents = image_latents.reshape(batch_size, len(timesteps), *latent_shape)
+        if image_latents.shape[:2] != (batch_size, len(timesteps)):
+            raise ValueError(
+                f"`image_latents` must have batch size {batch_size} with latent images from {len(timesteps)} timesteps, "
+                f"but has batch size {image_latents.shape[0]} with latent images from {image_latents.shape[1]} timesteps."
+            )
         image_latents = torch.cat([image_latents.transpose(0, 1)] * num_images_per_prompt, 1)
         image_latents = image_latents.to(device=device, dtype=prompt_embeds.dtype)
 
@@ -1486,7 +1475,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
                 # mask with inverted latents from appropriate timestep - use original image latent for last step
-                latents = latents * mask + image_latents[i] * (1 - mask)
+                latents = latents * mask_image + image_latents[i] * (1 - mask_image)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
