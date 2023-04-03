@@ -571,7 +571,7 @@ class TextualInversionLoaderMixin:
 
 class LoraLoaderMixin:
     r"""
-    Utility class for handling the loading LoRA layers into UNet (of class [`~UNet2DConditionModel`]) and Text Encoder
+    Utility class for handling the loading LoRA layers into UNet (of class [`UNet2DConditionModel`]) and Text Encoder
     (of class [`CLIPTextModel`](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel)).
 
     <Tip warning={true}>
@@ -585,7 +585,7 @@ class LoraLoaderMixin:
 
     def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         r"""
-        Load pretrained attention processor layers (such as LoRA) into [`~UNet2DConditionModel`] and
+        Load pretrained attention processor layers (such as LoRA) into [`UNet2DConditionModel`] and
         [`CLIPTextModel`](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel)).
 
         <Tip warning={true}>
