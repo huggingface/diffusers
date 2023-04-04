@@ -477,16 +477,13 @@ def make_train_dataset(args, tokenizer, batch_size=None):
             streaming=args.streaming,
         )
     else:
-        data_files = {}
         if args.train_data_dir is not None:
-            data_files["train"] = os.path.join(args.train_data_dir, "**")
-        dataset = load_dataset(
-            "imagefolder",
-            data_files=data_files,
-            cache_dir=args.cache_dir,
-        )
+            dataset = load_dataset(
+                args.train_data_dir,
+                cache_dir=args.cache_dir,
+            )
         # See more about loading custom images at
-        # https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder
+        # https://huggingface.co/docs/datasets/v2.0.0/en/dataset_script
 
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
