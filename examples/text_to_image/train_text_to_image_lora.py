@@ -20,7 +20,6 @@ import math
 import os
 import random
 from pathlib import Path
-from typing import Optional
 
 import datasets
 import numpy as np
@@ -32,7 +31,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
-from huggingface_hub import HfFolder, Repository, create_repo, whoami
+from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -53,7 +52,7 @@ check_min_version("0.15.0.dev0")
 logger = get_logger(__name__, log_level="INFO")
 
 
-def save_model_card(repo_name, images=None, base_model=str, dataset_name=str, repo_folder=None):
+def save_model_card(repo_id: str, images=None, base_model=str, dataset_name=str, repo_folder=None):
     img_str = ""
     for i, image in enumerate(images):
         image.save(os.path.join(repo_folder, f"image_{i}.png"))
@@ -73,7 +72,7 @@ inference: true
 ---
     """
     model_card = f"""
-# LoRA text2image fine-tuning - {repo_name}
+# LoRA text2image fine-tuning - {repo_id}
 These are LoRA adaption weights for {base_model}. The weights were fine-tuned on the {dataset_name} dataset. You can find some example images in the following. \n
 {img_str}
 """
@@ -347,16 +346,6 @@ def parse_args():
     return args
 
 
-def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
-    if token is None:
-        token = HfFolder.get_token()
-    if organization is None:
-        username = whoami(token)["name"]
-        return f"{username}/{model_id}"
-    else:
-        return f"{organization}/{model_id}"
-
-
 DATASET_NAME_MAPPING = {
     "lambdalabs/pokemon-blip-captions": ("image", "text"),
 }
@@ -402,22 +391,13 @@ def main():
 
     # Handle the repository creation
     if accelerator.is_main_process:
-        if args.push_to_hub:
-            if args.hub_model_id is None:
-                repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
-            else:
-                repo_name = args.hub_model_id
-            repo_name = create_repo(repo_name, exist_ok=True)
-            repo = Repository(args.output_dir, clone_from=repo_name)
-
-            with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
-                if "step_*" not in gitignore:
-                    gitignore.write("step_*\n")
-                if "epoch_*" not in gitignore:
-                    gitignore.write("epoch_*\n")
-        elif args.output_dir is not None:
+        if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
 
+        if args.push_to_hub:
+            repo_id = create_repo(
+                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
+            ).repo_id
     # Load scheduler, tokenizer and models.
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     tokenizer = CLIPTokenizer.from_pretrained(
@@ -830,13 +810,18 @@ def main():
 
         if args.push_to_hub:
             save_model_card(
-                repo_name,
+                repo_id,
                 images=images,
                 base_model=args.pretrained_model_name_or_path,
                 dataset_name=args.dataset_name,
                 repo_folder=args.output_dir,
             )
-            repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
+            upload_folder(
+                repo_id=repo_id,
+                folder_path=args.output_dir,
+                commit_message="End of training",
+                ignore_patterns=["step_*", "epoch_*"],
+            )
 
     # Final inference
     # Load previous pipeline
