@@ -33,7 +33,7 @@ from flax.core.frozen_dict import unfreeze
 from flax.training import train_state
 from flax.training.common_utils import shard
 from huggingface_hub import create_repo, upload_folder
-from PIL import Image
+from PIL import Image, PngImagePlugin
 from torch.utils.data import IterableDataset
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -47,6 +47,7 @@ from diffusers import (
     FlaxUNet2DConditionModel,
 )
 from diffusers.utils import check_min_version, is_wandb_available
+
 
 # To prevent an error that occurs when there are abnormally large compressed data chunk in the png image
 # see more https://github.com/python-pillow/Pillow/issues/5610
