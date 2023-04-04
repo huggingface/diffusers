@@ -20,6 +20,7 @@ import torch.nn as nn
 import torch.utils.checkpoint
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..loaders import UNet2DConditionLoadersMixin
 from ..utils import BaseOutput, logging
 from .attention_processor import AttentionProcessor, AttnProcessor
 from .embeddings import TimestepEmbedding, Timesteps
@@ -50,7 +51,7 @@ class UNet3DConditionOutput(BaseOutput):
     sample: torch.FloatTensor
 
 
-class UNet3DConditionModel(ModelMixin, ConfigMixin):
+class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     r"""
     UNet3DConditionModel is a conditional 2D UNet model that takes in a noisy sample, conditional state, and a timestep
     and returns sample shaped output.
