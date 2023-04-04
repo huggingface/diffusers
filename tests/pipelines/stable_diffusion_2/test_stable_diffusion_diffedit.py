@@ -36,6 +36,9 @@ from ...pipeline_params import TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, TEXT_G
 from ...test_pipelines_common import PipelineTesterMixin
 
 
+torch.backends.cuda.matmul.allow_tf32 = False
+
+
 class StableDiffusionDiffEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionDiffEditPipeline
     params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS - {"height", "width", "image"} | {"image_latents"}

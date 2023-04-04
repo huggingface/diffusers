@@ -34,6 +34,7 @@ from ...utils import (
     is_accelerate_version,
     logging,
     randn_tensor,
+    replace_example_docstring,
 )
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
@@ -59,6 +60,77 @@ class DiffEditInversionPipelineOutput(BaseOutput):
 
     latents: torch.FloatTensor
     images: Union[List[PIL.Image.Image], np.ndarray]
+
+
+EXAMPLE_DOC_STRING = """
+
+        ```py
+        >>> import PIL
+        >>> import requests
+        >>> import torch
+        >>> from io import BytesIO
+
+        >>> from diffusers import StableDiffusionDiffEditPipeline
+
+
+        >>> def download_image(url):
+        ...     response = requests.get(url)
+        ...     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
+
+        >>> img_url = "https://github.com/Xiang-cd/DiffEdit-stable-diffusion/raw/main/assets/origin.png"
+
+        >>> init_image = download_image(img_url).resize((768, 768))
+
+        >>> pipe = StableDiffusionDiffEditPipeline.from_pretrained(
+        ...     "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16
+        ... )
+        >>> pipe = pipe.to("cuda")
+
+        >>> pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
+        >>> pipeline.inverse_scheduler = DDIMInverseScheduler.from_config(pipeline.scheduler.config)
+        >>> pipeline.enable_model_cpu_offload()
+
+        >>> mask_prompt = "A bowl of fruits"
+        >>> prompt = "A bowl of pears"
+
+        >>> mask_image = pipe.generate_mask(image=init_image, source_prompt=prompt, target_prompt=mask_prompt)
+        >>> image_latents = pipe.invert(image=init_image, prompt=mask_prompt).latents
+        >>> image = pipe(prompt=prompt, mask_image=mask_image, image_latents=image_latents).images[0]
+        ```
+"""
+
+EXAMPLE_INVERT_DOC_STRING = """
+        ```py
+        >>> import PIL
+        >>> import requests
+        >>> import torch
+        >>> from io import BytesIO
+
+        >>> from diffusers import StableDiffusionDiffEditPipeline
+
+
+        >>> def download_image(url):
+        ...     response = requests.get(url)
+        ...     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
+
+        >>> img_url = "https://github.com/Xiang-cd/DiffEdit-stable-diffusion/raw/main/assets/origin.png"
+
+        >>> init_image = download_image(img_url).resize((768, 768))
+
+        >>> pipe = StableDiffusionDiffEditPipeline.from_pretrained(
+        ...     "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16
+        ... )
+        >>> pipe = pipe.to("cuda")
+
+        >>> pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
+        >>> pipeline.inverse_scheduler = DDIMInverseScheduler.from_config(pipeline.scheduler.config)
+        >>> pipeline.enable_model_cpu_offload()
+
+        >>> prompt = "A bowl of fruits"
+
+        >>> inverted_latents = pipe.invert(image=init_image, prompt=prompt).latents
+        ```
+"""
 
 
 def auto_corr_loss(hidden_states, generator=None):
@@ -970,6 +1042,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
         return mask_image
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_INVERT_DOC_STRING)
     def invert(
         self,
         prompt: Optional[Union[str, List[str]]] = None,
@@ -1060,37 +1133,6 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
                 Number of auto correction roll steps
 
         Examples:
-
-        ```py
-        >>> import PIL
-        >>> import requests
-        >>> import torch
-        >>> from io import BytesIO
-
-        >>> from diffusers import StableDiffusionDiffEditPipeline
-
-
-        >>> def download_image(url):
-        ...     response = requests.get(url)
-        ...     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
-
-        >>> img_url = "https://github.com/Xiang-cd/DiffEdit-stable-diffusion/raw/main/assets/origin.png"
-
-        >>> init_image = download_image(img_url).resize((768, 768))
-
-        >>> pipe = StableDiffusionDiffEditPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16
-        ... )
-        >>> pipe = pipe.to("cuda")
-
-        >>> pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
-        >>> pipeline.inverse_scheduler = DDIMInverseScheduler.from_config(pipeline.scheduler.config)
-        >>> pipeline.enable_model_cpu_offload()
-
-        >>> prompt = "A bowl of fruits"
-
-        >>> inverted_latents = pipe.invert(image=init_image, prompt=prompt).latents
-        ```
 
         Returns:
             [`~pipelines.stable_diffusion.pipeline_stable_diffusion_diffedit.DiffEditInversionPipelineOutput`] or
@@ -1239,6 +1281,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
         return DiffEditInversionPipelineOutput(latents=latents, images=image)
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Optional[Union[str, List[str]]] = None,
@@ -1329,40 +1372,6 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
 
         Examples:
-
-        ```py
-        >>> import PIL
-        >>> import requests
-        >>> import torch
-        >>> from io import BytesIO
-
-        >>> from diffusers import StableDiffusionDiffEditPipeline
-
-
-        >>> def download_image(url):
-        ...     response = requests.get(url)
-        ...     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
-
-        >>> img_url = "https://github.com/Xiang-cd/DiffEdit-stable-diffusion/raw/main/assets/origin.png"
-
-        >>> init_image = download_image(img_url).resize((768, 768))
-
-        >>> pipe = StableDiffusionDiffEditPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16
-        ... )
-        >>> pipe = pipe.to("cuda")
-
-        >>> pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
-        >>> pipeline.inverse_scheduler = DDIMInverseScheduler.from_config(pipeline.scheduler.config)
-        >>> pipeline.enable_model_cpu_offload()
-
-        >>> mask_prompt = "A bowl of fruits"
-        >>> prompt = "A bowl of pears"
-
-        >>> mask_image = pipe.generate_mask(image=init_image, source_prompt=prompt, target_prompt=mask_prompt)
-        >>> image_latents = pipe.invert(image=init_image, prompt=mask_prompt).latents
-        >>> image = pipe(prompt=prompt, mask_image=mask_image, image_latents=image_latents).images[0]
-        ```
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
