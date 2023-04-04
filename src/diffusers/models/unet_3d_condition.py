@@ -458,7 +458,9 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         sample = sample.permute(0, 2, 1, 3, 4).reshape((sample.shape[0] * num_frames, -1) + sample.shape[3:])
         sample = self.conv_in(sample)
 
-        sample = self.transformer_in(sample, num_frames=num_frames).sample
+        sample = self.transformer_in(
+            sample, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs
+        ).sample
 
         # 3. down
         down_block_res_samples = (sample,)

@@ -14,10 +14,11 @@
 # limitations under the License.
 
 import os
-import torch
 import tempfile
 import unittest
+
 import numpy as np
+import torch
 
 from diffusers.models import ModelMixin, UNet3DConditionModel
 from diffusers.models.attention_processor import AttnProcessor, LoRAAttnProcessor
@@ -207,7 +208,11 @@ class UNet3DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
         lora_attn_procs = {}
         for name in model.attn_processors.keys():
-            cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
+            has_cross_attention = name.endswith("attn2.processor") and not (
+                name.startswith("transformer_in") or "temp_attentions" in name.split(".")
+            )
+            cross_attention_dim = model.config.cross_attention_dim if has_cross_attention else None
+
             if name.startswith("mid_block"):
                 hidden_size = model.config.block_out_channels[-1]
             elif name.startswith("up_block"):
@@ -216,6 +221,9 @@ class UNet3DConditionModelTests(ModelTesterMixin, unittest.TestCase):
             elif name.startswith("down_blocks"):
                 block_id = int(name[len("down_blocks.")])
                 hidden_size = model.config.block_out_channels[block_id]
+            elif name.startswith("transformer_in"):
+                # Note that the `8 * ...` comes from: https://github.com/huggingface/diffusers/blob/7139f0e874f10b2463caa8cbd585762a309d12d6/src/diffusers/models/unet_3d_condition.py#L148
+                hidden_size = 8 * model.config.attention_head_dim
 
             lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
 
