@@ -93,8 +93,6 @@
     title: Low-Rank Adaptation of Large Language Models (LoRA)
   title: Training
 - sections:
-  - local: conceptual/pipeline_explained
-    title: Pipelines explained
   - local: conceptual/philosophy
     title: Philosophy
   - local: conceptual/contribution
