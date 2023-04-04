@@ -7,7 +7,7 @@ import torch.nn as nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models import ModelMixin
 from ...models.attention import Attention
-from ...models.attention_processor import AttentionProcessor, AttnAddedKVProcessor
+from ...models.attention_processor import AttentionProcessor, AttnAddedKVProcessor, AttnProcessor
 from ...models.dual_transformer_2d import DualTransformer2DModel
 from ...models.embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from ...models.transformer_2d import Transformer2DModel
@@ -532,6 +532,12 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
+
+    def set_default_attn_processor(self):
+        """
+        Disables custom attention processors and sets the default attention implementation.
+        """
+        self.set_attn_processor(AttnProcessor())
 
     def set_attention_slice(self, slice_size):
         r"""
