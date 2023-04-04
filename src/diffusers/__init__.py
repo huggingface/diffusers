@@ -120,6 +120,7 @@ else:
         SemanticStableDiffusionPipeline,
         StableDiffusionAttendAndExcitePipeline,
         StableDiffusionControlNetPipeline,
+        StableDiffusionControlNetInpaintPipeline,
         StableDiffusionDepth2ImgPipeline,
         StableDiffusionImageVariationPipeline,
         StableDiffusionImg2ImgPipeline,
