@@ -106,7 +106,7 @@ def log_validation(vae, text_encoder, tokenizer, unet, controlnet, args, acceler
     image_logs = []
 
     for validation_prompt, validation_image in zip(validation_prompts, validation_images):
-        validation_image = Image.open(validation_image)
+        validation_image = Image.open(validation_image).convert('RGB')
 
         images = []
 
