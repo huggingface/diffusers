@@ -141,7 +141,7 @@ Different schedulers come with different denoising speeds and quality trade-offs
 ```py
 >>> from diffusers import EulerDiscreteScheduler
 
->>> pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+>>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
 >>> pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
 ```
 

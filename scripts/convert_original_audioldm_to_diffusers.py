@@ -246,19 +246,19 @@ def create_unet_diffusers_config(original_config, image_size: int):
     )
     class_embeddings_concat = unet_params.extra_film_use_concat if "extra_film_use_concat" in unet_params else None
 
-    config = dict(
-        sample_size=image_size // vae_scale_factor,
-        in_channels=unet_params.in_channels,
-        out_channels=unet_params.out_channels,
-        down_block_types=tuple(down_block_types),
-        up_block_types=tuple(up_block_types),
-        block_out_channels=tuple(block_out_channels),
-        layers_per_block=unet_params.num_res_blocks,
-        cross_attention_dim=cross_attention_dim,
-        class_embed_type=class_embed_type,
-        projection_class_embeddings_input_dim=projection_class_embeddings_input_dim,
-        class_embeddings_concat=class_embeddings_concat,
-    )
+    config = {
+        "sample_size": image_size // vae_scale_factor,
+        "in_channels": unet_params.in_channels,
+        "out_channels": unet_params.out_channels,
+        "down_block_types": tuple(down_block_types),
+        "up_block_types": tuple(up_block_types),
+        "block_out_channels": tuple(block_out_channels),
+        "layers_per_block": unet_params.num_res_blocks,
+        "cross_attention_dim": cross_attention_dim,
+        "class_embed_type": class_embed_type,
+        "projection_class_embeddings_input_dim": projection_class_embeddings_input_dim,
+        "class_embeddings_concat": class_embeddings_concat,
+    }
 
     return config
 
@@ -278,17 +278,17 @@ def create_vae_diffusers_config(original_config, checkpoint, image_size: int):
 
     scaling_factor = checkpoint["scale_factor"] if "scale_by_std" in original_config.model.params else 0.18215
 
-    config = dict(
-        sample_size=image_size,
-        in_channels=vae_params.in_channels,
-        out_channels=vae_params.out_ch,
-        down_block_types=tuple(down_block_types),
-        up_block_types=tuple(up_block_types),
-        block_out_channels=tuple(block_out_channels),
-        latent_channels=vae_params.z_channels,
-        layers_per_block=vae_params.num_res_blocks,
-        scaling_factor=float(scaling_factor),
-    )
+    config = {
+        "sample_size": image_size,
+        "in_channels": vae_params.in_channels,
+        "out_channels": vae_params.out_ch,
+        "down_block_types": tuple(down_block_types),
+        "up_block_types": tuple(up_block_types),
+        "block_out_channels": tuple(block_out_channels),
+        "latent_channels": vae_params.z_channels,
+        "layers_per_block": vae_params.num_res_blocks,
+        "scaling_factor": float(scaling_factor),
+    }
     return config
 
 
@@ -670,18 +670,18 @@ def create_transformers_vocoder_config(original_config):
     """
     vocoder_params = original_config.model.params.vocoder_config.params
 
-    config = dict(
-        model_in_dim=vocoder_params.num_mels,
-        sampling_rate=vocoder_params.sampling_rate,
-        upsample_initial_channel=vocoder_params.upsample_initial_channel,
-        upsample_rates=list(vocoder_params.upsample_rates),
-        upsample_kernel_sizes=list(vocoder_params.upsample_kernel_sizes),
-        resblock_kernel_sizes=list(vocoder_params.resblock_kernel_sizes),
-        resblock_dilation_sizes=[
+    config = {
+        "model_in_dim": vocoder_params.num_mels,
+        "sampling_rate": vocoder_params.sampling_rate,
+        "upsample_initial_channel": vocoder_params.upsample_initial_channel,
+        "upsample_rates": list(vocoder_params.upsample_rates),
+        "upsample_kernel_sizes": list(vocoder_params.upsample_kernel_sizes),
+        "resblock_kernel_sizes": list(vocoder_params.resblock_kernel_sizes),
+        "resblock_dilation_sizes": [
             list(resblock_dilation) for resblock_dilation in vocoder_params.resblock_dilation_sizes
         ],
-        normalize_before=False,
-    )
+        "normalize_before": False,
+    }
 
     return config
 

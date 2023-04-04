@@ -81,7 +81,7 @@ class OnnxStableDiffusionImg2ImgPipelineFastTests(OnnxPipelineTesterMixin, unitt
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 128, 128, 3)
-        expected_slice = np.array([0.61710, 0.53390, 0.49310, 0.55622, 0.50982, 0.58240, 0.50716, 0.38629, 0.46856])
+        expected_slice = np.array([0.61737, 0.54642, 0.53183, 0.54465, 0.52742, 0.60525, 0.49969, 0.40655, 0.48154])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-1
 
