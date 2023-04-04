@@ -274,18 +274,18 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
         else:
             raise NotImplementedError(f"Unknown conditional unet num_classes config: {unet_params.num_classes}")
 
-    config = dict(
-        sample_size=image_size // vae_scale_factor,
-        in_channels=unet_params.in_channels,
-        down_block_types=tuple(down_block_types),
-        block_out_channels=tuple(block_out_channels),
-        layers_per_block=unet_params.num_res_blocks,
-        cross_attention_dim=unet_params.context_dim,
-        attention_head_dim=head_dim,
-        use_linear_projection=use_linear_projection,
-        class_embed_type=class_embed_type,
-        projection_class_embeddings_input_dim=projection_class_embeddings_input_dim,
-    )
+    config = {
+        "sample_size": image_size // vae_scale_factor,
+        "in_channels": unet_params.in_channels,
+        "down_block_types": tuple(down_block_types),
+        "block_out_channels": tuple(block_out_channels),
+        "layers_per_block": unet_params.num_res_blocks,
+        "cross_attention_dim": unet_params.context_dim,
+        "attention_head_dim": head_dim,
+        "use_linear_projection": use_linear_projection,
+        "class_embed_type": class_embed_type,
+        "projection_class_embeddings_input_dim": projection_class_embeddings_input_dim,
+    }
 
     if not controlnet:
         config["out_channels"] = unet_params.out_channels
@@ -305,16 +305,16 @@ def create_vae_diffusers_config(original_config, image_size: int):
     down_block_types = ["DownEncoderBlock2D"] * len(block_out_channels)
     up_block_types = ["UpDecoderBlock2D"] * len(block_out_channels)
 
-    config = dict(
-        sample_size=image_size,
-        in_channels=vae_params.in_channels,
-        out_channels=vae_params.out_ch,
-        down_block_types=tuple(down_block_types),
-        up_block_types=tuple(up_block_types),
-        block_out_channels=tuple(block_out_channels),
-        latent_channels=vae_params.z_channels,
-        layers_per_block=vae_params.num_res_blocks,
-    )
+    config = {
+        "sample_size": image_size,
+        "in_channels": vae_params.in_channels,
+        "out_channels": vae_params.out_ch,
+        "down_block_types": tuple(down_block_types),
+        "up_block_types": tuple(up_block_types),
+        "block_out_channels": tuple(block_out_channels),
+        "latent_channels": vae_params.z_channels,
+        "layers_per_block": vae_params.num_res_blocks,
+    }
     return config
 
 
@@ -989,6 +989,7 @@ def download_from_original_stable_diffusion_ckpt(
     stable_unclip_prior: Optional[str] = None,
     clip_stats_path: Optional[str] = None,
     controlnet: Optional[bool] = None,
+    load_safety_checker: bool = True,
 ) -> StableDiffusionPipeline:
     """
     Load a Stable Diffusion pipeline object from a CompVis-style `.ckpt`/`.safetensors` file and (ideally) a `.yaml`
@@ -1028,6 +1029,8 @@ def download_from_original_stable_diffusion_ckpt(
             The device to use. Pass `None` to determine automatically. :param from_safetensors: If `checkpoint_path` is
             in `safetensors` format, load checkpoint with safetensors instead of PyTorch. :return: A
             StableDiffusionPipeline object representing the passed-in `.ckpt`/`.safetensors` file.
+        load_safety_checker (`bool`, *optional*, defaults to `True`):
+            Whether to load the safety checker or not. Defaults to `True`.
     """
     if prediction_type == "v-prediction":
         prediction_type = "v_prediction"
@@ -1270,8 +1273,13 @@ def download_from_original_stable_diffusion_ckpt(
     elif model_type == "FrozenCLIPEmbedder":
         text_model = convert_ldm_clip_checkpoint(checkpoint)
         tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
-        safety_checker = StableDiffusionSafetyChecker.from_pretrained("CompVis/stable-diffusion-safety-checker")
-        feature_extractor = AutoFeatureExtractor.from_pretrained("CompVis/stable-diffusion-safety-checker")
+
+        if load_safety_checker:
+            safety_checker = StableDiffusionSafetyChecker.from_pretrained("CompVis/stable-diffusion-safety-checker")
+            feature_extractor = AutoFeatureExtractor.from_pretrained("CompVis/stable-diffusion-safety-checker")
+        else:
+            safety_checker = None
+            feature_extractor = None
 
         if controlnet:
             pipe = StableDiffusionControlNetPipeline(

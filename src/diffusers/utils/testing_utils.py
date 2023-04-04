@@ -25,6 +25,7 @@ from .import_utils import (
     is_onnx_available,
     is_opencv_available,
     is_torch_available,
+    is_torch_version,
 )
 from .logging import get_logger
 
@@ -163,6 +164,15 @@ def require_torch(test_case):
     Decorator marking a test that requires PyTorch. These tests are skipped when PyTorch isn't installed.
     """
     return unittest.skipUnless(is_torch_available(), "test requires PyTorch")(test_case)
+
+
+def require_torch_2(test_case):
+    """
+    Decorator marking a test that requires PyTorch 2. These tests are skipped when it isn't installed.
+    """
+    return unittest.skipUnless(is_torch_available() and is_torch_version(">=", "2.0.0"), "test requires PyTorch 2")(
+        test_case
+    )
 
 
 def require_torch_gpu(test_case):
