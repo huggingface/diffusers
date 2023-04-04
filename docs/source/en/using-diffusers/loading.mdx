@@ -10,20 +10,28 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Loading
+# Load pipelines, models, and schedulers
 
-A core premise of the diffusers library is to make diffusion models **as accessible as possible**.
-Accessibility is therefore achieved by providing an API to load complete diffusion pipelines as well as individual components with a single line of code. 
+Having an easy way to use a diffusion system for inference is essential to 🧨 Diffusers. Diffusion systems often consist of multiple components like parameterized models, tokenizers, and schedulers that interact in complex ways. That is why we designed the [`DiffusionPipeline`] to wrap the complexity of the entire diffusion system into an easy-to-use API, while remaining flexible enough to be adapted for other use cases, such as loading each component individually as building blocks to assemble your own diffusion system.
 
-In the following we explain in-detail how to easily load:
+Everything you need for inference or training is accessible with the `from_pretrained()` method.
 
-- *Complete Diffusion Pipelines* via the [`DiffusionPipeline.from_pretrained`]
-- *Diffusion Models* via [`ModelMixin.from_pretrained`]
-- *Schedulers* via [`SchedulerMixin.from_pretrained`]
+This guide will show you how to load:
 
-## Loading pipelines
+- pipelines from the Hub and locally
+- different components into a pipeline
+- checkpoint variants such as different floating point types or non-exponential mean averaged (EMA) weights
+- models and schedulers
 
-The [`DiffusionPipeline`] class is the easiest way to access any diffusion model that is [available on the Hub](https://huggingface.co/models?library=diffusers). Let's look at an example on how to download [Runway's Stable Diffusion model](https://huggingface.co/runwayml/stable-diffusion-v1-5).
+## Diffusion Pipeline
+
+<Tip>
+
+💡 Skip to the [DiffusionPipeline explained](#diffusionpipeline-explained) section if you interested in learning in more detail about how the [`DiffusionPipeline`] class works.
+
+</Tip>
+
+The [`DiffusionPipeline`] class is the simplest and most generic way to load any diffusion model from the [Hub](https://huggingface.co/models?library=diffusers). The [`DiffusionPipeline.from_pretrained`] method automatically detects the correct pipeline class from the checkpoint, downloads and caches all the required configuration and weight files, and returns a pipeline instance ready for inference.
 
 ```python
 from diffusers import DiffusionPipeline
@@ -32,10 +40,7 @@ repo_id = "runwayml/stable-diffusion-v1-5"
 pipe = DiffusionPipeline.from_pretrained(repo_id)
 ```
 
-Here [`DiffusionPipeline`] automatically detects the correct pipeline (*i.e.* [`StableDiffusionPipeline`]), downloads and caches all required configuration and weight files (if not already done so), and finally returns a pipeline instance, called `pipe`.
-The pipeline instance can then be called using [`StableDiffusionPipeline.__call__`] (i.e., `pipe("image of a astronaut riding a horse")`) for text-to-image generation.
-
-Instead of using the generic [`DiffusionPipeline`] class for loading, you can also load the appropriate pipeline class directly. The code snippet above yields the same instance as when doing:
+You can also load a checkpoint with it's specific pipeline class. The example above loaded a Stable Diffusion model; to get the same result, use the [`StableDiffusionPipeline`] class:
 
 ```python
 from diffusers import StableDiffusionPipeline
@@ -44,10 +49,7 @@ repo_id = "runwayml/stable-diffusion-v1-5"
 pipe = StableDiffusionPipeline.from_pretrained(repo_id)
 ```
 
-<Tip>
-
-Many checkpoints, such as [CompVis/stable-diffusion-v1-4](https://huggingface.co/CompVis/stable-diffusion-v1-4) and [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) can be used for multiple tasks, *e.g.* *text-to-image* or *image-to-image*.
-If you want to use those checkpoints for a task that is different from the default one, you have to load it directly from the corresponding task-specific pipeline class:
+A checkpoint (such as [`CompVis/stable-diffusion-v1-4`](https://huggingface.co/CompVis/stable-diffusion-v1-4) or [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5)) may also be used for more than one task, like text-to-image or image-to-image. To differentiate what task you want to use the checkpoint for, you have to load it directly with it's corresponding task-specific pipeline class:
 
 ```python
 from diffusers import StableDiffusionImg2ImgPipeline
@@ -56,82 +58,16 @@ repo_id = "runwayml/stable-diffusion-v1-5"
 pipe = StableDiffusionImg2ImgPipeline.from_pretrained(repo_id)
 ```
 
-</Tip>
+### Local pipeline
 
+To load a diffusion pipeline locally, use [`git-lfs`](https://git-lfs.github.com/) to manually download the checkpoint (in this case, [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5)) to your local disk. This creates a local folder, `./stable-diffusion-v1-5`, on your disk:
 
-Diffusion pipelines like `StableDiffusionPipeline` or `StableDiffusionImg2ImgPipeline` consist of multiple components. These components can be both parameterized models, such as `"unet"`, `"vae"` and `"text_encoder"`, tokenizers or schedulers. 
-These components often interact in complex ways with each other when using the pipeline in inference, *e.g.* for [`StableDiffusionPipeline`] the inference call is explained [here](https://huggingface.co/blog/stable_diffusion#how-does-stable-diffusion-work).
-The purpose of the [pipeline classes](./api/overview#diffusers-summary) is to wrap the complexity of these diffusion systems and give the user an easy-to-use API while staying flexible for customization, as will be shown later.
-
-<!---
-THE FOLLOWING CAN BE UNCOMMENTED ONCE WE HAVE NEW MODELS WITH ACCESS REQUIREMENT
-
-# Loading pipelines that require access request
-
-Due to the capabilities of diffusion models to generate extremely realistic images, there is a certain danger that such models might be misused for unwanted applications, *e.g.* generating pornography or violent images.
-In order to minimize the possibility of such unsolicited use cases, some of the most powerful diffusion models require users to acknowledge a license before being able to use the model. If the user does not agree to the license, the pipeline cannot be downloaded.
-If you try to load [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) the same way as done previously:
-
-```python
-from diffusers import DiffusionPipeline
-
-repo_id = "runwayml/stable-diffusion-v1-5"
-stable_diffusion = DiffusionPipeline.from_pretrained(repo_id)
-```
-
-it will only work if you have both *click-accepted* the license on [the model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) and are logged into the Hugging Face Hub. Otherwise you will get an error message
-such as the following:
-
-```
-OSError: runwayml/stable-diffusion-v1-5 is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'
-If this is a private repository, make sure to pass a token having permission to this repo with `use_auth_token` or log in with `huggingface-cli login`
-```
-
-Therefore, we need to make sure to *click-accept* the license. You can do this by simply visiting 
-the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) and clicking on "Agree and access repository":
-
-<p align="center">
-    <br>
-    <img src="https://raw.githubusercontent.com/huggingface/diffusers/main/docs/source/imgs/access_request.png" width="400"/>
-    <br>
-</p>
-
-Second, you need to login with your access token:
-
-```
-huggingface-cli login
-```
-
-before trying to load the model. Or alternatively, you can pass [your access token](https://huggingface.co/docs/hub/security-tokens#user-access-tokens) directly via the flag `use_auth_token`. In this case you do **not** need 
-to run `huggingface-cli login` before:
-
-```python
-from diffusers import DiffusionPipeline
-
-repo_id = "runwayml/stable-diffusion-v1-5"
-stable_diffusion = DiffusionPipeline.from_pretrained(repo_id, use_auth_token="<your-access-token>")
-```
-
-The final option to use pipelines that require access without having to rely on the Hugging Face Hub is to load the pipeline locally as explained in the next section.
--->
-
-### Loading pipelines locally
-
-If you prefer to have complete control over the pipeline and its corresponding files or, as said before, if you want to use pipelines that require an access request without having to be connected to the Hugging Face Hub, 
-we recommend loading pipelines locally.
-
-To load a diffusion pipeline locally, you first need to manually download the whole folder structure on your local disk and then pass a local path to the [`DiffusionPipeline.from_pretrained`]. Let's again look at an example for 
-[Runway's Stable Diffusion Diffusion model](https://huggingface.co/runwayml/stable-diffusion-v1-5).
-
-First, you should make use of [`git-lfs`](https://git-lfs.github.com/) to download the whole folder structure that has been uploaded to the [model repository](https://huggingface.co/runwayml/stable-diffusion-v1-5/tree/main):
-
-```
+```bash
 git lfs install
 git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
 ```
 
-The command above will create a local folder called `./stable-diffusion-v1-5` on your disk.
-Now, all you have to do is to simply pass the local folder path to `from_pretrained`:
+Then pass the local path to [`~DiffusionPipeline.from_pretrained`]:
 
 ```python
 from diffusers import DiffusionPipeline
@@ -140,17 +76,29 @@ repo_id = "./stable-diffusion-v1-5"
 stable_diffusion = DiffusionPipeline.from_pretrained(repo_id)
 ```
 
-If `repo_id` is a local path, as it is the case here, [`DiffusionPipeline.from_pretrained`] will automatically detect it and therefore not try to download any files from the Hub.
-While we usually recommend to load weights directly from the Hub to be certain to stay up to date with the newest changes, loading pipelines locally should be preferred if one 
-wants to stay anonymous, self-contained applications, etc...
+The [`~DiffusionPipeline.from_pretrained`] method won't download any files from the Hub when it detects a local path, but this also means it won't download and cache the latest changes to a checkpoint.
 
-### Loading customized pipelines
+### Swap components in a pipeline
 
-Advanced users that want to load customized versions of diffusion pipelines can do so by swapping any of the default components, *e.g.* the scheduler, with other scheduler classes.
-A classical use case of this functionality is to swap the scheduler. [Stable Diffusion v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) uses the [`PNDMScheduler`] by default which is generally not the most performant scheduler. Since the release
-of stable diffusion, multiple improved schedulers have been published. To use those, the user has to manually load their preferred scheduler and pass it into [`DiffusionPipeline.from_pretrained`].
+You can customize the default components of any pipeline with another compatible component. Customization is important because:
 
-*E.g.* to use [`EulerDiscreteScheduler`] or [`DPMSolverMultistepScheduler`] to have a better quality vs. generation speed trade-off for inference, one could load them as follows:
+- Changing the scheduler is important for exploring the trade-off between generation speed and quality.
+- Different components of a model are typically trained independently and you can swap out a component with a better-performing one.
+- During finetuning, usually only some components - like the UNet or text encoder - are trained.
+
+To find out which schedulers are compatible for customization, you can use the `compatibles` method:
+
+```py
+from diffusers import DiffusionPipeline
+
+repo_id = "runwayml/stable-diffusion-v1-5"
+stable_diffusion = DiffusionPipeline.from_pretrained(repo_id)
+stable_diffusion.scheduler.compatibles
+```
+
+Let's use the [`SchedulerMixin.from_pretrained`] method to replace the default [`PNDMScheduler`] with a more performant scheduler, [`EulerDiscreteScheduler`]. The `subfolder="scheduler"` argument is required to load the scheduler configuration from the correct [subfolder](https://huggingface.co/runwayml/stable-diffusion-v1-5/tree/main/scheduler) of the pipeline repository.
+
+Then you can pass the new [`EulerDiscreteScheduler`] instance to the `scheduler` argument in [`DiffusionPipeline`]:
 
 ```python
 from diffusers import DiffusionPipeline, EulerDiscreteScheduler, DPMSolverMultistepScheduler
@@ -158,31 +106,24 @@ from diffusers import DiffusionPipeline, EulerDiscreteScheduler, DPMSolverMultis
 repo_id = "runwayml/stable-diffusion-v1-5"
 
 scheduler = EulerDiscreteScheduler.from_pretrained(repo_id, subfolder="scheduler")
-# or
-# scheduler = DPMSolverMultistepScheduler.from_pretrained(repo_id, subfolder="scheduler")
 
 stable_diffusion = DiffusionPipeline.from_pretrained(repo_id, scheduler=scheduler)
 ```
 
-Three things are worth paying attention to here.
-- First, the scheduler is loaded with [`SchedulerMixin.from_pretrained`]
-- Second, the scheduler is loaded with a function argument, called `subfolder="scheduler"` as the configuration of stable diffusion's scheduling is defined in a [subfolder of the official pipeline repository](https://huggingface.co/runwayml/stable-diffusion-v1-5/tree/main/scheduler)
-- Third, the scheduler instance can simply be passed with the `scheduler` keyword argument to [`DiffusionPipeline.from_pretrained`]. This works because the [`StableDiffusionPipeline`] defines its scheduler with the `scheduler` attribute. It's not possible to use a different name, such as `sampler=scheduler` since `sampler` is not a defined keyword for [`StableDiffusionPipeline.__init__`]
+### Safety checker
 
-Not only the scheduler components can be customized for diffusion pipelines; in theory, all components of a pipeline can be customized. In practice, however, it often only makes sense to switch out a component that has **compatible** alternatives to what the pipeline expects.
-Many scheduler classes are compatible with each other as can be seen [here](https://github.com/huggingface/diffusers/blob/0dd8c6b4dbab4069de9ed1cafb53cbd495873879/src/diffusers/schedulers/scheduling_ddim.py#L112). This is not always the case for other components, such as the `"unet"`.
-
-One special case that can also be customized is the `"safety_checker"` of stable diffusion. If you believe the safety checker doesn't serve you any good, you can simply disable it by passing `None`:
+Diffusion models like Stable Diffusion can generate harmful content, which is why 🧨 Diffusers has a [safety checker](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/safety_checker.py) to check generated outputs against known hardcoded NSFW content. If you'd like to disable the safety checker for whatever reason, pass `None` to the `safety_checker` argument:
 
 ```python
-from diffusers import DiffusionPipeline, EulerDiscreteScheduler, DPMSolverMultistepScheduler
+from diffusers import DiffusionPipeline
 
+repo_id = "runwayml/stable-diffusion-v1-5"
 stable_diffusion = DiffusionPipeline.from_pretrained(repo_id, safety_checker=None)
 ```
 
-Another common use case is to reuse the same components in multiple pipelines, *e.g.* the weights and configurations of [`"runwayml/stable-diffusion-v1-5"`](https://huggingface.co/runwayml/stable-diffusion-v1-5) can be used for both [`StableDiffusionPipeline`] and [`StableDiffusionImg2ImgPipeline`] and we might not want to 
-use the exact same weights into RAM twice. In this case, customizing all the input instances would help us 
-to only load the weights into RAM once:
+### Reuse components across pipelines
+
+You can also reuse the same components in multiple pipelines without loading the weights into RAM twice. Use the [`DiffusionPipeline.components`] method to save the components in `components`:
 
 ```python
 from diffusers import StableDiffusionPipeline, StableDiffusionImg2ImgPipeline
@@ -191,227 +132,193 @@ model_id = "runwayml/stable-diffusion-v1-5"
 stable_diffusion_txt2img = StableDiffusionPipeline.from_pretrained(model_id)
 
 components = stable_diffusion_txt2img.components
+```
 
-# weights are not reloaded into RAM
+Then you can pass the `components` to another pipeline without reloading the weights into RAM:
+
+```py
 stable_diffusion_img2img = StableDiffusionImg2ImgPipeline(**components)
 ```
 
-Note how the above code snippet makes use of [`DiffusionPipeline.components`].
+## Checkpoint variants
 
-### Loading variants
+A checkpoint variant is usually a checkpoint where it's weights are:
 
-Diffusion Pipeline checkpoints can offer variants of the "main" diffusion pipeline checkpoint.
-Such checkpoint variants are usually variations of the checkpoint that have advantages for specific use-cases and that are so similar to the "main" checkpoint that they **should not** be put in a new checkpoint.
-A variation of a checkpoint has to have **exactly** the same serialization format and **exactly** the same model structure, including all weights having the same tensor shapes.
-
-Examples of variations are different floating point types and non-ema weights. I.e. "fp16", "bf16", and "no_ema" are common variations.
-
-#### Let's first talk about whats **not** checkpoint variant,
-
-Checkpoint variants do **not** include different serialization formats (such as [safetensors](https://huggingface.co/docs/diffusers/main/en/using-diffusers/using_safetensors)) as weights in different serialization formats are 
-identical to the weights of the "main" checkpoint, just loaded in a different framework.
-
-Also variants do not correspond to different model structures, *e.g.* [stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) is not a variant of [stable-diffusion-2-0](https://huggingface.co/stabilityai/stable-diffusion-2) since the model structure is different (Stable Diffusion 1-5 uses a different `CLIPTextModel` compared to Stable Diffusion 2.0).
-
-Pipeline checkpoints that are identical in model structure, but have been trained on different datasets, trained with vastly different training setups and thus correspond to different official releases (such as [Stable Diffusion v1-4](https://huggingface.co/CompVis/stable-diffusion-v1-4) and [Stable Diffusion v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5)) should probably be stored in individual repositories instead of as variations of each other.
-
-#### So what are checkpoint variants then? 
-
-Checkpoint variants usually consist of the checkpoint stored in "*low-precision, low-storage*" dtype so that less bandwith is required to download them, or of *non-exponential-averaged* weights that shall be used when continuing fine-tuning from the checkpoint.
-Both use cases have clear advantages when their weights are considered variants: they share the same serialization format as the reference weights, and they correspond to a specialization of the "main" checkpoint which does not warrant a new model repository. 
-A checkpoint stored in [torch's half-precision / float16 format](https://pytorch.org/blog/accelerating-training-on-nvidia-gpus-with-pytorch-automatic-mixed-precision/) requires only half the bandwith and storage when downloading the checkpoint,
-**but** cannot be used when continuing training or when running the checkpoint on CPU.
-Similarly the *non-exponential-averaged* (or non-EMA) version of the checkpoint should be used when continuing fine-tuning of the model checkpoint, **but** should not be used when using the checkpoint for inference. 
-
-#### How to save and load variants
-
-Saving a diffusion pipeline as a variant can be done by providing [`DiffusionPipeline.save_pretrained`] with the `variant` argument. 
-The `variant` extends the weight name by the provided variation, by changing the default weight name from `diffusion_pytorch_model.bin` to `diffusion_pytorch_model.{variant}.bin` or from `diffusion_pytorch_model.safetensors` to `diffusion_pytorch_model.{variant}.safetensors`. By doing so, one creates a variant of the pipeline checkpoint that can be loaded **instead** of the "main" pipeline checkpoint.
-
-Let's have a look at how we could create a float16 variant of a pipeline. First, we load 
-the "main" variant of a checkpoint (stored in `float32` precision) into mixed precision format, using `torch_dtype=torch.float16`.
-
-```py
-from diffusers import DiffusionPipeline
-import torch
-
-pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
-```
-
-Now all model components of the pipeline are stored in half-precision dtype. We can now save the 
-pipeline under a `"fp16"` variant as follows:
-
-```py
-pipe.save_pretrained("./stable-diffusion-v1-5", variant="fp16")
-```
-
-If we don't save into an existing `stable-diffusion-v1-5` folder the new folder would look as follows:
-
-```
-stable-diffusion-v1-5
-├── feature_extractor
-│   └── preprocessor_config.json
-├── model_index.json
-├── safety_checker
-│   ├── config.json
-│   └── pytorch_model.fp16.bin
-├── scheduler
-│   └── scheduler_config.json
-├── text_encoder
-│   ├── config.json
-│   └── pytorch_model.fp16.bin
-├── tokenizer
-│   ├── merges.txt
-│   ├── special_tokens_map.json
-│   ├── tokenizer_config.json
-│   └── vocab.json
-├── unet
-│   ├── config.json
-│   └── diffusion_pytorch_model.fp16.bin
-└── vae
-    ├── config.json
-    └── diffusion_pytorch_model.fp16.bin
-```
-
-As one can see, all model files now have a `.fp16.bin` extension instead of just `.bin`.
-The variant now has to be loaded by also passing a `variant="fp16"` to [`DiffusionPipeline.from_pretrained`], e.g.:
-
-
-```py
-DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5", variant="fp16", torch_dtype=torch.float16)
-```
-
-works just fine, while:
-
-```py
-DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5", torch_dtype=torch.float16)
-```
-
-throws an Exception:
-```
-OSError: Error no file named diffusion_pytorch_model.bin found in directory ./stable-diffusion-v1-45/vae since we **only** stored the model 
-```
-
-This is expected as we don't have any "non-variant" checkpoint files saved locally.
-However, the whole idea of pipeline variants is that they can co-exist with the "main" variant, 
-so one would typically also save the "main" variant in the same folder. Let's do this:
-
-```py
-pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
-pipe.save_pretrained("./stable-diffusion-v1-5")
-```
-
-and upload the pipeline to the Hub under [diffusers/stable-diffusion-variants](https://huggingface.co/diffusers/stable-diffusion-variants).
-The file structure [on the Hub](https://huggingface.co/diffusers/stable-diffusion-variants/tree/main) now looks as follows:
-
-```
-├── feature_extractor
-│   └── preprocessor_config.json
-├── model_index.json
-├── safety_checker
-│   ├── config.json
-│   ├── pytorch_model.bin
-│   └── pytorch_model.fp16.bin
-├── scheduler
-│   └── scheduler_config.json
-├── text_encoder
-│   ├── config.json
-│   ├── pytorch_model.bin
-│   └── pytorch_model.fp16.bin
-├── tokenizer
-│   ├── merges.txt
-│   ├── special_tokens_map.json
-│   ├── tokenizer_config.json
-│   └── vocab.json
-├── unet
-│   ├── config.json
-│   ├── diffusion_pytorch_model.bin
-│   ├── diffusion_pytorch_model.fp16.bin
-└── vae
-    ├── config.json
-    ├── diffusion_pytorch_model.bin
-    └── diffusion_pytorch_model.fp16.bin
-```
-
-We can now both download the "main" and the "fp16" variant from the Hub. Both:
-
-```py
-pipe = DiffusionPipeline.from_pretrained("diffusers/stable-diffusion-variants")
-```
-
-and 
-
-```py
-pipe = DiffusionPipeline.from_pretrained("diffusers/stable-diffusion-variants", variant="fp16")
-```
-
-work.
+- Stored in a different floating point type for lower precision and lower storage, such as [`torch.float16`](https://pytorch.org/docs/stable/tensors.html#data-types), because it only requires half the bandwidth and storage to download. You can't use this variant if you're continuing training or using a CPU.
+- Non-exponential mean averaged (EMA) weights which shouldn't be used for inference. You should use these to continue finetuning a model.
 
 <Tip>
 
-Note that Diffusers never downloads more checkpoints than needed. E.g. when downloading 
-the "main" variant, none of the "fp16.bin" files are downloaded and cached.
-Only when the user specifies `variant="fp16"` are those files downloaded and cached.
+💡 When the checkpoints have identical model structures, but they were trained on different datasets and with a different training setup, they should be stored in separate repositories instead of variations (for example, [`stable-diffusion-v1-4`] and [`stable-diffusion-v1-5`]).
 
 </Tip>
 
-Finally, there are cases where only some of the checkpoint files of the pipeline are of a certain 
-variation. E.g. it's usually only the UNet checkpoint that has both a *exponential-mean-averaged* (EMA) and a *non-exponential-mean-averaged* (non-EMA) version. All other model components, e.g. the text encoder, safety checker or variational auto-encoder usually don't have such a variation.
-In such a case, one would upload just the UNet's checkpoint file with a `non_ema` version format (as done [here](https://huggingface.co/diffusers/stable-diffusion-variants/blob/main/unet/diffusion_pytorch_model.non_ema.bin)) and upon calling:
+Otherwise, a variant is **identical** to the original checkpoint. They have exactly the same serialization format (like [Safetensors](./using-diffusers/using_safetensors)), model structure, and weights have identical tensor shapes.
+
+| **checkpoint type** | **weight name**                     | **argument for loading weights** |
+|---------------------|-------------------------------------|----------------------------------|
+| original            | diffusion_pytorch_model.bin         |                                  |
+| floating point      | diffusion_pytorch_model.fp16.bin    | `variant`, `torch_dtype`         |
+| non-EMA             | diffusion_pytorch_model.non_ema.bin | `variant`                        |
+
+There are two important arguments to know for loading variants:
+
+- `torch_dtype` defines the floating point precision of the loaded checkpoints. For example, if you want to save bandwidth by loading a `fp16` variant, you should specify `torch_dtype=torch.float16` to *convert the weights* to `fp16`. Otherwise, the `fp16` weights are converted to the default `fp32` precision. You can also load the original checkpoint without defining the `variant` argument, and convert it to `fp16` with `torch_dtype=torch.float16`. In this case, the default `fp32` weights are downloaded first, and then they're converted to `fp16` after loading.
+
+- `variant` defines which files should be loaded from the repository. For example, if you want to load a `non_ema` variant from the [`diffusers/stable-diffusion-variants`](https://huggingface.co/diffusers/stable-diffusion-variants/tree/main/unet) repository, you should specify `variant="non_ema"` to download the `non_ema` files.
 
 ```python
-pipe = DiffusionPipeline.from_pretrained("diffusers/stable-diffusion-variants", variant="non_ema")
+from diffusers import DiffusionPipeline
+
+# load fp16 variant
+stable_diffusion = DiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", variant="fp16", torch_dtype=torch.float16
+)
+# load non_ema variant
+stable_diffusion = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", variant="non_ema")
 ```
 
-the model will use only the "non_ema" checkpoint variant if it is available - otherwise it'll load the 
-"main" variation. In the above example, `variant="non_ema"` would therefore download the following file structure:
+To save a checkpoint stored in a different floating point type or as a non-EMA variant, use the [`DiffusionPipeline.save_pretrained`] method and specify the `variant` argument. You should try and save a variant to the same folder as the original checkpoint, so you can load both from the same folder:
 
-```
-├── feature_extractor
-│   └── preprocessor_config.json
-├── model_index.json
-├── safety_checker
-│   ├── config.json
-│   ├── pytorch_model.bin
-├── scheduler
-│   └── scheduler_config.json
-├── text_encoder
-│   ├── config.json
-│   ├── pytorch_model.bin
-├── tokenizer
-│   ├── merges.txt
-│   ├── special_tokens_map.json
-│   ├── tokenizer_config.json
-│   └── vocab.json
-├── unet
-│   ├── config.json
-│   └── diffusion_pytorch_model.non_ema.bin
-└── vae
-    ├── config.json
-    ├── diffusion_pytorch_model.bin
+```python
+from diffusers import DiffusionPipeline
+
+# save as fp16 variant
+stable_diffusion.save_pretrained("runwayml/stable-diffusion-v1-5", variant="fp16")
+# save as non-ema variant
+stable_diffusion.save_pretrained("runwayml/stable-diffusion-v1-5", variant="non_ema")
 ```
 
-In a nutshell, using `variant="{variant}"` will download all files that match the `{variant}` and if for a model component such a file variant is not present it will download the "main" variant. If neither a "main" or `{variant}` variant is available, an error will the thrown.
+If you don't save the variant to an existing folder, you must specify the `variant` argument otherwise it'll throw an `Exception` because it can't find the original checkpoint:
 
-### How does loading work?
+```python
+# 👎 this won't work
+stable_diffusion = DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5", torch_dtype=torch.float16)
+# 👍 this works
+stable_diffusion = DiffusionPipeline.from_pretrained(
+    "./stable-diffusion-v1-5", variant="fp16", torch_dtype=torch.float16
+)
+```
+
+<!--
+TODO(Patrick) - Make sure to uncomment this part as soon as things are deprecated.
+
+#### Using `revision` to load pipeline variants is deprecated
+
+Previously the `revision` argument of [`DiffusionPipeline.from_pretrained`] was heavily used to 
+load model variants, e.g.:
+
+```python
+from diffusers import DiffusionPipeline
+
+pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", revision="fp16")
+```
+
+However, this behavior is now deprecated since the "revision" argument should (just as it's done in GitHub) better be used to load model checkpoints from a specific commit or branch in development.
+
+The above example is therefore deprecated and won't be supported anymore for `diffusers >= 1.0.0`.
+
+<Tip warning={true}>
+
+If you load diffusers pipelines or models with `revision="fp16"` or `revision="non_ema"`, 
+please make sure to update to code and use `variant="fp16"` or `variation="non_ema"` respectively
+instead.
+
+</Tip>
+-->
+
+## Models
+
+Models are loaded from the [`ModelMixin.from_pretrained`] method, which downloads and caches the latest version of the model weights and configurations. If the latest files are available in the local cache, [`~ModelMixin.from_pretrained`] reuses files in the cache instead of redownloading them.
+
+Models can be loaded from a subfolder with the `subfolder` argument. For example, the model weights for `runwayml/stable-diffusion-v1-5` are stored in the [`unet`](https://huggingface.co/runwayml/stable-diffusion-v1-5/tree/main/unet) subfolder:
+
+```python
+from diffusers import UNet2DConditionModel
+
+repo_id = "runwayml/stable-diffusion-v1-5"
+model = UNet2DConditionModel.from_pretrained(repo_id, subfolder="unet")
+```
+
+Or directly from a repository's [directory](https://huggingface.co/google/ddpm-cifar10-32/tree/main):
+
+```python
+from diffusers import UNet2DModel
+
+repo_id = "google/ddpm-cifar10-32"
+model = UNet2DModel.from_pretrained(repo_id)
+```
+
+You can also load and save model variants by specifying the `variant` argument in [`ModelMixin.from_pretrained`] and [`ModelMixin.save_pretrained`]:
+
+```python
+from diffusers import UNet2DConditionModel
+
+model = UNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="unet", variant="non-ema")
+model.save_pretrained("./local-unet", variant="non-ema")
+```
+
+## Schedulers
+
+Schedulers are loaded from the [`SchedulerMixin.from_pretrained`] method, and unlike models, schedulers are **not parameterized** or **trained**; they are defined by a configuration file.
+
+Loading schedulers does not consume any significant amount of memory and the same configuration file can be used for a variety of different schedulers.
+For example, the following schedulers are compatible with [`StableDiffusionPipeline`] which means you can load the same scheduler configuration file in any of these classes:
+
+```python
+from diffusers import StableDiffusionPipeline
+from diffusers import (
+    DDPMScheduler,
+    DDIMScheduler,
+    PNDMScheduler,
+    LMSDiscreteScheduler,
+    EulerDiscreteScheduler,
+    EulerAncestralDiscreteScheduler,
+    DPMSolverMultistepScheduler,
+)
+
+repo_id = "runwayml/stable-diffusion-v1-5"
+
+ddpm = DDPMScheduler.from_pretrained(repo_id, subfolder="scheduler")
+ddim = DDIMScheduler.from_pretrained(repo_id, subfolder="scheduler")
+pndm = PNDMScheduler.from_pretrained(repo_id, subfolder="scheduler")
+lms = LMSDiscreteScheduler.from_pretrained(repo_id, subfolder="scheduler")
+euler_anc = EulerAncestralDiscreteScheduler.from_pretrained(repo_id, subfolder="scheduler")
+euler = EulerDiscreteScheduler.from_pretrained(repo_id, subfolder="scheduler")
+dpm = DPMSolverMultistepScheduler.from_pretrained(repo_id, subfolder="scheduler")
+
+# replace `dpm` with any of `ddpm`, `ddim`, `pndm`, `lms`, `euler_anc`, `euler`
+pipeline = StableDiffusionPipeline.from_pretrained(repo_id, scheduler=dpm)
+```
+
+## DiffusionPipeline explained
 
 As a class method, [`DiffusionPipeline.from_pretrained`] is responsible for two things:
-- Download the latest version of the folder structure required to run the `repo_id` with `diffusers` and cache them. If the latest folder structure is available in the local cache, [`DiffusionPipeline.from_pretrained`] will simply reuse the cache and **not** re-download the files.
-- Load the cached weights into the _correct_ pipeline class – one of the [officially supported pipeline classes](./api/overview#diffusers-summary) - and return an instance of the class. The _correct_ pipeline class is thereby retrieved from the `model_index.json` file.
 
-The underlying folder structure of diffusion pipelines corresponds 1-to-1 to their corresponding class instances, *e.g.* [`StableDiffusionPipeline`] for [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5).
-This can be better understood by looking at an example. Let's load a pipeline class instance `pipe` and print it:
+- Download the latest version of the folder structure required for inference and cache it. If the latest folder structure is available in the local cache, [`DiffusionPipeline.from_pretrained`] reuses the cache and won't redownload the files.
+- Load the cached weights into the correct pipeline [class](./api/pipelines/overview#diffusers-summary) - retrieved from the `model_index.json` file - and return an instance of it.
+
+The pipelines underlying folder structure corresponds directly with their class instances. For example, the [`StableDiffusionPipeline`] corresponds to the folder structure in [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5).
 
 ```python
 from diffusers import DiffusionPipeline
 
 repo_id = "runwayml/stable-diffusion-v1-5"
-pipe = DiffusionPipeline.from_pretrained(repo_id)
-print(pipe)
+pipeline = DiffusionPipeline.from_pretrained(repo_id)
+print(pipeline)
 ```
 
-*Output*:
-```
+You'll see pipeline is an instance of [`StableDiffusionPipeline`], which consists of seven components:
+
+- `"feature_extractor"`: a [`~transformers.CLIPFeatureExtractor`] from 🤗 Transformers.
+- `"safety_checker"`: a [component](https://github.com/huggingface/diffusers/blob/e55687e1e15407f60f32242027b7bb8170e58266/src/diffusers/pipelines/stable_diffusion/safety_checker.py#L32) for screening against harmful content.
+- `"scheduler"`: an instance of [`PNDMScheduler`].
+- `"text_encoder"`: a [`~transformers.CLIPTextModel`] from 🤗 Transformers.
+- `"tokenizer"`: a [`~transformers.CLIPTokenizer`] from 🤗 Transformers.
+- `"unet"`: an instance of [`UNet2DConditionModel`].
+- `"vae"` an instance of [`AutoencoderKL`].
+
+```json
 StableDiffusionPipeline {
   "feature_extractor": [
     "transformers",
@@ -444,16 +351,7 @@ StableDiffusionPipeline {
 }
 ```
 
-First, we see that the official pipeline is the [`StableDiffusionPipeline`], and second we see that the `StableDiffusionPipeline` consists of 7 components:
-- `"feature_extractor"` of class `CLIPImageProcessor` as defined [in `transformers`](https://huggingface.co/docs/transformers/main/en/model_doc/clip#transformers.CLIPImageProcessor).
-- `"safety_checker"` as defined [here](https://github.com/huggingface/diffusers/blob/e55687e1e15407f60f32242027b7bb8170e58266/src/diffusers/pipelines/stable_diffusion/safety_checker.py#L32).
-- `"scheduler"` of class [`PNDMScheduler`].
-- `"text_encoder"` of class `CLIPTextModel` as defined [in `transformers`](https://huggingface.co/docs/transformers/main/en/model_doc/clip#transformers.CLIPTextModel).
-- `"tokenizer"` of class `CLIPTokenizer` as defined [in `transformers`](https://huggingface.co/docs/transformers/main/en/model_doc/clip#transformers.CLIPTokenizer).
-- `"unet"` of class [`UNet2DConditionModel`].
-- `"vae"` of class [`AutoencoderKL`].
-
-Let's now compare the pipeline instance to the folder structure of the model repository `runwayml/stable-diffusion-v1-5`. Looking at the folder structure of [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5/tree/main) on the Hub and  excluding model and saving format variants, we can see it matches 1-to-1 the printed out instance of `StableDiffusionPipeline` above:
+Compare the components of the pipeline instance to the [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) folder structure, and you'll see there is a separate folder for each of the components in the repository:
 
 ```
 .
@@ -481,13 +379,33 @@ Let's now compare the pipeline instance to the folder structure of the model rep
     ├── diffusion_pytorch_model.bin
 ```
 
-Each attribute of the instance of `StableDiffusionPipeline` has its configuration and possibly weights defined in a subfolder that is called **exactly** like the class attribute (`"feature_extractor"`, `"safety_checker"`, `"scheduler"`, `"text_encoder"`, `"tokenizer"`, `"unet"`, `"vae"`). Importantly, every pipeline expects a `model_index.json` file that tells the `DiffusionPipeline` both:
-- which pipeline class should be loaded, and
-- what sub-classes from which library are stored in which subfolders
+You can access each of the components of the pipeline as an attribute to view its configuration:
 
-In the case of `runwayml/stable-diffusion-v1-5` the `model_index.json` is therefore defined as follows:
-
+```py
+pipeline.tokenizer
+CLIPTokenizer(
+    name_or_path="/root/.cache/huggingface/hub/models--runwayml--stable-diffusion-v1-5/snapshots/39593d5650112b4cc580433f6b0435385882d819/tokenizer",
+    vocab_size=49408,
+    model_max_length=77,
+    is_fast=False,
+    padding_side="right",
+    truncation_side="right",
+    special_tokens={
+        "bos_token": AddedToken("<|startoftext|>", rstrip=False, lstrip=False, single_word=False, normalized=True),
+        "eos_token": AddedToken("<|endoftext|>", rstrip=False, lstrip=False, single_word=False, normalized=True),
+        "unk_token": AddedToken("<|endoftext|>", rstrip=False, lstrip=False, single_word=False, normalized=True),
+        "pad_token": "<|endoftext|>",
+    },
+)
 ```
+
+Every pipeline expects a `model_index.json` file that tells the [`DiffusionPipeline`]:
+
+- which pipeline class to load from `_class_name`
+- which version of 🧨 Diffusers was used to create the model in `_diffusers_version`
+- what components from which library are stored in the subfolders (`name` corresponds to the component and subfolder name, `library` corresponds to the name of the library to load the class from, and `class` corresponds to the class name)
+
+```json
 {
   "_class_name": "StableDiffusionPipeline",
   "_diffusers_version": "0.6.0",
@@ -520,138 +438,4 @@ In the case of `runwayml/stable-diffusion-v1-5` the `model_index.json` is theref
     "AutoencoderKL"
   ]
 }
-```
-
-- `_class_name` tells `DiffusionPipeline` which pipeline class should be loaded. 
-- `_diffusers_version` can be useful to know under which `diffusers` version this model was created.
-- Every component of the pipeline is then defined under the form:
-```
-"name" : [
-  "library",
-  "class"
-]
-```
-	- The `"name"` field corresponds both to the name of the subfolder in which the configuration and weights are stored as well as the attribute name of the pipeline class (as can be seen [here](https://huggingface.co/runwayml/stable-diffusion-v1-5/tree/main/bert) and [here](https://github.com/huggingface/diffusers/blob/cd502b25cf0debac6f98d27a6638ef95208d1ea2/src/diffusers/pipelines/latent_diffusion/pipeline_latent_diffusion.py#L42))
-	- The `"library"` field corresponds to the name of the library, *e.g.* `diffusers` or `transformers` from which the `"class"` should be loaded
-	- The `"class"` field corresponds to the name of the class, *e.g.* [`CLIPTokenizer`](https://huggingface.co/docs/transformers/main/en/model_doc/clip#transformers.CLIPTokenizer) or [`UNet2DConditionModel`]
-
-<!--
-TODO(Patrick) - Make sure to uncomment this part as soon as things are deprecated.
-
-#### Using `revision` to load pipeline variants is deprecated
-
-Previously the `revision` argument of [`DiffusionPipeline.from_pretrained`] was heavily used to 
-load model variants, e.g.:
-
-```python
-from diffusers import DiffusionPipeline
-
-pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", revision="fp16")
-```
-
-However, this behavior is now deprecated since the "revision" argument should (just as it's done in GitHub) better be used to load model checkpoints from a specific commit or branch in development.
-
-The above example is therefore deprecated and won't be supported anymore for `diffusers >= 1.0.0`.
-
-<Tip warning={true}>
-
-If you load diffusers pipelines or models with `revision="fp16"` or `revision="non_ema"`, 
-please make sure to update to code and use `variant="fp16"` or `variation="non_ema"` respectively
-instead.
-
-</Tip>
--->
-
-## Loading models
-
-Models as defined under [src/diffusers/models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models) can be loaded via the [`ModelMixin.from_pretrained`] function. The API is very similar the [`DiffusionPipeline.from_pretrained`] and works in the same way:
-- Download the latest version of the model weights and configuration with `diffusers` and cache them. If the latest files are available in the local cache, [`ModelMixin.from_pretrained`] will simply reuse the cache and **not** re-download the files.
-- Load the cached weights into the _defined_ model class - one of [the existing model classes](./api/models) - and return an instance of the class.
-
-In constrast to [`DiffusionPipeline.from_pretrained`], models rely on fewer files that usually don't require a folder structure, but just a `diffusion_pytorch_model.bin` and `config.json` file.
-
-Let's look at an example:
-
-```python
-from diffusers import UNet2DConditionModel
-
-repo_id = "runwayml/stable-diffusion-v1-5"
-model = UNet2DConditionModel.from_pretrained(repo_id, subfolder="unet")
-```
-
-Note how we have to define the `subfolder="unet"` argument to tell [`ModelMixin.from_pretrained`] that the model weights are located in a [subfolder of the repository](https://huggingface.co/runwayml/stable-diffusion-v1-5/tree/main/unet).
-
-As explained in [Loading customized pipelines]("./using-diffusers/loading#loading-customized-pipelines"), one can pass a loaded model to a diffusion pipeline, via [`DiffusionPipeline.from_pretrained`]:
-
-```python
-from diffusers import DiffusionPipeline
-
-repo_id = "runwayml/stable-diffusion-v1-5"
-pipe = DiffusionPipeline.from_pretrained(repo_id, unet=model)
-```
-
-If the model files can be found directly at the root level, which is usually only the case for some very simple diffusion models, such as [`google/ddpm-cifar10-32`](https://huggingface.co/google/ddpm-cifar10-32), we don't 
-need to pass a `subfolder` argument:
-
-```python
-from diffusers import UNet2DModel
-
-repo_id = "google/ddpm-cifar10-32"
-model = UNet2DModel.from_pretrained(repo_id)
-```
-
-As motivated in [How to save and load variants?](#how-to-save-and-load-variants), models can load and 
-save variants. To load a model variant, one should pass the `variant` function argument to [`ModelMixin.from_pretrained`]. Analogous, to save a model variant, one should pass the `variant` function argument to [`ModelMixin.save_pretrained`]:
-
-```python
-from diffusers import UNet2DConditionModel
-
-model = UNet2DConditionModel.from_pretrained(
-    "diffusers/stable-diffusion-variants", subfolder="unet", variant="non_ema"
-)
-model.save_pretrained("./local-unet", variant="non_ema")
-```
-
-## Loading schedulers
-
-Schedulers rely on [`SchedulerMixin.from_pretrained`]. Schedulers are **not parameterized** or **trained**, but instead purely defined by a configuration file.
-For consistency, we use the same method name as we do for models or pipelines, but no weights are loaded in this case.
-
-In constrast to pipelines or models, loading schedulers does not consume any significant amount of memory and the same configuration file can often be used for a variety of different schedulers.
-For example, all of:
-
-- [`DDPMScheduler`]
-- [`DDIMScheduler`]
-- [`PNDMScheduler`]
-- [`LMSDiscreteScheduler`]
-- [`EulerDiscreteScheduler`]
-- [`EulerAncestralDiscreteScheduler`]
-- [`DPMSolverMultistepScheduler`]
-
-are compatible with [`StableDiffusionPipeline`] and therefore the same scheduler configuration file can be loaded in any of those classes:
-
-```python
-from diffusers import StableDiffusionPipeline
-from diffusers import (
-    DDPMScheduler,
-    DDIMScheduler,
-    PNDMScheduler,
-    LMSDiscreteScheduler,
-    EulerDiscreteScheduler,
-    EulerAncestralDiscreteScheduler,
-    DPMSolverMultistepScheduler,
-)
-
-repo_id = "runwayml/stable-diffusion-v1-5"
-
-ddpm = DDPMScheduler.from_pretrained(repo_id, subfolder="scheduler")
-ddim = DDIMScheduler.from_pretrained(repo_id, subfolder="scheduler")
-pndm = PNDMScheduler.from_pretrained(repo_id, subfolder="scheduler")
-lms = LMSDiscreteScheduler.from_pretrained(repo_id, subfolder="scheduler")
-euler_anc = EulerAncestralDiscreteScheduler.from_pretrained(repo_id, subfolder="scheduler")
-euler = EulerDiscreteScheduler.from_pretrained(repo_id, subfolder="scheduler")
-dpm = DPMSolverMultistepScheduler.from_pretrained(repo_id, subfolder="scheduler")
-
-# replace `dpm` with any of `ddpm`, `ddim`, `pndm`, `lms`, `euler_anc`, `euler`
-pipeline = StableDiffusionPipeline.from_pretrained(repo_id, scheduler=dpm)
 ```
