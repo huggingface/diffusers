@@ -250,15 +250,17 @@ class StableDiffusionDiffEditPipelineIntegrationTests(unittest.TestCase):
             image=self.raw_image,
             source_prompt=source_prompt,
             target_prompt=target_prompt,
-            inpaint_strength=0.6,
+            mask_encode_strength=0.6,
             generator=generator,
         )
 
-        inv_latents = pipe.invert(prompt=source_prompt, image=self.raw_image, generator=generator).latents
+        inv_latents = pipe.invert(
+            prompt=source_prompt, image=self.raw_image, inpaint_strength=0.6, generator=generator
+        ).latents
 
         image = pipe(
             prompt=target_prompt,
-            mask=mask_image,
+            mask_image=mask_image,
             image_latents=inv_latents,
             generator=generator,
             negative_prompt=source_prompt,

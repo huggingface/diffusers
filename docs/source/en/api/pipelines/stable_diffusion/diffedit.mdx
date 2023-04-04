@@ -154,9 +154,7 @@ Then, we define a utility to generate captions from an input image using the mod
 def generate_caption(images, caption_generator, caption_processor):
     text = "a photograph of"
 
-    inputs = caption_processor(images, text, return_tensors="pt").to(
-        device="cuda", dtype=caption_generator.dtype
-    )
+    inputs = caption_processor(images, text, return_tensors="pt").to(device="cuda", dtype=caption_generator.dtype)
     caption_generator.to("cuda")
     outputs = caption_generator.generate(**inputs, max_new_tokens=128)
 

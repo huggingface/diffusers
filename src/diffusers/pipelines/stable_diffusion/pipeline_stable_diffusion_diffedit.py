@@ -77,6 +77,7 @@ EXAMPLE_DOC_STRING = """
         ...     response = requests.get(url)
         ...     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
 
+
         >>> img_url = "https://github.com/Xiang-cd/DiffEdit-stable-diffusion/raw/main/assets/origin.png"
 
         >>> init_image = download_image(img_url).resize((768, 768))
@@ -112,6 +113,7 @@ EXAMPLE_INVERT_DOC_STRING = """
         >>> def download_image(url):
         ...     response = requests.get(url)
         ...     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
+
 
         >>> img_url = "https://github.com/Xiang-cd/DiffEdit-stable-diffusion/raw/main/assets/origin.png"
 
@@ -178,17 +180,17 @@ def preprocess(image):
 def preprocess_mask(mask, batch_size: int = 1):
     if not isinstance(mask, torch.Tensor):
         # preprocess mask
-        if isinstance(mask, PIL.Image.Image) or (isinstance(mask, np.ndarray) and mask.ndim < 3):
+        if isinstance(mask, PIL.Image.Image) or isinstance(mask, np.ndarray):
             mask = [mask]
 
         if isinstance(mask, list):
             if isinstance(mask[0], PIL.Image.Image):
                 mask = [np.array(m.convert("L")).astype(np.float32) / 255.0 for m in mask]
             if isinstance(mask[0], np.ndarray):
-                mask = np.stack(mask, axis=0)
+                mask = np.stack(mask, axis=0) if mask[0].ndim < 3 else np.concatenate(mask, axis=0)
                 mask = torch.from_numpy(mask)
             elif isinstance(mask[0], torch.Tensor):
-                mask = torch.stack(mask, dim=0)
+                mask = torch.stack(mask, dim=0) if mask[0].ndim < 3 else torch.cat(mask, dim=0)
 
     # Batch and add channel dim for single mask
     if mask.ndim == 2:
