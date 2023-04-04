@@ -141,6 +141,6 @@ class EulerDiscreteSchedulerTest(SchedulerCommonTest):
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
-        print(result_sum.item(), result_mean.item())
+
         assert abs(result_sum.item() - 124.52299499511719) < 1e-2
         assert abs(result_mean.item() - 0.16213932633399963) < 1e-3

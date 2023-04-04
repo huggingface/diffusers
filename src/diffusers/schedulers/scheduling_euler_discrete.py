@@ -18,6 +18,7 @@ from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
+from k_diffusion.sampling import get_sigmas_karras
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, logging, randn_tensor
@@ -206,7 +207,8 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             )
 
         if self.use_karras_sigmas:
-            sigmas = self._convert_to_karras(in_sigmas=sigmas)
+            # get_sigmas_karras also append 0.0 to the end of the list, so chopping the last element
+            sigmas = get_sigmas_karras(n=num_inference_steps, sigma_min=sigmas.min(), sigma_max=sigmas.max())[:-1]
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
 
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
@@ -216,45 +218,6 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.timesteps = torch.from_numpy(timesteps).to(device, dtype=torch.float32)
         else:
             self.timesteps = torch.from_numpy(timesteps).to(device=device)
-
-    def _sigma_to_t(self, sigma, log_sigmas):
-        # get log sigma
-        log_sigma = np.log(sigma)
-
-        # get distribution
-        dists = log_sigma - log_sigmas[:, np.newaxis]
-
-        # get sigmas range
-        low_idx = np.cumsum((dists >= 0), axis=0).argmax(axis=0).clip(max=log_sigmas.shape[0] - 2)
-        high_idx = low_idx + 1
-
-        low = log_sigmas[low_idx]
-        high = log_sigmas[high_idx]
-
-        # interpolate sigmas
-        w = (low - log_sigma) / (low - high)
-        w = np.clip(w, 0, 1)
-
-        # transform interpolation to time range
-        t = (1 - w) * low_idx + w * high_idx
-        t = t.reshape(sigma.shape)
-        return t
-
-    # Copied from https://github.com/crowsonkb/k-diffusion/blob/686dbad0f39640ea25c8a8c6a6e56bb40eacefa2/k_diffusion/sampling.py#L17
-    def _convert_to_karras(self, in_sigmas: torch.FloatTensor) -> torch.FloatTensor:
-        """Constructs the noise schedule of Karras et al. (2022)."""
-
-        sigma_min: float = in_sigmas[-1].item()
-        sigma_max: float = in_sigmas[0].item()
-        print(sigma_min, sigma_max)
-
-        rho = 7.0
-        # ramp = torch.linspace(0, 1, self.num_inference_steps)
-        ramp = np.linspace(0, 1, self.num_inference_steps)
-        min_inv_rho = sigma_min ** (1 / rho)
-        max_inv_rho = sigma_max ** (1 / rho)
-        sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
-        return sigmas
 
     def step(
         self,

@@ -18,6 +18,7 @@ from enum import Enum
 from typing import Any, Dict, Optional, Union
 
 import torch
+import numpy as np
 
 from ..utils import BaseOutput
 
@@ -174,3 +175,26 @@ class SchedulerMixin:
             getattr(diffusers_library, c) for c in compatible_classes_str if hasattr(diffusers_library, c)
         ]
         return compatible_classes
+    @classmethod
+    def _sigma_to_t(self, sigma, log_sigmas):
+        # get log sigma
+        log_sigma = np.log(sigma)
+
+        # get distribution
+        dists = log_sigma - log_sigmas[:, np.newaxis]
+
+        # get sigmas range
+        low_idx = np.cumsum((dists >= 0), axis=0).argmax(axis=0).clip(max=log_sigmas.shape[0] - 2)
+        high_idx = low_idx + 1
+
+        low = log_sigmas[low_idx]
+        high = log_sigmas[high_idx]
+
+        # interpolate sigmas
+        w = (low - log_sigma) / (low - high)
+        w = np.clip(w, 0, 1)
+
+        # transform interpolation to time range
+        t = (1 - w) * low_idx + w * high_idx
+        t = t.reshape(sigma.shape)
+        return t
