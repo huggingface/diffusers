@@ -48,7 +48,8 @@ from diffusers import (
 )
 from diffusers.utils import check_min_version, is_wandb_available
 
-
+# To prevent an error that occurs when there are abnormally large compressed data chunk in the png image
+# see more https://github.com/python-pillow/Pillow/issues/5610
 LARGE_ENOUGH_NUMBER = 100
 PngImagePlugin.MAX_TEXT_CHUNK = LARGE_ENOUGH_NUMBER * (1024**2)
 
@@ -361,7 +362,10 @@ def parse_args():
     parser.add_argument(
         "--load_from_disk",
         action="store_true",
-        help="If True, will load a dataset that was previously saved using [`save_to_disk`] from `--train_data_dir`",
+        help=(
+            "If True, will load a dataset that was previously saved using `save_to_disk` from `--train_data_dir`"
+            "See more https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset.load_from_disk"
+        ),
     )
     parser.add_argument(
         "--image_column", type=str, default="image", help="The column of the dataset containing the target image."
