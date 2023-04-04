@@ -107,7 +107,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         use_karras_sigmas (`bool`, *optional*, defaults to `False`):
             Use karras sigmas. For example, specifying `sample_dpmpp_2m` to `set_scheduler` will be equivalent to
             `DPM++2M` in stable-diffusion-webui. On top of that, setting this option to True will make it `DPM++2M
-            Karras`.
+            Karras`. Please see equation (5) https://arxiv.org/pdf/2206.00364.pdf for more details.
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]

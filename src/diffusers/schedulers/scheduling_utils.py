@@ -17,8 +17,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, Optional, Union
 
-import torch
 import numpy as np
+import torch
 
 from ..utils import BaseOutput
 
@@ -175,6 +175,7 @@ class SchedulerMixin:
             getattr(diffusers_library, c) for c in compatible_classes_str if hasattr(diffusers_library, c)
         ]
         return compatible_classes
+
     @classmethod
     def _sigma_to_t(self, sigma, log_sigmas):
         # get log sigma
