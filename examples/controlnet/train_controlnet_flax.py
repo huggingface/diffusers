@@ -110,7 +110,7 @@ def log_validation(controlnet, controlnet_params, tokenizer, args, rng, weight_d
         prompt_ids = pipeline.prepare_text_inputs(prompts)
         prompt_ids = shard(prompt_ids)
 
-        validation_image = Image.open(validation_image).convert('RGB')
+        validation_image = Image.open(validation_image).convert("RGB")
         processed_image = pipeline.prepare_image_inputs(num_samples * [validation_image])
         processed_image = shard(processed_image)
         images = pipeline(
