@@ -52,6 +52,8 @@
       title: How to contribute a Pipeline
     - local: using-diffusers/using_safetensors
       title: Using safetensors
+    - local: using-diffusers/stable_diffusion_jax_how_to
+      title: Stable Diffusion in JAX/Flax
     - local: using-diffusers/weighted_prompts
       title: Weighting Prompts
     title: Pipelines for Inference
