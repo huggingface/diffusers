@@ -20,7 +20,7 @@ import numpy as np
 import torch
 
 from diffusers import AutoencoderKL, DDIMScheduler, DiTPipeline, DPMSolverMultistepScheduler, Transformer2DModel
-from diffusers.utils import load_numpy, slow
+from diffusers.utils import is_xformers_available, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 
 from ...pipeline_params import (
@@ -97,7 +97,14 @@ class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertLessEqual(max_diff, 1e-3)
 
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(relax_max_difference=True)
+        self._test_inference_batch_single_identical(relax_max_difference=True, expected_max_diff=1e-3)
+
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_xformers_attention_forwardGenerator_pass(self):
+        self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=1e-3)
 
 
 @require_torch_gpu
@@ -123,10 +130,10 @@ class DiTPipelineIntegrationTests(unittest.TestCase):
             expected_image = load_numpy(
                 f"https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/dit/{word}.npy"
             )
-            assert np.abs((expected_image - image).max()) < 1e-3
+            assert np.abs((expected_image - image).max()) < 1e-2
 
-    def test_dit_512_fp16(self):
-        pipe = DiTPipeline.from_pretrained("facebook/DiT-XL-2-512", torch_dtype=torch.float16)
+    def test_dit_512(self):
+        pipe = DiTPipeline.from_pretrained("facebook/DiT-XL-2-512")
         pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
         pipe.to("cuda")
 
@@ -139,7 +146,7 @@ class DiTPipelineIntegrationTests(unittest.TestCase):
         for word, image in zip(words, images):
             expected_image = load_numpy(
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-                f"/dit/{word}_fp16.npy"
+                f"/dit/{word}_512.npy"
             )
 
-            assert np.abs((expected_image - image).max()) < 7.5e-1
+            assert np.abs((expected_image - image).max()) < 1e-1

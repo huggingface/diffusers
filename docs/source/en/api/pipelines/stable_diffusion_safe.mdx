@@ -36,7 +36,7 @@ Safe Stable Diffusion can be tested very easily with the [`StableDiffusionPipeli
 
 ### Interacting with the Safety Concept
 
-To check and edit the currently used safety concept, use the `safety_concept` property of [`StableDiffusionPipelineSafe`]
+To check and edit the currently used safety concept, use the `safety_concept` property of [`StableDiffusionPipelineSafe`]:
 ```python
 >>> from diffusers import StableDiffusionPipelineSafe
 
@@ -60,7 +60,7 @@ You may use the 4 configurations defined in the [Safe Latent Diffusion paper](ht
 
 The following configurations are available: `SafetyConfig.WEAK`, `SafetyConfig.MEDIUM`, `SafetyConfig.STRONG`, and `SafetyConfig.MAX`.
 
-### How to load and use different schedulers.
+### How to load and use different schedulers
 
 The safe stable diffusion pipeline uses [`PNDMScheduler`] scheduler by default. But `diffusers` provides many other schedulers that can be used with the stable diffusion pipeline such as [`DDIMScheduler`], [`LMSDiscreteScheduler`], [`EulerDiscreteScheduler`], [`EulerAncestralDiscreteScheduler`] etc.
 To use a different scheduler, you can either change it via the [`ConfigMixin.from_config`] method or pass the `scheduler` argument to the `from_pretrained` method of the pipeline. For example, to use the [`EulerDiscreteScheduler`], you can do the following:

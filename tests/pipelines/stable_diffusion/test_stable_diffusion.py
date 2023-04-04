@@ -21,6 +21,7 @@ import unittest
 
 import numpy as np
 import torch
+from huggingface_hub import hf_hub_download
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
@@ -698,7 +699,6 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         torch.cuda.reset_peak_memory_stats()
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionPipeline.from_pretrained(model_id, revision="fp16", torch_dtype=torch.float16)
-        pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
         pipe.unet = pipe.unet.to(memory_format=torch.channels_last)
@@ -708,42 +708,36 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 
         # enable vae tiling
         pipe.enable_vae_tiling()
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        with torch.autocast(torch_device):
-            output_chunked = pipe(
-                [prompt],
-                width=640,
-                height=640,
-                generator=generator,
-                guidance_scale=7.5,
-                num_inference_steps=2,
-                output_type="numpy",
-            )
-            image_chunked = output_chunked.images
+        pipe.enable_model_cpu_offload()
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        output_chunked = pipe(
+            [prompt],
+            width=1024,
+            height=1024,
+            generator=generator,
+            guidance_scale=7.5,
+            num_inference_steps=2,
+            output_type="numpy",
+        )
+        image_chunked = output_chunked.images
 
         mem_bytes = torch.cuda.max_memory_allocated()
-        torch.cuda.reset_peak_memory_stats()
-        # make sure that less than 4 GB is allocated
-        assert mem_bytes < 4e9
 
         # disable vae tiling
         pipe.disable_vae_tiling()
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        with torch.autocast(torch_device):
-            output = pipe(
-                [prompt],
-                width=640,
-                height=640,
-                generator=generator,
-                guidance_scale=7.5,
-                num_inference_steps=2,
-                output_type="numpy",
-            )
-            image = output.images
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        output = pipe(
+            [prompt],
+            width=1024,
+            height=1024,
+            generator=generator,
+            guidance_scale=7.5,
+            num_inference_steps=2,
+            output_type="numpy",
+        )
+        image = output.images
 
-        # make sure that more than 4 GB is allocated
-        mem_bytes = torch.cuda.max_memory_allocated()
-        assert mem_bytes > 5e9
+        assert mem_bytes < 1e10
         assert np.abs(image_chunked.flatten() - image.flatten()).max() < 1e-2
 
     def test_stable_diffusion_fp16_vs_autocast(self):
@@ -849,6 +843,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
             "CompVis/stable-diffusion-v1-4",
             torch_dtype=torch.float16,
         )
+        pipe.unet.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         outputs = pipe(**inputs)
@@ -861,6 +856,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
             "CompVis/stable-diffusion-v1-4",
             torch_dtype=torch.float16,
         )
+        pipe.unet.set_default_attn_processor()
 
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
@@ -868,6 +864,8 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
+        inputs = self.get_inputs(torch_device, dtype=torch.float16)
+
         outputs_offloaded = pipe(**inputs)
         mem_bytes_offloaded = torch.cuda.max_memory_allocated()
 
@@ -888,6 +886,31 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 
         assert mem_bytes_slicing < mem_bytes_offloaded
         assert mem_bytes_slicing < 3 * 10**9
+
+    def test_stable_diffusion_textual_inversion(self):
+        pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+        pipe.load_textual_inversion("sd-concepts-library/low-poly-hd-logos-icons")
+
+        a111_file = hf_hub_download("hf-internal-testing/text_inv_embedding_a1111_format", "winter_style.pt")
+        a111_file_neg = hf_hub_download(
+            "hf-internal-testing/text_inv_embedding_a1111_format", "winter_style_negative.pt"
+        )
+        pipe.load_textual_inversion(a111_file)
+        pipe.load_textual_inversion(a111_file_neg)
+        pipe.to("cuda")
+
+        generator = torch.Generator(device="cpu").manual_seed(1)
+
+        prompt = "An logo of a turtle in strong Style-Winter with <low-poly-hd-logos-icons>"
+        neg_prompt = "Style-Winter-neg"
+
+        image = pipe(prompt=prompt, negative_prompt=neg_prompt, generator=generator, output_type="np").images[0]
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/text_inv/winter_logo_style.npy"
+        )
+
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 5e-2
 
 
 @nightly

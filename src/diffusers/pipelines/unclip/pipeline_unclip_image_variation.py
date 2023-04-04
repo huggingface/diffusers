@@ -19,7 +19,7 @@ import PIL
 import torch
 from torch.nn import functional as F
 from transformers import (
-    CLIPFeatureExtractor,
+    CLIPImageProcessor,
     CLIPTextModelWithProjection,
     CLIPTokenizer,
     CLIPVisionModelWithProjection,
@@ -48,7 +48,7 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
         tokenizer (`CLIPTokenizer`):
             Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
-        feature_extractor ([`CLIPFeatureExtractor`]):
+        feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `image_encoder`.
         image_encoder ([`CLIPVisionModelWithProjection`]):
             Frozen CLIP image-encoder. unCLIP Image Variation uses the vision portion of
@@ -73,7 +73,7 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
     text_proj: UnCLIPTextProjModel
     text_encoder: CLIPTextModelWithProjection
     tokenizer: CLIPTokenizer
-    feature_extractor: CLIPFeatureExtractor
+    feature_extractor: CLIPImageProcessor
     image_encoder: CLIPVisionModelWithProjection
     super_res_first: UNet2DModel
     super_res_last: UNet2DModel
@@ -87,7 +87,7 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
         text_encoder: CLIPTextModelWithProjection,
         tokenizer: CLIPTokenizer,
         text_proj: UnCLIPTextProjModel,
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
         image_encoder: CLIPVisionModelWithProjection,
         super_res_first: UNet2DModel,
         super_res_last: UNet2DModel,
@@ -264,7 +264,7 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
                 The image or images to guide the image generation. If you provide a tensor, it needs to comply with the
                 configuration of
                 [this](https://huggingface.co/fusing/karlo-image-variations-diffusers/blob/main/feature_extractor/preprocessor_config.json)
-                `CLIPFeatureExtractor`. Can be left to `None` only when `image_embeddings` are passed.
+                `CLIPImageProcessor`. Can be left to `None` only when `image_embeddings` are passed.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             decoder_num_inference_steps (`int`, *optional*, defaults to 25):

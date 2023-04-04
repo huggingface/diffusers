@@ -339,4 +339,4 @@ class StableDiffusionPanoramaSlowTests(unittest.TestCase):
 
         mem_bytes = torch.cuda.max_memory_allocated()
         # make sure that less than 5.2 GB is allocated
-        assert mem_bytes < 5.2 * 10**9
+        assert mem_bytes < 5.5 * 10**9

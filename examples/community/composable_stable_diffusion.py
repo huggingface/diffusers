@@ -17,7 +17,7 @@ from typing import Callable, List, Optional, Union
 
 import torch
 from packaging import version
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from diffusers import DiffusionPipeline
 from diffusers.configuration_utils import FrozenDict
@@ -64,7 +64,7 @@ class ComposableStableDiffusionPipeline(DiffusionPipeline):
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
-        feature_extractor ([`CLIPFeatureExtractor`]):
+        feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
     _optional_components = ["safety_checker", "feature_extractor"]
@@ -84,7 +84,7 @@ class ComposableStableDiffusionPipeline(DiffusionPipeline):
             DPMSolverMultistepScheduler,
         ],
         safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
     ):
         super().__init__()

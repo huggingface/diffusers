@@ -409,6 +409,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
             "stabilityai/stable-diffusion-2-base",
             torch_dtype=torch.float16,
         )
+        pipe.unet.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         outputs = pipe(**inputs)
@@ -421,6 +422,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
             "stabilityai/stable-diffusion-2-base",
             torch_dtype=torch.float16,
         )
+        pipe.unet.set_default_attn_processor()
 
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
@@ -428,6 +430,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
 
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
+        inputs = self.get_inputs(torch_device, dtype=torch.float16)
         outputs_offloaded = pipe(**inputs)
         mem_bytes_offloaded = torch.cuda.max_memory_allocated()
 

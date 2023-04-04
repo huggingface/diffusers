@@ -24,7 +24,7 @@ community include:
 * Accepting responsibility and apologizing to those affected by our mistakes,
   and learning from the experience
 * Focusing on what is best not just for us as individuals, but for the
-  overall community
+  overall diffusers community
 
 Examples of unacceptable behavior include:
 
@@ -34,6 +34,7 @@ Examples of unacceptable behavior include:
 * Public or private harassment
 * Publishing others' private information, such as a physical or email
   address, without their explicit permission
+* Spamming issues or PRs with links to projects unrelated to this library
 * Other conduct which could reasonably be considered inappropriate in a
   professional setting
 

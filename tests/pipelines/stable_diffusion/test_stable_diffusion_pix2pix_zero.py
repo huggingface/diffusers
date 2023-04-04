@@ -347,7 +347,6 @@ class InversionPipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionPix2PixZeroPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4", safety_checker=None, torch_dtype=torch.float16
         )
-        pipe.inverse_scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.inverse_scheduler = DDIMInverseScheduler.from_config(pipe.scheduler.config)
 
         caption = "a photography of a cat with flowers"
@@ -362,7 +361,29 @@ class InversionPipelineSlowTests(unittest.TestCase):
         image_slice = inv_latents[0, -3:, -3:, -1].flatten()
 
         assert inv_latents.shape == (1, 4, 64, 64)
-        expected_slice = np.array([0.8877, 0.0587, 0.7700, -1.6035, -0.5962, 0.4827, -0.6265, 1.0498, -0.8599])
+        expected_slice = np.array([0.8447, -0.0730, 0.7588, -1.2070, -0.4678, 0.1511, -0.8555, 1.1816, -0.7666])
+
+        assert np.abs(expected_slice - image_slice.cpu().numpy()).max() < 5e-2
+
+    def test_stable_diffusion_2_pix2pix_inversion(self):
+        pipe = StableDiffusionPix2PixZeroPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-2-1", safety_checker=None, torch_dtype=torch.float16
+        )
+        pipe.inverse_scheduler = DDIMInverseScheduler.from_config(pipe.scheduler.config)
+
+        caption = "a photography of a cat with flowers"
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.enable_model_cpu_offload()
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.manual_seed(0)
+        output = pipe.invert(caption, image=self.raw_image, generator=generator, num_inference_steps=10)
+        inv_latents = output[0]
+
+        image_slice = inv_latents[0, -3:, -3:, -1].flatten()
+
+        assert inv_latents.shape == (1, 4, 64, 64)
+        expected_slice = np.array([0.8970, -0.1611, 0.4766, -1.1162, -0.5923, 0.1050, -0.9678, 1.0537, -0.6050])
 
         assert np.abs(expected_slice - image_slice.cpu().numpy()).max() < 5e-2
 
@@ -375,7 +396,6 @@ class InversionPipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionPix2PixZeroPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4", safety_checker=None, torch_dtype=torch.float16
         )
-        pipe.inverse_scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.inverse_scheduler = DDIMInverseScheduler.from_config(pipe.scheduler.config)
 
         caption = "a photography of a cat with flowers"
@@ -407,3 +427,44 @@ class InversionPipelineSlowTests(unittest.TestCase):
 
         max_diff = np.abs(expected_image - image).mean()
         assert max_diff < 0.05
+
+    def test_stable_diffusion_2_pix2pix_full(self):
+        # numpy array of https://huggingface.co/datasets/hf-internal-testing/diffusers-images/blob/main/pix2pix/dog_2.png
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/pix2pix/dog_2.npy"
+        )
+
+        pipe = StableDiffusionPix2PixZeroPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-2-1", safety_checker=None, torch_dtype=torch.float16
+        )
+        pipe.inverse_scheduler = DDIMInverseScheduler.from_config(pipe.scheduler.config)
+
+        caption = "a photography of a cat with flowers"
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.enable_model_cpu_offload()
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.manual_seed(0)
+        output = pipe.invert(caption, image=self.raw_image, generator=generator)
+        inv_latents = output[0]
+
+        source_prompts = 4 * ["a cat sitting on the street", "a cat playing in the field", "a face of a cat"]
+        target_prompts = 4 * ["a dog sitting on the street", "a dog playing in the field", "a face of a dog"]
+
+        source_embeds = pipe.get_embeds(source_prompts)
+        target_embeds = pipe.get_embeds(target_prompts)
+
+        image = pipe(
+            caption,
+            source_embeds=source_embeds,
+            target_embeds=target_embeds,
+            num_inference_steps=125,
+            cross_attention_guidance_amount=0.015,
+            generator=generator,
+            latents=inv_latents,
+            negative_prompt=caption,
+            output_type="np",
+        ).images
+
+        mean_diff = np.abs(expected_image - image).mean()
+        assert mean_diff < 0.25

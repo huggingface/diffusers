@@ -6,7 +6,7 @@ import numpy as np
 import PIL
 import torch
 from packaging import version
-from transformers import CLIPFeatureExtractor, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTokenizer
 
 import diffusers
 from diffusers import OnnxRuntimeModel, OnnxStableDiffusionPipeline, SchedulerMixin
@@ -196,14 +196,14 @@ def get_prompts_with_weights(pipe, prompt: List[str], max_length: int):
     return tokens, weights
 
 
-def pad_tokens_and_weights(tokens, weights, max_length, bos, eos, no_boseos_middle=True, chunk_length=77):
+def pad_tokens_and_weights(tokens, weights, max_length, bos, eos, pad, no_boseos_middle=True, chunk_length=77):
     r"""
     Pad the tokens (with starting and ending tokens) and weights (with 1.0) to max_length.
     """
     max_embeddings_multiples = (max_length - 2) // (chunk_length - 2)
     weights_length = max_length if no_boseos_middle else max_embeddings_multiples * chunk_length
     for i in range(len(tokens)):
-        tokens[i] = [bos] + tokens[i] + [eos] * (max_length - 1 - len(tokens[i]))
+        tokens[i] = [bos] + tokens[i] + [pad] * (max_length - 1 - len(tokens[i]) - 1) + [eos]
         if no_boseos_middle:
             weights[i] = [1.0] + weights[i] + [1.0] * (max_length - 1 - len(weights[i]))
         else:
@@ -342,12 +342,14 @@ def get_weighted_text_embeddings(
     # pad the length of tokens and weights
     bos = pipe.tokenizer.bos_token_id
     eos = pipe.tokenizer.eos_token_id
+    pad = getattr(pipe.tokenizer, "pad_token_id", eos)
     prompt_tokens, prompt_weights = pad_tokens_and_weights(
         prompt_tokens,
         prompt_weights,
         max_length,
         bos,
         eos,
+        pad,
         no_boseos_middle=no_boseos_middle,
         chunk_length=pipe.tokenizer.model_max_length,
     )
@@ -359,6 +361,7 @@ def get_weighted_text_embeddings(
             max_length,
             bos,
             eos,
+            pad,
             no_boseos_middle=no_boseos_middle,
             chunk_length=pipe.tokenizer.model_max_length,
         )
@@ -403,7 +406,7 @@ def get_weighted_text_embeddings(
 
 def preprocess_image(image):
     w, h = image.size
-    w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
+    w, h = (x - x % 32 for x in (w, h))  # resize to integer multiple of 32
     image = image.resize((w, h), resample=PIL_INTERPOLATION["lanczos"])
     image = np.array(image).astype(np.float32) / 255.0
     image = image[None].transpose(0, 3, 1, 2)
@@ -413,7 +416,7 @@ def preprocess_image(image):
 def preprocess_mask(mask, scale_factor=8):
     mask = mask.convert("L")
     w, h = mask.size
-    w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
+    w, h = (x - x % 32 for x in (w, h))  # resize to integer multiple of 32
     mask = mask.resize((w // scale_factor, h // scale_factor), resample=PIL_INTERPOLATION["nearest"])
     mask = np.array(mask).astype(np.float32) / 255.0
     mask = np.tile(mask, (4, 1, 1))
@@ -441,7 +444,7 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(OnnxStableDiffusionPipeline
             unet: OnnxRuntimeModel,
             scheduler: SchedulerMixin,
             safety_checker: OnnxRuntimeModel,
-            feature_extractor: CLIPFeatureExtractor,
+            feature_extractor: CLIPImageProcessor,
             requires_safety_checker: bool = True,
         ):
             super().__init__(
@@ -468,7 +471,7 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(OnnxStableDiffusionPipeline
             unet: OnnxRuntimeModel,
             scheduler: SchedulerMixin,
             safety_checker: OnnxRuntimeModel,
-            feature_extractor: CLIPFeatureExtractor,
+            feature_extractor: CLIPImageProcessor,
         ):
             super().__init__(
                 vae_encoder=vae_encoder,

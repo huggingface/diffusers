@@ -10,26 +10,26 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Reproducibility
+# Create reproducible pipelines
 
-Before reading about reproducibility for Diffusers, it is strongly recommended to take a look at 
-[PyTorch's statement about reproducibility](https://pytorch.org/docs/stable/notes/randomness.html).
+Reproducibility is important for testing, replicating results, and can even be used to [improve image quality](reusing_seeds). However, the randomness in diffusion models is a desired property because it allows the pipeline to generate different images every time it is run. While you can't expect to get the exact same results across platforms, you can expect results to be reproducible across releases and platforms within a certain tolerance range. Even then, tolerance varies depending on the diffusion pipeline and checkpoint.
 
-PyTorch states that 
-> *completely reproducible results are not guaranteed across PyTorch releases, individual commits, or different platforms.*
-While one can never expect the same results across platforms, one can expect results to be reproducible 
-across releases, platforms, etc... within a certain tolerance. However, this tolerance strongly varies 
-depending on the diffusion pipeline and checkpoint.
+This is why it's important to understand how to control sources of randomness in diffusion models.
 
-In the following, we show how to best control sources of randomness for diffusion models.
+<Tip>
+
+💡 We strongly recommend reading PyTorch's [statement about reproducibility](https://pytorch.org/docs/stable/notes/randomness.html):
+
+> Completely reproducible results are not guaranteed across PyTorch releases, individual commits, or different platforms. Furthermore, results may not be reproducible between CPU and GPU executions, even when using identical seeds.
+
+</Tip>
 
 ## Inference
 
-During inference, diffusion pipelines heavily rely on random sampling operations, such as the creating the 
-gaussian noise tensors to be denoised and adding noise to the scheduling step.
+During inference, pipelines rely heavily on random sampling operations which include creating the 
+Gaussian noise tensors to denoise and adding noise to the scheduling step.
 
-Let's have a look at an example. We run the [DDIM pipeline](./api/pipelines/ddim.mdx) 
-for just two inference steps and return a numpy tensor to look into the numerical values of the output.
+Take a look at the tensor values in the [`DDIMPipeline`] after two inference steps:
 
 ```python
 from diffusers import DDIMPipeline
@@ -45,11 +45,15 @@ image = ddim(num_inference_steps=2, output_type="np").images
 print(np.abs(image).sum())
 ```
 
-Running the above prints a value of 1464.2076, but running it again prints a different 
-value of 1495.1768. What is going on here? Every time the pipeline is run, gaussian noise 
-is created and step-wise denoised. To create the gaussian noise with [`torch.randn`](https://pytorch.org/docs/stable/generated/torch.randn.html), a different random seed is taken every time, thus leading to a different result.
-This is a desired property of diffusion pipelines, as it means that the pipeline can create a different random image every time it is run. In many cases, one would like to generate the exact same image of a certain 
-run, for which case an instance of a [PyTorch generator](https://pytorch.org/docs/stable/generated/torch.randn.html) has to be passed:
+Running the code above prints one value, but if you run it again you get a different value. What is going on here? 
+
+Every time the pipeline is run, [`torch.randn`](https://pytorch.org/docs/stable/generated/torch.randn.html) uses a different random seed to create Gaussian noise which is denoised stepwise. This leads to a different result each time it is run, which is great for diffusion pipelines since it generates a different random image each time.
+
+But if you need to reliably generate the same image, that'll depend on whether you're running the pipeline on a CPU or GPU.
+
+### CPU
+
+To generate reproducible results on a CPU, you'll need to use a PyTorch [`Generator`](https://pytorch.org/docs/stable/generated/torch.randn.html) and set a seed:
 
 ```python
 import torch
@@ -69,28 +73,22 @@ image = ddim(num_inference_steps=2, output_type="np", generator=generator).image
 print(np.abs(image).sum())
 ```
 
-Running the above always prints a value of 1491.1711 - also upon running it again because we 
-define the generator object to be passed to all random functions of the pipeline.
+Now when you run the code above, it always prints a value of `1491.1711` no matter what because the `Generator` object with the seed is passed to all the random functions of the pipeline.
 
-If you run this code snippet on your specific hardware and version, you should get a similar, if not the same, result.
+If you run this code example on your specific hardware and PyTorch version, you should get a similar, if not the same, result.
 
 <Tip>
 
-It might be a bit unintuitive at first to pass `generator` objects to the pipelines instead of 
+💡 It might be a bit unintuitive at first to pass `Generator` objects to the pipeline instead of 
 just integer values representing the seed, but this is the recommended design when dealing with 
-probabilistic models in PyTorch as generators are *random states* that are advanced and can thus be 
+probabilistic models in PyTorch as `Generator`'s are *random states* that can be 
 passed to multiple pipelines in a sequence.
 
 </Tip>
 
-Great! Now, we know how to write reproducible pipelines, but it gets a bit trickier since the above example only runs on the CPU. How do we also achieve reproducibility on GPU? 
-In short, one should not expect full reproducibility across different hardware when running pipelines on GPU 
-as matrix multiplications are less deterministic on GPU than on CPU and diffusion pipelines tend to require
-a lot of matrix multiplications. Let's see what we can do to keep the randomness within limits across 
-different GPU hardware.
+### GPU
 
-To achieve maximum speed performance, it is recommended to create the generator directly on GPU when running 
-the pipeline on GPU:
+Writing a reproducible pipeline on a GPU is a bit trickier, and full reproducibility across different hardware is not guaranteed because matrix multiplication - which diffusion pipelines require a lot of - is less deterministic on a GPU than a CPU. For example, if you run the same code example above on a GPU: 
 
 ```python
 import torch
@@ -111,12 +109,11 @@ image = ddim(num_inference_steps=2, output_type="np", generator=generator).image
 print(np.abs(image).sum())
 ```
 
-Running the above now prints a value of 1389.8634 - even though we're using the exact same seed! 
-This is unfortunate as it means we cannot reproduce the results we achieved on GPU, also on CPU.
-Nevertheless, it should be expected since the GPU uses a different random number generator than the CPU.
+The result is not the same even though you're using an identical seed because the GPU uses a different random number generator than the CPU.
 
-To circumvent this problem, we created a [`randn_tensor`](#diffusers.utils.randn_tensor) function, which can create random noise 
-on the CPU and then move the tensor to GPU if necessary. The function is used everywhere inside the pipelines allowing the user to **always** pass a CPU generator even if the pipeline is run on GPU:
+To circumvent this problem, 🧨 Diffusers has a [`randn_tensor`](#diffusers.utils.randn_tensor) function for creating random noise on the CPU, and then moving the tensor to a GPU if necessary. The `randn_tensor` function is used everywhere inside the pipeline, allowing the user to **always** pass a CPU `Generator` even if the pipeline is run on a GPU. 
+
+You'll see the results are much closer now!
 
 ```python
 import torch
@@ -129,7 +126,7 @@ model_id = "google/ddpm-cifar10-32"
 ddim = DDIMPipeline.from_pretrained(model_id)
 ddim.to("cuda")
 
-# create a generator for reproducibility
+# create a generator for reproducibility; notice you don't place it on the GPU!
 generator = torch.manual_seed(0)
 
 # run pipeline for just two steps and return numpy tensor
@@ -137,23 +134,18 @@ image = ddim(num_inference_steps=2, output_type="np", generator=generator).image
 print(np.abs(image).sum())
 ```
 
-Running the above now prints a value of 1491.1713, much closer to the value of 1491.1711 when 
-the pipeline is fully run on the CPU.
-
 <Tip>
 
-As a consequence, we recommend always passing a CPU generator if Reproducibility is important.
-The loss of performance is often neglectable, but one can be sure to generate much more similar 
-values than if the pipeline would have been run on CPU.
+💡 If reproducibility is important, we recommend always passing a CPU generator.
+The performance loss is often neglectable, and you'll generate much more similar 
+values than if the pipeline had been run on a GPU.
 
 </Tip>
 
-Finally, we noticed that more complex pipelines, such as [`UnCLIPPipeline`] are often extremely 
-susceptible to precision error propagation and thus one cannot expect even similar results across 
-different GPU hardware or PyTorch versions. In such cases, one has to make sure to run 
-exactly the same hardware and PyTorch version for full Reproducibility.
+Finally, for more complex pipelines such as [`UnCLIPPipeline`], these are often extremely 
+susceptible to precision error propagation. Don't expect similar results across 
+different GPU hardware or PyTorch versions. In this case, you'll need to run 
+exactly the same hardware and PyTorch version for full reproducibility.
 
-## Randomness utilities
-
-### randn_tensor
+## randn_tensor
 [[autodoc]] diffusers.utils.randn_tensor

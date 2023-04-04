@@ -23,13 +23,14 @@ import torch.nn.functional as F
 from transformers import (
     BlipForConditionalGeneration,
     BlipProcessor,
-    CLIPFeatureExtractor,
+    CLIPImageProcessor,
     CLIPTextModel,
     CLIPTokenizer,
 )
 
+from ...loaders import TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...models.cross_attention import CrossAttention
+from ...models.attention_processor import Attention
 from ...schedulers import DDIMScheduler, DDPMScheduler, EulerAncestralDiscreteScheduler, LMSDiscreteScheduler
 from ...schedulers.scheduling_ddim_inverse import DDIMInverseScheduler
 from ...utils import (
@@ -50,7 +51,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 @dataclass
-class Pix2PixInversionPipelineOutput(BaseOutput):
+class Pix2PixInversionPipelineOutput(BaseOutput, TextualInversionLoaderMixin):
     """
     Output class for Stable Diffusion pipelines.
 
@@ -153,6 +154,8 @@ EXAMPLE_INVERT_DOC_STRING = """
         >>> source_embeds = pipeline.get_embeds(source_prompts)
         >>> target_embeds = pipeline.get_embeds(target_prompts)
         >>> # the latents can then be used to edit a real image
+        >>> # when using Stable Diffusion 2 or other models that use v-prediction
+        >>> # set `cross_attention_guidance_amount` to 0.01 or less to avoid input latent gradient explosion
 
         >>> image = pipeline(
         ...     caption,
@@ -178,7 +181,7 @@ def preprocess(image):
 
     if isinstance(image[0], PIL.Image.Image):
         w, h = image[0].size
-        w, h = map(lambda x: x - x % 8, (w, h))  # resize to integer multiple of 8
+        w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
 
         image = [np.array(i.resize((w, h), resample=PIL_INTERPOLATION["lanczos"]))[None, :] for i in image]
         image = np.concatenate(image, axis=0)
@@ -198,10 +201,10 @@ def prepare_unet(unet: UNet2DConditionModel):
         module_name = name.replace(".processor", "")
         module = unet.get_submodule(module_name)
         if "attn2" in name:
-            pix2pix_zero_attn_procs[name] = Pix2PixZeroCrossAttnProcessor(is_pix2pix_zero=True)
+            pix2pix_zero_attn_procs[name] = Pix2PixZeroAttnProcessor(is_pix2pix_zero=True)
             module.requires_grad_(True)
         else:
-            pix2pix_zero_attn_procs[name] = Pix2PixZeroCrossAttnProcessor(is_pix2pix_zero=False)
+            pix2pix_zero_attn_procs[name] = Pix2PixZeroAttnProcessor(is_pix2pix_zero=False)
             module.requires_grad_(False)
 
     unet.set_attn_processor(pix2pix_zero_attn_procs)
@@ -216,7 +219,7 @@ class Pix2PixZeroL2Loss:
         self.loss += ((predictions - targets) ** 2).sum((1, 2)).mean(0)
 
 
-class Pix2PixZeroCrossAttnProcessor:
+class Pix2PixZeroAttnProcessor:
     """An attention processor class to store the attention weights.
     In Pix2Pix Zero, it happens during computations in the cross-attention blocks."""
 
@@ -227,7 +230,7 @@ class Pix2PixZeroCrossAttnProcessor:
 
     def __call__(
         self,
-        attn: CrossAttention,
+        attn: Attention,
         hidden_states,
         encoder_hidden_states=None,
         attention_mask=None,
@@ -295,7 +298,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
-        feature_extractor ([`CLIPFeatureExtractor`]):
+        feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
         requires_safety_checker (bool):
             Whether the pipeline requires a safety checker. We recommend setting it to True if you're using the
@@ -316,7 +319,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
         scheduler: Union[DDPMScheduler, DDIMScheduler, EulerAncestralDiscreteScheduler, LMSDiscreteScheduler],
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
         safety_checker: StableDiffusionSafetyChecker,
         inverse_scheduler: DDIMInverseScheduler,
         caption_generator: BlipForConditionalGeneration,
@@ -392,7 +395,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
             from accelerate import cpu_offload_with_hook
         else:
-            raise ImportError("`enable_model_offload` requires `accelerate v0.17.0` or higher.")
+            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
 
         device = torch.device(f"cuda:{gpu_id}")
 
@@ -450,8 +453,8 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 whether to use classifier free guidance or not
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
-                Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
@@ -468,6 +471,10 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
+
             text_inputs = self.tokenizer(
                 prompt,
                 padding="max_length",
@@ -527,6 +534,10 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 )
             else:
                 uncond_tokens = negative_prompt
+
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 
             max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(
@@ -730,6 +741,23 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
         return latents
 
+    def get_epsilon(self, model_output: torch.Tensor, sample: torch.Tensor, timestep: int):
+        pred_type = self.inverse_scheduler.config.prediction_type
+        alpha_prod_t = self.inverse_scheduler.alphas_cumprod[timestep]
+
+        beta_prod_t = 1 - alpha_prod_t
+
+        if pred_type == "epsilon":
+            return model_output
+        elif pred_type == "sample":
+            return (sample - alpha_prod_t ** (0.5) * model_output) / beta_prod_t ** (0.5)
+        elif pred_type == "v_prediction":
+            return (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
+        else:
+            raise ValueError(
+                f"prediction_type given as {pred_type} must be one of `epsilon`, `sample`, or `v_prediction`"
+            )
+
     def auto_corr_loss(self, hidden_states, generator=None):
         batch_size, channel, height, width = hidden_states.shape
         if batch_size > 1:
@@ -809,8 +837,8 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 usually at the expense of lower image quality.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
-                Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
@@ -1156,8 +1184,8 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
         # 7. Denoising loop where we obtain the cross-attention maps.
         num_warmup_steps = len(timesteps) - num_inference_steps * self.inverse_scheduler.order
-        with self.progress_bar(total=num_inference_steps - 2) as progress_bar:
-            for i, t in enumerate(timesteps[1:-1]):
+        with self.progress_bar(total=num_inference_steps - 1) as progress_bar:
+            for i, t in enumerate(timesteps[:-1]):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.inverse_scheduler.scale_model_input(latent_model_input, t)
@@ -1181,7 +1209,11 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                         if lambda_auto_corr > 0:
                             for _ in range(num_auto_corr_rolls):
                                 var = torch.autograd.Variable(noise_pred.detach().clone(), requires_grad=True)
-                                l_ac = self.auto_corr_loss(var, generator=generator)
+
+                                # Derive epsilon from model output before regularizing to IID standard normal
+                                var_epsilon = self.get_epsilon(var, latent_model_input.detach(), t)
+
+                                l_ac = self.auto_corr_loss(var_epsilon, generator=generator)
                                 l_ac.backward()
 
                                 grad = var.grad.detach() / num_auto_corr_rolls
@@ -1190,7 +1222,10 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                         if lambda_kl > 0:
                             var = torch.autograd.Variable(noise_pred.detach().clone(), requires_grad=True)
 
-                            l_kld = self.kl_divergence(var)
+                            # Derive epsilon from model output before regularizing to IID standard normal
+                            var_epsilon = self.get_epsilon(var, latent_model_input.detach(), t)
+
+                            l_kld = self.kl_divergence(var_epsilon)
                             l_kld.backward()
 
                             grad = var.grad.detach()
