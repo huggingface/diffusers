@@ -1,5 +1,5 @@
 # flake8: noqa
-from ...utils import is_note_seq_available, is_transformers_available
+from ...utils import is_note_seq_available, is_transformers_available, is_torch_available
 from ...utils import OptionalDependencyNotAvailable
 
 
