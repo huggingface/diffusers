@@ -40,25 +40,25 @@ from .safety_checker import StableDiffusionSafetyChecker
 logger = logging.get_logger(__name__)
 
 
-def preprocess_image(image):
+def preprocess_image(image, batch_size):
     w, h = image.size
-    w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
+    w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
     image = image.resize((w, h), resample=PIL_INTERPOLATION["lanczos"])
     image = np.array(image).astype(np.float32) / 255.0
-    image = image[None].transpose(0, 3, 1, 2)
+    image = np.vstack([image[None].transpose(0, 3, 1, 2)] * batch_size)
     image = torch.from_numpy(image)
     return 2.0 * image - 1.0
 
 
-def preprocess_mask(mask, scale_factor=8):
+def preprocess_mask(mask, batch_size, scale_factor=8):
     if not isinstance(mask, torch.FloatTensor):
         mask = mask.convert("L")
         w, h = mask.size
-        w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
+        w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
         mask = mask.resize((w // scale_factor, h // scale_factor), resample=PIL_INTERPOLATION["nearest"])
         mask = np.array(mask).astype(np.float32) / 255.0
         mask = np.tile(mask, (4, 1, 1))
-        mask = mask[None].transpose(0, 1, 2, 3)  # what does this step do?
+        mask = np.vstack([mask[None]] * batch_size)
         mask = 1 - mask  # repaint white, keep black
         mask = torch.from_numpy(mask)
         return mask
@@ -640,9 +640,9 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
 
         # 4. Preprocess image and mask
         if not isinstance(image, torch.FloatTensor):
-            image = preprocess_image(image)
+            image = preprocess_image(image, batch_size)
 
-        mask_image = preprocess_mask(mask_image, self.vae_scale_factor)
+        mask_image = preprocess_mask(mask_image, batch_size, self.vae_scale_factor)
 
         # 5. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
