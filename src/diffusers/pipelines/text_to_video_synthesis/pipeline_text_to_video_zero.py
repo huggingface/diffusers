@@ -4,16 +4,78 @@ from typing import Callable, List, Optional, Union
 import numpy as np
 import PIL
 import torch
-import torchvision.transforms as T
-from einops import rearrange, repeat
+import torch.nn.functional as F
 from torch.nn.functional import grid_sample
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...models.attention_processor import CrossFrameAttnProcessor
 from ...pipelines.stable_diffusion import StableDiffusionPipeline, StableDiffusionSafetyChecker
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import BaseOutput
+
+
+def rearrange_0(tensor, f):
+    F, C, H, W = tensor.size()
+    tensor = torch.permute(torch.reshape(tensor, (F//f, f, C, H, W)), (0, 2, 1, 3, 4))
+    return tensor
+
+
+def rearrange_1(tensor):
+    B, C, F, H, W = tensor.size()
+    return torch.reshape(torch.permute(tensor, (0, 2, 1, 3, 4)), (B * F, C, H, W))
+
+
+def rearrange_3(tensor, f):
+    F, D, C = tensor.size()
+    return torch.reshape(tensor, (F//f, f, D, C))
+
+
+def rearrange_4(tensor):
+    B, F, D, C = tensor.size()
+    return torch.reshape(tensor, (B * F, D, C))
+
+
+class CrossFrameAttnProcessor:
+    def __init__(self, batch_size=2):
+        self.batch_size = batch_size
+
+    def __call__(self, attn, hidden_states, encoder_hidden_states=None, attention_mask=None):
+        batch_size, sequence_length, _ = hidden_states.shape
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+        query = attn.to_q(hidden_states)
+
+        is_cross_attention = encoder_hidden_states is not None
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.cross_attention_norm:
+            encoder_hidden_states = attn.norm_cross(encoder_hidden_states)
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+        # Sparse Attention
+        if not is_cross_attention:
+            video_length = key.size()[0] // self.batch_size
+            first_frame_index = [0] * video_length
+            key = rearrange_3(key, video_length)
+            key = key[:, first_frame_index]
+            key = rearrange_4(key)
+            value = rearrange_3(value, video_length)
+            value = value[:, first_frame_index]
+            value = rearrange_4(value)
+
+        query = attn.head_to_batch_dim(query)
+        key = attn.head_to_batch_dim(key)
+        value = attn.head_to_batch_dim(value)
+
+        attention_probs = attn.get_attention_scores(query, key, attention_mask)
+        hidden_states = torch.bmm(attention_probs, value)
+        hidden_states = attn.batch_to_head_dim(hidden_states)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        return hidden_states
 
 
 @dataclass
@@ -31,24 +93,7 @@ def coords_grid(batch, ht, wd, device):
     return coords[None].repeat(batch, 1, 1, 1)
 
 
-def warp_latents_from_f0(latents, reference_flow):
-    _, _, H, W = reference_flow.size()
-    b, c, f, h, w = latents.size()
-    coords0 = coords_grid(f, H, W, device=latents.device).to(latents.dtype)
-    coords_t0 = coords0 + reference_flow
-    coords_t0[:, 0] /= W
-    coords_t0[:, 1] /= H
-    coords_t0 = coords_t0 * 2.0 - 1.0
-    coords_t0 = T.Resize((h, w))(coords_t0)
-    coords_t0 = rearrange(coords_t0, "f c h w -> f h w c")
-    latents_0 = latents[:, :, 0]
-    latents_0 = latents_0.repeat(f, 1, 1, 1)
-    warped = grid_sample(latents_0, coords_t0, mode="nearest", padding_mode="reflection")
-    warped = rearrange(warped, "(b f) c h w -> b c f h w", f=f)
-    return warped
-
-
-def warp_latents_independently(latents, reference_flow, inject_noise=False):
+def warp_latents_independently(latents, reference_flow):
     _, _, H, W = reference_flow.size()
     b, _, f, h, w = latents.size()
     assert b == 1
@@ -59,22 +104,12 @@ def warp_latents_independently(latents, reference_flow, inject_noise=False):
     coords_t0[:, 1] /= H
 
     coords_t0 = coords_t0 * 2.0 - 1.0
+    coords_t0 = F.interpolate(coords_t0, size=(h, w), mode='bilinear')
+    coords_t0 = torch.permute(coords_t0, (0, 2, 3, 1))
 
-    coords_t0 = T.Resize((h, w))(coords_t0)
-
-    coords_t0 = rearrange(coords_t0, "f c h w -> f h w c")
-
-    latents_0 = rearrange(latents[0], "c f h w -> f  c  h w")
+    latents_0 = torch.permute(latents[0], (1, 0, 2, 3))
     warped = grid_sample(latents_0, coords_t0, mode="nearest", padding_mode="reflection")
-
-    if inject_noise:
-        idx = torch.logical_or(coords_t0 >= 1, coords_t0 < -1)
-        idx = torch.logical_or(idx[:, :, :, 0], idx[:, :, :, 1])
-        idx = repeat(idx, "f w h -> f c w h", c=warped.shape[1])
-        reset_noise = torch.randn(size=warped.shape, dtype=warped.dtype, device=warped.device)
-        warped[idx] = reset_noise[idx]
-
-    warped = rearrange(warped, "(b f) c h w -> b c f h w", f=f)
+    warped = rearrange_0(warped, f)
     return warped
 
 
@@ -87,7 +122,7 @@ def create_motion_field(motion_field_strength_x, motion_field_strength_y, frame_
 
 
 def create_motion_field_and_warp_latents(
-    motion_field_strength_x, motion_field_strength_y, frame_ids, video_length, inject_noise_to_warp, latents
+    motion_field_strength_x, motion_field_strength_y, frame_ids, video_length, latents
 ):
     motion_field = create_motion_field(
         motion_field_strength_x=motion_field_strength_x,
@@ -97,7 +132,7 @@ def create_motion_field_and_warp_latents(
         frame_ids=frame_ids,
     )
     for idx, latent in enumerate(latents):
-        latents[idx] = warp_latents_independently(latent[None], motion_field, inject_noise=inject_noise_to_warp)
+        latents[idx] = warp_latents_independently(latent[None], motion_field)
     return motion_field, latents
 
 
@@ -124,7 +159,7 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
         if x0 is None:
             return torch.randn(shape, generator=generator, device=rand_device, dtype=text_embeddings.dtype).to(device)
         else:
-            eps = torch.randn_like(x0, dtype=text_embeddings.dtype).to(device)
+            eps = torch.randn(x0.size(), generator=generator, dtype=text_embeddings.dtype, device=device)
             alpha_vec = torch.prod(self.scheduler.alphas[t0:t_max])
             xt = torch.sqrt(alpha_vec) * x0 + torch.sqrt(1 - alpha_vec) * eps
             return xt
@@ -185,7 +220,7 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
 
         f = latents_local.shape[2]
 
-        latents_local = rearrange(latents_local, "b c f w h -> (b f) c w h")
+        latents_local = rearrange_1(latents_local)
 
         latents = latents_local.detach().clone()
         x_t0_1 = None
@@ -211,8 +246,8 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
                 with torch.no_grad():
                     te = torch.cat(
                         [
-                            repeat(text_embeddings[0, :, :], "c k -> f c k", f=f),
-                            repeat(text_embeddings[1, :, :], "c k -> f c k", f=f),
+                            text_embeddings[0:1, :, :].repeat(f, 1, 1),
+                            text_embeddings[1:2, :, :].repeat(f, 1, 1),
                         ]
                     )
                     noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=te).sample.to(
@@ -241,22 +276,22 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
-        latents = rearrange(latents, "(b f) c w h -> b c f  w h", f=f)
+        latents = rearrange_0(latents, f)
 
         res = {"x0": latents.detach().clone()}
         if x_t0_1 is not None:
-            x_t0_1 = rearrange(x_t0_1, "(b f) c w h -> b c f  w h", f=f)
+            x_t0_1 = rearrange_0(x_t0_1, f)
             res["x_t0_1"] = x_t0_1.detach().clone()
         if x_t1_1 is not None:
-            x_t1_1 = rearrange(x_t1_1, "(b f) c w h -> b c f  w h", f=f)
+            x_t1_1 = rearrange_0(x_t1_1, f)
             res["x_t1_1"] = x_t1_1.detach().clone()
         return res
 
     def decode_latents(self, latents):
         latents = 1 / 0.18215 * latents
-        latents = rearrange(latents, "b c f h w -> (b f) c h w")
+        latents = rearrange_1(latents)
         video = self.vae.decode(latents).sample
-        video = rearrange(video, "b c h w -> b h w c")
+        video = torch.permute(video, (0, 2, 3, 1))
         video = (video / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
         video = video.cpu().float().numpy()
@@ -283,12 +318,11 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
         use_motion_field: bool = True,
-        inject_noise_to_warp: bool = False,
         t0: int = 45,
         t1: int = 48,
-        **kwargs,
     ):
-        frame_ids = kwargs.pop("frame_ids", list(range(video_length)))
+        assert video_length > 0
+        frame_ids = list(range(video_length))
 
         assert num_videos_per_prompt == 1
 
@@ -366,10 +400,6 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
 
         shape = (batch_size, num_channels_latents, 1, height // self.vae_scale_factor, width // self.vae_scale_factor)
-        if inject_noise_to_warp and use_motion_field:
-            # if we inject to noise to warp function, we do it for timesteps T = 1000
-
-            x_t0_k = latents[:, :, :1, :, :].repeat(1, 1, video_length - 1, 1, 1)
 
         ddim_res = self.ddim_backward(
             num_inference_steps=num_inference_steps,
@@ -397,49 +427,7 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
         del ddim_res
         del latents
 
-        if inject_noise_to_warp and use_motion_field:
-            # DDPM forward to allow for more motion
-            if t1 > t0:
-                x_t1_k = self.ddpm_forward(
-                    x0=x_t0_1,
-                    t0=t0,
-                    t_max=t1,
-                    device=device,
-                    shape=shape,
-                    text_embeddings=text_embeddings,
-                    generator=generator,
-                )
-            else:
-                x_t1_k = x_t0_k
-
-            if x_t1_1 is None:
-                raise Exception
-
-            x_t1 = x_t1_k.clone().detach()
-
-            ddim_res = self.ddim_backward(
-                num_inference_steps=num_inference_steps,
-                timesteps=timesteps,
-                skip_t=t1,
-                t0=-1,
-                t1=-1,
-                do_classifier_free_guidance=do_classifier_free_guidance,
-                text_embeddings=text_embeddings,
-                latents_local=x_t1,
-                latents_dtype=dtype,
-                guidance_scale=guidance_scale,
-                callback=callback,
-                callback_steps=callback_steps,
-                extra_step_kwargs=extra_step_kwargs,
-                num_warmup_steps=num_warmup_steps,
-            )
-
-            x0 = ddim_res["x0"].detach()
-            del ddim_res
-            del x_t1
-            del x_t1_k
-
-        if use_motion_field and not inject_noise_to_warp:
+        if use_motion_field:
             del x0
 
             x_t0_k = x_t0_1[:, :, :1, :, :].repeat(1, 1, video_length - 1, 1, 1)
@@ -449,7 +437,6 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
                 motion_field_strength_y=motion_field_strength_y,
                 latents=x_t0_k,
                 video_length=video_length,
-                inject_noise_to_warp=inject_noise_to_warp,
                 frame_ids=frame_ids,
             )
 
