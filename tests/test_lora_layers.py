@@ -187,7 +187,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         # Outputs shouldn't match.
         self.assertFalse(torch.allclose(torch.from_numpy(orig_image_slice), torch.from_numpy(lora_image_slice)))
 
-    def test_lora_load_legacy(self):
+    def test_lora_save_load_legacy(self):
         pipeline_components, lora_components = self.get_dummy_components()
         unet_lora_attn_procs = lora_components["unet_lora_attn_procs"]
         sd_pipe = StableDiffusionPipeline(**pipeline_components)

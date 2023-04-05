@@ -715,30 +715,36 @@ class LoraLoaderMixin:
             state_dict = pretrained_model_name_or_path_or_dict
 
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
-        # then the `state_dict` should either have
-        # (1) two keys at the root-level: `unet` and `text_encoder`.
-        # (2) OR, one of the two keys: `unet` or `text_encoder`.
-        if len(list(state_dict.keys())) in [1, 2]:
-            # Load the layers corresponding to UNet.
-            if state_dict.get(self.unet_name, None) is not None:
-                logger.info(f"Loading {self.unet_name}.")
-                self.unet.load_attn_procs(state_dict[self.unet_name])
+        # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
+        # their prefixes.
+        keys = list(state_dict.keys())
 
-            # Load the layers corresponding to text encoder and make necessary adjustments.
-            if state_dict.get(self.text_encoder_name, None) is not None:
-                logger.info(f"Loading {self.text_encoder_name}.")
-                attn_procs_text_encoder = self.load_attn_procs(state_dict[self.text_encoder_name])
-                self._modify_text_encoder(attn_procs_text_encoder)
+        # Load the layers corresponding to UNet.
+        if all(key.startswith(self.unet_name) for key in keys):
+            logger.info(f"Loading {self.unet_name}.")
+            unet_lora_state_dict = {k: v for k, v in state_dict.items() if k.startswith(self.unet_name)}
+            self.unet.load_attn_procs(unet_lora_state_dict)
+
+        # Load the layers corresponding to text encoder and make necessary adjustments.
+        elif all(key.startswith(self.text_encoder_name) for key in keys):
+            logger.info(f"Loading {self.text_encoder_name}.")
+            text_encoder_lora_state_dict = {
+                k: v for k, v in state_dict.items() if k.startswith(self.text_encoder_name)
+            }
+            attn_procs_text_encoder = self.load_attn_procs(text_encoder_lora_state_dict)
+            self._modify_text_encoder(attn_procs_text_encoder)
+
         # Otherwise, we're dealing with the old format. This means the `state_dict` should only
-        # contain the module names of the `unet` as its keys WITHOUT any high-level keys like
-        # `unet`.
-        else:
+        # contain the module names of the `unet` as its keys WITHOUT any prefix.
+        elif not all(
+            key.startswith(self.unet_name) or key.startswith(self.text_encoder_name) for key in state_dict.keys()
+        ):
             self.unet.load_attn_procs(state_dict)
             logger.warning(
                 "You have saved the LoRA weights using the old format. This will be"
                 " deprecated soon. To convert the old LoRA weights to the new format, you can first load them"
                 " in a dictionary and then create a new dictionary like the following:"
-                " `{new_dictionary.update('unet': old_dictionary)}`."
+                " `new_state_dict = {f'unet'.{module_name}: params for module_name, params in old_state_dict.items()}`."
             )
 
     def _modify_text_encoder(self, attn_processors: Dict[str, LoRAAttnProcessor]):
@@ -825,6 +831,10 @@ class LoraLoaderMixin:
                 Mirror source to accelerate downloads in China. If you are from China and have an accessibility
                 problem, you can set this option to resolve it. Note that we do not guarantee the timeliness or safety.
                 Please refer to the mirror site for more information.
+
+        Returns:
+            `Dict[name, LoRAAttnProcessor]`: Mapping between the module names and their corresponding
+            [`LoRAAttnProcessor`].
 
         <Tip>
 
@@ -982,11 +992,20 @@ class LoraLoaderMixin:
 
         os.makedirs(save_directory, exist_ok=True)
 
+        # Create a flat dictionary.
         state_dict = {}
         if unet_lora_layers is not None:
-            state_dict.update({self.unet_name: unet_lora_layers.state_dict()})
+            unet_lora_state_dict = {
+                f"{self.unet_name}.{module_name}": param
+                for module_name, param in unet_lora_layers.state_dict().items()
+            }
+            state_dict.update(unet_lora_state_dict)
         if text_encoder_lora_layers is not None:
-            state_dict.update({self.text_encoder_name: text_encoder_lora_layers.state_dict()})
+            text_encoder_lora_state_dict = {
+                f"{self.text_encoder_name}.{module_name}": param
+                for module_name, param in text_encoder_lora_layers.state_dict().items()
+            }
+            state_dict.update(text_encoder_lora_state_dict)
 
         # Save the model
         if weight_name is None:
@@ -995,6 +1014,5 @@ class LoraLoaderMixin:
             else:
                 weight_name = LORA_WEIGHT_NAME
 
-        # Save the model
         save_function(state_dict, os.path.join(save_directory, weight_name))
         logger.info(f"Model weights saved in {os.path.join(save_directory, weight_name)}")
