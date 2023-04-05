@@ -19,7 +19,6 @@ import math
 import os
 import random
 from pathlib import Path
-from typing import Optional
 
 import jax
 import jax.numpy as jnp
@@ -28,13 +27,13 @@ import optax
 import torch
 import torch.utils.checkpoint
 import transformers
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk
 from flax import jax_utils
 from flax.core.frozen_dict import unfreeze
 from flax.training import train_state
 from flax.training.common_utils import shard
-from huggingface_hub import HfFolder, Repository, create_repo, whoami
-from PIL import Image
+from huggingface_hub import create_repo, upload_folder
+from PIL import Image, PngImagePlugin
 from torch.utils.data import IterableDataset
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -49,6 +48,11 @@ from diffusers import (
 )
 from diffusers.utils import check_min_version, is_wandb_available
 
+
+# To prevent an error that occurs when there are abnormally large compressed data chunk in the png image
+# see more https://github.com/python-pillow/Pillow/issues/5610
+LARGE_ENOUGH_NUMBER = 100
+PngImagePlugin.MAX_TEXT_CHUNK = LARGE_ENOUGH_NUMBER * (1024**2)
 
 if is_wandb_available():
     import wandb
@@ -110,7 +114,7 @@ def log_validation(controlnet, controlnet_params, tokenizer, args, rng, weight_d
         prompt_ids = pipeline.prepare_text_inputs(prompts)
         prompt_ids = shard(prompt_ids)
 
-        validation_image = Image.open(validation_image)
+        validation_image = Image.open(validation_image).convert("RGB")
         processed_image = pipeline.prepare_image_inputs(num_samples * [validation_image])
         processed_image = shard(processed_image)
         images = pipeline(
@@ -148,7 +152,7 @@ def log_validation(controlnet, controlnet_params, tokenizer, args, rng, weight_d
     return image_logs
 
 
-def save_model_card(repo_name, image_logs=None, base_model=str, repo_folder=None):
+def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=None):
     img_str = ""
     for i, log in enumerate(image_logs):
         images = log["images"]
@@ -174,7 +178,7 @@ inference: true
 ---
     """
     model_card = f"""
-# controlnet- {repo_name}
+# controlnet- {repo_id}
 
 These are controlnet weights trained on {base_model} with new type of conditioning. You can find some example images in the following. \n
 {img_str}
@@ -246,6 +250,12 @@ def parse_args():
         type=int,
         default=None,
         help="Total number of training steps to perform.",
+    )
+    parser.add_argument(
+        "--checkpointing_steps",
+        type=int,
+        default=5000,
+        help=("Save a checkpoint of the training state every X updates."),
     )
     parser.add_argument(
         "--learning_rate",
@@ -345,9 +355,17 @@ def parse_args():
         type=str,
         default=None,
         help=(
-            "A folder containing the training data. Folder contents must follow the structure described in"
-            " https://huggingface.co/docs/datasets/image_dataset#imagefolder. In particular, a `metadata.jsonl` file"
-            " must exist to provide the captions for the images. Ignored if `dataset_name` is specified."
+            "A folder containing the training dataset. By default it will use `load_dataset` method to load a custom dataset from the folder."
+            "Folder must contain a dataset script as described here https://huggingface.co/docs/datasets/dataset_script) ."
+            "If `--load_from_disk` flag is passed, it will use `load_from_disk` method instead. Ignored if `dataset_name` is specified."
+        ),
+    )
+    parser.add_argument(
+        "--load_from_disk",
+        action="store_true",
+        help=(
+            "If True, will load a dataset that was previously saved using `save_to_disk` from `--train_data_dir`"
+            "See more https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset.load_from_disk"
         ),
     )
     parser.add_argument(
@@ -478,16 +496,18 @@ def make_train_dataset(args, tokenizer, batch_size=None):
             streaming=args.streaming,
         )
     else:
-        data_files = {}
         if args.train_data_dir is not None:
-            data_files["train"] = os.path.join(args.train_data_dir, "**")
-        dataset = load_dataset(
-            "imagefolder",
-            data_files=data_files,
-            cache_dir=args.cache_dir,
-        )
+            if args.load_from_disk:
+                dataset = load_from_disk(
+                    args.train_data_dir,
+                )
+            else:
+                dataset = load_dataset(
+                    args.train_data_dir,
+                    cache_dir=args.cache_dir,
+                )
         # See more about loading custom images at
-        # https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder
+        # https://huggingface.co/docs/datasets/v2.0.0/en/dataset_script
 
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
@@ -549,6 +569,7 @@ def make_train_dataset(args, tokenizer, batch_size=None):
     image_transforms = transforms.Compose(
         [
             transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
+            transforms.CenterCrop(args.resolution),
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5]),
         ]
@@ -557,6 +578,7 @@ def make_train_dataset(args, tokenizer, batch_size=None):
     conditioning_image_transforms = transforms.Compose(
         [
             transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
+            transforms.CenterCrop(args.resolution),
             transforms.ToTensor(),
         ]
     )
@@ -612,16 +634,6 @@ def collate_fn(examples):
     return batch
 
 
-def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
-    if token is None:
-        token = HfFolder.get_token()
-    if organization is None:
-        username = whoami(token)["name"]
-        return f"{username}/{model_id}"
-    else:
-        return f"{organization}/{model_id}"
-
-
 def get_params_to_save(params):
     return jax.device_get(jax.tree_util.tree_map(lambda x: x[0], params))
 
@@ -656,21 +668,13 @@ def main():
 
     # Handle the repository creation
     if jax.process_index() == 0:
-        if args.push_to_hub:
-            if args.hub_model_id is None:
-                repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
-            else:
-                repo_name = args.hub_model_id
-            repo_url = create_repo(repo_name, exist_ok=True, token=args.hub_token)
-            repo = Repository(args.output_dir, clone_from=repo_url, token=args.hub_token)
-
-            with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
-                if "step_*" not in gitignore:
-                    gitignore.write("step_*\n")
-                if "epoch_*" not in gitignore:
-                    gitignore.write("epoch_*\n")
-        elif args.output_dir is not None:
+        if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
+
+        if args.push_to_hub:
+            repo_id = create_repo(
+                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
+            ).repo_id
 
     # Load the tokenizer and add the placeholder token as a additional special token
     if args.tokenizer_name:
@@ -1003,6 +1007,11 @@ def main():
                             "train/loss": jax_utils.unreplicate(train_metric)["loss"],
                         }
                     )
+            if global_step % args.checkpointing_steps == 0 and jax.process_index() == 0:
+                controlnet.save_pretrained(
+                    f"{args.output_dir}/{global_step}",
+                    params=get_params_to_save(state.params),
+                )
 
         train_metric = jax_utils.unreplicate(train_metric)
         train_step_progress_bar.close()
@@ -1020,12 +1029,17 @@ def main():
 
         if args.push_to_hub:
             save_model_card(
-                repo_name,
+                repo_id,
                 image_logs=image_logs,
                 base_model=args.pretrained_model_name_or_path,
                 repo_folder=args.output_dir,
             )
-            repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
+            upload_folder(
+                repo_id=repo_id,
+                folder_path=args.output_dir,
+                commit_message="End of training",
+                ignore_patterns=["step_*", "epoch_*"],
+            )
 
 
 if __name__ == "__main__":
