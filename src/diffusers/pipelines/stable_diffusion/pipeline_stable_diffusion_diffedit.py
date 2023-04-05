@@ -771,6 +771,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_pix2pix_zero.StableDiffusionPix2PixZeroPipeline.prepare_image_latents
     def prepare_image_latents(self, image, batch_size, dtype, device, generator=None):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
@@ -793,8 +794,16 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
 
         latents = self.vae.config.scaling_factor * latents
 
-        if batch_size > latents.shape[0]:
+        if batch_size != latents.shape[0]:
             if batch_size % latents.shape[0] == 0:
+                # expand image_latents for batch_size
+                deprecation_message = (
+                    f"You have passed {batch_size} text prompts (`prompt`), but only {latents.shape[0]} initial"
+                    " images (`image`). Initial images are now duplicating to match the number of text prompts. Note"
+                    " that this behavior is deprecated and will be removed in a version 1.0.0. Please make sure to update"
+                    " your script to pass as many initial images as text prompts to suppress this warning."
+                )
+                deprecate("len(prompt) != len(image)", "1.0.0", deprecation_message, standard_warn=False)
                 additional_latents_per_image = batch_size // latents.shape[0]
                 latents = torch.cat([latents] * additional_latents_per_image, dim=0)
             else:
