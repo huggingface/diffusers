@@ -33,7 +33,7 @@ from diffusers.pipelines.stable_diffusion import StableDiffusionPipeline, Stable
 
 '''
 Installation instructions
-python3 -m pip install --upgrade tensorrt polygraphy onnx-graphsurgeon -i https://pypi.ngc.nvidia.com
+python3 -m pip install --upgrade tensorrt polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
 python3 -m pip install onnxruntime
 '''
 
