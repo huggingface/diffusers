@@ -320,6 +320,12 @@ Then cd in the example folder and run
 pip install -U -r requirements_flax.txt
 ```
 
+If you want to use Weights and Bias logging, you should also install `wandb` now
+
+```bash
+pip install wandb
+```
+
 Now let's downloading two conditioning images that we will use to run validation during the training in order to track our progress
 
 ```
