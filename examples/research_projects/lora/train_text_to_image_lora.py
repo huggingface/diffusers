@@ -22,7 +22,6 @@ import math
 import os
 import random
 from pathlib import Path
-from typing import Optional
 
 import datasets
 import numpy as np
@@ -34,7 +33,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
-from huggingface_hub import HfFolder, Repository, create_repo, whoami
+from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -55,7 +54,7 @@ check_min_version("0.14.0.dev0")
 logger = get_logger(__name__, log_level="INFO")
 
 
-def save_model_card(repo_name, images=None, base_model=str, dataset_name=str, repo_folder=None):
+def save_model_card(repo_id: str, images=None, base_model=str, dataset_name=str, repo_folder=None):
     img_str = ""
     for i, image in enumerate(images):
         image.save(os.path.join(repo_folder, f"image_{i}.png"))
@@ -75,7 +74,7 @@ inference: true
 ---
     """
     model_card = f"""
-# LoRA text2image fine-tuning - {repo_name}
+# LoRA text2image fine-tuning - {repo_id}
 These are LoRA adaption weights for {base_model}. The weights were fine-tuned on the {dataset_name} dataset. You can find some example images in the following. \n
 {img_str}
 """
@@ -386,16 +385,6 @@ def parse_args():
     return args
 
 
-def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
-    if token is None:
-        token = HfFolder.get_token()
-    if organization is None:
-        username = whoami(token)["name"]
-        return f"{username}/{model_id}"
-    else:
-        return f"{organization}/{model_id}"
-
-
 DATASET_NAME_MAPPING = {
     "lambdalabs/pokemon-blip-captions": ("image", "text"),
 }
@@ -441,21 +430,13 @@ def main():
 
     # Handle the repository creation
     if accelerator.is_main_process:
-        if args.push_to_hub:
-            if args.hub_model_id is None:
-                repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
-            else:
-                repo_name = args.hub_model_id
-            repo_name = create_repo(repo_name, exist_ok=True)
-            repo = Repository(args.output_dir, clone_from=repo_name)
-
-            with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
-                if "step_*" not in gitignore:
-                    gitignore.write("step_*\n")
-                if "epoch_*" not in gitignore:
-                    gitignore.write("epoch_*\n")
-        elif args.output_dir is not None:
+        if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
+
+        if args.push_to_hub:
+            repo_id = create_repo(
+                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
+            ).repo_id
 
     # Load scheduler, tokenizer and models.
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
@@ -542,9 +523,9 @@ def main():
         lora_layers = AttnProcsLayers(unet.attn_processors)
 
     # Move unet, vae and text_encoder to device and cast to weight_dtype
-    unet.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
-    text_encoder.to(accelerator.device, dtype=weight_dtype)
+    if not args.train_text_encoder:
+        text_encoder.to(accelerator.device, dtype=weight_dtype)
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -582,7 +563,7 @@ def main():
     else:
         optimizer_cls = torch.optim.AdamW
 
-    if args.peft:
+    if args.use_peft:
         # Optimizer creation
         params_to_optimize = (
             itertools.chain(unet.parameters(), text_encoder.parameters())
@@ -724,7 +705,7 @@ def main():
     )
 
     # Prepare everything with our `accelerator`.
-    if args.peft:
+    if args.use_peft:
         if args.train_text_encoder:
             unet, text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
                 unet, text_encoder, optimizer, train_dataloader, lr_scheduler
@@ -842,7 +823,7 @@ def main():
                 # Backpropagate
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    if args.peft:
+                    if args.use_peft:
                         params_to_clip = (
                             itertools.chain(unet.parameters(), text_encoder.parameters())
                             if args.train_text_encoder
@@ -922,18 +903,22 @@ def main():
     if accelerator.is_main_process:
         if args.use_peft:
             lora_config = {}
-            state_dict = get_peft_model_state_dict(unet, state_dict=accelerator.get_state_dict(unet))
-            lora_config["peft_config"] = unet.get_peft_config_as_dict(inference=True)
+            unwarpped_unet = accelerator.unwrap_model(unet)
+            state_dict = get_peft_model_state_dict(unwarpped_unet, state_dict=accelerator.get_state_dict(unet))
+            lora_config["peft_config"] = unwarpped_unet.get_peft_config_as_dict(inference=True)
             if args.train_text_encoder:
+                unwarpped_text_encoder = accelerator.unwrap_model(text_encoder)
                 text_encoder_state_dict = get_peft_model_state_dict(
-                    text_encoder, state_dict=accelerator.get_state_dict(text_encoder)
+                    unwarpped_text_encoder, state_dict=accelerator.get_state_dict(text_encoder)
                 )
                 text_encoder_state_dict = {f"text_encoder_{k}": v for k, v in text_encoder_state_dict.items()}
                 state_dict.update(text_encoder_state_dict)
-                lora_config["text_encoder_peft_config"] = text_encoder.get_peft_config_as_dict(inference=True)
+                lora_config["text_encoder_peft_config"] = unwarpped_text_encoder.get_peft_config_as_dict(
+                    inference=True
+                )
 
-            accelerator.save(state_dict, os.path.join(args.output_dir, f"{args.instance_prompt}_lora.pt"))
-            with open(os.path.join(args.output_dir, f"{args.instance_prompt}_lora_config.json"), "w") as f:
+            accelerator.save(state_dict, os.path.join(args.output_dir, f"{global_step}_lora.pt"))
+            with open(os.path.join(args.output_dir, f"{global_step}_lora_config.json"), "w") as f:
                 json.dump(lora_config, f)
         else:
             unet = unet.to(torch.float32)
@@ -941,13 +926,18 @@ def main():
 
         if args.push_to_hub:
             save_model_card(
-                repo_name,
+                repo_id,
                 images=images,
                 base_model=args.pretrained_model_name_or_path,
                 dataset_name=args.dataset_name,
                 repo_folder=args.output_dir,
             )
-            repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
+            upload_folder(
+                repo_id=repo_id,
+                folder_path=args.output_dir,
+                commit_message="End of training",
+                ignore_patterns=["step_*", "epoch_*"],
+            )
 
     # Final inference
     # Load previous pipeline
@@ -957,12 +947,12 @@ def main():
 
     if args.use_peft:
 
-        def load_and_set_lora_ckpt(pipe, ckpt_dir, instance_prompt, device, dtype):
-            with open(f"{ckpt_dir}{instance_prompt}_lora_config.json", "r") as f:
+        def load_and_set_lora_ckpt(pipe, ckpt_dir, global_step, device, dtype):
+            with open(os.path.join(args.output_dir, f"{global_step}_lora_config.json"), "r") as f:
                 lora_config = json.load(f)
             print(lora_config)
 
-            checkpoint = f"{ckpt_dir}{instance_prompt}_lora.pt"
+            checkpoint = os.path.join(args.output_dir, f"{global_step}_lora.pt")
             lora_checkpoint_sd = torch.load(checkpoint)
             unet_lora_ds = {k: v for k, v in lora_checkpoint_sd.items() if "text_encoder_" not in k}
             text_encoder_lora_ds = {
@@ -985,9 +975,7 @@ def main():
             pipe.to(device)
             return pipe
 
-        pipeline = load_and_set_lora_ckpt(
-            pipeline, args.output_dir, args.instance_prompt, accelerator.device, weight_dtype
-        )
+        pipeline = load_and_set_lora_ckpt(pipeline, args.output_dir, global_step, accelerator.device, weight_dtype)
 
     else:
         pipeline = pipeline.to(accelerator.device)
@@ -995,7 +983,10 @@ def main():
         pipeline.unet.load_attn_procs(args.output_dir)
 
     # run inference
-    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+    if args.seed is not None:
+        generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+    else:
+        generator = None
     images = []
     for _ in range(args.num_validation_images):
         images.append(pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0])

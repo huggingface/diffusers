@@ -50,6 +50,7 @@ from ..utils import (
     get_class_from_dynamic_module,
     is_accelerate_available,
     is_accelerate_version,
+    is_compiled_module,
     is_safetensors_available,
     is_torch_version,
     is_transformers_available,
@@ -204,11 +205,11 @@ def variant_compatible_siblings(filenames, variant=None) -> Union[List[os.PathLi
     non_variant_file_regex = re.compile(f"{'|'.join(weight_names)}")
 
     if variant is not None:
-        variant_filenames = set(f for f in filenames if variant_file_regex.match(f.split("/")[-1]) is not None)
+        variant_filenames = {f for f in filenames if variant_file_regex.match(f.split("/")[-1]) is not None}
     else:
         variant_filenames = set()
 
-    non_variant_filenames = set(f for f in filenames if non_variant_file_regex.match(f.split("/")[-1]) is not None)
+    non_variant_filenames = {f for f in filenames if non_variant_file_regex.match(f.split("/")[-1]) is not None}
 
     usable_filenames = set(variant_filenames)
     for f in non_variant_filenames:
@@ -225,7 +226,7 @@ def warn_deprecated_model_variant(pretrained_model_name_or_path, use_auth_token,
         use_auth_token=use_auth_token,
         revision=None,
     )
-    filenames = set(sibling.rfilename for sibling in info.siblings)
+    filenames = {sibling.rfilename for sibling in info.siblings}
     comp_model_filenames, _ = variant_compatible_siblings(filenames, variant=revision)
     comp_model_filenames = [".".join(f.split(".")[:1] + f.split(".")[2:]) for f in comp_model_filenames]
 
@@ -255,7 +256,14 @@ def maybe_raise_or_warn(
             if class_candidate is not None and issubclass(class_obj, class_candidate):
                 expected_class_obj = class_candidate
 
-        if not issubclass(passed_class_obj[name].__class__, expected_class_obj):
+        # Dynamo wraps the original model in a private class.
+        # I didn't find a public API to get the original class.
+        sub_model = passed_class_obj[name]
+        model_cls = sub_model.__class__
+        if is_compiled_module(sub_model):
+            model_cls = sub_model._orig_mod.__class__
+
+        if not issubclass(model_cls, expected_class_obj):
             raise ValueError(
                 f"{passed_class_obj[name]} is of type: {type(passed_class_obj[name])}, but should be"
                 f" {expected_class_obj}"
@@ -419,6 +427,10 @@ class DiffusionPipeline(ConfigMixin):
             if module is None:
                 register_dict = {name: (None, None)}
             else:
+                # register the original module, not the dynamo compiled one
+                if is_compiled_module(module):
+                    module = module._orig_mod
+
                 library = module.__module__.split(".")[0]
 
                 # check if the module is a pipeline module
@@ -484,6 +496,12 @@ class DiffusionPipeline(ConfigMixin):
             sub_model = getattr(self, pipeline_component_name)
             model_cls = sub_model.__class__
 
+            # Dynamo wraps the original model in a private class.
+            # I didn't find a public API to get the original class.
+            if is_compiled_module(sub_model):
+                sub_model = sub_model._orig_mod
+                model_cls = sub_model.__class__
+
             save_method_name = None
             # search for the model's base class in LOADABLE_CLASSES
             for library_name, library_classes in LOADABLE_CLASSES.items():
@@ -512,8 +530,13 @@ class DiffusionPipeline(ConfigMixin):
 
             save_method(os.path.join(save_directory, pipeline_component_name), **save_kwargs)
 
-    def to(self, torch_device: Optional[Union[str, torch.device]] = None, silence_dtype_warnings: bool = False):
-        if torch_device is None:
+    def to(
+        self,
+        torch_device: Optional[Union[str, torch.device]] = None,
+        torch_dtype: Optional[torch.dtype] = None,
+        silence_dtype_warnings: bool = False,
+    ):
+        if torch_device is None and torch_dtype is None:
             return self
 
         # throw warning if pipeline is in "offloaded"-mode but user tries to manually set to GPU.
@@ -550,6 +573,7 @@ class DiffusionPipeline(ConfigMixin):
         for name in module_names.keys():
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
+                module.to(torch_device, torch_dtype)
                 if (
                     module.dtype == torch.float16
                     and str(torch_device) in ["cpu"]
@@ -563,7 +587,6 @@ class DiffusionPipeline(ConfigMixin):
                         " support for`float16` operations on this device in PyTorch. Please, remove the"
                         " `torch_dtype=torch.float16` argument, or use another device for inference."
                     )
-                module.to(torch_device)
         return self
 
     @property
@@ -1110,7 +1133,7 @@ class DiffusionPipeline(ConfigMixin):
             # retrieve all folder_names that contain relevant files
             folder_names = [k for k, v in config_dict.items() if isinstance(v, list)]
 
-            filenames = set(sibling.rfilename for sibling in info.siblings)
+            filenames = {sibling.rfilename for sibling in info.siblings}
             model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
 
             # if the whole pipeline is cached we don't have to ping the Hub
@@ -1121,7 +1144,7 @@ class DiffusionPipeline(ConfigMixin):
                     pretrained_model_name, use_auth_token, variant, revision, model_filenames
                 )
 
-            model_folder_names = set([os.path.split(f)[0] for f in model_filenames])
+            model_folder_names = {os.path.split(f)[0] for f in model_filenames}
 
             # all filenames compatible with variant will be added
             allow_patterns = list(model_filenames)
@@ -1152,8 +1175,8 @@ class DiffusionPipeline(ConfigMixin):
             elif use_safetensors and is_safetensors_compatible(model_filenames, variant=variant):
                 ignore_patterns = ["*.bin", "*.msgpack"]
 
-                safetensors_variant_filenames = set([f for f in variant_filenames if f.endswith(".safetensors")])
-                safetensors_model_filenames = set([f for f in model_filenames if f.endswith(".safetensors")])
+                safetensors_variant_filenames = {f for f in variant_filenames if f.endswith(".safetensors")}
+                safetensors_model_filenames = {f for f in model_filenames if f.endswith(".safetensors")}
                 if (
                     len(safetensors_variant_filenames) > 0
                     and safetensors_model_filenames != safetensors_variant_filenames
@@ -1164,8 +1187,8 @@ class DiffusionPipeline(ConfigMixin):
             else:
                 ignore_patterns = ["*.safetensors", "*.msgpack"]
 
-                bin_variant_filenames = set([f for f in variant_filenames if f.endswith(".bin")])
-                bin_model_filenames = set([f for f in model_filenames if f.endswith(".bin")])
+                bin_variant_filenames = {f for f in variant_filenames if f.endswith(".bin")}
+                bin_model_filenames = {f for f in model_filenames if f.endswith(".bin")}
                 if len(bin_variant_filenames) > 0 and bin_model_filenames != bin_variant_filenames:
                     logger.warn(
                         f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(bin_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(bin_model_filenames - bin_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
@@ -1210,7 +1233,7 @@ class DiffusionPipeline(ConfigMixin):
         parameters = inspect.signature(obj.__init__).parameters
         required_parameters = {k: v for k, v in parameters.items() if v.default == inspect._empty}
         optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
-        expected_modules = set(required_parameters.keys()) - set(["self"])
+        expected_modules = set(required_parameters.keys()) - {"self"}
         return expected_modules, optional_parameters
 
     @property
@@ -1351,7 +1374,7 @@ class DiffusionPipeline(ConfigMixin):
         Args:
             slice_size (`str` or `int`, *optional*, defaults to `"auto"`):
                 When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
-                `"max"`, maxium amount of memory will be saved by running only one slice at a time. If a number is
+                `"max"`, maximum amount of memory will be saved by running only one slice at a time. If a number is
                 provided, uses as many slices as `attention_head_dim // slice_size`. In this case, `attention_head_dim`
                 must be a multiple of `slice_size`.
         """

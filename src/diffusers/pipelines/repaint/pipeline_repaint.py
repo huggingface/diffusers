@@ -37,7 +37,7 @@ def _preprocess_image(image: Union[List, PIL.Image.Image, torch.Tensor]):
 
     if isinstance(image[0], PIL.Image.Image):
         w, h = image[0].size
-        w, h = map(lambda x: x - x % 8, (w, h))  # resize to integer multiple of 8
+        w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
 
         image = [np.array(i.resize((w, h), resample=PIL_INTERPOLATION["lanczos"]))[None, :] for i in image]
         image = np.concatenate(image, axis=0)
@@ -58,7 +58,7 @@ def _preprocess_mask(mask: Union[List, PIL.Image.Image, torch.Tensor]):
 
     if isinstance(mask[0], PIL.Image.Image):
         w, h = mask[0].size
-        w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
+        w, h = (x - x % 32 for x in (w, h))  # resize to integer multiple of 32
         mask = [np.array(m.convert("L").resize((w, h), resample=PIL_INTERPOLATION["nearest"]))[None, :] for m in mask]
         mask = np.concatenate(mask, axis=0)
         mask = mask.astype(np.float32) / 255.0

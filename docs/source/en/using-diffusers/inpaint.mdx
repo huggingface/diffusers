@@ -10,9 +10,13 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Text-Guided Image-Inpainting
+# Text-guided image-inpainting
 
-The [`StableDiffusionInpaintPipeline`] lets you edit specific parts of an image by providing a mask and a text prompt. It uses a version of Stable Diffusion specifically trained for in-painting tasks.
+[[open-in-colab]]
+
+The [`StableDiffusionInpaintPipeline`] allows you to edit specific parts of an image by providing a mask and a text prompt. It uses a version of Stable Diffusion, like [`runwayml/stable-diffusion-inpainting`](https://huggingface.co/runwayml/stable-diffusion-inpainting) specifically trained for inpainting tasks.
+
+Get started by loading an instance of the [`StableDiffusionInpaintPipeline`]:
 
 ```python
 import PIL
@@ -22,7 +26,16 @@ from io import BytesIO
 
 from diffusers import StableDiffusionInpaintPipeline
 
+pipeline = StableDiffusionInpaintPipeline.from_pretrained(
+    "runwayml/stable-diffusion-inpainting",
+    torch_dtype=torch.float16,
+)
+pipeline = pipeline.to("cuda")
+```
 
+Download an image and a mask of a dog which you'll eventually replace:
+
+```python
 def download_image(url):
     response = requests.get(url)
     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
@@ -33,24 +46,31 @@ mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data
 
 init_image = download_image(img_url).resize((512, 512))
 mask_image = download_image(mask_url).resize((512, 512))
+```
 
-pipe = StableDiffusionInpaintPipeline.from_pretrained(
-    "runwayml/stable-diffusion-inpainting",
-    torch_dtype=torch.float16,
-)
-pipe = pipe.to("cuda")
+Now you can create a prompt to replace the mask with something else:
 
+```python
 prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
 image = pipe(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
 ```
 
-`image`          | `mask_image` | `prompt` | **Output** |
+`image`          | `mask_image` | `prompt` | output |
 :-------------------------:|:-------------------------:|:-------------------------:|-------------------------:|
 <img src="https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png" alt="drawing" width="250"/> | <img src="https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png" alt="drawing" width="250"/> | ***Face of a yellow cat, high resolution, sitting on a park bench*** | <img src="https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/in_paint/yellow_cat_sitting_on_a_park_bench.png" alt="drawing" width="250"/> |
 
 
-You can also run this example on colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/in_painting_with_stable_diffusion_using_diffusers.ipynb)
-
 <Tip warning={true}>
-A previous experimental implementation of in-painting used a different, lower-quality process. To ensure backwards compatibility, loading a pretrained pipeline that doesn't contain the new model will still apply the old in-painting method.
+
+A previous experimental implementation of inpainting used a different, lower-quality process. To ensure backwards compatibility, loading a pretrained pipeline that doesn't contain the new model will still apply the old inpainting method.
+
 </Tip>
+
+Check out the Spaces below to try out image inpainting yourself!
+
+<iframe
+	src="https://runwayml-stable-diffusion-inpainting.hf.space"
+	frameborder="0"
+	width="850"
+	height="500"
+></iframe>
