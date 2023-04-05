@@ -119,12 +119,11 @@ class UNet3DConditionModelTests(ModelTesterMixin, unittest.TestCase):
             == "XFormersAttnProcessor"
         ), "xformers is not enabled"
 
-    # Overriding because `block_out_channels` needs to be different for this model.
+    # Overriding to set `norm_num_groups` needs to be different for this model.
     def test_forward_with_norm_groups(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         init_dict["norm_num_groups"] = 32
-        init_dict["block_out_channels"] = (32, 64, 64, 64)
 
         model = self.model_class(**init_dict)
         model.to(torch_device)

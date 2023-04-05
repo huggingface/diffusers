@@ -793,13 +793,14 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline):
 
         latents = self.vae.config.scaling_factor * latents
 
-        if batch_size > latents.shape[0] and batch_size % latents.shape[0] == 0:
-            additional_latents_per_image = batch_size // latents.shape[0]
-            latents = torch.cat([latents] * additional_latents_per_image, dim=0)
-        elif batch_size > latents.shape[0] and batch_size % latents.shape[0] != 0:
-            raise ValueError(
-                f"Cannot duplicate `image` of batch size {latents.shape[0]} to {batch_size} text prompts."
-            )
+        if batch_size > latents.shape[0]:
+            if batch_size % latents.shape[0] == 0:
+                additional_latents_per_image = batch_size // latents.shape[0]
+                latents = torch.cat([latents] * additional_latents_per_image, dim=0)
+            else:
+                raise ValueError(
+                    f"Cannot duplicate `image` of batch size {latents.shape[0]} to {batch_size} text prompts."
+                )
         else:
             latents = torch.cat([latents], dim=0)
 
