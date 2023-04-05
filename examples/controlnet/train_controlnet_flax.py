@@ -215,6 +215,17 @@ def parse_args():
         help="Load the pretrained model from a PyTorch checkpoint.",
     )
     parser.add_argument(
+        "--controlnet_revision",
+        type=str,
+        default=None,
+        help="Revision of controlnet model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--controlnet_from_pt",
+        action="store_true",
+        help="Load the controlnet model from a PyTorch checkpoint.",
+    )
+    parser.add_argument(
         "--tokenizer_name",
         type=str,
         default=None,
@@ -732,7 +743,10 @@ def main():
     if args.controlnet_model_name_or_path:
         logger.info("Loading existing controlnet weights")
         controlnet, controlnet_params = FlaxControlNetModel.from_pretrained(
-            args.controlnet_model_name_or_path, from_pt=True, dtype=jnp.float32
+            args.controlnet_model_name_or_path, 
+            revision=args.controlnet_revision,
+            from_pt=args.controlnet_from_pt, 
+            dtype=jnp.float32,
         )
     else:
         logger.info("Initializing controlnet weights from unet")
