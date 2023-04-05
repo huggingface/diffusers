@@ -1196,7 +1196,7 @@ class DiffusionPipeline(ConfigMixin):
             # this enables downloading schedulers, tokenizers, ...
             allow_patterns += [os.path.join(k, "*") for k in folder_names if k not in model_folder_names]
             # also allow downloading config.json files with the model
-            allow_patterns += [os.path.join(k, "*.json") for k in model_folder_names]
+            allow_patterns += [os.path.join(k, "config.json") for k in model_folder_names]
 
             allow_patterns += [
                 SCHEDULER_CONFIG_NAME,
@@ -1252,6 +1252,8 @@ class DiffusionPipeline(ConfigMixin):
             allow_patterns = [
                 p for p in allow_patterns if not (len(p.split("/")) == 2 and p.split("/")[0] in passed_components)
             ]
+            # Don't download index files of forbidden patterns either
+            ignore_patterns = ignore_patterns + [f"{i}.index.*json" for i in ignore_patterns]
 
             re_ignore_pattern = [re.compile(fnmatch.translate(p)) for p in ignore_patterns]
             re_allow_pattern = [re.compile(fnmatch.translate(p)) for p in allow_patterns]

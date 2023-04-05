@@ -213,7 +213,7 @@ class DownloadTests(unittest.TestCase):
             assert not any(f.endswith(".bin") for f in files)
 
     def test_download_safetensors_index(self):
-        for variant in [None, "fp16"]:
+        for variant in ["fp16", None]:
             with tempfile.TemporaryDirectory() as tmpdirname:
                 tmpdirname = DiffusionPipeline.download(
                     "hf-internal-testing/tiny-stable-diffusion-pipe-indexes",
@@ -228,20 +228,22 @@ class DownloadTests(unittest.TestCase):
                 # None of the downloaded files should be a safetensors file even if we have some here:
                 # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe-indexes/tree/main/text_encoder
                 if variant is None:
-                    assert not any(variant in f for f in files)
+                    assert not any("fp16" in f for f in files)
                 else:
-                    assert not any((("index" in f or f.endswith(".safetensors")) and variant not in f) for f in files)
-                assert len([f for f in files if ".safetensors" in f]) == 30
+                    model_files = [f for f in files if "safetensors" in f]
+                    assert all("fp16" in f for f in model_files)
+
+                assert len([f for f in files if ".safetensors" in f]) == 8
                 assert not any(".bin" in f for f in files)
 
     def test_download_bin_index(self):
-        for variant in [None, "fp16"]:
+        for variant in ["fp16", None]:
             with tempfile.TemporaryDirectory() as tmpdirname:
                 tmpdirname = DiffusionPipeline.download(
                     "hf-internal-testing/tiny-stable-diffusion-pipe-indexes",
                     cache_dir=tmpdirname,
                     use_safetensors=False,
-                    variant=None,
+                    variant=variant,
                 )
 
                 all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
@@ -250,10 +252,12 @@ class DownloadTests(unittest.TestCase):
                 # None of the downloaded files should be a safetensors file even if we have some here:
                 # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe-indexes/tree/main/text_encoder
                 if variant is None:
-                    assert not any(variant in f for f in files)
+                    assert not any("fp16" in f for f in files)
                 else:
-                    assert not any((("index" in f or f.endswith(".bin")) and variant not in f) for f in files)
-                assert len([f for f in files if ".bin" in f]) == 30
+                    model_files = [f for f in files if "bin" in f]
+                    assert all("fp16" in f for f in model_files)
+
+                assert len([f for f in files if ".bin" in f]) == 8
                 assert not any(".safetensors" in f for f in files)
 
     def test_download_no_safety_checker(self):
@@ -461,6 +465,7 @@ class DownloadTests(unittest.TestCase):
                     "hf-internal-testing/tiny-stable-diffusion-pipe-indexes",
                     variant=variant,
                     use_safetensors=use_safe,
+                    safety_checker=None,
                 )
                 pipe = pipe.to(torch_device)
                 generator = torch.manual_seed(0)
