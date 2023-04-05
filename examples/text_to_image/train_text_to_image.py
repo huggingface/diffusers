@@ -564,9 +564,6 @@ def main():
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
-    # if args.snr_gamma is not None:
-    #     snr_fn = compute_snr(noise_scheduler)
-
     # Initialize the optimizer
     if args.use_8bit_adam:
         try:
