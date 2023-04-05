@@ -212,6 +212,50 @@ class DownloadTests(unittest.TestCase):
             # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe/blob/main/unet/diffusion_flax_model.msgpack
             assert not any(f.endswith(".bin") for f in files)
 
+    def test_download_safetensors_index(self):
+        for variant in [None, "fp16"]:
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                tmpdirname = DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-pipe-indexes",
+                    cache_dir=tmpdirname,
+                    use_safetensors=True,
+                    variant=variant,
+                )
+
+                all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
+                files = [item for sublist in all_root_files for item in sublist]
+
+                # None of the downloaded files should be a safetensors file even if we have some here:
+                # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe-indexes/tree/main/text_encoder
+                if variant is None:
+                    assert not any(variant in f for f in files)
+                else:
+                    assert not any((("index" in f or f.endswith(".safetensors")) and variant not in f) for f in files)
+                assert len([f for f in files if ".safetensors" in f]) == 30
+                assert not any(".bin" in f for f in files)
+
+    def test_download_bin_index(self):
+        for variant in [None, "fp16"]:
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                tmpdirname = DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-pipe-indexes",
+                    cache_dir=tmpdirname,
+                    use_safetensors=False,
+                    variant=None,
+                )
+
+                all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
+                files = [item for sublist in all_root_files for item in sublist]
+
+                # None of the downloaded files should be a safetensors file even if we have some here:
+                # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe-indexes/tree/main/text_encoder
+                if variant is None:
+                    assert not any(variant in f for f in files)
+                else:
+                    assert not any((("index" in f or f.endswith(".bin")) and variant not in f) for f in files)
+                assert len([f for f in files if ".bin" in f]) == 30
+                assert not any(".safetensors" in f for f in files)
+
     def test_download_no_safety_checker(self):
         prompt = "hello"
         pipe = StableDiffusionPipeline.from_pretrained(
@@ -408,6 +452,32 @@ class DownloadTests(unittest.TestCase):
                 # only unet has "no_ema" variant
 
         diffusers.utils.import_utils._safetensors_available = True
+
+    def test_local_save_load_index(self):
+        prompt = "hello"
+        for variant in [None, "fp16"]:
+            for use_safe in [True, False]:
+                pipe = StableDiffusionPipeline.from_pretrained(
+                    "hf-internal-testing/tiny-stable-diffusion-pipe-indexes",
+                    variant=variant,
+                    use_safetensors=use_safe,
+                )
+                pipe = pipe.to(torch_device)
+                generator = torch.manual_seed(0)
+                out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+
+                with tempfile.TemporaryDirectory() as tmpdirname:
+                    pipe.save_pretrained(tmpdirname)
+                    pipe_2 = StableDiffusionPipeline.from_pretrained(
+                        tmpdirname, safe_serialization=use_safe, variant=variant
+                    )
+                    pipe_2 = pipe_2.to(torch_device)
+
+                generator = torch.manual_seed(0)
+
+                out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+
+                assert np.max(np.abs(out - out_2)) < 1e-3
 
     def test_text_inversion_download(self):
         pipe = StableDiffusionPipeline.from_pretrained(
