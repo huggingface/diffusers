@@ -872,7 +872,9 @@ class DiffusionPipeline(ConfigMixin):
 
         # 3. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
-        pipeline_class = _get_pipeline_class(cls, config_dict, custom_pipeline=custom_pipeline, cache_dir=cache_dir, revision=custom_revision)
+        pipeline_class = _get_pipeline_class(
+            cls, config_dict, custom_pipeline=custom_pipeline, cache_dir=cache_dir, revision=custom_revision
+        )
 
         # DEPRECATED: To be removed in 1.0.0
         if pipeline_class.__name__ == "StableDiffusionInpaintPipeline" and version.parse(
@@ -1204,21 +1206,27 @@ class DiffusionPipeline(ConfigMixin):
             ]
 
             # retrieve passed components that should not be downloaded
-            pipeline_class = _get_pipeline_class(cls, config_dict, custom_pipeline=custom_pipeline, cache_dir=cache_dir, revision=custom_revision)
+            pipeline_class = _get_pipeline_class(
+                cls, config_dict, custom_pipeline=custom_pipeline, cache_dir=cache_dir, revision=custom_revision
+            )
             expected_components, _ = cls._get_signature_keys(pipeline_class)
             passed_components = [k for k in expected_components if k in kwargs]
 
             if (
                 use_safetensors
                 and not allow_pickle
-                and not is_safetensors_compatible(model_filenames, variant=variant, passed_components=passed_components)
+                and not is_safetensors_compatible(
+                    model_filenames, variant=variant, passed_components=passed_components
+                )
             ):
                 raise EnvironmentError(
                     f"Could not found the necessary `safetensors` weights in {model_filenames} (variant={variant})"
                 )
             if from_flax:
                 ignore_patterns = ["*.bin", "*.safetensors", "*.onnx", "*.pb"]
-            elif use_safetensors and is_safetensors_compatible(model_filenames, variant=variant, passed_components=passed_components):
+            elif use_safetensors and is_safetensors_compatible(
+                model_filenames, variant=variant, passed_components=passed_components
+            ):
                 ignore_patterns = ["*.bin", "*.msgpack"]
 
                 safetensors_variant_filenames = {f for f in variant_filenames if f.endswith(".safetensors")}
@@ -1241,7 +1249,9 @@ class DiffusionPipeline(ConfigMixin):
                     )
 
             # Don't download any objects that are passed
-            allow_patterns = [p for p in allow_patterns if not (len(p.split("/")) == 2 and p.split("/")[0] in passed_components)]
+            allow_patterns = [
+                p for p in allow_patterns if not (len(p.split("/")) == 2 and p.split("/")[0] in passed_components)
+            ]
 
             re_ignore_pattern = [re.compile(fnmatch.translate(p)) for p in ignore_patterns]
             re_allow_pattern = [re.compile(fnmatch.translate(p)) for p in allow_patterns]

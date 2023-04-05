@@ -78,9 +78,7 @@ class DownloadTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             with requests_mock.mock(real_http=True) as m:
-                DiffusionPipeline.download(
-                    "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
-                )
+                DiffusionPipeline.download("hf-internal-testing/tiny-stable-diffusion-pipe", cache_dir=tmpdirname)
 
             download_requests = [r.method for r in m.request_history]
             assert download_requests.count("HEAD") == 15, "15 calls to files"
@@ -88,6 +86,55 @@ class DownloadTests(unittest.TestCase):
             assert (
                 len(download_requests) == 32
             ), "2 calls per file (15 files) + send_telemetry, model_info and model_index.json"
+
+            with requests_mock.mock(real_http=True) as m:
+                DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
+                )
+
+            cache_requests = [r.method for r in m.request_history]
+            assert cache_requests.count("HEAD") == 1, "model_index.json is only HEAD"
+            assert cache_requests.count("GET") == 1, "model info is only GET"
+            assert (
+                len(cache_requests) == 2
+            ), "We should call only `model_info` to check for _commit hash and `send_telemetry`"
+
+    def test_less_downloads_passed_object(self):
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            cached_folder = DiffusionPipeline.download(
+                "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
+            )
+
+            # make sure safety checker is not downloaded
+            assert "safety_checker" not in os.listdir(cached_folder)
+
+            # make sure rest is downloaded
+            assert "unet" in os.listdir(cached_folder)
+            assert "tokenizer" in os.listdir(cached_folder)
+            assert "vae" in os.listdir(cached_folder)
+            assert "model_index.json" in os.listdir(cached_folder)
+            assert "scheduler" in os.listdir(cached_folder)
+            assert "feature_extractor" in os.listdir(cached_folder)
+
+    def test_less_downloads_passed_object_calls(self):
+        # TODO: For some reason this test fails on MPS where no HEAD call is made.
+        if torch_device == "mps":
+            return
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with requests_mock.mock(real_http=True) as m:
+                DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
+                )
+
+            download_requests = [r.method for r in m.request_history]
+            # 15 - 2 because no call to config or model file for `safety_checker`
+            assert download_requests.count("HEAD") == 13, "13 calls to files"
+            # 17 - 2 because no call to config or model file for `safety_checker`
+            assert download_requests.count("GET") == 15, "13 calls to files + model_info + model_index.json"
+            assert (
+                len(download_requests) == 28
+            ), "2 calls per file (13 files) + send_telemetry, model_info and model_index.json"
 
             with requests_mock.mock(real_http=True) as m:
                 DiffusionPipeline.download(
