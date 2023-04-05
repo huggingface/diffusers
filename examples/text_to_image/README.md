@@ -111,7 +111,7 @@ image = pipe(prompt="yoda").images[0]
 image.save("yoda-pokemon.png")
 ```
 
-#### Training with better convergence
+#### Training with Min-SNR weighting
 
 We support training with the Min-SNR weighting strategy proposed in [Efficient Diffusion Training via Min-SNR Weighting Strategy](https://arxiv.org/abs/2303.09556) which helps to achieve faster convergence
 by rebalancing the loss. In order to use it, one needs to set the `--snr_gamma` argument. The recommended
