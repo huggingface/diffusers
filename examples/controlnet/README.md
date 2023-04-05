@@ -320,7 +320,7 @@ Then cd in the example folder and run
 pip install -U -r requirements_flax.txt
 ```
 
-If you want to use Weights and Bias logging, you should also install `wandb` now
+If you want to use Weights and Biases logging, you should also install `wandb` now
 
 ```bash
 pip install wandb
