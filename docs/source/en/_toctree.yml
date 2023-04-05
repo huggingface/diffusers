@@ -97,6 +97,8 @@
     title: ONNX
   - local: optimization/open_vino
     title: OpenVINO
+  - local: optimization/coreml
+    title: Core ML
   - local: optimization/mps
     title: MPS
   - local: optimization/habana
