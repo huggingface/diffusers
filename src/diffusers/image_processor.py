@@ -164,6 +164,20 @@ class VaeImageProcessor(ConfigMixin):
         image,
         output_type: str = "pil",
     ):
+        if output_type not in ["latent", "pt", "np", "pil"]:
+            deprecation_message = (
+                f"the output_type {output_type} is outdated. Please make sure to set it to one of these instead: "
+                "`pil`, `np`, `pt`, `latent`"
+            )
+            deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
+            output_type = "np"
+        
+        if output_type == "latent":
+            return image
+        
+        if image.min() < 0:
+            image = (image / 2 + 0.5).clamp(0, 1)
+
         if isinstance(image, torch.Tensor) and output_type == "pt":
             return image
 
