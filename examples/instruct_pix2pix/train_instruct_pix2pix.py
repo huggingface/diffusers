@@ -886,16 +886,15 @@ def main():
                     f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
                     f" {args.validation_prompt}."
                 )
-                unwrapped_unet = accelerator.unwrap_model(unet)
                 # create pipeline
                 if args.use_ema:
                     # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
-                    ema_unet.store(unwrapped_unet.parameters())
-                    ema_unet.copy_to(unwrapped_unet.parameters())
+                    ema_unet.store(unet.parameters())
+                    ema_unet.copy_to(unet.parameters())
                 # The models need unwrapping because for compatibility in distributed training mode.
                 pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
-                    unet=unwrapped_unet,
+                    unet=accelerator.unwrap_model(unet),
                     text_encoder=accelerator.unwrap_model(text_encoder),
                     vae=accelerator.unwrap_model(vae),
                     revision=args.revision,
