@@ -19,6 +19,7 @@ import math
 import os
 import random
 from pathlib import Path
+import time
 
 import jax
 import jax.numpy as jnp
@@ -77,6 +78,7 @@ def image_grid(imgs, rows, cols):
 
 def log_validation(controlnet, controlnet_params, tokenizer, args, rng, weight_dtype):
     logger.info("Running validation... ")
+    jax.profiler.save_device_memory_profile(f"memory_{int(time.time())}.prof")
 
     pipeline, params = FlaxStableDiffusionControlNetPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
@@ -983,7 +985,7 @@ def main():
     logger.info(f"  Total train batch size (w. parallel & distributed) = {total_train_batch_size}")
     logger.info(f"  Total optimization steps = {args.num_train_epochs * num_update_steps_per_epoch}")
 
-    if jax.process_index() == 0:
+    if jax.process_index() == 0 and args.report_to == "wandb":
         wandb.define_metric("*", step_metric="train/step")
         wandb.config.update(
             {
@@ -1008,7 +1010,7 @@ def main():
 
         steps_per_epoch = (
             args.max_train_samples // total_train_batch_size
-            if args.streaming
+            if args.streaming or args.max_train_samples
             else len(train_dataset) // total_train_batch_size
         )
         train_step_progress_bar = tqdm(
