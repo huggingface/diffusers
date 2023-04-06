@@ -36,7 +36,6 @@ from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import Stabl
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
 
-
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
@@ -580,3 +579,4 @@ class ComposableStableDiffusionPipeline(DiffusionPipeline):
             return (image, has_nsfw_concept)
 
         return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+
