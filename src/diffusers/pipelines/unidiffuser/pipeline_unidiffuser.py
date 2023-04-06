@@ -11,6 +11,7 @@ from transformers import (
     CLIPTextModel,
     CLIPTokenizer,
     CLIPVisionModel,
+    GPT2Tokenizer,
 )
 
 from ...models import AutoencoderKL
@@ -115,10 +116,11 @@ class UniDiffuserPipeline(DiffusionPipeline):
         self,
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
-        text_decoder: UniDiffuserTextDecoder,
         image_encoder: CLIPVisionModel,
-        tokenizer: CLIPTokenizer,
         image_processor: CLIPImageProcessor,
+        clip_tokenizer: CLIPTokenizer,
+        text_decoder: UniDiffuserTextDecoder,
+        text_tokenizer: GPT2Tokenizer,
         unet: UniDiffuserModel,
         scheduler: KarrasDiffusionSchedulers,
     ):
@@ -127,10 +129,11 @@ class UniDiffuserPipeline(DiffusionPipeline):
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
-            text_decoder=text_decoder,
             image_encoder=image_encoder,
-            tokenizer=tokenizer,
             image_processor=image_processor,
+            clip_tokenizer=clip_tokenizer,
+            text_decoder=text_decoder,
+            text_tokenizer=text_tokenizer,
             unet=unet,
             scheduler=scheduler,
         )
@@ -138,9 +141,11 @@ class UniDiffuserPipeline(DiffusionPipeline):
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
         self.num_channels_latents = vae.latent_channels
-        self.text_encoder_seq_len = tokenizer.model_max_length
+        self.text_encoder_seq_len = clip_tokenizer.model_max_length
         self.text_encoder_hidden_size = text_encoder.config.hidden_size
         self.image_encoder_hidden_size = image_encoder.config.hidden_size
+
+        self.mode = None
 
     @property
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
@@ -178,6 +183,76 @@ class UniDiffuserPipeline(DiffusionPipeline):
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
+    
+    def _infer_mode(self, prompt, prompt_embeds, image, prompt_latents, vae_latents, clip_latents):
+        r"""Infer the mode from the inputs to `__call__`."""
+        prompt_available = (prompt is not None) or (prompt_embeds is not None)
+        image_available = image is not None
+        input_available = prompt_available or image_available
+        
+        prompt_latents_available = prompt_latents is not None
+        vae_latents_available = vae_latents is not None
+        clip_latents_available = clip_latents is not None
+        image_latents_available = vae_latents_available and clip_latents_available
+        all_latents_available = prompt_latents_available and image_latents_available
+
+        if self.mode is not None:
+            # Preferentially use the mode set by the user
+            mode = self.mode
+        elif prompt_available:
+            mode = "text2img"
+        elif image_available:
+            mode = "img2text"
+        else:
+            # Neither prompt nor image supplied, infer based on availability of latents
+            if all_latents_available:
+                mode = "joint"
+            elif prompt_latents_available:
+                mode = "text"
+            elif image_latents_available:
+                mode = "img"
+            else:
+                # No inputs or latents available
+                mode = "img"
+        
+        # Give warnings for ambiguous cases
+        if self.mode is None and prompt_available and image_available:
+            logger.warning(
+                f"You have supplied both a text prompt and image to the pipeline and mode has not been set manually,"
+                f" defaulting to mode '{mode}'."
+            )
+        
+        if self.mode is None and not input_available:
+            if vae_latents_available != clip_latents_available:
+                # Exactly one of vae_latents and clip_latents is supplied
+                logger.warning(
+                    f"You have supplied exactly one of `vae_latents` and `clip_latents`, whereas either both or none"
+                    f" are expected to be supplied. Defaulting to mode '{mode}'."
+                )
+            elif not prompt_latents_available and not vae_latents_available and not clip_latents_available:
+                # No inputs or latents supplied
+                logger.warning(
+                    f"No inputs or latents have been supplied, and mode has not been manually set,"
+                    f" defaulting to mode '{mode}'."
+            )
+        
+        return mode
+    
+    # Functions to manually set the mode
+    def set_text_mode(self):
+        self.mode = "text"
+    
+    def set_img_mode(self):
+        self.mode = "img"
+    
+    def set_text_to_image_mode(self):
+        self.mode = "text2img"
+    
+    def set_image_to_text_mode(self):
+        self.mode = "img2text"
+    
+    def set_joint_mode(self):
+        self.mode = "joint"
 
     def _infer_batch_size(self, mode, prompt, prompt_embeds, image, num_samples):
         r"""Infers the batch size depending on mode."""
@@ -741,7 +816,6 @@ class UniDiffuserPipeline(DiffusionPipeline):
         self,
         prompt: Optional[Union[str, List[str]]] = None,
         image: Optional[Union[torch.FloatTensor, PIL.Image.Image]] = None,
-        mode: str = "text2img",  # text, img, text2img, img2text, joint
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -772,10 +846,6 @@ class UniDiffuserPipeline(DiffusionPipeline):
             image (`torch.FloatTensor` or `PIL.Image.Image`):
                 `Image`, or tensor representing an image batch, that will be used when performing image-conditioned
                 text generation (`img2text`).
-            mode (`str`):
-                The generation task to be performed; use `text` for unconditional ("marginal") text generation, `img`
-                for unconditional ("marginal") image generation, `text2img` for text-conditioned image generation,
-                `img2text` for image-conditioned text generation, and `joint` for joint image-text generation.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
@@ -855,15 +925,19 @@ class UniDiffuserPipeline(DiffusionPipeline):
 
         # 2. Define call parameters
 
+        # Recalculate mode for each call to the pipeline.
+        mode = self._infer_mode(prompt, prompt_embeds, image, prompt_latents, vae_latents, clip_latents)
         batch_size = self._infer_batch_size(mode, prompt, prompt_embeds, image, num_samples)
         device = self._execution_device
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
-        # Note that this diffusers from the formulation in the unidiffusers paper!
+        # Note that this differs from the formulation in the unidiffusers paper!
+        # do_classifier_free_guidance = guidance_scale > 1.0
+
         # check if scheduler is in sigmas space
-        hasattr(self.scheduler, "sigmas")
+        # scheduler_is_in_sigma_space = hasattr(self.scheduler, "sigmas")
 
         # 3. Encode input prompt, if available; otherwise prepare text latents
 
@@ -1000,13 +1074,13 @@ class UniDiffuserPipeline(DiffusionPipeline):
             # Map latent VAE image back to pixel space
             gen_image = self.decode_image_latents(image_vae_latents)
             # Generate text using the text decoder
-            gen_text = self.text_decoder.generate_captions(text_latents, device=device)
+            gen_text = self.text_decoder.generate_captions(self.text_tokenizer, text_latents, device=device)
         elif mode in ["text2img", "img"]:
             image_vae_latents, image_clip_latents = self._split(latents, height, width)
             gen_image = self.decode_image_latents(image_vae_latents)
         elif mode in ["img2text", "text"]:
             text_latents = latents
-            gen_text = self.text_decoder.generate_captions(text_latents, device=device)
+            gen_text = self.text_decoder.generate_captions(self.text_tokenizer, text_latents, device=device)
 
         # 11. Run safety checker
         # TODO

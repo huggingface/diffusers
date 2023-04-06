@@ -3,60 +3,64 @@ from typing import Optional
 import numpy as np
 import torch
 from torch import nn
-from transformers import GPT2LMHeadModel, GPT2Tokenizer
+from transformers import GPT2Config, GPT2LMHeadModel, GPT2Tokenizer
+from transformers.modeling_utils import ModuleUtilsMixin
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models import ModelMixin
 
 
 # Modified from ClipCaptionModel in https://github.com/thu-ml/unidiffuser/blob/main/libs/caption_decoder.py
-class UniDiffuserTextDecoder(ModelMixin, ConfigMixin):
+class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
     @register_to_config
     def __init__(
         self,
-        tokenizer: GPT2Tokenizer,
-        text_decoder: GPT2LMHeadModel,
         prefix_length: int,
-        hidden_dim: Optional[int] = None,
-        use_hidden_dim: bool = True,
+        prefix_hidden_dim: Optional[int] = None,
+        n_positions: int = 1024,  # Start of GPT2 config args
+        n_embd: int = 768,
+        n_layer: int = 12,
+        n_head: int = 12,
+        n_inner: Optional[int] = None,
+        activation_function: str = "gelu_new",
+        resid_pdrop: float = 0.1,
+        embd_pdrop: float = 0.1,
+        attn_pdrop: float = 0.1,
+        layer_norm_epsilon: float = 1e-5,
+        initializer_range: float = 0.02,
     ):
         """
         Text decoder model for a image-text [UniDiffuser](https://arxiv.org/pdf/2303.06555.pdf) model. This is used to
         generate text from the UniDiffuser image-text embedding.
 
         Parameters:
-            tokenizer ([`GPT2Tokenizer`]):
-                Tokenizer of class
-                [GPT2Tokenizer](https://huggingface.co/docs/transformers/model_doc/gpt2#transformers.GPT2Tokenizer) for
-                the GPT-like text decoder model.
-            text_decoder ([`GPT2LMHeadModel`]):
-                Text decoder model of class
-                [GPT2LMHeadModel](https://huggingface.co/docs/transformers/model_doc/gpt2#transformers.GPT2LMHeadModel)
-                used to generate text from the UniDiffuser text embedding.
             prefix_length (`int`):
-                TODO
+                Max number of prefix tokens that will be supplied to the model.
             hidden_dim (`int`, *optional*):
                 Hidden dim of the MLP if we encode the prefix.
-            use_hidden_dim (`bool`, *optional*, defaults to `True`):
-                Whether or not to use a MLP to encode the prefix.
+            TODO: add GPT2 config args
         """
         super().__init__()
+
         self.prefix_length = prefix_length
+        self.prefix_hidden_dim = prefix_hidden_dim
+        self.encode_prefix = nn.Linear(n_embd, self.hidden_dim) if self.prefix_hidden_dim is not None else nn.Identity()
+        self.decode_prefix = nn.Linear(self.hidden_dim, n_embd) if self.prefix_hidden_dim is not None else nn.Identity()
 
-        eos = "<|EOS|>"
-        special_tokens_dict = {"eos_token": eos}
-        self.tokenizer = tokenizer
-        self.tokenizer.add_special_tokens(special_tokens_dict)
-
-        self.transformer = text_decoder
-        # TODO: need to set the eos_token_id correctly
-        self.transformer.config.eos_token_id = self.tokenizer.eos_token_id
-        self.transformer.resize_token_embeddings(len(self.tokenizer))
-
-        self.use_hidden_dim = use_hidden_dim
-        self.hidden_dim = hidden_dim if hidden_dim is not None else self.transformer.config.n_embd
-        self.encode_prefix = nn.Linear(768, self.hidden_dim) if use_hidden_dim else nn.Identity()
-        self.decode_prefix = nn.Linear(self.hidden_dim, 768) if use_hidden_dim else nn.Identity()
+        gpt_config = GPT2Config(
+            n_positions=n_positions,
+            n_embd=n_embd,
+            n_layer=n_layer,
+            n_head=n_head,
+            n_inner=n_inner,
+            activation_function=activation_function,
+            resid_pdrop=resid_pdrop,
+            embd_pdrop=embd_pdrop,
+            attn_pdrop=attn_pdrop,
+            layer_norm_epsilon=layer_norm_epsilon,
+            initializer_range=initializer_range,
+        )
+        self.transformer = GPT2LMHeadModel(gpt_config)
 
     def forward(
         self,
@@ -85,7 +89,7 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin):
             dummy_token = self.get_dummy_token(tokens.shape[0], tokens.device)
             labels = torch.cat((dummy_token, tokens), dim=1)
         out = self.transformer(inputs_embeds=embedding_cat, labels=labels, attention_mask=mask)
-        if self.use_hidden_dim:
+        if self.prefix_hidden_dim is not None:
             return out, hidden
         else:
             return out
@@ -94,11 +98,15 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin):
         return torch.zeros(batch_size, self.prefix_length, dtype=torch.int64, device=device)
 
     @torch.no_grad()
-    def generate_captions(self, features, device):
+    def generate_captions(self, tokenizer, features, device):
         """
         Generate captions given text embedding features. Returns list[L].
 
         Args:
+            tokenizer (`GPT2Tokenizer`):
+                Tokenizer of class
+                [GPT2Tokenizer](https://huggingface.co/docs/transformers/model_doc/gpt2#transformers.GPT2Tokenizer)
+                for tokenizing input to the text decoder model.
             features (`torch.Tensor` of shape `(B, L, D)`):
                 Text embedding features to generate captions from.
             device:
@@ -110,12 +118,13 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin):
         for feature in features:
             feature = self.decode_prefix(feature.to(device))  # back to the clip feature
             # Only support beam search for now
-            generated_captions.append(self.generate_beam(embed=feature, device=device)[0])
+            generated_captions.append(self.generate_beam(tokenizer, embed=feature, device=device)[0])
         return generated_captions
 
     @torch.no_grad()
     def generate_beam(
         self,
+        tokenizer,
         prompt=None,
         embed=None,
         device=None,
@@ -124,8 +133,14 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin):
         temperature: float = 1.0,
         stop_token: str = "<|EOS|>",
     ):
+        """
+        Generates text using the given tokenizer and text prompt or token embedding via beam search.
+
+        TODO: args
+        """
         # Generates text until stop_token is reached using beam search with the desired beam size.
-        stop_token_index = self.tokenizer.encode(stop_token)[0]
+        # TODO: get the stop token index directly from tokenizer rather than manually specifying the EOS token?
+        stop_token_index = tokenizer.encode(stop_token)[0]
         tokens = None
         scores = None
         seq_lengths = torch.ones(beam_size, device=device)
@@ -135,7 +150,7 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin):
             generated = embed
         else:
             assert prompt is not None
-            tokens = torch.tensor(self.tokenizer.encode(prompt))
+            tokens = torch.tensor(tokenizer.encode(prompt))
             tokens = tokens.unsqueeze(0).to(device)
             generated = self.transformer.transformer.wte(tokens)
 

@@ -102,20 +102,12 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
 
         # 1. Transformer2DModel can process both standard continuous images of shape `(batch_size, num_channels, width, height)` as well as quantized image embeddings of shape `(batch_size, num_image_vectors)`
         # Define whether input is continuous or discrete depending on configuration
+        # TODO: clean up input cases?
         self.is_input_continuous = (in_channels is not None) and (patch_size is None)
         self.is_input_vectorized = num_vector_embeds is not None
         self.is_input_patches = in_channels is not None and patch_size is not None
 
-        if norm_type == "layer_norm" and num_embeds_ada_norm is not None:
-            deprecation_message = (
-                f"The configuration file of this model: {self.__class__} is outdated. `norm_type` is either not set or"
-                " incorrectly set to `'layer_norm'`.Make sure to set `norm_type` to `'ada_norm'` in the config."
-                " Please make sure to update the config accordingly as leaving `norm_type` might led to incorrect"
-                " results in future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it"
-                " would be very nice if you could open a Pull request for the `transformer/config.json` file"
-            )
-            deprecate("norm_type!=num_embeds_ada_norm", "1.0.0", deprecation_message, standard_warn=False)
-            norm_type = "ada_norm"
+        # Remove layer_norm/num_embeds_ada_norm deprecation message.
 
         if self.is_input_continuous and self.is_input_vectorized:
             raise ValueError(
