@@ -217,6 +217,17 @@ def parse_args():
         help="Load the pretrained model from a PyTorch checkpoint.",
     )
     parser.add_argument(
+        "--controlnet_revision",
+        type=str,
+        default=None,
+        help="Revision of controlnet model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--controlnet_from_pt",
+        action="store_true",
+        help="Load the controlnet model from a PyTorch checkpoint.",
+    )
+    parser.add_argument(
         "--profile_steps",
         type=int,
         default=0,

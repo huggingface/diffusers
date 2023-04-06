@@ -326,6 +326,7 @@ If you want to use Weights and Biases logging, you should also install `wandb` n
 pip install wandb
 ```
 
+
 Now let's downloading two conditioning images that we will use to run validation during the training in order to track our progress
 
 ```
