@@ -889,12 +889,13 @@ def main():
                 # create pipeline
                 if args.use_ema:
                     # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
-                    ema_unet.store(unet.parameters())
-                    ema_unet.copy_to(unet.parameters())
+                    unwrapped_unet = accelerator.unwrap_model(unet)
+                    ema_unet.store(unwrapped_unet.parameters())
+                    ema_unet.copy_to(unwrapped_unet.parameters())
                 # The models need unwrapping because for compatibility in distributed training mode.
                 pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
-                    unet=accelerator.unwrap_model(unet),
+                    unet=unwrapped_unet,
                     text_encoder=accelerator.unwrap_model(text_encoder),
                     vae=accelerator.unwrap_model(vae),
                     revision=args.revision,
