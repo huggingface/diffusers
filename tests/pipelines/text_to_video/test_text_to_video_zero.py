@@ -17,7 +17,7 @@ import unittest
 
 import torch
 
-from diffusers import TextToVideoZeroPipeline
+from diffusers import TextToVideoZeroPipeline, DDIMScheduler
 from diffusers.utils import require_torch_gpu, slow
 
 from ...test_pipelines_common import assert_mean_pixel_difference
@@ -29,11 +29,12 @@ class TextToVideoZeroPipelineSlowTests(unittest.TestCase):
     def test_full_model(self):
         model_id = "runwayml/stable-diffusion-v1-5"
         pipe = TextToVideoZeroPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         generator = torch.Generator(device="cuda").manual_seed(0)
 
         prompt = "A bear is playing a guitar on Times Square"
         result = pipe(prompt=prompt, generator=generator).images
 
-        expected_result = torch.load("docs/source/en/api/pipelines/res/A bear is playing a guitar on Times Square.pt")
+        expected_result = torch.load("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/tree/main/text-to-video/A bear is playing a guitar on Times Square.pt")
 
         assert_mean_pixel_difference(result, expected_result)
