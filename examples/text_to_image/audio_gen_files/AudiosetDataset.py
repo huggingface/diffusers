@@ -44,7 +44,7 @@ def preemphasis(signal,coeff=0.97):
     return np.append(signal[0],signal[1:]-coeff*signal[:-1])
 
 class AudiosetDataset(Dataset):
-    def __init__(self, dataset_json_file, audio_conf, label_csv=None,tokenizer=None):
+    def __init__(self, dataset_json_file, audio_conf, label_csv=None, tokenizer=None, device=None, dtype=None, batch_size=1):
         """
         Dataset that manages audio recordings
         :param audio_conf: Dictionary containing the audio loading and preprocessing settings
@@ -90,6 +90,11 @@ class AudiosetDataset(Dataset):
         self.hop_length=self.audio_conf.get('hop_length')
         self.transpose_images = self.audio_conf.get('transpose')
         self.tokenizer = tokenizer
+        self.device = device
+        if (dtype is None):
+            self.dtype = torch.float16
+        else:
+            self.dtype = dtype
         print('number of classes is {:d}'.format(self.label_num))
 
     def _wav2fbank(self, filename, filename2=None):
@@ -122,31 +127,20 @@ class AudiosetDataset(Dataset):
 
             mix_waveform = mix_lambda * waveform1 + (1 - mix_lambda) * waveform2
             waveform = mix_waveform - mix_waveform.mean()
-        # if self.melbins > 100:
-        #     fbank = torchaudio.compliance.kaldi.fbank(waveform, htk_compat=True, sample_frequency=sr, use_energy=False,
-        #                                           window_type='hanning', num_mel_bins=self.melbins, dither=0.0, frame_shift=10)
-        if True:
-            # spec_transform = torchaudio.transforms.Spectrogram(n_fft=self.n_fft, win_length=self.win_length,
-            #                            hop_length=self.hop_length,
-            #                            pad=0, window_fn=torch.hann_window, power=2,
-            #                            normalized=False)
-            # mel_transform = torchaudio.transforms.MelScale(self.melbins, sr, 0., None, self.n_fft // 2 + 1)
-            # spec = spec_transform(waveform)
-            # spec = mel_transform(spec)
-
-
+        if self.melbins > 100:
+            fbank = torchaudio.compliance.kaldi.fbank(waveform, htk_compat=True, sample_frequency=sr, use_energy=False,
+                                                  window_type='hanning', num_mel_bins=self.melbins, dither=0.0, frame_shift=10)
+        else:
             melspec = torchaudio.transforms.MelSpectrogram(sample_rate=sr, n_fft=self.n_fft, win_length=self.win_length, hop_length=self.hop_length, center=False, pad_mode=None, power=2, norm=None, onesided=False, n_mels=self.melbins, mel_scale="htk")
 
-
-            mid = melspec.spectrogram(waveform)
-
             spec = melspec(waveform).squeeze()
-
 
             a2db = torchaudio.transforms.AmplitudeToDB(spec)
             fbank = a2db(spec)
             if (self.transpose_images):
                 fbank = fbank.transpose(0,1)
+                
+                
         target_length = self.audio_conf.get('target_length')
         n_frames = fbank.shape[0]
 
@@ -245,10 +239,18 @@ class AudiosetDataset(Dataset):
         input_ids = []
         if (self.tokenizer is not None):
             input_ids = self.tokenizer(
-                label, max_length=self.tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
+                [label], max_length=self.tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
             )
-            input_ids = input_ids.input_ids
-        return {"pixel_values": fbank.T[None,:,:,:], "input_ids": input_ids, "caption": label, 'filename': datum['wav'], 'sample_rate': sr}
+            input_ids = input_ids.input_ids[0]
+            
+        ret_bank = fbank.permute(*torch.arange(fbank.ndim - 1, -1, -1))
+
+        if (self.device is not None):
+            ret_bank = ret_bank.to(self.device, dtype=self.dtype)
+            input_ids = input_ids.to(self.device, dtype=torch.int32)
+            
+        
+        return {"pixel_values": ret_bank, "input_ids": input_ids, "caption": label, 'filename': datum['wav'], 'sample_rate': sr}
 
     def __len__(self):
         return len(self.data)

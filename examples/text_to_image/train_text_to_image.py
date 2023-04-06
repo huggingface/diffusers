@@ -50,7 +50,7 @@ from audio_gen_files.AudiosetDataset import AudiosetDataset
 # # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 # check_min_version("0.15.0.dev0")
 
-logger = get_logger(__name__, log_level="INFO")
+logger = get_logger(__name__, log_level="WARNING")
 
 
 def parse_args():
@@ -339,7 +339,6 @@ dataset_name_mapping = {
 
 def main():
     args = parse_args()
-    print("ARGS: ", vars(args))
     if args.non_ema_revision is not None:
         deprecate(
             "non_ema_revision!=None",
@@ -411,7 +410,7 @@ def main():
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
     )
-
+    
     # Freeze vae and text_encoder
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
@@ -569,6 +568,25 @@ def main():
             inputs = tokenizer(
                 captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
             )
+            print("INPUT ID SHAPE: ", inputs.input_ids.shape)
+            return inputs.input_ids
+        
+        def tokenize_captions_audio(examples, is_train=True):
+            captions = []
+            for caption in examples[caption_column]:
+                if isinstance(caption, str):
+                    captions.append(caption)
+                elif isinstance(caption, (list, np.ndarray)):
+                    # take a random caption if there are multiple
+                    captions.append(random.choice(caption) if is_train else caption[0])
+                else:
+                    raise ValueError(
+                        f"Caption column `{caption_column}` should contain either strings or lists of strings."
+                    )
+            inputs = tokenizer(
+                captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
+            )
+            print("INPUT ID SHAPE: ", inputs.input_ids.shape)
             return inputs.input_ids
 
         # Preprocessing the datasets.
@@ -581,6 +599,12 @@ def main():
                 transforms.Normalize([0.5], [0.5]),
             ]
         )
+        
+        def preprocess_train_audio(examples):
+            images = [image.convert("RGB") for image in examples[image_column]]
+            examples["pixel_values"] = [train_transforms(image) for image in images]
+            examples["input_ids"] = tokenize_captions(examples)
+            return examples
 
         def preprocess_train(examples):
             images = [image.convert("RGB") for image in examples[image_column]]
@@ -615,8 +639,18 @@ def main():
         dataset_json_file = data["dataset_json_file"]
         audio_conf = data["audio_conf"]
         label_csv=data["label_csv"]
-        train_dataloader = AudiosetDataset(dataset_json_file, audio_conf, label_csv, tokenizer)
         
+        weight_dtype = torch.float32
+        if accelerator.mixed_precision == "fp16":
+            weight_dtype = torch.float16
+        elif accelerator.mixed_precision == "bf16":
+            weight_dtype = torch.bfloat16
+            
+        # train_dataloader = AudiosetDataset(dataset_json_file, audio_conf, label_csv, tokenizer, accelerator.device, weight_dtype)
+        
+        train_dataloader = torch.utils.data.DataLoader( 
+            AudiosetDataset(dataset_json_file, audio_conf, label_csv, tokenizer, accelerator.device, weight_dtype),
+            batch_size=args.train_batch_size, shuffle=True, num_workers=args.dataloader_num_workers)
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -651,6 +685,7 @@ def main():
     # Move text_encode and vae to gpu and cast to weight_dtype
     text_encoder.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
+    
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -732,7 +767,11 @@ def main():
                 # (this is the forward diffusion process)
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-                # Get the text embedding for conditioning
+                # # Get the text embedding for conditioning
+                # print("LOOK HERE FOR INFO ON BATCH ID: ")
+                # print(batch["input_ids"].shape)
+                # print(batch["input_ids"].dtype)
+                # print(batch["input_ids"].device)
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0]
 
                 # Get the target for loss depending on the prediction type
