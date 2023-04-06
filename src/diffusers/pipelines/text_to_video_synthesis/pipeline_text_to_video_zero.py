@@ -16,7 +16,7 @@ from diffusers.utils import BaseOutput
 
 def rearrange_0(tensor, f):
     F, C, H, W = tensor.size()
-    tensor = torch.permute(torch.reshape(tensor, (F//f, f, C, H, W)), (0, 2, 1, 3, 4))
+    tensor = torch.permute(torch.reshape(tensor, (F // f, f, C, H, W)), (0, 2, 1, 3, 4))
     return tensor
 
 
@@ -27,7 +27,7 @@ def rearrange_1(tensor):
 
 def rearrange_3(tensor, f):
     F, D, C = tensor.size()
-    return torch.reshape(tensor, (F//f, f, D, C))
+    return torch.reshape(tensor, (F // f, f, D, C))
 
 
 def rearrange_4(tensor):
@@ -37,14 +37,14 @@ def rearrange_4(tensor):
 
 class CrossFrameAttnProcessor:
     """
-    Cross frame attention processor.
-    For each frame the self-attention is replaced with attention with first frame
+    Cross frame attention processor. For each frame the self-attention is replaced with attention with first frame
 
     Args:
         batch_size: The number that represents actual batch size, other than the frames.
-            For example, using calling unet with a single prompt and num_images_per_prompt=1,
-            batch_size should be equal to 2, due to classifier-free guidance.
+            For example, using calling unet with a single prompt and num_images_per_prompt=1, batch_size should be
+            equal to 2, due to classifier-free guidance.
     """
+
     def __init__(self, batch_size=2):
         self.batch_size = batch_size
 
@@ -110,6 +110,7 @@ def coords_grid(batch, ht, wd, device):
 def warp_single_latent(latent, reference_flow):
     """
     Warp latent of a single frame with given flow
+
     Args:
         latent: latent code of a single frame
         reference_flow: flow which to warp the latent with
@@ -126,7 +127,7 @@ def warp_single_latent(latent, reference_flow):
     coords_t0[:, 1] /= H
 
     coords_t0 = coords_t0 * 2.0 - 1.0
-    coords_t0 = F.interpolate(coords_t0, size=(h, w), mode='bilinear')
+    coords_t0 = F.interpolate(coords_t0, size=(h, w), mode="bilinear")
     coords_t0 = torch.permute(coords_t0, (0, 2, 3, 1))
 
     warped = grid_sample(latent, coords_t0, mode="nearest", padding_mode="reflection")
@@ -136,6 +137,7 @@ def warp_single_latent(latent, reference_flow):
 def create_motion_field(motion_field_strength_x, motion_field_strength_y, frame_ids, device, dtype):
     """
     Create translation motion field
+
     Args:
         motion_field_strength_x: motion strength along x-axis
         motion_field_strength_y: motion strength along y-axis
@@ -155,11 +157,10 @@ def create_motion_field(motion_field_strength_x, motion_field_strength_y, frame_
     return reference_flow
 
 
-def create_motion_field_and_warp_latents(
-        motion_field_strength_x, motion_field_strength_y, frame_ids, latents
-):
+def create_motion_field_and_warp_latents(motion_field_strength_x, motion_field_strength_y, frame_ids, latents):
     """
     Creates translation motion and warps the latents accordingly
+
     Args:
         motion_field_strength_x: motion strength along x-axis
         motion_field_strength_y: motion strength along y-axis
@@ -175,7 +176,7 @@ def create_motion_field_and_warp_latents(
         motion_field_strength_y=motion_field_strength_y,
         frame_ids=frame_ids,
         device=latents.device,
-        dtype=latents.dtype
+        dtype=latents.dtype,
     )
     warped_latents = latents.clone().detach()
     for i in range(len(warped_latents)):
@@ -187,8 +188,8 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
     r"""
     Pipeline for zero-shot text-to-video generation using Stable Diffusion.
 
-    This model inherits from [`StableDiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+    This model inherits from [`StableDiffusionPipeline`]. Check the superclass documentation for the generic methods
+    the library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -210,16 +211,17 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
         feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
+
     def __init__(
-            self,
-            vae: AutoencoderKL,
-            text_encoder: CLIPTextModel,
-            tokenizer: CLIPTokenizer,
-            unet: UNet2DConditionModel,
-            scheduler: KarrasDiffusionSchedulers,
-            safety_checker: StableDiffusionSafetyChecker,
-            feature_extractor: CLIPImageProcessor,
-            requires_safety_checker: bool = True,
+        self,
+        vae: AutoencoderKL,
+        text_encoder: CLIPTextModel,
+        tokenizer: CLIPTokenizer,
+        unet: UNet2DConditionModel,
+        scheduler: KarrasDiffusionSchedulers,
+        safety_checker: StableDiffusionSafetyChecker,
+        feature_extractor: CLIPImageProcessor,
+        requires_safety_checker: bool = True,
     ):
         super().__init__(
             vae, text_encoder, tokenizer, unet, scheduler, safety_checker, feature_extractor, requires_safety_checker
@@ -229,6 +231,7 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
     def forward_loop(self, x_t0, t0, t1, generator):
         """
         Perform ddpm forward process from time t0 to t1. This is the same as adding noise with corresponding variance.
+
         Args:
             x_t0: latent code at time t0
             t0: t0
@@ -244,24 +247,26 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
         return x_t1
 
     def backward_loop(
-            self,
-            latents,
-            timesteps,
-            prompt_embeds,
-            guidance_scale,
-            callback,
-            callback_steps,
-            num_warmup_steps,
-            extra_step_kwargs,
-            cross_attention_kwargs=None,
+        self,
+        latents,
+        timesteps,
+        prompt_embeds,
+        guidance_scale,
+        callback,
+        callback_steps,
+        num_warmup_steps,
+        extra_step_kwargs,
+        cross_attention_kwargs=None,
     ):
         """
         Perform backward process given list of time steps
+
         Args:
             latents: Latents at time timesteps[0].
             timesteps: time steps, along which to perform backward process.
             prompt_embeds: Pre-generated text embeddings
-            guidance_scale: Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
+            guidance_scale:
+                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
@@ -311,26 +316,26 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
 
     @torch.no_grad()
     def __call__(
-            self,
-            prompt: Union[str, List[str]],
-            video_length: Optional[int] = 8,
-            height: Optional[int] = None,
-            width: Optional[int] = None,
-            num_inference_steps: int = 50,
-            guidance_scale: float = 7.5,
-            negative_prompt: Optional[Union[str, List[str]]] = None,
-            num_videos_per_prompt: Optional[int] = 1,
-            eta: float = 0.0,
-            generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-            latents: Optional[torch.FloatTensor] = None,
-            motion_field_strength_x: float = 12,
-            motion_field_strength_y: float = 12,
-            output_type: Optional[str] = "tensor",
-            return_dict: bool = True,
-            callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-            callback_steps: Optional[int] = 1,
-            t0: int = 44,
-            t1: int = 47,
+        self,
+        prompt: Union[str, List[str]],
+        video_length: Optional[int] = 8,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
+        num_inference_steps: int = 50,
+        guidance_scale: float = 7.5,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
+        num_videos_per_prompt: Optional[int] = 1,
+        eta: float = 0.0,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.FloatTensor] = None,
+        motion_field_strength_x: float = 12,
+        motion_field_strength_y: float = 12,
+        output_type: Optional[str] = "tensor",
+        return_dict: bool = True,
+        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback_steps: Optional[int] = 1,
+        t0: int = 44,
+        t1: int = 47,
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -382,20 +387,23 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
             motion_field_strength_x (`float`, *optional*, defaults to 12):
-                Strength of motion in generated video along x-axis. See the [paper](https://arxiv.org/abs/2303.13439), Sect. 3.3.1.
+                Strength of motion in generated video along x-axis. See the [paper](https://arxiv.org/abs/2303.13439),
+                Sect. 3.3.1.
             motion_field_strength_y (`float`, *optional*, defaults to 12):
-                Strength of motion in generated video along y-axis. See the [paper](https://arxiv.org/abs/2303.13439), Sect. 3.3.1.
+                Strength of motion in generated video along y-axis. See the [paper](https://arxiv.org/abs/2303.13439),
+                Sect. 3.3.1.
             t0 (`int`, *optional*, defaults to 44):
-                Timestep t0. Should be in the range [0, num_inference_steps - 1]. See the [paper](https://arxiv.org/abs/2303.13439), Sect. 3.3.1.
+                Timestep t0. Should be in the range [0, num_inference_steps - 1]. See the
+                [paper](https://arxiv.org/abs/2303.13439), Sect. 3.3.1.
             t1 (`int`, *optional*, defaults to 47):
-                Timestep t0. Should be in the range [t0 + 1, num_inference_steps - 1]. See the [paper](https://arxiv.org/abs/2303.13439), Sect. 3.3.1.
+                Timestep t0. Should be in the range [t0 + 1, num_inference_steps - 1]. See the
+                [paper](https://arxiv.org/abs/2303.13439), Sect. 3.3.1.
 
         Returns:
             [`~pipelines.text_to_video_synthesis.TextToVideoPipelineOutput`]:
-                The output contains a ndarray of the generated images, when output_type != 'latent',
-                otherwise a latent codes of generated image,
-                and a list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
-                (nsfw) content, according to the `safety_checker`.
+                The output contains a ndarray of the generated images, when output_type != 'latent', otherwise a latent
+                codes of generated image, and a list of `bool`s denoting whether the corresponding generated image
+                likely represents "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
         """
         assert video_length > 0
         frame_ids = list(range(video_length))
@@ -442,14 +450,14 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
             device,
             generator,
             latents,
-            )
+        )
         # Prepare extra step kwargs.
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
 
         # Perform the first backward process up to time T_1
         x_1_t1 = self.backward_loop(
-            timesteps=timesteps[:-t1-1],
+            timesteps=timesteps[: -t1 - 1],
             prompt_embeds=prompt_embeds,
             latents=latents,
             guidance_scale=guidance_scale,
@@ -461,7 +469,7 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
 
         # Perform the second backward process up to time T_0
         x_1_t0 = self.backward_loop(
-            timesteps=timesteps[-t1-1:-t0-1],
+            timesteps=timesteps[-t1 - 1 : -t0 - 1],
             prompt_embeds=prompt_embeds,
             latents=x_1_t1,
             guidance_scale=guidance_scale,
@@ -485,8 +493,8 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
         # Perform forward process up to time T_1
         x_2k_t1 = self.forward_loop(
             x_t0=x_2k_t0,
-            t0=timesteps[-t0-1].item(),
-            t1=timesteps[-t1-1].item(),
+            t0=timesteps[-t0 - 1].item(),
+            t1=timesteps[-t1 - 1].item(),
             generator=generator,
         )
 
@@ -497,7 +505,7 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
 
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         x_1k_0 = self.backward_loop(
-            timesteps=timesteps[-t1-1:],
+            timesteps=timesteps[-t1 - 1 :],
             prompt_embeds=prompt_embeds,
             latents=x_1k_t1,
             guidance_scale=guidance_scale,

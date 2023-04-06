@@ -62,12 +62,12 @@ To generate a video from prompt, run the following python command
 import torch
 from diffusers import TextToVideoZeroPipeline
 
-model_id = 'runwayml/stable-diffusion-v1-5'
-pipe = TextToVideoZeroPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to('cuda')
+model_id = "runwayml/stable-diffusion-v1-5"
+pipe = TextToVideoZeroPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 
 prompt = "A panda is playing guitar on times square"
 result = pipe(prompt=prompt).images
-imageio.mimsave('video.mp4', result, fps=4)
+imageio.mimsave("video.mp4", result, fps=4)
 ```
 You can change these parameters in the pipeline call:
 * Motion field strength (see the [paper](https://arxiv.org/abs/2303.13439), Sect. 3.3.1):
@@ -85,7 +85,7 @@ Read video containing extracted pose images from path
 ```python
 import imageio
 
-reader = imageio.get_reader('path/to/your/pose/video',  'ffmpeg')
+reader = imageio.get_reader("path/to/your/pose/video", "ffmpeg")
 frame_count = 8
 pose_images = [Image.fromarray(reader.get_data(i)) for i in range(frame_count)]
 ```
@@ -98,14 +98,16 @@ import torch
 from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
 from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero import CrossFrameAttnProcessor
 
-model_id = 'runwayml/stable-diffusion-v1-5'
+model_id = "runwayml/stable-diffusion-v1-5"
 controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-openpose", torch_dtype=torch.float16)
-pipe = StableDiffusionControlNetPipeline.from_pretrained(model_id, controlnet=controlnet, torch_dtype=torch.float16).to('cuda')
+pipe = StableDiffusionControlNetPipeline.from_pretrained(
+    model_id, controlnet=controlnet, torch_dtype=torch.float16
+).to("cuda")
 pipe.unet.set_attn_processor(CrossFrameAttnProcessor(batch_size=2))
 
-prompt = 'Darth Vader dancing in a desert'
+prompt = "Darth Vader dancing in a desert"
 result = pipe(prompt=[prompt] * len(pose_images), image=pose_images).images
-imageio.mimsave('video.mp4', result, fps=4)
+imageio.mimsave("video.mp4", result, fps=4)
 ```
 
 
@@ -120,7 +122,7 @@ Read video from path
 ```python
 import imageio
 
-reader = imageio.get_reader('path/to/your/video',  'ffmpeg')
+reader = imageio.get_reader("path/to/your/video", "ffmpeg")
 frame_count = 8
 video = [Image.fromarray(reader.get_data(i)) for i in range(frame_count)]
 ```
@@ -131,13 +133,13 @@ import torch
 from diffusers import StableDiffusionInstructPix2PixPipeline
 from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero import CrossFrameAttnProcessor
 
-model_id = 'timbrooks/instruct-pix2pix'
-pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to('cuda')
+model_id = "timbrooks/instruct-pix2pix"
+pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 pipe.unet.set_attn_processor(CrossFrameAttnProcessor(batch_size=3))
 
-prompt = 'edit instruction'
+prompt = "edit instruction"
 result = pipe(prompt=[prompt] * len(video), image=video).images
-imageio.mimsave('edited_video.mp4', result, fps=4)
+imageio.mimsave("edited_video.mp4", result, fps=4)
 ```
 
 

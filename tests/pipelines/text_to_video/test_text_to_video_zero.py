@@ -16,24 +16,24 @@
 import unittest
 
 import torch
-from diffusers.utils import slow, require_torch_gpu
-from ...test_pipelines_common import assert_mean_pixel_difference
+
 from diffusers import TextToVideoZeroPipeline
+from diffusers.utils import require_torch_gpu, slow
+
+from ...test_pipelines_common import assert_mean_pixel_difference
 
 
 @slow
 @require_torch_gpu
 class TextToVideoZeroPipelineSlowTests(unittest.TestCase):
     def test_full_model(self):
-        model_id = 'runwayml/stable-diffusion-v1-5'
-        pipe = TextToVideoZeroPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to('cuda')
-        generator = torch.Generator(device='cuda').manual_seed(0)
+        model_id = "runwayml/stable-diffusion-v1-5"
+        pipe = TextToVideoZeroPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
+        generator = torch.Generator(device="cuda").manual_seed(0)
 
-        prompt = 'A bear is playing a guitar on Times Square'
+        prompt = "A bear is playing a guitar on Times Square"
         result = pipe(prompt=prompt, generator=generator).images
 
-        expected_result = torch.load(
-            "docs/source/en/api/pipelines/res/A bear is playing a guitar on Times Square.pt"
-        )
+        expected_result = torch.load("docs/source/en/api/pipelines/res/A bear is playing a guitar on Times Square.pt")
 
         assert_mean_pixel_difference(result, expected_result)
