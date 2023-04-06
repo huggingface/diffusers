@@ -886,10 +886,10 @@ def main():
                     f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
                     f" {args.validation_prompt}."
                 )
+                unwrapped_unet = accelerator.unwrap_model(unet)
                 # create pipeline
                 if args.use_ema:
                     # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
-                    unwrapped_unet = accelerator.unwrap_model(unet)
                     ema_unet.store(unwrapped_unet.parameters())
                     ema_unet.copy_to(unwrapped_unet.parameters())
                 # The models need unwrapping because for compatibility in distributed training mode.
