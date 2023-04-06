@@ -228,6 +228,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         )
         return sample.clamp(-dynamic_max_val, dynamic_max_val) / dynamic_max_val
 
+    # copied from diffusers.schedulers.scheduling_euler_discrete._sigma_to_t
     def _sigma_to_t(self, sigma, log_sigmas):
         # get log sigma
         log_sigma = np.log(sigma)
@@ -251,7 +252,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         t = t.reshape(sigma.shape)
         return t
 
-    # Copied from https://github.com/crowsonkb/k-diffusion/blob/686dbad0f39640ea25c8a8c6a6e56bb40eacefa2/k_diffusion/sampling.py#L17
+    # copied from diffusers.schedulers.scheduling_euler_discrete._convert_to_karras
     def _convert_to_karras(self, in_sigmas: torch.FloatTensor) -> torch.FloatTensor:
         """Constructs the noise schedule of Karras et al. (2022)."""
 
