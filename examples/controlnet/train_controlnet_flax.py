@@ -154,15 +154,16 @@ def log_validation(controlnet, controlnet_params, tokenizer, args, rng, weight_d
 
 def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=None):
     img_str = ""
-    for i, log in enumerate(image_logs):
-        images = log["images"]
-        validation_prompt = log["validation_prompt"]
-        validation_image = log["validation_image"]
-        validation_image.save(os.path.join(repo_folder, "image_control.png"))
-        img_str += f"prompt: {validation_prompt}\n"
-        images = [validation_image] + images
-        image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images_{i}.png"))
-        img_str += f"![images_{i})](./images_{i}.png)\n"
+    if image_logs is not None:
+        for i, log in enumerate(image_logs):
+            images = log["images"]
+            validation_prompt = log["validation_prompt"]
+            validation_image = log["validation_image"]
+            validation_image.save(os.path.join(repo_folder, "image_control.png"))
+            img_str += f"prompt: {validation_prompt}\n"
+            images = [validation_image] + images
+            image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images_{i}.png"))
+            img_str += f"![images_{i})](./images_{i}.png)\n"
 
     yaml = f"""
 ---
@@ -212,6 +213,17 @@ def parse_args():
         "--from_pt",
         action="store_true",
         help="Load the pretrained model from a PyTorch checkpoint.",
+    )
+    parser.add_argument(
+        "--controlnet_revision",
+        type=str,
+        default=None,
+        help="Revision of controlnet model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--controlnet_from_pt",
+        action="store_true",
+        help="Load the controlnet model from a PyTorch checkpoint.",
     )
     parser.add_argument(
         "--tokenizer_name",
@@ -731,7 +743,10 @@ def main():
     if args.controlnet_model_name_or_path:
         logger.info("Loading existing controlnet weights")
         controlnet, controlnet_params = FlaxControlNetModel.from_pretrained(
-            args.controlnet_model_name_or_path, from_pt=True, dtype=jnp.float32
+            args.controlnet_model_name_or_path,
+            revision=args.controlnet_revision,
+            from_pt=args.controlnet_from_pt,
+            dtype=jnp.float32,
         )
     else:
         logger.info("Initializing controlnet weights from unet")
@@ -1021,6 +1036,8 @@ def main():
     if jax.process_index() == 0:
         if args.validation_prompt is not None:
             image_logs = log_validation(controlnet, state.params, tokenizer, args, validation_rng, weight_dtype)
+        else:
+            image_logs = None
 
         controlnet.save_pretrained(
             args.output_dir,
