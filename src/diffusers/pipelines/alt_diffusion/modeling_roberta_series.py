@@ -105,10 +105,9 @@ class RobertaSeriesModelWithTransformation(RobertaPreTrainedModel):
         )
 
         projection_state = self.transformation(outputs.last_hidden_state)
-        
-        
-        # New add for m18 
-        sequence_output2 = outputs['hidden_states'][-2]
+
+        # New add for m18
+        sequence_output2 = outputs["hidden_states"][-2]
         sequence_output2 = self.pre_LN(sequence_output2)
         projection_state2 = self.transformation_pre(sequence_output2)
 

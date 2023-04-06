@@ -399,10 +399,10 @@ class AltDiffusionPipeline(DiffusionPipeline):
             )
             # m18 take the embedding from penultimate layer
             if self.use_penultimate:
-                negative_prompt_embeds = negative_prompt_embeds['penultimate_hidden_state']
+                negative_prompt_embeds = negative_prompt_embeds["penultimate_hidden_state"]
             else:
                 negative_prompt_embeds = negative_prompt_embeds[0]
-            
+
         if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
