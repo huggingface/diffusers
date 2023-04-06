@@ -734,14 +734,15 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMixin
             image = latents
             has_nsfw_concept = None
 
-        image = self.decode_latents(latents)
-
-        if self.safety_checker is not None:
-            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
-            has_nsfw_concept = False
+            image = self.decode_latents(latents)
 
-        image = self.image_processor.postprocess(image, output_type=output_type)
+            if self.safety_checker is not None:
+                image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+            else:
+                has_nsfw_concept = False
+
+            image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
