@@ -30,11 +30,11 @@ from diffusers.schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from diffusers.utils import is_accelerate_available
+from diffusers.utils import is_accelerate_available, deprecate, logging
 
-from ...utils import deprecate, logging
-from . import StableDiffusionPipelineOutput
-from .safety_checker import StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipelineOutput
+from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
