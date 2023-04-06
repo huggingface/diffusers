@@ -104,9 +104,9 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             interpolation type to compute intermediate sigmas for the scheduler denoising steps. Should be one of
             [`"linear"`, `"log_linear"`].
         use_karras_sigmas (`bool`, *optional*, defaults to `False`):
-            Use karras sigmas. For example, specifying `sample_dpmpp_2m` to `set_scheduler` will be equivalent to
-            `DPM++2M` in stable-diffusion-webui. On top of that, setting this option to True will make it `DPM++2M
-            Karras`. Please see equation (5) https://arxiv.org/pdf/2206.00364.pdf for more details.
+             This parameter controls whether to use Karras sigmas (Karras et al. (2022) scheme) for step sizes in the
+             noise schedule during the sampling process. If True, the sigmas will be determined according to a sequence
+             of noise levels {σi} as defined in Equation (5) of the paper https://arxiv.org/pdf/2206.00364.pdf.
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
