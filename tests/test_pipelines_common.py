@@ -394,10 +394,9 @@ class PipelineTesterMixin:
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        # set all optional components to None and update pipeline config accordingly
+        # set all optional components to None
         for optional_component in pipe._optional_components:
             setattr(pipe, optional_component, None)
-        pipe.register_modules(**{optional_component: None for optional_component in pipe._optional_components})
 
         inputs = self.get_dummy_inputs(torch_device)
         output = pipe(**inputs)[0]
