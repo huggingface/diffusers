@@ -15,7 +15,7 @@
 import torch
 from torch import nn
 
-from .attention import Transformer3DModel
+from .transformer_3d import Transformer3DModel
 from .resnet import Downsample2D, Downsample3D, ResnetBlock2D, ResnetBlock3D, TemporalConvLayer, Upsample2D, Upsample3D
 from .transformer_2d import Transformer2DModel
 from .transformer_temporal import TransformerTemporalModel
