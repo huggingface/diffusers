@@ -740,12 +740,11 @@ class LoraLoaderMixin:
             key.startswith(self.unet_name) or key.startswith(self.text_encoder_name) for key in state_dict.keys()
         ):
             self.unet.load_attn_procs(state_dict)
-            logger.warning(
-                "You have saved the LoRA weights using the old format. This will be"
-                " deprecated soon. To convert the old LoRA weights to the new format, you can first load them"
-                " in a dictionary and then create a new dictionary like the following:"
-                " `new_state_dict = {f'unet'.{module_name}: params for module_name, params in old_state_dict.items()}`."
-            )
+            deprecation_message = "You have saved the LoRA weights using the old format. This will be"
+            " deprecated soon. To convert the old LoRA weights to the new format, you can first load them"
+            " in a dictionary and then create a new dictionary like the following:"
+            " `new_state_dict = {f'unet'.{module_name}: params for module_name, params in old_state_dict.items()}`."
+            deprecate("legacy LoRA weights", "1.0.0", deprecation_message, standard_warn=False)
 
     def _modify_text_encoder(self, attn_processors: Dict[str, LoRAAttnProcessor]):
         r"""
