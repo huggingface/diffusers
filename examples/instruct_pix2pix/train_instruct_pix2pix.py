@@ -894,6 +894,8 @@ def main():
                 pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     unet=unet,
+                    text_encoder=accelerator.unwrap_model(text_encoder),
+                    vae=accelerator.unwrap_model(vae),
                     revision=args.revision,
                     torch_dtype=weight_dtype,
                 )
@@ -903,7 +905,9 @@ def main():
                 # run inference
                 original_image = download_image(args.val_image_url)
                 edited_images = []
-                with torch.autocast(str(accelerator.device), enabled=accelerator.mixed_precision == "fp16"):
+                with torch.autocast(
+                    str(accelerator.device).replace(":0", ""), enabled=accelerator.mixed_precision == "fp16"
+                ):
                     for _ in range(args.num_validation_images):
                         edited_images.append(
                             pipeline(
