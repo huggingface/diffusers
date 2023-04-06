@@ -963,7 +963,7 @@ def main():
         if args.validation_prompt is not None:
             edited_images = []
             pipeline = pipeline.to(accelerator.device)
-            with torch.autocast(str(accelerator.device)):
+            with torch.autocast(str(accelerator.device).replace(":0", "")):
                 for _ in range(args.num_validation_images):
                     edited_images.append(
                         pipeline(
