@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# How to run Stable Diffusion natively on Mac and iPhone
+# How to run Stable Diffusion with CoreML
 
 There are two ways to run Stable Diffusion on Apple hardware:
 
@@ -22,7 +22,7 @@ There are two ways to run Stable Diffusion on Apple hardware:
 
 Core ML is the native ML model format for Apple devices. Because Stable Diffusion was trained using PyTorch, the model weights are available in PyTorch format. Therefore, we need to convert them to Core ML before we can use them inside native apps.
 
-Thankfully, Apple engineers developed [a conversion tool](https://github.com/apple/ml-stable-diffusion) based on `diffusers`. If you have a Mac, you can use the conversion scripts it provides to convert any Stable Diffusion model to Core ML.
+Thankfully, Apple engineers developed [a conversion tool](https://github.com/apple/ml-stable-diffusion#-converting-models-to-core-ml) based on `diffusers`. If you have a Mac, you can use the conversion scripts it provides to convert any Stable Diffusion model to Core ML.
 
 Before you convert a model, though, do take a moment to explore the Hugging Face Hub – chances are the model you're interested in is already available in Core ML format. For example, these official models are available in Core ML in the Apple organization:
 
@@ -33,7 +33,7 @@ Before you convert a model, though, do take a moment to explore the Hugging Face
 
 If you are interested in custom Dreamboothed or fine-tuned models, you can take a look at the [`coreml` community organization](https://huggingface.co/coreml) or use [this query to browse](https://huggingface.co/models?pipeline_tag=text-to-image&library=coreml&p=2&sort=likes) through all available models.
 
-If you can't find the model you're interested in, we recommend you follow the instructions in [Apple's repo](https://github.com/apple/ml-stable-diffusion) to perform the conversion yourself.
+If you can't find the model you're interested in, we recommend you follow the instructions in [Apple's repo](https://github.com/apple/ml-stable-diffusion#-converting-models-to-core-ml) to perform the conversion yourself.
 
 ## Native Diffusers Swift app
 
@@ -94,7 +94,7 @@ print(f"Model downloaded at {model_path}")
 
 The code above will place the downloaded model snapshot inside a directory called `models`.
 
-### Inference
+### Inference[[python-inference]]
 
 Once you have downloaded a snapshot of the model, you can test it using Apple's Python script.
 
@@ -133,7 +133,7 @@ snapshot_download(repo_id, allow_patterns=f"{variant}/*", local_dir=model_path, 
 print(f"Model downloaded at {model_path}")
 ```
 
-### Inference
+### Inference[[swift-inference]]
 
 To run inference, please clone Apple's repo:
 
