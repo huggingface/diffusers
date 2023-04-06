@@ -8,10 +8,10 @@ import torch.nn.functional as F
 from torch.nn.functional import grid_sample
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
-from ...models import AutoencoderKL, UNet2DConditionModel
-from ...pipelines.stable_diffusion import StableDiffusionPipeline, StableDiffusionSafetyChecker
-from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import BaseOutput
+from diffusers.models import AutoencoderKL, UNet2DConditionModel
+from diffusers.pipelines.stable_diffusion import StableDiffusionPipeline, StableDiffusionSafetyChecker
+from diffusers.schedulers import KarrasDiffusionSchedulers
+from diffusers.utils import BaseOutput
 
 
 def rearrange_0(tensor, f):
@@ -36,6 +36,15 @@ def rearrange_4(tensor):
 
 
 class CrossFrameAttnProcessor:
+    """
+    Cross frame attention processor.
+    For each frame the self-attention is replaced with attention with first frame
+
+    Args:
+        batch_size: The number that represents actual batch size, other than the frames.
+            For example, using calling unet with a single prompt and num_images_per_prompt=1,
+            batch_size should be equal to 2, due to classifier-free guidance.
+    """
     def __init__(self, batch_size=2):
         self.batch_size = batch_size
 
@@ -49,17 +58,24 @@ class CrossFrameAttnProcessor:
             encoder_hidden_states = hidden_states
         elif attn.cross_attention_norm:
             encoder_hidden_states = attn.norm_cross(encoder_hidden_states)
+
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
+
         # Sparse Attention
         if not is_cross_attention:
             video_length = key.size()[0] // self.batch_size
             first_frame_index = [0] * video_length
+
+            # rearrange keys to have batch and frames in the 1st and 2nd dims respectively
             key = rearrange_3(key, video_length)
             key = key[:, first_frame_index]
-            key = rearrange_4(key)
+            # rearrange values to have batch and frames in the 1st and 2nd dims respectively
             value = rearrange_3(value, video_length)
             value = value[:, first_frame_index]
+
+            # rearrange back to original shape
+            key = rearrange_4(key)
             value = rearrange_4(value)
 
         query = attn.head_to_batch_dim(query)
@@ -80,8 +96,6 @@ class CrossFrameAttnProcessor:
 
 @dataclass
 class TextToVideoPipelineOutput(BaseOutput):
-    # videos: Union[torch.Tensor, np.ndarray]
-    # code: Union[torch.Tensor, np.ndarray]
     images: Union[List[PIL.Image.Image], np.ndarray]
     nsfw_content_detected: Optional[List[bool]]
 
@@ -93,11 +107,19 @@ def coords_grid(batch, ht, wd, device):
     return coords[None].repeat(batch, 1, 1, 1)
 
 
-def warp_latents_independently(latents, reference_flow):
+def warp_single_latent(latent, reference_flow):
+    """
+    Warp latent of a single frame with given flow
+    Args:
+        latent: latent code of a single frame
+        reference_flow: flow which to warp the latent with
+
+    Returns:
+        warped: warped latent
+    """
     _, _, H, W = reference_flow.size()
-    b, _, f, h, w = latents.size()
-    assert b == 1
-    coords0 = coords_grid(f, H, W, device=latents.device).to(latents.dtype)
+    _, _, h, w = latent.size()
+    coords0 = coords_grid(1, H, W, device=latent.device).to(latent.dtype)
 
     coords_t0 = coords0 + reference_flow
     coords_t0[:, 0] /= W
@@ -107,152 +129,170 @@ def warp_latents_independently(latents, reference_flow):
     coords_t0 = F.interpolate(coords_t0, size=(h, w), mode='bilinear')
     coords_t0 = torch.permute(coords_t0, (0, 2, 3, 1))
 
-    latents_0 = torch.permute(latents[0], (1, 0, 2, 3))
-    warped = grid_sample(latents_0, coords_t0, mode="nearest", padding_mode="reflection")
-    warped = rearrange_0(warped, f)
+    warped = grid_sample(latent, coords_t0, mode="nearest", padding_mode="reflection")
     return warped
 
 
-def create_motion_field(motion_field_strength_x, motion_field_strength_y, frame_ids, video_length, latents):
-    reference_flow = torch.zeros((video_length - 1, 2, 512, 512), device=latents.device, dtype=latents.dtype)
-    for fr_idx in range(video_length - 1):
-        reference_flow[fr_idx, 0, :, :] = motion_field_strength_x * (frame_ids[fr_idx] + 1)
-        reference_flow[fr_idx, 1, :, :] = motion_field_strength_y * (frame_ids[fr_idx] + 1)
+def create_motion_field(motion_field_strength_x, motion_field_strength_y, frame_ids, device, dtype):
+    """
+    Create translation motion field
+    Args:
+        motion_field_strength_x: motion strength along x-axis
+        motion_field_strength_y: motion strength along y-axis
+        frame_ids: indexes of the frames the latents of which are being processed.
+            This is needed when we perform chunk-by-chunk inference
+        device: device
+        dtype: dtype
+
+    Returns:
+
+    """
+    seq_length = len(frame_ids)
+    reference_flow = torch.zeros((seq_length, 2, 512, 512), device=device, dtype=dtype)
+    for fr_idx in range(seq_length):
+        reference_flow[fr_idx, 0, :, :] = motion_field_strength_x * (frame_ids[fr_idx])
+        reference_flow[fr_idx, 1, :, :] = motion_field_strength_y * (frame_ids[fr_idx])
     return reference_flow
 
 
 def create_motion_field_and_warp_latents(
-    motion_field_strength_x, motion_field_strength_y, frame_ids, video_length, latents
+        motion_field_strength_x, motion_field_strength_y, frame_ids, latents
 ):
+    """
+    Creates translation motion and warps the latents accordingly
+    Args:
+        motion_field_strength_x: motion strength along x-axis
+        motion_field_strength_y: motion strength along y-axis
+        frame_ids: indexes of the frames the latents of which are being processed.
+            This is needed when we perform chunk-by-chunk inference
+        latents: latent codes of frames
+
+    Returns:
+        warped_latents: warped latents
+    """
     motion_field = create_motion_field(
         motion_field_strength_x=motion_field_strength_x,
         motion_field_strength_y=motion_field_strength_y,
-        latents=latents,
-        video_length=video_length,
         frame_ids=frame_ids,
+        device=latents.device,
+        dtype=latents.dtype
     )
-    for idx, latent in enumerate(latents):
-        latents[idx] = warp_latents_independently(latent[None], motion_field)
-    return motion_field, latents
+    warped_latents = latents.clone().detach()
+    for i in range(len(warped_latents)):
+        warped_latents[i] = warp_single_latent(latents[i][None], motion_field[i][None])
+    return warped_latents
 
 
 class TextToVideoZeroPipeline(StableDiffusionPipeline):
+    r"""
+    Pipeline for zero-shot text-to-video generation using Stable Diffusion.
+
+    This model inherits from [`StableDiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+
+    Args:
+        vae ([`AutoencoderKL`]):
+            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
+        text_encoder ([`CLIPTextModel`]):
+            Frozen text-encoder. Stable Diffusion uses the text portion of
+            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
+            the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
+        tokenizer (`CLIPTokenizer`):
+            Tokenizer of class
+            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
+        unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
+        scheduler ([`SchedulerMixin`]):
+            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
+            [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
+        safety_checker ([`StableDiffusionSafetyChecker`]):
+            Classification module that estimates whether generated images could be considered offensive or harmful.
+            Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
+        feature_extractor ([`CLIPImageProcessor`]):
+            Model that extracts features from generated images to be used as inputs for the `safety_checker`.
+    """
     def __init__(
-        self,
-        vae: AutoencoderKL,
-        text_encoder: CLIPTextModel,
-        tokenizer: CLIPTokenizer,
-        unet: UNet2DConditionModel,
-        scheduler: KarrasDiffusionSchedulers,
-        safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPImageProcessor,
-        requires_safety_checker: bool = True,
+            self,
+            vae: AutoencoderKL,
+            text_encoder: CLIPTextModel,
+            tokenizer: CLIPTokenizer,
+            unet: UNet2DConditionModel,
+            scheduler: KarrasDiffusionSchedulers,
+            safety_checker: StableDiffusionSafetyChecker,
+            feature_extractor: CLIPImageProcessor,
+            requires_safety_checker: bool = True,
     ):
         super().__init__(
             vae, text_encoder, tokenizer, unet, scheduler, safety_checker, feature_extractor, requires_safety_checker
         )
         self.unet.set_attn_processor(CrossFrameAttnProcessor(batch_size=2))
 
-    def ddpm_forward(self, x0, t0, t_max, generator, device, shape, text_embeddings):
-        rand_device = "cpu" if device.type == "mps" else device
+    def forward_loop(self, x_t0, t0, t1, generator):
+        """
+        Perform ddpm forward process from time t0 to t1. This is the same as adding noise with corresponding variance.
+        Args:
+            x_t0: latent code at time t0
+            t0: t0
+            t1: t1
+            generator: torch.Generator object
 
-        if x0 is None:
-            return torch.randn(shape, generator=generator, device=rand_device, dtype=text_embeddings.dtype).to(device)
-        else:
-            eps = torch.randn(x0.size(), generator=generator, dtype=text_embeddings.dtype, device=device)
-            alpha_vec = torch.prod(self.scheduler.alphas[t0:t_max])
-            xt = torch.sqrt(alpha_vec) * x0 + torch.sqrt(1 - alpha_vec) * eps
-            return xt
+        Returns:
+            x_t1: forward process applied to x_t0 from time t0 to t1.
+        """
+        eps = torch.randn(x_t0.size(), generator=generator, dtype=x_t0.dtype, device=x_t0.device)
+        alpha_vec = torch.prod(self.scheduler.alphas[t0:t1])
+        x_t1 = torch.sqrt(alpha_vec) * x_t0 + torch.sqrt(1 - alpha_vec) * eps
+        return x_t1
 
-    def prepare_latents(
-        self, batch_size, num_channels_latents, video_length, height, width, dtype, device, generator, latents=None
+    def backward_loop(
+            self,
+            latents,
+            timesteps,
+            prompt_embeds,
+            guidance_scale,
+            callback,
+            callback_steps,
+            num_warmup_steps,
+            extra_step_kwargs,
+            cross_attention_kwargs=None,
     ):
-        shape = (
-            batch_size,
-            num_channels_latents,
-            video_length,
-            height // self.vae_scale_factor,
-            width // self.vae_scale_factor,
-        )
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-            )
+        """
+        Perform backward process given list of time steps
+        Args:
+            latents: Latents at time timesteps[0].
+            timesteps: time steps, along which to perform backward process.
+            prompt_embeds: Pre-generated text embeddings
+            guidance_scale: Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
+                `guidance_scale` is defined as `w` of equation 2. of [Imagen
+                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
+                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
+                usually at the expense of lower image quality.
+            callback (`Callable`, *optional*):
+                A function that will be called every `callback_steps` steps during inference. The function will be
+                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+            callback_steps (`int`, *optional*, defaults to 1):
+                The frequency at which the `callback` function will be called. If not specified, the callback will be
+                called at every step.
+            extra_step_kwargs: extra_step_kwargs.
+            cross_attention_kwargs: cross_attention_kwargs.
+            num_warmup_steps: number of warmup steps.
 
-        if latents is None:
-            rand_device = "cpu" if device.type == "mps" else device
-
-            if isinstance(generator, list):
-                shape = (1,) + shape[1:]
-                latents = [
-                    torch.randn(shape, generator=generator[i], device=rand_device, dtype=dtype)
-                    for i in range(batch_size)
-                ]
-                latents = torch.cat(latents, dim=0).to(device)
-            else:
-                latents = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype).to(device)
-        else:
-            latents = latents.to(device)
-
-        # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * self.scheduler.init_noise_sigma
-        return latents
-
-    def ddim_backward(
-        self,
-        num_inference_steps,
-        timesteps,
-        skip_t,
-        t0,
-        t1,
-        do_classifier_free_guidance,
-        text_embeddings,
-        latents_local,
-        latents_dtype,
-        guidance_scale,
-        callback,
-        callback_steps,
-        extra_step_kwargs,
-        num_warmup_steps,
-    ):
-        entered = False
-
-        f = latents_local.shape[2]
-
-        latents_local = rearrange_1(latents_local)
-
-        latents = latents_local.detach().clone()
-        x_t0_1 = None
-        x_t1_1 = None
-
-        with self.progress_bar(total=num_inference_steps) as progress_bar:
+        Returns:
+            latents: latents of backward process output at time timesteps[-1]
+        """
+        do_classifier_free_guidance = guidance_scale > 1.0
+        with self.progress_bar(total=len(timesteps)) as progress_bar:
             for i, t in enumerate(timesteps):
-                if t > skip_t:
-                    continue
-                else:
-                    if not entered:
-                        print(
-                            f"Continue DDIM with i = {i}, t = {t}, latent = {latents.shape}, device = {latents.device}, type = {latents.dtype}"
-                        )
-                        entered = True
-
-                latents = latents.detach()
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                with torch.no_grad():
-                    te = torch.cat(
-                        [
-                            text_embeddings[0:1, :, :].repeat(f, 1, 1),
-                            text_embeddings[1:2, :, :].repeat(f, 1, 1),
-                        ]
-                    )
-                    noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=te).sample.to(
-                        dtype=latents_dtype
-                    )
+                noise_pred = self.unet(
+                    latent_model_input,
+                    t,
+                    encoder_hidden_states=prompt_embeds,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                ).sample
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -261,66 +301,102 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
-                # latents = latents - alpha * grads / (torch.norm(grads) + 1e-10)
+
                 # call the callback, if provided
-
-                if i < len(timesteps) - 1 and timesteps[i + 1] == t0:
-                    x_t0_1 = latents.detach().clone()
-                    print(f"latent t0 found at i = {i}, t = {t}")
-                elif i < len(timesteps) - 1 and timesteps[i + 1] == t1:
-                    x_t1_1 = latents.detach().clone()
-                    print(f"latent t1 found at i={i}, t = {t}")
-
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
-
-        latents = rearrange_0(latents, f)
-
-        res = {"x0": latents.detach().clone()}
-        if x_t0_1 is not None:
-            x_t0_1 = rearrange_0(x_t0_1, f)
-            res["x_t0_1"] = x_t0_1.detach().clone()
-        if x_t1_1 is not None:
-            x_t1_1 = rearrange_0(x_t1_1, f)
-            res["x_t1_1"] = x_t1_1.detach().clone()
-        return res
-
-    def decode_latents(self, latents):
-        latents = 1 / 0.18215 * latents
-        latents = rearrange_1(latents)
-        video = self.vae.decode(latents).sample
-        video = torch.permute(video, (0, 2, 3, 1))
-        video = (video / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
-        video = video.cpu().float().numpy()
-        return video
+        return latents.clone().detach()
 
     @torch.no_grad()
     def __call__(
-        self,
-        prompt: Union[str, List[str]],
-        video_length: Optional[int] = 8,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-        num_inference_steps: int = 50,
-        guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        num_videos_per_prompt: Optional[int] = 1,
-        eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        motion_field_strength_x: float = 12,
-        motion_field_strength_y: float = 12,
-        output_type: Optional[str] = "tensor",
-        return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
-        use_motion_field: bool = True,
-        t0: int = 45,
-        t1: int = 48,
+            self,
+            prompt: Union[str, List[str]],
+            video_length: Optional[int] = 8,
+            height: Optional[int] = None,
+            width: Optional[int] = None,
+            num_inference_steps: int = 50,
+            guidance_scale: float = 7.5,
+            negative_prompt: Optional[Union[str, List[str]]] = None,
+            num_videos_per_prompt: Optional[int] = 1,
+            eta: float = 0.0,
+            generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+            latents: Optional[torch.FloatTensor] = None,
+            motion_field_strength_x: float = 12,
+            motion_field_strength_y: float = 12,
+            output_type: Optional[str] = "tensor",
+            return_dict: bool = True,
+            callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+            callback_steps: Optional[int] = 1,
+            t0: int = 44,
+            t1: int = 47,
     ):
+        """
+        Function invoked when calling the pipeline for generation.
+
+        Args:
+            prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
+                instead.
+            video_length (`int`, *optional*, defaults to 8): The number of generated video frames
+            height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
+                The height in pixels of the generated image.
+            width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
+                The width in pixels of the generated image.
+            num_inference_steps (`int`, *optional*, defaults to 50):
+                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                expense of slower inference.
+            guidance_scale (`float`, *optional*, defaults to 7.5):
+                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
+                `guidance_scale` is defined as `w` of equation 2. of [Imagen
+                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
+                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
+                usually at the expense of lower image quality.
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
+            num_videos_per_prompt (`int`, *optional*, defaults to 1):
+                The number of videos to generate per prompt.
+            eta (`float`, *optional*, defaults to 0.0):
+                Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
+                [`schedulers.DDIMScheduler`], will be ignored for others.
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
+                to make generation deterministic.
+            latents (`torch.FloatTensor`, *optional*):
+                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
+                generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
+                tensor will ge generated by sampling using the supplied random `generator`.
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generate image. Choose between
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
+                plain tuple.
+            callback (`Callable`, *optional*):
+                A function that will be called every `callback_steps` steps during inference. The function will be
+                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+            callback_steps (`int`, *optional*, defaults to 1):
+                The frequency at which the `callback` function will be called. If not specified, the callback will be
+                called at every step.
+            motion_field_strength_x (`float`, *optional*, defaults to 12):
+                Strength of motion in generated video along x-axis. See the [paper](https://arxiv.org/abs/2303.13439), Sect. 3.3.1.
+            motion_field_strength_y (`float`, *optional*, defaults to 12):
+                Strength of motion in generated video along y-axis. See the [paper](https://arxiv.org/abs/2303.13439), Sect. 3.3.1.
+            t0 (`int`, *optional*, defaults to 44):
+                Timestep t0. Should be in the range [0, num_inference_steps - 1]. See the [paper](https://arxiv.org/abs/2303.13439), Sect. 3.3.1.
+            t1 (`int`, *optional*, defaults to 47):
+                Timestep t0. Should be in the range [t0 + 1, num_inference_steps - 1]. See the [paper](https://arxiv.org/abs/2303.13439), Sect. 3.3.1.
+
+        Returns:
+            [`~pipelines.text_to_video_synthesis.TextToVideoPipelineOutput`]:
+                The output contains a ndarray of the generated images, when output_type != 'latent',
+                otherwise a latent codes of generated image,
+                and a list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
+                (nsfw) content, according to the `safety_checker`.
+        """
         assert video_length > 0
         frame_ids = list(range(video_length))
 
@@ -347,7 +423,7 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # Encode input prompt
-        text_embeddings = self._encode_prompt(
+        prompt_embeds = self._encode_prompt(
             prompt, device, num_videos_per_prompt, do_classifier_free_guidance, negative_prompt
         )
 
@@ -357,60 +433,25 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
 
         # Prepare latent variables
         num_channels_latents = self.unet.in_channels
-
         latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,
             num_channels_latents,
-            1,
             height,
             width,
-            text_embeddings.dtype,
+            prompt_embeds.dtype,
             device,
             generator,
             latents,
-        )
-        dtype = latents.dtype
-
-        # when motion field is not used, augment with random latent codes
-        if use_motion_field:
-            latents = latents[:, :, :1]
-        else:
-            if latents.shape[2] < video_length:
-                latents_missing = self.prepare_latents(
-                    batch_size * num_videos_per_prompt,
-                    num_channels_latents,
-                    video_length - latents.shape[2],
-                    height,
-                    width,
-                    text_embeddings.dtype,
-                    device,
-                    generator,
-                    None,
-                )
-                latents = torch.cat([latents, latents_missing], dim=2)
-
-        t0 = timesteps[-t0].item()
-        t1 = timesteps[-t1].item()
-
-        x_t1_1 = None
-
+            )
         # Prepare extra step kwargs.
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
-        # Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
 
-        shape = (batch_size, num_channels_latents, 1, height // self.vae_scale_factor, width // self.vae_scale_factor)
-
-        ddim_res = self.ddim_backward(
-            num_inference_steps=num_inference_steps,
-            timesteps=timesteps,
-            skip_t=1000,
-            t0=t0,
-            t1=t1,
-            do_classifier_free_guidance=do_classifier_free_guidance,
-            text_embeddings=text_embeddings,
-            latents_local=latents,
-            latents_dtype=dtype,
+        # Perform the first backward process up to time T_1
+        x_1_t1 = self.backward_loop(
+            timesteps=timesteps[:-t1-1],
+            prompt_embeds=prompt_embeds,
+            latents=latents,
             guidance_scale=guidance_scale,
             callback=callback,
             callback_steps=callback_steps,
@@ -418,71 +459,54 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
             num_warmup_steps=num_warmup_steps,
         )
 
-        x0 = ddim_res["x0"].detach()
+        # Perform the second backward process up to time T_0
+        x_1_t0 = self.backward_loop(
+            timesteps=timesteps[-t1-1:-t0-1],
+            prompt_embeds=prompt_embeds,
+            latents=x_1_t1,
+            guidance_scale=guidance_scale,
+            callback=callback,
+            callback_steps=callback_steps,
+            extra_step_kwargs=extra_step_kwargs,
+            num_warmup_steps=num_warmup_steps,
+        )
 
-        if "x_t0_1" in ddim_res:
-            x_t0_1 = ddim_res["x_t0_1"].detach()
-        if "x_t1_1" in ddim_res:
-            x_t1_1 = ddim_res["x_t1_1"].detach()
-        del ddim_res
-        del latents
+        # Propagate first frame latents at time T_0 to remaining frames
+        x_2k_t0 = x_1_t0.repeat(video_length - 1, 1, 1, 1)
 
-        if use_motion_field:
-            del x0
+        # Add motion in latents at time T_0
+        x_2k_t0 = create_motion_field_and_warp_latents(
+            motion_field_strength_x=motion_field_strength_x,
+            motion_field_strength_y=motion_field_strength_y,
+            latents=x_2k_t0,
+            frame_ids=frame_ids[1:],
+        )
 
-            x_t0_k = x_t0_1[:, :, :1, :, :].repeat(1, 1, video_length - 1, 1, 1)
+        # Perform forward process up to time T_1
+        x_2k_t1 = self.forward_loop(
+            x_t0=x_2k_t0,
+            t0=timesteps[-t0-1].item(),
+            t1=timesteps[-t1-1].item(),
+            generator=generator,
+        )
 
-            reference_flow, x_t0_k = create_motion_field_and_warp_latents(
-                motion_field_strength_x=motion_field_strength_x,
-                motion_field_strength_y=motion_field_strength_y,
-                latents=x_t0_k,
-                video_length=video_length,
-                frame_ids=frame_ids,
-            )
+        # Perform backward process from time T_1 to 0
+        x_1k_t1 = torch.cat([x_1_t1, x_2k_t1])
+        b, l, d = prompt_embeds.size()
+        prompt_embeds = prompt_embeds[:, None].repeat(1, video_length, 1, 1).reshape(b * video_length, l, d)
 
-            # assuming t0=t1=1000, if t0 = 1000
-            if t1 > t0:
-                x_t1_k = self.ddpm_forward(
-                    x0=x_t0_k,
-                    t0=t0,
-                    t_max=t1,
-                    device=device,
-                    shape=shape,
-                    text_embeddings=text_embeddings,
-                    generator=generator,
-                )
-            else:
-                x_t1_k = x_t0_k
-
-            if x_t1_1 is None:
-                raise Exception
-
-            x_t1 = torch.cat([x_t1_1, x_t1_k], dim=2).clone().detach()
-
-            ddim_res = self.ddim_backward(
-                num_inference_steps=num_inference_steps,
-                timesteps=timesteps,
-                skip_t=t1,
-                t0=-1,
-                t1=-1,
-                do_classifier_free_guidance=do_classifier_free_guidance,
-                text_embeddings=text_embeddings,
-                latents_local=x_t1,
-                latents_dtype=dtype,
-                guidance_scale=guidance_scale,
-                callback=callback,
-                callback_steps=callback_steps,
-                extra_step_kwargs=extra_step_kwargs,
-                num_warmup_steps=num_warmup_steps,
-            )
-
-            x0 = ddim_res["x0"].detach()
-            del ddim_res
-            del x_t1
-            del x_t1_1
-            del x_t1_k
-
-        latents = x0
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        x_1k_0 = self.backward_loop(
+            timesteps=timesteps[-t1-1:],
+            prompt_embeds=prompt_embeds,
+            latents=x_1k_t1,
+            guidance_scale=guidance_scale,
+            callback=callback,
+            callback_steps=callback_steps,
+            extra_step_kwargs=extra_step_kwargs,
+            num_warmup_steps=num_warmup_steps,
+        )
+        latents = x_1k_0
 
         # manually for max memory savings
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
@@ -494,9 +518,8 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
             has_nsfw_concept = None
         else:
             image = self.decode_latents(latents)
-
             # Run safety checker
-            image, has_nsfw_concept = self.run_safety_checker(image, device, text_embeddings.dtype)
+            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
