@@ -31,8 +31,8 @@ class TransformationModelOutput(ModelOutput):
     """
 
     projection_state: Optional[torch.FloatTensor] = None
-    # NEW add for m18
-    penultimate_hidden_state: torch.FloatTensor = None
+    # m18新加了一个返回参数
+    # penultimate_hidden_state: torch.FloatTensor = None
     last_hidden_state: torch.FloatTensor = None
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     attentions: Optional[Tuple[torch.FloatTensor]] = None
@@ -66,9 +66,11 @@ class RobertaSeriesModelWithTransformation(RobertaPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
         self.roberta = XLMRobertaModel(config)
-        self.transformation = nn.Linear(config.hidden_size, config.project_dim)
-        self.transformation_pre = nn.Linear(config.hidden_size, config.project_dim)
-        self.pre_LN = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.has_pre_transformation = config.has_pre_transformation
+        if self.has_pre_transformation:
+            self.transformation = nn.Linear(config.hidden_size, config.project_dim)
+            self.transformation_pre = nn.Linear(config.hidden_size, config.project_dim)
+            self.pre_LN = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.post_init()
 
     def forward(
@@ -89,32 +91,53 @@ class RobertaSeriesModelWithTransformation(RobertaPreTrainedModel):
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.base_model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            token_type_ids=token_type_ids,
-            position_ids=position_ids,
-            head_mask=head_mask,
-            inputs_embeds=inputs_embeds,
-            encoder_hidden_states=encoder_hidden_states,
-            encoder_attention_mask=encoder_attention_mask,
-            output_attentions=output_attentions,
-            # output_hidden_states=output_hidden_states,
-            output_hidden_states=True,
-            return_dict=return_dict,
-        )
+        if self.has_pre_transformation:
+            outputs = self.base_model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                token_type_ids=token_type_ids,
+                position_ids=position_ids,
+                head_mask=head_mask,
+                inputs_embeds=inputs_embeds,
+                encoder_hidden_states=encoder_hidden_states,
+                encoder_attention_mask=encoder_attention_mask,
+                output_attentions=output_attentions,
+                output_hidden_states=True,
+                return_dict=return_dict,
+            )
+        else:
+            outputs = self.base_model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                token_type_ids=token_type_ids,
+                position_ids=position_ids,
+                head_mask=head_mask,
+                inputs_embeds=inputs_embeds,
+                encoder_hidden_states=encoder_hidden_states,
+                encoder_attention_mask=encoder_attention_mask,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict,
+            )
 
         projection_state = self.transformation(outputs.last_hidden_state)
 
-        # New add for m18
-        sequence_output2 = outputs["hidden_states"][-2]
-        sequence_output2 = self.pre_LN(sequence_output2)
-        projection_state2 = self.transformation_pre(sequence_output2)
+        ### 这里m18新加的，需要拿出来倒二层的向量 ###
+        if self.has_pre_transformation:
+            sequence_output2 = outputs["hidden_states"][-2]
+            sequence_output2 = self.pre_LN(sequence_output2)
+            projection_state2 = self.transformation_pre(sequence_output2)
 
-        return TransformationModelOutput(
-            projection_state=projection_state,
-            penultimate_hidden_state=projection_state2,
-            last_hidden_state=outputs.last_hidden_state,
-            hidden_states=outputs.hidden_states,
-            attentions=outputs.attentions,
-        )
+            return TransformationModelOutput(
+                projection_state=projection_state2,
+                last_hidden_state=outputs.last_hidden_state,
+                hidden_states=outputs.hidden_states,
+                attentions=outputs.attentions,
+            )
+        else:
+            return TransformationModelOutput(
+                projection_state=projection_state,
+                last_hidden_state=outputs.last_hidden_state,
+                hidden_states=outputs.hidden_states,
+                attentions=outputs.attentions,
+            )

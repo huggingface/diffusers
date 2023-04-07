@@ -88,11 +88,8 @@ class AltDiffusionPipeline(DiffusionPipeline):
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
         requires_safety_checker: bool = True,
-        use_penultimate: bool = False,
     ):
         super().__init__()
-        # New add for m18
-        self.use_penultimate = use_penultimate
 
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
             deprecation_message = (
@@ -345,11 +342,11 @@ class AltDiffusionPipeline(DiffusionPipeline):
                 text_input_ids.to(device),
                 attention_mask=attention_mask,
             )
-            # m18 take the embedding from penultimate layer
-            if self.use_penultimate:
-                prompt_embeds = prompt_embeds["penultimate_hidden_state"]
-            else:
-                prompt_embeds = prompt_embeds[0]
+            # m18取得是倒二层的向量
+            # if self.use_penultimate:
+            #     prompt_embeds = prompt_embeds["penultimate_hidden_state"]
+            # else:
+            prompt_embeds = prompt_embeds[0]
 
         prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
 
@@ -397,11 +394,11 @@ class AltDiffusionPipeline(DiffusionPipeline):
                 uncond_input.input_ids.to(device),
                 attention_mask=attention_mask,
             )
-            # m18 take the embedding from penultimate layer
-            if self.use_penultimate:
-                negative_prompt_embeds = negative_prompt_embeds["penultimate_hidden_state"]
-            else:
-                negative_prompt_embeds = negative_prompt_embeds[0]
+            # m18取得是倒二层的向量
+            # if self.use_penultimate:
+            #     negative_prompt_embeds = negative_prompt_embeds['penultimate_hidden_state']
+            # else:
+            negative_prompt_embeds = negative_prompt_embeds[0]
 
         if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
