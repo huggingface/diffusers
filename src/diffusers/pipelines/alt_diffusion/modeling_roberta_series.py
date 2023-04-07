@@ -118,8 +118,6 @@ class RobertaSeriesModelWithTransformation(RobertaPreTrainedModel):
                 return_dict=return_dict,
             )
 
-        projection_state = self.transformation(outputs.last_hidden_state)
-
         if self.has_pre_transformation:
             sequence_output2 = outputs["hidden_states"][-2]
             sequence_output2 = self.pre_LN(sequence_output2)
@@ -132,6 +130,7 @@ class RobertaSeriesModelWithTransformation(RobertaPreTrainedModel):
                 attentions=outputs.attentions,
             )
         else:
+            projection_state = self.transformation(outputs.last_hidden_state)
             return TransformationModelOutput(
                 projection_state=projection_state,
                 last_hidden_state=outputs.last_hidden_state,
