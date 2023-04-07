@@ -558,10 +558,8 @@ class ControlNetModel(ModelMixin, ConfigMixin):
 
         # 6. scaling
         if guess_mode:
-            assert len(down_block_res_samples) == 12
-            # magic coeff number from:
-            # https://github.com/lllyasviel/ControlNet/blob/16ea3b5379c1e78a4bc8e3fc9cae8d65c42511b1/gradio_canny2image.py#L52
-            scales = [conditioning_scale * (0.825 ** float(12 - i)) for i in range(13)]
+            scales = torch.logspace(-1, 0, len(down_block_res_samples) + 1)  # 0.1 to 1.0
+            scales *= conditioning_scale
             down_block_res_samples = [sample * scale for sample, scale in zip(down_block_res_samples, scales)]
             mid_block_res_sample *= scales[-1]  # last one
         else:
