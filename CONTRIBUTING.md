@@ -394,8 +394,15 @@ passes. You should run the tests impacted by your changes like this:
  ```bash
  $ pytest tests/<TEST_TO_RUN>.py
  ```
+ 
+Before you run the tests, please make sure you install the dependencies required for testing. You can do so 
+with this command:
 
-You can also run the full suite with the following command, but it takes
+ ```bash
+ $ pip install -e ".[test]"
+ ```
+
+You can run the full test suite with the following command, but it takes
 a beefy machine to produce a result in a decent amount of time now that
 Diffusers has grown a lot. Here is the command for it:
 
