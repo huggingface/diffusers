@@ -831,6 +831,10 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
                 The outputs of the controlnet are multiplied by `controlnet_conditioning_scale` before they are added
                 to the residual in the original unet. If multiple ControlNets are specified in init, you can set the
                 corresponding scale as a list.
+            guess_mode (`bool`, *optional*, defaults to `False`):
+                In this mode, the ControlNet encoder will try best to recognize the content of the input image even if
+                you remove all prompts. The `guidance_scale` between 3.0 and 5.0 is recommended.
+
         Examples:
 
         Returns:
