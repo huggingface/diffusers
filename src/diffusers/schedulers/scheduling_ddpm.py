@@ -224,7 +224,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             variance = variance
         # for rl-diffuser https://arxiv.org/abs/2205.09991
         elif variance_type == "fixed_small_log":
-            variance = torch.log(variance, min=1e-20)
+            variance = torch.log(variance)
             variance = torch.exp(0.5 * variance)
         elif variance_type == "fixed_large":
             variance = current_beta_t
