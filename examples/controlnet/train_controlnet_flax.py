@@ -1086,6 +1086,8 @@ def main():
                 ignore_patterns=["step_*", "epoch_*"],
             )
 
+    logger.info("Finished training.")
+
 
 if __name__ == "__main__":
     main()
