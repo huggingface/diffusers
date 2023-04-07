@@ -380,6 +380,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         return DDIMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
 
+    # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.add_noise
     def add_noise(
         self,
         original_samples: torch.FloatTensor,
@@ -387,15 +388,15 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
-        self.alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
+        alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
         timesteps = timesteps.to(original_samples.device)
 
-        sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
+        sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = sqrt_alpha_prod.flatten()
         while len(sqrt_alpha_prod.shape) < len(original_samples.shape):
             sqrt_alpha_prod = sqrt_alpha_prod.unsqueeze(-1)
 
-        sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
+        sqrt_one_minus_alpha_prod = (1 - alphas_cumprod[timesteps]) ** 0.5
         sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
         while len(sqrt_one_minus_alpha_prod.shape) < len(original_samples.shape):
             sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.unsqueeze(-1)
@@ -403,19 +404,20 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
         return noisy_samples
 
+    # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.get_velocity
     def get_velocity(
         self, sample: torch.FloatTensor, noise: torch.FloatTensor, timesteps: torch.IntTensor
     ) -> torch.FloatTensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as sample
-        self.alphas_cumprod = self.alphas_cumprod.to(device=sample.device, dtype=sample.dtype)
+        alphas_cumprod = self.alphas_cumprod.to(device=sample.device, dtype=sample.dtype)
         timesteps = timesteps.to(sample.device)
 
-        sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
+        sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = sqrt_alpha_prod.flatten()
         while len(sqrt_alpha_prod.shape) < len(sample.shape):
             sqrt_alpha_prod = sqrt_alpha_prod.unsqueeze(-1)
 
-        sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
+        sqrt_one_minus_alpha_prod = (1 - alphas_cumprod[timesteps]) ** 0.5
         sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
         while len(sqrt_one_minus_alpha_prod.shape) < len(sample.shape):
             sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.unsqueeze(-1)
