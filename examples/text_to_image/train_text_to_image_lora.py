@@ -38,10 +38,18 @@ from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
+print("Setting path")
+import sys
+sys.path.append('/home/mp5847/src/diffusers/build/lib/d')
+sys.path.insert(0, '/home/mp5847/src/diffusers/build/lib/')
+
+
 import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
 from diffusers.loaders import AttnProcsLayers
 from diffusers.models.attention_processor import LoRAAttnProcessor
+print("Path of LoRAAttnProcessor")
+print(diffusers.__path__)
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available

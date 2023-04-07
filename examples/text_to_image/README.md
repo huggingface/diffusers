@@ -1,13 +1,59 @@
 # Stable Diffusion text-to-image fine-tuning
 
+## Model Editing
+### Generating finetuning data
+
+
+```bash
+python3 sampled_pretrained.py --model_pretrained "stabilityai/stable-diffusion-2" --prompts "chair" "dragon" --num_images 30 --output_dir "/scratch/mp5847/diffusers_generated_datasets" --create_metadata
+```
+
+The script above will generate 30 images with each of the prompt "chair" and "dragon" (60 total). The `--create_metadata` flag create a .jsonl file that is used for finetuning. The images will be stored in `/scratch/mp5847/diffusers_generated_datasets` .
+
+### Finetuning the model
+
+**Standard Finetuning**
+
+```bash
+export MODEL_NAME="stabilityai/stable-diffusion-2"
+export DATASET_NAME="/scratch/mp5847/diffusers_generated_datasets"
+
+accelerate launch --mixed_precision="fp16" train_text_to_image.py \
+  --pretrained_model_name_or_path=$MODEL_NAME \
+  --dataset_name="$DATASET_NAME" \
+  --use_ema \
+  --resolution=512 --center_crop --random_flip \
+  --train_batch_size=1 \
+  --gradient_accumulation_steps=4 \
+  --gradient_checkpointing \
+  --max_train_steps=15000 \
+  --learning_rate=1e-05 \
+  --max_grad_norm=1 \
+  --lr_scheduler="constant" --lr_warmup_steps=0 \
+  --checkpointing_steps=1000 \
+  --output_dir="/scratch/mp5847/diffusers_ckpt/" 
+```
+
+The script above is similar to the one below in the Pokemon example section. It will finetune your model on the generated images. The script is in `train.sh`. Please modify the flags based on your purpose before running the script.
+### Performing editing and then sampling ###
+
+Once you have finetuned your model, we use the script below to perform editing and then sampled from the edited model.
+
+```bash
+python3 sampled_edit.py --model_pretrained "stabilityai/stable-diffusion-2" --model_finetuned "/scratch/mp5847/diffusers_ckpt/" --tv_edit_alpha 0.65 --prompts "chair" "dragon" --num_images 30 --output_dir "/scratch/mp5847/diffusers_generated_datasets_edited"
+```
+
+The `--tv_edit_alpha` flag controls the strength of forgetting. It ranges between 0 and 1, where 0 means you are just using the original model and 1 means you are using the finetuned model.
+
+
+## Running locally with PyTorch
+
 The `train_text_to_image.py` script shows how to fine-tune stable diffusion model on your own dataset.
 
 ___Note___:
 
 ___This script is experimental. The script fine-tunes the whole model and often times the model overfits and runs into issues like catastrophic forgetting. It's recommended to try different hyperparamters to get the best result on your dataset.___
 
-
-## Running locally with PyTorch
 ### Installing the dependencies
 
 Before running the scripts, make sure to install the library's training dependencies:
