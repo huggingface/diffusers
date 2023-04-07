@@ -37,7 +37,6 @@ from diffusers.utils import floats_tensor, load_image, nightly, slow, torch_devi
 from diffusers.utils.testing_utils import load_numpy, require_torch_gpu
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint_legacy import preprocess_image
 
-
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
@@ -246,22 +245,24 @@ class StableDiffusionInpaintLegacyPipelineFastTests(unittest.TestCase):
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.Generator(device=device).manual_seed(0)
         images = sd_pipe(
-            [prompt]*2,
+            [prompt] * 2,
             generator=generator,
             guidance_scale=6.0,
             num_inference_steps=2,
             output_type="np",
             image=init_images_tens,
             mask_image=init_masks_tens,
-            ).images
+        ).images
 
         assert images.shape == (2, 32, 32, 3)
 
         image_slice_0 = images[0, -3:, -3:, -1].flatten()
         image_slice_1 = images[1, -3:, -3:, -1].flatten()
 
-        expected_slice_0 = np.array([[0.4328835,  0.45281428, 0.38207343, 0.45704383, 0.46973437, 0.4161349, 0.37636507, 0.45011833, 0.4460413]])
-        expected_slice_1 = np.array([[0.4873669,  0.45950648, 0.5203329,  0.6400243,  0.5441418,  0.551703, 0.6023108,  0.49404332, 0.4815712]])
+        expected_slice_0 = np.array(
+            [[0.4328835, 0.45281428, 0.38207343, 0.45704383, 0.46973437, 0.4161349, 0.37636507, 0.45011833, 0.4460413]])
+        expected_slice_1 = np.array(
+            [[0.4873669, 0.45950648, 0.5203329, 0.6400243, 0.5441418, 0.551703, 0.6023108, 0.49404332, 0.4815712]])
 
         assert np.abs(expected_slice_0 - image_slice_0).max() < 1e-4
         assert np.abs(expected_slice_1 - image_slice_1).max() < 1e-4
@@ -452,7 +453,7 @@ class StableDiffusionInpaintLegacyPipelineSlowTests(unittest.TestCase):
         mask = inputs['mask_image'].convert("L")
         mask = np.array(mask).astype(np.float32) / 255.0
         mask = torch.from_numpy(1 - mask)
-        masks = torch.vstack([mask[None][None]]*2)
+        masks = torch.vstack([mask[None][None]] * 2)
         inputs['mask_image'] = masks
 
         image = pipe(**inputs).images
@@ -461,8 +462,10 @@ class StableDiffusionInpaintLegacyPipelineSlowTests(unittest.TestCase):
         image_slice_0 = image[0, 253:256, 253:256, -1].flatten()
         image_slice_1 = image[1, 253:256, 253:256, -1].flatten()
 
-        expected_slice_0 = np.array([0.52093095, 0.4176447,  0.32752383, 0.6175223,  0.50563973, 0.36470804, 0.65460044, 0.5775188,  0.44332123])
-        expected_slice_1 = np.array([0.3592432,  0.4233033,  0.3914635,  0.31014425, 0.3702293,  0.39412856, 0.17526966, 0.2642669,  0.37480092])
+        expected_slice_0 = np.array(
+            [0.52093095, 0.4176447, 0.32752383, 0.6175223, 0.50563973, 0.36470804, 0.65460044, 0.5775188, 0.44332123])
+        expected_slice_1 = np.array(
+            [0.3592432, 0.4233033, 0.3914635, 0.31014425, 0.3702293, 0.39412856, 0.17526966, 0.2642669, 0.37480092])
 
         assert np.abs(expected_slice_0 - image_slice_0).max() < 1e-4
         assert np.abs(expected_slice_1 - image_slice_1).max() < 1e-4
