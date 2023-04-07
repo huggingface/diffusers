@@ -158,6 +158,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         conv_out_kernel: int = 3,
         projection_class_embeddings_input_dim: Optional[int] = None,
         class_embeddings_concat: bool = False,
+        mid_block_only_cross_attention: bool = False,
     ):
         super().__init__()
 
@@ -342,6 +343,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 resnet_groups=norm_num_groups,
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 skip_time_act=resnet_skip_time_act,
+                only_cross_attention=mid_block_only_cross_attention,
             )
         elif mid_block_type is None:
             self.mid_block = None

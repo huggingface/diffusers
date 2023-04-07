@@ -244,6 +244,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         conv_out_kernel: int = 3,
         projection_class_embeddings_input_dim: Optional[int] = None,
         class_embeddings_concat: bool = False,
+        mid_block_only_cross_attention: bool = False,
     ):
         super().__init__()
 
@@ -434,6 +435,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 resnet_groups=norm_num_groups,
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 skip_time_act=resnet_skip_time_act,
+                only_cross_attention=mid_block_only_cross_attention,
             )
         elif mid_block_type is None:
             self.mid_block = None
@@ -1476,6 +1478,7 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
         output_scale_factor=1.0,
         cross_attention_dim=1280,
         skip_time_act=False,
+        only_cross_attention=False,
     ):
         super().__init__()
 
@@ -1515,6 +1518,7 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
                     norm_num_groups=resnet_groups,
                     bias=True,
                     upcast_softmax=True,
+                    only_cross_attention=only_cross_attention,
                     processor=AttnAddedKVProcessor(),
                 )
             )
