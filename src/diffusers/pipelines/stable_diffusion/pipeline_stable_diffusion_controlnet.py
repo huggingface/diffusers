@@ -629,7 +629,16 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
             )
 
     def prepare_image(
-        self, image, width, height, batch_size, num_images_per_prompt, device, dtype, do_classifier_free_guidance
+        self,
+        image,
+        width,
+        height,
+        batch_size,
+        num_images_per_prompt,
+        device,
+        dtype,
+        do_classifier_free_guidance,
+        guess_mode,
     ):
         if not isinstance(image, torch.Tensor):
             if isinstance(image, PIL.Image.Image):
@@ -666,7 +675,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
 
         image = image.to(device=device, dtype=dtype)
 
-        if do_classifier_free_guidance:
+        if do_classifier_free_guidance and not guess_mode:
             image = torch.cat([image] * 2)
 
         return image
@@ -886,6 +895,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
                 device=device,
                 dtype=self.controlnet.dtype,
                 do_classifier_free_guidance=do_classifier_free_guidance,
+                guess_mode=guess_mode,
             )
         elif isinstance(self.controlnet, MultiControlNetModel):
             images = []
@@ -900,6 +910,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
                     device=device,
                     dtype=self.controlnet.dtype,
                     do_classifier_free_guidance=do_classifier_free_guidance,
+                    guess_mode=guess_mode,
                 )
 
                 images.append(image_)
@@ -937,15 +948,28 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # controlnet(s) inference
+                if guess_mode and do_classifier_free_guidance:
+                    # only use the cond batch for the controlnet
+                    controlnet_latent_model_input = latents
+                    controlnet_prompt_embeds = prompt_embeds.chunk(2)[1]
+                else:
+                    controlnet_latent_model_input = latent_model_input
+                    controlnet_prompt_embeds = prompt_embeds
+
                 down_block_res_samples, mid_block_res_sample = self.controlnet(
-                    latent_model_input,
+                    controlnet_latent_model_input,
                     t,
-                    encoder_hidden_states=prompt_embeds,
+                    encoder_hidden_states=controlnet_prompt_embeds,
                     controlnet_cond=image,
                     conditioning_scale=controlnet_conditioning_scale,
                     guess_mode=guess_mode,
                     return_dict=False,
                 )
+
+                if guess_mode and do_classifier_free_guidance:
+                    # fill zero to uncond batch
+                    down_block_res_samples = [torch.cat([torch.zeros_like(d), d]) for d in down_block_res_samples]
+                    mid_block_res_sample = torch.cat([torch.zeros_like(mid_block_res_sample), mid_block_res_sample])
 
                 # predict the noise residual
                 noise_pred = self.unet(
