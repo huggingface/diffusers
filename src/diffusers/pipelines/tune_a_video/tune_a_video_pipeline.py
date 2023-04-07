@@ -5,6 +5,7 @@ import inspect
 # from dataclasses import dataclass
 from typing import Callable, List, Optional, Union
 
+import numpy as np
 import torch
 
 # Remove this
@@ -29,6 +30,16 @@ from . import TuneAVideoPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+def tensor2vid(video: torch.Tensor) -> List[np.ndarray]:
+    i, c, f, h, w = video.shape
+    images = video.permute(2, 3, 0, 4, 1).reshape(
+        f, h, i * w, c
+    )  # 1st (frames, h, batch_size, w, c) 2nd (frames, h, batch_size * w, c)
+    images = images.unbind(dim=0)  # prepare a list of indvidual (consecutive frames)
+    images = [(image.cpu().numpy() * 255).astype("uint8") for image in images]  # f h w c
+    return images
 
 
 class TuneAVideoPipeline(DiffusionPipeline):
@@ -326,7 +337,7 @@ class TuneAVideoPipeline(DiffusionPipeline):
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
-        output_type: Optional[str] = "tensor",
+        output_type: Optional[str] = "np",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
@@ -406,11 +417,12 @@ class TuneAVideoPipeline(DiffusionPipeline):
         # Post-processing
         video = self.decode_latents(latents)
 
-        # Convert to tensor
-        if output_type == "tensor":
-            video = torch.from_numpy(video)
+        # output a video tensor if output_type is not np.
+        video = torch.from_numpy(video)
+        if output_type == "np":
+            video = tensor2vid(video)
 
         if not return_dict:
             return video
 
-        return TuneAVideoPipelineOutput(videos=video)
+        return TuneAVideoPipelineOutput(frames=video)
