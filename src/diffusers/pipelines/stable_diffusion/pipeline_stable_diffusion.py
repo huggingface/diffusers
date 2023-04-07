@@ -435,7 +435,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
         return image, has_nsfw_concept
 
     def decode_latents(self, latents):
-         warnings.warn(
+        warnings.warn(
             "The decode_latents method is deprecated and will be removed in a future version. Please"
             " use VaeImageProcessor instead",
             FutureWarning,

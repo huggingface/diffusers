@@ -21,7 +21,7 @@ import torch
 from PIL import Image
 
 from .configuration_utils import ConfigMixin, register_to_config
-from .utils import CONFIG_NAME, PIL_INTERPOLATION
+from .utils import deprecate, CONFIG_NAME, PIL_INTERPOLATION
 
 
 class VaeImageProcessor(ConfigMixin):
@@ -82,9 +82,17 @@ class VaeImageProcessor(ConfigMixin):
     @staticmethod
     def pt_to_numpy(images):
         """
-        Convert a numpy image to a pytorch tensor
+        Convert a pytorch tensor to a numpy image
         """
         images = images.cpu().permute(0, 2, 3, 1).float().numpy()
+        return images
+
+    def pt_to_pil(images):
+        """
+        Convert a pytorch tensor to a pil image
+        """
+        images = self.pt_to_numpy(images)
+        images = self.numpy_to_pil(images)
         return images
 
     @staticmethod
