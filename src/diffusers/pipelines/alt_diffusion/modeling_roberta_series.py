@@ -31,8 +31,6 @@ class TransformationModelOutput(ModelOutput):
     """
 
     projection_state: Optional[torch.FloatTensor] = None
-    # m18新加了一个返回参数
-    # penultimate_hidden_state: torch.FloatTensor = None
     last_hidden_state: torch.FloatTensor = None
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     attentions: Optional[Tuple[torch.FloatTensor]] = None
@@ -66,9 +64,9 @@ class RobertaSeriesModelWithTransformation(RobertaPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
         self.roberta = XLMRobertaModel(config)
+        self.transformation = nn.Linear(config.hidden_size, config.project_dim)
         self.has_pre_transformation = config.has_pre_transformation
         if self.has_pre_transformation:
-            self.transformation = nn.Linear(config.hidden_size, config.project_dim)
             self.transformation_pre = nn.Linear(config.hidden_size, config.project_dim)
             self.pre_LN = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.post_init()
@@ -122,7 +120,6 @@ class RobertaSeriesModelWithTransformation(RobertaPreTrainedModel):
 
         projection_state = self.transformation(outputs.last_hidden_state)
 
-        ### 这里m18新加的，需要拿出来倒二层的向量 ###
         if self.has_pre_transformation:
             sequence_output2 = outputs["hidden_states"][-2]
             sequence_output2 = self.pre_LN(sequence_output2)
