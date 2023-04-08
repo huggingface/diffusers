@@ -290,6 +290,13 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--snr_gamma",
+        type=float,
+        default=None,
+        help="SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. "
+        "More details here: https://arxiv.org/abs/2303.09556.",
+    )
+    parser.add_argument(
         "--dataloader_num_workers",
         type=int,
         default=0,
@@ -328,10 +335,9 @@ def parse_args():
     parser.add_argument(
         "--report_to",
         type=str,
-        default="tensorboard",
+        default="wandb",
         help=(
-            'The integration to report the results and logs to. Supported platforms are `"tensorboard"`'
-            ' (default), `"wandb"` and `"comet_ml"`. Use `"all"` to report to all integrations.'
+            'The integration to report the results and logs to. Currently only supported platforms are `"wandb"`'
         ),
     )
     parser.add_argument(
@@ -441,6 +447,12 @@ def parse_args():
             "Run validation every X steps. Validation consists of running the prompt"
             " `args.validation_prompt` and logging the images."
         ),
+    )
+    parser.agg_argument(
+        "--wandb_entity",
+        type=str,
+        default=None,
+        help=("The wandb entity to use (for teams).")
     )
     parser.add_argument(
         "--tracker_project_name",
@@ -668,6 +680,7 @@ def main():
     # wandb init
     if jax.process_index() == 0 and args.report_to == "wandb":
         wandb.init(
+            entity=args.wandb_entity,
             project=args.tracker_project_name,
             job_type="train",
             config=args,
@@ -806,6 +819,17 @@ def main():
     validation_rng, train_rngs = jax.random.split(rng)
     train_rngs = jax.random.split(train_rngs, jax.local_device_count())
 
+    def compute_snr(timesteps):
+        alphas_cumprod = noise_scheduler_state.common.alphas_cumprod
+        sqrt_alphas_cumprod = alphas_cumprod**0.5
+        sqrt_one_minus_alphas_cumprod = (1.0 - alphas_cumprod) ** 0.5
+
+        alpha = sqrt_alphas_cumprod[timesteps]
+        sigma = sqrt_one_minus_alphas_cumprod[timesteps]
+        # Compute SNR.
+        snr = (alpha / sigma) ** 2
+        return snr
+
     def train_step(state, unet_params, text_encoder_params, vae_params, batch, train_rng):
         # reshape batch, add grad_step_dim if gradient_accumulation_steps > 1
         if args.gradient_accumulation_steps > 1:
@@ -876,6 +900,12 @@ def main():
                 raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
             loss = (target - model_pred) ** 2
+
+            if args.snr_gamma is not None:
+                snr = jnp.array(compute_snr(timesteps))
+                snr_loss_weights = jnp.where(snr < args.snr_gamma, snr, jnp.ones_like(snr) * args.snr_gamma) / snr
+                loss = loss * snr_loss_weights
+            
             loss = loss.mean()
 
             return loss
