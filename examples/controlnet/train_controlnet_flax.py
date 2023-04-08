@@ -964,6 +964,9 @@ def main():
 
         metrics = {"loss": loss}
         metrics = jax.lax.pmean(metrics, axis_name="batch")
+        l2 = lambda xs: jnp.sqrt(sum([
+            jnp.vdot(x, x) for x in jax.tree_util.tree_leaves(xs)]))
+        metrics["l2_grads"] = l2(jax.tree_util.tree_leaves(grad))
 
         return new_state, metrics, new_train_rng
 
@@ -998,12 +1001,14 @@ def main():
 
     if jax.process_index() == 0 and args.report_to == "wandb":
         wandb.define_metric("*", step_metric="train/step")
+        wandb.define_metric("train/step", step_metric="walltime")
         wandb.config.update(
             {
                 "num_train_examples": args.max_train_samples if args.streaming else len(train_dataset),
                 "total_train_batch_size": total_train_batch_size,
                 "total_optimization_step": args.num_train_epochs * num_update_steps_per_epoch,
                 "num_devices": jax.device_count(),
+                "controlnet_params": sum(np.prod(x.shape) for x in jax.tree_util.tree_leaves(state.params)),
             }
         )
 
@@ -1034,6 +1039,7 @@ def main():
             disable=jax.process_index() > 0,
         )
         # train
+        t0, step0 = time.monotonic(), -1
         for step, batch in enumerate(train_dataloader):
             if args.profile_steps and step == 0:
                 jax.profiler.start_trace(args.output_dir)
@@ -1067,9 +1073,11 @@ def main():
                         {
                             "train/step": global_step,
                             "train/epoch": epoch,
+                            "train/steps_per_sec": (step - step0) / (time.monotonic() - t0),
                             **{f"train/{k}": v for k, v in train_metrics.items()},
                         }
                     )
+                t0, step0 = time.monotonic(), step
                 train_metrics = []
             if global_step % args.checkpointing_steps == 0 and jax.process_index() == 0:
                 controlnet.save_pretrained(
