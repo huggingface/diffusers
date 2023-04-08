@@ -78,7 +78,6 @@ def image_grid(imgs, rows, cols):
 
 def log_validation(controlnet, controlnet_params, tokenizer, args, rng, weight_dtype):
     logger.info("Running validation... ")
-    jax.profiler.save_device_memory_profile(f"memory_{int(time.time())}.prof")
 
     pipeline, params = FlaxStableDiffusionControlNetPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
@@ -215,6 +214,22 @@ def parse_args():
         "--from_pt",
         action="store_true",
         help="Load the pretrained model from a PyTorch checkpoint.",
+    )
+    parser.add_argument(
+        "--profile_steps",
+        type=int,
+        default=0,
+        help="How many training steps to profile in the beginning.",
+    )
+    parser.add_argument(
+        "--profile_validation",
+        action="store_true",
+        help="Whether to profile the (last) validation.",
+    )
+    parser.add_argument(
+        "--profile_memory",
+        action="store_true",
+        help="Whether to dump an initial (before training loop) and a final (at program end) memory profile.",
     )
     parser.add_argument(
         "--controlnet_revision",
@@ -994,6 +1009,8 @@ def main():
         position=0,
         disable=jax.process_index() > 0,
     )
+    if args.profile_memory:
+        jax.profiler.save_device_memory_profile(os.path.join(args.output_dir, "memory_initial.prof"))
     for epoch in epochs:
         # ======================== Training ================================
 
@@ -1012,7 +1029,12 @@ def main():
             disable=jax.process_index() > 0,
         )
         # train
-        for batch in train_dataloader:
+        for step, batch in enumerate(train_dataloader):
+            if args.profile_steps and step == 0:
+                jax.profiler.start_trace(args.output_dir)
+            elif args.profile_steps == step:
+                jax.profiler.stop_trace()
+
             batch = shard(batch)
             state, train_metric, train_rngs = p_train_step(
                 state, unet_params, text_encoder_params, vae_params, batch, train_rngs
@@ -1051,10 +1073,14 @@ def main():
         train_step_progress_bar.close()
         epochs.write(f"Epoch... ({epoch + 1}/{args.num_train_epochs} | Loss: {train_metric['loss']})")
 
-    # Create the pipeline using using the trained modules and save it.
+    # Final validation & store model.
     if jax.process_index() == 0:
         if args.validation_prompt is not None:
+            if args.profile_validation:
+                jax.profiler.start_trace(args.output_dir)
             image_logs = log_validation(controlnet, state.params, tokenizer, args, validation_rng, weight_dtype)
+            if args.profile_validation:
+                jax.profiler.stop_trace()
         else:
             image_logs = None
 
@@ -1077,6 +1103,8 @@ def main():
                 ignore_patterns=["step_*", "epoch_*"],
             )
 
+    if args.profile_memory:
+        jax.profiler.save_device_memory_profile(os.path.join(args.output_dir, "memory_final.prof"))
     logger.info("Finished training.")
 
 
