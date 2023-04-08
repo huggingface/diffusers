@@ -76,6 +76,7 @@ else:
         DDPMScheduler,
         DEISMultistepScheduler,
         DPMSolverMultistepScheduler,
+        DPMSolverSDEScheduler,
         DPMSolverSinglestepScheduler,
         EulerAncestralDiscreteScheduler,
         EulerDiscreteScheduler,
