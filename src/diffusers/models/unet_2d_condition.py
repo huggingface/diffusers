@@ -164,6 +164,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         projection_class_embeddings_input_dim: Optional[int] = None,
         class_embeddings_concat: bool = False,
         mid_block_only_cross_attention: Optional[bool] = None,
+        cross_attention_norm: Optional[str] = None,
     ):
         super().__init__()
 
@@ -323,6 +324,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 resnet_skip_time_act=resnet_skip_time_act,
                 resnet_out_scale_factor=resnet_out_scale_factor,
+                cross_attention_norm=cross_attention_norm,
             )
             self.down_blocks.append(down_block)
 
@@ -355,6 +357,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 skip_time_act=resnet_skip_time_act,
                 only_cross_attention=mid_block_only_cross_attention,
+                cross_attention_norm=cross_attention_norm,
             )
         elif mid_block_type is None:
             self.mid_block = None
@@ -406,6 +409,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 resnet_skip_time_act=resnet_skip_time_act,
                 resnet_out_scale_factor=resnet_out_scale_factor,
+                cross_attention_norm=cross_attention_norm,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel

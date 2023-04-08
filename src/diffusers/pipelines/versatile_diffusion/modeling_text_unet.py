@@ -250,6 +250,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         projection_class_embeddings_input_dim: Optional[int] = None,
         class_embeddings_concat: bool = False,
         mid_block_only_cross_attention: Optional[bool] = None,
+        cross_attention_norm: Optional[str] = None,
     ):
         super().__init__()
 
@@ -415,6 +416,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 resnet_skip_time_act=resnet_skip_time_act,
                 resnet_out_scale_factor=resnet_out_scale_factor,
+                cross_attention_norm=cross_attention_norm,
             )
             self.down_blocks.append(down_block)
 
@@ -447,6 +449,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 skip_time_act=resnet_skip_time_act,
                 only_cross_attention=mid_block_only_cross_attention,
+                cross_attention_norm=cross_attention_norm,
             )
         elif mid_block_type is None:
             self.mid_block = None
@@ -498,6 +501,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 resnet_skip_time_act=resnet_skip_time_act,
                 resnet_out_scale_factor=resnet_out_scale_factor,
+                cross_attention_norm=cross_attention_norm,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -1490,6 +1494,7 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
         cross_attention_dim=1280,
         skip_time_act=False,
         only_cross_attention=False,
+        cross_attention_norm=None,
     ):
         super().__init__()
 
@@ -1530,6 +1535,7 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
                     bias=True,
                     upcast_softmax=True,
                     only_cross_attention=only_cross_attention,
+                    cross_attention_norm=cross_attention_norm,
                     processor=AttnAddedKVProcessor(),
                 )
             )
