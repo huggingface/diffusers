@@ -23,6 +23,7 @@ pip install -e .
 Then cd in the example folder and run
 ```bash
 pip install -r requirements.txt
+pip install clip-retrieval 
 ```
 
 And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
