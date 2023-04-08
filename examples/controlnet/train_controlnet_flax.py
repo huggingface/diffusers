@@ -1042,6 +1042,7 @@ def main():
     )
     if args.profile_memory:
         jax.profiler.save_device_memory_profile(os.path.join(args.output_dir, "memory_initial.prof"))
+    t00 = time.monotonic()
     for epoch in epochs:
         # ======================== Training ================================
 
@@ -1092,6 +1093,7 @@ def main():
                     train_metrics = jax.tree_util.tree_map(lambda *m: jnp.array(m).mean(), *train_metrics)
                     wandb.log(
                         {
+                            "walltime": time.monotonic() - t00,
                             "train/step": global_step,
                             "train/epoch": epoch + (step + 1) / dataset_length,
                             "train/steps_per_sec": (step - step0) / (time.monotonic() - t0),
