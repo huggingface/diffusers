@@ -37,7 +37,8 @@ import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
-from huggingface_hub import create_repo, upload_folder
+from huggingface_hub import create_repo
+from huggingface_hub import HfApi
 from packaging import version
 from PIL import Image
 from torch.utils.data import Dataset
@@ -60,6 +61,7 @@ from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
+# sys.path.append('./')
 from model_pipeline import CustomDiffusionAttnProcessor, CustomDiffusionPipeline, set_use_memory_efficient_attention_xformers
 
 
@@ -85,8 +87,8 @@ def create_custom_diffusion(unet, freeze_model):
                 params.requires_grad = False
         else:
             raise ValueError(
-                    "freeze_model argument only supports crossattn_kv or crossattn"
-                )
+                "freeze_model argument only supports crossattn_kv or crossattn"
+            )
 
     # change attn class
     def change_attn(unet):
@@ -109,8 +111,8 @@ def freeze_params(params):
 
 def retrieve(class_prompt, class_images_dir, num_class_images):
     factor = 1.5
-    num_images = int(factor*num_class_images)
-    client = ClipClient(url="https://knn.laion.ai/knn-service", indice_name="laion_400m", num_images=num_images,  aesthetic_weight=0.1)
+    num_images = int(factor * num_class_images)
+    client = ClipClient(url="https://knn.laion.ai/knn-service", indice_name="laion_400m", num_images=num_images, aesthetic_weight=0.1)
 
     os.makedirs(f'{class_images_dir}/images', exist_ok=True)
     if len(list(Path(f'{class_images_dir}/images').iterdir())) >= num_class_images:
@@ -121,8 +123,8 @@ def retrieve(class_prompt, class_images_dir, num_class_images):
         if len(class_images) >= num_class_images or num_images > 1e4:
             break
         else:
-            num_images = int(factor*num_images)
-            client = ClipClient(url="https://knn.laion.ai/knn-service", indice_name="laion_400m", num_images=num_images,  aesthetic_weight=0.1)
+            num_images = int(factor * num_images)
+            client = ClipClient(url="https://knn.laion.ai/knn-service", indice_name="laion_400m", num_images=num_images, aesthetic_weight=0.1)
 
     count = 0
     total = 0
@@ -138,9 +140,9 @@ def retrieve(class_prompt, class_images_dir, num_class_images):
                     _ = Image.open(BytesIO(img.content))
                     with open(f'{class_images_dir}/images/{total}.jpg', 'wb') as f:
                         f.write(img.content)
-                    f1.write(images['caption']+'\n')
-                    f2.write(images['url']+'\n')
-                    f3.write(f'{class_images_dir}/images/{total}.jpg'+'\n')
+                    f1.write(images['caption'] + '\n')
+                    f2.write(images['url'] + '\n')
+                    f3.write(f'{class_images_dir}/images/{total}.jpg' + '\n')
                     total += 1
                     pbar.update(1)
                 else:
@@ -154,28 +156,28 @@ def save_model_card(repo_id: str, images=None, base_model=str, prompt=str, repo_
     img_str = ""
     for i, image in enumerate(images):
         image.save(os.path.join(repo_folder, f"image_{i}.png"))
-        img_str += f"![img_{i}](./image_{i}.png)\n"
+        img_str += f"./image_{i}.png\n"
 
     yaml = f"""
----
-license: creativeml-openrail-m
-base_model: {base_model}
-instance_prompt: {prompt}
-tags:
-- stable-diffusion
-- stable-diffusion-diffusers
-- text-to-image
-- diffusers
-- custom diffusion
-inference: true
----
-    """
+        ---
+        license: creativeml-openrail-m
+        base_model: {base_model}
+        instance_prompt: {prompt}
+        tags:
+        - stable-diffusion
+        - stable-diffusion-diffusers
+        - text-to-image
+        - diffusers
+        - custom diffusion
+        inference: true
+        ---
+            """
     model_card = f"""
-# Custom Diffusion - {repo_id}
+        # Custom Diffusion - {repo_id}
 
-These are Custom Diffusion adaption weights for {base_model}. The weights were trained on {prompt} using [Custom Diffusion](https://www.cs.cmu.edu/~custom-diffusion). You can find some example images in the following. \n
-{img_str}
-"""
+        These are Custom Diffusion adaption weights for {base_model}. The weights were trained on {prompt} using [Custom Diffusion](https://www.cs.cmu.edu/~custom-diffusion). You can find some example images in the following. \n
+        {img_str[0]}
+        """
     with open(os.path.join(repo_folder, "README.md"), "w") as f:
         f.write(yaml + model_card)
 
@@ -307,7 +309,7 @@ class CustomDiffusionDataset(Dataset):
         outer, inner = self.size, scale
         if scale > self.size:
             outer, inner = scale, self.size
-        top, left = np.random.randint(0, outer-inner+1), np.random.randint(0, outer-inner+1)
+        top, left = np.random.randint(0, outer - inner + 1), np.random.randint(0, outer - inner + 1)
         image = image.resize((scale, scale), resample=resample)
         image = np.array(image).astype(np.uint8)
         image = (image / 127.5 - 1.0).astype(np.float32)
@@ -330,10 +332,10 @@ class CustomDiffusionDataset(Dataset):
         instance_image = self.flip(instance_image)
 
         # apply resize augmentation and create a valid image region mask
-        random_scale = np.random.randint(self.size // 3, self.size+1) if np.random.uniform() < 0.66 else np.random.randint(int(1.2*self.size), int(1.4*self.size))
+        random_scale = np.random.randint(self.size // 3, self.size + 1) if np.random.uniform() < 0.66 else np.random.randint(int(1.2 * self.size), int(1.4 * self.size))
         instance_image, mask = self.preprocess(instance_image, random_scale, self.interpolation)
 
-        if random_scale < 0.6*self.size:
+        if random_scale < 0.6 * self.size:
             instance_prompt = np.random.choice(["a far away ", "very small "]) + instance_prompt
         elif random_scale > self.size:
             instance_prompt = np.random.choice(["zoomed in ", "close up "]) + instance_prompt
@@ -421,13 +423,13 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--num_validation_images",
         type=int,
-        default=4,
+        default=2,
         help="Number of images that should be generated during validation with `validation_prompt`.",
     )
     parser.add_argument(
-        "--validation_epochs",
+        "--validation_steps",
         type=int,
-        default=50,
+        default=500,
         help=(
             "Run dreambooth validation every X epochs. Dreambooth validation consists of running the prompt"
             " `args.validation_prompt` multiple times: `args.num_validation_images`."
@@ -737,7 +739,6 @@ def main(args):
         with open(args.concepts_list, "r") as f:
             args.concepts_list = json.load(f)
 
-
     # Generate class images if prior preservation is enabled.
     if args.with_prior_preservation:
         for i, concept in enumerate(args.concepts_list):
@@ -801,13 +802,20 @@ def main(args):
             os.makedirs(args.output_dir, exist_ok=True)
 
         if args.push_to_hub:
+            print(args.hub_model_id or Path(args.output_dir).name)
             repo_id = create_repo(
                 repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
-            ).repo_id
+            )
+            print(repo_id)
+            repo_id = args.hub_model_id
 
     # Load the tokenizer
     if args.tokenizer_name:
-        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, revision=args.revision, use_fast=False)
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.tokenizer_name,
+            revision=args.revision,
+            use_fast=False,
+        )
     elif args.pretrained_model_name_or_path:
         tokenizer = AutoTokenizer.from_pretrained(
             args.pretrained_model_name_or_path,
@@ -844,9 +852,10 @@ def main(args):
         weight_dtype = torch.bfloat16
 
     # Move unet, vae and text_encoder to device and cast to weight_dtype
-    unet.to(accelerator.device, dtype=weight_dtype)
+    if accelerator.mixed_precision != "fp16":
+        unet.to(accelerator.device, dtype=weight_dtype)
+        text_encoder.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
-    text_encoder.to(accelerator.device, dtype=weight_dtype)
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -875,7 +884,7 @@ def main(args):
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
         if args.with_prior_preservation:
-            args.learning_rate = args.learning_rate*2.
+            args.learning_rate = args.learning_rate * 2.
 
     # Use 8-bit Adam for lower memory usage or to fine-tune the model in 16GB GPUs
     if args.use_8bit_adam:
@@ -923,7 +932,7 @@ def main(args):
 
         # Initialise the newly added placeholder token with the embeddings of the initializer token
         token_embeds = text_encoder.get_input_embeddings().weight.data
-        for (x,y) in zip(modifier_token_id,initializer_token_id):
+        for (x, y) in zip(modifier_token_id, initializer_token_id):
             token_embeds[x] = token_embeds[y]
 
         # Freeze all parameters except for the token embeddings in text encoder
@@ -935,20 +944,20 @@ def main(args):
         freeze_params(params_to_freeze)
 
         if args.freeze_model == 'crossattn':
-            params_to_optimize = itertools.chain( text_encoder.get_input_embeddings().parameters() , [x[1] for x in unet.named_parameters() if 'attn2' in x[0]] )
+            params_to_optimize = itertools.chain(text_encoder.get_input_embeddings().parameters() , [x[1] for x in unet.named_parameters() if 'attn2' in x[0]])
         else:
-            params_to_optimize = itertools.chain( text_encoder.get_input_embeddings().parameters() , [x[1] for x in unet.named_parameters() if ('attn2.to_k' in x[0] or 'attn2.to_v' in x[0])] )
+            params_to_optimize = itertools.chain(text_encoder.get_input_embeddings().parameters() , [x[1] for x in unet.named_parameters() if ('attn2.to_k' in x[0] or 'attn2.to_v' in x[0])])
 
     ########################################################
     ########################################################
     else:
         if args.freeze_model == 'crossattn':
             params_to_optimize = (
-                itertools.chain([x[1] for x in unet.named_parameters() if 'attn2' in x[0]] ) 
+                itertools.chain([x[1] for x in unet.named_parameters() if 'attn2' in x[0]])
             )
         else:
             params_to_optimize = (
-                itertools.chain([x[1] for x in unet.named_parameters() if ('attn2.to_k' in x[0] or 'attn2.to_v' in x[0])] ) 
+                itertools.chain([x[1] for x in unet.named_parameters() if ('attn2.to_k' in x[0] or 'attn2.to_v' in x[0])])
             )
 
     # Optimizer creation
@@ -1101,7 +1110,7 @@ def main(args):
                     mask = torch.chunk(batch["mask"], 2, dim=0)[0]
                     # Compute instance loss
                     loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
-                    loss = ((loss*mask).sum([1, 2, 3])/mask.sum([1, 2, 3])).mean()
+                    loss = ((loss * mask).sum([1, 2, 3]) / mask.sum([1, 2, 3])).mean()
 
                     # Compute prior loss
                     prior_loss = F.mse_loss(model_pred_prior.float(), target_prior.float(), reduction="mean")
@@ -1111,7 +1120,7 @@ def main(args):
                 else:
                     mask = batch["mask"]
                     loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
-                    loss = ((loss*mask).sum([1, 2, 3])/mask.sum([1, 2, 3])).mean()
+                    loss = ((loss * mask).sum([1, 2, 3]) / mask.sum([1, 2, 3])).mean()
 
                 accelerator.backward(loss)
                 # Zero out the gradients for all token embeddings except the newly added
@@ -1130,7 +1139,7 @@ def main(args):
                 if accelerator.sync_gradients:
                     params_to_clip = (
                         itertools.chain([x[1] for x in unet.named_parameters() if ('attn2' in x[0])], text_encoder.parameters())
-                        if  args.modifier_token is not None
+                        if args.modifier_token is not None
                         else itertools.chain([x[1] for x in unet.named_parameters() if ('attn2' in x[0])]) 
                     )
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
@@ -1145,16 +1154,10 @@ def main(args):
 
                 if global_step % args.checkpointing_steps == 0:
                     if accelerator.is_main_process:
-                        pipeline = CustomDiffusionPipeline.from_pretrained(
-                            args.pretrained_model_name_or_path,
-                            unet=accelerator.unwrap_model(unet),
-                            text_encoder=accelerator.unwrap_model(text_encoder),
-                            revision=args.revision,
-                            modifier_token=args.modifier_token,
-                            modifier_token_id=modifier_token_id,
-                        )
-                        save_path = os.path.join(args.output_dir, f"delta-{global_step}.bin")
-                        pipeline.save_pretrained(save_path)
+                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                        accelerator.save_state(save_path)
+                        logger.info(f"Saved state to {save_path}")
+
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
@@ -1163,7 +1166,7 @@ def main(args):
                 break
 
         if accelerator.is_main_process:
-            if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
+            if args.validation_prompt is not None and global_step % args.validation_steps == 0:
                 logger.info(
                     f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
                     f" {args.validation_prompt}."
@@ -1185,7 +1188,7 @@ def main(args):
                 # run inference
                 generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
                 images = [
-                    pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
+                    pipeline(args.validation_prompt, num_inference_steps=25, generator=generator, eta=1.).images[0]
                     for _ in range(args.num_validation_images)
                 ]
 
@@ -1219,7 +1222,7 @@ def main(args):
             modifier_token=args.modifier_token,
             modifier_token_id=modifier_token_id,
         )
-        save_path = os.path.join(args.output_dir, f"delta.bin")
+        save_path = os.path.join(args.output_dir, "delta.bin")
         pipeline.save_pretrained(save_path)
 
         # run inference
@@ -1231,7 +1234,7 @@ def main(args):
             # run inference
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
             images = [
-                pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
+                pipeline(args.validation_prompt, num_inference_steps=25, generator=generator, eta=1.).images[0]
                 for _ in range(args.num_validation_images)
             ]
 
@@ -1257,11 +1260,12 @@ def main(args):
                 prompt=args.instance_prompt,
                 repo_folder=args.output_dir,
             )
-            upload_folder(
+            api = HfApi(token=args.hub_token)
+            api.upload_folder(
                 repo_id=repo_id,
                 folder_path=args.output_dir,
-                commit_message="End of training",
-                ignore_patterns=["step_*", "epoch_*"],
+                path_in_repo='.',
+                repo_type='model'
             )
 
     accelerator.end_training()
