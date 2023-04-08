@@ -22,6 +22,7 @@ from pathlib import Path
 import time
 
 import jax
+import jax.experimental.compilation_cache.compilation_cache as cc
 import jax.numpy as jnp
 import numpy as np
 import optax
@@ -230,6 +231,12 @@ def parse_args():
         "--profile_memory",
         action="store_true",
         help="Whether to dump an initial (before training loop) and a final (at program end) memory profile.",
+    )
+    parser.add_argument(
+        "--ccache",
+        type=str,
+        default=None,
+        help="Enables compilation cache.",
     )
     parser.add_argument(
         "--controlnet_revision",
@@ -1011,6 +1018,9 @@ def main():
                 "controlnet_params": sum(np.prod(x.shape) for x in jax.tree_util.tree_leaves(state.params)),
             }
         )
+
+    if args.ccache:
+        cc.initialize_cache(args.ccache)
 
     global_step = 0
     epochs = tqdm(
