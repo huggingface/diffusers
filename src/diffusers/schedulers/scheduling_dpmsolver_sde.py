@@ -340,10 +340,10 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
             min_sigma, max_sigma = self.sigmas[self.sigmas > 0].min(), self.sigmas.max()
             self.noise_sampler = BrownianTreeNoiseSampler(sample, min_sigma, max_sigma)
 
+        # Define functions to compute sigma and t from each other
         def sigma_fn(_t: torch.FloatTensor) -> torch.FloatTensor:
             return _t.neg().exp()
 
-        # Define functions to compute sigma and t from each other
         def t_fn(_sigma: torch.FloatTensor) -> torch.FloatTensor:
             return _sigma.log().neg()
 
@@ -351,7 +351,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
             sigma = self.sigmas[step_index]
             sigma_next = self.sigmas[step_index + 1]
         else:
-            # 2nd order / Heun's method
+            # 2nd order
             sigma = self.sigmas[step_index - 1]
             sigma_next = self.sigmas[step_index]
 
