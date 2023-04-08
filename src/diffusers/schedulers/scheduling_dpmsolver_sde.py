@@ -30,7 +30,7 @@ class BatchedBrownianTree:
         t0, t1, self.sign = self.sort(t0, t1)
         w0 = kwargs.get("w0", torch.zeros_like(x))
         if seed is None:
-            seed = torch.randint(0, 2 ** 63 - 1, []).item()
+            seed = torch.randint(0, 2**63 - 1, []).item()
         self.batched = True
         try:
             assert len(seed) == x.shape[0]
@@ -140,14 +140,14 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
 
     @register_to_config
     def __init__(
-            self,
-            num_train_timesteps: int = 1000,
-            beta_start: float = 0.00085,  # sensible defaults
-            beta_end: float = 0.012,
-            beta_schedule: str = "linear",
-            trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
-            prediction_type: str = "epsilon",
-            use_karras_sigmas: Optional[bool] = False,
+        self,
+        num_train_timesteps: int = 1000,
+        beta_start: float = 0.00085,  # sensible defaults
+        beta_end: float = 0.012,
+        beta_schedule: str = "linear",
+        trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
+        prediction_type: str = "epsilon",
+        use_karras_sigmas: Optional[bool] = False,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -156,7 +156,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
             self.betas = (
-                    torch.linspace(beta_start ** 0.5, beta_end ** 0.5, num_train_timesteps, dtype=torch.float32) ** 2
+                torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
             )
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
@@ -181,9 +181,9 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         return indices[pos].item()
 
     def scale_model_input(
-            self,
-            sample: torch.FloatTensor,
-            timestep: Union[float, torch.FloatTensor],
+        self,
+        sample: torch.FloatTensor,
+        timestep: Union[float, torch.FloatTensor],
     ) -> torch.FloatTensor:
         """
         Args:
@@ -197,14 +197,14 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
 
         sigma = self.sigmas[step_index]
         sigma_input = sigma if self.state_in_first_order else self.mid_point_sigma
-        sample = sample / ((sigma_input ** 2 + 1) ** 0.5)
+        sample = sample / ((sigma_input**2 + 1) ** 0.5)
         return sample
 
     def set_timesteps(
-            self,
-            num_inference_steps: int,
-            device: Union[str, torch.device] = None,
-            num_train_timesteps: Optional[int] = None,
+        self,
+        num_inference_steps: int,
+        device: Union[str, torch.device] = None,
+        num_train_timesteps: Optional[int] = None,
     ):
         """
         Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -313,12 +313,12 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         return self.sample is None
 
     def step(
-            self,
-            model_output: Union[torch.FloatTensor, np.ndarray],
-            timestep: Union[float, torch.FloatTensor],
-            sample: Union[torch.FloatTensor, np.ndarray],
-            return_dict: bool = True,
-            s_noise: float = 1.0,
+        self,
+        model_output: Union[torch.FloatTensor, np.ndarray],
+        timestep: Union[float, torch.FloatTensor],
+        sample: Union[torch.FloatTensor, np.ndarray],
+        return_dict: bool = True,
+        s_noise: float = 1.0,
     ) -> Union[SchedulerOutput, Tuple]:
         """
         Args:
@@ -365,8 +365,8 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
             pred_original_sample = sample - sigma_input * model_output
         elif self.config.prediction_type == "v_prediction":
             sigma_input = sigma if self.state_in_first_order else sigma_fn(s)
-            pred_original_sample = model_output * (-sigma_input / (sigma_input ** 2 + 1) ** 0.5) + (
-                    sample / (sigma_input ** 2 + 1)
+            pred_original_sample = model_output * (-sigma_input / (sigma_input**2 + 1) ** 0.5) + (
+                sample / (sigma_input**2 + 1)
             )
         elif self.config.prediction_type == "sample":
             raise NotImplementedError("prediction_type not implemented yet: sample")
@@ -383,11 +383,11 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
             if self.state_in_first_order:
                 sigma_from = sigma_fn(t)
                 sigma_to = sigma_fn(s)
-                sigma_up = min(sigma_to, (sigma_to ** 2 * (sigma_from ** 2 - sigma_to ** 2) / sigma_from ** 2) ** 0.5)
-                sigma_down = (sigma_to ** 2 - sigma_up ** 2) ** 0.5
+                sigma_up = min(sigma_to, (sigma_to**2 * (sigma_from**2 - sigma_to**2) / sigma_from**2) ** 0.5)
+                sigma_down = (sigma_to**2 - sigma_up**2) ** 0.5
                 ancestral_t = t_fn(sigma_down)
                 prev_sample = (sigma_fn(ancestral_t) / sigma_fn(t)) * sample - (
-                        t - ancestral_t
+                    t - ancestral_t
                 ).expm1() * pred_original_sample
                 prev_sample = prev_sample + self.noise_sampler(sigma_fn(t), sigma_fn(s)) * s_noise * sigma_up
 
@@ -399,13 +399,13 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
                 # 2nd order
                 sigma_from = sigma_fn(t)
                 sigma_to = sigma_fn(t_next)
-                sigma_up = min(sigma_to, (sigma_to ** 2 * (sigma_from ** 2 - sigma_to ** 2) / sigma_from ** 2) ** 0.5)
-                sigma_down = (sigma_to ** 2 - sigma_up ** 2) ** 0.5
+                sigma_up = min(sigma_to, (sigma_to**2 * (sigma_from**2 - sigma_to**2) / sigma_from**2) ** 0.5)
+                sigma_down = (sigma_to**2 - sigma_up**2) ** 0.5
 
                 ancestral_t_next = t_fn(sigma_down)
                 denoised_d = (1 - fac) * self.pred_original_sample + fac * pred_original_sample
                 prev_sample = (sigma_fn(ancestral_t_next) / sigma_fn(t)) * self.sample - (
-                        t - ancestral_t_next
+                    t - ancestral_t_next
                 ).expm1() * denoised_d
                 prev_sample = prev_sample + self.noise_sampler(sigma_fn(t), sigma_fn(t_next)) * s_noise * sigma_up
 
@@ -420,10 +420,10 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         return SchedulerOutput(prev_sample=prev_sample)
 
     def add_noise(
-            self,
-            original_samples: torch.FloatTensor,
-            noise: torch.FloatTensor,
-            timesteps: torch.FloatTensor,
+        self,
+        original_samples: torch.FloatTensor,
+        noise: torch.FloatTensor,
+        timesteps: torch.FloatTensor,
     ) -> torch.FloatTensor:
         # Make sure sigmas and timesteps have the same device and dtype as original_samples
         self.sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
