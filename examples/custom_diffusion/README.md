@@ -1,4 +1,5 @@
-# Custom Diffusion training example (modified from https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README.md)
+# Custom Diffusion training example 
+(modified from https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README.md)
 
 [Custom Diffusion](https://arxiv.org/abs/2212.04488) is a method to customize text2image models like stable diffusion given just a few(4~5) images of a subject.
 The `train.py` script shows how to implement the training procedure and adapt it for stable diffusion.
