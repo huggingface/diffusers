@@ -261,13 +261,12 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         def t_fn(_sigma):
             return -np.log(_sigma)
 
-        r = 0.5
-        timesteps = np.zeros_like(sigmas[:-1])
-        for i in range(len(sigmas) - 1):
-            t, t_next = t_fn(sigmas[i]), t_fn(sigmas[i + 1])
-            h = t_next - t
-            s = t + h * r
-            timesteps[i] = self._sigma_to_t(sigma_fn(s), log_sigmas)
+        midpoint_ratio = 0.5
+        t = t_fn(sigmas)
+        delta_time = np.diff(t)
+        t_proposed = t[:-1] + delta_time * midpoint_ratio
+        sig_proposed = sigma_fn(t_proposed)
+        timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sig_proposed])
         return timesteps
 
     # copied from diffusers.schedulers.scheduling_euler_discrete._sigma_to_t
@@ -324,10 +323,11 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         Args:
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
-            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model. timestep
-            (`int`): current discrete timestep in the diffusion chain. sample (`torch.FloatTensor` or `np.ndarray`):
-                current instance of sample being created by diffusion process.
-            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+        model_output (Union[torch.FloatTensor, np.ndarray]): Direct output from learned diffusion model.
+        timestep (Union[float, torch.FloatTensor]): Current discrete timestep in the diffusion chain.
+        sample (Union[torch.FloatTensor, np.ndarray]): Current instance of sample being created by diffusion process.
+        return_dict (bool, optional): Option for returning tuple rather than SchedulerOutput class. Defaults to True.
+        s_noise (float, optional): Scaling factor for the noise added to the sample. Defaults to 1.0.
         Returns:
             [`~schedulers.scheduling_utils.SchedulerOutput`] or `tuple`:
             [`~schedulers.scheduling_utils.SchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
@@ -335,14 +335,16 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         """
         step_index = self.index_for_timestep(timestep)
 
+        # Create a noise sampler if it hasn't been created yet
         if self.noise_sampler is None:
             min_sigma, max_sigma = self.sigmas[self.sigmas > 0].min(), self.sigmas.max()
             self.noise_sampler = BrownianTreeNoiseSampler(sample, min_sigma, max_sigma)
 
-        def sigma_fn(_t):
+        def sigma_fn(_t: torch.FloatTensor) -> torch.FloatTensor:
             return _t.neg().exp()
 
-        def t_fn(_sigma):
+        # Define functions to compute sigma and t from each other
+        def t_fn(_sigma: torch.FloatTensor) -> torch.FloatTensor:
             return _sigma.log().neg()
 
         if self.state_in_first_order:
@@ -353,18 +355,19 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
             sigma = self.sigmas[step_index - 1]
             sigma_next = self.sigmas[step_index]
 
-        r = 0.5
+        # Set the midpoint and step size for the current step
+        midpoint_ratio = 0.5
         t, t_next = t_fn(sigma), t_fn(sigma_next)
-        h = t_next - t
-        s = t + h * r
-        fac = 1 / (2 * r)
+        delta_time = t_next - t
+        t_proposed = t + delta_time * midpoint_ratio
+        fac = 1 / (2 * midpoint_ratio)
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
         if self.config.prediction_type == "epsilon":
-            sigma_input = sigma if self.state_in_first_order else sigma_fn(s)
+            sigma_input = sigma if self.state_in_first_order else sigma_fn(t_proposed)
             pred_original_sample = sample - sigma_input * model_output
         elif self.config.prediction_type == "v_prediction":
-            sigma_input = sigma if self.state_in_first_order else sigma_fn(s)
+            sigma_input = sigma if self.state_in_first_order else sigma_fn(t_proposed)
             pred_original_sample = model_output * (-sigma_input / (sigma_input**2 + 1) ** 0.5) + (
                 sample / (sigma_input**2 + 1)
             )
@@ -380,34 +383,34 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
             dt = sigma_next - sigma
             prev_sample = sample + derivative * dt
         else:
+
+            def get_ancestral_step(sigma_from, sigma_to):
+                up = min(sigma_to, (sigma_to**2 * (sigma_from**2 - sigma_to**2) / sigma_from**2) ** 0.5)
+                down = (sigma_to**2 - up**2) ** 0.5
+                return down, up, t_fn(down)
+
+            def get_prev_sample(input_latent, predicted_original_sample, anc_t, _t, _t_next, _sigma_up):
+                previous_sample = (sigma_fn(anc_t) / sigma_fn(_t)) * input_latent - (
+                    _t - anc_t
+                ).expm1() * predicted_original_sample
+                previous_sample = (
+                    previous_sample + self.noise_sampler(sigma_fn(_t), sigma_fn(_t_next)) * s_noise * _sigma_up
+                )
+                return previous_sample
+
             if self.state_in_first_order:
-                sigma_from = sigma_fn(t)
-                sigma_to = sigma_fn(s)
-                sigma_up = min(sigma_to, (sigma_to**2 * (sigma_from**2 - sigma_to**2) / sigma_from**2) ** 0.5)
-                sigma_down = (sigma_to**2 - sigma_up**2) ** 0.5
-                ancestral_t = t_fn(sigma_down)
-                prev_sample = (sigma_fn(ancestral_t) / sigma_fn(t)) * sample - (
-                    t - ancestral_t
-                ).expm1() * pred_original_sample
-                prev_sample = prev_sample + self.noise_sampler(sigma_fn(t), sigma_fn(s)) * s_noise * sigma_up
+                sigma_down, sigma_up, ancestral_t = get_ancestral_step(sigma_fn(t), sigma_fn(t_proposed))
+                prev_sample = get_prev_sample(sample, pred_original_sample, ancestral_t, t, t_proposed, sigma_up)
 
                 # store for 2nd order step
                 self.sample = sample
                 self.pred_original_sample = pred_original_sample
-                self.mid_point_sigma = sigma_fn(s)
+                self.mid_point_sigma = sigma_fn(t_proposed)
             else:
                 # 2nd order
-                sigma_from = sigma_fn(t)
-                sigma_to = sigma_fn(t_next)
-                sigma_up = min(sigma_to, (sigma_to**2 * (sigma_from**2 - sigma_to**2) / sigma_from**2) ** 0.5)
-                sigma_down = (sigma_to**2 - sigma_up**2) ** 0.5
-
-                ancestral_t_next = t_fn(sigma_down)
+                sigma_down, sigma_up, ancestral_t = get_ancestral_step(sigma_fn(t), sigma_fn(t_next))
                 denoised_d = (1 - fac) * self.pred_original_sample + fac * pred_original_sample
-                prev_sample = (sigma_fn(ancestral_t_next) / sigma_fn(t)) * self.sample - (
-                    t - ancestral_t_next
-                ).expm1() * denoised_d
-                prev_sample = prev_sample + self.noise_sampler(sigma_fn(t), sigma_fn(t_next)) * s_noise * sigma_up
+                prev_sample = get_prev_sample(self.sample, denoised_d, ancestral_t, t, t_next, sigma_up)
 
                 # free for "first order mode"
                 self.sample = None
