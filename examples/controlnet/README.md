@@ -340,12 +340,13 @@ We encourage you to store or share your model with the community. To use hugging
 huggingface-cli login
 ```
 
-Make sure you have the `MODEL_DIR`,`OUTPUT_DIR` and `HUB_MODEL_ID` environment variables set. The `OUTPUT_DIR` and `HUB_MODEL_ID` variables specify where to save the model to on the Hub:
+Make sure you have the `MODEL_DIR`,`OUTPUT_DIR` and `HUB_MODEL_ID` environment variables set. The `OUTPUT_DIR` and `HUB_MODEL_ID` variables specify where to save the model to on the Hub. The `TRACKER_PROJECT_NAME` variable sets the project name in `wandb`.
 
 ```bash
 export MODEL_DIR="runwayml/stable-diffusion-v1-5"
 export OUTPUT_DIR="runs/fill-circle-{timestamp}"
 export HUB_MODEL_ID="controlnet-fill-circle"
+export TRACKER_PROJECT_NAME='controlnet_fill50k'
 ```
 
 And finally start the training
@@ -355,6 +356,7 @@ python3 train_controlnet_flax.py \
  --pretrained_model_name_or_path=$MODEL_DIR \
  --output_dir=$OUTPUT_DIR \
  --dataset_name=fusing/fill50k \
+ --tracker_project_name="$TRACKER_PROJECT_NAME" \
  --resolution=512 \
  --learning_rate=1e-5 \
  --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
