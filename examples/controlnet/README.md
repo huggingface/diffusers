@@ -343,8 +343,8 @@ Make sure you have the `MODEL_DIR`,`OUTPUT_DIR` and `HUB_MODEL_ID` environment v
 
 ```bash
 export MODEL_DIR="runwayml/stable-diffusion-v1-5"
-export OUTPUT_DIR="control_out"
-export HUB_MODEL_ID="fill-circle-controlnet"
+export OUTPUT_DIR="runs/fill-circle-{timestamp}"
+export HUB_MODEL_ID="controlnet-fill-circle"
 ```
 
 And finally start the training

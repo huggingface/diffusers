@@ -251,8 +251,9 @@ def parse_args():
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="controlnet-model",
-        help="The output directory where the model predictions and checkpoints will be written.",
+        default="runs/{timestamp}",
+        help="The output directory where the model predictions and checkpoints will be written. "
+        "Can contain placeholders: {timestamp}.",
     )
     parser.add_argument(
         "--cache_dir",
@@ -467,6 +468,10 @@ def parse_args():
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
 
     args = parser.parse_args()
+    args.output_dir = args.output_dir.replace(
+        '{timestamp}', time.strftime('%Y%m%d_%H%M%S')
+    )
+
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
