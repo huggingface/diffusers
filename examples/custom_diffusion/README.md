@@ -46,7 +46,7 @@ write_basic_config()
 
 ### Cat example
 
-Now let's get our dataset. Download dataset from [here](https://www.cs.cmu.edu/~custom-diffusion/assets/data.zip). 
+Now let's get our dataset. Download dataset from [here](https://www.cs.cmu.edu/~custom-diffusion/assets/data.zip) and unzip it. 
 
 We also collect 200 real images using `clip-retrieval` which are combined with the target images in the training dataset. The real images are similar to the target concept, e.g., cat and prevent overfitting to the the given target cat. The following flags control the regularization loss `with_prior_preservation`, `real_prior`, `prior_loss_weight`, `class_prompt`, and `num_class_images`. The `class_prompt` should be the category name as the collected real images are with text captions similar to the `class_prompt`. The retrieved image are saved in `class_data_dir`. You can disable `real_prior` to use generated image as regularization.
 
