@@ -336,9 +336,7 @@ def parse_args():
         "--report_to",
         type=str,
         default="wandb",
-        help=(
-            'The integration to report the results and logs to. Currently only supported platforms are `"wandb"`'
-        ),
+        help=('The integration to report the results and logs to. Currently only supported platforms are `"wandb"`'),
     )
     parser.add_argument(
         "--mixed_precision",
@@ -448,12 +446,7 @@ def parse_args():
             " `args.validation_prompt` and logging the images."
         ),
     )
-    parser.agg_argument(
-        "--wandb_entity",
-        type=str,
-        default=None,
-        help=("The wandb entity to use (for teams).")
-    )
+    parser.agg_argument("--wandb_entity", type=str, default=None, help=("The wandb entity to use (for teams)."))
     parser.add_argument(
         "--tracker_project_name",
         type=str,
@@ -905,7 +898,7 @@ def main():
                 snr = jnp.array(compute_snr(timesteps))
                 snr_loss_weights = jnp.where(snr < args.snr_gamma, snr, jnp.ones_like(snr) * args.snr_gamma) / snr
                 loss = loss * snr_loss_weights
-            
+
             loss = loss.mean()
 
             return loss
