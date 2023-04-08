@@ -11,12 +11,13 @@ import argparse
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_pretrained', type=str, default="stabilityai/stable-diffusion-2", help='pretrained model')
-    parser.add_argument('--edit_prompt', nargs='+', type=str, help='edit prompt')
+    parser.add_argument('--prompts', nargs='+', type=str, help='edit prompt')
     parser.add_argument('--num_images', type=int, default=30, help='number of images')
     parser.add_argument('--output_dir', type=str, default="/scratch/mp5847/diffusers_ckpt/output", help='output directory')
     
     #create a store_true argument
     parser.add_argument('--create_metadata', action='store_true', help='if set, create json file with metadata')
+    parser.add_argument('--create_grid', action='store_true', help='if set, create grid of images')
 
     return parser.parse_args()
 
@@ -31,12 +32,12 @@ if __name__ == "__main__":
     os.makedirs(args.output_dir, exist_ok=True)
 
     print("Generating images of pretrained model")
-    print("Edit prompt: ", args.edit_prompt)
+    print("Edit prompt: ", args.prompts)
 
     if(args.create_metadata):
         metadata = []
 
-    for p in args.edit_prompt:
+    for p in args.prompts:
         for i in range(args.num_images):    
             while(True):
                 nsfw = save_image(pipe_pretrained, p, os.path.join(args.output_dir, f"{p}_{i}.png"))
@@ -51,8 +52,9 @@ if __name__ == "__main__":
             if(args.create_metadata):
                 metadata.append({'file_name': os.path.join(args.output_dir, f"{p}_{i}.png"), 'text': p})
     
-    for p in args.edit_prompt:
-        concat_images_in_square_grid(args.output_dir, p, os.path.join(args.output_dir, f"grid {p}.png"))
+    if(args.create_grid):
+        for p in args.prompts:
+            concat_images_in_square_grid(args.output_dir, p, os.path.join(args.output_dir, f"grid {p}.png"))
     
     if(args.create_metadata):
         

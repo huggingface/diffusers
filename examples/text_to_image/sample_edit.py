@@ -11,8 +11,8 @@ import argparse
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_pretrained', type=str, default="stabilityai/stable-diffusion-2", help='pretrained model')
-    parser.add_argument('--model_finetuned', type=str, default="/scratch/mp5847/diffusers_ckpt/elon musk", help='finetuned model')
-    parser.add_argument('--model_finetuned_lora', type=str, default="/scratch/mp5847/diffusers_ckpt/elon musk lora", help='finetuned model with lora layer')
+    parser.add_argument('--model_finetuned', type=str, default="", help='finetuned model')
+    parser.add_argument('--model_finetuned_lora', type=str, default="", help='finetuned model with lora layer')
     parser.add_argument('--prompts', nargs='+', type=str, help='list of prompts')
     parser.add_argument('--num_images', type=int, default=30, help='number of images')
     parser.add_argument('--output_dir', type=str, default="/scratch/mp5847/diffusers_ckpt/output", help='output directory')
@@ -33,6 +33,7 @@ if __name__ == "__main__":
     print("Edit prompt: ", args.prompts)
 
     if(args.model_finetuned != ""): #task vector edit
+        print("Sampling from standard finetuning edited model")
         pipe_finetuned = StableDiffusionPipeline.from_pretrained(args.model_finetuned, torch_dtype=torch.float16)
         pipe_finetuned.to("cuda")
 
@@ -52,13 +53,17 @@ if __name__ == "__main__":
         pipe_pretrained.unet = unet_edited
         pipe_finetuned = pipe_pretrained
 
+        os.remove("unet_pretrained.pt")
+        os.remove("unet_finetuned.pt")
+
     elif(args.model_finetuned_lora != ""):
+        print("Sampling from lora finetuning edited model")
         pipe_finetuned = StableDiffusionPipeline.from_pretrained(args.model_pretrained, torch_dtype=torch.float16)
         pipe_finetuned.unet.load_attn_procs(args.model_finetuned_lora)
         pipe_finetuned.to("cuda")
 
         #scale lora layer
-        for name, param in pipe_finetuned_lora.unet.named_parameters():
+        for name, param in pipe_finetuned.unet.named_parameters():
             if("_lora.up.weight" in name):
                 with torch.no_grad():
                     #flip the sign of the lora layer
@@ -80,5 +85,4 @@ if __name__ == "__main__":
         concat_images_in_square_grid(args.output_dir, p, os.path.join(args.output_dir, f"grid {p}.png"))
 
     print("Done!")
-    os.remove("unet_pretrained.pt")
-    os.remove("unet_finetuned.pt")
+    

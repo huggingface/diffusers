@@ -39,7 +39,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 
 print("Setting path")
 import sys
-sys.path.append('/home/mp5847/src/diffusers/build/lib/d')
+sys.path.append('/home/mp5847/src/diffusers/build/lib/')
 sys.path.insert(0, '/home/mp5847/src/diffusers/build/lib/')
 
 
