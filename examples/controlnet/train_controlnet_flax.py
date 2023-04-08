@@ -1093,7 +1093,7 @@ def main():
                     wandb.log(
                         {
                             "train/step": global_step,
-                            "train/epoch": epoch,
+                            "train/epoch": epoch + (step + 1) / dataset_length,
                             "train/steps_per_sec": (step - step0) / (time.monotonic() - t0),
                             **{f"train/{k}": v for k, v in train_metrics.items()},
                         }
