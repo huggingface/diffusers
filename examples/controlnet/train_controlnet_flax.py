@@ -1064,7 +1064,7 @@ def main():
         for step, batch in enumerate(train_dataloader):
             if args.profile_steps and step == 0:
                 jax.profiler.start_trace(args.output_dir)
-            elif args.profile_steps == step:
+            if args.profile_steps and args.profile_steps == step:
                 jax.profiler.stop_trace()
 
             batch = shard(batch)
