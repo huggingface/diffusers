@@ -1061,13 +1061,16 @@ def main():
 
             if global_step % args.logging_steps == 0 and jax.process_index() == 0:
                 if args.report_to == "wandb":
+                    train_metrics = jax_utils.unreplicate(train_metrics)
+                    train_metrics = jax.tree_util.tree_map(lambda *m: jnp.array(m).mean(), *train_metrics)
                     wandb.log(
                         {
                             "train/step": global_step,
                             "train/epoch": epoch,
-                            "train/loss": jax_utils.unreplicate(train_metric)["loss"],
+                            **{f"train/{k}": v for k, v in train_metrics.items()},
                         }
                     )
+                train_metrics = []
             if global_step % args.checkpointing_steps == 0 and jax.process_index() == 0:
                 controlnet.save_pretrained(
                     f"{args.output_dir}/{global_step}",
