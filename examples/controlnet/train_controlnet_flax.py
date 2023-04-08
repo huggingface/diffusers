@@ -1033,7 +1033,7 @@ def main():
     if args.ccache:
         cc.initialize_cache(args.ccache)
 
-    global_step = 0
+    global_step = step0 = 0
     epochs = tqdm(
         range(args.num_train_epochs),
         desc="Epoch ... ",
@@ -1042,7 +1042,7 @@ def main():
     )
     if args.profile_memory:
         jax.profiler.save_device_memory_profile(os.path.join(args.output_dir, "memory_initial.prof"))
-    t00 = time.monotonic()
+    t00 = t0 = time.monotonic()
     for epoch in epochs:
         # ======================== Training ================================
 
@@ -1061,17 +1061,17 @@ def main():
             disable=jax.process_index() > 0,
         )
         # train
-        t0, step0 = time.monotonic(), -1
-        for step, batch in enumerate(train_dataloader):
-            if args.profile_steps and step == 0:
+        for batch in train_dataloader:
+            if args.profile_steps and global_step == 0:
                 jax.profiler.start_trace(args.output_dir)
-            if args.profile_steps and args.profile_steps == step:
+            if args.profile_steps and args.profile_steps == global_step:
                 jax.profiler.stop_trace()
 
             batch = shard(batch)
-            state, train_metric, train_rngs = p_train_step(
-                state, unet_params, text_encoder_params, vae_params, batch, train_rngs
-            )
+            with jax.profiler.StepTraceAnnotation("train", step_num=global_step):
+                state, train_metric, train_rngs = p_train_step(
+                    state, unet_params, text_encoder_params, vae_params, batch, train_rngs
+                )
             train_metrics.append(train_metric)
 
             train_step_progress_bar.update(1)
@@ -1095,12 +1095,12 @@ def main():
                         {
                             "walltime": time.monotonic() - t00,
                             "train/step": global_step,
-                            "train/epoch": epoch + (step + 1) / dataset_length,
-                            "train/steps_per_sec": (step - step0) / (time.monotonic() - t0),
+                            "train/epoch": global_step / dataset_length,
+                            "train/steps_per_sec": (global_step - step0) / (time.monotonic() - t0),
                             **{f"train/{k}": v for k, v in train_metrics.items()},
                         }
                     )
-                t0, step0 = time.monotonic(), step
+                t0, step0 = time.monotonic(), global_step
                 train_metrics = []
             if global_step % args.checkpointing_steps == 0 and jax.process_index() == 0:
                 controlnet.save_pretrained(
