@@ -30,6 +30,7 @@ if __name__ == "__main__":
     pipe_pretrained.to(device)
 
     os.makedirs(args.output_dir, exist_ok=True)
+    os.makedirs(os.path.join(args.output_dir, "train"), exist_ok=True)
 
     print("Generating images of pretrained model")
     print("Edit prompt: ", args.prompts)
@@ -40,7 +41,7 @@ if __name__ == "__main__":
     for p in args.prompts:
         for i in range(args.num_images):    
             while(True):
-                nsfw = save_image(pipe_pretrained, p, os.path.join(args.output_dir, f"{p}_{i}.png"))
+                nsfw = save_image(pipe_pretrained, p, os.path.join(args.output_dir, f"train/{p}_{i}.png"))
                 
                 #check if nsfw is a list
                 if isinstance(nsfw, list):
@@ -50,7 +51,7 @@ if __name__ == "__main__":
                     break
             
             if(args.create_metadata):
-                metadata.append({'file_name': os.path.join(args.output_dir, f"{p}_{i}.png"), 'text': p})
+                metadata.append({'file_name': f"train/{p}_{i}.png", 'text': p})
     
     if(args.create_grid):
         for p in args.prompts:

@@ -1,5 +1,5 @@
 export MODEL_NAME="stabilityai/stable-diffusion-2"
-export DATASET_NAME="/scratch/mp5847/diffusers_generated_datasets/"
+export DATASET_NAME="/scratch/mp5847/diffusers_generated_datasets/van gogh"
 
 accelerate launch --mixed_precision="fp16" train_text_to_image.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
@@ -14,4 +14,4 @@ accelerate launch --mixed_precision="fp16" train_text_to_image.py \
   --max_grad_norm=1 \
   --lr_scheduler="constant" --lr_warmup_steps=0 \
   --checkpointing_steps=1000 \
-  --output_dir="/scratch/mp5847/diffusers_ckpt/" 
+  --output_dir="/scratch/mp5847/diffusers_ckpt/van gogh" 
