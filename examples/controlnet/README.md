@@ -363,7 +363,7 @@ python3 train_controlnet_flax.py \
  --revision="non-ema" \
  --from_pt \
  --report_to="wandb" \
- --max_train_steps=10000 \
+ --num_train_epochs=11 \
  --push_to_hub \
  --hub_model_id=$HUB_MODEL_ID
  ```
