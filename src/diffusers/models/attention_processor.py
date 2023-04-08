@@ -684,6 +684,7 @@ class SlicedAttnAddedKVProcessor:
 
 AttentionProcessor = Union[
     AttnProcessor,
+    AttnProcessor2_0,
     XFormersAttnProcessor,
     SlicedAttnProcessor,
     AttnAddedKVProcessor,
