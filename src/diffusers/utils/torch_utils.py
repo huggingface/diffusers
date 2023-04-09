@@ -17,7 +17,7 @@ PyTorch utilities: Utilities related to PyTorch
 from typing import List, Optional, Tuple, Union
 
 from . import logging
-from .import_utils import is_torch_available
+from .import_utils import is_torch_available, is_torch_version
 
 
 if is_torch_available():
@@ -68,3 +68,10 @@ def randn_tensor(
         latents = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype, layout=layout).to(device)
 
     return latents
+
+
+def is_compiled_module(module):
+    """Check whether the module was compiled with torch.compile()"""
+    if is_torch_version("<", "2.0.0") or not hasattr(torch, "_dynamo"):
+        return False
+    return isinstance(module, torch._dynamo.eval_frame.OptimizedModule)
