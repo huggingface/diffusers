@@ -201,7 +201,7 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         else:
             timesteps = torch.from_numpy(timesteps).to(device)
 
-        timesteps_interpol = self.sigma_to_t(sigmas_interpol).to(device)
+        timesteps_interpol = self.sigma_to_t(sigmas_interpol).to(device, dtype=timesteps.dtype)
         interleaved_timesteps = torch.stack((timesteps_interpol[:-2, None], timesteps[1:, None]), dim=-1).flatten()
 
         self.timesteps = torch.cat([timesteps[:1], interleaved_timesteps])
