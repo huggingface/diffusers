@@ -13,6 +13,7 @@
 
 import copy
 import inspect
+import warnings
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
@@ -372,18 +373,25 @@ class StableDiffusionModelEditingPipeline(DiffusionPipeline, TextualInversionLoa
         return prompt_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
-    def run_safety_checker(self, image, device, dtype):
-        if self.safety_checker is not None:
-            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
+    def run_safety_checker(self, image, device, dtype, output_type='pil'):
+        if self.safety_checker is None or output_type == "latent":
+            has_nsfw_concept = False
+        else:
+            image = self.image_processor.postprocess(image, output_type="pt")
+            feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
+            safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
             image, has_nsfw_concept = self.safety_checker(
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
-        else:
-            has_nsfw_concept = None
         return image, has_nsfw_concept
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
+        warnings.warn(
+            "The decode_latents method is deprecated and will be removed in a future version. Please"
+            " use VaeImageProcessor instead",
+            FutureWarning,
+        )
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
@@ -767,24 +775,12 @@ class StableDiffusionModelEditingPipeline(DiffusionPipeline, TextualInversionLoa
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
-        if output_type == "latent":
-            image = latents
-            has_nsfw_concept = None
-        elif output_type == "pil":
-            # 8. Post-processing
-            image = self.decode_latents(latents)
+        if not output_type == "latent":
+            image = self.vae.decode(latents / self.vae.config.scaling_factor).sample
 
-            # 9. Run safety checker
-            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+        image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype, output_type=output_type)
 
-            # 10. Convert to PIL
-            image = self.numpy_to_pil(image)
-        else:
-            # 8. Post-processing
-            image = self.decode_latents(latents)
-
-            # 9. Run safety checker
-            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+        image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import inspect
+import warnings
 from typing import Callable, List, Optional, Union
 
 import numpy as np
@@ -322,9 +323,16 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
+        warnings.warn(
+            "The decode_latents method is deprecated and will be removed in a future version. Please"
+            " use VaeImageProcessor instead",
+            FutureWarning,
+        )
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
+        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
     def check_inputs(
@@ -644,21 +652,12 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
                         callback(i, t, latents)
 
         # 10. Post-processing
-        if output_type not in ["latent", "pt", "np", "pil"]:
-            deprecation_message = (
-                f"the output_type {output_type} is outdated. Please make sure to set it to one of these instead: "
-                "`pil`, `np`, `pt`, `latent`"
-            )
-            deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
-            output_type = "np"
-
-        if output_type == "latent":
-            image = latents
-        else:
+        if not output_type == "latent":
             # make sure the VAE is in float32 mode, as it overflows in float16
             self.vae.to(dtype=torch.float32)
-            image = self.decode_latents(latents.float())
-            image = self.image_processor.postprocess(image, output_type=output_type)
+            image = self.vae.decode(latents / self.vae.config.scaling_factor).sample
+
+        image = self.image_processor.postprocess(image, output_type=output_type)
 
         if not return_dict:
             return (image,)

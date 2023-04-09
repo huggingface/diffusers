@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import inspect
+import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -579,19 +580,30 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         return prompt_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
-    def run_safety_checker(self, image, device, dtype):
-        feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
-        safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
-        image, has_nsfw_concept = self.safety_checker(
-            images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
-        )
+    def run_safety_checker(self, image, device, dtype, output_type='pil'):
+        if self.safety_checker is None or output_type == "latent":
+            has_nsfw_concept = False
+        else:
+            image = self.image_processor.postprocess(image, output_type="pt")
+            feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
+            safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
+            image, has_nsfw_concept = self.safety_checker(
+                images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
+            )
         return image, has_nsfw_concept
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
+        warnings.warn(
+            "The decode_latents method is deprecated and will be removed in a future version. Please"
+            " use VaeImageProcessor instead",
+            FutureWarning,
+        )
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
+        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
@@ -1040,28 +1052,12 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
-        if output_type not in ["latent", "pt", "np", "pil"]:
-            deprecation_message = (
-                f"the output_type {output_type} is outdated. Please make sure to set it to one of these instead: "
-                "`pil`, `np`, `pt`, `latent`"
-            )
-            deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
-            output_type = "np"
+        if not output_type == "latent":
+            image = self.vae.decode(latents / self.vae.config.scaling_factor).sample
 
-        if output_type == "latent":
-            image = latents
-            has_nsfw_concept = None
+        image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype, output_type=output_type)
 
-        else:
-            image = self.decode_latents(latents)
-
-            if self.safety_checker is not None:
-                image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
-            else:
-                has_nsfw_concept = False
-
-            image = self.image_processor.postprocess(image, output_type=output_type)
-
+        image = self.image_processor.postprocess(image, output_type=output_type)
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.final_offload_hook.offload()
@@ -1258,15 +1254,14 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         inverted_latents = latents.detach().clone()
 
         # 8. Post-processing
-        image = self.decode_latents(latents.detach())
+        if not output_type == "latent":
+            image = self.vae.decode(latents / self.vae.config.scaling_factor).sample
+
+        image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.final_offload_hook.offload()
-
-        # 9. Convert to PIL.
-        if output_type == "pil":
-            image = self.image_processor.postprocess(image, output_type="pil")
 
         if not return_dict:
             return (inverted_latents, image)
