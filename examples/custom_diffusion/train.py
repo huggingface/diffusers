@@ -120,7 +120,7 @@ def retrieve(class_prompt, class_images_dir, num_class_images):
 
     while True:
         class_images = client.query(text=class_prompt)
-        if len(class_images) >= num_class_images or num_images > 1e4:
+        if len(class_images) >= factor*num_class_images or num_images > 1e4:
             break
         else:
             num_images = int(factor * num_images)
@@ -259,11 +259,13 @@ class CustomDiffusionDataset(Dataset):
         with_prior_preservation=False,
         num_class_images=200,
         hflip=False,
+        aug=True,
     ):
         self.size = size
         self.center_crop = center_crop
         self.tokenizer = tokenizer
         self.interpolation = Image.BILINEAR
+        self.aug = aug
 
         self.instance_images_path = []
         self.class_images_path = []
@@ -332,7 +334,9 @@ class CustomDiffusionDataset(Dataset):
         instance_image = self.flip(instance_image)
 
         # apply resize augmentation and create a valid image region mask
-        random_scale = np.random.randint(self.size // 3, self.size + 1) if np.random.uniform() < 0.66 else np.random.randint(int(1.2 * self.size), int(1.4 * self.size))
+        random_scale = self.size
+        if self.aug:
+            random_scale = np.random.randint(self.size // 3, self.size + 1) if np.random.uniform() < 0.66 else np.random.randint(int(1.2 * self.size), int(1.4 * self.size))
         instance_image, mask = self.preprocess(instance_image, random_scale, self.interpolation)
 
         if random_scale < 0.6 * self.size:
@@ -647,6 +651,15 @@ def parse_args(input_args=None):
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
     parser.add_argument(
+        "--set_grads_to_none",
+        action="store_true",
+        help=(
+            "Save more memory by using setting grads to None instead of zero. Be aware, that this changes certain"
+            " behaviors, so disable this argument if it causes any problems. More info:"
+            " https://pytorch.org/docs/stable/generated/torch.optim.Optimizer.zero_grad.html"
+        ),
+    )
+    parser.add_argument(
         "--modifier_token",
         type=str,
         default=None,
@@ -656,6 +669,7 @@ def parse_args(input_args=None):
         "--initializer_token", type=str, default='ktn+pll+ucd', help="A token to use as initializer word."
     )
     parser.add_argument("--hflip", action="store_true", help="Apply horizontal flip data augmentation.")
+    parser.add_argument("--noaug", action="store_true", help="Dont apply augmentation during data augmentation when this flag is enabled.")
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -837,7 +851,6 @@ def main(args):
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
 
-    # We only train the additional adapter LoRA layers
     vae.requires_grad_(False)
     if args.modifier_token is None:
         text_encoder.requires_grad_(False)
@@ -977,7 +990,7 @@ def main(args):
         size=args.resolution,
         center_crop=args.center_crop,
         num_class_images=args.num_class_images,
-        hflip=args.hflip
+        hflip=args.hflip, aug=not args.noaug,
     )
 
     train_dataloader = torch.utils.data.DataLoader(
@@ -1145,7 +1158,7 @@ def main(args):
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
-                optimizer.zero_grad()
+                optimizer.zero_grad(set_to_none=args.set_grads_to_none)
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
@@ -1154,9 +1167,20 @@ def main(args):
 
                 if global_step % args.checkpointing_steps == 0:
                     if accelerator.is_main_process:
+                        pipeline = CustomDiffusionPipeline.from_pretrained(
+                            args.pretrained_model_name_or_path,
+                            unet=accelerator.unwrap_model(unet),
+                            text_encoder=accelerator.unwrap_model(text_encoder),
+                            tokenizer=tokenizer,
+                            revision=args.revision,
+                            modifier_token=args.modifier_token,
+                            modifier_token_id=modifier_token_id,
+                        )
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                        accelerator.save_state(save_path)
+                        pipeline.save_pretrained(save_path, all=True)
                         logger.info(f"Saved state to {save_path}")
+                        del pipeline
+                        torch.cuda.empty_cache()
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
@@ -1209,7 +1233,7 @@ def main(args):
                 del pipeline
                 torch.cuda.empty_cache()
 
-    # Save the lora layers
+    # Save the updated weights 
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         unet = unet.to(torch.float32)
@@ -1223,7 +1247,7 @@ def main(args):
             modifier_token_id=modifier_token_id,
         )
         save_path = os.path.join(args.output_dir, "delta.bin")
-        pipeline.save_pretrained(save_path)
+        pipeline.save_pretrained(save_path, freeze_model=args.freeze_model)
 
         # run inference
         if args.validation_prompt and args.num_validation_images > 0:

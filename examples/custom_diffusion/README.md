@@ -58,7 +58,7 @@ The `class_prompt` should be the category name same as target image. The collect
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export OUTPUT_DIR="path-to-save-model"
 export INSTANCE_DIR="./data/cat"
-## training script (2 GPUs recommended, requires 27 GB VRAM. Increase --max_train_steps to 500 if training on 1 GPU)
+## launch training script (2 GPUs recommended, increase --max_train_steps to 500 if 1 GPU, or increase --train_batch_size=4)
 
 accelerate launch train.py \
           --pretrained_model_name_or_path=$MODEL_NAME  \
@@ -88,12 +88,12 @@ Provide a [json](https://github.com/adobe-research/custom-diffusion/blob/main/as
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export OUTPUT_DIR="path-to-save-model"
 
-## launch training script (2 GPUs recommended, increase --max_train_steps to 1000 if 1 GPU)
+## launch training script (2 GPUs recommended, increase --max_train_steps to 1000 if 1 GPU, or increase --train_batch_size=4)
 
 accelerate launch train.py \
           --pretrained_model_name_or_path=$MODEL_NAME  \
           --output_dir=$OUTPUT_DIR \
-          --concepts_list=./assets/concept_list.json \
+          --concepts_list=./concept_list.json \
           --with_prior_preservation --real_prior --prior_loss_weight=1.0 \
           --resolution=512  \
           --train_batch_size=2  \
@@ -105,6 +105,35 @@ accelerate launch train.py \
           --modifier_token "<new1>+<new2>" 
 ```
 
+### Training on human faces
+
+For fine-tuning on human faces we found the following configuration to work better: `learning_rate=5e-6`, `max_train_steps=1000 to 2000`, and `freeze_model=crossattn` with atleast 15-20 images. 
+
+```bash
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export OUTPUT_DIR="path-to-save-model"
+export INSTANCE_DIR="path-to-images"
+
+## launch training script (2 GPUs recommended, increase --max_train_steps to 1000 if 1 GPU, or increase --train_batch_size=4)
+
+CUDA_VISIBLE_DEVICES=1 accelerate launch train.py \
+          --pretrained_model_name_or_path=$MODEL_NAME  \
+          --instance_data_dir=$INSTANCE_DIR \
+          --output_dir=$OUTPUT_DIR \
+          --class_data_dir=./real_reg/samples_person/ \
+          --with_prior_preservation --real_prior --prior_loss_weight=1.0 \
+          --class_prompt="person" --num_class_images=200 \
+          --instance_prompt="photo of a <new1> person"  \
+          --resolution=512  \
+          --train_batch_size=2  \
+          --learning_rate=5e-6  \
+          --lr_warmup_steps=0 \
+          --max_train_steps=1000 \
+          --scale_lr --hflip --noaug \
+          --freeze_model crossattn \
+          --modifier_token "<new1>" \
+          --enable_xformers_memory_efficient_attention \
+```
 
 ### Inference
 
@@ -116,7 +145,7 @@ import torch
 
 pipe = CustomDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16).to("cuda")
 pipe.load_model('<path-to-your-trained-model>/delta.bin')
-image = pipe("<new1> cat sitting in a bucket", num_inference_steps=50, guidance_scale=7.5, eta=1.).images[0]
+image = pipe("<new1> cat sitting in a bucket", num_inference_steps=100, guidance_scale=7.5, eta=1.).images[0]
 
 image.save("cat.png")
 ```
@@ -129,10 +158,23 @@ You can also perform inference from one of the complete checkpoint saved during 
 from diffusers import StableDiffusionPipeline
 import torch
 
-pipe = StableDiffusionPipeline.from_pretrained('<path-to-your-trained-model>/checkpoint-<step>', torch_dtype=torch.float16).to("cuda")
-image = pipe("<new1> cat sitting in a bucket", num_inference_steps=50, guidance_scale=7.5, eta=1.).images[0]
+pipe = StableDiffusionPipeline.from_pretrained('path-to-the-model/checkpoint-<global-step>/', torch_dtype=torch.float16).to("cuda")
+image = pipe("<new1> cat sitting in a bucket", num_inference_steps=100, guidance_scale=7.5, eta=1.).images[0]
 
 image.save("cat.png")
+```
+
+### Converting delta.bin to diffusers pipeline
+
+You can also perform inference from one of the complete checkpoint saved during the training process, if you used the `--checkpointing_steps` argument. 
+
+```python
+from model_pipeline import CustomDiffusionPipeline
+import torch
+
+pipe = CustomDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16).to("cuda")
+pipe.load_model('<path-to-your-trained-model>/delta.bin')
+pipe.save_pretrained('<path-to-your-save-model>', all=True)
 ```
 
 ### Set grads to none
