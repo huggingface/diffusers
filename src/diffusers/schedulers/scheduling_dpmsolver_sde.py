@@ -26,7 +26,7 @@ from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, Schedul
 class BatchedBrownianTree:
     """A wrapper around torchsde.BrownianTree that enables batches of entropy."""
 
-    def __init__(self, x, t0, t1, seed=33, **kwargs):
+    def __init__(self, x, t0, t1, seed=None, **kwargs):
         t0, t1, self.sign = self.sort(t0, t1)
         w0 = kwargs.get("w0", torch.zeros_like(x))
         if seed is None:
@@ -251,7 +251,6 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
 
         # empty first order variables
         self.sample = None
-        self.pred_original_sample = None
         self.mid_point_sigma = None
 
     def _second_order_timesteps(self, sigmas, log_sigmas):
@@ -360,7 +359,6 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         t, t_next = t_fn(sigma), t_fn(sigma_next)
         delta_time = t_next - t
         t_proposed = t + delta_time * midpoint_ratio
-        fac = 1 / (2 * midpoint_ratio)
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
         if self.config.prediction_type == "epsilon":
@@ -383,38 +381,28 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
             dt = sigma_next - sigma
             prev_sample = sample + derivative * dt
         else:
+            if self.state_in_first_order:
+                t_next = t_proposed
+            else:
+                sample = self.sample
 
-            def get_ancestral_step(sigma_from, sigma_to):
-                up = min(sigma_to, (sigma_to**2 * (sigma_from**2 - sigma_to**2) / sigma_from**2) ** 0.5)
-                down = (sigma_to**2 - up**2) ** 0.5
-                return down, up, t_fn(down)
-
-            def get_prev_sample(input_latent, predicted_original_sample, anc_t, _t, _t_next, _sigma_up):
-                previous_sample = (sigma_fn(anc_t) / sigma_fn(_t)) * input_latent - (
-                    _t - anc_t
-                ).expm1() * predicted_original_sample
-                previous_sample = (
-                    previous_sample + self.noise_sampler(sigma_fn(_t), sigma_fn(_t_next)) * s_noise * _sigma_up
-                )
-                return previous_sample
+            sigma_from = sigma_fn(t)
+            sigma_to = sigma_fn(t_next)
+            sigma_up = min(sigma_to, (sigma_to**2 * (sigma_from**2 - sigma_to**2) / sigma_from**2) ** 0.5)
+            sigma_down = (sigma_to**2 - sigma_up**2) ** 0.5
+            ancestral_t = t_fn(sigma_down)
+            prev_sample = (sigma_fn(ancestral_t) / sigma_fn(t)) * sample - (
+                t - ancestral_t
+            ).expm1() * pred_original_sample
+            prev_sample = prev_sample + self.noise_sampler(sigma_fn(t), sigma_fn(t_next)) * s_noise * sigma_up
 
             if self.state_in_first_order:
-                sigma_down, sigma_up, ancestral_t = get_ancestral_step(sigma_fn(t), sigma_fn(t_proposed))
-                prev_sample = get_prev_sample(sample, pred_original_sample, ancestral_t, t, t_proposed, sigma_up)
-
                 # store for 2nd order step
                 self.sample = sample
-                self.pred_original_sample = pred_original_sample
-                self.mid_point_sigma = sigma_fn(t_proposed)
+                self.mid_point_sigma = sigma_fn(t_next)
             else:
-                # 2nd order
-                sigma_down, sigma_up, ancestral_t = get_ancestral_step(sigma_fn(t), sigma_fn(t_next))
-                denoised_d = (1 - fac) * self.pred_original_sample + fac * pred_original_sample
-                prev_sample = get_prev_sample(self.sample, denoised_d, ancestral_t, t, t_next, sigma_up)
-
                 # free for "first order mode"
                 self.sample = None
-                self.pred_original_sample = None
                 self.mid_point_sigma = None
 
         if not return_dict:
