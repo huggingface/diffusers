@@ -561,9 +561,9 @@ class DiffusionPipeline(ConfigMixin):
                 f"It seems like you have activated model offloading by calling `enable_model_cpu_offload`, but are now manually moving the pipeline to GPU. It is strongly recommended against doing so as memory gains from offloading are likely to be lost. Offloading automatically takes care of moving the individual components {', '.join(self.components.keys())} to GPU when needed. To make sure offloading works as expected, you should consider moving the pipeline back to CPU: `pipeline.to('cpu')` or removing the move altogether if you use offloading."
             )
 
-        module_names, _, _ = self.extract_init_dict(dict(self.config))
+        module_names, _ = self._get_signature_keys(self)
         is_offloaded = pipeline_is_offloaded or pipeline_is_sequentially_offloaded
-        for name in module_names.keys():
+        for name in module_names:
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
                 module.to(torch_device, torch_dtype)
@@ -588,8 +588,8 @@ class DiffusionPipeline(ConfigMixin):
         Returns:
             `torch.device`: The torch device on which the pipeline is located.
         """
-        module_names, _, _ = self.extract_init_dict(dict(self.config))
-        for name in module_names.keys():
+        module_names, _ = self._get_signature_keys(self)
+        for name in module_names:
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
                 return module.device
