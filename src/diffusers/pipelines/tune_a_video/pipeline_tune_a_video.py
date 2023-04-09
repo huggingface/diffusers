@@ -275,14 +275,7 @@ class TuneAVideoPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
 
-    def _encode_prompt(
-        self,
-        prompt,
-        device,
-        num_videos_per_prompt,
-        do_classifier_free_guidance,
-        negative_prompt
-    ):  
+    def _encode_prompt(self, prompt, device, num_videos_per_prompt, do_classifier_free_guidance, negative_prompt):
         r"""
         Encodes the prompt into text encoder hidden states.
 
@@ -360,7 +353,7 @@ class TuneAVideoPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
             else:
                 uncond_tokens = negative_prompt
 
-             # textual inversion: procecss multi-vector tokens if necessary
+            # textual inversion: procecss multi-vector tokens if necessary
             if isinstance(self, TextualInversionLoaderMixin):
                 uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 

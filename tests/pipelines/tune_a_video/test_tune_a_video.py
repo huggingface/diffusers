@@ -66,7 +66,7 @@ class TuneAVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             attention_head_dim=4,
             use_linear_projection=False,
             conv_type="inflated_conv_3d",
-            use_temporal_transformer=False, 
+            use_temporal_transformer=False,
             use_temporal_conv=False,
             sub_blocks_type="3d",
         )
@@ -169,12 +169,12 @@ class TuneAVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 @skip_mps
 class TuneAVideoPipelineSlowTests(unittest.TestCase):
     def test_full_model(self):
-        #TODO: Add a test video to huggingface/
+        # TODO: Add a test video to huggingface/
         expected_video = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/text_to_video/video.npy"
         )
-        
-        #TODO: Add a model hosted on hf.co/showlab
+
+        # TODO: Add a model hosted on hf.co/showlab
         pipe = TuneAVideoPipeline.from_pretrained("NagaSaiAbhinay/tune-a-video-mo-di-bear-guitar-v1")
         pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
         pipe = pipe.to("cuda")
@@ -188,12 +188,12 @@ class TuneAVideoPipelineSlowTests(unittest.TestCase):
         assert np.abs(expected_video - video).mean() < 5e-2
 
     def test_two_step_model(self):
-        #TODO: Add a test video to huggingface/
+        # TODO: Add a test video to huggingface/
         expected_video = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/text_to_video/video_2step.npy"
         )
-        
-        #TODO: Add a model hosted on hf.co/showlab
+
+        # TODO: Add a model hosted on hf.co/showlab
         pipe = TuneAVideoPipeline.from_pretrained("NagaSaiAbhinay/tune-a-video-mo-di-bear-guitar-v1")
         pipe = pipe.to("cuda")
 

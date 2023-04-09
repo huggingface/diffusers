@@ -150,7 +150,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         conv_in_kernel = 3
         conv_out_kernel = 3
         conv_in_padding = (conv_in_kernel - 1) // 2
-        
+
         if conv_type == "inflated_conv_3d":
             self.conv_in = InflatedConv3d(
                 in_channels,

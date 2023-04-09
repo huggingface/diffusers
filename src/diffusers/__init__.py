@@ -40,6 +40,7 @@ else:
         PriorTransformer,
         T5FilmDecoder,
         Transformer2DModel,
+        Transformer3DModel,
         UNet1DModel,
         UNet2DConditionModel,
         UNet2DModel,
