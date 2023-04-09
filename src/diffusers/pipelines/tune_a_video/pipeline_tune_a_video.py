@@ -9,6 +9,7 @@ from packaging import version
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
+from ...loaders import TextualInversionLoaderMixin
 from ...models import AutoencoderKL
 from ...models.unet_3d_condition import UNet3DConditionModel
 from ...schedulers import (
@@ -73,7 +74,7 @@ def tensor2vid(video: torch.Tensor) -> List[np.ndarray]:
     return images
 
 
-class TuneAVideoPipeline(DiffusionPipeline):
+class TuneAVideoPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
     r"""
     Pipeline for text-to-video generation.
 
@@ -170,7 +171,7 @@ class TuneAVideoPipeline(DiffusionPipeline):
             scheduler=scheduler,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-    
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
         r"""
@@ -180,7 +181,7 @@ class TuneAVideoPipeline(DiffusionPipeline):
         steps. This is useful to save some memory and allow larger batch sizes.
         """
         self.vae.enable_slicing()
-    
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_slicing
     def disable_vae_slicing(self):
         r"""
@@ -188,7 +189,7 @@ class TuneAVideoPipeline(DiffusionPipeline):
         computing decoding in one step.
         """
         self.vae.disable_slicing()
-    
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_tiling
     def enable_vae_tiling(self):
         r"""
@@ -206,7 +207,7 @@ class TuneAVideoPipeline(DiffusionPipeline):
         computing decoding in one step.
         """
         self.vae.disable_tiling()
-    
+
     # Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synthesis.TextToVideoSDPipeline.enable_sequential_cpu_offload
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
@@ -229,7 +230,7 @@ class TuneAVideoPipeline(DiffusionPipeline):
         for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
             cpu_offload(cpu_offloaded_model, device)
 
-   # Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synthesis.TextToVideoSDPipeline.enable_model_cpu_offload
+    # Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synthesis.TextToVideoSDPipeline.enable_model_cpu_offload
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
@@ -254,7 +255,6 @@ class TuneAVideoPipeline(DiffusionPipeline):
 
         # We'll offload the last model manually.
         self.final_offload_hook = hook
-
 
     @property
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
@@ -282,8 +282,29 @@ class TuneAVideoPipeline(DiffusionPipeline):
         num_videos_per_prompt,
         do_classifier_free_guidance,
         negative_prompt
-    ):
+    ):  
+        r"""
+        Encodes the prompt into text encoder hidden states.
+
+        Args:
+            prompt (`str` or `List[str]`, *optional*):
+                prompt to be encoded
+            device: (`torch.device`):
+                torch device
+            num_videos_per_prompt (`int`):
+                number of videos that should be generated per prompt
+            do_classifier_free_guidance (`bool`):
+                whether to use classifier free guidance or not
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
+        """
         batch_size = len(prompt) if isinstance(prompt, list) else 1
+
+        # textual inversion: procecss multi-vector tokens if necessary
+        if isinstance(self, TextualInversionLoaderMixin):
+            prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
 
         text_inputs = self.tokenizer(
             prompt,
@@ -338,6 +359,10 @@ class TuneAVideoPipeline(DiffusionPipeline):
                 )
             else:
                 uncond_tokens = negative_prompt
+
+             # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 
             max_length = text_input_ids.shape[-1]
             uncond_input = self.tokenizer(
@@ -473,8 +498,8 @@ class TuneAVideoPipeline(DiffusionPipeline):
         output_type: Optional[str] = "np",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1
-    ):  
+        callback_steps: Optional[int] = 1,
+    ):
         r"""
         Function invoked when calling the pipeline for generation.
 
@@ -518,8 +543,8 @@ class TuneAVideoPipeline(DiffusionPipeline):
             output_type (`str`, *optional*, defaults to `"np"`):
                 The output format of the generate video. Choose between `torch.FloatTensor` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.tune_a_video.TuneAVideoPipelineOutput`] instead of a
-                plain tuple.
+                Whether or not to return a [`~pipelines.tune_a_video.TuneAVideoPipelineOutput`] instead of a plain
+                tuple.
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_steps` steps during inference. The function will be
                 called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
@@ -531,8 +556,8 @@ class TuneAVideoPipeline(DiffusionPipeline):
 
         Returns:
             [`~pipelines.stable_diffusion.TuneAVideoPipelineOutput`] or `tuple`:
-            [`~pipelines.stable_diffusion.TuneAVideoPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
-            When returning a tuple, the first element is a list with the generated frames.
+            [`~pipelines.stable_diffusion.TuneAVideoPipelineOutput`] if `return_dict` is True, otherwise a `tuple. When
+            returning a tuple, the first element is a list with the generated frames.
         """
         # Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
