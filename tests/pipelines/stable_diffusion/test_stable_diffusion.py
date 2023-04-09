@@ -40,7 +40,7 @@ from diffusers.utils import load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
 
 from ...models.test_models_unet_2d_condition import create_lora_layers
-from ...pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ...pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS
 from ...test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
@@ -51,7 +51,7 @@ class StableDiffusionPipelineFastTests(PipelineLatentTesterMixin, PipelineTester
     pipeline_class = StableDiffusionPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = frozenset([])
+    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
