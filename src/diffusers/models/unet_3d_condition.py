@@ -55,7 +55,7 @@ class UNet3DConditionOutput(BaseOutput):
 
 class UNet3DConditionModel(ModelMixin, ConfigMixin):
     r"""
-    UNet3DConditionModel is a conditional 2D UNet model that takes in a noisy sample, conditional state, and a timestep
+    UNet3DConditionModel is a conditional 3D UNet model that takes in a noisy sample, conditional state, and a timestep
     and returns sample shaped output.
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods the library
@@ -66,9 +66,12 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
             Height and width of input/output sample.
         in_channels (`int`, *optional*, defaults to 4): The number of channels in the input sample.
         out_channels (`int`, *optional*, defaults to 4): The number of channels in the output.
-        down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
+        center_input_sample (`bool`, *optional*, defaults to False): #TODO
+        flip_sin_to_cos: bool = True,
+        freq_shift: int = 0,
+        down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlock3D", "CrossAttnDownBlock3D", "CrossAttnDownBlock3D", "DownBlock3D")`):
             The tuple of downsample blocks to use.
-        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D",)`):
+        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D",)`):
             The tuple of upsample blocks to use.
         block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each block.
@@ -113,15 +116,15 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         cross_attention_dim: int = 1024,
         attention_head_dim: Union[int, Tuple[int]] = 64,
         dual_cross_attention: bool = False,
-        use_linear_projection: bool = True,  # Use default as True for text2videoSD
+        use_linear_projection: bool = True,
         class_embed_type: Optional[str] = None,
         num_class_embeds: Optional[int] = None,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
-        conv_type: str = None,  # Use inflated_conv_3d for TuneAVideo,
-        use_temporal_transformer: bool = True,  # Use false for TuneAVideo
-        use_temporal_conv: bool = True,  # Use false for TuneAVideo
-        sub_blocks_type: str = "2d",  # Use 2d for ResNet2D, Transformer2D blocks in DownBlock3D. This is in TuneAVideo
+        conv_type: str = None,
+        use_temporal_transformer: bool = True,
+        use_temporal_conv: bool = True,
+        sub_blocks_type: str = "2d",
     ):
         super().__init__()
 
@@ -147,7 +150,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         conv_in_kernel = 3
         conv_out_kernel = 3
         conv_in_padding = (conv_in_kernel - 1) // 2
-        # TODO: pass 'inflated_conv_3d' for Text2Video
+        
         if conv_type == "inflated_conv_3d":
             self.conv_in = InflatedConv3d(
                 in_channels,
@@ -170,7 +173,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
             act_fn=act_fn,
         )
 
-        # TODO: use_temporal_transformer is True for Text2VideoSD
         if use_temporal_transformer:
             self.transformer_in = TransformerTemporalModel(
                 num_attention_heads=8,
@@ -250,7 +252,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
                 upcast_attention=upcast_attention,
                 use_temporal_transformer=use_temporal_transformer,
                 use_temporal_conv=use_temporal_conv,
-                sub_blocks_type=sub_blocks_type,  # 2d for Text2VideoSD. #3d for TuneAVideo
+                sub_blocks_type=sub_blocks_type,
             )
         else:
             raise ValueError(f"unknown mid_block_type : {mid_block_type}")
@@ -313,7 +315,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
             self.conv_act = None
 
         conv_out_padding = (conv_out_kernel - 1) // 2
-        # TODO: Verify for TuneAVideo
+
         if conv_type == "inflated_conv_3d":
             self.conv_out = InflatedConv3d(
                 block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
