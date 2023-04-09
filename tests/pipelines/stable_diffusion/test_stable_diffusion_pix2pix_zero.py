@@ -34,7 +34,7 @@ from diffusers.utils import load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import load_image, load_pt, require_torch_gpu, skip_mps
 
 from ...pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
-from ...test_pipelines_common import PipelineTesterMixin, PipelineLatentTesterMixin
+from ...test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -45,7 +45,9 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineLatentTesterMixin, Pip
     pipeline_class = StableDiffusionPix2PixZeroPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
-    image_params = frozenset([]) # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess 
+    image_params = frozenset(
+        []
+    )  # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
 
     @classmethod
     def setUpClass(cls):

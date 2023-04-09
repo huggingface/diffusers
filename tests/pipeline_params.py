@@ -22,7 +22,7 @@ TEXT_TO_IMAGE_PARAMS = frozenset(
 
 TEXT_TO_IMAGE_BATCH_PARAMS = frozenset(["prompt", "negative_prompt"])
 
-TEXT_TO_IMAGE_IMAGE_PARAMS = frozenset([]) 
+TEXT_TO_IMAGE_IMAGE_PARAMS = frozenset([])
 
 IMAGE_TO_IMAGE_IMAGE_PARAMS = frozenset(["image"])
 

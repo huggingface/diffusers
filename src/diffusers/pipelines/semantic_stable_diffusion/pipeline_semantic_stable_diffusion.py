@@ -11,7 +11,7 @@ from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
 from ...pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import deprecate, logging, randn_tensor
+from ...utils import logging, randn_tensor
 from . import SemanticStableDiffusionPipelineOutput
 
 
@@ -135,7 +135,7 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
-    def run_safety_checker(self, image, device, dtype, output_type='pil'):
+    def run_safety_checker(self, image, device, dtype, output_type="pil"):
         if self.safety_checker is None or output_type == "latent":
             has_nsfw_concept = False
         else:
@@ -704,7 +704,9 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline):
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor).sample
 
-        image, has_nsfw_concept = self.run_safety_checker(image, self.device, text_embeddings.dtype, output_type=output_type)
+        image, has_nsfw_concept = self.run_safety_checker(
+            image, self.device, text_embeddings.dtype, output_type=output_type
+        )
 
         image = self.image_processor.postprocess(image, output_type=output_type)
 

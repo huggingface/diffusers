@@ -29,7 +29,7 @@ from diffusers import (
 from diffusers.utils import slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 
-from ...pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS
+from ...pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ...test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 

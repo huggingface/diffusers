@@ -13,8 +13,8 @@
 # limitations under the License.
 
 import inspect
-import warnings
 import math
+import warnings
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
@@ -28,7 +28,6 @@ from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention_processor import Attention
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
-    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     logging,

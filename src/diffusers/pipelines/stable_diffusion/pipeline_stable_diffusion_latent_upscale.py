@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import warnings
 from typing import Callable, List, Optional, Union
 
-import warnings
 import numpy as np
 import PIL
 import torch
@@ -24,7 +24,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import EulerDiscreteScheduler
-from ...utils import deprecate, is_accelerate_available, logging, randn_tensor
+from ...utils import is_accelerate_available, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 

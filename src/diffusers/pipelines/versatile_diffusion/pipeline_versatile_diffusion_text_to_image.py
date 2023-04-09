@@ -23,7 +23,7 @@ from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTo
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, Transformer2DModel, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import deprecate, is_accelerate_available, logging, randn_tensor
+from ...utils import is_accelerate_available, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .modeling_text_unet import UNetFlatConditionModel
 
