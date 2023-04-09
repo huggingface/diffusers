@@ -27,13 +27,14 @@ def to_np(tensor):
 
     return tensor
 
+
 class PipelineLatentTesterMixin:
-        """
+    """
     This mixin is designed to be used with PipelineTesterMixin and unittest.TestCase classes.
     It provides a set of common tests for PyTorch pipeline that has vae, e.g.
     equivalence of different input and output types, etc.
     """
-    
+
     @property
     def image_params(self) -> frozenset:
         raise NotImplementedError(
@@ -41,8 +42,7 @@ class PipelineLatentTesterMixin:
             "`image_params` are tested for if all accepted input image types (i.e. `pt`,`pil`,`np`) are producing same results"
         )
 
-    def get_dummy_inputs_by_type(self, device, seed=0, input_image_type='pt', output_type='np'):
-        
+    def get_dummy_inputs_by_type(self, device, seed=0, input_image_type="pt", output_type="np"):
         inputs = self.get_dummy_inputs(device, seed)
 
         def convert_pt_to_type(image, input_image_type):
@@ -51,7 +51,8 @@ class PipelineLatentTesterMixin:
             elif input_image_type == "np":
                 input_image = VaeImageProcessor.pt_to_numpy(image)
             elif input_image_type == "pil":
-                input_image = VaeImageProcessor.pt_to_pil(image)
+                input_image = VaeImageProcessor.pt_to_numpy(image)
+                input_image = VaeImageProcessor.numpy_to_pil(input_image)
             else:
                 raise ValueError(f"unsupported input_image_type {input_image_type}.")
             return input_image
@@ -59,8 +60,8 @@ class PipelineLatentTesterMixin:
         for image_param in self.image_params:
             if image_param in inputs.keys():
                 inputs[image_param] = convert_pt_to_type(inputs[image_param], input_image_type)
-        
-        inputs['output_type'] = output_type
+
+        inputs["output_type"] = output_type
 
         return inputs
 
@@ -74,15 +75,15 @@ class PipelineLatentTesterMixin:
         output_np = pipe(**self.get_dummy_inputs_by_type(torch_device, output_type="np"))[0]
         output_pil = pipe(**self.get_dummy_inputs_by_type(torch_device, output_type="pil"))[0]
 
-        max_diff = np.abs(output_pt.cpu().numpy().transpose(0, 2, 3, 1) - output_np).max() 
+        max_diff = np.abs(output_pt.cpu().numpy().transpose(0, 2, 3, 1) - output_np).max()
         self.assertLess(max_diff, 1e-4, "`output_type=='pt'` generate different results from `output_type=='np'`")
-        
+
         max_diff = np.abs(np.array(output_pil[0]) - (output_np * 255).round()).max()
         self.assertLess(max_diff, 1e-4, "`output_type=='pil'` generate different results from `output_type=='np'`")
-    
+
     def test_pt_np_pil_inputs_equivalent(self):
         if len(self.image_params) == 0:
-            return 
+            return
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -90,12 +91,12 @@ class PipelineLatentTesterMixin:
         pipe.set_progress_bar_config(disable=None)
 
         out_input_pt = pipe(**self.get_dummy_inputs_by_type(torch_device, input_image_type="pt"))[0]
-        out_input_np = pipe(**self.get_dummy_inputs(torch_device, input_image_type="np"))[0]
-        out_input_pil = pipe(**self.get_dummy_inputs(torch_device, input_image_type="pil"))[0]
+        out_input_np = pipe(**self.get_dummy_inputs_by_type(torch_device, input_image_type="np"))[0]
+        out_input_pil = pipe(**self.get_dummy_inputs_by_type(torch_device, input_image_type="pil"))[0]
 
         max_diff = np.abs(out_input_pt - out_input_np).max()
         self.assertLess(max_diff, 1e-4, "`input_type=='pt'` generate different result from `input_type=='np'`")
-        max_diff = np.abs(out_inpput_pil - out_input_np).max()
+        max_diff = np.abs(out_input_pil - out_input_np).max()
         self.assertLess(max_diff, 1e-2, "`input_type=='pt'` generate different result from `input_type=='np'`")
 
 

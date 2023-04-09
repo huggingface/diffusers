@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import inspect
+import warnings
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
@@ -422,11 +423,11 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
 
         return prompt_embeds
 
-    def run_safety_checker(self, image, device, dtype, output_type='pil'):
+    def run_safety_checker(self, image, device, dtype, output_type="pil"):
         if self.safety_checker is None or output_type == "latent":
-            has_nsfw_concept = None
+            has_nsfw_concept = False
         else:
-            image = self.image_processor.postprocess(image, output_type='pt')
+            image = self.image_processor.postprocess(image, output_type="pt")
             feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
             safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
             image, has_nsfw_concept = self.safety_checker(
@@ -443,6 +444,8 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
+        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -700,9 +703,8 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
-        
-        if not output_type == "latent":
 
+        if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor).sample
 
         image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype, output_type=output_type)

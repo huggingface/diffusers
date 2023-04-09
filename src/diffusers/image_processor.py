@@ -21,7 +21,7 @@ import torch
 from PIL import Image
 
 from .configuration_utils import ConfigMixin, register_to_config
-from .utils import deprecate, CONFIG_NAME, PIL_INTERPOLATION
+from .utils import CONFIG_NAME, PIL_INTERPOLATION, deprecate
 
 
 class VaeImageProcessor(ConfigMixin):
@@ -85,14 +85,6 @@ class VaeImageProcessor(ConfigMixin):
         Convert a pytorch tensor to a numpy image
         """
         images = images.cpu().permute(0, 2, 3, 1).float().numpy()
-        return images
-
-    def pt_to_pil(images):
-        """
-        Convert a pytorch tensor to a pil image
-        """
-        images = self.pt_to_numpy(images)
-        images = self.numpy_to_pil(images)
         return images
 
     @staticmethod
@@ -179,10 +171,10 @@ class VaeImageProcessor(ConfigMixin):
             )
             deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
             output_type = "np"
-        
+
         if output_type == "latent":
             return image
-        
+
         if image.min() < 0:
             image = (image / 2 + 0.5).clamp(0, 1)
 
