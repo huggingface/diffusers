@@ -33,4 +33,4 @@ try:
 except OptionalDependencyNotAvailable:
     from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
 else:
-    from .tune_a_video_pipeline import TuneAVideoPipeline  # noqa: F401
+    from .pipeline_tune_a_video import TuneAVideoPipeline  # noqa: F401

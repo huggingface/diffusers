@@ -1,15 +1,10 @@
 # Adapted from https://github.com/showlab/Tune-A-Video/blob/main/tuneavideo/pipelines/pipeline_tuneavideo.py
 
 import inspect
-
-# from dataclasses import dataclass
 from typing import Callable, List, Optional, Union
 
 import numpy as np
 import torch
-
-# Remove this
-# from einops import rearrange
 from packaging import version
 from transformers import CLIPTextModel, CLIPTokenizer
 
@@ -24,7 +19,7 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ...utils import deprecate, is_accelerate_available, logging
+from ...utils import deprecate, is_accelerate_available, is_accelerate_version, logging, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from . import TuneAVideoPipelineOutput
 
@@ -32,7 +27,43 @@ from . import TuneAVideoPipelineOutput
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> import torch
+
+        >>> from diffusers import UNet3DConditionModel, TuneAVideoPipeline, DDIMScheduler
+        >>> from diffusers.utils import export_to_video
+
+        >>> pretrained_model_path = "nitrosocke/mo-di-diffusion"
+        >>> scheduler = DDIMScheduler.from_pretrained(pretrained_model_path, subfolder="scheduler")
+        >>> unet = UNet3DConditionModel.from_pretrained(
+        ...     "NagaSaiAbhinay/tune-a-video-mo-di-bear-guitar-v1", subfolder="unet", torch_dtype=torch.float16
+        ... ).to("cuda")
+        >>> pipe = TuneAVideoPipeline.from_pretrained(
+        ...     pretrained_model_path, unet=unet, scheduler=scheduler, torch_dtype=torch.float16
+        ... ).to("cuda")
+
+        >>> prompt = "a magical princess is playing guitar, modern disney style"
+        >>> video_frames = pipe(
+        ...     prompt,
+        ...     video_length=4,
+        ...     height=256,
+        ...     width=256,
+        ...     num_inference_steps=38,
+        ...     guidance_scale=12.5,
+        ...     output_type="np",
+        ... ).frames
+
+        >>> video_frames = pipe(prompt).frames
+        >>> video_path = export_to_video(video_frames)
+        >>> video_path
+        ```
+"""
+
+
 def tensor2vid(video: torch.Tensor) -> List[np.ndarray]:
+    # This code is modified from https://github.com/modelscope/modelscope/blob/1509fdb973e5871f37148a4b5e5964cafd43e64d/modelscope/pipelines/multi_modal/text_to_video_synthesis_pipeline.py#L78
     i, c, f, h, w = video.shape
     images = video.permute(2, 3, 0, 4, 1).reshape(
         f, h, i * w, c
@@ -43,6 +74,27 @@ def tensor2vid(video: torch.Tensor) -> List[np.ndarray]:
 
 
 class TuneAVideoPipeline(DiffusionPipeline):
+    r"""
+    Pipeline for text-to-video generation.
+
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+
+    Args:
+        vae ([`AutoencoderKL`]):
+            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
+        text_encoder ([`CLIPTextModel`]):
+            Frozen text-encoder. Same as Stable Diffusion 2.
+        tokenizer (`CLIPTokenizer`):
+            Tokenizer of class
+            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
+        unet ([`UNet3DConditionModel`]): Conditional U-Net architecture to denoise the encoded video latents.
+        scheduler ([`SchedulerMixin`]):
+            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
+            [`DDIMScheduler`], [`LMSDiscreteScheduler`], [`EulerDiscreteScheduler`],
+            [`EulerAncestralDiscreteScheduler`], [`DPMSolverMultistepScheduler`], or [`PNDMScheduler`].
+    """
+
     _optional_components = []
 
     def __init__(
@@ -118,28 +170,101 @@ class TuneAVideoPipeline(DiffusionPipeline):
             scheduler=scheduler,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-
+    
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
+        r"""
+        Enable sliced VAE decoding.
+
+        When this option is enabled, the VAE will split the input tensor in slices to compute decoding in several
+        steps. This is useful to save some memory and allow larger batch sizes.
+        """
         self.vae.enable_slicing()
-
+    
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_slicing
     def disable_vae_slicing(self):
+        r"""
+        Disable sliced VAE decoding. If `enable_vae_slicing` was previously invoked, this method will go back to
+        computing decoding in one step.
+        """
         self.vae.disable_slicing()
+    
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_tiling
+    def enable_vae_tiling(self):
+        r"""
+        Enable tiled VAE decoding.
 
+        When this option is enabled, the VAE will split the input tensor into tiles to compute decoding and encoding in
+        several steps. This is useful to save a large amount of memory and to allow the processing of larger images.
+        """
+        self.vae.enable_tiling()
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_tiling
+    def disable_vae_tiling(self):
+        r"""
+        Disable tiled VAE decoding. If `enable_vae_tiling` was previously invoked, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_tiling()
+    
+    # Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synthesis.TextToVideoSDPipeline.enable_sequential_cpu_offload
     def enable_sequential_cpu_offload(self, gpu_id=0):
-        if is_accelerate_available():
+        r"""
+        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
+        text_encoder, vae have their state dicts saved to CPU and then are moved to a `torch.device('meta') and loaded
+        to GPU only when their specific submodule has its `forward` method called. Note that offloading happens on a
+        submodule basis. Memory savings are higher than with `enable_model_cpu_offload`, but performance is lower.
+        """
+        if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
             from accelerate import cpu_offload
         else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
+            raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
 
         device = torch.device(f"cuda:{gpu_id}")
 
+        if self.device.type != "cpu":
+            self.to("cpu", silence_dtype_warnings=True)
+            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+
         for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
-            if cpu_offloaded_model is not None:
-                cpu_offload(cpu_offloaded_model, device)
+            cpu_offload(cpu_offloaded_model, device)
+
+   # Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synthesis.TextToVideoSDPipeline.enable_model_cpu_offload
+    def enable_model_cpu_offload(self, gpu_id=0):
+        r"""
+        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
+        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
+        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
+        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
+        """
+        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
+            from accelerate import cpu_offload_with_hook
+        else:
+            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
+
+        device = torch.device(f"cuda:{gpu_id}")
+
+        if self.device.type != "cpu":
+            self.to("cpu", silence_dtype_warnings=True)
+            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+
+        hook = None
+        for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae]:
+            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
+
+        # We'll offload the last model manually.
+        self.final_offload_hook = hook
+
 
     @property
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
     def _execution_device(self):
-        if self.device != torch.device("meta") or not hasattr(self.unet, "_hf_hook"):
+        r"""
+        Returns the device on which the pipeline's models will be executed. After calling
+        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
+        hooks.
+        """
+        if not hasattr(self.unet, "_hf_hook"):
             return self.device
         for module in self.unet.modules():
             if (
@@ -150,7 +275,14 @@ class TuneAVideoPipeline(DiffusionPipeline):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
 
-    def _encode_prompt(self, prompt, device, num_videos_per_prompt, do_classifier_free_guidance, negative_prompt):
+    def _encode_prompt(
+        self,
+        prompt,
+        device,
+        num_videos_per_prompt,
+        do_classifier_free_guidance,
+        negative_prompt
+    ):
         batch_size = len(prompt) if isinstance(prompt, list) else 1
 
         text_inputs = self.tokenizer(
@@ -324,10 +456,11 @@ class TuneAVideoPipeline(DiffusionPipeline):
         return latents
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        video_length: Optional[int],
+        video_length: int = 8,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -340,9 +473,67 @@ class TuneAVideoPipeline(DiffusionPipeline):
         output_type: Optional[str] = "np",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
-        **kwargs,
-    ):
+        callback_steps: Optional[int] = 1
+    ):  
+        r"""
+        Function invoked when calling the pipeline for generation.
+
+        Args:
+            prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts to guide the video generation. If not defined, one has to pass `prompt_embeds`.
+                instead.
+            video_length (`int`, *optional*, defaults to 8):
+                The number of video frames that are generated. Defaults to 8 frames which at 8 frames per seconds
+                amounts to 1 second of video.
+            height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
+                The height in pixels of the generated video.
+            width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
+                The width in pixels of the generated video.
+            num_inference_steps (`int`, *optional*, defaults to 50):
+                The number of denoising steps. More denoising steps usually lead to a higher quality videos at the
+                expense of slower inference.
+            guidance_scale (`float`, *optional*, defaults to 7.5):
+                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
+                `guidance_scale` is defined as `w` of equation 2. of [Imagen
+                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
+                1`. Higher guidance scale encourages to generate videos that are closely linked to the text `prompt`,
+                usually at the expense of lower video quality.
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the video generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
+            num_videos_per_prompt (`int`, *optional*, defaults to 1):
+                Number of videos to be generated for each input prompt
+            eta (`float`, *optional*, defaults to 0.0):
+                Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
+                [`schedulers.DDIMScheduler`], will be ignored for others.
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
+                to make generation deterministic.
+            latents (`torch.FloatTensor`, *optional*):
+                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for video
+                generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
+                tensor will ge generated by sampling using the supplied random `generator`. Latents should be of shape
+                `(batch_size, num_channel, num_frames, height, width)`.
+            output_type (`str`, *optional*, defaults to `"np"`):
+                The output format of the generate video. Choose between `torch.FloatTensor` or `np.array`.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~pipelines.tune_a_video.TuneAVideoPipelineOutput`] instead of a
+                plain tuple.
+            callback (`Callable`, *optional*):
+                A function that will be called every `callback_steps` steps during inference. The function will be
+                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+            callback_steps (`int`, *optional*, defaults to 1):
+                The frequency at which the `callback` function will be called. If not specified, the callback will be
+                called at every step.
+
+        Examples:
+
+        Returns:
+            [`~pipelines.stable_diffusion.TuneAVideoPipelineOutput`] or `tuple`:
+            [`~pipelines.stable_diffusion.TuneAVideoPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
+            When returning a tuple, the first element is a list with the generated frames.
+        """
         # Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
