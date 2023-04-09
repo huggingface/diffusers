@@ -93,7 +93,7 @@ class DanceDiffusionPipeline(DiffusionPipeline):
         sample_size = int(sample_size)
 
         dtype = next(iter(self.unet.parameters())).dtype
-        shape = (batch_size, self.unet.in_channels, sample_size)
+        shape = (batch_size, self.unet.config.in_channels, sample_size)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"

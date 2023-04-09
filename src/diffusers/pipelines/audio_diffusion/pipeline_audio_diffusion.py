@@ -129,7 +129,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
             noise = randn_tensor(
                 (
                     batch_size,
-                    self.unet.in_channels,
+                    self.unet.config.in_channels,
                     self.unet.sample_size[0],
                     self.unet.sample_size[1],
                 ),
