@@ -2,15 +2,14 @@ import argparse
 import math
 import os
 import torch
-from diffusers import AutoencoderKL, PNDMScheduler, StableDiffusionPipeline, UNet2DConditionModel
-from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
+from diffusers import AutoencoderKL, StableDiffusionPipeline, UNet2DConditionModel
 from neural_compressor.utils.pytorch import load
 from PIL import Image
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPTextModel, CLIPTokenizer
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Simple example of a training script.")
+    parser = argparse.ArgumentParser()
     parser.add_argument(
         "-m",
         "--pretrained_model_name_or_path",
