@@ -97,6 +97,8 @@
     title: ONNX
   - local: optimization/open_vino
     title: OpenVINO
+  - local: optimization/coreml
+    title: Core ML
   - local: optimization/mps
     title: MPS
   - local: optimization/habana
@@ -206,6 +208,8 @@
       title: Stochastic Karras VE
     - local: api/pipelines/text_to_video
       title: Text-to-Video
+    - local: api/pipelines/text_to_video_zero
+      title: Text-to-Video Zero
     - local: api/pipelines/unclip
       title: UnCLIP
     - local: api/pipelines/latent_diffusion_uncond

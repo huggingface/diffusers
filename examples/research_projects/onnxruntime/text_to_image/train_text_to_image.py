@@ -328,7 +328,7 @@ def main():
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
         logging_dir=logging_dir,
-        accelerator_project_config=accelerator_project_config,
+        project_config=accelerator_project_config,
     )
 
     # Make one log on every process with the configuration for debugging.
