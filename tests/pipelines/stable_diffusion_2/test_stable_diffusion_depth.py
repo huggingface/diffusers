@@ -135,7 +135,7 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
             backbone_config=backbone_config,
             backbone_featmap_shape=[1, 384, 24, 24],
         )
-        depth_estimator = DPTForDepthEstimation(depth_estimator_config)
+        depth_estimator = DPTForDepthEstimation(depth_estimator_config).eval()
         feature_extractor = DPTFeatureExtractor.from_pretrained(
             "hf-internal-testing/tiny-random-DPTForDepthEstimation"
         )
