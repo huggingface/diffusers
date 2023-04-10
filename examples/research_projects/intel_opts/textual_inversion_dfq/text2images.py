@@ -92,14 +92,8 @@ text_encoder = CLIPTextModel.from_pretrained(args.pretrained_model_name_or_path,
 vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
 unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
 
-pipeline = StableDiffusionPipeline(
-    text_encoder=text_encoder,
-    vae=vae,
-    unet=unet,
-    tokenizer=tokenizer,
-    scheduler=PNDMScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler"),
-    safety_checker=StableDiffusionSafetyChecker.from_pretrained("CompVis/stable-diffusion-safety-checker"),
-    feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
+pipeline = StableDiffusionPipeline.from_pretrained(
+    args.pretrained_model_name_or_path, text_encoder=text_encoder, vae=vae, unet=unet, tokenizer=tokenizer
 )
 pipeline.safety_checker = lambda images, clip_input: (images, False)
 if os.path.exists(os.path.join(args.pretrained_model_name_or_path, "best_model.pt")):

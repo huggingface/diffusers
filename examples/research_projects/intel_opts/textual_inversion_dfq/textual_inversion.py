@@ -7,24 +7,23 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 import numpy as np
+import PIL
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-from torch.utils.data import Dataset
-
-import PIL
-from accelerate import Accelerator
-from accelerate.utils import set_seed
-from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, StableDiffusionPipeline, UNet2DConditionModel
-from diffusers.optimization import get_scheduler
-from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
-from huggingface_hub import HfFolder, Repository, whoami
-from neural_compressor.utils import logger
 from packaging import version
 from PIL import Image
+from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPTextModel, CLIPTokenizer
+
+from accelerate import Accelerator
+from accelerate.utils import set_seed
+from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
+from diffusers.optimization import get_scheduler
+from huggingface_hub import HfFolder, Repository, whoami
+from neural_compressor.utils import logger
 
 
 if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
@@ -494,6 +493,7 @@ def main():
         tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer")
 
     # Load models and create wrapper for stable diffusion
+    noise_scheduler = DDPMScheduler.from_config(args.pretrained_model_name_or_path, subfolder="scheduler")
     text_encoder = CLIPTextModel.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="text_encoder",
@@ -509,10 +509,6 @@ def main():
         subfolder="unet",
         revision=args.revision,
     )
-
-    scheduler = PNDMScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
-    safety_checker = StableDiffusionSafetyChecker.from_pretrained("CompVis/stable-diffusion-safety-checker")
-    feature_extractor = CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32")
 
     train_unet = False
     # Freeze vae and unet
@@ -567,8 +563,6 @@ def main():
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon,
     )
-
-    noise_scheduler = DDPMScheduler.from_config(args.pretrained_model_name_or_path, subfolder="scheduler")
 
     train_dataset = TextualInversionDataset(
         data_root=args.train_data_dir,
@@ -927,6 +921,14 @@ def main():
                     ]
                 ],
             ]
+            layer_names = [layer_mapping[0][0] for layer_mapping in layer_mappings]
+            if not set(layer_names).issubset(set([n[0] for n in model.named_modules()])):
+                raise ValueError(
+                    "Provided model is not compatible with the default layer_mappings, "
+                    'please use the model fine-tuned from "CompVis/stable-diffusion-v1-4", '
+                    "or modify the layer_mappings variable to fit your model."
+                    f"\nDefault layer_mappings are as such:\n{layer_mappings}"
+                )
             from neural_compressor.config import DistillationConfig, IntermediateLayersKnowledgeDistillationLossConfig
 
             distillation_criterion = IntermediateLayersKnowledgeDistillationLossConfig(
@@ -958,14 +960,12 @@ def main():
     templates = imagenet_style_templates_small if args.learnable_property == "style" else imagenet_templates_small
     prompt = templates[0].format(args.placeholder_token)
     if accelerator.is_main_process:
-        pipeline = StableDiffusionPipeline(
+        pipeline = StableDiffusionPipeline.from_pretrained(
+            args.pretrained_model_name_or_path,
             text_encoder=accelerator.unwrap_model(text_encoder),
             vae=vae,
             unet=accelerator.unwrap_model(unet),
             tokenizer=tokenizer,
-            scheduler=scheduler,
-            safety_checker=safety_checker,
-            feature_extractor=feature_extractor,
         )
         pipeline.save_pretrained(args.output_dir)
         pipeline = pipeline.to(unet.device)

@@ -69,6 +69,8 @@ accelerate launch textual_inversion.py \
   --do_quantization --do_distillation --verify_loading
 ```
 
+After the distillation for quantization process, the quantized UNet would be 4 times smaller (3279MB -> 827MB).
+
 ## Inference
 
 Once you have trained a INT8 model with the above command, the inference can be done simply using the `text2images.py` script. Make sure to include the `placeholder_token` in your prompt.
