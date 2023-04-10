@@ -171,6 +171,7 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
         self.model_outputs = [None] * solver_order
         self.lower_order_nums = 0
 
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_timesteps
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
         Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -181,14 +182,22 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
             device (`str` or `torch.device`, optional):
                 the device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
         """
-        self.num_inference_steps = num_inference_steps
         timesteps = (
             np.linspace(0, self.num_train_timesteps - 1, num_inference_steps + 1)
             .round()[::-1][:-1]
             .copy()
             .astype(np.int64)
         )
+
+        # when num_inference_steps == num_train_timesteps, we can end up with
+        # duplicates in timesteps.
+        _, unique_indices = np.unique(timesteps, return_index=True)
+        timesteps = timesteps[np.sort(unique_indices)]
+
         self.timesteps = torch.from_numpy(timesteps).to(device)
+
+        self.num_inference_steps = len(timesteps)
+
         self.model_outputs = [
             None,
         ] * self.config.solver_order
