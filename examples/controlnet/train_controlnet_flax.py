@@ -446,7 +446,7 @@ def parse_args():
             " `args.validation_prompt` and logging the images."
         ),
     )
-    parser.agg_argument("--wandb_entity", type=str, default=None, help=("The wandb entity to use (for teams)."))
+    parser.add_argument("--wandb_entity", type=str, default=None, help=("The wandb entity to use (for teams)."))
     parser.add_argument(
         "--tracker_project_name",
         type=str,
@@ -813,6 +813,9 @@ def main():
     train_rngs = jax.random.split(train_rngs, jax.local_device_count())
 
     def compute_snr(timesteps):
+        """
+        Computes SNR as per https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L847-L849
+        """
         alphas_cumprod = noise_scheduler_state.common.alphas_cumprod
         sqrt_alphas_cumprod = alphas_cumprod**0.5
         sqrt_one_minus_alphas_cumprod = (1.0 - alphas_cumprod) ** 0.5
