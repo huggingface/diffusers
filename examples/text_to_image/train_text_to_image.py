@@ -28,6 +28,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
+from torch.utils.data import WeightedRandomSampler
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
@@ -304,6 +305,14 @@ def parse_args():
         default=None,
         required=False,
         help="Path to audio dataloader config file, if left blank normal operation will be used",
+    )
+    
+    parser.add_argument(
+        "--bal_train",
+        action="store_true",
+        default=False,
+        required=False,
+        help="use flag to use balanced sampler for AudioSet Dataset",
     )
 
     args = parser.parse_args()
@@ -645,12 +654,21 @@ def main():
             weight_dtype = torch.float16
         elif accelerator.mixed_precision == "bf16":
             weight_dtype = torch.bfloat16
-            
-        # train_dataloader = AudiosetDataset(dataset_json_file, audio_conf, label_csv, tokenizer, accelerator.device, weight_dtype)
+                    
         
-        train_dataloader = torch.utils.data.DataLoader( 
-            AudiosetDataset(dataset_json_file, audio_conf, label_csv, tokenizer, accelerator.device, weight_dtype),
-            batch_size=args.train_batch_size, shuffle=True, num_workers=args.dataloader_num_workers)
+        if (args.bal_train):
+            samples_weight = np.loadtxt(dataset_json_file[:-5]+'_weight.csv', delimiter=',')
+            sampler = WeightedRandomSampler(samples_weight, len(samples_weight), replacement=True)
+
+            print("Loaded sampler with weights at: ", dataset_json_file[:-5]+'_weight.csv')
+
+            train_dataloader = torch.utils.data.DataLoader( 
+                AudiosetDataset(dataset_json_file, audio_conf, label_csv, tokenizer, accelerator.device, weight_dtype),
+                batch_size=args.train_batch_size, sampler=sampler, num_workers=args.dataloader_num_workers)
+        else:
+            train_dataloader = torch.utils.data.DataLoader( 
+                AudiosetDataset(dataset_json_file, audio_conf, label_csv, tokenizer, accelerator.device, weight_dtype),
+                batch_size=args.train_batch_size, shuffle=True, num_workers=args.dataloader_num_workers)
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
