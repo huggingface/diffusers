@@ -201,15 +201,38 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
     def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
-        # Dynamic thresholding in https://arxiv.org/abs/2205.11487
-        dynamic_max_val = (
-            sample.flatten(1)
-            .abs()
-            .quantile(self.config.dynamic_thresholding_ratio, dim=1)
-            .clamp_min(self.config.sample_max_value)
-            .view(-1, *([1] * (sample.ndim - 1)))
-        )
-        return sample.clamp(-dynamic_max_val, dynamic_max_val) / dynamic_max_val
+        """
+        "Dynamic thresholding: At each sampling step we set s to a certain percentile absolute pixel value in xt0 (the
+        prediction of x_0 at timestep t), and if s > 1, then we threshold xt0 to the range [-s, s] and then divide by
+        s. Dynamic thresholding pushes saturated pixels (those near -1 and 1) inwards, thereby actively preventing
+        pixels from saturation at each step. We find that dynamic thresholding results in significantly better
+        photorealism as well as better image-text alignment, especially when using very large guidance weights."
+
+        https://arxiv.org/abs/2205.11487
+        """
+        dtype = sample.dtype
+        batch_size, channels, height, width = sample.shape
+
+        if dtype not in (torch.float32, torch.float64):
+            sample = sample.float()  # upcast for quantile calculation, and clamp not implemented for cpu half
+
+        # Flatten sample for doing quantile calculation along each image
+        sample = sample.reshape(batch_size, channels * height * width)
+
+        abs_sample = sample.abs()  # "a certain percentile absolute pixel value"
+
+        s = torch.quantile(abs_sample, self.config.dynamic_thresholding_ratio, dim=1)
+        s = torch.clamp(
+            s, min=1, max=self.config.sample_max_value
+        )  # When clamped to min=1, equivalent to standard clipping to [-1, 1]
+
+        s = s.unsqueeze(1)  # (batch_size, 1) because clamp will broadcast along dim=0
+        sample = torch.clamp(sample, -s, s) / s  # "we threshold xt0 to the range [-s, s] and then divide by s"
+
+        sample = sample.reshape(batch_size, channels, height, width)
+        sample = sample.to(dtype)
+
+        return sample
 
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
@@ -315,13 +338,12 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             )
 
         # 4. Clip or threshold "predicted x_0"
-        if self.config.clip_sample:
+        if self.config.thresholding:
+            pred_original_sample = self._threshold_sample(pred_original_sample)
+        elif self.config.clip_sample:
             pred_original_sample = pred_original_sample.clamp(
                 -self.config.clip_sample_range, self.config.clip_sample_range
             )
-
-        if self.config.thresholding:
-            pred_original_sample = self._threshold_sample(pred_original_sample)
 
         # 5. compute variance: "sigma_t(η)" -> see formula (16)
         # σ_t = sqrt((1 − α_t−1)/(1 − α_t)) * sqrt(1 − α_t/α_t−1)
