@@ -137,6 +137,7 @@ else:
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
         TextToVideoSDPipeline,
+        TextToVideoZeroPipeline,
         UnCLIPImageVariationPipeline,
         UnCLIPPipeline,
         VersatileDiffusionDualGuidedPipeline,

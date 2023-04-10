@@ -78,9 +78,7 @@ class DownloadTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             with requests_mock.mock(real_http=True) as m:
-                DiffusionPipeline.download(
-                    "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
-                )
+                DiffusionPipeline.download("hf-internal-testing/tiny-stable-diffusion-pipe", cache_dir=tmpdirname)
 
             download_requests = [r.method for r in m.request_history]
             assert download_requests.count("HEAD") == 15, "15 calls to files"
@@ -88,6 +86,55 @@ class DownloadTests(unittest.TestCase):
             assert (
                 len(download_requests) == 32
             ), "2 calls per file (15 files) + send_telemetry, model_info and model_index.json"
+
+            with requests_mock.mock(real_http=True) as m:
+                DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
+                )
+
+            cache_requests = [r.method for r in m.request_history]
+            assert cache_requests.count("HEAD") == 1, "model_index.json is only HEAD"
+            assert cache_requests.count("GET") == 1, "model info is only GET"
+            assert (
+                len(cache_requests) == 2
+            ), "We should call only `model_info` to check for _commit hash and `send_telemetry`"
+
+    def test_less_downloads_passed_object(self):
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            cached_folder = DiffusionPipeline.download(
+                "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
+            )
+
+            # make sure safety checker is not downloaded
+            assert "safety_checker" not in os.listdir(cached_folder)
+
+            # make sure rest is downloaded
+            assert "unet" in os.listdir(cached_folder)
+            assert "tokenizer" in os.listdir(cached_folder)
+            assert "vae" in os.listdir(cached_folder)
+            assert "model_index.json" in os.listdir(cached_folder)
+            assert "scheduler" in os.listdir(cached_folder)
+            assert "feature_extractor" in os.listdir(cached_folder)
+
+    def test_less_downloads_passed_object_calls(self):
+        # TODO: For some reason this test fails on MPS where no HEAD call is made.
+        if torch_device == "mps":
+            return
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with requests_mock.mock(real_http=True) as m:
+                DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
+                )
+
+            download_requests = [r.method for r in m.request_history]
+            # 15 - 2 because no call to config or model file for `safety_checker`
+            assert download_requests.count("HEAD") == 13, "13 calls to files"
+            # 17 - 2 because no call to config or model file for `safety_checker`
+            assert download_requests.count("GET") == 15, "13 calls to files + model_info + model_index.json"
+            assert (
+                len(download_requests) == 28
+            ), "2 calls per file (13 files) + send_telemetry, model_info and model_index.json"
 
             with requests_mock.mock(real_http=True) as m:
                 DiffusionPipeline.download(
@@ -164,6 +211,54 @@ class DownloadTests(unittest.TestCase):
             # None of the downloaded files should be a pytorch file even if we have some here:
             # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe/blob/main/unet/diffusion_flax_model.msgpack
             assert not any(f.endswith(".bin") for f in files)
+
+    def test_download_safetensors_index(self):
+        for variant in ["fp16", None]:
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                tmpdirname = DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-pipe-indexes",
+                    cache_dir=tmpdirname,
+                    use_safetensors=True,
+                    variant=variant,
+                )
+
+                all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
+                files = [item for sublist in all_root_files for item in sublist]
+
+                # None of the downloaded files should be a safetensors file even if we have some here:
+                # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe-indexes/tree/main/text_encoder
+                if variant is None:
+                    assert not any("fp16" in f for f in files)
+                else:
+                    model_files = [f for f in files if "safetensors" in f]
+                    assert all("fp16" in f for f in model_files)
+
+                assert len([f for f in files if ".safetensors" in f]) == 8
+                assert not any(".bin" in f for f in files)
+
+    def test_download_bin_index(self):
+        for variant in ["fp16", None]:
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                tmpdirname = DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-pipe-indexes",
+                    cache_dir=tmpdirname,
+                    use_safetensors=False,
+                    variant=variant,
+                )
+
+                all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
+                files = [item for sublist in all_root_files for item in sublist]
+
+                # None of the downloaded files should be a safetensors file even if we have some here:
+                # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe-indexes/tree/main/text_encoder
+                if variant is None:
+                    assert not any("fp16" in f for f in files)
+                else:
+                    model_files = [f for f in files if "bin" in f]
+                    assert all("fp16" in f for f in model_files)
+
+                assert len([f for f in files if ".bin" in f]) == 8
+                assert not any(".safetensors" in f for f in files)
 
     def test_download_no_safety_checker(self):
         prompt = "hello"
@@ -361,6 +456,33 @@ class DownloadTests(unittest.TestCase):
                 # only unet has "no_ema" variant
 
         diffusers.utils.import_utils._safetensors_available = True
+
+    def test_local_save_load_index(self):
+        prompt = "hello"
+        for variant in [None, "fp16"]:
+            for use_safe in [True, False]:
+                pipe = StableDiffusionPipeline.from_pretrained(
+                    "hf-internal-testing/tiny-stable-diffusion-pipe-indexes",
+                    variant=variant,
+                    use_safetensors=use_safe,
+                    safety_checker=None,
+                )
+                pipe = pipe.to(torch_device)
+                generator = torch.manual_seed(0)
+                out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+
+                with tempfile.TemporaryDirectory() as tmpdirname:
+                    pipe.save_pretrained(tmpdirname)
+                    pipe_2 = StableDiffusionPipeline.from_pretrained(
+                        tmpdirname, safe_serialization=use_safe, variant=variant
+                    )
+                    pipe_2 = pipe_2.to(torch_device)
+
+                generator = torch.manual_seed(0)
+
+                out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+
+                assert np.max(np.abs(out - out_2)) < 1e-3
 
     def test_text_inversion_download(self):
         pipe = StableDiffusionPipeline.from_pretrained(

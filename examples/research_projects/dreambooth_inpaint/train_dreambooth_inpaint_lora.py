@@ -411,7 +411,7 @@ def main():
         mixed_precision=args.mixed_precision,
         log_with="tensorboard",
         logging_dir=logging_dir,
-        accelerator_project_config=accelerator_project_config,
+        project_config=accelerator_project_config,
     )
 
     # Currently, it's not possible to do gradient accumulation when training two models with accelerate.accumulate
