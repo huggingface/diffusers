@@ -509,8 +509,12 @@ class DiffusionPipeline(ConfigMixin):
     def __setattr__(self, name: str, value: Any):
         if hasattr(self, name) and hasattr(self.config, name):
             # We need to overwrite the config if name exists in config
-            if isinstance(getattr(self.config, name), (tuple, list)) and self.config[name][0] is not None:
-                class_library_tuple = (value.__module__.split(".")[0], value.__class__.__name__)
+            if isinstance(getattr(self.config, name), (tuple, list)):
+                if self.config[name][0] is not None:
+                    class_library_tuple = (value.__module__.split(".")[0], value.__class__.__name__)
+                else:
+                    class_library_tuple = (None, None)
+
                 self.register_to_config(**{name: class_library_tuple})
             else:
                 self.register_to_config(**{name: value})
@@ -631,6 +635,8 @@ class DiffusionPipeline(ConfigMixin):
             )
 
         module_names, _ = self._get_signature_keys(self)
+        module_names = [m for m in module_names if hasattr(self, m)]
+
         is_offloaded = pipeline_is_offloaded or pipeline_is_sequentially_offloaded
         for name in module_names:
             module = getattr(self, name)
@@ -658,6 +664,8 @@ class DiffusionPipeline(ConfigMixin):
             `torch.device`: The torch device on which the pipeline is located.
         """
         module_names, _ = self._get_signature_keys(self)
+        module_names = [m for m in module_names if hasattr(self, m)]
+
         for name in module_names:
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
@@ -1431,6 +1439,8 @@ class DiffusionPipeline(ConfigMixin):
                 fn_recursive_set_mem_eff(child)
 
         module_names, _, _ = self.extract_init_dict(dict(self.config))
+        module_names = [m for m in module_names if hasattr(self, m)]
+
         for module_name in module_names:
             module = getattr(self, module_name)
             if isinstance(module, torch.nn.Module):
@@ -1462,6 +1472,8 @@ class DiffusionPipeline(ConfigMixin):
 
     def set_attention_slice(self, slice_size: Optional[int]):
         module_names, _, _ = self.extract_init_dict(dict(self.config))
+        module_names = [m for m in module_names if hasattr(self, m)]
+
         for module_name in module_names:
             module = getattr(self, module_name)
             if isinstance(module, torch.nn.Module) and hasattr(module, "set_attention_slice"):

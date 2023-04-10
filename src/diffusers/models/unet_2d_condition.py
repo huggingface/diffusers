@@ -20,7 +20,7 @@ import torch.utils.checkpoint
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import UNet2DConditionLoadersMixin
-from ..utils import BaseOutput, logging, deprecate
+from ..utils import BaseOutput, deprecate, logging
 from .attention_processor import AttentionProcessor, AttnProcessor
 from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
@@ -414,7 +414,12 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
     @property
     def in_channels(self):
-        deprecate("in_channels", "1.0.0", "Accessing `in_channels` directly via unet.in_channels is deprecated. Please use `unet.config.in_channels` instead", standard_warn=False)
+        deprecate(
+            "in_channels",
+            "1.0.0",
+            "Accessing `in_channels` directly via unet.in_channels is deprecated. Please use `unet.config.in_channels` instead",
+            standard_warn=False,
+        )
         return self.config.in_channels
 
     @property

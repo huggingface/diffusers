@@ -125,7 +125,12 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
 
     @property
     def block_out_channels(self):
-        deprecate("block_out_channels", "1.0.0", "Accessing `block_out_channels` directly via vae.block_out_channels is deprecated. Please use `vae.config.block_out_channels instead`", standard_warn=False)
+        deprecate(
+            "block_out_channels",
+            "1.0.0",
+            "Accessing `block_out_channels` directly via vae.block_out_channels is deprecated. Please use `vae.config.block_out_channels instead`",
+            standard_warn=False,
+        )
         return self.config.block_out_channels
 
     def _set_gradient_checkpointing(self, module, value=False):
