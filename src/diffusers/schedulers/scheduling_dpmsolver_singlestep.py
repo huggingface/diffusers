@@ -239,15 +239,38 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
     def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
-        # Dynamic thresholding in https://arxiv.org/abs/2205.11487
-        dynamic_max_val = (
-            sample.flatten(1)
-            .abs()
-            .quantile(self.config.dynamic_thresholding_ratio, dim=1)
-            .clamp_min(self.config.sample_max_value)
-            .view(-1, *([1] * (sample.ndim - 1)))
-        )
-        return sample.clamp(-dynamic_max_val, dynamic_max_val) / dynamic_max_val
+        """
+        "Dynamic thresholding: At each sampling step we set s to a certain percentile absolute pixel value in xt0 (the
+        prediction of x_0 at timestep t), and if s > 1, then we threshold xt0 to the range [-s, s] and then divide by
+        s. Dynamic thresholding pushes saturated pixels (those near -1 and 1) inwards, thereby actively preventing
+        pixels from saturation at each step. We find that dynamic thresholding results in significantly better
+        photorealism as well as better image-text alignment, especially when using very large guidance weights."
+
+        https://arxiv.org/abs/2205.11487
+        """
+        dtype = sample.dtype
+        batch_size, channels, height, width = sample.shape
+
+        if dtype not in (torch.float32, torch.float64):
+            sample = sample.float()  # upcast for quantile calculation, and clamp not implemented for cpu half
+
+        # Flatten sample for doing quantile calculation along each image
+        sample = sample.reshape(batch_size, channels * height * width)
+
+        abs_sample = sample.abs()  # "a certain percentile absolute pixel value"
+
+        s = torch.quantile(abs_sample, self.config.dynamic_thresholding_ratio, dim=1)
+        s = torch.clamp(
+            s, min=1, max=self.config.sample_max_value
+        )  # When clamped to min=1, equivalent to standard clipping to [-1, 1]
+
+        s = s.unsqueeze(1)  # (batch_size, 1) because clamp will broadcast along dim=0
+        sample = torch.clamp(sample, -s, s) / s  # "we threshold xt0 to the range [-s, s] and then divide by s"
+
+        sample = sample.reshape(batch_size, channels, height, width)
+        sample = sample.to(dtype)
+
+        return sample
 
     def convert_model_output(
         self, model_output: torch.FloatTensor, timestep: int, sample: torch.FloatTensor
@@ -288,11 +311,8 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
                 )
 
             if self.config.thresholding:
-                # Dynamic thresholding in https://arxiv.org/abs/2205.11487
-                orig_dtype = x0_pred.dtype
-                if orig_dtype not in [torch.float, torch.double]:
-                    x0_pred = x0_pred.float()
-                x0_pred = self._threshold_sample(x0_pred).type(orig_dtype)
+                x0_pred = self._threshold_sample(x0_pred)
+
             return x0_pred
         # DPM-Solver needs to solve an integral of the noise prediction model.
         elif self.config.algorithm_type == "dpmsolver":
@@ -582,6 +602,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
+    # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.add_noise
     def add_noise(
         self,
         original_samples: torch.FloatTensor,
@@ -589,15 +610,15 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
-        self.alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
+        alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
         timesteps = timesteps.to(original_samples.device)
 
-        sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
+        sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = sqrt_alpha_prod.flatten()
         while len(sqrt_alpha_prod.shape) < len(original_samples.shape):
             sqrt_alpha_prod = sqrt_alpha_prod.unsqueeze(-1)
 
-        sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
+        sqrt_one_minus_alpha_prod = (1 - alphas_cumprod[timesteps]) ** 0.5
         sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
         while len(sqrt_one_minus_alpha_prod.shape) < len(original_samples.shape):
             sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.unsqueeze(-1)
