@@ -505,6 +505,19 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         )
 
     @property
+    def in_channels(self):
+        deprecate(
+            "in_channels",
+            "1.0.0",
+            (
+                "Accessing `in_channels` directly via unet.in_channels is deprecated. Please use"
+                " `unet.config.in_channels` instead"
+            ),
+            standard_warn=False,
+        )
+        return self.config.in_channels
+
+    @property
     def attn_processors(self) -> Dict[str, AttentionProcessor]:
         r"""
         Returns:
