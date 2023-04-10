@@ -196,7 +196,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         """
         self.num_inference_steps = num_inference_steps
         timesteps = (
-            np.linspace(0, self.num_train_timesteps - 1, num_inference_steps + 1)
+            np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps + 1)
             .round()[::-1][:-1]
             .copy()
             .astype(np.int64)

@@ -509,7 +509,7 @@ class DiffusionPipeline(ConfigMixin):
     def __setattr__(self, name: str, value: Any):
         if hasattr(self, name) and hasattr(self.config, name):
             # We need to overwrite the config if name exists in config
-            if isinstance(getattr(self.config, name), (tuple, list)):
+            if isinstance(getattr(self.config, name), (tuple, list)) and self.config[name][0] is not None:
                 class_library_tuple = (value.__module__.split(".")[0], value.__class__.__name__)
                 self.register_to_config(**{name: class_library_tuple})
             else:

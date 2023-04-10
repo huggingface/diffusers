@@ -701,7 +701,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin)
         # Same masking process as in SAG paper: https://arxiv.org/pdf/2210.00939.pdf
         bh, hw1, hw2 = attn_map.shape
         b, latent_channel, latent_h, latent_w = original_latents.shape
-        h = self.unet.attention_head_dim
+        h = self.unet.config.attention_head_dim
         if isinstance(h, list):
             h = h[-1]
 
