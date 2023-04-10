@@ -12,43 +12,37 @@ specific language governing permissions and limitations under the License.
 
 # How to run Stable Diffusion with Core ML
 
-There are two ways to run Stable Diffusion on Apple hardware:
+Core ML is the model format and machine learning library supported by Apple frameworks. If you are interested in running Stable Diffusion models inside your macOS or iOS/iPadOS apps, this guide will tell you how to convert the existing PyTorch checkpoints and use them from native Swift code.
 
-- Using the `diffusers` Python codebase and leveraging PyTorch's `mps` device. This is suitable for Macs running Apple Silicon chips (M1 or M2), and is explained in [the `mps` guide](mps).
+Core ML models can leverage all the compute engines available in Apple devices: the CPU, the GPU, and the Apple Neural Engine (or ANE, a tensor-optimized accelerator available in Apple Silicon Macs and modern iPhones/iPads). Depending on the model and the device it's running on, Core ML is able to mix and match compute engines too, so some portions of the model may run on the CPU while others run on GPU, for example.
 
-- Converting Stable Diffusion models to Core ML, the model format supported by Apple frameworks, and using the converted models in native apps. This works on all types of Apple hardware, including iPhone, iPad, M1/M2 Macs and even Intel Macs with enough GPU memory.
+<Tip>
+You can also run the `diffusers` Python codebase on Apple Silicon Macs using the `mps` accelerator built into PyTorch. This approach is explained in depth in [the `mps` guide](mps), but it is not compatible with native apps.
+</Tip>
 
 ## Stable Diffusion Core ML Checkpoints
 
-Core ML is the native ML model format for Apple devices. Because Stable Diffusion was trained using PyTorch, the model weights are available in PyTorch format. Therefore, we need to convert them to Core ML before we can use them inside native apps.
+Stable Diffusion was trained using PyTorch, and consequently the model weights (or checkpoints) are available in PyTorch format. We need to convert them to the Core ML format before we can use them inside native apps.
 
 Thankfully, Apple engineers developed [a conversion tool](https://github.com/apple/ml-stable-diffusion#-converting-models-to-core-ml) based on `diffusers`. If you have a Mac, you can use the conversion scripts it provides to convert any Stable Diffusion model to Core ML.
 
-Before you convert a model, though, do take a moment to explore the Hugging Face Hub – chances are the model you're interested in is already available in Core ML format. For example, these official models are available in Core ML in the Apple organization:
-
-- Stable Diffusion v1.4: [converted](https://hf.co/apple/coreml-stable-diffusion-v1-4) [original](https://hf.co/CompVis/stable-diffusion-v1-4)
-- Stable Diffusion v1.5: [converted](https://hf.co/apple/coreml-stable-diffusion-v1-5) [original](https://hf.co/runwayml/stable-diffusion-v1-5)
-- Stable Diffusion v2 base: [converted](https://hf.co/apple/coreml-stable-diffusion-2-base) [original](https://huggingface.co/stabilityai/stable-diffusion-2-base)
-- Stable Diffusion v2.1 base: [converted](https://hf.co/apple/coreml-stable-diffusion-2-1-base) [original](https://huggingface.co/stabilityai/stable-diffusion-2-1-base)
+Before you convert a model, though, do take a moment to explore the Hugging Face Hub – chances are the model you're interested in is already available in Core ML format. For example, the official Stable Diffusion models are available in Core ML in [the Apple organization](https://huggingface.co/apple). This includes Stable Diffusion versions 1.4, 1.5, 2.0 base and 2.1 base.
 
 If you are interested in custom Dreamboothed or fine-tuned models, you can take a look at the [`coreml` community organization](https://huggingface.co/coreml) or use [this query to browse](https://huggingface.co/models?pipeline_tag=text-to-image&library=coreml&p=2&sort=likes) through all available models.
 
 If you can't find the model you're interested in, we recommend you follow the instructions in [Apple's repo](https://github.com/apple/ml-stable-diffusion#-converting-models-to-core-ml) to perform the conversion yourself.
 
-## Native Diffusers Swift app
-
-The easiest way to run Stable Diffusion on Apple hardware is to use [our open-source Swift repo](https://github.com/huggingface/swift-coreml-diffusers), based on `diffusers` and Apple's conversion and inference repo. You can study the code, compile it with [Xcode](https://developer.apple.com/xcode/) and adapt it for your own needs. For your convenience, there's also a [standalone Mac app in the App Store](https://apps.apple.com/app/diffusers/id1666309574), so you can play with it without having to deal with the code or IDE.
-
-The rest of this guide provides additional details on Core ML conversion and inference using Apple's repo.
-
-
 ## Selecting the Core ML Variant to Use
 
-There are several variants per model:
+Converted Core ML `diffusers` repos usually contain several model variants that are intended for different purposes. The main categories depend on:
 
-- "Original" attention vs "split_einsum". These are two alternative implementations of the critical attention blocks. `split_einsum` was [previously introduced by Apple](https://machinelearning.apple.com/research/neural-engine-transformers), and is particularly optimized for Apple's Neural Engine (ANE) device, which is available in modern iPhones, iPads and M-series computers. `original` attention is only compatible with CPU and GPU, but it can be faster to run your model on CPU+GPU with original attention than it is to use the ANE. See [this performance benchmark](https://huggingface.co/blog/fast-mac-diffusers#performance-benchmarks) as well as some [additional measures provided by the community](https://github.com/huggingface/swift-coreml-diffusers/issues/31).
+- The type of attention blocks used. The attention operation is the basis of the Transformer architecture, which is used inside Stable Diffusion to "pay attention" to the relationship between different areas in the image representations, and to understand how the image and text representations relate to each other. Attention is compute- and memory-intensive, so different implementations exist that take into account the hardware characteristics of different devices. In the case of Core ML Stable Diffusion models, there are two potential attention variants:
+    * `split_einsum` implementation, [previously introduced by Apple](https://machinelearning.apple.com/research/neural-engine-transformers). It is particularly optimized for Apple's Neural Engine (ANE) device, which is available in modern iPhones, iPads and M-series computers.
+    * The "original" attention implementation, which is the base implementation found in `diffusers` code. This implementation is only compatible with CPU and GPU, but not with the ANE. Note, however, that in can be _faster_ to run your model on CPU + GPU using `original` attention than it is to use the ANE. See [this performance benchmark](https://huggingface.co/blog/fast-mac-diffusers#performance-benchmarks) as well as some [additional measures provided by the community](https://github.com/huggingface/swift-coreml-diffusers/issues/31) for additional details.
 
-- "ML Packages" vs "Compiled" models. The former is suitable for Python inference, while the `compiled` version is required for Swift code. The `compiled` models in the Hub split the large UNet model weights in several files for compatibility with iOS and iPadOS devices. This corresponds to the [`--chunk-unet` conversion option](https://github.com/apple/ml-stable-diffusion#-converting-models-to-core-ml). If you want to support native apps, then you need to select one of the "compiled" variants.
+- The supported inference framework.
+    * `ML Packages` are suitable for Python inference. This can be used to test converted Core ML models using `diffusers` Python code before attempting to integrate them inside native apps, or if you want to explore Core ML performance but don't need to support native apps. For example, an application with a web UI could perfectly use a Python Core ML backend.
+    * `Compiled` models are required for Swift code. The `compiled` models in the Hub split the large UNet model weights in several files for compatibility with iOS and iPadOS devices. This corresponds to the [`--chunk-unet` conversion option](https://github.com/apple/ml-stable-diffusion#-converting-models-to-core-ml). If you want to support native apps, then you need to select one of the "compiled" variants.
 
 The 4 official Stable Diffusion models include these 4 variants, but the community ones may vary. This is the structure followed by the 4 official models:
 
@@ -162,3 +156,7 @@ The Core ML models and inference code don't support the vast amount of features,
 - Negative prompts, classifier-free guidance scale and image to image tasks are available in the inference code. Advanced features such as depth guidance, ControlNet, latent upscalers, etc., are not available yet.
 
 Both Apple's [conversion and inference repo](https://github.com/apple/ml-stable-diffusion) and our own [swift-coreml-diffusers](https://github.com/huggingface/swift-coreml-diffusers) are intended as technology demonstrators to enable other developers to build upon them. If you feel strongly about any missing features, please feel free to open a feature request or, better yet, a contribution PR :)
+
+## Native Diffusers Swift app
+
+One easy way to run Stable Diffusion on your own Apple hardware is to use [our open-source Swift repo](https://github.com/huggingface/swift-coreml-diffusers), based on `diffusers` and Apple's conversion and inference repo. You can study the code, compile it with [Xcode](https://developer.apple.com/xcode/) and adapt it for your own needs. For your convenience, there's also a [standalone Mac app in the App Store](https://apps.apple.com/app/diffusers/id1666309574), so you can play with it without having to deal with the code or IDE. If you are a developer and have determined that Core ML is the best solution to build your Stable Diffusion app, then you can use the rest of this guide to get started with your project. We can't wait to see what you'll build :)
