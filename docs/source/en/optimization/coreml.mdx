@@ -38,14 +38,14 @@ If you can't find the model you're interested in, we recommend you follow the in
 
 ## Selecting the Core ML Variant to Use
 
-Converted Core ML `diffusers` repos usually contain several model variants that are intended for different purposes. The main categories depend on:
+Stable Diffusion models can be converted to different Core ML variants intended for different purposes:
 
 - The type of attention blocks used. The attention operation is used to "pay attention" to the relationship between different areas in the image representations and to understand how the image and text representations are related. Attention is compute- and memory-intensive, so different implementations exist that consider the hardware characteristics of different devices. For Core ML Stable Diffusion models, there are two attention variants:
     * `split_einsum` ([introduced by Apple](https://machinelearning.apple.com/research/neural-engine-transformers)) is optimized for ANE devices, which is available in modern iPhones, iPads and M-series computers.
     * The "original" attention (the base implementation used in `diffusers`) is only compatible with CPU/GPU and not ANE. It can be *faster* to run your model on CPU + GPU using `original` attention than ANE. See [this performance benchmark](https://huggingface.co/blog/fast-mac-diffusers#performance-benchmarks) as well as some [additional measures provided by the community](https://github.com/huggingface/swift-coreml-diffusers/issues/31) for additional details.
 
 - The supported inference framework.
-    * `ML Packages` are suitable for Python inference. This can be used to test converted Core ML models using `diffusers` Python code before attempting to integrate them inside native apps, or if you want to explore Core ML performance but don't need to support native apps. For example, an application with a web UI could perfectly use a Python Core ML backend.
+    * `packages` are suitable for Python inference. This can be used to test converted Core ML models before attempting to integrate them inside native apps, or if you want to explore Core ML performance but don't need to support native apps. For example, an application with a web UI could perfectly use a Python Core ML backend.
     * `compiled` models are required for Swift code. The `compiled` models in the Hub split the large UNet model weights into several files for compatibility with iOS and iPadOS devices. This corresponds to the [`--chunk-unet` conversion option](https://github.com/apple/ml-stable-diffusion#-converting-models-to-core-ml). If you want to support native apps, then you need to select the `compiled` variant.
 
 The official Core ML Stable Diffusion [models](https://huggingface.co/apple/coreml-stable-diffusion-v1-4/tree/main) include these variants, but the community ones may vary:
@@ -90,7 +90,6 @@ snapshot_download(repo_id, allow_patterns=f"{variant}/*", local_dir=model_path, 
 print(f"Model downloaded at {model_path}")
 ```
 
-The code above will place the downloaded model snapshot inside a directory called `models`.
 
 ### Inference[[python-inference]]
 
