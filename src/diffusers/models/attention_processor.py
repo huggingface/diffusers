@@ -93,8 +93,8 @@ class Attention(nn.Module):
         self.to_v = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
 
         if self.added_kv_proj_dim is not None:
-            self.add_k_proj = nn.Linear(added_kv_proj_dim, cross_attention_dim)
-            self.add_v_proj = nn.Linear(added_kv_proj_dim, cross_attention_dim)
+            self.add_k_proj = nn.Linear(added_kv_proj_dim, inner_dim)
+            self.add_v_proj = nn.Linear(added_kv_proj_dim, inner_dim)
 
         self.to_out = nn.ModuleList([])
         self.to_out.append(nn.Linear(inner_dim, query_dim, bias=out_bias))
