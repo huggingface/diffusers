@@ -14,12 +14,13 @@ specific language governing permissions and limitations under the License.
 
 ## Overview
 
+
 [Text2Video-Zero: Text-to-Image Diffusion Models are Zero-Shot Video Generators](https://arxiv.org/abs/2303.13439) by
 Levon Khachatryan,
 Andranik Movsisyan,
 Vahram Tadevosyan,
 Roberto Henschel,
-[Zhangyang Wang](https://www.ece.utexas.edu/people/faculty/atlas-wang), Shant Navasardyan, [Humphrey Shi](https://www.humphreyshi.com)
+[Zhangyang Wang](https://www.ece.utexas.edu/people/faculty/atlas-wang), Shant Navasardyan, [Humphrey Shi](https://www.humphreyshi.com).
 
 Our method Text2Video-Zero enables zero-shot video generation using either
 1. A textual prompt, or
@@ -28,14 +29,14 @@ Our method Text2Video-Zero enables zero-shot video generation using either
 
 Results are temporally consistent and follow closely the guidance and textual prompts.
 
-![img](https://huggingface.co/datasets/huggingface/documentation-images/blob/main/diffusers/t2v_zero_teaser.png)
+![teaser-img](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/t2v_zero_teaser.png)
 
 The abstract of the paper is the following:
 
 *Recent text-to-video generation approaches rely on computationally heavy training and require large-scale video datasets. In this paper, we introduce a new task of zero-shot text-to-video generation and propose a low-cost approach (without any training or optimization) by leveraging the power of existing text-to-image synthesis methods (e.g., Stable Diffusion), making them suitable for the video domain.
 Our key modifications include (i) enriching the latent codes of the generated frames with motion dynamics to keep the global scene and the background time consistent; and (ii) reprogramming frame-level self-attention using a new cross-frame attention of each frame on the first frame, to preserve the context, appearance, and identity of the foreground object.
 Experiments show that this leads to low overhead, yet high-quality and remarkably consistent video generation. Moreover, our approach is not limited to text-to-video synthesis but is also applicable to other tasks such as conditional and content-specialized video generation, and Video Instruct-Pix2Pix, i.e., instruction-guided video editing.
-As experiments show, our method performs comparably or sometimes better than recent approaches, despite not being trained on additional video data*
+As experiments show, our method performs comparably or sometimes better than recent approaches, despite not being trained on additional video data.*
 
 
 
@@ -81,7 +82,7 @@ You can change these parameters in the pipeline call:
 ### Text-To-Video with Pose Control
 To generate a video from prompt with additional pose control
 
-1. Download demo video from huggingface
+1. Download a demo video
 
     ```python
     from huggingface_hub import hf_hub_download
@@ -138,7 +139,7 @@ follow the steps described above for pose-guided generation using [Canny edge Co
 
 To perform text-guided video editing (with [InstructPix2Pix](./stable_diffusion/pix2pix)):
 
-1. Download demo video from huggingface
+1. Download a demo video
 
     ```python
     from huggingface_hub import hf_hub_download
