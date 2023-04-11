@@ -12,7 +12,7 @@ from ...models.dual_transformer_2d import DualTransformer2DModel
 from ...models.embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from ...models.transformer_2d import Transformer2DModel
 from ...models.unet_2d_condition import UNet2DConditionOutput
-from ...utils import logging
+from ...utils import deprecate, logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -169,6 +169,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         norm_eps (`float`, *optional*, defaults to 1e-5): The epsilon to use for the normalization.
         cross_attention_dim (`int` or `Tuple[int]`, *optional*, defaults to 1280):
             The dimension of the cross attention features.
+        encoder_hid_dim (`int`, *optional*, defaults to None):
+            If given, `encoder_hidden_states` will be projected from this dimension to `cross_attention_dim`.
         attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
         resnet_time_scale_shift (`str`, *optional*, defaults to `"default"`): Time scale shift config
             for resnet blocks, see [`~models.resnet.ResnetBlockFlat`]. Choose from `default` or `scale_shift`.
@@ -218,13 +220,14 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         ),
         only_cross_attention: Union[bool, Tuple[bool]] = False,
         block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
-        layers_per_block: int = 2,
+        layers_per_block: Union[int, Tuple[int]] = 2,
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
         act_fn: str = "silu",
         norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: Union[int, Tuple[int]] = 1280,
+        encoder_hid_dim: Optional[int] = None,
         attention_head_dim: Union[int, Tuple[int]] = 8,
         dual_cross_attention: bool = False,
         use_linear_projection: bool = False,
@@ -232,6 +235,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         num_class_embeds: Optional[int] = None,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
+        resnet_skip_time_act: bool = False,
+        resnet_out_scale_factor: int = 1.0,
         time_embedding_type: str = "positional",
         timestep_post_act: Optional[str] = None,
         time_cond_proj_dim: Optional[int] = None,
@@ -275,6 +280,12 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 f" {cross_attention_dim}. `down_block_types`: {down_block_types}."
             )
 
+        if not isinstance(layers_per_block, int) and len(layers_per_block) != len(down_block_types):
+            raise ValueError(
+                "Must provide the same number of `layers_per_block` as `down_block_types`. `layers_per_block`:"
+                f" {layers_per_block}. `down_block_types`: {down_block_types}."
+            )
+
         # input
         conv_in_padding = (conv_in_kernel - 1) // 2
         self.conv_in = LinearMultiDim(
@@ -307,6 +318,11 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             post_act_fn=timestep_post_act,
             cond_proj_dim=time_cond_proj_dim,
         )
+
+        if encoder_hid_dim is not None:
+            self.encoder_hid_proj = nn.Linear(encoder_hid_dim, cross_attention_dim)
+        else:
+            self.encoder_hid_proj = None
 
         # class embedding
         if class_embed_type is None and num_class_embeds is not None:
@@ -349,6 +365,9 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         if isinstance(cross_attention_dim, int):
             cross_attention_dim = (cross_attention_dim,) * len(down_block_types)
 
+        if isinstance(layers_per_block, int):
+            layers_per_block = [layers_per_block] * len(down_block_types)
+
         if class_embeddings_concat:
             # The time embeddings are concatenated with the class embeddings. The dimension of the
             # time embeddings passed to the down, middle, and up blocks is twice the dimension of the
@@ -366,7 +385,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
             down_block = get_down_block(
                 down_block_type,
-                num_layers=layers_per_block,
+                num_layers=layers_per_block[i],
                 in_channels=input_channel,
                 out_channels=output_channel,
                 temb_channels=blocks_time_embed_dim,
@@ -382,6 +401,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
+                resnet_skip_time_act=resnet_skip_time_act,
+                resnet_out_scale_factor=resnet_out_scale_factor,
             )
             self.down_blocks.append(down_block)
 
@@ -412,6 +433,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 attn_num_head_channels=attention_head_dim[-1],
                 resnet_groups=norm_num_groups,
                 resnet_time_scale_shift=resnet_time_scale_shift,
+                skip_time_act=resnet_skip_time_act,
             )
         elif mid_block_type is None:
             self.mid_block = None
@@ -424,6 +446,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
         reversed_attention_head_dim = list(reversed(attention_head_dim))
+        reversed_layers_per_block = list(reversed(layers_per_block))
         reversed_cross_attention_dim = list(reversed(cross_attention_dim))
         only_cross_attention = list(reversed(only_cross_attention))
 
@@ -444,7 +467,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
             up_block = get_up_block(
                 up_block_type,
-                num_layers=layers_per_block + 1,
+                num_layers=reversed_layers_per_block[i] + 1,
                 in_channels=input_channel,
                 out_channels=output_channel,
                 prev_output_channel=prev_output_channel,
@@ -460,6 +483,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
+                resnet_skip_time_act=resnet_skip_time_act,
+                resnet_out_scale_factor=resnet_out_scale_factor,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -478,6 +503,19 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         self.conv_out = LinearMultiDim(
             block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
         )
+
+    @property
+    def in_channels(self):
+        deprecate(
+            "in_channels",
+            "1.0.0",
+            (
+                "Accessing `in_channels` directly via unet.in_channels is deprecated. Please use"
+                " `unet.config.in_channels` instead"
+            ),
+            standard_warn=False,
+        )
+        return self.config.in_channels
 
     @property
     def attn_processors(self) -> Dict[str, AttentionProcessor]:
@@ -700,6 +738,9 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 emb = torch.cat([emb, class_emb], dim=-1)
             else:
                 emb = emb + class_emb
+
+        if self.encoder_hid_proj is not None:
+            encoder_hidden_states = self.encoder_hid_proj(encoder_hidden_states)
 
         # 2. pre-process
         sample = self.conv_in(sample)
@@ -1434,6 +1475,7 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
         attn_num_head_channels=1,
         output_scale_factor=1.0,
         cross_attention_dim=1280,
+        skip_time_act=False,
     ):
         super().__init__()
 
@@ -1457,6 +1499,7 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
                 non_linearity=resnet_act_fn,
                 output_scale_factor=output_scale_factor,
                 pre_norm=resnet_pre_norm,
+                skip_time_act=skip_time_act,
             )
         ]
         attentions = []
@@ -1487,6 +1530,7 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
                     pre_norm=resnet_pre_norm,
+                    skip_time_act=skip_time_act,
                 )
             )
 
