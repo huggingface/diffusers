@@ -8,7 +8,12 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models import ModelMixin
 from ...models.attention import Attention
-from ...models.attention_processor import AttentionProcessor, AttnAddedKVProcessor, AttnProcessor
+from ...models.attention_processor import (
+    AttentionProcessor,
+    AttnAddedKVProcessor,
+    AttnAddedKVProcessor2_0,
+    AttnProcessor,
+)
 from ...models.dual_transformer_2d import DualTransformer2DModel
 from ...models.embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from ...models.transformer_2d import Transformer2DModel
@@ -1545,6 +1550,10 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
         attentions = []
 
         for _ in range(num_layers):
+            processor = (
+                AttnAddedKVProcessor2_0() if hasattr(F, "scaled_dot_product_attention") else AttnAddedKVProcessor()
+            )
+
             attentions.append(
                 Attention(
                     query_dim=in_channels,
@@ -1557,7 +1566,7 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
                     upcast_softmax=True,
                     only_cross_attention=only_cross_attention,
                     cross_attention_norm=cross_attention_norm,
-                    processor=AttnAddedKVProcessor(),
+                    processor=processor,
                 )
             )
             resnets.append(
