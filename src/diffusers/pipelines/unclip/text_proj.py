@@ -77,10 +77,10 @@ class UnCLIPTextProjModel(ModelMixin, ConfigMixin):
         # extra tokens of context that are concatenated to the sequence of outputs from the GLIDE text encoder"
         clip_extra_context_tokens = self.clip_extra_context_tokens_proj(image_embeddings)
         clip_extra_context_tokens = clip_extra_context_tokens.reshape(batch_size, -1, self.clip_extra_context_tokens)
+        clip_extra_context_tokens = clip_extra_context_tokens.permute(0, 2, 1)
 
         text_encoder_hidden_states = self.encoder_hidden_states_proj(text_encoder_hidden_states)
         text_encoder_hidden_states = self.text_encoder_hidden_states_norm(text_encoder_hidden_states)
-        text_encoder_hidden_states = text_encoder_hidden_states.permute(0, 2, 1)
-        text_encoder_hidden_states = torch.cat([clip_extra_context_tokens, text_encoder_hidden_states], dim=2)
+        text_encoder_hidden_states = torch.cat([clip_extra_context_tokens, text_encoder_hidden_states], dim=1)
 
         return text_encoder_hidden_states, additive_clip_time_embeddings
