@@ -341,6 +341,9 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
                 # predict the noise residual
                 noise_pred = self.unet(scaled_latent_model_input, t, encoder_hidden_states=prompt_embeds).sample
 
+                pixel_space_latents = self.decode_latents_inter(latents)
+                back_to_latent = self.image_to_latent(pixel_space_latents, prompt_embeds.dtype, device)
+
                 # Hack:
                 # For karras style schedulers the model does classifer free guidance using the
                 # predicted_original_sample instead of the noise_pred. So we need to compute the
@@ -655,6 +658,12 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
+    def decode_latents_inter(self, latents):
+        latents = 1 / self.vae.config.scaling_factor * latents
+        image = self.vae.decode(latents).sample
+        image = (image / 2 + 0.5).clamp(0, 1)
+        return image
+
     def check_inputs(
         self, prompt, callback_steps, negative_prompt=None, prompt_embeds=None, negative_prompt_embeds=None
     ):
@@ -755,4 +764,10 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
             uncond_image_latents = torch.zeros_like(image_latents)
             image_latents = torch.cat([image_latents, image_latents, uncond_image_latents], dim=0)
 
+        return image_latents
+
+    def image_to_latent(self, image, dtype, device):
+        image = image.to(device=device, dtype=dtype)
+        image_latents = self.vae.encode(image).latent_dist.mode()
+        image_latents = torch.cat([image_latents], dim=0)
         return image_latents
