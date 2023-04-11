@@ -229,3 +229,11 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
             sample = scheduler.step(residual, t, sample).prev_sample
 
         assert sample.dtype == torch.float16
+
+    def test_unique_timesteps(self, **config):
+        for scheduler_class in self.scheduler_classes:
+            scheduler_config = self.get_scheduler_config(**config)
+            scheduler = scheduler_class(**scheduler_config)
+
+            scheduler.set_timesteps(scheduler.config.num_train_timesteps)
+            assert len(scheduler.timesteps.unique()) == scheduler.num_inference_steps
