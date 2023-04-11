@@ -278,7 +278,7 @@ def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
     image = image.convert("RGB")
     return image
 
-def preprocess_image(image, batch_size):
+def preprocess_image(image:PIL.Image, batch_size:int):
     w, h = image.size
     w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
     image = image.resize((w, h), resample=PIL.Image.LANCZOS)
