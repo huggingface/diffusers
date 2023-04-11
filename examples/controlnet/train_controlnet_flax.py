@@ -18,8 +18,8 @@ import logging
 import math
 import os
 import random
-from pathlib import Path
 import time
+from pathlib import Path
 
 import jax
 import jax.experimental.compilation_cache.compilation_cache as cc
@@ -486,9 +486,7 @@ def parse_args():
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
 
     args = parser.parse_args()
-    args.output_dir = args.output_dir.replace(
-        '{timestamp}', time.strftime('%Y%m%d_%H%M%S')
-    )
+    args.output_dir = args.output_dir.replace("{timestamp}", time.strftime("%Y%m%d_%H%M%S"))
 
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
@@ -982,8 +980,8 @@ def main():
 
         metrics = {"loss": loss}
         metrics = jax.lax.pmean(metrics, axis_name="batch")
-        l2 = lambda xs: jnp.sqrt(sum([
-            jnp.vdot(x, x) for x in jax.tree_util.tree_leaves(xs)]))
+        def l2(xs):
+            return jnp.sqrt(sum([jnp.vdot(x, x) for x in jax.tree_util.tree_leaves(xs)]))
         metrics["l2_grads"] = l2(jax.tree_util.tree_leaves(grad))
 
         return new_state, metrics, new_train_rng
