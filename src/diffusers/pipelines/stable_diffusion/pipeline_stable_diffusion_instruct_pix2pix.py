@@ -151,6 +151,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         mask: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        mask_guidance_scale: float = 0.5
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -343,9 +344,11 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
                 noise_pred = self.unet(scaled_latent_model_input, t, encoder_hidden_states=prompt_embeds).sample
 
                 if mask is not None:
-                    pixel_space_latents = self.decode_latents_inter(latents)
-                    pixel_space_mask_enforced = self.enforce_mask(image, mask, pixel_space_latents)
-                    back_to_latent = self.image_to_latent(pixel_space_mask_enforced, prompt_embeds.dtype, device)
+                    pixel_space = self.decode_latents_inter(latents)
+                    pixel_space_mask_enforced = self.enforce_mask(image, mask, pixel_space)
+                    masked_latents = self.image_to_latent(pixel_space_mask_enforced, prompt_embeds.dtype, device)
+                    mask_noise_pred = latents - masked_latents
+                    noise_pred = mask_guidance_scale * mask_noise_pred + (1-mask_guidance_scale) * noise_pred
 
                 # Hack:
                 # For karras style schedulers the model does classifer free guidance using the
