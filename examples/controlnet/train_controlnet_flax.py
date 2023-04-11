@@ -979,8 +979,10 @@ def main():
 
         metrics = {"loss": loss}
         metrics = jax.lax.pmean(metrics, axis_name="batch")
+
         def l2(xs):
             return jnp.sqrt(sum([jnp.vdot(x, x) for x in jax.tree_util.tree_leaves(xs)]))
+
         metrics["l2_grads"] = l2(jax.tree_util.tree_leaves(grad))
 
         return new_state, metrics, new_train_rng
