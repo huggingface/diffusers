@@ -33,9 +33,10 @@ from diffusers import (
     UNet2DModel,
     VQModel,
 )
-from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint_legacy import preprocess_image
 from diffusers.utils import floats_tensor, load_image, nightly, slow, torch_device
 from diffusers.utils.testing_utils import load_numpy, require_torch_gpu
+from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint_legacy import preprocess_image
+
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
