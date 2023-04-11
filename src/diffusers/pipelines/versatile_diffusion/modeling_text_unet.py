@@ -191,7 +191,12 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         projection_class_embeddings_input_dim (`int`, *optional*): The dimension of the `class_labels` input when
             using the "projection" `class_embed_type`. Required when using the "projection" `class_embed_type`.
         class_embeddings_concat (`bool`, *optional*, defaults to `False`): Whether to concatenate the time
-        embeddings with the class embeddings.
+            embeddings with the class embeddings.
+        mid_block_only_cross_attention (`bool`, *optional*, defaults to `None`):
+            Whether to use cross attention with the mid block when using the `UNetMidBlockFlatSimpleCrossAttn`. If
+            `only_cross_attention` is given as a single boolean and `mid_block_only_cross_attention` is None, the
+            `only_cross_attention` value will be used as the value for `mid_block_only_cross_attention`. Else, it will
+            default to `False`.
     """
 
     _supports_gradient_checkpointing = True
@@ -244,7 +249,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         conv_out_kernel: int = 3,
         projection_class_embeddings_input_dim: Optional[int] = None,
         class_embeddings_concat: bool = False,
-        mid_block_only_cross_attention: bool = False,
+        mid_block_only_cross_attention: Optional[bool] = None,
     ):
         super().__init__()
 
@@ -358,7 +363,13 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         self.up_blocks = nn.ModuleList([])
 
         if isinstance(only_cross_attention, bool):
+            if mid_block_only_cross_attention is None:
+                mid_block_only_cross_attention = only_cross_attention
+
             only_cross_attention = [only_cross_attention] * len(down_block_types)
+
+        if mid_block_only_cross_attention is None:
+            mid_block_only_cross_attention = False
 
         if isinstance(attention_head_dim, int):
             attention_head_dim = (attention_head_dim,) * len(down_block_types)
