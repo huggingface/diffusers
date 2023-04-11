@@ -393,7 +393,7 @@ python3 train_controlnet_flax.py \
 	--train_batch_size=1 \
 	--revision="flax" \
 	--report_to="wandb" \
-  --tracker_project_name=$HUB_MODEL_ID
+	--tracker_project_name=$HUB_MODEL_ID
 ```
 
 Note, however, that the performance of the TPUs might get bottlenecked as streaming with `datasets` is not optimized for images. For ensuring maximum throughput, we encourage you to explore the following options:
