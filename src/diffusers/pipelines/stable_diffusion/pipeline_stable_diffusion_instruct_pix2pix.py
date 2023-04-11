@@ -674,7 +674,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
     
     def enforce_mask(self, device, original_image, mask, current_image):
         # We will want mask to be 1s where it's okay to change
-        original_image_numpy = np.asarray(original_image)
+        original_image_numpy = np.asarray(original_image.cpu())
         current_image_numpy = np.asarray(current_image.cpu())
         mask_numpy = np.asarray(mask)
         mask_numpy = np.array([mask_numpy]).transpose(0, 3, 1, 2)
