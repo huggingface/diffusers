@@ -676,6 +676,9 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         current_image_numpy = np.asarray(current_image.cpu())
         mask_numpy = np.asarray(mask)
         inv_mask = 1 - mask_numpy
+        print('Mask: ', mask_numpy.shape)
+        print('Current: ', current_image_numpy.shape)
+        print('Original: ', original_image_numpy.shape)
         mask_enforced = (mask_numpy * current_image_numpy) + (inv_mask * original_image_numpy)
         return PIL.Image.fromarray(mask_enforced).to(device)
 
