@@ -18,7 +18,7 @@ import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
+from ..utils import BaseOutput, deprecate
 from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
 from .unet_2d_blocks import UNetMidBlock2D, get_down_block, get_up_block
@@ -214,6 +214,16 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=num_groups_out, eps=norm_eps)
         self.conv_act = nn.SiLU()
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, kernel_size=3, padding=1)
+
+    @property
+    def in_channels(self):
+        deprecate(
+            "in_channels",
+            "1.0.0",
+            "Accessing `in_channels` directly via unet.in_channels is deprecated. Please use `unet.config.in_channels` instead",
+            standard_warn=False,
+        )
+        return self.config.in_channels
 
     def forward(
         self,

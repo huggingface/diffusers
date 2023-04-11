@@ -190,8 +190,8 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
                 the number of diffusion steps used when generating samples with a pre-trained model.
         """
         steps = num_inference_steps
-        order = self.solver_order
-        if self.lower_order_final:
+        order = self.config.solver_order
+        if self.config.lower_order_final:
             if order == 3:
                 if steps % 3 == 0:
                     orders = [1, 2, 3] * (steps // 3 - 1) + [1, 2] + [1]
@@ -227,7 +227,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         """
         self.num_inference_steps = num_inference_steps
         timesteps = (
-            np.linspace(0, self.num_train_timesteps - 1, num_inference_steps + 1)
+            np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps + 1)
             .round()[::-1][:-1]
             .copy()
             .astype(np.int64)
