@@ -61,6 +61,7 @@ class Attention(nn.Module):
         norm_num_groups: Optional[int] = None,
         out_bias: bool = True,
         scale_qk: bool = True,
+        only_cross_attention: bool = False,
         processor: Optional["AttnProcessor"] = None,
     ):
         super().__init__()
@@ -79,6 +80,12 @@ class Attention(nn.Module):
         self.sliceable_head_dim = heads
 
         self.added_kv_proj_dim = added_kv_proj_dim
+        self.only_cross_attention = only_cross_attention
+
+        if self.added_kv_proj_dim is None and self.only_cross_attention:
+            raise ValueError(
+                "`only_cross_attention` can only be set to True if `added_kv_proj_dim` is not None. Make sure to set either `only_cross_attention=False` or define `added_kv_proj_dim`."
+            )
 
         if norm_num_groups is not None:
             self.group_norm = nn.GroupNorm(num_channels=query_dim, num_groups=norm_num_groups, eps=1e-5, affine=True)
@@ -89,8 +96,14 @@ class Attention(nn.Module):
             self.norm_cross = nn.LayerNorm(cross_attention_dim)
 
         self.to_q = nn.Linear(query_dim, inner_dim, bias=bias)
-        self.to_k = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
-        self.to_v = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
+
+        if not self.only_cross_attention:
+            # only relevant for the `AddedKVProcessor` classes
+            self.to_k = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
+            self.to_v = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
+        else:
+            self.to_k = None
+            self.to_v = None
 
         if self.added_kv_proj_dim is not None:
             self.add_k_proj = nn.Linear(added_kv_proj_dim, inner_dim)
@@ -408,18 +421,21 @@ class AttnAddedKVProcessor:
         query = attn.to_q(hidden_states)
         query = attn.head_to_batch_dim(query)
 
-        key = attn.to_k(hidden_states)
-        value = attn.to_v(hidden_states)
-        key = attn.head_to_batch_dim(key)
-        value = attn.head_to_batch_dim(value)
-
         encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
         encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
         encoder_hidden_states_key_proj = attn.head_to_batch_dim(encoder_hidden_states_key_proj)
         encoder_hidden_states_value_proj = attn.head_to_batch_dim(encoder_hidden_states_value_proj)
 
-        key = torch.cat([encoder_hidden_states_key_proj, key], dim=1)
-        value = torch.cat([encoder_hidden_states_value_proj, value], dim=1)
+        if not attn.only_cross_attention:
+            key = attn.to_k(hidden_states)
+            value = attn.to_v(hidden_states)
+            key = attn.head_to_batch_dim(key)
+            value = attn.head_to_batch_dim(value)
+            key = torch.cat([encoder_hidden_states_key_proj, key], dim=1)
+            value = torch.cat([encoder_hidden_states_value_proj, value], dim=1)
+        else:
+            key = encoder_hidden_states_key_proj
+            value = encoder_hidden_states_value_proj
 
         attention_probs = attn.get_attention_scores(query, key, attention_mask)
         hidden_states = torch.bmm(attention_probs, value)
@@ -637,18 +653,22 @@ class SlicedAttnAddedKVProcessor:
         dim = query.shape[-1]
         query = attn.head_to_batch_dim(query)
 
-        key = attn.to_k(hidden_states)
-        value = attn.to_v(hidden_states)
         encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
         encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
 
-        key = attn.head_to_batch_dim(key)
-        value = attn.head_to_batch_dim(value)
         encoder_hidden_states_key_proj = attn.head_to_batch_dim(encoder_hidden_states_key_proj)
         encoder_hidden_states_value_proj = attn.head_to_batch_dim(encoder_hidden_states_value_proj)
 
-        key = torch.cat([encoder_hidden_states_key_proj, key], dim=1)
-        value = torch.cat([encoder_hidden_states_value_proj, value], dim=1)
+        if not attn.only_cross_attention:
+            key = attn.to_k(hidden_states)
+            value = attn.to_v(hidden_states)
+            key = attn.head_to_batch_dim(key)
+            value = attn.head_to_batch_dim(value)
+            key = torch.cat([encoder_hidden_states_key_proj, key], dim=1)
+            value = torch.cat([encoder_hidden_states_value_proj, value], dim=1)
+        else:
+            key = encoder_hidden_states_key_proj
+            value = encoder_hidden_states_value_proj
 
         batch_size_attention, query_tokens, _ = query.shape
         hidden_states = torch.zeros(
