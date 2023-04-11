@@ -21,7 +21,6 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     load_image,
     load_numpy,
-    print_tensor_test,
     require_torch_gpu,
     skip_mps,
     slow,
