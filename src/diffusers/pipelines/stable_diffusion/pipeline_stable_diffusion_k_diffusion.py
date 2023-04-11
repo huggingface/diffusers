@@ -113,7 +113,7 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline, TextualInversionLoade
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
         model = ModelWrapper(unet, scheduler.alphas_cumprod)
-        if scheduler.prediction_type == "v_prediction":
+        if scheduler.config.prediction_type == "v_prediction":
             self.k_diffusion_model = CompVisVDenoiser(model)
         else:
             self.k_diffusion_model = CompVisDenoiser(model)

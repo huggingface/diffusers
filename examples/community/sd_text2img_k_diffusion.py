@@ -105,7 +105,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         )
 
         model = ModelWrapper(unet, scheduler.alphas_cumprod)
-        if scheduler.prediction_type == "v_prediction":
+        if scheduler.config.prediction_type == "v_prediction":
             self.k_diffusion_model = CompVisVDenoiser(model)
         else:
             self.k_diffusion_model = CompVisDenoiser(model)
