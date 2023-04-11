@@ -229,6 +229,7 @@ class StableDiffusionInpaintLegacyPipelineFastTests(unittest.TestCase):
         init_image = Image.fromarray(np.uint8(image)).convert("RGB")
         init_images_tens = preprocess_image(init_image, batch_size=2)
         init_masks_tens = init_images_tens + 4
+
         # make sure here that pndm scheduler skips prk
         sd_pipe = StableDiffusionInpaintPipelineLegacy(
             unet=unet,
@@ -259,10 +260,10 @@ class StableDiffusionInpaintLegacyPipelineFastTests(unittest.TestCase):
         image_slice_0 = images[0, -3:, -3:, -1].flatten()
         image_slice_1 = images[1, -3:, -3:, -1].flatten()
 
-        expected_slice_0 = np.array(
-            [[0.4328835, 0.45281428, 0.38207343, 0.45704383, 0.46973437, 0.4161349, 0.37636507, 0.45011833, 0.4460413]])
-        expected_slice_1 = np.array(
-            [[0.4873669, 0.45950648, 0.5203329, 0.6400243, 0.5441418, 0.551703, 0.6023108, 0.49404332, 0.4815712]])
+        expected_slice_0 = np.array([[0.4328835, 0.45281428, 0.38207343, 0.45704383,
+                                      0.46973437, 0.4161349, 0.37636507, 0.45011833, 0.4460413]])
+        expected_slice_1 = np.array([[0.4873669, 0.45950648, 0.5203329, 0.6400243, 0.5441418,
+                                      0.551703, 0.6023108, 0.49404332, 0.4815712]])
 
         assert np.abs(expected_slice_0 - image_slice_0).max() < 1e-4
         assert np.abs(expected_slice_1 - image_slice_1).max() < 1e-4
@@ -462,10 +463,10 @@ class StableDiffusionInpaintLegacyPipelineSlowTests(unittest.TestCase):
         image_slice_0 = image[0, 253:256, 253:256, -1].flatten()
         image_slice_1 = image[1, 253:256, 253:256, -1].flatten()
 
-        expected_slice_0 = np.array(
-            [0.52093095, 0.4176447, 0.32752383, 0.6175223, 0.50563973, 0.36470804, 0.65460044, 0.5775188, 0.44332123])
-        expected_slice_1 = np.array(
-            [0.3592432, 0.4233033, 0.3914635, 0.31014425, 0.3702293, 0.39412856, 0.17526966, 0.2642669, 0.37480092])
+        expected_slice_0 = np.array([0.52093095, 0.4176447, 0.32752383, 0.6175223,
+                                     0.50563973, 0.36470804, 0.65460044, 0.5775188, 0.44332123])
+        expected_slice_1 = np.array([0.3592432, 0.4233033, 0.3914635, 0.31014425,
+                                     0.3702293, 0.39412856, 0.17526966, 0.2642669, 0.37480092])
 
         assert np.abs(expected_slice_0 - image_slice_0).max() < 1e-4
         assert np.abs(expected_slice_1 - image_slice_1).max() < 1e-4
