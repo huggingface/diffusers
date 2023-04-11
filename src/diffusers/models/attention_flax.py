@@ -15,9 +15,10 @@
 import functools
 import math
 
+import flax.linen as nn
 import jax
 import jax.numpy as jnp
-import flax.linen as nn
+
 
 def _query_chunk_attention(query, key, value, precision, key_chunk_size: int = 4096):
     """Multi-head dot product attention with a limited number of queries."""
