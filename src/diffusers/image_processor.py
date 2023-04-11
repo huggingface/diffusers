@@ -100,7 +100,7 @@ class VaeImageProcessor(ConfigMixin):
         """
         w, h = images.size
         w, h = (x - x % self.config.vae_scale_factor for x in (w, h))  # resize to integer multiple of vae_scale_factor
-        images = images.resize((w, h), resample=PIL_INTERPOLATION[self.resample])
+        images = images.resize((w, h), resample=PIL_INTERPOLATION[self.config.resample])
         return images
 
     def preprocess(
