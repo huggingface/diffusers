@@ -364,19 +364,18 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         else:
             self.class_embedding = None
 
-        if time_embedding_act_fn is not None:
-            if time_embedding_act_fn == "swish":
-                self.time_embed_act = lambda x: F.silu(x)
-            elif time_embedding_act_fn == "mish":
-                self.time_embed_act = nn.Mish()
-            elif time_embedding_act_fn == "silu":
-                self.time_embed_act = nn.SiLU()
-            elif time_embedding_act_fn == "gelu":
-                self.time_embed_act = nn.GELU()
-            else:
-                raise ValueError(f"Unsupported activation function: {time_embedding_act_fn}")
-        else:
+        if time_embedding_act_fn is None:
             self.time_embed_act = None
+        elif time_embedding_act_fn == "swish":
+            self.time_embed_act = lambda x: F.silu(x)
+        elif time_embedding_act_fn == "mish":
+            self.time_embed_act = nn.Mish()
+        elif time_embedding_act_fn == "silu":
+            self.time_embed_act = nn.SiLU()
+        elif time_embedding_act_fn == "gelu":
+            self.time_embed_act = nn.GELU()
+        else:
+            raise ValueError(f"Unsupported activation function: {time_embedding_act_fn}")
 
         self.down_blocks = nn.ModuleList([])
         self.up_blocks = nn.ModuleList([])
