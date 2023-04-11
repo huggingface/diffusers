@@ -154,15 +154,16 @@ def log_validation(controlnet, controlnet_params, tokenizer, args, rng, weight_d
 
 def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=None):
     img_str = ""
-    for i, log in enumerate(image_logs):
-        images = log["images"]
-        validation_prompt = log["validation_prompt"]
-        validation_image = log["validation_image"]
-        validation_image.save(os.path.join(repo_folder, "image_control.png"))
-        img_str += f"prompt: {validation_prompt}\n"
-        images = [validation_image] + images
-        image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images_{i}.png"))
-        img_str += f"![images_{i})](./images_{i}.png)\n"
+    if image_logs is not None:
+        for i, log in enumerate(image_logs):
+            images = log["images"]
+            validation_prompt = log["validation_prompt"]
+            validation_image = log["validation_image"]
+            validation_image.save(os.path.join(repo_folder, "image_control.png"))
+            img_str += f"prompt: {validation_prompt}\n"
+            images = [validation_image] + images
+            image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images_{i}.png"))
+            img_str += f"![images_{i})](./images_{i}.png)\n"
 
     yaml = f"""
 ---
@@ -212,6 +213,17 @@ def parse_args():
         "--from_pt",
         action="store_true",
         help="Load the pretrained model from a PyTorch checkpoint.",
+    )
+    parser.add_argument(
+        "--controlnet_revision",
+        type=str,
+        default=None,
+        help="Revision of controlnet model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--controlnet_from_pt",
+        action="store_true",
+        help="Load the controlnet model from a PyTorch checkpoint.",
     )
     parser.add_argument(
         "--tokenizer_name",
@@ -278,6 +290,13 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--snr_gamma",
+        type=float,
+        default=None,
+        help="SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. "
+        "More details here: https://arxiv.org/abs/2303.09556.",
+    )
+    parser.add_argument(
         "--dataloader_num_workers",
         type=int,
         default=0,
@@ -316,11 +335,8 @@ def parse_args():
     parser.add_argument(
         "--report_to",
         type=str,
-        default="tensorboard",
-        help=(
-            'The integration to report the results and logs to. Supported platforms are `"tensorboard"`'
-            ' (default), `"wandb"` and `"comet_ml"`. Use `"all"` to report to all integrations.'
-        ),
+        default="wandb",
+        help=('The integration to report the results and logs to. Currently only supported platforms are `"wandb"`'),
     )
     parser.add_argument(
         "--mixed_precision",
@@ -430,6 +446,7 @@ def parse_args():
             " `args.validation_prompt` and logging the images."
         ),
     )
+    parser.add_argument("--wandb_entity", type=str, default=None, help=("The wandb entity to use (for teams)."))
     parser.add_argument(
         "--tracker_project_name",
         type=str,
@@ -656,6 +673,7 @@ def main():
     # wandb init
     if jax.process_index() == 0 and args.report_to == "wandb":
         wandb.init(
+            entity=args.wandb_entity,
             project=args.tracker_project_name,
             job_type="train",
             config=args,
@@ -731,7 +749,10 @@ def main():
     if args.controlnet_model_name_or_path:
         logger.info("Loading existing controlnet weights")
         controlnet, controlnet_params = FlaxControlNetModel.from_pretrained(
-            args.controlnet_model_name_or_path, from_pt=True, dtype=jnp.float32
+            args.controlnet_model_name_or_path,
+            revision=args.controlnet_revision,
+            from_pt=args.controlnet_from_pt,
+            dtype=jnp.float32,
         )
     else:
         logger.info("Initializing controlnet weights from unet")
@@ -790,6 +811,20 @@ def main():
     # Initialize our training
     validation_rng, train_rngs = jax.random.split(rng)
     train_rngs = jax.random.split(train_rngs, jax.local_device_count())
+
+    def compute_snr(timesteps):
+        """
+        Computes SNR as per https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L847-L849
+        """
+        alphas_cumprod = noise_scheduler_state.common.alphas_cumprod
+        sqrt_alphas_cumprod = alphas_cumprod**0.5
+        sqrt_one_minus_alphas_cumprod = (1.0 - alphas_cumprod) ** 0.5
+
+        alpha = sqrt_alphas_cumprod[timesteps]
+        sigma = sqrt_one_minus_alphas_cumprod[timesteps]
+        # Compute SNR.
+        snr = (alpha / sigma) ** 2
+        return snr
 
     def train_step(state, unet_params, text_encoder_params, vae_params, batch, train_rng):
         # reshape batch, add grad_step_dim if gradient_accumulation_steps > 1
@@ -861,6 +896,12 @@ def main():
                 raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
             loss = (target - model_pred) ** 2
+
+            if args.snr_gamma is not None:
+                snr = jnp.array(compute_snr(timesteps))
+                snr_loss_weights = jnp.where(snr < args.snr_gamma, snr, jnp.ones_like(snr) * args.snr_gamma) / snr
+                loss = loss * snr_loss_weights
+
             loss = loss.mean()
 
             return loss
@@ -1021,6 +1062,8 @@ def main():
     if jax.process_index() == 0:
         if args.validation_prompt is not None:
             image_logs = log_validation(controlnet, state.params, tokenizer, args, validation_rng, weight_dtype)
+        else:
+            image_logs = None
 
         controlnet.save_pretrained(
             args.output_dir,
