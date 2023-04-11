@@ -17,7 +17,6 @@ import PIL.ImageOps
 import requests
 from packaging import version
 
-from . import PIL_INTERPOLATION
 from .import_utils import (
     BACKENDS_MAPPING,
     is_compel_available,
@@ -282,7 +281,7 @@ def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
 def preprocess_image(image, batch_size):
     w, h = image.size
     w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
-    image = image.resize((w, h), resample=PIL_INTERPOLATION["lanczos"])
+    image = image.resize((w, h), resample=PIL.Image.LANCZOS)
     image = np.array(image).astype(np.float32) / 255.0
     image = np.vstack([image[None].transpose(0, 3, 1, 2)] * batch_size)
     image = torch.from_numpy(image)
