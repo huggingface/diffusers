@@ -340,13 +340,12 @@ We encourage you to store or share your model with the community. To use hugging
 huggingface-cli login
 ```
 
-Make sure you have the `MODEL_DIR`,`OUTPUT_DIR` and `HUB_MODEL_ID` environment variables set. The `OUTPUT_DIR` and `HUB_MODEL_ID` variables specify where to save the model to on the Hub. The `TRACKER_PROJECT_NAME` variable sets the project name in `wandb`.
+Make sure you have the `MODEL_DIR`,`OUTPUT_DIR` and `HUB_MODEL_ID` environment variables set. The `OUTPUT_DIR` and `HUB_MODEL_ID` variables specify where to save the model to on the Hub:
 
 ```bash
 export MODEL_DIR="runwayml/stable-diffusion-v1-5"
 export OUTPUT_DIR="runs/fill-circle-{timestamp}"
 export HUB_MODEL_ID="controlnet-fill-circle"
-export TRACKER_PROJECT_NAME='controlnet_fill50k'
 ```
 
 And finally start the training
@@ -356,7 +355,6 @@ python3 train_controlnet_flax.py \
  --pretrained_model_name_or_path=$MODEL_DIR \
  --output_dir=$OUTPUT_DIR \
  --dataset_name=fusing/fill50k \
- --tracker_project_name="$TRACKER_PROJECT_NAME" \
  --resolution=512 \
  --learning_rate=1e-5 \
  --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
@@ -366,6 +364,7 @@ python3 train_controlnet_flax.py \
  --revision="non-ema" \
  --from_pt \
  --report_to="wandb" \
+ --tracker_project_name=$HUB_MODEL_ID \
  --num_train_epochs=11 \
  --push_to_hub \
  --hub_model_id=$HUB_MODEL_ID
@@ -373,9 +372,13 @@ python3 train_controlnet_flax.py \
 
 Since we passed the `--push_to_hub` flag, it will automatically create a model repo under your huggingface account based on `$HUB_MODEL_ID`. By the end of training, the final checkpoint will be automatically stored on the hub. You can find an example model repo [here](https://huggingface.co/YiYiXu/fill-circle-controlnet).
 
-Our training script also provides limited support for streaming large datasets from the Hugging Face Hub. In order to enable streaming, one must also set `--max_train_samples`.  Here is an example command:
+Our training script also provides limited support for streaming large datasets from the Hugging Face Hub. In order to enable streaming, one must also set `--max_train_samples`.  Here is an example command (from [this Blog article](https://huggingface.co/blog/train-your-controlnet)):
 
 ```bash
+export MODEL_DIR="runwayml/stable-diffusion-v1-5"
+export OUTPUT_DIR="runs/uncanny-faces-{timestamp}"
+export HUB_MODEL_ID="controlnet-uncanny-faces"
+
 python3 train_controlnet_flax.py \
 	--pretrained_model_name_or_path=$MODEL_DIR \
 	--output_dir=$OUTPUT_DIR \
@@ -385,13 +388,12 @@ python3 train_controlnet_flax.py \
 	--image_column=image \
 	--caption_column=image_caption \
 	--resolution=512 \
-	--max_train_samples 50 \
-	--max_train_steps 5 \
+	--max_train_samples 100000 \
 	--learning_rate=1e-5 \
-	--validation_steps=2 \
 	--train_batch_size=1 \
 	--revision="flax" \
-	--report_to="wandb"
+	--report_to="wandb" \
+  --tracker_project_name=$HUB_MODEL_ID
 ```
 
 Note, however, that the performance of the TPUs might get bottlenecked as streaming with `datasets` is not optimized for images. For ensuring maximum throughput, we encourage you to explore the following options:
