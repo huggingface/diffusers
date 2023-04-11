@@ -595,7 +595,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin)
         timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variables
-        num_channels_latents = self.unet.in_channels
+        num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
@@ -701,7 +701,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin)
         # Same masking process as in SAG paper: https://arxiv.org/pdf/2210.00939.pdf
         bh, hw1, hw2 = attn_map.shape
         b, latent_channel, latent_h, latent_w = original_latents.shape
-        h = self.unet.attention_head_dim
+        h = self.unet.config.attention_head_dim
         if isinstance(h, list):
             h = h[-1]
 
