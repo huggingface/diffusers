@@ -300,6 +300,8 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
             generator,
         )
 
+        original_image = self.decode_latents_inter(image_latents)
+
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
         latents = self.prepare_latents(
@@ -372,12 +374,12 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
 
                 if mask is not None:
                     pixel_space = self.decode_latents_inter(latents)
-                    pixel_space_mask_enforced = self.enforce_mask(device, image, mask, pixel_space)
+                    pixel_space_mask_enforced = self.enforce_mask(device, original_image, mask, pixel_space)
                     masked_latents = self.image_to_latent(pixel_space_mask_enforced, prompt_embeds.dtype, device)
                     mask_noise_pred = latents - masked_latents
                     noise_pred = mask_guidance_scale * mask_noise_pred + (1-mask_guidance_scale) * noise_pred
 
-                # compute the previous noisy sample x_t -> x_t-1
+                # compute the previous noisy sample x_t -> x_t-1d
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
                 # call the callback, if provided
