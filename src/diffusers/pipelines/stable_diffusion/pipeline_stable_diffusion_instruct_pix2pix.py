@@ -675,7 +675,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         original_image_numpy = np.asarray(original_image)
         current_image_numpy = np.asarray(current_image.cpu())
         mask_numpy = np.asarray(mask)
-        mask_numpy = [mask_numpy].transpose(0, 3, 1, 2)
+        mask_numpy = np.array([mask_numpy]).transpose(0, 3, 1, 2)
         inv_mask = 1 - mask_numpy
         print('Mask: ', mask_numpy.shape)
         print('Current: ', current_image_numpy.shape)
