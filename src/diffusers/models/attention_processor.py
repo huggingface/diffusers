@@ -101,6 +101,9 @@ class Attention(nn.Module):
             # only relevant for the `AddedKVProcessor` classes
             self.to_k = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
             self.to_v = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
+        else:
+            self.to_k = None
+            self.to_v = None
 
         if self.added_kv_proj_dim is not None:
             self.add_k_proj = nn.Linear(added_kv_proj_dim, inner_dim)
