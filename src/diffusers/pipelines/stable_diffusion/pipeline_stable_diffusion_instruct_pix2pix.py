@@ -682,6 +682,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         print(mask_numpy.shape)
         inv_mask = 1 - mask_numpy
         mask_enforced = (mask_numpy * current_image_numpy) + (inv_mask * original_image_numpy)
+        print(mask_enforced.shape)
         return torch.from_numpy(mask_enforced).to(device)
 
     def check_inputs(
