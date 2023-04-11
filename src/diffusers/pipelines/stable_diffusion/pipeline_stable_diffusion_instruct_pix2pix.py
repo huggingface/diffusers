@@ -150,6 +150,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
+        mask: Union[torch.FloatTensor, PIL.Image.Image] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -341,8 +342,10 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
                 # predict the noise residual
                 noise_pred = self.unet(scaled_latent_model_input, t, encoder_hidden_states=prompt_embeds).sample
 
-                pixel_space_latents = self.decode_latents_inter(latents)
-                back_to_latent = self.image_to_latent(pixel_space_latents, prompt_embeds.dtype, device)
+                if mask is not None:
+                    pixel_space_latents = self.decode_latents_inter(latents)
+                    pixel_space_mask_enforced = self.enforce_mask(image, mask, pixel_space_latents)
+                    back_to_latent = self.image_to_latent(pixel_space_mask_enforced, prompt_embeds.dtype, device)
 
                 # Hack:
                 # For karras style schedulers the model does classifer free guidance using the
@@ -663,6 +666,12 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
         return image
+    
+    def enforce_mask(self, original_image, mask, current_image):
+        # We will want mask to be 1s where it's okay to change
+        inv_mask = 1 - mask
+        mask_enforced = (mask * current_image) + (inv_mask * original_image)
+        return mask_enforced
 
     def check_inputs(
         self, prompt, callback_steps, negative_prompt=None, prompt_embeds=None, negative_prompt_embeds=None
