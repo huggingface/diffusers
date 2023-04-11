@@ -40,7 +40,7 @@ jobs:
             framework: pytorch_examples
             runner: docker-cpu
             image: diffusers/diffusers-pytorch-cpu
-            report: torch_cpu
+            report: torch_example_cpu
 
     name: ${{ matrix.config.name }}
 
