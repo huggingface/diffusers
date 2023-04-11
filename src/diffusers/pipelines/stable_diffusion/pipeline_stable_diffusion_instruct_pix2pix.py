@@ -676,14 +676,10 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         # We will want mask to be 1s where it's okay to change
         original_image_numpy = np.asarray(original_image.cpu())
         current_image_numpy = np.asarray(current_image.cpu())
-        print(current_image_numpy.shape)
-        print(original_image_numpy.shape)
         mask_numpy = np.asarray(mask)
         mask_numpy = np.array([mask_numpy]).transpose(0, 3, 1, 2)
-        print(mask_numpy.shape)
         inv_mask = 1 - mask_numpy
         mask_enforced = (mask_numpy * current_image_numpy) + (inv_mask * original_image_numpy)
-        print(mask_enforced.shape)
         return torch.from_numpy(mask_enforced).to(device)
 
     def check_inputs(
