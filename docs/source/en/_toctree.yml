@@ -206,6 +206,8 @@
       title: Stochastic Karras VE
     - local: api/pipelines/text_to_video
       title: Text-to-Video
+    - local: api/pipelines/text_to_video_zero
+      title: Text-to-Video Zero
     - local: api/pipelines/unclip
       title: UnCLIP
     - local: api/pipelines/latent_diffusion_uncond
