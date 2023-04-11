@@ -681,6 +681,8 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         print('Current: ', current_image_numpy.shape)
         print('Original: ', original_image_numpy.shape)
         mask_enforced = (mask_numpy * current_image_numpy) + (inv_mask * original_image_numpy)
+        print(type(mask_enforced))
+        print('Enforced: ', mask_enforced.shape)
         return PIL.Image.fromarray(mask_enforced).to(device)
 
     def check_inputs(
