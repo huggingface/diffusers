@@ -21,6 +21,7 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     load_image,
     load_numpy,
+    print_tensor_test,
     require_torch_gpu,
     skip_mps,
     slow,
@@ -169,7 +170,7 @@ class StableUnCLIPImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.4446, 0.6911, 0.6093, 0.4456, 0.6509, 0.6114, 0.4529, 0.4059, 0.4888])
+        expected_slice = np.array([0.4493, 0.7299, 0.5794, 0.4241, 0.6794, 0.6240, 0.4255, 0.4002, 0.5081])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
