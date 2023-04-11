@@ -672,6 +672,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
     
     def enforce_mask(self, device, original_image, mask, current_image):
         # We will want mask to be 1s where it's okay to change
+        print(type(current_image))
         original_image_numpy = np.asarray(original_image)
         current_image_numpy = np.asarray(current_image.cpu())
         mask_numpy = np.asarray(mask)
@@ -683,7 +684,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         mask_enforced = (mask_numpy * current_image_numpy) + (inv_mask * original_image_numpy)
         print(type(mask_enforced))
         print('Enforced: ', mask_enforced.shape)
-        return PIL.Image.fromarray(mask_enforced).to(device)
+        return mask_enforced.to(device)
 
     def check_inputs(
         self, prompt, callback_steps, negative_prompt=None, prompt_embeds=None, negative_prompt_embeds=None
