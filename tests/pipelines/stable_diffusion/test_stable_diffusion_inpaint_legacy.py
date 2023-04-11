@@ -34,7 +34,7 @@ from diffusers import (
     VQModel,
 )
 from diffusers.utils import floats_tensor, load_image, nightly, slow, torch_device
-from diffusers.utils.testing_utils import load_numpy, require_torch_gpu, preprocess_image
+from diffusers.utils.testing_utils import load_numpy, preprocess_image, require_torch_gpu
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
