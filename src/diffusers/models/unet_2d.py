@@ -44,7 +44,8 @@ class UNet2DModel(ModelMixin, ConfigMixin):
 
     Parameters:
         sample_size (`int` or `Tuple[int, int]`, *optional*, defaults to `None`):
-            Height and width of input/output sample.
+            Height and width of input/output sample. Dimensions must be a multiple of `2 ** (len(block_out_channels) -
+            1)`.
         in_channels (`int`, *optional*, defaults to 3): Number of channels in the input image.
         out_channels (`int`, *optional*, defaults to 3): Number of channels in the output.
         center_input_sample (`bool`, *optional*, defaults to `False`): Whether to center the input sample.
