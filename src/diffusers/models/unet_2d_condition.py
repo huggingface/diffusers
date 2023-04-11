@@ -273,13 +273,13 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             self.class_embedding = None
 
         if time_embedding_act_fn is not None:
-            if act_fn == "swish":
+            if time_embedding_act_fn == "swish":
                 self.time_embed_act = lambda x: F.silu(x)
-            elif act_fn == "mish":
+            elif time_embedding_act_fn == "mish":
                 self.time_embed_act = nn.Mish()
-            elif act_fn == "silu":
+            elif time_embedding_act_fn == "silu":
                 self.time_embed_act = nn.SiLU()
-            elif act_fn == "gelu":
+            elif time_embedding_act_fn == "gelu":
                 self.time_embed_act = nn.GELU()
             else:
                 raise ValueError(f"Unsupported activation function: {time_embedding_act_fn}")
