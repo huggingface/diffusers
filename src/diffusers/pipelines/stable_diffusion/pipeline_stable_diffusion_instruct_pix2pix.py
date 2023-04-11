@@ -345,7 +345,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
 
                 if mask is not None:
                     pixel_space = self.decode_latents_inter(latents)
-                    pixel_space_mask_enforced = self.enforce_mask(image, mask, pixel_space)
+                    pixel_space_mask_enforced = self.enforce_mask(device, image, mask, pixel_space)
                     masked_latents = self.image_to_latent(pixel_space_mask_enforced, prompt_embeds.dtype, device)
                     mask_noise_pred = latents - masked_latents
                     noise_pred = mask_guidance_scale * mask_noise_pred + (1-mask_guidance_scale) * noise_pred
@@ -670,14 +670,14 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         image = (image / 2 + 0.5).clamp(0, 1)
         return image
     
-    def enforce_mask(self, original_image, mask, current_image):
+    def enforce_mask(self, device, original_image, mask, current_image):
         # We will want mask to be 1s where it's okay to change
         original_image_numpy = np.asarray(original_image)
-        current_image_numpy = np.asarray(current_image)
+        current_image_numpy = np.asarray(current_image.cpu())
         mask_numpy = np.asarray(mask)
         inv_mask = 1 - mask_numpy
         mask_enforced = (mask_numpy * current_image_numpy) + (inv_mask * original_image_numpy)
-        return PIL.Image.fromarray(mask_enforced)
+        return PIL.Image.fromarray(mask_enforced).to(device)
 
     def check_inputs(
         self, prompt, callback_steps, negative_prompt=None, prompt_embeds=None, negative_prompt_embeds=None
