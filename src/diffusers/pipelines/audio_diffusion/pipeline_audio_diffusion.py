@@ -60,9 +60,9 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         input_module = self.vqvae if self.vqvae is not None else self.unet
         # For backwards compatibility
         sample_size = (
-            (input_module.sample_size, input_module.sample_size)
-            if type(input_module.sample_size) == int
-            else input_module.sample_size
+            (input_module.config.sample_size, input_module.config.sample_size)
+            if type(input_module.config.sample_size) == int
+            else input_module.config.sample_size
         )
         return sample_size
 
