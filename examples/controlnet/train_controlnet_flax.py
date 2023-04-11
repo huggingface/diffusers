@@ -22,7 +22,6 @@ import time
 from pathlib import Path
 
 import jax
-import jax.experimental.compilation_cache.compilation_cache as cc
 import jax.numpy as jnp
 import numpy as np
 import optax
@@ -1027,9 +1026,6 @@ def main():
                 "controlnet_params": sum(np.prod(x.shape) for x in jax.tree_util.tree_leaves(state.params)),
             }
         )
-
-    if args.ccache:
-        cc.initialize_cache(args.ccache)
 
     global_step = step0 = 0
     epochs = tqdm(
