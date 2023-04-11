@@ -278,7 +278,8 @@ def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
     image = image.convert("RGB")
     return image
 
-def preprocess_image(image:PIL.Image, batch_size:int):
+
+def preprocess_image(image: PIL.Image, batch_size: int):
     w, h = image.size
     w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
     image = image.resize((w, h), resample=PIL.Image.LANCZOS)
@@ -286,6 +287,7 @@ def preprocess_image(image:PIL.Image, batch_size:int):
     image = np.vstack([image[None].transpose(0, 3, 1, 2)] * batch_size)
     image = torch.from_numpy(image)
     return 2.0 * image - 1.0
+
 
 def export_to_video(video_frames: List[np.ndarray], output_video_path: str = None) -> str:
     if is_opencv_available():
