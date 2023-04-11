@@ -684,7 +684,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         mask_enforced = (mask_numpy * current_image_numpy) + (inv_mask * original_image_numpy)
         print(type(mask_enforced))
         print('Enforced: ', mask_enforced.shape)
-        return mask_enforced.to(device)
+        return torch.from_numpy(mask_enforced).to(device)
 
     def check_inputs(
         self, prompt, callback_steps, negative_prompt=None, prompt_embeds=None, negative_prompt_embeds=None
