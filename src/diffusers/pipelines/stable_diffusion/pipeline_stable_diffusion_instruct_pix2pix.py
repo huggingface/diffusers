@@ -299,7 +299,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
             do_classifier_free_guidance,
             generator,
         )
-        original_image = self.decode_latents(image_latents[:1])
+        original_image = torch.Tensor(self.decode_latents(image_latents[:1]))
         print(original_image.shape)
 
         # 6. Prepare latent variables
