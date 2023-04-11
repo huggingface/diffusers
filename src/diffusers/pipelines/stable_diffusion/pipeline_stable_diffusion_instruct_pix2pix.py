@@ -299,8 +299,9 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
             do_classifier_free_guidance,
             generator,
         )
-        original_image = torch.Tensor(self.decode_latents(image_latents[:1]))
-        print(original_image.shape)
+        original_image = self.decode_latents_inter(image_latents[:1])
+        im = PIL.Image.fromarray(original_image[0])
+        im.save('/home/ptruitt7/testtttt.jpg')
 
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
