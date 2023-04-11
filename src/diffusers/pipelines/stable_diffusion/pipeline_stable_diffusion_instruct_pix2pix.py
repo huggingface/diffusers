@@ -343,13 +343,6 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
                 # predict the noise residual
                 noise_pred = self.unet(scaled_latent_model_input, t, encoder_hidden_states=prompt_embeds).sample
 
-                if mask is not None:
-                    pixel_space = self.decode_latents_inter(latents)
-                    pixel_space_mask_enforced = self.enforce_mask(device, image, mask, pixel_space)
-                    masked_latents = self.image_to_latent(pixel_space_mask_enforced, prompt_embeds.dtype, device)
-                    mask_noise_pred = latents - masked_latents
-                    noise_pred = mask_guidance_scale * mask_noise_pred + (1-mask_guidance_scale) * noise_pred
-
                 # Hack:
                 # For karras style schedulers the model does classifer free guidance using the
                 # predicted_original_sample instead of the noise_pred. So we need to compute the
@@ -376,6 +369,13 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
                 # predicted_original_sample is correct.
                 if scheduler_is_in_sigma_space:
                     noise_pred = (noise_pred - latents) / (-sigma)
+
+                if mask is not None:
+                    pixel_space = self.decode_latents_inter(latents)
+                    pixel_space_mask_enforced = self.enforce_mask(device, image, mask, pixel_space)
+                    masked_latents = self.image_to_latent(pixel_space_mask_enforced, prompt_embeds.dtype, device)
+                    mask_noise_pred = latents - masked_latents
+                    noise_pred = mask_guidance_scale * mask_noise_pred + (1-mask_guidance_scale) * noise_pred
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
