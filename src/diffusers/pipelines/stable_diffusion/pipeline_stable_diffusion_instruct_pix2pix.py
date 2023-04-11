@@ -300,9 +300,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
             generator,
         )
         original_image = self.decode_latents_inter(image_latents[:1])
-        og_im = self.decode_latents(image_latents)
-        og_im = PIL.Image.fromarray(og_im)
-        og_im.save('/home/ptruitt7/resulting.jpg')
+        print(original_image.shape)
 
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
