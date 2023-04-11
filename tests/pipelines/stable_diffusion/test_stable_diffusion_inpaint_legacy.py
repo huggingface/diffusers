@@ -260,10 +260,12 @@ class StableDiffusionInpaintLegacyPipelineFastTests(unittest.TestCase):
         image_slice_0 = images[0, -3:, -3:, -1].flatten()
         image_slice_1 = images[1, -3:, -3:, -1].flatten()
 
-        expected_slice_0 = np.array([[0.4328835, 0.45281428, 0.38207343, 0.45704383,
-                                      0.46973437, 0.4161349, 0.37636507, 0.45011833, 0.4460413]])
-        expected_slice_1 = np.array([[0.4873669, 0.45950648, 0.5203329, 0.6400243, 0.5441418,
-                                      0.551703, 0.6023108, 0.49404332, 0.4815712]])
+        expected_slice_0 = np.array(
+            [[0.4328835, 0.45281428, 0.38207343, 0.45704383, 0.46973437, 0.4161349, 0.37636507, 0.45011833, 0.4460413]]
+        )
+        expected_slice_1 = np.array(
+            [[0.4873669, 0.45950648, 0.5203329, 0.6400243, 0.5441418, 0.551703, 0.6023108, 0.49404332, 0.4815712]]
+        )
 
         assert np.abs(expected_slice_0 - image_slice_0).max() < 1e-4
         assert np.abs(expected_slice_1 - image_slice_1).max() < 1e-4
@@ -448,14 +450,14 @@ class StableDiffusionInpaintLegacyPipelineSlowTests(unittest.TestCase):
         pipe.enable_attention_slicing()
 
         inputs = self.get_inputs()
-        inputs['prompt'] = [inputs['prompt']] * 2
-        inputs['image'] = preprocess_image(inputs['image'], batch_size=2)
+        inputs["prompt"] = [inputs["prompt"]] * 2
+        inputs["image"] = preprocess_image(inputs["image"], batch_size=2)
 
-        mask = inputs['mask_image'].convert("L")
+        mask = inputs["mask_image"].convert("L")
         mask = np.array(mask).astype(np.float32) / 255.0
         mask = torch.from_numpy(1 - mask)
         masks = torch.vstack([mask[None][None]] * 2)
-        inputs['mask_image'] = masks
+        inputs["mask_image"] = masks
 
         image = pipe(**inputs).images
         assert image.shape == (2, 512, 512, 3)
@@ -463,10 +465,12 @@ class StableDiffusionInpaintLegacyPipelineSlowTests(unittest.TestCase):
         image_slice_0 = image[0, 253:256, 253:256, -1].flatten()
         image_slice_1 = image[1, 253:256, 253:256, -1].flatten()
 
-        expected_slice_0 = np.array([0.52093095, 0.4176447, 0.32752383, 0.6175223,
-                                     0.50563973, 0.36470804, 0.65460044, 0.5775188, 0.44332123])
-        expected_slice_1 = np.array([0.3592432, 0.4233033, 0.3914635, 0.31014425,
-                                     0.3702293, 0.39412856, 0.17526966, 0.2642669, 0.37480092])
+        expected_slice_0 = np.array(
+            [0.52093095, 0.4176447, 0.32752383, 0.6175223, 0.50563973, 0.36470804, 0.65460044, 0.5775188, 0.44332123]
+        )
+        expected_slice_1 = np.array(
+            [0.3592432, 0.4233033, 0.3914635, 0.31014425, 0.3702293, 0.39412856, 0.17526966, 0.2642669, 0.37480092]
+        )
 
         assert np.abs(expected_slice_0 - image_slice_0).max() < 1e-4
         assert np.abs(expected_slice_1 - image_slice_1).max() < 1e-4
