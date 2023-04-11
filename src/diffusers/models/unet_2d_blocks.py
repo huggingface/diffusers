@@ -15,10 +15,11 @@ from typing import Optional
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 from .attention import AdaGroupNorm, AttentionBlock
-from .attention_processor import Attention, AttnAddedKVProcessor
+from .attention_processor import Attention, AttnAddedKVProcessor, AttnAddedKVProcessor2_0
 from .dual_transformer_2d import DualTransformer2DModel
 from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, KDownsample2D, KUpsample2D, ResnetBlock2D, Upsample2D
 from .transformer_2d import Transformer2DModel
@@ -612,6 +613,10 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
         attentions = []
 
         for _ in range(num_layers):
+            processor = (
+                AttnAddedKVProcessor2_0() if hasattr(F, "scaled_dot_product_attention") else AttnAddedKVProcessor()
+            )
+
             attentions.append(
                 Attention(
                     query_dim=in_channels,
@@ -624,7 +629,7 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
                     upcast_softmax=True,
                     only_cross_attention=only_cross_attention,
                     cross_attention_norm=cross_attention_norm,
-                    processor=AttnAddedKVProcessor(),
+                    processor=processor,
                 )
             )
             resnets.append(
@@ -1396,6 +1401,11 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
                     skip_time_act=skip_time_act,
                 )
             )
+
+            processor = (
+                AttnAddedKVProcessor2_0() if hasattr(F, "scaled_dot_product_attention") else AttnAddedKVProcessor()
+            )
+
             attentions.append(
                 Attention(
                     query_dim=out_channels,
@@ -1408,7 +1418,7 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
                     upcast_softmax=True,
                     only_cross_attention=only_cross_attention,
                     cross_attention_norm=cross_attention_norm,
-                    processor=AttnAddedKVProcessor(),
+                    processor=processor,
                 )
             )
         self.attentions = nn.ModuleList(attentions)
@@ -2399,6 +2409,11 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
                     skip_time_act=skip_time_act,
                 )
             )
+
+            processor = (
+                AttnAddedKVProcessor2_0() if hasattr(F, "scaled_dot_product_attention") else AttnAddedKVProcessor()
+            )
+
             attentions.append(
                 Attention(
                     query_dim=out_channels,
@@ -2411,7 +2426,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
                     upcast_softmax=True,
                     only_cross_attention=only_cross_attention,
                     cross_attention_norm=cross_attention_norm,
-                    processor=AttnAddedKVProcessor(),
+                    processor=processor,
                 )
             )
         self.attentions = nn.ModuleList(attentions)
