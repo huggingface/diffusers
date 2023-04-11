@@ -44,6 +44,7 @@ def get_down_block(
     resnet_time_scale_shift="default",
     resnet_skip_time_act=False,
     resnet_out_scale_factor=1.0,
+    cross_attention_norm=None,
 ):
     down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
     if down_block_type == "DownBlock2D":
@@ -126,6 +127,7 @@ def get_down_block(
             skip_time_act=resnet_skip_time_act,
             output_scale_factor=resnet_out_scale_factor,
             only_cross_attention=only_cross_attention,
+            cross_attention_norm=cross_attention_norm,
         )
     elif down_block_type == "SkipDownBlock2D":
         return SkipDownBlock2D(
@@ -223,6 +225,7 @@ def get_up_block(
     resnet_time_scale_shift="default",
     resnet_skip_time_act=False,
     resnet_out_scale_factor=1.0,
+    cross_attention_norm=None,
 ):
     up_block_type = up_block_type[7:] if up_block_type.startswith("UNetRes") else up_block_type
     if up_block_type == "UpBlock2D":
@@ -293,6 +296,7 @@ def get_up_block(
             skip_time_act=resnet_skip_time_act,
             output_scale_factor=resnet_out_scale_factor,
             only_cross_attention=only_cross_attention,
+            cross_attention_norm=cross_attention_norm,
         )
     elif up_block_type == "AttnUpBlock2D":
         return AttnUpBlock2D(
@@ -578,6 +582,7 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
         cross_attention_dim=1280,
         skip_time_act=False,
         only_cross_attention=False,
+        cross_attention_norm=None,
     ):
         super().__init__()
 
@@ -618,6 +623,7 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
                     bias=True,
                     upcast_softmax=True,
                     only_cross_attention=only_cross_attention,
+                    cross_attention_norm=cross_attention_norm,
                     processor=AttnAddedKVProcessor(),
                 )
             )
@@ -1361,6 +1367,7 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
         add_downsample=True,
         skip_time_act=False,
         only_cross_attention=False,
+        cross_attention_norm=None,
     ):
         super().__init__()
 
@@ -1400,6 +1407,7 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
                     bias=True,
                     upcast_softmax=True,
                     only_cross_attention=only_cross_attention,
+                    cross_attention_norm=cross_attention_norm,
                     processor=AttnAddedKVProcessor(),
                 )
             )
@@ -1580,7 +1588,7 @@ class KCrossAttnDownBlock2D(nn.Module):
                     temb_channels=temb_channels,
                     attention_bias=True,
                     add_self_attention=add_self_attention,
-                    cross_attention_norm=True,
+                    cross_attention_norm="layer_norm",
                     group_size=resnet_group_size,
                 )
             )
@@ -2361,6 +2369,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
         add_upsample=True,
         skip_time_act=False,
         only_cross_attention=False,
+        cross_attention_norm=None,
     ):
         super().__init__()
         resnets = []
@@ -2401,6 +2410,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
                     bias=True,
                     upcast_softmax=True,
                     only_cross_attention=only_cross_attention,
+                    cross_attention_norm=cross_attention_norm,
                     processor=AttnAddedKVProcessor(),
                 )
             )
@@ -2608,7 +2618,7 @@ class KCrossAttnUpBlock2D(nn.Module):
                     temb_channels=temb_channels,
                     attention_bias=True,
                     add_self_attention=add_self_attention,
-                    cross_attention_norm=True,
+                    cross_attention_norm="layer_norm",
                     upcast_attention=upcast_attention,
                 )
             )
@@ -2703,7 +2713,7 @@ class KAttentionBlock(nn.Module):
         upcast_attention: bool = False,
         temb_channels: int = 768,  # for ada_group_norm
         add_self_attention: bool = False,
-        cross_attention_norm: bool = False,
+        cross_attention_norm: Optional[str] = None,
         group_size: int = 32,
     ):
         super().__init__()
@@ -2719,7 +2729,7 @@ class KAttentionBlock(nn.Module):
                 dropout=dropout,
                 bias=attention_bias,
                 cross_attention_dim=None,
-                cross_attention_norm=False,
+                cross_attention_norm=None,
             )
 
         # 2. Cross-Attn

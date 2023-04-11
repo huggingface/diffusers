@@ -56,7 +56,8 @@ class Attention(nn.Module):
         bias=False,
         upcast_attention: bool = False,
         upcast_softmax: bool = False,
-        cross_attention_norm: bool = False,
+        cross_attention_norm: Optional[str] = None,
+        cross_attention_norm_num_groups: int = 32,
         added_kv_proj_dim: Optional[int] = None,
         norm_num_groups: Optional[int] = None,
         out_bias: bool = True,
@@ -69,7 +70,6 @@ class Attention(nn.Module):
         cross_attention_dim = cross_attention_dim if cross_attention_dim is not None else query_dim
         self.upcast_attention = upcast_attention
         self.upcast_softmax = upcast_softmax
-        self.cross_attention_norm = cross_attention_norm
 
         self.scale = dim_head**-0.5 if scale_qk else 1.0
 
@@ -92,8 +92,28 @@ class Attention(nn.Module):
         else:
             self.group_norm = None
 
-        if cross_attention_norm:
+        if cross_attention_norm is None:
+            self.norm_cross = None
+        elif cross_attention_norm == "layer_norm":
             self.norm_cross = nn.LayerNorm(cross_attention_dim)
+        elif cross_attention_norm == "group_norm":
+            if self.added_kv_proj_dim is not None:
+                # The given `encoder_hidden_states` are initially of shape
+                # (batch_size, seq_len, added_kv_proj_dim) before being projected
+                # to (batch_size, seq_len, cross_attention_dim). The norm is applied
+                # before the projection, so we need to use `added_kv_proj_dim` as
+                # the number of channels for the group norm.
+                norm_cross_num_channels = added_kv_proj_dim
+            else:
+                norm_cross_num_channels = cross_attention_dim
+
+            self.norm_cross = nn.GroupNorm(
+                num_channels=norm_cross_num_channels, num_groups=cross_attention_norm_num_groups, eps=1e-5, affine=True
+            )
+        else:
+            raise ValueError(
+                f"unknown cross_attention_norm: {cross_attention_norm}. Should be None, 'layer_norm' or 'group_norm'"
+            )
 
         self.to_q = nn.Linear(query_dim, inner_dim, bias=bias)
 
@@ -304,6 +324,25 @@ class Attention(nn.Module):
             attention_mask = attention_mask.repeat_interleave(head_size, dim=0)
         return attention_mask
 
+    def norm_encoder_hidden_states(self, encoder_hidden_states):
+        assert self.norm_cross is not None, "self.norm_cross must be defined to call self.norm_encoder_hidden_states"
+
+        if isinstance(self.norm_cross, nn.LayerNorm):
+            encoder_hidden_states = self.norm_cross(encoder_hidden_states)
+        elif isinstance(self.norm_cross, nn.GroupNorm):
+            # Group norm norms along the channels dimension and expects
+            # input to be in the shape of (N, C, *). In this case, we want
+            # to norm along the hidden dimension, so we need to move
+            # (batch_size, sequence_length, hidden_size) ->
+            # (batch_size, hidden_size, sequence_length)
+            encoder_hidden_states = encoder_hidden_states.transpose(1, 2)
+            encoder_hidden_states = self.norm_cross(encoder_hidden_states)
+            encoder_hidden_states = encoder_hidden_states.transpose(1, 2)
+        else:
+            assert False
+
+        return encoder_hidden_states
+
 
 class AttnProcessor:
     def __call__(
@@ -321,8 +360,8 @@ class AttnProcessor:
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
-        elif attn.cross_attention_norm:
-            encoder_hidden_states = attn.norm_cross(encoder_hidden_states)
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
@@ -388,7 +427,10 @@ class LoRAAttnProcessor(nn.Module):
         query = attn.to_q(hidden_states) + scale * self.to_q_lora(hidden_states)
         query = attn.head_to_batch_dim(query)
 
-        encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         key = attn.to_k(encoder_hidden_states) + scale * self.to_k_lora(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states) + scale * self.to_v_lora(encoder_hidden_states)
@@ -415,6 +457,11 @@ class AttnAddedKVProcessor:
         batch_size, sequence_length, _ = hidden_states.shape
 
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
@@ -467,8 +514,8 @@ class XFormersAttnProcessor:
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
-        elif attn.cross_attention_norm:
-            encoder_hidden_states = attn.norm_cross(encoder_hidden_states)
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
@@ -511,8 +558,8 @@ class AttnProcessor2_0:
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
-        elif attn.cross_attention_norm:
-            encoder_hidden_states = attn.norm_cross(encoder_hidden_states)
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
@@ -561,7 +608,10 @@ class LoRAXFormersAttnProcessor(nn.Module):
         query = attn.to_q(hidden_states) + scale * self.to_q_lora(hidden_states)
         query = attn.head_to_batch_dim(query).contiguous()
 
-        encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         key = attn.to_k(encoder_hidden_states) + scale * self.to_k_lora(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states) + scale * self.to_v_lora(encoder_hidden_states)
@@ -598,8 +648,8 @@ class SlicedAttnProcessor:
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
-        elif attn.cross_attention_norm:
-            encoder_hidden_states = attn.norm_cross(encoder_hidden_states)
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
@@ -646,6 +696,11 @@ class SlicedAttnAddedKVProcessor:
         batch_size, sequence_length, _ = hidden_states.shape
 
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
