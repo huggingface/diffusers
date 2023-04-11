@@ -300,8 +300,6 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
             generator,
         )
 
-        original_image = self.decode_latents_inter(image_latents)
-
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
         latents = self.prepare_latents(
@@ -314,6 +312,8 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
             generator,
             latents,
         )
+
+        original_image = self.decode_latents_inter(latents)
 
         # 7. Check that shapes of latents and image match the UNet channels
         num_channels_image = image_latents.shape[1]
