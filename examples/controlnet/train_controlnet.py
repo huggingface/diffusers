@@ -577,7 +577,7 @@ def make_train_dataset(args, tokenizer, accelerator):
 
     if args.conditioning_image_column is None:
         conditioning_image_column = column_names[2]
-        logger.info(f"conditioning image column defaulting to {caption_column}")
+        logger.info(f"conditioning image column defaulting to {conditioning_image_column}")
     else:
         conditioning_image_column = args.conditioning_image_column
         if conditioning_image_column not in column_names:
