@@ -299,7 +299,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
             do_classifier_free_guidance,
             generator,
         )
-        original_image = self.decode_latents_inter(image_latents[:1]).numpy()
+        original_image = self.decode_latents_inter(image_latents[:1]).cpu().numpy()
         im = PIL.Image.fromarray(original_image[0])
         im.save('/home/ptruitt7/testtttt.jpg')
 
