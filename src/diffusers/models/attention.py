@@ -224,6 +224,7 @@ class BasicTransformerBlock(nn.Module):
                 f" define `num_embeds_ada_norm` if setting `norm_type` to {norm_type}."
             )
 
+        # Define 3 blocks. Each block has its own normalization layer.
         # 1. Self-Attn
         if self.use_ada_layer_norm:
             self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm)
@@ -278,6 +279,8 @@ class BasicTransformerBlock(nn.Module):
         cross_attention_kwargs=None,
         class_labels=None,
     ):
+        # Notice that normalization is always applied before the real computation in the following blocks.
+        # 1. Self-Attention
         if self.use_ada_layer_norm:
             norm_hidden_states = self.norm1(hidden_states, timestep)
         elif self.use_ada_layer_norm_zero:
@@ -287,7 +290,6 @@ class BasicTransformerBlock(nn.Module):
         else:
             norm_hidden_states = self.norm1(hidden_states)
 
-        # 1. Self-Attention
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         attn_output = self.attn1(
             norm_hidden_states,
@@ -299,6 +301,7 @@ class BasicTransformerBlock(nn.Module):
             attn_output = gate_msa.unsqueeze(1) * attn_output
         hidden_states = attn_output + hidden_states
 
+        # 2. Cross-Attention
         if self.attn2 is not None:
             norm_hidden_states = (
                 self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
@@ -306,7 +309,6 @@ class BasicTransformerBlock(nn.Module):
             # TODO (Birch-San): Here we should prepare the encoder_attention mask correctly
             # prepare attention mask here
 
-            # 2. Cross-Attention
             attn_output = self.attn2(
                 norm_hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
