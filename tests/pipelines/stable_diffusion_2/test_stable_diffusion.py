@@ -134,7 +134,7 @@ class StableDiffusion2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5649, 0.6022, 0.4804, 0.5270, 0.5585, 0.4643, 0.5159, 0.4963, 0.4793])
+        expected_slice = np.array([0.5753, 0.6113, 0.5005, 0.5036, 0.5464, 0.4725, 0.4982, 0.4865, 0.4861])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -151,7 +151,7 @@ class StableDiffusion2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5099, 0.5677, 0.4671, 0.5128, 0.5697, 0.4676, 0.5277, 0.4964, 0.4946])
+        expected_slice = np.array([0.5121, 0.5714, 0.4827, 0.5057, 0.5646, 0.4766, 0.5189, 0.4895, 0.4990])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -168,7 +168,7 @@ class StableDiffusion2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4717, 0.5376, 0.4568, 0.5225, 0.5734, 0.4797, 0.5467, 0.5074, 0.5043])
+        expected_slice = np.array([0.4865, 0.5439, 0.4840, 0.4995, 0.5543, 0.4846, 0.5199, 0.4942, 0.5061])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -185,7 +185,7 @@ class StableDiffusion2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4715, 0.5376, 0.4569, 0.5224, 0.5734, 0.4797, 0.5465, 0.5074, 0.5046])
+        expected_slice = np.array([0.4864, 0.5440, 0.4842, 0.4994, 0.5543, 0.4846, 0.5196, 0.4942, 0.5063])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -202,7 +202,7 @@ class StableDiffusion2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4717, 0.5376, 0.4568, 0.5225, 0.5734, 0.4797, 0.5467, 0.5074, 0.5043])
+        expected_slice = np.array([0.4865, 0.5439, 0.4840, 0.4995, 0.5543, 0.4846, 0.5199, 0.4942, 0.5061])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 

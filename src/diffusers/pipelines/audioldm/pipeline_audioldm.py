@@ -540,7 +540,7 @@ class AudioLDMPipeline(DiffusionPipeline):
         timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variables
-        num_channels_latents = self.unet.in_channels
+        num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_waveforms_per_prompt,
             num_channels_latents,

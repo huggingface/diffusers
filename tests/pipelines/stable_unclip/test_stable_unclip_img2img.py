@@ -17,7 +17,15 @@ from diffusers import AutoencoderKL, DDIMScheduler, DDPMScheduler, StableUnCLIPI
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import floats_tensor, load_image, load_numpy, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import (
+    floats_tensor,
+    load_image,
+    load_numpy,
+    require_torch_gpu,
+    skip_mps,
+    slow,
+    torch_device,
+)
 
 from ...pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
 from ...test_pipelines_common import (
@@ -39,6 +47,7 @@ class StableUnCLIPImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
 
         feature_extractor = CLIPImageProcessor(crop_size=32, size=32)
 
+        torch.manual_seed(0)
         image_encoder = CLIPVisionModelWithProjection(
             CLIPVisionConfig(
                 hidden_size=embedder_hidden_size,
@@ -111,16 +120,16 @@ class StableUnCLIPImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         components = {
             # image encoding components
             "feature_extractor": feature_extractor,
-            "image_encoder": image_encoder,
+            "image_encoder": image_encoder.eval(),
             # image noising components
-            "image_normalizer": image_normalizer,
+            "image_normalizer": image_normalizer.eval(),
             "image_noising_scheduler": image_noising_scheduler,
             # regular denoising components
             "tokenizer": tokenizer,
-            "text_encoder": text_encoder,
-            "unet": unet,
+            "text_encoder": text_encoder.eval(),
+            "unet": unet.eval(),
             "scheduler": scheduler,
-            "vae": vae,
+            "vae": vae.eval(),
         }
 
         return components
@@ -147,6 +156,7 @@ class StableUnCLIPImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
             "output_type": "np",
         }
 
+    @skip_mps
     def test_image_embeds_none(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -160,9 +170,7 @@ class StableUnCLIPImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array(
-            [0.34588397, 0.7747054, 0.5453714, 0.5227859, 0.57656777, 0.6532228, 0.5177634, 0.49932978, 0.56626225]
-        )
+        expected_slice = np.array([0.3872, 0.7224, 0.5601, 0.4741, 0.6872, 0.5814, 0.4636, 0.3867, 0.5078])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 

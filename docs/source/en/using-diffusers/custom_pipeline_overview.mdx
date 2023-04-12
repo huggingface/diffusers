@@ -89,7 +89,9 @@ class MyPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(self, batch_size: int = 1, num_inference_steps: int = 50):
         # Sample gaussian noise to begin loop
-        image = torch.randn((batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size))
+        image = torch.randn(
+            (batch_size, self.unet.config.in_channels, self.unet.config.sample_size, self.unet.config.sample_size)
+        )
 
         image = image.to(self.device)
 

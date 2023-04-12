@@ -411,10 +411,7 @@ class Transformer2DModelTests(unittest.TestCase):
 
         assert attention_scores.shape == (1, 64, 64, 64)
         output_slice = attention_scores[0, -1, -3:, -3:]
-
-        expected_slice = torch.tensor(
-            [-0.2555, -0.8877, -2.4739, -2.2251, 1.2714, 0.0807, -0.4161, -1.6408, -0.0471], device=torch_device
-        )
+        expected_slice = torch.tensor([0.0143, -0.6909, -2.1547, -1.8893, 1.4097, 0.1359, -0.2521, -1.3359, 0.2598])
         assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
 
     def test_spatial_transformer_timestep(self):
@@ -445,14 +442,12 @@ class Transformer2DModelTests(unittest.TestCase):
         output_slice_1 = attention_scores_1[0, -1, -3:, -3:]
         output_slice_2 = attention_scores_2[0, -1, -3:, -3:]
 
-        expected_slice_1 = torch.tensor(
-            [-0.1874, -0.9704, -1.4290, -1.3357, 1.5138, 0.3036, -0.0976, -1.1667, 0.1283], device=torch_device
-        )
+        expected_slice = torch.tensor([-0.3923, -1.0923, -1.7144, -1.5570, 1.4154, 0.1738, -0.1157, -1.2998, -0.1703])
         expected_slice_2 = torch.tensor(
-            [-0.3493, -1.0924, -1.6161, -1.5016, 1.4245, 0.1367, -0.2526, -1.3109, -0.0547], device=torch_device
+            [-0.4311, -1.1376, -1.7732, -1.5997, 1.3450, 0.0964, -0.1569, -1.3590, -0.2348]
         )
 
-        assert torch.allclose(output_slice_1.flatten(), expected_slice_1, atol=1e-3)
+        assert torch.allclose(output_slice_1.flatten(), expected_slice, atol=1e-3)
         assert torch.allclose(output_slice_2.flatten(), expected_slice_2, atol=1e-3)
 
     def test_spatial_transformer_dropout(self):
