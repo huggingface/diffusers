@@ -188,7 +188,7 @@ function. Here we'll load the embeddings of the "<cat-toy>" example from before.
 pipe.load_textual_inversion("sd-concepts-library/cat-toy")
 ```
 
-Now we can run the pipeline making sure that the placeholder_token `<cat-toy>` is used in our prompt.
+Now we can run the pipeline making sure that the placeholder token `<cat-toy>` is used in our prompt.
 
 ```python
 prompt = "A <cat-toy> backpack"
@@ -200,10 +200,10 @@ image.save("cat-backpack.png")
 The function [`TextualInversionLoaderMixin.load_textual_inversion`] can not only 
 load textual embedding vectors saved in Diffusers' format, but also embedding vectors
 saved in [Automatic1111](https://github.com/AUTOMATIC1111/stable-diffusion-webui) format.
-To do so, you can first download the an embedding vector from [civitAI](https://civitai.com/models/3036?modelVersionId=8387)
+To do so, you can first download an embedding vector from [civitAI](https://civitai.com/models/3036?modelVersionId=8387)
 and then load it locally:
 ```python
-pipe.load_textual_inversion("./charturner.py")
+pipe.load_textual_inversion("./charturnerv2.pt")
 ```
 </pt>
 <jax>

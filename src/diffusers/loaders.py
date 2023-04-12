@@ -447,7 +447,7 @@ class TextualInversionLoaderMixin:
         ```
 
         To load a textual inversion embedding vector in Automatic1111 format, make sure to first download the vector,
-        e.g. from [civitAI](https://civitai.com/models/3036?modelVersionId=9857) and then load the vector loaclly:
+        e.g. from [civitAI](https://civitai.com/models/3036?modelVersionId=9857) and then load the vector locally:
 
         ```py
         from diffusers import StableDiffusionPipeline
@@ -456,12 +456,12 @@ class TextualInversionLoaderMixin:
         model_id = "runwayml/stable-diffusion-v1-5"
         pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 
-        pipe.load_textual_inversion("./charturner.pt")
+        pipe.load_textual_inversion("./charturnerv2.pt")
 
-        prompt = "A <cat-toy> backpack"
+        prompt = "charturnerv2, multiple views of the same character in the same outfit, a character turnaround of a woman wearing a black jacket and red shirt, best quality, intricate details."
 
         image = pipe(prompt, num_inference_steps=50).images[0]
-        image.save("cat-backpack.png")
+        image.save("character.png")
         ```
         """
         if not hasattr(self, "tokenizer") or not isinstance(self.tokenizer, PreTrainedTokenizer):
