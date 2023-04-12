@@ -261,7 +261,7 @@ class StableDiffusionDiffEditPipelineIntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         raw_image = load_image(
-            "https://raw.githubusercontent.com/Xiang-cd/DiffEdit-stable-diffusion/main/assets/origin.png"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/diffedit/fruit.png"
         )
 
         raw_image = raw_image.convert("RGB").resize((768, 768))
@@ -286,12 +286,11 @@ class StableDiffusionDiffEditPipelineIntegrationTests(unittest.TestCase):
             image=self.raw_image,
             source_prompt=source_prompt,
             target_prompt=target_prompt,
-            mask_encode_strength=0.6,
             generator=generator,
         )
 
         inv_latents = pipe.invert(
-            prompt=source_prompt, image=self.raw_image, inpaint_strength=0.6, generator=generator
+            prompt=source_prompt, image=self.raw_image, inpaint_strength=0.7, generator=generator
         ).latents
 
         image = pipe(
@@ -300,13 +299,14 @@ class StableDiffusionDiffEditPipelineIntegrationTests(unittest.TestCase):
             image_latents=inv_latents,
             generator=generator,
             negative_prompt=source_prompt,
-            inpaint_strength=0.6,
+            inpaint_strength=0.7,
             output_type="numpy",
         ).images[0]
 
         expected_image = np.array(
             load_image(
-                "https://raw.githubusercontent.com/Xiang-cd/DiffEdit-stable-diffusion/main/assets/target.png"
+                "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+                "/diffedit/pears.png"
             ).resize((768, 768))
         )
         assert np.abs((expected_image - image).max()) < 1e-1
