@@ -30,6 +30,7 @@ from .constants import (
     ONNX_EXTERNAL_WEIGHTS_NAME,
     ONNX_WEIGHTS_NAME,
     SAFETENSORS_WEIGHTS_NAME,
+    TEXT_ENCODER_TARGET_MODULES,
     WEIGHTS_NAME,
 )
 from .deprecation_utils import deprecate
@@ -85,6 +86,7 @@ if is_torch_available():
         load_hf_numpy,
         load_image,
         load_numpy,
+        load_pt,
         nightly,
         parse_flag_from_env,
         print_tensor_test,
