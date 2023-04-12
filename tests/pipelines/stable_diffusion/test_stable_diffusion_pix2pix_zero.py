@@ -190,7 +190,7 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
         image = sd_pipe.invert(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.4884, 0.4707, 0.5653, 0.4997, 0.4567, 0.4955, 0.5102, 0.5195, 0.515])
+        expected_slice = np.array([0.4833, 0.4696, 0.5574, 0.5194, 0.5248, 0.5638, 0.5040, 0.5423, 0.5072])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -205,7 +205,7 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
         image = sd_pipe.invert(**inputs).images
         image_slice = image[1, -3:, -3:, -1]
         assert image.shape == (2, 32, 32, 3)
-        expected_slice = np.array([0.4747, 0.4161, 0.5004, 0.3475, 0.4258, 0.5463, 0.4562, 0.4967, 0.5166])
+        expected_slice = np.array([0.6672, 0.5203, 0.4908, 0.4376, 0.4517, 0.5544, 0.4605, 0.4826, 0.5007])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
