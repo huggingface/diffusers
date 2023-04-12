@@ -953,7 +953,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
 
                 # controlnet(s) inference
                 if guess_mode and do_classifier_free_guidance:
-                    # only use the cond batch for the controlnet
+                    # Infer ControlNet only for the conditional batch.
                     controlnet_latent_model_input = latents
                     controlnet_prompt_embeds = prompt_embeds.chunk(2)[1]
                 else:
@@ -971,7 +971,9 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
                 )
 
                 if guess_mode and do_classifier_free_guidance:
-                    # fill zero to uncond batch
+                    # Infered ControlNet only for the conditional batch.
+                    # To apply the output of ControlNet to both the unconditional and conditional batches,
+                    # add 0 to the unconditional batch to keep it unchanged.
                     down_block_res_samples = [torch.cat([torch.zeros_like(d), d]) for d in down_block_res_samples]
                     mid_block_res_sample = torch.cat([torch.zeros_like(mid_block_res_sample), mid_block_res_sample])
 
