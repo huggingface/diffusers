@@ -86,6 +86,7 @@ if is_torch_available():
         load_hf_numpy,
         load_image,
         load_numpy,
+        load_pt,
         nightly,
         parse_flag_from_env,
         print_tensor_test,
