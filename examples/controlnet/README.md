@@ -284,9 +284,9 @@ TPU_TYPE=v4-8
 VM_NAME=hg_flax
 
 gcloud alpha compute tpus tpu-vm create $VM_NAME \
-    --zone $ZONE \
-    --accelerator-type $TPU_TYPE \
-    --version  tpu-vm-v4-base
+ --zone $ZONE \
+ --accelerator-type $TPU_TYPE \
+ --version  tpu-vm-v4-base
 
 gcloud alpha compute tpus tpu-vm ssh $VM_NAME --zone $ZONE -- \
 ```
@@ -380,20 +380,20 @@ export OUTPUT_DIR="runs/uncanny-faces-{timestamp}"
 export HUB_MODEL_ID="controlnet-uncanny-faces"
 
 python3 train_controlnet_flax.py \
-	--pretrained_model_name_or_path=$MODEL_DIR \
-	--output_dir=$OUTPUT_DIR \
-	--dataset_name=multimodalart/facesyntheticsspigacaptioned \
-	--streaming \
-	--conditioning_image_column=spiga_seg \
-	--image_column=image \
-	--caption_column=image_caption \
-	--resolution=512 \
-	--max_train_samples 100000 \
-	--learning_rate=1e-5 \
-	--train_batch_size=1 \
-	--revision="flax" \
-	--report_to="wandb" \
-	--tracker_project_name=$HUB_MODEL_ID
+ --pretrained_model_name_or_path=$MODEL_DIR \
+ --output_dir=$OUTPUT_DIR \
+ --dataset_name=multimodalart/facesyntheticsspigacaptioned \
+ --streaming \
+ --conditioning_image_column=spiga_seg \
+ --image_column=image \
+ --caption_column=image_caption \
+ --resolution=512 \
+ --max_train_samples 100000 \
+ --learning_rate=1e-5 \
+ --train_batch_size=1 \
+ --revision="flax" \
+ --report_to="wandb" \
+ --tracker_project_name=$HUB_MODEL_ID
 ```
 
 Note, however, that the performance of the TPUs might get bottlenecked as streaming with `datasets` is not optimized for images. For ensuring maximum throughput, we encourage you to explore the following options:
@@ -405,14 +405,14 @@ Note, however, that the performance of the TPUs might get bottlenecked as stream
 When work with a larger dataset, you may need to run training process for a long time and it’s useful to save regular checkpoints during the process. You can use the following argument to enable intermediate checkpointing:
 
 ```bash
-  --checkpointing_steps=500
+ --checkpointing_steps=500
 ```
 This will save the trained model in subfolders of your output_dir. Subfolder names is the number of steps performed so far; for example: a checkpoint saved after 500 training steps would be saved in a subfolder named 500 
 
 You can then start your training from this saved checkpoint with 
 
 ```bash
-   --controlnet_model_name_or_path="./control_out/500" 
+ --controlnet_model_name_or_path="./control_out/500" 
 ```
 
 We support training with the Min-SNR weighting strategy proposed in [Efficient Diffusion Training via Min-SNR Weighting Strategy](https://arxiv.org/abs/2303.09556) which helps to achieve faster convergence by rebalancing the loss. To use it, one needs to set the `--snr_gamma` argument. The recommended value when using it is `5.0`.
@@ -422,7 +422,7 @@ We also support gradient accumulation - it is a technique that lets you use a bi
 You can **profile your code** with:
 
 ```bash
-  --profile_steps==5
+ --profile_steps==5
 ```
 
 Refer to the [JAX documentation on profiling](https://jax.readthedocs.io/en/latest/profiling.html). To inspect the profile trace, you'll have to install and start Tensorboard with the profile plugin:
