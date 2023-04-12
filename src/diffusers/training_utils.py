@@ -5,6 +5,7 @@ from typing import Any, Dict, Iterable, Optional, Union
 
 import numpy as np
 import torch
+import transformers
 
 from .utils import deprecate
 
@@ -197,11 +198,17 @@ class EMAModel:
         self.cur_decay_value = decay
         one_minus_decay = 1 - decay
 
+        if transformers.deepspeed.is_deepspeed_zero3_enabled():
+            import deepspeed
+        context_manager = []
         for s_param, param in zip(self.shadow_params, parameters):
-            if param.requires_grad:
-                s_param.sub_(one_minus_decay * (s_param - param))
-            else:
-                s_param.copy_(param)
+            if transformers.deepspeed.is_deepspeed_zero3_enabled():
+                context_manager = [deepspeed.zero.GatheredParameters(param, modifier_rank=None)]
+            with transformers.utils.ContextManagers(context_manager):
+                if param.requires_grad:
+                    s_param.sub_(one_minus_decay * (s_param - param))
+                else:
+                    s_param.copy_(param)
 
     def copy_to(self, parameters: Iterable[torch.nn.Parameter]) -> None:
         """
