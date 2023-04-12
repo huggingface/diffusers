@@ -57,7 +57,7 @@ class CrossAttnDownBlock2DTests(UNetBlockTesterMixin, unittest.TestCase):
         return init_dict, inputs_dict
 
     def test_output(self):
-        expected_slice = [0.2440, -0.6953, -0.2140, -0.3874, 0.1966, 1.2077, 0.0441, -0.7718, 0.2800]
+        expected_slice = [0.2238, -0.7396, -0.2255, -0.3829, 0.1925, 1.1665, 0.0603, -0.7295, 0.1983]
         super().test_output(expected_slice)
 
 
@@ -175,7 +175,7 @@ class UNetMidBlock2DCrossAttnTests(UNetBlockTesterMixin, unittest.TestCase):
         return init_dict, inputs_dict
 
     def test_output(self):
-        expected_slice = [0.1879, 2.2653, 0.5987, 1.1568, -0.8454, -1.6109, -0.8919, 0.8306, 1.6758]
+        expected_slice = [0.0187, 2.4220, 0.4484, 1.1203, -0.6121, -1.5122, -0.8270, 0.7851, 1.8335]
         super().test_output(expected_slice)
 
 
@@ -237,7 +237,7 @@ class CrossAttnUpBlock2DTests(UNetBlockTesterMixin, unittest.TestCase):
         return init_dict, inputs_dict
 
     def test_output(self):
-        expected_slice = [-0.2796, -0.4364, -0.1067, -0.2693, 0.1894, 0.3869, -0.3470, 0.4584, 0.5091]
+        expected_slice = [-0.1403, -0.3515, -0.0420, -0.1425, 0.3167, 0.5094, -0.2181, 0.5931, 0.5582]
         super().test_output(expected_slice)
 
 

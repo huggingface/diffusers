@@ -675,6 +675,25 @@ class CustomPipelineTests(unittest.TestCase):
         image = pipeline("a prompt", num_inference_steps=2, output_type="np").images[0]
         assert image.shape == (512, 512, 3)
 
+    def test_save_pipeline_change_config(self):
+        pipe = DiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe.save_pretrained(tmpdirname)
+            pipe = DiffusionPipeline.from_pretrained(tmpdirname)
+
+            assert pipe.scheduler.__class__.__name__ == "PNDMScheduler"
+
+        # let's make sure that changing the scheduler is correctly reflected
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+            pipe.save_pretrained(tmpdirname)
+            pipe = DiffusionPipeline.from_pretrained(tmpdirname)
+
+            assert pipe.scheduler.__class__.__name__ == "DPMSolverMultistepScheduler"
+
 
 class PipelineFastTests(unittest.TestCase):
     def tearDown(self):
@@ -909,6 +928,46 @@ class PipelineFastTests(unittest.TestCase):
         assert isinstance(sd.scheduler, EulerAncestralDiscreteScheduler)
         sd.scheduler = DPMSolverMultistepScheduler.from_config(sd.scheduler.config)
         assert isinstance(sd.scheduler, DPMSolverMultistepScheduler)
+
+    def test_set_component_to_none(self):
+        unet = self.dummy_cond_unet()
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        pipeline = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+
+        prompt = "This is a flower"
+
+        out_image = pipeline(
+            prompt=prompt,
+            generator=generator,
+            num_inference_steps=1,
+            output_type="np",
+        ).images
+
+        pipeline.feature_extractor = None
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        out_image_2 = pipeline(
+            prompt=prompt,
+            generator=generator,
+            num_inference_steps=1,
+            output_type="np",
+        ).images
+
+        assert out_image.shape == (1, 64, 64, 3)
+        assert np.abs(out_image - out_image_2).max() < 1e-3
 
     def test_set_scheduler_consistency(self):
         unet = self.dummy_cond_unet()

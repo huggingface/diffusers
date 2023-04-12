@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
+from ..utils import BaseOutput, deprecate
 from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
 from .unet_1d_blocks import get_down_block, get_mid_block, get_out_block, get_up_block
@@ -189,6 +189,16 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             act_fn=act_fn,
             fc_dim=block_out_channels[-1] // 4,
         )
+
+    @property
+    def in_channels(self):
+        deprecate(
+            "in_channels",
+            "1.0.0",
+            "Accessing `in_channels` directly via unet.in_channels is deprecated. Please use `unet.config.in_channels` instead",
+            standard_warn=False,
+        )
+        return self.config.in_channels
 
     def forward(
         self,

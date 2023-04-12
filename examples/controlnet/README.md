@@ -320,6 +320,12 @@ Then cd in the example folder and run
 pip install -U -r requirements_flax.txt
 ```
 
+If you want to use Weights and Biases logging, you should also install `wandb` now
+
+```bash
+pip install wandb
+```
+
 Now let's downloading two conditioning images that we will use to run validation during the training in order to track our progress
 
 ```
@@ -390,3 +396,20 @@ Note, however, that the performance of the TPUs might get bottlenecked as stream
 * [Webdataset](https://webdataset.github.io/webdataset/)
 * [TorchData](https://github.com/pytorch/data)
 * [TensorFlow Datasets](https://www.tensorflow.org/datasets/tfless_tfds)
+
+When work with a larger dataset, you may need to run training process for a long time and it’s useful to save regular checkpoints during the process. You can use the following argument to enable intermediate checkpointing:
+
+```bash
+  --checkpointing_steps=500
+```
+This will save the trained model in subfolders of your output_dir. Subfolder names is the number of steps performed so far; for example: a checkpoint saved after 500 training steps would be saved in a subfolder named 500 
+
+You can then start your training from this saved checkpoint with 
+
+```bash
+   --controlnet_model_name_or_path="./control_out/500" 
+```
+
+We support training with the Min-SNR weighting strategy proposed in [Efficient Diffusion Training via Min-SNR Weighting Strategy](https://arxiv.org/abs/2303.09556) which helps to achieve faster convergence by rebalancing the loss. To use it, one needs to set the `--snr_gamma` argument. The recommended value when using it is `5.0`.
+
+We also support gradient accumulation - it is a technique that lets you use a bigger batch size than your machine would normally be able to fit into memory. You can use `gradient_accumulation_steps` argument to set gradient accumulation steps. The ControlNet author recommends using gradient accumulation to achieve better convergence. Read more [here](https://github.com/lllyasviel/ControlNet/blob/main/docs/train.md#more-consideration-sudden-converge-phenomenon-and-gradient-accumulation).
