@@ -116,7 +116,7 @@ class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(0)
 
-        num_features = model.in_channels
+        num_features = model.config.in_channels
         seq_len = 16
         noise = torch.randn((1, seq_len, num_features)).permute(
             0, 2, 1
@@ -264,7 +264,7 @@ class UNetRLModelTests(ModelTesterMixin, unittest.TestCase):
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(0)
 
-        num_features = value_function.in_channels
+        num_features = value_function.config.in_channels
         seq_len = 14
         noise = torch.randn((1, seq_len, num_features)).permute(
             0, 2, 1

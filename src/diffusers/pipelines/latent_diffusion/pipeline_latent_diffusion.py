@@ -135,7 +135,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         prompt_embeds = self.bert(text_input.input_ids.to(self.device))[0]
 
         # get the initial random noise unless the user supplied it
-        latents_shape = (batch_size, self.unet.in_channels, height // 8, width // 8)
+        latents_shape = (batch_size, self.unet.config.in_channels, height // 8, width // 8)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
