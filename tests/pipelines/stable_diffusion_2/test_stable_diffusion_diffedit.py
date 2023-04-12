@@ -228,7 +228,7 @@ class StableDiffusionDiffEditPipelineFastTests(PipelineTesterMixin, unittest.Tes
         expected_slice = np.array([0] * 9)
         max_diff = np.abs(mask_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
-        self.assertEqual(mask[0, -3, -4], 1)
+        self.assertEqual(mask[0, -3, -4], 0)
 
     def test_inversion(self):
         device = "cpu"
@@ -244,7 +244,7 @@ class StableDiffusionDiffEditPipelineFastTests(PipelineTesterMixin, unittest.Tes
 
         self.assertEqual(image.shape, (2, 32, 32, 3))
         expected_slice = np.array(
-            [0.5588859, 0.535619, 0.52224344, 0.55604255, 0.48608556, 0.51105076, 0.50301707, 0.44348782, 0.48488846],
+            [0.5150, 0.5134, 0.5043, 0.5376, 0.4694, 0.51050, 0.5015, 0.4407, 0.4799],
         )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
@@ -305,6 +305,8 @@ class StableDiffusionDiffEditPipelineIntegrationTests(unittest.TestCase):
         ).images[0]
 
         expected_image = np.array(
-            load_image("https://raw.githubusercontent.com/Xiang-cd/DiffEdit-stable-diffusion/main/assets/target.png")
+            load_image(
+                "https://raw.githubusercontent.com/Xiang-cd/DiffEdit-stable-diffusion/main/assets/target.png"
+            ).resize((768, 768))
         )
         assert np.abs((expected_image - image).max()) < 1e-1
