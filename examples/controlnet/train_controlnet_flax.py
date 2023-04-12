@@ -1032,6 +1032,7 @@ def main():
         # ======================== Training ================================
 
         train_metrics = []
+        train_metric = None
 
         steps_per_epoch = (
             args.max_train_samples // total_train_batch_size
@@ -1047,12 +1048,11 @@ def main():
         )
         # train
         for batch in train_dataloader:
-
             if args.profile_steps and global_step == 1:
-                train_metric['loss'].block_until_ready()
+                train_metric["loss"].block_until_ready()
                 jax.profiler.start_trace(args.output_dir)
             if args.profile_steps and global_step == 1 + args.profile_steps:
-                train_metric['loss'].block_until_ready()
+                train_metric["loss"].block_until_ready()
                 jax.profiler.stop_trace()
 
             batch = shard(batch)
