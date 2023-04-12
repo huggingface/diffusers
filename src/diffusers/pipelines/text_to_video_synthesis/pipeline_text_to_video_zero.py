@@ -3,6 +3,7 @@ from typing import Callable, List, Optional, Union
 
 import numpy as np
 import PIL
+import copy
 import torch
 import torch.nn.functional as F
 from torch.nn.functional import grid_sample
@@ -56,8 +57,8 @@ class CrossFrameAttnProcessor:
         is_cross_attention = encoder_hidden_states is not None
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
-        elif attn.cross_attention_norm:
-            encoder_hidden_states = attn.norm_cross(encoder_hidden_states)
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
@@ -285,7 +286,8 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
             latents: latents of backward process output at time timesteps[-1]
         """
         do_classifier_free_guidance = guidance_scale > 1.0
-        with self.progress_bar(total=len(timesteps)) as progress_bar:
+        num_steps = (len(timesteps) - num_warmup_steps) // self.scheduler.order
+        with self.progress_bar(total=num_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
@@ -466,17 +468,18 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
             extra_step_kwargs=extra_step_kwargs,
             num_warmup_steps=num_warmup_steps,
         )
+        scheduler_copy = copy.deepcopy(self.scheduler)
 
         # Perform the second backward process up to time T_0
         x_1_t0 = self.backward_loop(
-            timesteps=timesteps[-t1 - 1 : -t0 - 1],
+            timesteps=timesteps[-t1 - 1: -t0 - 1],
             prompt_embeds=prompt_embeds,
             latents=x_1_t1,
             guidance_scale=guidance_scale,
             callback=callback,
             callback_steps=callback_steps,
             extra_step_kwargs=extra_step_kwargs,
-            num_warmup_steps=num_warmup_steps,
+            num_warmup_steps=0,
         )
 
         # Propagate first frame latents at time T_0 to remaining frames
@@ -503,16 +506,16 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
         b, l, d = prompt_embeds.size()
         prompt_embeds = prompt_embeds[:, None].repeat(1, video_length, 1, 1).reshape(b * video_length, l, d)
 
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        self.scheduler = scheduler_copy
         x_1k_0 = self.backward_loop(
-            timesteps=timesteps[-t1 - 1 :],
+            timesteps=timesteps[-t1 - 1:],
             prompt_embeds=prompt_embeds,
             latents=x_1k_t1,
             guidance_scale=guidance_scale,
             callback=callback,
             callback_steps=callback_steps,
             extra_step_kwargs=extra_step_kwargs,
-            num_warmup_steps=num_warmup_steps,
+            num_warmup_steps=0,
         )
         latents = x_1k_0
 
