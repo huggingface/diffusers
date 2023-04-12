@@ -36,7 +36,6 @@ from diffusers import (
 from diffusers.utils import floats_tensor, load_image, nightly, slow, torch_device
 from diffusers.utils.testing_utils import load_numpy, preprocess_image, require_torch_gpu
 
-
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
@@ -260,10 +259,10 @@ class StableDiffusionInpaintLegacyPipelineFastTests(unittest.TestCase):
         image_slice_0 = images[0, -3:, -3:, -1].flatten()
         image_slice_1 = images[1, -3:, -3:, -1].flatten()
 
-        expected_slice_0 = np.array([[0.46978942, 0.37706992, 0.4096375, 0.46537918, 0.44979388,
-                                      0.41830337, 0.39505678, 0.46687287, 0.46723127]])
-        expected_slice_1 = np.array([[0.4873669, 0.45950648, 0.5203329, 0.6400243, 0.5441418,
-                                      0.551703, 0.6023108, 0.49404332, 0.4815712]])
+        expected_slice_0 = np.array(
+            [0.46978942, 0.37706992, 0.4096375, 0.46537918, 0.44979388, 0.41830337, 0.39505678, 0.46687287, 0.46723127])
+        expected_slice_1 = np.array(
+            [0.4873669, 0.45950648, 0.5203329, 0.6400243, 0.5441418, 0.551703, 0.6023108, 0.49404332, 0.4815712])
 
         assert np.abs(expected_slice_0 - image_slice_0).max() < 1e-4
         assert np.abs(expected_slice_1 - image_slice_1).max() < 1e-4
