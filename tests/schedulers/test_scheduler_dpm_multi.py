@@ -209,6 +209,12 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_mean.item() - 0.2251) < 1e-3
 
+    def test_full_loop_with_karras_and_v_prediction(self):
+        sample = self.full_loop(prediction_type="v_prediction", use_karras_sigmas=True)
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.2096) < 1e-3
+
     def test_switch(self):
         # make sure that iterating over schedulers with same config names gives same results
         # for defaults
