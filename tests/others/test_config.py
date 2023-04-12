@@ -29,6 +29,9 @@ from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.utils.testing_utils import CaptureLogger
 
 
+logging.set_verbosity_warning()
+
+
 class SampleObject(ConfigMixin):
     config_name = "config.json"
 
