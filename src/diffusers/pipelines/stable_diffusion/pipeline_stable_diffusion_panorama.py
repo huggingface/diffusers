@@ -625,7 +625,9 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
                     latents_for_view = latents[:, :, h_start:h_end, w_start:w_end]
 
                     # expand the latents if we are doing classifier free guidance
-                    latent_model_input = torch.cat([latents_for_view] * 2) if do_classifier_free_guidance else latents
+                    latent_model_input = (
+                        torch.cat([latents_for_view] * 2) if do_classifier_free_guidance else latents_for_view
+                    )
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                     # predict the noise residual
