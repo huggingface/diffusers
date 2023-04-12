@@ -49,7 +49,7 @@ class StableDiffusionPanoramaPipelineFastTests(PipelineTesterMixin, unittest.Tes
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=(32, 64),
-            layers_per_block=2,
+            layers_per_block=1,
             sample_size=32,
             in_channels=4,
             out_channels=4,
@@ -101,7 +101,7 @@ class StableDiffusionPanoramaPipelineFastTests(PipelineTesterMixin, unittest.Tes
             # Setting height and width to None to prevent OOMs on CPU.
             "height": None,
             "width": None,
-            "num_inference_steps": 2,
+            "num_inference_steps": 1,
             "guidance_scale": 6.0,
             "output_type": "numpy",
         }
@@ -119,9 +119,17 @@ class StableDiffusionPanoramaPipelineFastTests(PipelineTesterMixin, unittest.Tes
         image_slice = image[0, -3:, -3:, -1]
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array([0.4794, 0.5084, 0.4992, 0.3941, 0.3555, 0.4754, 0.5248, 0.5224, 0.4839])
+        expected_slice = np.array([0.6186, 0.5374, 0.4915, 0.4135, 0.4114, 0.4563, 0.5128, 0.4977, 0.4757])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    # override to speed the overall test timing up.
+    def test_inference_batch_consistent(self):
+        super().test_inference_batch_consistent(batch_sizes=[1, 2])
+
+    # override to speed the overall test timing up.
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(batch_size=2)
 
     def test_stable_diffusion_panorama_negative_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -138,7 +146,7 @@ class StableDiffusionPanoramaPipelineFastTests(PipelineTesterMixin, unittest.Tes
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array([0.5029, 0.5075, 0.5002, 0.3965, 0.3584, 0.4746, 0.5271, 0.5273, 0.4877])
+        expected_slice = np.array([0.6187, 0.5375, 0.4915, 0.4136, 0.4114, 0.4563, 0.5128, 0.4976, 0.4757])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -158,7 +166,7 @@ class StableDiffusionPanoramaPipelineFastTests(PipelineTesterMixin, unittest.Tes
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array([0.4934, 0.5455, 0.4847, 0.5022, 0.5572, 0.4833, 0.5207, 0.4952, 0.5051])
+        expected_slice = np.array([0.4886, 0.5586, 0.4476, 0.5053, 0.6013, 0.4737, 0.5538, 0.5100, 0.4927])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
