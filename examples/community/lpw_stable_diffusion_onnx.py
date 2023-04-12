@@ -486,7 +486,7 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(OnnxStableDiffusionPipeline
             self.__init__additional__()
 
     def __init__additional__(self):
-        self.unet_in_channels = 4
+        self.unet.config.in_channels = 4
         self.vae_scale_factor = 8
 
     def _encode_prompt(
@@ -621,7 +621,7 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(OnnxStableDiffusionPipeline
         if image is None:
             shape = (
                 batch_size,
-                self.unet_in_channels,
+                self.unet.config.in_channels,
                 height // self.vae_scale_factor,
                 width // self.vae_scale_factor,
             )

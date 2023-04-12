@@ -78,9 +78,7 @@ class DownloadTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             with requests_mock.mock(real_http=True) as m:
-                DiffusionPipeline.download(
-                    "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
-                )
+                DiffusionPipeline.download("hf-internal-testing/tiny-stable-diffusion-pipe", cache_dir=tmpdirname)
 
             download_requests = [r.method for r in m.request_history]
             assert download_requests.count("HEAD") == 15, "15 calls to files"
@@ -88,6 +86,55 @@ class DownloadTests(unittest.TestCase):
             assert (
                 len(download_requests) == 32
             ), "2 calls per file (15 files) + send_telemetry, model_info and model_index.json"
+
+            with requests_mock.mock(real_http=True) as m:
+                DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
+                )
+
+            cache_requests = [r.method for r in m.request_history]
+            assert cache_requests.count("HEAD") == 1, "model_index.json is only HEAD"
+            assert cache_requests.count("GET") == 1, "model info is only GET"
+            assert (
+                len(cache_requests) == 2
+            ), "We should call only `model_info` to check for _commit hash and `send_telemetry`"
+
+    def test_less_downloads_passed_object(self):
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            cached_folder = DiffusionPipeline.download(
+                "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
+            )
+
+            # make sure safety checker is not downloaded
+            assert "safety_checker" not in os.listdir(cached_folder)
+
+            # make sure rest is downloaded
+            assert "unet" in os.listdir(cached_folder)
+            assert "tokenizer" in os.listdir(cached_folder)
+            assert "vae" in os.listdir(cached_folder)
+            assert "model_index.json" in os.listdir(cached_folder)
+            assert "scheduler" in os.listdir(cached_folder)
+            assert "feature_extractor" in os.listdir(cached_folder)
+
+    def test_less_downloads_passed_object_calls(self):
+        # TODO: For some reason this test fails on MPS where no HEAD call is made.
+        if torch_device == "mps":
+            return
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with requests_mock.mock(real_http=True) as m:
+                DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
+                )
+
+            download_requests = [r.method for r in m.request_history]
+            # 15 - 2 because no call to config or model file for `safety_checker`
+            assert download_requests.count("HEAD") == 13, "13 calls to files"
+            # 17 - 2 because no call to config or model file for `safety_checker`
+            assert download_requests.count("GET") == 15, "13 calls to files + model_info + model_index.json"
+            assert (
+                len(download_requests) == 28
+            ), "2 calls per file (13 files) + send_telemetry, model_info and model_index.json"
 
             with requests_mock.mock(real_http=True) as m:
                 DiffusionPipeline.download(
@@ -164,6 +211,54 @@ class DownloadTests(unittest.TestCase):
             # None of the downloaded files should be a pytorch file even if we have some here:
             # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe/blob/main/unet/diffusion_flax_model.msgpack
             assert not any(f.endswith(".bin") for f in files)
+
+    def test_download_safetensors_index(self):
+        for variant in ["fp16", None]:
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                tmpdirname = DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-pipe-indexes",
+                    cache_dir=tmpdirname,
+                    use_safetensors=True,
+                    variant=variant,
+                )
+
+                all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
+                files = [item for sublist in all_root_files for item in sublist]
+
+                # None of the downloaded files should be a safetensors file even if we have some here:
+                # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe-indexes/tree/main/text_encoder
+                if variant is None:
+                    assert not any("fp16" in f for f in files)
+                else:
+                    model_files = [f for f in files if "safetensors" in f]
+                    assert all("fp16" in f for f in model_files)
+
+                assert len([f for f in files if ".safetensors" in f]) == 8
+                assert not any(".bin" in f for f in files)
+
+    def test_download_bin_index(self):
+        for variant in ["fp16", None]:
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                tmpdirname = DiffusionPipeline.download(
+                    "hf-internal-testing/tiny-stable-diffusion-pipe-indexes",
+                    cache_dir=tmpdirname,
+                    use_safetensors=False,
+                    variant=variant,
+                )
+
+                all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
+                files = [item for sublist in all_root_files for item in sublist]
+
+                # None of the downloaded files should be a safetensors file even if we have some here:
+                # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe-indexes/tree/main/text_encoder
+                if variant is None:
+                    assert not any("fp16" in f for f in files)
+                else:
+                    model_files = [f for f in files if "bin" in f]
+                    assert all("fp16" in f for f in model_files)
+
+                assert len([f for f in files if ".bin" in f]) == 8
+                assert not any(".safetensors" in f for f in files)
 
     def test_download_no_safety_checker(self):
         prompt = "hello"
@@ -362,6 +457,124 @@ class DownloadTests(unittest.TestCase):
 
         diffusers.utils.import_utils._safetensors_available = True
 
+    def test_local_save_load_index(self):
+        prompt = "hello"
+        for variant in [None, "fp16"]:
+            for use_safe in [True, False]:
+                pipe = StableDiffusionPipeline.from_pretrained(
+                    "hf-internal-testing/tiny-stable-diffusion-pipe-indexes",
+                    variant=variant,
+                    use_safetensors=use_safe,
+                    safety_checker=None,
+                )
+                pipe = pipe.to(torch_device)
+                generator = torch.manual_seed(0)
+                out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+
+                with tempfile.TemporaryDirectory() as tmpdirname:
+                    pipe.save_pretrained(tmpdirname)
+                    pipe_2 = StableDiffusionPipeline.from_pretrained(
+                        tmpdirname, safe_serialization=use_safe, variant=variant
+                    )
+                    pipe_2 = pipe_2.to(torch_device)
+
+                generator = torch.manual_seed(0)
+
+                out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+
+                assert np.max(np.abs(out - out_2)) < 1e-3
+
+    def test_text_inversion_download(self):
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+        pipe = pipe.to(torch_device)
+
+        num_tokens = len(pipe.tokenizer)
+
+        # single token load local
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            ten = {"<*>": torch.ones((32,))}
+            torch.save(ten, os.path.join(tmpdirname, "learned_embeds.bin"))
+
+            pipe.load_textual_inversion(tmpdirname)
+
+            token = pipe.tokenizer.convert_tokens_to_ids("<*>")
+            assert token == num_tokens, "Added token must be at spot `num_tokens`"
+            assert pipe.text_encoder.get_input_embeddings().weight[-1].sum().item() == 32
+            assert pipe._maybe_convert_prompt("<*>", pipe.tokenizer) == "<*>"
+
+            prompt = "hey <*>"
+            out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
+            assert out.shape == (1, 128, 128, 3)
+
+        # single token load local with weight name
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            ten = {"<**>": 2 * torch.ones((1, 32))}
+            torch.save(ten, os.path.join(tmpdirname, "learned_embeds.bin"))
+
+            pipe.load_textual_inversion(tmpdirname, weight_name="learned_embeds.bin")
+
+            token = pipe.tokenizer.convert_tokens_to_ids("<**>")
+            assert token == num_tokens + 1, "Added token must be at spot `num_tokens`"
+            assert pipe.text_encoder.get_input_embeddings().weight[-1].sum().item() == 64
+            assert pipe._maybe_convert_prompt("<**>", pipe.tokenizer) == "<**>"
+
+            prompt = "hey <**>"
+            out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
+            assert out.shape == (1, 128, 128, 3)
+
+        # multi token load
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            ten = {"<***>": torch.cat([3 * torch.ones((1, 32)), 4 * torch.ones((1, 32)), 5 * torch.ones((1, 32))])}
+            torch.save(ten, os.path.join(tmpdirname, "learned_embeds.bin"))
+
+            pipe.load_textual_inversion(tmpdirname)
+
+            token = pipe.tokenizer.convert_tokens_to_ids("<***>")
+            token_1 = pipe.tokenizer.convert_tokens_to_ids("<***>_1")
+            token_2 = pipe.tokenizer.convert_tokens_to_ids("<***>_2")
+
+            assert token == num_tokens + 2, "Added token must be at spot `num_tokens`"
+            assert token_1 == num_tokens + 3, "Added token must be at spot `num_tokens`"
+            assert token_2 == num_tokens + 4, "Added token must be at spot `num_tokens`"
+            assert pipe.text_encoder.get_input_embeddings().weight[-3].sum().item() == 96
+            assert pipe.text_encoder.get_input_embeddings().weight[-2].sum().item() == 128
+            assert pipe.text_encoder.get_input_embeddings().weight[-1].sum().item() == 160
+            assert pipe._maybe_convert_prompt("<***>", pipe.tokenizer) == "<***><***>_1<***>_2"
+
+            prompt = "hey <***>"
+            out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
+            assert out.shape == (1, 128, 128, 3)
+
+        # multi token load a1111
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            ten = {
+                "string_to_param": {
+                    "*": torch.cat([3 * torch.ones((1, 32)), 4 * torch.ones((1, 32)), 5 * torch.ones((1, 32))])
+                },
+                "name": "<****>",
+            }
+            torch.save(ten, os.path.join(tmpdirname, "a1111.bin"))
+
+            pipe.load_textual_inversion(tmpdirname, weight_name="a1111.bin")
+
+            token = pipe.tokenizer.convert_tokens_to_ids("<****>")
+            token_1 = pipe.tokenizer.convert_tokens_to_ids("<****>_1")
+            token_2 = pipe.tokenizer.convert_tokens_to_ids("<****>_2")
+
+            assert token == num_tokens + 5, "Added token must be at spot `num_tokens`"
+            assert token_1 == num_tokens + 6, "Added token must be at spot `num_tokens`"
+            assert token_2 == num_tokens + 7, "Added token must be at spot `num_tokens`"
+            assert pipe.text_encoder.get_input_embeddings().weight[-3].sum().item() == 96
+            assert pipe.text_encoder.get_input_embeddings().weight[-2].sum().item() == 128
+            assert pipe.text_encoder.get_input_embeddings().weight[-1].sum().item() == 160
+            assert pipe._maybe_convert_prompt("<****>", pipe.tokenizer) == "<****><****>_1<****>_2"
+
+            prompt = "hey <****>"
+            out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
+            assert out.shape == (1, 128, 128, 3)
+
 
 class CustomPipelineTests(unittest.TestCase):
     def test_load_custom_pipeline(self):
@@ -461,6 +674,25 @@ class CustomPipelineTests(unittest.TestCase):
 
         image = pipeline("a prompt", num_inference_steps=2, output_type="np").images[0]
         assert image.shape == (512, 512, 3)
+
+    def test_save_pipeline_change_config(self):
+        pipe = DiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe.save_pretrained(tmpdirname)
+            pipe = DiffusionPipeline.from_pretrained(tmpdirname)
+
+            assert pipe.scheduler.__class__.__name__ == "PNDMScheduler"
+
+        # let's make sure that changing the scheduler is correctly reflected
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+            pipe.save_pretrained(tmpdirname)
+            pipe = DiffusionPipeline.from_pretrained(tmpdirname)
+
+            assert pipe.scheduler.__class__.__name__ == "DPMSolverMultistepScheduler"
 
 
 class PipelineFastTests(unittest.TestCase):
@@ -696,6 +928,46 @@ class PipelineFastTests(unittest.TestCase):
         assert isinstance(sd.scheduler, EulerAncestralDiscreteScheduler)
         sd.scheduler = DPMSolverMultistepScheduler.from_config(sd.scheduler.config)
         assert isinstance(sd.scheduler, DPMSolverMultistepScheduler)
+
+    def test_set_component_to_none(self):
+        unet = self.dummy_cond_unet()
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        pipeline = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+
+        prompt = "This is a flower"
+
+        out_image = pipeline(
+            prompt=prompt,
+            generator=generator,
+            num_inference_steps=1,
+            output_type="np",
+        ).images
+
+        pipeline.feature_extractor = None
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        out_image_2 = pipeline(
+            prompt=prompt,
+            generator=generator,
+            num_inference_steps=1,
+            output_type="np",
+        ).images
+
+        assert out_image.shape == (1, 64, 64, 3)
+        assert np.abs(out_image - out_image_2).max() < 1e-3
 
     def test_set_scheduler_consistency(self):
         unet = self.dummy_cond_unet()

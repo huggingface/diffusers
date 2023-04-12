@@ -459,6 +459,7 @@ class ResnetBlock2D(nn.Module):
         pre_norm=True,
         eps=1e-6,
         non_linearity="swish",
+        skip_time_act=False,
         time_embedding_norm="default",  # default, scale_shift, ada_group
         kernel=None,
         output_scale_factor=1.0,
@@ -479,6 +480,7 @@ class ResnetBlock2D(nn.Module):
         self.down = down
         self.output_scale_factor = output_scale_factor
         self.time_embedding_norm = time_embedding_norm
+        self.skip_time_act = skip_time_act
 
         if groups_out is None:
             groups_out = groups
@@ -570,7 +572,9 @@ class ResnetBlock2D(nn.Module):
         hidden_states = self.conv1(hidden_states)
 
         if self.time_emb_proj is not None:
-            temb = self.time_emb_proj(self.nonlinearity(temb))[:, :, None, None]
+            if not self.skip_time_act:
+                temb = self.nonlinearity(temb)
+            temb = self.time_emb_proj(temb)[:, :, None, None]
 
         if temb is not None and self.time_embedding_norm == "default":
             hidden_states = hidden_states + temb

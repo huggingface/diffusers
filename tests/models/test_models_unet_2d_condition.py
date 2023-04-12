@@ -41,7 +41,7 @@ logger = logging.get_logger(__name__)
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-def create_lora_layers(model):
+def create_lora_layers(model, mock_weights: bool = True):
     lora_attn_procs = {}
     for name in model.attn_processors.keys():
         cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
@@ -57,12 +57,13 @@ def create_lora_layers(model):
         lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
         lora_attn_procs[name] = lora_attn_procs[name].to(model.device)
 
-        # add 1 to weights to mock trained weights
-        with torch.no_grad():
-            lora_attn_procs[name].to_q_lora.up.weight += 1
-            lora_attn_procs[name].to_k_lora.up.weight += 1
-            lora_attn_procs[name].to_v_lora.up.weight += 1
-            lora_attn_procs[name].to_out_lora.up.weight += 1
+        if mock_weights:
+            # add 1 to weights to mock trained weights
+            with torch.no_grad():
+                lora_attn_procs[name].to_q_lora.up.weight += 1
+                lora_attn_procs[name].to_k_lora.up.weight += 1
+                lora_attn_procs[name].to_v_lora.up.weight += 1
+                lora_attn_procs[name].to_out_lora.up.weight += 1
 
     return lora_attn_procs
 
@@ -378,26 +379,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             sample1 = model(**inputs_dict).sample
 
-        lora_attn_procs = {}
-        for name in model.attn_processors.keys():
-            cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
-            if name.startswith("mid_block"):
-                hidden_size = model.config.block_out_channels[-1]
-            elif name.startswith("up_blocks"):
-                block_id = int(name[len("up_blocks.")])
-                hidden_size = list(reversed(model.config.block_out_channels))[block_id]
-            elif name.startswith("down_blocks"):
-                block_id = int(name[len("down_blocks.")])
-                hidden_size = model.config.block_out_channels[block_id]
-
-            lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
-
-            # add 1 to weights to mock trained weights
-            with torch.no_grad():
-                lora_attn_procs[name].to_q_lora.up.weight += 1
-                lora_attn_procs[name].to_k_lora.up.weight += 1
-                lora_attn_procs[name].to_v_lora.up.weight += 1
-                lora_attn_procs[name].to_out_lora.up.weight += 1
+        lora_attn_procs = create_lora_layers(model)
 
         # make sure we can set a list of attention processors
         model.set_attn_processor(lora_attn_procs)
@@ -465,28 +447,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             old_sample = model(**inputs_dict).sample
 
-        lora_attn_procs = {}
-        for name in model.attn_processors.keys():
-            cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
-            if name.startswith("mid_block"):
-                hidden_size = model.config.block_out_channels[-1]
-            elif name.startswith("up_blocks"):
-                block_id = int(name[len("up_blocks.")])
-                hidden_size = list(reversed(model.config.block_out_channels))[block_id]
-            elif name.startswith("down_blocks"):
-                block_id = int(name[len("down_blocks.")])
-                hidden_size = model.config.block_out_channels[block_id]
-
-            lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
-            lora_attn_procs[name] = lora_attn_procs[name].to(model.device)
-
-            # add 1 to weights to mock trained weights
-            with torch.no_grad():
-                lora_attn_procs[name].to_q_lora.up.weight += 1
-                lora_attn_procs[name].to_k_lora.up.weight += 1
-                lora_attn_procs[name].to_v_lora.up.weight += 1
-                lora_attn_procs[name].to_out_lora.up.weight += 1
-
+        lora_attn_procs = create_lora_layers(model)
         model.set_attn_processor(lora_attn_procs)
 
         with torch.no_grad():
@@ -518,21 +479,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         model = self.model_class(**init_dict)
         model.to(torch_device)
 
-        lora_attn_procs = {}
-        for name in model.attn_processors.keys():
-            cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
-            if name.startswith("mid_block"):
-                hidden_size = model.config.block_out_channels[-1]
-            elif name.startswith("up_blocks"):
-                block_id = int(name[len("up_blocks.")])
-                hidden_size = list(reversed(model.config.block_out_channels))[block_id]
-            elif name.startswith("down_blocks"):
-                block_id = int(name[len("down_blocks.")])
-                hidden_size = model.config.block_out_channels[block_id]
-
-            lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
-            lora_attn_procs[name] = lora_attn_procs[name].to(model.device)
-
+        lora_attn_procs = create_lora_layers(model, mock_weights=False)
         model.set_attn_processor(lora_attn_procs)
         # Saving as torch, properly reloads with directly filename
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -553,21 +500,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         model = self.model_class(**init_dict)
         model.to(torch_device)
 
-        lora_attn_procs = {}
-        for name in model.attn_processors.keys():
-            cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
-            if name.startswith("mid_block"):
-                hidden_size = model.config.block_out_channels[-1]
-            elif name.startswith("up_blocks"):
-                block_id = int(name[len("up_blocks.")])
-                hidden_size = list(reversed(model.config.block_out_channels))[block_id]
-            elif name.startswith("down_blocks"):
-                block_id = int(name[len("down_blocks.")])
-                hidden_size = model.config.block_out_channels[block_id]
-
-            lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
-            lora_attn_procs[name] = lora_attn_procs[name].to(model.device)
-
+        lora_attn_procs = create_lora_layers(model, mock_weights=False)
         model.set_attn_processor(lora_attn_procs)
         # Saving as torch, properly reloads with directly filename
         with tempfile.TemporaryDirectory() as tmpdirname:
