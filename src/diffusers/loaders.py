@@ -368,7 +368,7 @@ class TextualInversionLoaderMixin:
     ):
         r"""
         Load textual inversion embeddings into the text encoder of stable diffusion pipelines. Both `diffusers` and
-        `Automatic1111` formats are supported.
+        `Automatic1111` formats are supported (see example below).
 
         <Tip warning={true}>
 
@@ -427,6 +427,42 @@ class TextualInversionLoaderMixin:
          models](https://huggingface.co/docs/hub/models-gated#gated-models).
 
         </Tip>
+
+        Example:
+
+        To load a textual inversion embedding vector in `diffusers` format:
+        ```py
+        from diffusers import StableDiffusionPipeline
+        import torch
+
+        model_id = "runwayml/stable-diffusion-v1-5"
+        pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
+
+        pipe.load_textual_inversion("sd-concepts-library/cat-toy")
+
+        prompt = "A <cat-toy> backpack"
+
+        image = pipe(prompt, num_inference_steps=50).images[0]
+        image.save("cat-backpack.png")
+        ```
+
+        To load a textual inversion embedding vector in Automatic1111 format, make sure to first download the vector,
+        e.g. from [civitAI](https://civitai.com/models/3036?modelVersionId=9857) and then load the vector locally:
+
+        ```py
+        from diffusers import StableDiffusionPipeline
+        import torch
+
+        model_id = "runwayml/stable-diffusion-v1-5"
+        pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
+
+        pipe.load_textual_inversion("./charturnerv2.pt")
+
+        prompt = "charturnerv2, multiple views of the same character in the same outfit, a character turnaround of a woman wearing a black jacket and red shirt, best quality, intricate details."
+
+        image = pipe(prompt, num_inference_steps=50).images[0]
+        image.save("character.png")
+        ```
         """
         if not hasattr(self, "tokenizer") or not isinstance(self.tokenizer, PreTrainedTokenizer):
             raise ValueError(
