@@ -93,7 +93,7 @@ class MagicMixPipeline(DiffusionPipeline):
 
         torch.manual_seed(seed)
         noise = torch.randn(
-            (1, self.unet.in_channels, height // 8, width // 8),
+            (1, self.unet.config.in_channels, height // 8, width // 8),
         ).to(self.device)
 
         latents = self.scheduler.add_noise(

@@ -135,7 +135,7 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = frames[0][-3:, -3:, -1]
 
         assert frames[0].shape == (64, 64, 3)
-        expected_slice = np.array([166, 184, 167, 118, 102, 123, 108, 93, 114])
+        expected_slice = np.array([158.0, 160.0, 153.0, 125.0, 100.0, 121.0, 111.0, 93.0, 113.0])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 

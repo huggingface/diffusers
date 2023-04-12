@@ -238,7 +238,7 @@ class BitDiffusion(DiffusionPipeline):
         **kwargs,
     ) -> Union[Tuple, ImagePipelineOutput]:
         latents = torch.randn(
-            (batch_size, self.unet.in_channels, height, width),
+            (batch_size, self.unet.config.in_channels, height, width),
             generator=generator,
         )
         latents = decimal_to_bits(latents) * self.bit_scale
