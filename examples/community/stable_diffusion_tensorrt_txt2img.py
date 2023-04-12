@@ -15,35 +15,42 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 import gc
-import numpy as np
-from copy import copy
+import os
 from collections import OrderedDict
+from copy import copy
 from typing import List, Optional, Union
 
+import numpy as np
 import onnx
-from onnx import shape_inference
-import torch
-import tensorrt as trt
 import onnx_graphsurgeon as gs
+import tensorrt as trt
+import torch
+from huggingface_hub import snapshot_download
+from onnx import shape_inference
 from polygraphy import cuda
-from polygraphy.backend.onnx.loader import fold_constants
 from polygraphy.backend.common import bytes_from_path
-from polygraphy.backend.trt import CreateConfig, Profile
-from polygraphy.backend.trt import engine_from_bytes, engine_from_network, network_from_onnx_path, save_engine
+from polygraphy.backend.onnx.loader import fold_constants
+from polygraphy.backend.trt import (
+    CreateConfig,
+    Profile,
+    engine_from_bytes,
+    engine_from_network,
+    network_from_onnx_path,
+    save_engine,
+)
 from polygraphy.backend.trt import util as trt_util
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
-from huggingface_hub import snapshot_download
 
-from diffusers.utils import DIFFUSERS_CACHE, logging
-from diffusers.schedulers import DDIMScheduler
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion import (
     StableDiffusionPipeline,
     StableDiffusionPipelineOutput,
     StableDiffusionSafetyChecker,
 )
+from diffusers.schedulers import DDIMScheduler
+from diffusers.utils import DIFFUSERS_CACHE, logging
+
 
 """
 Installation instructions
@@ -162,7 +169,7 @@ class Engine:
         bindings = [0] * start_binding + [buf.ptr for buf in device_buffers.values()]
         noerror = self.context.execute_async_v2(bindings=bindings, stream_handle=stream.ptr)
         if not noerror:
-            raise ValueError(f"ERROR: inference failed.")
+            raise ValueError("ERROR: inference failed.")
 
         return self.tensors
 
@@ -469,9 +476,18 @@ class UNet(BaseModel):
 
     def get_input_profile(self, batch_size, image_height, image_width, static_batch, static_shape):
         latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
-        min_batch, max_batch, _, _, _, _, min_latent_height, max_latent_height, min_latent_width, max_latent_width = self.get_minmax_dims(
-            batch_size, image_height, image_width, static_batch, static_shape
-        )
+        (
+            min_batch,
+            max_batch,
+            _,
+            _,
+            _,
+            _,
+            min_latent_height,
+            max_latent_height,
+            min_latent_width,
+            max_latent_width,
+        ) = self.get_minmax_dims(batch_size, image_height, image_width, static_batch, static_shape)
         return {
             "sample": [
                 (2 * min_batch, self.unet_dim, min_latent_height, min_latent_width),
@@ -534,9 +550,18 @@ class VAE(BaseModel):
 
     def get_input_profile(self, batch_size, image_height, image_width, static_batch, static_shape):
         latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
-        min_batch, max_batch, _, _, _, _, min_latent_height, max_latent_height, min_latent_width, max_latent_width = self.get_minmax_dims(
-            batch_size, image_height, image_width, static_batch, static_shape
-        )
+        (
+            min_batch,
+            max_batch,
+            _,
+            _,
+            _,
+            _,
+            min_latent_height,
+            max_latent_height,
+            min_latent_width,
+            max_latent_width,
+        ) = self.get_minmax_dims(batch_size, image_height, image_width, static_batch, static_shape)
         return {
             "latent": [
                 (min_batch, 4, min_latent_height, min_latent_width),
@@ -774,7 +799,6 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
                 latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
 
             # Predict the noise residual
-            embeddings_dtype = np.float16
             timestep_float = timestep.float() if timestep.dtype != torch.float32 else timestep
 
             sample_inp = device_view(latent_model_input)
