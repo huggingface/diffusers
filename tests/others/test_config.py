@@ -29,9 +29,6 @@ from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.utils.testing_utils import CaptureLogger
 
 
-logging.set_verbosity_warning()
-
-
 class SampleObject(ConfigMixin):
     config_name = "config.json"
 
@@ -144,6 +141,8 @@ class ConfigTester(unittest.TestCase):
 
     def test_load_ddim_from_pndm(self):
         logger = logging.get_logger("diffusers.configuration_utils")
+        # 30 for warning
+        logger.setLevel(30)
 
         with CaptureLogger(logger) as cap_logger:
             ddim = DDIMScheduler.from_pretrained(
@@ -156,6 +155,8 @@ class ConfigTester(unittest.TestCase):
 
     def test_load_euler_from_pndm(self):
         logger = logging.get_logger("diffusers.configuration_utils")
+        # 30 for warning
+        logger.setLevel(30)
 
         with CaptureLogger(logger) as cap_logger:
             euler = EulerDiscreteScheduler.from_pretrained(
@@ -168,6 +169,8 @@ class ConfigTester(unittest.TestCase):
 
     def test_load_euler_ancestral_from_pndm(self):
         logger = logging.get_logger("diffusers.configuration_utils")
+        # 30 for warning
+        logger.setLevel(30)
 
         with CaptureLogger(logger) as cap_logger:
             euler = EulerAncestralDiscreteScheduler.from_pretrained(
@@ -180,6 +183,8 @@ class ConfigTester(unittest.TestCase):
 
     def test_load_pndm(self):
         logger = logging.get_logger("diffusers.configuration_utils")
+        # 30 for warning
+        logger.setLevel(30)
 
         with CaptureLogger(logger) as cap_logger:
             pndm = PNDMScheduler.from_pretrained(
@@ -192,6 +197,8 @@ class ConfigTester(unittest.TestCase):
 
     def test_overwrite_config_on_load(self):
         logger = logging.get_logger("diffusers.configuration_utils")
+        # 30 for warning
+        logger.setLevel(30)
 
         with CaptureLogger(logger) as cap_logger:
             ddpm = DDPMScheduler.from_pretrained(
@@ -215,6 +222,8 @@ class ConfigTester(unittest.TestCase):
 
     def test_load_dpmsolver(self):
         logger = logging.get_logger("diffusers.configuration_utils")
+        # 30 for warning
+        logger.setLevel(30)
 
         with CaptureLogger(logger) as cap_logger:
             dpm = DPMSolverMultistepScheduler.from_pretrained(
