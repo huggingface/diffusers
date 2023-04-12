@@ -123,7 +123,7 @@ stable_diffusion = DiffusionPipeline.from_pretrained(repo_id, safety_checker=Non
 
 ### Reuse components across pipelines
 
-You can also reuse the same components in multiple pipelines without loading the weights into RAM twice. Use the [`DiffusionPipeline.components`] method to save the components in `components`:
+You can also reuse the same components in multiple pipelines to avoid loading the weights into RAM twice. Use the [`~DiffusionPipeline.components`] method to save the components:
 
 ```python
 from diffusers import StableDiffusionPipeline, StableDiffusionImg2ImgPipeline
@@ -138,6 +138,25 @@ Then you can pass the `components` to another pipeline without reloading the wei
 
 ```py
 stable_diffusion_img2img = StableDiffusionImg2ImgPipeline(**components)
+```
+
+You can also pass the components individually to the pipeline if you want more flexibility over which components to reuse or disable. For example, to reuse the same components in the text-to-image pipeline, except for the safety checker and feature extractor, in the image-to-image pipeline:
+
+```py
+from diffusers import StableDiffusionPipeline, StableDiffusionImg2ImgPipeline
+
+model_id = "runwayml/stable-diffusion-v1-5"
+stable_diffusion_txt2img = StableDiffusionPipeline.from_pretrained(model_id)
+stable_diffusion_img2img = StableDiffusionImg2ImgPipeline(
+    vae=stable_diffusion_txt2img.vae,
+    text_encoder=stable_diffusion_txt2img.text_encoder,
+    tokenizer=stable_diffusion_txt2img.tokenizer,
+    unet=stable_diffusion_txt2img.unet,
+    scheduler=stable_diffusion_txt2img.scheduler,
+    safety_checker=None,
+    feature_extractor=None,
+    requires_safety_checker=False,
+)
 ```
 
 ## Checkpoint variants
