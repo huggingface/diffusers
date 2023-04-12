@@ -1,9 +1,9 @@
+import copy
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Union
 
 import numpy as np
 import PIL
-import copy
 import torch
 import torch.nn.functional as F
 from torch.nn.functional import grid_sample
@@ -472,7 +472,7 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
 
         # Perform the second backward process up to time T_0
         x_1_t0 = self.backward_loop(
-            timesteps=timesteps[-t1 - 1: -t0 - 1],
+            timesteps=timesteps[-t1 - 1 : -t0 - 1],
             prompt_embeds=prompt_embeds,
             latents=x_1_t1,
             guidance_scale=guidance_scale,
@@ -508,7 +508,7 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
 
         self.scheduler = scheduler_copy
         x_1k_0 = self.backward_loop(
-            timesteps=timesteps[-t1 - 1:],
+            timesteps=timesteps[-t1 - 1 :],
             prompt_embeds=prompt_embeds,
             latents=x_1k_t1,
             guidance_scale=guidance_scale,
