@@ -38,8 +38,8 @@ from diffusers import (
 )
 from diffusers.utils import slow, torch_device
 
-from ...pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
-from ...test_pipelines_common import PipelineTesterMixin
+from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
