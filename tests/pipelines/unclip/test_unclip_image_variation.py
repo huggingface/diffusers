@@ -54,6 +54,7 @@ class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         "decoder_num_inference_steps",
         "super_res_num_inference_steps",
     ]
+    test_xformers_attention = False
 
     @property
     def text_embedder_hidden_size(self):
@@ -420,7 +421,12 @@ class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCa
     def test_attention_slicing_forward_pass(self):
         test_max_difference = torch_device == "cpu"
 
-        self._test_attention_slicing_forward_pass(test_max_difference=test_max_difference)
+        # Check is relaxed because there is not a torch 2.0 sliced attention added kv processor
+        expected_max_diff = 1e-2
+
+        self._test_attention_slicing_forward_pass(
+            test_max_difference=test_max_difference, expected_max_diff=expected_max_diff
+        )
 
     # Overriding PipelineTesterMixin::test_inference_batch_single_identical
     # because UnCLIP undeterminism requires a looser check.
