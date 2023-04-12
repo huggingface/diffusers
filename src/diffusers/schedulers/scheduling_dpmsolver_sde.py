@@ -123,8 +123,6 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
             `linear` or `scaled_linear`.
         trained_betas (`np.ndarray`, optional):
             option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
-            options to clip the variance used when adding noise to the denoised sample. Choose from `fixed_small`,
-            `fixed_small_log`, `fixed_large`, `fixed_large_log`, `learned` or `learned_range`.
         prediction_type (`str`, default `epsilon`, optional):
             prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
             process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
