@@ -179,7 +179,7 @@ class PipelineTesterMixin:
         self._test_inference_batch_consistent(batch_sizes=batch_sizes)
 
     def _test_inference_batch_consistent(
-        self, batch_sizes, additional_params_copy_to_batched_inputs=["num_inference_steps"]
+        self, batch_sizes=[2, 4, 13], additional_params_copy_to_batched_inputs=["num_inference_steps"]
     ):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
