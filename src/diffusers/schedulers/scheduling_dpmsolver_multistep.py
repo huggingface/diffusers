@@ -260,7 +260,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         return sample
 
-    # copied from diffusers.schedulers.scheduling_euler_discrete._sigma_to_t
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_karras._sigma_to_t
     def _sigma_to_t(self, sigma, log_sigmas):
         # get log sigma
         log_sigma = np.log(sigma)
@@ -284,7 +284,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         t = t.reshape(sigma.shape)
         return t
 
-    # copied from diffusers.schedulers.scheduling_euler_discrete._convert_to_karras
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_karras
     def _convert_to_karras(self, in_sigmas: torch.FloatTensor) -> torch.FloatTensor:
         """Constructs the noise schedule of Karras et al. (2022)."""
 
