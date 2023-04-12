@@ -203,7 +203,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             .copy()
             .astype(np.int64)
         )
-        
+
         if self.use_karras_sigmas:
             sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
             log_sigmas = np.log(sigmas)
@@ -260,7 +260,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         return sample
 
-    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_karras._sigma_to_t
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._sigma_to_t
     def _sigma_to_t(self, sigma, log_sigmas):
         # get log sigma
         log_sigma = np.log(sigma)
