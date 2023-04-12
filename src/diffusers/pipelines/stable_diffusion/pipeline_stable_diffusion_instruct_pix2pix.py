@@ -151,7 +151,8 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         mask: Union[torch.FloatTensor, PIL.Image.Image] = None,
-        mask_guidance_scale: float = 0.5
+        mask_guidance_scale: float = 0.5,
+        mask_enforcement_frequency: int = 10,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -371,7 +372,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
                 if scheduler_is_in_sigma_space:
                     noise_pred = (noise_pred - latents) / (-sigma)
 
-                if mask is not None:
+                if mask is not None and i % mask_enforcement_frequency == 0:
                     pixel_space = self.decode_latents_inter(latents)
                     pixel_space_mask_enforced = self.enforce_mask(device, original_image, mask, pixel_space)
                     masked_latents = self.image_to_latent(pixel_space_mask_enforced, prompt_embeds.dtype, device)
