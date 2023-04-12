@@ -240,7 +240,7 @@ class PipelineTesterMixin:
 
     def _test_inference_batch_single_identical(
         self,
-        batch_size,
+        batch_size=3,
         test_max_difference=None,
         test_mean_pixel_difference=None,
         relax_max_difference=False,
