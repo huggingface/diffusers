@@ -175,8 +175,8 @@ class PipelineTesterMixin:
             f"Required optional parameters not present: {remaining_required_optional_parameters}",
         )
 
-    def test_inference_batch_consistent(self):
-        self._test_inference_batch_consistent()
+    def test_inference_batch_consistent(self, batch_sizes=[2, 4, 13]):
+        self._test_inference_batch_consistent(batch_sizes=batch_sizes)
 
     def _test_inference_batch_consistent(
         self, batch_sizes=[2, 4, 13], additional_params_copy_to_batched_inputs=["num_inference_steps"]
@@ -235,11 +235,12 @@ class PipelineTesterMixin:
 
         logger.setLevel(level=diffusers.logging.WARNING)
 
-    def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical()
+    def test_inference_batch_single_identical(self, batch_size=3):
+        self._test_inference_batch_single_identical(batch_size=batch_size)
 
     def _test_inference_batch_single_identical(
         self,
+        batch_size=3,
         test_max_difference=None,
         test_mean_pixel_difference=None,
         relax_max_difference=False,
@@ -267,7 +268,7 @@ class PipelineTesterMixin:
 
         # batchify inputs
         batched_inputs = {}
-        batch_size = 3
+        batch_size = batch_size
         for name, value in inputs.items():
             if name in self.batch_params:
                 # prompt is string

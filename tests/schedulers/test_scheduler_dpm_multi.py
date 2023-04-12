@@ -201,13 +201,19 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
         sample = self.full_loop(thresholding=True, dynamic_thresholding_ratio=0.87, sample_max_value=0.5)
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_mean.item() - 0.6405) < 1e-3
+        assert abs(result_mean.item() - 1.1364) < 1e-3
 
     def test_full_loop_with_v_prediction(self):
         sample = self.full_loop(prediction_type="v_prediction")
         result_mean = torch.mean(torch.abs(sample))
 
         assert abs(result_mean.item() - 0.2251) < 1e-3
+
+    def test_full_loop_with_karras_and_v_prediction(self):
+        sample = self.full_loop(prediction_type="v_prediction", use_karras_sigmas=True)
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.2096) < 1e-3
 
     def test_switch(self):
         # make sure that iterating over schedulers with same config names gives same results
@@ -243,3 +249,11 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
             sample = scheduler.step(residual, t, sample).prev_sample
 
         assert sample.dtype == torch.float16
+
+    def test_unique_timesteps(self, **config):
+        for scheduler_class in self.scheduler_classes:
+            scheduler_config = self.get_scheduler_config(**config)
+            scheduler = scheduler_class(**scheduler_config)
+
+            scheduler.set_timesteps(scheduler.config.num_train_timesteps)
+            assert len(scheduler.timesteps.unique()) == scheduler.num_inference_steps
