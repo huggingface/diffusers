@@ -510,7 +510,7 @@ class DiffusionPipeline(ConfigMixin):
         if hasattr(self, name) and hasattr(self.config, name):
             # We need to overwrite the config if name exists in config
             if isinstance(getattr(self.config, name), (tuple, list)):
-                if self.config[name][0] is not None:
+                if value is not None and self.config[name][0] is not None:
                     class_library_tuple = (value.__module__.split(".")[0], value.__class__.__name__)
                 else:
                     class_library_tuple = (None, None)

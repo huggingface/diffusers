@@ -251,7 +251,9 @@ class UNetMidBlock3DCrossAttn(nn.Module):
                 encoder_hidden_states=encoder_hidden_states,
                 cross_attention_kwargs=cross_attention_kwargs,
             ).sample
-            hidden_states = temp_attn(hidden_states, num_frames=num_frames).sample
+            hidden_states = temp_attn(
+                hidden_states, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs
+            ).sample
             hidden_states = resnet(hidden_states, temb)
             hidden_states = temp_conv(hidden_states, num_frames=num_frames)
 
@@ -376,7 +378,9 @@ class CrossAttnDownBlock3D(nn.Module):
                 encoder_hidden_states=encoder_hidden_states,
                 cross_attention_kwargs=cross_attention_kwargs,
             ).sample
-            hidden_states = temp_attn(hidden_states, num_frames=num_frames).sample
+            hidden_states = temp_attn(
+                hidden_states, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs
+            ).sample
 
             output_states += (hidden_states,)
 
@@ -587,7 +591,9 @@ class CrossAttnUpBlock3D(nn.Module):
                 encoder_hidden_states=encoder_hidden_states,
                 cross_attention_kwargs=cross_attention_kwargs,
             ).sample
-            hidden_states = temp_attn(hidden_states, num_frames=num_frames).sample
+            hidden_states = temp_attn(
+                hidden_states, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs
+            ).sample
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
