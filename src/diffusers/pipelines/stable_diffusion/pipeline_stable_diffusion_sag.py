@@ -574,7 +574,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
-        # and `sag_scale` is` `s` of equation (15)
+        # and `sag_scale` is` `s` of equation (16)
         # of the self-attentnion guidance paper: https://arxiv.org/pdf/2210.00939.pdf
         # `sag_scale = 0` means no self-attention guidance
         do_self_attention_guidance = sag_scale > 0.0
@@ -645,7 +645,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin)
                     # perform self-attention guidance with the stored self-attentnion map
                     if do_self_attention_guidance:
                         # classifier-free guidance produces two chunks of attention map
-                        # and we only use unconditional one according to equation (24)
+                        # and we only use unconditional one according to equation (25)
                         # in https://arxiv.org/pdf/2210.00939.pdf
                         if do_classifier_free_guidance:
                             # DDIM-like prediction of x0
