@@ -481,10 +481,15 @@ def main():
 
         return [deepspeed_plugin.zero3_init_context_manager(enable=False)]
 
-    # Currently Accelerate doesn't know how to handle multiple models Deepspeed ZeRO stage 3.
-    # For this to work properly all models must be run through `accelerate.prepare`. But accelerate will try to assign the same optimizer with the same weights to all models during deepspeed.initialize, which of course doesn't work.
-    # For now this will partially support Deepspeed ZeRO-3, by excluding the 2 frozen models from being partitioned during zero.Init which gets called during `from_pretrained`
-    # So CLIPTextModel and AutoencoderKL will not enjoy the parameter sharding across multiple gpus and only UNet2DConditionModel will get zero sharded.
+    # Currently Accelerate doesn't know how to handle multiple models under Deepspeed ZeRO stage 3.
+    # For this to work properly all models must be run through `accelerate.prepare`. But accelerate
+    # will try to assign the same optimizer with the same weights to all models during
+    # `deepspeed.initialize`, which of course doesn't work.
+    #
+    # For now the following workaround will partially support Deepspeed ZeRO-3, by excluding the 2
+    # frozen models from being partitioned during `zero.Init` which gets called during
+    # `from_pretrained` So CLIPTextModel and AutoencoderKL will not enjoy the parameter sharding
+    # across multiple gpus and only UNet2DConditionModel will get ZeRO sharded.
     with ContextManagers(deepspeed_zero_init_disabled_context_manager()):
         text_encoder = CLIPTextModel.from_pretrained(
             args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
