@@ -157,24 +157,61 @@ If you're interested in following along with your model training progress, you c
 
 ## Inference
 
-Once you have trained a model, you can use it for inference with the [`StableDiffusionPipeline`]. Make sure you include the `placeholder_token` in your prompt, in this case, it is `<cat-toy>`.
+Once you have trained a model, you can use it for inference with the [`StableDiffusionPipeline`].
+
+The textual inversion script will by default only save the textual inversion embedding vector(s) that have 
+been added to the text encoder embedding matrix and consequently been trained.
 
 <frameworkcontent>
 <pt>
+<Tip>
+
+💡 The community has created a large library of different textual inversion embedding vectors, called [sd-concepts-library](https://huggingface.co/sd-concepts-library).
+Instead of training textual inversion embeddings from scratch you can also see whether a fitting textual inversion embedding has already been added to the libary.
+
+</Tip>
+
+To load the textual inversion embeddings you first need to load the base model that was used when training 
+your textual inversion embedding vectors. Here we assume that [`runwayml/stable-diffusion-v1-5`](runwayml/stable-diffusion-v1-5)
+was used as a base model so we load it first:
 ```python
 from diffusers import StableDiffusionPipeline
+import torch
 
-model_id = "path-to-your-trained-model"
+model_id = "runwayml/stable-diffusion-v1-5"
 pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
+```
 
+Next, we need to load the textual inversion embedding vector which can be done via the [`TextualInversionLoaderMixin.load_textual_inversion`]
+function. Here we'll load the embeddings of the "<cat-toy>" example from before.
+```python
+pipe.load_textual_inversion("sd-concepts-library/cat-toy")
+```
+
+Now we can run the pipeline making sure that the placeholder token `<cat-toy>` is used in our prompt.
+
+```python
 prompt = "A <cat-toy> backpack"
 
-image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
-
+image = pipe(prompt, num_inference_steps=50).images[0]
 image.save("cat-backpack.png")
+```
+
+The function [`TextualInversionLoaderMixin.load_textual_inversion`] can not only 
+load textual embedding vectors saved in Diffusers' format, but also embedding vectors
+saved in [Automatic1111](https://github.com/AUTOMATIC1111/stable-diffusion-webui) format.
+To do so, you can first download an embedding vector from [civitAI](https://civitai.com/models/3036?modelVersionId=8387)
+and then load it locally:
+```python
+pipe.load_textual_inversion("./charturnerv2.pt")
 ```
 </pt>
 <jax>
+Currently there is no `load_textual_inversion` function for Flax so one has to make sure the textual inversion
+embedding vector is saved as part of the model after training.
+
+The model can then be run just like any other Flax model:
+
 ```python
 import jax
 import numpy as np
