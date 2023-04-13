@@ -65,7 +65,7 @@ class RobertaSeriesModelWithTransformation(RobertaPreTrainedModel):
         super().__init__(config)
         self.roberta = XLMRobertaModel(config)
         self.transformation = nn.Linear(config.hidden_size, config.project_dim)
-        self.has_pre_transformation = config.has_pre_transformation
+        self.has_pre_transformation = getattr(config, "has_pre_transformation", False)
         if self.has_pre_transformation:
             self.transformation_pre = nn.Linear(config.hidden_size, config.project_dim)
             self.pre_LN = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
@@ -89,34 +89,19 @@ class RobertaSeriesModelWithTransformation(RobertaPreTrainedModel):
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        if self.has_pre_transformation:
-            outputs = self.base_model(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                token_type_ids=token_type_ids,
-                position_ids=position_ids,
-                head_mask=head_mask,
-                inputs_embeds=inputs_embeds,
-                encoder_hidden_states=encoder_hidden_states,
-                encoder_attention_mask=encoder_attention_mask,
-                output_attentions=output_attentions,
-                output_hidden_states=True,
-                return_dict=return_dict,
-            )
-        else:
-            outputs = self.base_model(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                token_type_ids=token_type_ids,
-                position_ids=position_ids,
-                head_mask=head_mask,
-                inputs_embeds=inputs_embeds,
-                encoder_hidden_states=encoder_hidden_states,
-                encoder_attention_mask=encoder_attention_mask,
-                output_attentions=output_attentions,
-                output_hidden_states=output_hidden_states,
-                return_dict=return_dict,
-            )
+        outputs = self.base_model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            encoder_hidden_states=encoder_hidden_states,
+            encoder_attention_mask=encoder_attention_mask,
+            output_attentions=output_attentions,
+            output_hidden_states=True if self.has_pre_transformation else output_hidden_states,
+            return_dict=return_dict,
+        )
 
         if self.has_pre_transformation:
             sequence_output2 = outputs["hidden_states"][-2]
