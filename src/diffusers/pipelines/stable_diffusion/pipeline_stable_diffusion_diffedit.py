@@ -1229,34 +1229,35 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # regularization of the noise prediction (not in original code or paper but borrowed from Pix2PixZero)
-                with torch.enable_grad():
-                    for _ in range(num_reg_steps):
-                        if lambda_auto_corr > 0:
-                            for _ in range(num_auto_corr_rolls):
+                if num_reg_steps > 0:
+                    with torch.enable_grad():
+                        for _ in range(num_reg_steps):
+                            if lambda_auto_corr > 0:
+                                for _ in range(num_auto_corr_rolls):
+                                    var = torch.autograd.Variable(noise_pred.detach().clone(), requires_grad=True)
+
+                                    # Derive epsilon from model output before regularizing to IID standard normal
+                                    var_epsilon = self.get_epsilon(var, latent_model_input.detach(), t)
+
+                                    l_ac = self.auto_corr_loss(var_epsilon, generator=generator)
+                                    l_ac.backward()
+
+                                    grad = var.grad.detach() / num_auto_corr_rolls
+                                    noise_pred = noise_pred - lambda_auto_corr * grad
+
+                            if lambda_kl > 0:
                                 var = torch.autograd.Variable(noise_pred.detach().clone(), requires_grad=True)
 
                                 # Derive epsilon from model output before regularizing to IID standard normal
                                 var_epsilon = self.get_epsilon(var, latent_model_input.detach(), t)
 
-                                l_ac = self.auto_corr_loss(var_epsilon, generator=generator)
-                                l_ac.backward()
+                                l_kld = self.kl_divergence(var_epsilon)
+                                l_kld.backward()
 
-                                grad = var.grad.detach() / num_auto_corr_rolls
-                                noise_pred = noise_pred - lambda_auto_corr * grad
+                                grad = var.grad.detach()
+                                noise_pred = noise_pred - lambda_kl * grad
 
-                        if lambda_kl > 0:
-                            var = torch.autograd.Variable(noise_pred.detach().clone(), requires_grad=True)
-
-                            # Derive epsilon from model output before regularizing to IID standard normal
-                            var_epsilon = self.get_epsilon(var, latent_model_input.detach(), t)
-
-                            l_kld = self.kl_divergence(var_epsilon)
-                            l_kld.backward()
-
-                            grad = var.grad.detach()
-                            noise_pred = noise_pred - lambda_kl * grad
-
-                        noise_pred = noise_pred.detach()
+                            noise_pred = noise_pred.detach()
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.inverse_scheduler.step(noise_pred, t, latents).prev_sample
