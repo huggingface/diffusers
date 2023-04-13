@@ -109,7 +109,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         act_fn: str = "silu",
         norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,
-        cross_attention_dim: int = 1280,
+        cross_attention_dim: Union[int, Tuple[int]] = 1280,
         attention_head_dim: Union[int, Tuple[int]] = 8,
         use_linear_projection: bool = False,
         class_embed_type: Optional[str] = None,
@@ -119,6 +119,8 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         projection_class_embeddings_input_dim: Optional[int] = None,
         controlnet_conditioning_channel_order: str = "rgb",
         conditioning_embedding_out_channels: Optional[Tuple[int]] = (16, 32, 96, 256),
+        class_embeddings_concat: bool = False,
+        conditioning_channels: int = 3,
     ):
         super().__init__()
 
@@ -138,6 +140,9 @@ class ControlNetModel(ModelMixin, ConfigMixin):
                 f"Must provide the same number of `attention_head_dim` as `down_block_types`. `attention_head_dim`: {attention_head_dim}. `down_block_types`: {down_block_types}."
             )
 
+        if isinstance(cross_attention_dim, int):
+            cross_attention_dim = (cross_attention_dim,) * len(down_block_types)
+
         # input
         conv_in_kernel = 3
         conv_in_padding = (conv_in_kernel - 1) // 2
@@ -156,6 +161,14 @@ class ControlNetModel(ModelMixin, ConfigMixin):
             time_embed_dim,
             act_fn=act_fn,
         )
+
+        if class_embeddings_concat:
+            # The time embeddings are concatenated with the class embeddings. The dimension of the
+            # time embeddings passed to the down, middle, and up blocks is twice the dimension of the
+            # regular time embeddings
+            blocks_time_embed_dim = time_embed_dim * 2
+        else:
+            blocks_time_embed_dim = time_embed_dim
 
         # class embedding
         if class_embed_type is None and num_class_embeds is not None:
@@ -177,6 +190,12 @@ class ControlNetModel(ModelMixin, ConfigMixin):
             # When used for embedding actual timesteps, the timesteps are first converted to sinusoidal embeddings.
             # As a result, `TimestepEmbedding` can be passed arbitrary vectors.
             self.class_embedding = TimestepEmbedding(projection_class_embeddings_input_dim, time_embed_dim)
+        elif class_embed_type == "simple_projection":
+            if projection_class_embeddings_input_dim is None:
+                raise ValueError(
+                    "`class_embed_type`: 'simple_projection' requires `projection_class_embeddings_input_dim` be set"
+                )
+            self.class_embedding = nn.Linear(projection_class_embeddings_input_dim, time_embed_dim)
         else:
             self.class_embedding = None
 
@@ -184,6 +203,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         self.controlnet_cond_embedding = ControlNetConditioningEmbedding(
             conditioning_embedding_channels=block_out_channels[0],
             block_out_channels=conditioning_embedding_out_channels,
+            conditioning_channels=conditioning_channels,
         )
 
         self.down_blocks = nn.ModuleList([])
@@ -212,12 +232,12 @@ class ControlNetModel(ModelMixin, ConfigMixin):
                 num_layers=layers_per_block,
                 in_channels=input_channel,
                 out_channels=output_channel,
-                temb_channels=time_embed_dim,
+                temb_channels=blocks_time_embed_dim,
                 add_downsample=not is_final_block,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
-                cross_attention_dim=cross_attention_dim,
+                cross_attention_dim=cross_attention_dim[i],
                 attn_num_head_channels=attention_head_dim[i],
                 downsample_padding=downsample_padding,
                 use_linear_projection=use_linear_projection,
@@ -246,12 +266,12 @@ class ControlNetModel(ModelMixin, ConfigMixin):
 
         self.mid_block = UNetMidBlock2DCrossAttn(
             in_channels=mid_block_channel,
-            temb_channels=time_embed_dim,
+            temb_channels=blocks_time_embed_dim,
             resnet_eps=norm_eps,
             resnet_act_fn=act_fn,
             output_scale_factor=mid_block_scale_factor,
             resnet_time_scale_shift=resnet_time_scale_shift,
-            cross_attention_dim=cross_attention_dim,
+            cross_attention_dim=cross_attention_dim[-1],
             attn_num_head_channels=attention_head_dim[-1],
             resnet_groups=norm_num_groups,
             use_linear_projection=use_linear_projection,
@@ -265,6 +285,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         controlnet_conditioning_channel_order: str = "rgb",
         conditioning_embedding_out_channels: Optional[Tuple[int]] = (16, 32, 96, 256),
         load_weights_from_unet: bool = True,
+        conditioning_channels: int = 3,
     ):
         r"""
         Instantiate Controlnet class from UNet2DConditionModel.
@@ -295,8 +316,10 @@ class ControlNetModel(ModelMixin, ConfigMixin):
             upcast_attention=unet.config.upcast_attention,
             resnet_time_scale_shift=unet.config.resnet_time_scale_shift,
             projection_class_embeddings_input_dim=unet.config.projection_class_embeddings_input_dim,
+            class_embeddings_concat=unet.config.class_embeddings_concat,
             controlnet_conditioning_channel_order=controlnet_conditioning_channel_order,
             conditioning_embedding_out_channels=conditioning_embedding_out_channels,
+            conditioning_channels=conditioning_channels,
         )
 
         if load_weights_from_unet:
@@ -508,7 +531,10 @@ class ControlNetModel(ModelMixin, ConfigMixin):
                 class_labels = self.time_proj(class_labels)
 
             class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
-            emb = emb + class_emb
+            if self.config.class_embeddings_concat:
+                emb = torch.cat([emb, class_emb], dim=-1)
+            else:
+                emb = emb + class_emb
 
         # 2. pre-process
         sample = self.conv_in(sample)
