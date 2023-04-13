@@ -303,10 +303,13 @@ class StableDiffusionDiffEditPipelineIntegrationTests(unittest.TestCase):
             output_type="numpy",
         ).images[0]
 
-        expected_image = np.array(
-            load_image(
-                "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-                "/diffedit/pears.png"
-            ).resize((768, 768))
+        expected_image = (
+            np.array(
+                load_image(
+                    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+                    "/diffedit/pears.png"
+                ).resize((768, 768))
+            )
+            / 255
         )
-        assert np.abs((expected_image - image).max()) < 1e-1
+        assert np.abs((expected_image - image).max()) < 1e-3
