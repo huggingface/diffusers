@@ -39,8 +39,8 @@ from diffusers.pipelines.unclip.text_proj import UnCLIPTextProjModel
 from diffusers.utils import floats_tensor, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import load_image, require_torch_gpu, skip_mps
 
-from ...pipeline_params import IMAGE_VARIATION_BATCH_PARAMS, IMAGE_VARIATION_PARAMS
-from ...test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
+from ..pipeline_params import IMAGE_VARIATION_BATCH_PARAMS, IMAGE_VARIATION_PARAMS
+from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 
 
 class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCase):

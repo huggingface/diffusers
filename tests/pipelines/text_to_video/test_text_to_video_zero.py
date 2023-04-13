@@ -20,7 +20,7 @@ import torch
 from diffusers import DDIMScheduler, TextToVideoZeroPipeline
 from diffusers.utils import load_pt, require_torch_gpu, slow
 
-from ...test_pipelines_common import assert_mean_pixel_difference
+from ..test_pipelines_common import assert_mean_pixel_difference
 
 
 @slow

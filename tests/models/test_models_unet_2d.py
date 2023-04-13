@@ -22,7 +22,7 @@ import torch
 from diffusers import UNet2DModel
 from diffusers.utils import floats_tensor, logging, slow, torch_all_close, torch_device
 
-from ..test_modeling_common import ModelTesterMixin
+from .test_modeling_common import ModelTesterMixin
 
 
 logger = logging.get_logger(__name__)

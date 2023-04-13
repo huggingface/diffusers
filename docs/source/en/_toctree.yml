@@ -25,7 +25,7 @@
     - local: using-diffusers/schedulers
       title: Load and compare different schedulers
     - local: using-diffusers/custom_pipeline_overview
-      title: Load and add custom pipelines
+      title: Load community pipelines
     - local: using-diffusers/kerascv
       title: Load KerasCV Stable Diffusion checkpoints
     title: Loading & Hub
@@ -47,9 +47,9 @@
     - local: using-diffusers/reproducibility
       title: Create reproducible pipelines
     - local: using-diffusers/custom_pipeline_examples
-      title: Community Pipelines
+      title: Community pipelines
     - local: using-diffusers/contribute_pipeline
-      title: How to contribute a Pipeline
+      title: How to contribute a community pipeline
     - local: using-diffusers/using_safetensors
       title: Using safetensors
     - local: using-diffusers/stable_diffusion_jax_how_to
