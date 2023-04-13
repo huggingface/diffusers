@@ -925,7 +925,7 @@ def main():
                 ],
             ]
             layer_names = [layer_mapping[0][0] for layer_mapping in layer_mappings]
-            if not set(layer_names).issubset(set([n[0] for n in model.named_modules()])):
+            if not set(layer_names).issubset([n[0] for n in model.named_modules()]):
                 raise ValueError(
                     "Provided model is not compatible with the default layer_mappings, "
                     'please use the model fine-tuned from "CompVis/stable-diffusion-v1-4", '
