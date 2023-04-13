@@ -68,7 +68,7 @@ In the forward pass, which we recommend defining as `__call__`, you have complet
 
 +     def __call__(self):
 +         image = torch.randn(
-+             (1, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
++             (1, self.unet.config.in_channels, self.unet.config.sample_size, self.unet.config.sample_size),
 +         )
 +         timestep = 1
 
@@ -120,6 +120,14 @@ from diffusers import DiffusionPipeline
 pipeline = DiffusionPipeline.from_pretrained("google/ddpm-cifar10-32", custom_pipeline="stevhliu/one_step_unet")
 ```
 
+Take a look at the following table to compare the two sharing workflows to help you decide the best option for you:
+
+|                | GitHub community pipeline                                                                                        | HF Hub community pipeline                                                                 |
+|----------------|------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------|
+| usage          | same                                                                                                             | same                                                                                      |
+| review process | open a Pull Request on GitHub and undergo a review process from the Diffusers team before merging; may be slower | upload directly to a Hub repository without any review; this is the fastest workflow      |
+| visibility     | included in the official Diffusers repository and documentation                                                  | included on your HF Hub profile and relies on your own usage/promotion to gain visibility |
+
 <Tip>
 
 💡 You can use whatever package you want in your community pipeline file - as long as the user has it installed, everything will work fine. Make sure you have one and only one pipeline class that inherits from `DiffusionPipeline` because this is automatically detected.
@@ -130,8 +138,8 @@ pipeline = DiffusionPipeline.from_pretrained("google/ddpm-cifar10-32", custom_pi
 
 A community pipeline is a class that inherits from [`DiffusionPipeline`] which means:
 
-- It can be loaded with the [`~DiffusionPipeline.from_pretrained.custom_pipeline`] argument.
-- The model weights and scheduler configuration are loaded from [`~DiffusionPipeline.from_pretrained.pretrained_model_name_or_path`].
+- It can be loaded with the [`custom_pipeline`] argument.
+- The model weights and scheduler configuration are loaded from [`pretrained_model_name_or_path`].
 - The code that implements a feature in the community pipeline is defined in a `pipeline.py` file.
 
 Sometimes you can't load all the pipeline components weights from an official repository. In this case, the other components should be passed directly to the pipeline:
