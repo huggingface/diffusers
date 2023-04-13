@@ -77,7 +77,7 @@ else:
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.15.0.dev0")
+check_min_version("0.16.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -839,7 +839,7 @@ def main():
 
             if global_step >= args.max_train_steps:
                 break
-    # Create the pipeline using using the trained modules and save it.
+    # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         if args.push_to_hub and args.only_save_embeds:

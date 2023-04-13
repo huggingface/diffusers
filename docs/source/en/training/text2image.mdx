@@ -155,6 +155,28 @@ python train_text_to_image_flax.py \
 </jax>
 </frameworkcontent>
 
+## Training with Min-SNR weighting
+
+We support training with the Min-SNR weighting strategy proposed in [Efficient Diffusion Training via Min-SNR Weighting Strategy](https://arxiv.org/abs/2303.09556) which helps to achieve faster convergence
+by rebalancing the loss. In order to use it, one needs to set the `--snr_gamma` argument. The recommended
+value when using it is 5.0. 
+
+You can find [this project on Weights and Biases](https://wandb.ai/sayakpaul/text2image-finetune-minsnr) that compares the loss surfaces of the following setups:
+
+* Training without the Min-SNR weighting strategy
+* Training with the Min-SNR weighting strategy (`snr_gamma` set to 5.0)
+* Training with the Min-SNR weighting strategy (`snr_gamma` set to 1.0)
+
+For our small Pokemons dataset, the effects of Min-SNR weighting strategy might not appear to be pronounced, but for larger datasets, we believe the effects will be more pronounced.
+
+Also, note that in this example, we either predict `epsilon` (i.e., the noise) or the `v_prediction`. For both of these cases, the formulation of the Min-SNR weighting strategy that we have used holds. 
+
+<Tip warning={true}>
+
+Training with Min-SNR weighting strategy is only supported in PyTorch.
+
+</Tip>
+
 ## LoRA
 
 You can also use Low-Rank Adaptation of Large Language Models (LoRA), a fine-tuning technique for accelerating training large models, for fine-tuning text-to-image models. For more details, take a look at the [LoRA training](lora#text-to-image) guide.

@@ -18,6 +18,7 @@ import logging
 import math
 import os
 import random
+import time
 from pathlib import Path
 
 import jax
@@ -58,7 +59,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.15.0.dev0")
+check_min_version("0.16.0.dev0")
 
 logger = logging.getLogger(__name__)
 
@@ -154,15 +155,16 @@ def log_validation(controlnet, controlnet_params, tokenizer, args, rng, weight_d
 
 def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=None):
     img_str = ""
-    for i, log in enumerate(image_logs):
-        images = log["images"]
-        validation_prompt = log["validation_prompt"]
-        validation_image = log["validation_image"]
-        validation_image.save(os.path.join(repo_folder, "image_control.png"))
-        img_str += f"prompt: {validation_prompt}\n"
-        images = [validation_image] + images
-        image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images_{i}.png"))
-        img_str += f"![images_{i})](./images_{i}.png)\n"
+    if image_logs is not None:
+        for i, log in enumerate(image_logs):
+            images = log["images"]
+            validation_prompt = log["validation_prompt"]
+            validation_image = log["validation_image"]
+            validation_image.save(os.path.join(repo_folder, "image_control.png"))
+            img_str += f"prompt: {validation_prompt}\n"
+            images = [validation_image] + images
+            image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images_{i}.png"))
+            img_str += f"![images_{i})](./images_{i}.png)\n"
 
     yaml = f"""
 ---
@@ -214,6 +216,39 @@ def parse_args():
         help="Load the pretrained model from a PyTorch checkpoint.",
     )
     parser.add_argument(
+        "--controlnet_revision",
+        type=str,
+        default=None,
+        help="Revision of controlnet model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--profile_steps",
+        type=int,
+        default=0,
+        help="How many training steps to profile in the beginning.",
+    )
+    parser.add_argument(
+        "--profile_validation",
+        action="store_true",
+        help="Whether to profile the (last) validation.",
+    )
+    parser.add_argument(
+        "--profile_memory",
+        action="store_true",
+        help="Whether to dump an initial (before training loop) and a final (at program end) memory profile.",
+    )
+    parser.add_argument(
+        "--ccache",
+        type=str,
+        default=None,
+        help="Enables compilation cache.",
+    )
+    parser.add_argument(
+        "--controlnet_from_pt",
+        action="store_true",
+        help="Load the controlnet model from a PyTorch checkpoint.",
+    )
+    parser.add_argument(
         "--tokenizer_name",
         type=str,
         default=None,
@@ -222,8 +257,9 @@ def parse_args():
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="controlnet-model",
-        help="The output directory where the model predictions and checkpoints will be written.",
+        default="runs/{timestamp}",
+        help="The output directory where the model predictions and checkpoints will be written. "
+        "Can contain placeholders: {timestamp}.",
     )
     parser.add_argument(
         "--cache_dir",
@@ -278,6 +314,13 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--snr_gamma",
+        type=float,
+        default=None,
+        help="SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. "
+        "More details here: https://arxiv.org/abs/2303.09556.",
+    )
+    parser.add_argument(
         "--dataloader_num_workers",
         type=int,
         default=0,
@@ -299,15 +342,6 @@ def parse_args():
         help="The name of the repository to keep in sync with the local `output_dir`.",
     )
     parser.add_argument(
-        "--logging_dir",
-        type=str,
-        default="logs",
-        help=(
-            "[TensorBoard](https://www.tensorflow.org/tensorboard) log directory. Will default to"
-            " *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***."
-        ),
-    )
-    parser.add_argument(
         "--logging_steps",
         type=int,
         default=100,
@@ -316,11 +350,8 @@ def parse_args():
     parser.add_argument(
         "--report_to",
         type=str,
-        default="tensorboard",
-        help=(
-            'The integration to report the results and logs to. Supported platforms are `"tensorboard"`'
-            ' (default), `"wandb"` and `"comet_ml"`. Use `"all"` to report to all integrations.'
-        ),
+        default="wandb",
+        help=('The integration to report the results and logs to. Currently only supported platforms are `"wandb"`'),
     )
     parser.add_argument(
         "--mixed_precision",
@@ -430,6 +461,7 @@ def parse_args():
             " `args.validation_prompt` and logging the images."
         ),
     )
+    parser.add_argument("--wandb_entity", type=str, default=None, help=("The wandb entity to use (for teams)."))
     parser.add_argument(
         "--tracker_project_name",
         type=str,
@@ -442,6 +474,8 @@ def parse_args():
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
 
     args = parser.parse_args()
+    args.output_dir = args.output_dir.replace("{timestamp}", time.strftime("%Y%m%d_%H%M%S"))
+
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
@@ -656,6 +690,7 @@ def main():
     # wandb init
     if jax.process_index() == 0 and args.report_to == "wandb":
         wandb.init(
+            entity=args.wandb_entity,
             project=args.tracker_project_name,
             job_type="train",
             config=args,
@@ -731,7 +766,10 @@ def main():
     if args.controlnet_model_name_or_path:
         logger.info("Loading existing controlnet weights")
         controlnet, controlnet_params = FlaxControlNetModel.from_pretrained(
-            args.controlnet_model_name_or_path, from_pt=True, dtype=jnp.float32
+            args.controlnet_model_name_or_path,
+            revision=args.controlnet_revision,
+            from_pt=args.controlnet_from_pt,
+            dtype=jnp.float32,
         )
     else:
         logger.info("Initializing controlnet weights from unet")
@@ -790,6 +828,20 @@ def main():
     # Initialize our training
     validation_rng, train_rngs = jax.random.split(rng)
     train_rngs = jax.random.split(train_rngs, jax.local_device_count())
+
+    def compute_snr(timesteps):
+        """
+        Computes SNR as per https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L847-L849
+        """
+        alphas_cumprod = noise_scheduler_state.common.alphas_cumprod
+        sqrt_alphas_cumprod = alphas_cumprod**0.5
+        sqrt_one_minus_alphas_cumprod = (1.0 - alphas_cumprod) ** 0.5
+
+        alpha = sqrt_alphas_cumprod[timesteps]
+        sigma = sqrt_one_minus_alphas_cumprod[timesteps]
+        # Compute SNR.
+        snr = (alpha / sigma) ** 2
+        return snr
 
     def train_step(state, unet_params, text_encoder_params, vae_params, batch, train_rng):
         # reshape batch, add grad_step_dim if gradient_accumulation_steps > 1
@@ -861,6 +913,12 @@ def main():
                 raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
             loss = (target - model_pred) ** 2
+
+            if args.snr_gamma is not None:
+                snr = jnp.array(compute_snr(timesteps))
+                snr_loss_weights = jnp.where(snr < args.snr_gamma, snr, jnp.ones_like(snr) * args.snr_gamma) / snr
+                loss = loss * snr_loss_weights
+
             loss = loss.mean()
 
             return loss
@@ -911,6 +969,11 @@ def main():
         metrics = {"loss": loss}
         metrics = jax.lax.pmean(metrics, axis_name="batch")
 
+        def l2(xs):
+            return jnp.sqrt(sum([jnp.vdot(x, x) for x in jax.tree_util.tree_leaves(xs)]))
+
+        metrics["l2_grads"] = l2(jax.tree_util.tree_leaves(grad))
+
         return new_state, metrics, new_train_rng
 
     # Create parallel version of the train step
@@ -942,32 +1005,38 @@ def main():
     logger.info(f"  Total train batch size (w. parallel & distributed) = {total_train_batch_size}")
     logger.info(f"  Total optimization steps = {args.num_train_epochs * num_update_steps_per_epoch}")
 
-    if jax.process_index() == 0:
+    if jax.process_index() == 0 and args.report_to == "wandb":
         wandb.define_metric("*", step_metric="train/step")
+        wandb.define_metric("train/step", step_metric="walltime")
         wandb.config.update(
             {
                 "num_train_examples": args.max_train_samples if args.streaming else len(train_dataset),
                 "total_train_batch_size": total_train_batch_size,
                 "total_optimization_step": args.num_train_epochs * num_update_steps_per_epoch,
                 "num_devices": jax.device_count(),
+                "controlnet_params": sum(np.prod(x.shape) for x in jax.tree_util.tree_leaves(state.params)),
             }
         )
 
-    global_step = 0
+    global_step = step0 = 0
     epochs = tqdm(
         range(args.num_train_epochs),
         desc="Epoch ... ",
         position=0,
         disable=jax.process_index() > 0,
     )
+    if args.profile_memory:
+        jax.profiler.save_device_memory_profile(os.path.join(args.output_dir, "memory_initial.prof"))
+    t00 = t0 = time.monotonic()
     for epoch in epochs:
         # ======================== Training ================================
 
         train_metrics = []
+        train_metric = None
 
         steps_per_epoch = (
             args.max_train_samples // total_train_batch_size
-            if args.streaming
+            if args.streaming or args.max_train_samples
             else len(train_dataset) // total_train_batch_size
         )
         train_step_progress_bar = tqdm(
@@ -979,10 +1048,18 @@ def main():
         )
         # train
         for batch in train_dataloader:
+            if args.profile_steps and global_step == 1:
+                train_metric["loss"].block_until_ready()
+                jax.profiler.start_trace(args.output_dir)
+            if args.profile_steps and global_step == 1 + args.profile_steps:
+                train_metric["loss"].block_until_ready()
+                jax.profiler.stop_trace()
+
             batch = shard(batch)
-            state, train_metric, train_rngs = p_train_step(
-                state, unet_params, text_encoder_params, vae_params, batch, train_rngs
-            )
+            with jax.profiler.StepTraceAnnotation("train", step_num=global_step):
+                state, train_metric, train_rngs = p_train_step(
+                    state, unet_params, text_encoder_params, vae_params, batch, train_rngs
+                )
             train_metrics.append(train_metric)
 
             train_step_progress_bar.update(1)
@@ -1000,13 +1077,19 @@ def main():
 
             if global_step % args.logging_steps == 0 and jax.process_index() == 0:
                 if args.report_to == "wandb":
+                    train_metrics = jax_utils.unreplicate(train_metrics)
+                    train_metrics = jax.tree_util.tree_map(lambda *m: jnp.array(m).mean(), *train_metrics)
                     wandb.log(
                         {
+                            "walltime": time.monotonic() - t00,
                             "train/step": global_step,
-                            "train/epoch": epoch,
-                            "train/loss": jax_utils.unreplicate(train_metric)["loss"],
+                            "train/epoch": global_step / dataset_length,
+                            "train/steps_per_sec": (global_step - step0) / (time.monotonic() - t0),
+                            **{f"train/{k}": v for k, v in train_metrics.items()},
                         }
                     )
+                t0, step0 = time.monotonic(), global_step
+                train_metrics = []
             if global_step % args.checkpointing_steps == 0 and jax.process_index() == 0:
                 controlnet.save_pretrained(
                     f"{args.output_dir}/{global_step}",
@@ -1017,10 +1100,16 @@ def main():
         train_step_progress_bar.close()
         epochs.write(f"Epoch... ({epoch + 1}/{args.num_train_epochs} | Loss: {train_metric['loss']})")
 
-    # Create the pipeline using using the trained modules and save it.
+    # Final validation & store model.
     if jax.process_index() == 0:
         if args.validation_prompt is not None:
+            if args.profile_validation:
+                jax.profiler.start_trace(args.output_dir)
             image_logs = log_validation(controlnet, state.params, tokenizer, args, validation_rng, weight_dtype)
+            if args.profile_validation:
+                jax.profiler.stop_trace()
+        else:
+            image_logs = None
 
         controlnet.save_pretrained(
             args.output_dir,
@@ -1040,6 +1129,10 @@ def main():
                 commit_message="End of training",
                 ignore_patterns=["step_*", "epoch_*"],
             )
+
+    if args.profile_memory:
+        jax.profiler.save_device_memory_profile(os.path.join(args.output_dir, "memory_final.prof"))
+    logger.info("Finished training.")
 
 
 if __name__ == "__main__":

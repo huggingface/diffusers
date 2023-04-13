@@ -20,7 +20,7 @@ from packaging import version
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
-from ...loaders import TextualInversionLoaderMixin
+from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -53,7 +53,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
+class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.
 
@@ -649,7 +649,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
         timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variables
-        num_channels_latents = self.unet.in_channels
+        num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
