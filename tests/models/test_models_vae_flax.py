@@ -4,7 +4,7 @@ from diffusers import FlaxAutoencoderKL
 from diffusers.utils import is_flax_available
 from diffusers.utils.testing_utils import require_flax
 
-from ..test_modeling_common_flax import FlaxModelTesterMixin
+from .test_modeling_common_flax import FlaxModelTesterMixin
 
 
 if is_flax_available():
