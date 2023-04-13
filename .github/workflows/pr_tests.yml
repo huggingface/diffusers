@@ -21,22 +21,27 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - name: Fast PyTorch CPU tests on Ubuntu
-            framework: pytorch
+          - name: Fast PyTorch Pipeline CPU tests
+            framework: pytorch_pipelines
             runner: docker-cpu
             image: diffusers/diffusers-pytorch-cpu
-            report: torch_cpu
-          - name: Fast Flax CPU tests on Ubuntu
+            report: torch_cpu_pipelines
+          - name: Fast PyTorch Models & Schedulers CPU tests
+            framework: pytorch_models
+            runner: docker-cpu
+            image: diffusers/diffusers-pytorch-cpu
+            report: torch_cpu_models_schedulers
+          - name: Fast Flax CPU tests
             framework: flax
             runner: docker-cpu
             image: diffusers/diffusers-flax-cpu
             report: flax_cpu
-          - name: Fast ONNXRuntime CPU tests on Ubuntu
+          - name: Fast ONNXRuntime CPU tests
             framework: onnxruntime
             runner: docker-cpu
             image: diffusers/diffusers-onnxruntime-cpu
             report: onnx_cpu
-          - name: PyTorch Example CPU tests on Ubuntu
+          - name: PyTorch Example CPU tests
             framework: pytorch_examples
             runner: docker-cpu
             image: diffusers/diffusers-pytorch-cpu
@@ -71,13 +76,21 @@ jobs:
       run: |
         python utils/print_env.py
 
-    - name: Run fast PyTorch CPU tests
-      if: ${{ matrix.config.framework == 'pytorch' }}
+    - name: Run fast PyTorch Pipeline CPU tests
+      if: ${{ matrix.config.framework == 'pytorch_pipelines' }}
       run: |
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
-          tests/
+          tests/pipelines
+
+    - name: Run fast PyTorch Model Scheduler CPU tests
+      if: ${{ matrix.config.framework == 'pytorch_models' }}
+      run: |
+        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+          -s -v -k "not Flax and not Onnx" \
+          --make-reports=tests_${{ matrix.config.report }} \
+          tests/models tests/schedulers tests/others
 
     - name: Run fast Flax TPU tests
       if: ${{ matrix.config.framework == 'flax' }}
@@ -85,7 +98,7 @@ jobs:
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "Flax" \
           --make-reports=tests_${{ matrix.config.report }} \
-          tests/
+          tests
 
     - name: Run fast ONNXRuntime CPU tests
       if: ${{ matrix.config.framework == 'onnxruntime' }}
