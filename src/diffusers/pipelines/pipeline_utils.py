@@ -1059,7 +1059,7 @@ class DiffusionPipeline(ConfigMixin):
         return_cached_folder = kwargs.pop("return_cached_folder", False)
         if return_cached_folder:
             message = f"Passing `return_cached_folder=True` is deprecated and will be removed in `diffusers=0.17.0`. Please do the following instead: \n 1. Load the cached_folder via `cached_folder={cls}.download({pretrained_model_name_or_path})`. \n 2. Load the pipeline by loading from the cached folder: `pipeline={cls}.from_pretrained(cached_folder)`."
-            deprecate("return_cached_folder", "0.17.0", message, take_from=kwargs)
+            deprecate("return_cached_folder", "0.17.0", message)
             return model, cached_folder
 
         return model
