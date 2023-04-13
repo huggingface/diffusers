@@ -213,6 +213,7 @@ class UNet2DConditionLoadersMixin:
         attn_processors = {}
 
         is_lora = all("lora" in k for k in state_dict.keys())
+        is_custom_diffusion = all("custom_diffusion" in k for k in state_dict.keys())
 
         if is_lora:
             lora_grouped_dict = defaultdict(dict)
@@ -230,6 +231,9 @@ class UNet2DConditionLoadersMixin:
                 )
                 attn_processors[key].load_state_dict(value_dict)
 
+        elif is_custom_diffusion:
+            # Needs to be implemented.
+            pass
         else:
             raise ValueError(f"{model_file} does not seem to be in the correct format expected by LoRA training.")
 
