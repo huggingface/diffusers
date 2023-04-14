@@ -13,7 +13,7 @@ from diffusers import SchedulerMixin, StableDiffusionPipeline
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
 from diffusers.utils import logging
-
+from diffusers.loaders import TextualInversionLoaderMixin
 
 try:
     from diffusers.utils import PIL_INTERPOLATION
@@ -538,6 +538,11 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
                 f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
                 " the batch size of `prompt`."
             )
+
+        # textual inversion: procecss multi-vector tokens if necessary
+        if isinstance(self, TextualInversionLoaderMixin):
+            prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
+            negative_prompt = self.maybe_convert_prompt(negative_prompt, self.tokenizer)
 
         text_embeddings, uncond_embeddings = get_weighted_text_embeddings(
             pipe=self,
