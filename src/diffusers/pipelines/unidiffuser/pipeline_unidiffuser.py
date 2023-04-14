@@ -183,13 +183,13 @@ class UniDiffuserPipeline(DiffusionPipeline):
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
-    
+
     def _infer_mode(self, prompt, prompt_embeds, image, prompt_latents, vae_latents, clip_latents):
         r"""Infer the mode from the inputs to `__call__`."""
         prompt_available = (prompt is not None) or (prompt_embeds is not None)
         image_available = image is not None
         input_available = prompt_available or image_available
-        
+
         prompt_latents_available = prompt_latents is not None
         vae_latents_available = vae_latents is not None
         clip_latents_available = clip_latents is not None
@@ -214,14 +214,14 @@ class UniDiffuserPipeline(DiffusionPipeline):
             else:
                 # No inputs or latents available
                 mode = "img"
-        
+
         # Give warnings for ambiguous cases
         if self.mode is None and prompt_available and image_available:
             logger.warning(
                 f"You have supplied both a text prompt and image to the pipeline and mode has not been set manually,"
                 f" defaulting to mode '{mode}'."
             )
-        
+
         if self.mode is None and not input_available:
             if vae_latents_available != clip_latents_available:
                 # Exactly one of vae_latents and clip_latents is supplied
@@ -234,23 +234,23 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 logger.warning(
                     f"No inputs or latents have been supplied, and mode has not been manually set,"
                     f" defaulting to mode '{mode}'."
-            )
-        
+                )
+
         return mode
-    
+
     # Functions to manually set the mode
     def set_text_mode(self):
         self.mode = "text"
-    
+
     def set_img_mode(self):
         self.mode = "img"
-    
+
     def set_text_to_image_mode(self):
         self.mode = "text2img"
-    
+
     def set_image_to_text_mode(self):
         self.mode = "img2text"
-    
+
     def set_joint_mode(self):
         self.mode = "joint"
 
@@ -634,7 +634,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         img_vae, img_clip, text = x.split([img_vae_dim, self.image_encoder_hidden_size, text_dim], dim=1)
 
         img_vae = einops.rearrange(
-            img_vae, "B (C H W) -> B C H W", C=self.image_encoder_hidden_size, H=latent_height, W=latent_width
+            img_vae, "B (C H W) -> B C H W", C=self.num_channels_latents, H=latent_height, W=latent_width
         )
         img_clip = einops.rearrange(img_clip, "B (L D) -> B L D", L=1, D=self.image_encoder_hidden_size)
         text = einops.rearrange(text, "B (L D) -> B L D", L=self.text_encoder_seq_len, D=self.text_encoder_hidden_size)
@@ -681,10 +681,9 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 return x_out
 
             # Classifier-free guidance
-            # TODO: need to replace this with the appropriate generator logic and randn_tensor
-            img_vae_T = torch.randn_like(img_vae, device=device)
-            img_clip_T = torch.randn_like(img_clip, device=device)
-            text_T = torch.randn_like(prompt_embeds, device=device)
+            img_vae_T = randn_tensor(img_vae.shape, generator=generator, device=device, dtype=img_vae.dtype)
+            img_clip_T = randn_tensor(img_clip.shape, generator=generator, device=device, dtype=img_clip.dtype)
+            text_T = randn_tensor(prompt_embeds.shape, generator=generator, device=device, dtype=prompt_embeds.dtype)
             t_img_uncond = torch.ones_like(t) * timesteps
             t_text_uncond = torch.ones_like(t) * timesteps
 
@@ -711,8 +710,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 return img_out
 
             # Classifier-free guidance
-            # TODO: need to replace this with the appropriate generator logic and randn_tensor
-            text_T = torch.randn_like(prompt_embeds)
+            text_T = randn_tensor(prompt_embeds.shape, generator=generator, device=device, dtype=prompt_embeds.dtype)
             t_text_uncond = torch.ones_like(t) * timesteps
 
             img_vae_out_uncond, img_clip_out_uncond, text_out_uncond = self.unet(
@@ -732,9 +730,8 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 return text_out
 
             # Classifier-free guidance
-            # TODO: need to replace this with the appropriate generator logic and randn_tensor
-            img_vae_T = torch.randn_like(img_vae)
-            img_clip_T = torch.randn_like(img_clip)
+            img_vae_T = randn_tensor(img_vae.shape, generator=generator, device=device, dtype=img_vae.dtype)
+            img_clip_T = randn_tensor(img_clip.shape, generator=generator, device=device, dtype=img_clip.dtype)
             t_img_uncond = torch.ones_like(t) * timesteps
 
             img_vae_out_uncond, img_clip_out_uncond, text_out_uncond = self.unet(
@@ -761,8 +758,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             img_out = self._combine(img_vae_out, img_clip_out)
             return img_out
 
-    # Temporarily copied from StableDiffusionPipeline.
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
+    # Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -785,17 +781,18 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 f" {type(callback_steps)}."
             )
 
-        if prompt is not None and prompt_embeds is not None:
-            raise ValueError(
-                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
-                " only forward one of the two."
-            )
-        elif prompt is None and prompt_embeds is None:
-            raise ValueError(
-                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
-            )
-        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        if self.mode == "text2img":
+            if prompt is not None and prompt_embeds is not None:
+                raise ValueError(
+                    f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                    " only forward one of the two."
+                )
+            elif prompt is None and prompt_embeds is None:
+                raise ValueError(
+                    "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
+                )
+            elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+                raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
         if negative_prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
@@ -954,16 +951,18 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 negative_prompt_embeds=negative_prompt_embeds,
             )
         else:
-            # 3.2. Prepare text image latent variables, if necessary
+            # 3.2. Prepare text latent variables, if input not available
             prompt_embeds = self.prepare_text_latents(
                 batch_size,
                 self.text_encoder_seq_len,
                 self.text_encoder_hidden_size,
-                torch.float32,  # Placeholder, need to determine correct thing to do for dtype
+                torch.float32,  # TODO: Placeholder, need to determine correct thing to do for dtype
                 device,
                 generator,
                 prompt_latents,
             )
+
+        # print(f"Prompt embeds shape: {prompt_embeds.shape}")
 
         # 4. Encode image, if available; otherwise prepare image latents
         if mode in ["img2text"]:
@@ -993,7 +992,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 generator,
             )
         else:
-            # 4.2. Prepare image latent variables, if necessary
+            # 4.2. Prepare image latent variables, if input not available
             # Prepare image VAE latents
             image_vae_latents = self.prepare_image_vae_latents(
                 batch_size * num_images_per_prompt,
@@ -1005,6 +1004,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 generator,
                 vae_latents,
             )
+            # print(f"Image vae latent shape: {image_vae_latents.shape}")
 
             # Prepare image CLIP latents
             image_clip_latents = self.prepare_image_clip_latents(
@@ -1015,6 +1015,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 generator,
                 clip_latents,
             )
+            # print(f"Image clip latent shape: {image_clip_latents.shape}")
 
         # 5. Set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -1027,6 +1028,8 @@ class UniDiffuserPipeline(DiffusionPipeline):
             latents = self._combine(image_vae_latents, image_clip_latents)
         elif mode in ["img2text", "text"]:
             latents = prompt_embeds
+
+        # print(f"Latents shape: {latents.shape}")
 
         # 7. Check that shapes of latents and image match the UNet channels.
         # TODO

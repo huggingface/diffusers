@@ -6,21 +6,20 @@ from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models import ModelMixin
-from ...models.attention import AdaLayerNorm, BasicTransformerBlock
+from ...models.attention import AdaLayerNorm, FeedForward
+from ...models.attention_processor import Attention
 from ...models.embeddings import ImagePositionalEmbeddings, PatchEmbed, TimestepEmbedding, Timesteps
 from ...models.transformer_2d import Transformer2DModelOutput
-from ...utils import deprecate
 
 
 class SkipBlock(nn.Module):
-    def __init__(self, dim: int, num_embeds_ada_norm: Optional[int] = None):
+    def __init__(self, dim: int):
         super().__init__()
 
         self.skip_linear = nn.Linear(2 * dim, dim)
 
-        # Use AdaLayerNorm for now, maybe support using other forms of LayerNorm?
-        # Original code uses torch.nn.LayerNorm
-        self.norm = AdaLayerNorm(dim, num_embeds_ada_norm)
+        # Use torch.nn.LayerNorm for now, following the original code
+        self.norm = nn.LayerNorm(dim)
 
     def forward(self, x, skip):
         x = self.skip_linear(torch.cat([x, skip], dim=-1))
@@ -29,8 +28,216 @@ class SkipBlock(nn.Module):
         return x
 
 
+# Modified to support both pre-LayerNorm and post-LayerNorm configurations
+# Don't support AdaLayerNormZero for now
+# Modified from diffusers.models.attention.BasicTransformerBlock
+class UTransformerBlock(nn.Module):
+    r"""
+    A modification of BasicTransformerBlock which supports pre-LayerNorm and post-LayerNorm configurations.
+
+    Parameters:
+        dim (`int`): The number of channels in the input and output.
+        num_attention_heads (`int`): The number of heads to use for multi-head attention.
+        attention_head_dim (`int`): The number of channels in each head.
+        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
+        cross_attention_dim (`int`, *optional*): The size of the encoder_hidden_states vector for cross attention.
+        only_cross_attention (`bool`, *optional*):
+            Whether to use only cross-attention layers. In this case two cross attention layers are used.
+        double_self_attention (`bool`, *optional*):
+            Whether to use two self-attention layers. In this case no cross attention layers are used.
+        activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
+        num_embeds_ada_norm (:
+            obj: `int`, *optional*): The number of diffusion steps used during training. See `Transformer2DModel`.
+        attention_bias (:
+            obj: `bool`, *optional*, defaults to `False`): Configure if the attentions should contain a bias parameter.
+    """
+
+    def __init__(
+        self,
+        dim: int,
+        num_attention_heads: int,
+        attention_head_dim: int,
+        dropout=0.0,
+        cross_attention_dim: Optional[int] = None,
+        activation_fn: str = "geglu",
+        num_embeds_ada_norm: Optional[int] = None,
+        attention_bias: bool = False,
+        only_cross_attention: bool = False,
+        double_self_attention: bool = False,
+        upcast_attention: bool = False,
+        norm_elementwise_affine: bool = True,
+        norm_type: str = "layer_norm",
+        pre_layer_norm: bool = True,
+        final_dropout: bool = False,
+    ):
+        super().__init__()
+        self.only_cross_attention = only_cross_attention
+
+        # self.use_ada_layer_norm_zero = (num_embeds_ada_norm is not None) and norm_type == "ada_norm_zero"
+        self.use_ada_layer_norm = (num_embeds_ada_norm is not None) and norm_type == "ada_norm"
+
+        self.pre_layer_norm = pre_layer_norm
+
+        if norm_type in ("ada_norm", "ada_norm_zero") and num_embeds_ada_norm is None:
+            raise ValueError(
+                f"`norm_type` is set to {norm_type}, but `num_embeds_ada_norm` is not defined. Please make sure to"
+                f" define `num_embeds_ada_norm` if setting `norm_type` to {norm_type}."
+            )
+
+        # 1. Self-Attn
+        self.attn1 = Attention(
+            query_dim=dim,
+            heads=num_attention_heads,
+            dim_head=attention_head_dim,
+            dropout=dropout,
+            bias=attention_bias,
+            cross_attention_dim=cross_attention_dim if only_cross_attention else None,
+            upcast_attention=upcast_attention,
+        )
+
+        self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn, final_dropout=final_dropout)
+
+        # 2. Cross-Attn
+        if cross_attention_dim is not None or double_self_attention:
+            self.attn2 = Attention(
+                query_dim=dim,
+                cross_attention_dim=cross_attention_dim if not double_self_attention else None,
+                heads=num_attention_heads,
+                dim_head=attention_head_dim,
+                dropout=dropout,
+                bias=attention_bias,
+                upcast_attention=upcast_attention,
+            )  # is self-attn if encoder_hidden_states is none
+        else:
+            self.attn2 = None
+
+        if self.use_ada_layer_norm:
+            self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm)
+        # elif self.use_ada_layer_norm_zero:
+        #     self.norm1 = AdaLayerNormZero(dim, num_embeds_ada_norm)
+        else:
+            self.norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
+
+        if cross_attention_dim is not None or double_self_attention:
+            # We currently only use AdaLayerNormZero for self attention where there will only be one attention block.
+            # I.e. the number of returned modulation chunks from AdaLayerZero would not make sense if returned during
+            # the second cross attention block.
+            self.norm2 = (
+                AdaLayerNorm(dim, num_embeds_ada_norm)
+                if self.use_ada_layer_norm
+                else nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
+            )
+        else:
+            self.norm2 = None
+
+        # 3. Feed-forward
+        self.norm3 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
+
+    def forward(
+        self,
+        hidden_states,
+        attention_mask=None,
+        encoder_hidden_states=None,
+        encoder_attention_mask=None,
+        timestep=None,
+        cross_attention_kwargs=None,
+        class_labels=None,
+    ):
+        # Pre-LayerNorm
+        if self.pre_layer_norm:
+            if self.use_ada_layer_norm:
+                norm_hidden_states = self.norm1(hidden_states, timestep)
+            # elif self.use_ada_layer_norm_zero:
+            #     norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(
+            #         hidden_states, timestep, class_labels, hidden_dtype=hidden_states.dtype
+            #     )
+            else:
+                norm_hidden_states = self.norm1(hidden_states)
+        else:
+            norm_hidden_states = hidden_states
+
+        # 1. Self-Attention
+        cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
+        attn_output = self.attn1(
+            norm_hidden_states,
+            encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
+            attention_mask=attention_mask,
+            **cross_attention_kwargs,
+        )
+
+        if not self.pre_layer_norm:
+            # Post-LayerNorm
+            if self.use_ada_layer_norm:
+                attn_output = self.norm1(attn_output, timestep)
+            # elif self.use_ada_layer_norm_zero:
+            #     attn_output, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(
+            #         attn_output, timestep, class_labels, hidden_dtype=attn_output.dtype
+            #     )
+            else:
+                attn_output = self.norm1(hidden_states)
+        # else:
+        #     # Pre-LayerNorm post-processing
+        #     if self.use_ada_layer_norm_zero:
+        #         attn_output = gate_msa.unsqueeze(1) * attn_output
+
+        hidden_states = attn_output + hidden_states
+
+        if self.attn2 is not None:
+            # Pre-LayerNorm
+            if self.pre_layer_norm:
+                norm_hidden_states = (
+                    self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
+                )
+            else:
+                norm_hidden_states = hidden_states
+            # TODO (Birch-San): Here we should prepare the encoder_attention mask correctly
+            # prepare attention mask here
+
+            # 2. Cross-Attention
+            attn_output = self.attn2(
+                norm_hidden_states,
+                encoder_hidden_states=encoder_hidden_states,
+                attention_mask=encoder_attention_mask,
+                **cross_attention_kwargs,
+            )
+
+            # Post-LayerNorm
+            if not self.pre_layer_norm:
+                attn_output = self.norm2(attn_output, timestep) if self.use_ada_layer_norm else self.norm2(attn_output)
+
+            hidden_states = attn_output + hidden_states
+
+        # 3. Feed-forward
+        # Pre-LayerNorm
+        if self.pre_layer_norm:
+            norm_hidden_states = self.norm3(hidden_states)
+
+            # if self.use_ada_layer_norm_zero:
+            #     norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
+        else:
+            norm_hidden_states = hidden_states
+
+        ff_output = self.ff(norm_hidden_states)
+
+        if not self.pre_layer_norm:
+            # Post-LayerNorm
+            ff_output = self.norm3(ff_output)
+
+            # if self.use_ada_layer_norm_zero:
+            #     ff_output = ff_output * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
+        # else:
+        #     # Pre-LayerNorm post-processing
+        #     if self.use_ada_layer_norm_zero:
+        #         ff_output = gate_mlp.unsqueeze(1) * ff_output
+
+        hidden_states = ff_output + hidden_states
+
+        return hidden_states
+
+
 # Modified from diffusers.models.transformer_2d.Transformer2DModel
 # Modify the transformer block structure to be U-Net like following U-ViT
+# Only supports patch-style input currently
 # https://github.com/baofff/U-ViT
 class UTransformer2DModel(ModelMixin, ConfigMixin):
     """
@@ -92,6 +299,7 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
         only_cross_attention: bool = False,
         upcast_attention: bool = False,
         norm_type: str = "layer_norm",
+        pre_layer_norm: bool = False,
         norm_elementwise_affine: bool = True,
     ):
         super().__init__()
@@ -167,7 +375,7 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
         # a "U"-shaped fashion (e.g. first in_block to last out_block, etc.).
         self.transformer_in_blocks = nn.ModuleList(
             [
-                BasicTransformerBlock(
+                UTransformerBlock(
                     inner_dim,
                     num_attention_heads,
                     attention_head_dim,
@@ -179,13 +387,14 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
                     only_cross_attention=only_cross_attention,
                     upcast_attention=upcast_attention,
                     norm_type=norm_type,
+                    pre_layer_norm=pre_layer_norm,
                     norm_elementwise_affine=norm_elementwise_affine,
                 )
                 for d in range(num_layers // 2)
             ]
         )
 
-        self.transformer_mid_block = BasicTransformerBlock(
+        self.transformer_mid_block = UTransformerBlock(
             inner_dim,
             num_attention_heads,
             attention_head_dim,
@@ -197,6 +406,7 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
             only_cross_attention=only_cross_attention,
             upcast_attention=upcast_attention,
             norm_type=norm_type,
+            pre_layer_norm=pre_layer_norm,
             norm_elementwise_affine=norm_elementwise_affine,
         )
 
@@ -208,9 +418,8 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
                     {
                         "skip": SkipBlock(
                             inner_dim,
-                            num_embeds_ada_norm=num_embeds_ada_norm,
                         ),
-                        "block": BasicTransformerBlock(
+                        "block": UTransformerBlock(
                             inner_dim,
                             num_attention_heads,
                             attention_head_dim,
@@ -222,6 +431,7 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
                             only_cross_attention=only_cross_attention,
                             upcast_attention=upcast_attention,
                             norm_type=norm_type,
+                            pre_layer_norm=pre_layer_norm,
                             norm_elementwise_affine=norm_elementwise_affine,
                         ),
                     }
@@ -319,7 +529,7 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
         hidden_states = self.transformer_mid_block(hidden_states)
 
         # Out ("upsample") blocks
-        for out_block in self.transformer_in_blocks:
+        for out_block in self.transformer_out_blocks:
             hidden_states = out_block["skip"](hidden_states, skips.pop())
             hidden_states = out_block["block"](
                 hidden_states,
@@ -349,7 +559,8 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
             output = F.log_softmax(logits.double(), dim=1).float()
         elif self.is_input_patches:
             # TODO: cleanup!
-            conditioning = self.transformer_blocks[0].norm1.emb(
+            # Use self.transformer_in_blocks for now??
+            conditioning = self.transformer_in_blocks[0].norm1.emb(
                 timestep, class_labels, hidden_dtype=hidden_states.dtype
             )
             shift, scale = self.proj_out_1(F.silu(conditioning)).chunk(2, dim=1)
@@ -426,6 +637,7 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
         only_cross_attention: bool = False,
         upcast_attention: bool = False,
         norm_type: str = "layer_norm",
+        pre_layer_norm: bool = False,
         norm_elementwise_affine: bool = True,
     ):
         super().__init__()
@@ -496,6 +708,7 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
             only_cross_attention=only_cross_attention,
             upcast_attention=upcast_attention,
             norm_type=norm_type,
+            pre_layer_norm=pre_layer_norm,
             norm_elementwise_affine=norm_elementwise_affine,
         )
 

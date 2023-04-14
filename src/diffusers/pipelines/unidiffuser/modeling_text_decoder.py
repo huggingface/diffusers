@@ -3,7 +3,7 @@ from typing import Optional
 import numpy as np
 import torch
 from torch import nn
-from transformers import GPT2Config, GPT2LMHeadModel, GPT2Tokenizer
+from transformers import GPT2Config, GPT2LMHeadModel
 from transformers.modeling_utils import ModuleUtilsMixin
 
 from ...configuration_utils import ConfigMixin, register_to_config
@@ -36,7 +36,7 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         Parameters:
             prefix_length (`int`):
                 Max number of prefix tokens that will be supplied to the model.
-            hidden_dim (`int`, *optional*):
+            prefix_hidden_dim (`int`, *optional*):
                 Hidden dim of the MLP if we encode the prefix.
             TODO: add GPT2 config args
         """
@@ -44,8 +44,12 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
 
         self.prefix_length = prefix_length
         self.prefix_hidden_dim = prefix_hidden_dim
-        self.encode_prefix = nn.Linear(n_embd, self.hidden_dim) if self.prefix_hidden_dim is not None else nn.Identity()
-        self.decode_prefix = nn.Linear(self.hidden_dim, n_embd) if self.prefix_hidden_dim is not None else nn.Identity()
+        self.encode_prefix = (
+            nn.Linear(n_embd, self.prefix_hidden_dim) if self.prefix_hidden_dim is not None else nn.Identity()
+        )
+        self.decode_prefix = (
+            nn.Linear(self.prefix_hidden_dim, n_embd) if self.prefix_hidden_dim is not None else nn.Identity()
+        )
 
         gpt_config = GPT2Config(
             n_positions=n_positions,
@@ -105,8 +109,8 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         Args:
             tokenizer (`GPT2Tokenizer`):
                 Tokenizer of class
-                [GPT2Tokenizer](https://huggingface.co/docs/transformers/model_doc/gpt2#transformers.GPT2Tokenizer)
-                for tokenizing input to the text decoder model.
+                [GPT2Tokenizer](https://huggingface.co/docs/transformers/model_doc/gpt2#transformers.GPT2Tokenizer) for
+                tokenizing input to the text decoder model.
             features (`torch.Tensor` of shape `(B, L, D)`):
                 Text embedding features to generate captions from.
             device:
