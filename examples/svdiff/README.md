@@ -196,6 +196,6 @@ You can adjust the strength of the weights.
 from modeling_svdiff import set_spectral_shifts
 scale = 1.2
 
-unet, _ = set_spectral_shifts(unet, spectral_shifts_ckpt=os.path.join(ckpt_dir, "spectral_shifts.safetensors"), scale=scale)
-text_encoder, _ = set_spectral_shifts(text_encoder, spectral_shifts_ckpt=os.path.join(ckpt_dir, "spectral_shifts_te.safetensors"), scale=scale)
+unet, _ = set_spectral_shifts(unet, spectral_shifts_ckpt=os.path.join(spectral_shifts_ckpt, "spectral_shifts.safetensors"), scale=scale)
+text_encoder, _ = set_spectral_shifts(text_encoder, spectral_shifts_ckpt=os.path.join(spectral_shifts_ckpt, "spectral_shifts_te.safetensors"), scale=scale)
 ```
