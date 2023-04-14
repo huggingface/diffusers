@@ -10,10 +10,10 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 import diffusers
 from diffusers import SchedulerMixin, StableDiffusionPipeline
+from diffusers.loaders import TextualInversionLoaderMixin
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
 from diffusers.utils import logging
-from diffusers.loaders import TextualInversionLoaderMixin
 
 try:
     from diffusers.utils import PIL_INTERPOLATION
