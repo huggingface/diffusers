@@ -129,6 +129,7 @@ else:
         IFInpaintingSuperResolutionPipeline,
         IFPipeline,
         IFSuperResolutionPipeline,
+        ImageTextPipelineOutput,
         LDMTextToImagePipeline,
         PaintByExamplePipeline,
         SemanticStableDiffusionPipeline,

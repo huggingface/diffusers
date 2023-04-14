@@ -1116,6 +1116,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 generator,
                 vae_latents,
             )
+            # print(f"Image vae latent shape: {image_vae_latents.shape}")
 
             # Prepare image CLIP latents
             image_clip_latents = self.prepare_image_clip_latents(
