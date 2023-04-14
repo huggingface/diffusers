@@ -31,7 +31,7 @@ MagicMix | Diffusion Pipeline for semantic mixing of an image and a text prompt 
 | UnCLIP Image Interpolation Pipeline | Diffusion Pipeline that allows passing two images/image_embeddings and produces images while interpolating between their image-embeddings | [UnCLIP Image Interpolation Pipeline](#unclip-image-interpolation-pipeline)                   | -                                                                                                                                                                                                                  | [Naga Sai Abhinay Devarinti](https://github.com/Abhinay1997/) | 
 | DDIM Noise Comparative Analysis Pipeline | Investigating how the diffusion models learn visual concepts from each noise level (which is a contribution of [P2 weighting (CVPR 2022)](https://arxiv.org/abs/2204.00227)) | [DDIM Noise Comparative Analysis Pipeline](#ddim-noise-comparative-analysis-pipeline) | - |[Aengus (Duc-Anh)](https://github.com/aengusng8) |
 | CLIP Guided Img2Img Stable Diffusion Pipeline | Doing CLIP guidance for image to image generation with Stable Diffusion | [CLIP Guided Img2Img Stable Diffusion](#clip-guided-img2img-stable-diffusion) | - | [Nipun Jindal](https://github.com/nipunjindal/) | 
-
+| Stable Diffusion IPEX Pipeline | Accelerate Stable Diffusion inference pipeline with BF16/FP32 precision on CPU by [IPEX](https://github.com/intel/intel-extension-for-pytorch) | [Stable Diffusion on IPEX](#stable-diffusion-on-ipex) | - | [Yingjie Han](https://github.com/yingjie-han/) | 
 
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
@@ -1130,3 +1130,75 @@ Init Image
 Output Image
 
 ![img2img_clip_guidance](https://huggingface.co/datasets/njindal/images/resolve/main/clip_guided_img2img.jpg)
+
+
+### Stable Diffusion on IPEX
+
+This diffusion pipeline can significantly accelarate the inference of Stable-Diffusion on Intel CPUs with BF16/FP32 precision by IPEX.
+You need:
+1.Install IPEX
+```python
+python -m pip install intel_extension_for_pytorch
+```
+2.After pipeline initialization, prepare_for_ipex() should be called to enable IPEX accelaration.
+```python
+pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", custom_pipeline="stable_diffusion_ipex")
+pipe.prepare_for_ipex(prompt,infer_type='bf16')
+```
+
+Other usage of "stable_diffusion_ipex" pipeline is same as the default stable diffusion pipeline.
+Following code compares the performance of original stable diffusion pipeline with ipex pipeline.
+
+```python
+import torch
+import intel_extension_for_pytorch as ipex
+from diffusers import StableDiffusionPipeline
+import time
+
+prompt = "sailing ship in storm by Rembrandt"
+model_id = "runwayml/stable-diffusion-v1-5"
+#Help function for time evaluation
+def elapsed_time(pipeline, nb_pass=3, num_inference_steps=20):
+    # warmup
+    for _ in range(2):
+        images = pipeline(prompt, num_inference_steps=num_inference_steps).images
+    #time evaluation
+    start = time.time()
+    for _ in range(nb_pass):
+        pipeline(prompt, num_inference_steps=num_inference_steps)
+    end = time.time()
+    return (end - start) / nb_pass
+
+##############     bf16 inference performance    ###############
+
+#1.IPEX Pipeline initialization
+pipe = DiffusionPipeline.from_pretrained(model_id, custom_pipeline="stable_diffusion_ipex")
+pipe.prepare_for_ipex(prompt,infer_type='bf16')
+
+#2.Original Pipeline initialization
+pipe2 = StableDiffusionPipeline.from_pretrained(model_id)
+
+#3.Compare performance between Original Pipeline and IPEX Pipeline
+with torch.no_grad(), torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
+    latency = elapsed_time(pipe)
+    print("Latency of StableDiffusionIPEXPipeline--bf16", latency)
+    latency = elapsed_time(pipe2)
+    print("Latency of StableDiffusionPipeline--bf16",latency)
+
+##############     fp32 inference performance    ###############
+
+#1.IPEX Pipeline initialization
+pipe3 = DiffusionPipeline.from_pretrained(model_id, custom_pipeline="stable_diffusion_ipex")
+pipe3.prepare_for_ipex(prompt,infer_type='fp32')
+
+#2.Original Pipeline initialization
+pipe4 = StableDiffusionPipeline.from_pretrained(model_id)
+
+#3.Compare performance between Original Pipeline and IPEX Pipeline
+with torch.no_grad():
+    latency = elapsed_time(pipe3)
+    print("Latency of StableDiffusionIPEXPipeline--fp32", latency)
+    latency = elapsed_time(pipe4)
+    print("Latency of StableDiffusionPipeline--fp32",latency)
+
+```
