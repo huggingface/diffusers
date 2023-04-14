@@ -724,7 +724,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline, TextualInversion
         max_iter_to_alter: int = 25,
         thresholds: dict = {0: 0.05, 10: 0.5, 20: 0.8},
         scale_factor: int = 20,
-        attn_res: Optional[Tuple[int]] = None,
+        attn_res: Optional[Tuple[int]] = (16, 16),
     ):
         r"""
         Function invoked when calling the pipeline for generation.
