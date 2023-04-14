@@ -31,7 +31,7 @@ MagicMix | Diffusion Pipeline for semantic mixing of an image and a text prompt 
 | UnCLIP Image Interpolation Pipeline | Diffusion Pipeline that allows passing two images/image_embeddings and produces images while interpolating between their image-embeddings | [UnCLIP Image Interpolation Pipeline](#unclip-image-interpolation-pipeline)                   | -                                                                                                                                                                                                                  | [Naga Sai Abhinay Devarinti](https://github.com/Abhinay1997/) | 
 | DDIM Noise Comparative Analysis Pipeline | Investigating how the diffusion models learn visual concepts from each noise level (which is a contribution of [P2 weighting (CVPR 2022)](https://arxiv.org/abs/2204.00227)) | [DDIM Noise Comparative Analysis Pipeline](#ddim-noise-comparative-analysis-pipeline) | - |[Aengus (Duc-Anh)](https://github.com/aengusng8) |
 | CLIP Guided Img2Img Stable Diffusion Pipeline | Doing CLIP guidance for image to image generation with Stable Diffusion | [CLIP Guided Img2Img Stable Diffusion](#clip-guided-img2img-stable-diffusion) | - | [Nipun Jindal](https://github.com/nipunjindal/) | 
-| Stable Diffusion IPEX Pipeline | Accelerate Stable Diffusion inference pipeline with BF16/FP32 precision on CPU by [IPEX](https://github.com/intel/intel-extension-for-pytorch) | [Stable Diffusion on IPEX](#stable-diffusion-on-ipex) | - | [Yingjie Han](https://github.com/yingjie-han/) | 
+| Stable Diffusion IPEX Pipeline | Accelerate Stable Diffusion inference pipeline with BF16/FP32 precision on Intel CPUs by [IPEX](https://github.com/intel/intel-extension-for-pytorch) | [Stable Diffusion on IPEX](#stable-diffusion-on-ipex) | - | [Yingjie Han](https://github.com/yingjie-han/) | 
 
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
@@ -1134,19 +1134,21 @@ Output Image
 
 ### Stable Diffusion on IPEX
 
-This diffusion pipeline can significantly accelarate the inference of Stable-Diffusion on Intel CPUs with BF16/FP32 precision by IPEX.
-You need:
-1.Install IPEX
+This diffusion pipeline can accelarate the inference of Stable-Diffusion on Intel CPUs with BF16/FP32 precision by [IPEX](https://github.com/intel/intel-extension-for-pytorch).
+
+To use this pipeline, You need to:
+1. Install [IPEX](https://github.com/intel/intel-extension-for-pytorch)
 ```python
 python -m pip install intel_extension_for_pytorch
 ```
-2.After pipeline initialization, prepare_for_ipex() should be called to enable IPEX accelaration.
+2. After pipeline initialization, prepare_for_ipex() should be called to enable IPEX accelaration.
 ```python
 pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", custom_pipeline="stable_diffusion_ipex")
 pipe.prepare_for_ipex(prompt,infer_type='bf16')
 ```
 
-Other usage of "stable_diffusion_ipex" pipeline is same as the default stable diffusion pipeline.
+Other usage of this ipex pipeline is same as the default stable diffusion pipeline.
+
 Following code compares the performance of original stable diffusion pipeline with ipex pipeline.
 
 ```python
