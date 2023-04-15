@@ -234,7 +234,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         sample = torch.Tensor(sample).to(self.device)
 
         for t in self.progress_bar(torch.flip(self.scheduler.timesteps, (0,))):
-            prev_timestep = t - self.scheduler.num_train_timesteps // self.scheduler.num_inference_steps
+            prev_timestep = t - self.scheduler.config.num_train_timesteps // self.scheduler.num_inference_steps
             alpha_prod_t = self.scheduler.alphas_cumprod[t]
             alpha_prod_t_prev = (
                 self.scheduler.alphas_cumprod[prev_timestep]
