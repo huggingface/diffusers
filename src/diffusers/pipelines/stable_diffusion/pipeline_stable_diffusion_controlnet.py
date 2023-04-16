@@ -627,7 +627,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
             )
 
     def prepare_image(
-        self, image, width, height, batch_size, num_images_per_prompt, device, dtype, do_classifier_free_guidance
+        self, image, width, height, batch_size, num_images_per_prompt, device, dtype, do_classifier_free_guidance=False
     ):
         if not isinstance(image, torch.Tensor):
             if isinstance(image, PIL.Image.Image):
