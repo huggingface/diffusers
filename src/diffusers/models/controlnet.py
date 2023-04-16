@@ -456,6 +456,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        guess_mode: bool = False,
         return_dict: bool = True,
     ) -> Union[ControlNetOutput, Tuple]:
         # check channel order
@@ -556,8 +557,14 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         mid_block_res_sample = self.controlnet_mid_block(sample)
 
         # 6. scaling
-        down_block_res_samples = [sample * conditioning_scale for sample in down_block_res_samples]
-        mid_block_res_sample *= conditioning_scale
+        if guess_mode:
+            scales = torch.logspace(-1, 0, len(down_block_res_samples) + 1)  # 0.1 to 1.0
+            scales *= conditioning_scale
+            down_block_res_samples = [sample * scale for sample, scale in zip(down_block_res_samples, scales)]
+            mid_block_res_sample *= scales[-1]  # last one
+        else:
+            down_block_res_samples = [sample * conditioning_scale for sample in down_block_res_samples]
+            mid_block_res_sample *= conditioning_scale
 
         if not return_dict:
             return (down_block_res_samples, mid_block_res_sample)
