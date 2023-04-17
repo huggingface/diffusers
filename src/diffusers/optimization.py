@@ -276,6 +276,7 @@ TYPE_TO_SCHEDULER_FUNCTION = {
     SchedulerType.POLYNOMIAL: get_polynomial_decay_schedule_with_warmup,
     SchedulerType.CONSTANT: get_constant_schedule,
     SchedulerType.CONSTANT_WITH_WARMUP: get_constant_schedule_with_warmup,
+    SchedulerType.CONSTANT_WITH_RULES: get_constant_schedule_with_rules,
 }
 
 
