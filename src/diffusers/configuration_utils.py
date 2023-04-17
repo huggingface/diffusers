@@ -122,7 +122,7 @@ class ConfigMixin:
         """The only reason we overwrite `getattr` here is to gracefully deprecate accessing
         config attributes directly. See https://github.com/huggingface/diffusers/pull/3129"""
         try:
-            return getattr(super(), name)
+            return super().__getattr__(name)
         except AttributeError as e:
             try:
                 is_in_config = self._safe_hasattr("_internal_dict") and hasattr(self._internal_dict, name)
@@ -131,9 +131,11 @@ class ConfigMixin:
                     deprecate("direct config name access", "1.0.0", deprecation_message, standard_warn=False)
                     return self._internal_dict[name]
             except AttributeError as e:
-                raise AttributeError(str(e).replace("super", self.__class__.__name__))
+                error = str(e).replace("super", self.__class__.__name__).replace("__getattr__", name)
+                raise AttributeError(error)
 
-            raise AttributeError(str(e).replace("super", self.__class__.__name__))
+            error = str(e).replace("super", self.__class__.__name__).replace("__getattr__", name)
+            raise AttributeError(error)
 
     def _safe_hasattr(self, name):
         """This method should NOT be used and is only implemented for `def __getattr__`
