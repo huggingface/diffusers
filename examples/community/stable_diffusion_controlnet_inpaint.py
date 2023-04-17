@@ -185,7 +185,14 @@ def prepare_mask_image(mask_image):
 
 
 def prepare_controlnet_conditioning_image(
-    controlnet_conditioning_image, width, height, batch_size, num_images_per_prompt, device, dtype, do_classifier_free_guidance,
+    controlnet_conditioning_image,
+    width,
+    height,
+    batch_size,
+    num_images_per_prompt,
+    device,
+    dtype,
+    do_classifier_free_guidance,
 ):
     if not isinstance(controlnet_conditioning_image, torch.Tensor):
         if isinstance(controlnet_conditioning_image, PIL.Image.Image):
