@@ -140,11 +140,12 @@ CUDA_VISIBLE_DEVICES=1 accelerate launch train.py \
 Once you have trained a model using the above command, you can run inference using the below command. Make sure to include the `modifier token` (e.g. \<new1\> in above example) in your prompt.
 
 ```python
-from model_pipeline import CustomDiffusionPipeline
+from diffusers import DiffusionPipeline
 import torch
 
-pipe = CustomDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16).to("cuda")
-pipe.load_model('<path-to-your-trained-model>/delta.bin')
+pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16).to("cuda")
+pipe.unet.load_attn_procs('path-to-save-model', weight_name='pytorch_custom_diffusion_weights.bin')
+pipe.load_textual_inversion('path-to-save-model', weight_name='<new1>.bin')
 image = pipe("<new1> cat sitting in a bucket", num_inference_steps=100, guidance_scale=7.5, eta=1.).images[0]
 
 image.save("cat.png")
@@ -169,12 +170,13 @@ image.save("cat.png")
 You can also perform inference from one of the complete checkpoint saved during the training process, if you used the `--checkpointing_steps` argument. 
 
 ```python
-from model_pipeline import CustomDiffusionPipeline
+from diffusers import DiffusionPipeline
 import torch
 
-pipe = CustomDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16).to("cuda")
-pipe.load_model('<path-to-your-trained-model>/delta.bin')
-pipe.save_pretrained('<path-to-your-save-model>', all=True)
+pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16).to("cuda")
+pipe.unet.load_attn_procs('path-to-save-model', weight_name='pytorch_custom_diffusion_weights.bin')
+pipe.load_textual_inversion('path-to-save-model', weight_name='<new1>.bin')
+pipe.save_pretrained('<path-to-your-save-model>')
 ```
 
 ### Set grads to none

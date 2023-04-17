@@ -877,7 +877,7 @@ def main(args):
         if cross_attention_dim is not None:
             custom_diffusion_attn_procs[name] = CustomDiffusionAttnProcessor(weights, train_kv=train_kv, train_q_out=train_q_out, hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
         else:
-            custom_diffusion_attn_procs[name] = attn
+            custom_diffusion_attn_procs[name] = CustomDiffusionAttnProcessor(weights, train_kv=False, train_q_out=False, hidden_size=hidden_size, cross_attention_dim=cross_attention_dim) #attn
     del st
     unet.set_attn_processor(custom_diffusion_attn_procs)
     custom_diffusion_layers = AttnProcsLayers({y: x for (y, x) in unet.attn_processors.items() if isinstance(x, CustomDiffusionAttnProcessor)})

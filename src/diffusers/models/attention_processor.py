@@ -163,19 +163,16 @@ class Attention(nn.Module):
                 processor.load_state_dict(self.processor.state_dict())
                 processor.to(self.processor.to_q_lora.up.weight.device)
             elif is_custom_diffusion:
+                processor = CustomDiffusionXFormersAttnProcessor(
+                    train_kv=self.processor.train_kv,
+                    train_q_out=self.processor.train_q_out,
+                    hidden_size=self.processor.hidden_size,
+                    cross_attention_dim=self.processor.cross_attention_dim,
+                    attention_op=attention_op,
+                )
+                processor.load_state_dict(self.processor.state_dict())
                 if hasattr(self.processor, "to_k_custom_diffusion"):
-                    processor = CustomDiffusionXFormersAttnProcessor(
-                        train_kv=self.processor.train_kv,
-                        train_q_out=self.processor.train_q_out,
-                        hidden_size=self.processor.hidden_size,
-                        cross_attention_dim=self.processor.cross_attention_dim,
-                        attention_op=attention_op,
-                    )
-                    processor.load_state_dict(self.processor.state_dict())
-                    print(self.processor.to_k_custom_diffusion.weight.device, "device")
                     processor.to(self.processor.to_k_custom_diffusion.weight.device)
-                else:
-                    processor = XFormersAttnProcessor(attention_op=attention_op)
             else:
                 processor = XFormersAttnProcessor(attention_op=attention_op)
         else:
@@ -688,12 +685,9 @@ class CustomDiffusionXFormersAttnProcessor(nn.Module):
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
         batch_size, sequence_length, _ = hidden_states.shape
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-        print(hidden_states.device)
         if self.train_q_out:
-            print("to_q_custom", self.to_q_custom_diffusion.weight.device)
             query = self.to_q_custom_diffusion(hidden_states)
         else:
-            print("to_q", attn.to_q.weight.device)
             query = attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:
@@ -705,11 +699,9 @@ class CustomDiffusionXFormersAttnProcessor(nn.Module):
                 encoder_hidden_states = attn.norm_cross(encoder_hidden_states)
 
         if self.train_kv:
-            print("to_k_custom", self.to_k_custom_diffusion.weight.device)
             key = self.to_k_custom_diffusion(encoder_hidden_states)
             value = self.to_v_custom_diffusion(encoder_hidden_states)
         else:
-            print("to_k", attn.to_k.weight.device)
             key = attn.to_k(encoder_hidden_states)
             value = attn.to_v(encoder_hidden_states)
 

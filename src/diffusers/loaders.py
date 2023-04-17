@@ -216,7 +216,7 @@ class UNet2DConditionLoadersMixin:
         attn_processors = {}
 
         is_lora = all("lora" in k for k in state_dict.keys())
-        is_custom_diffusion = all("custom_diffusion" in k for k in state_dict.keys())
+        is_custom_diffusion = any("custom_diffusion" in k for k in state_dict.keys())
 
         if is_lora:
             lora_grouped_dict = defaultdict(dict)
@@ -236,20 +236,28 @@ class UNet2DConditionLoadersMixin:
         elif is_custom_diffusion:
             custom_diffusion_grouped_dict = defaultdict(dict)
             for key, value in state_dict.items():
-                if 'to_out' in key:
-                    attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
+                if len(value) == 0:
+                    custom_diffusion_grouped_dict[key] = {}
                 else:
-                    attn_processor_key, sub_key = ".".join(key.split(".")[:-2]), ".".join(key.split(".")[-2:])
-                custom_diffusion_grouped_dict[attn_processor_key][sub_key] = value
+                    if 'to_out' in key:
+                        attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
+                    else:
+                        attn_processor_key, sub_key = ".".join(key.split(".")[:-2]), ".".join(key.split(".")[-2:])
+                    custom_diffusion_grouped_dict[attn_processor_key][sub_key] = value
 
             for key, value_dict in custom_diffusion_grouped_dict.items():
-                cross_attention_dim = value_dict["to_k_custom_diffusion.weight"].shape[1]
-                hidden_size = value_dict["to_k_custom_diffusion.weight"].shape[0]
-                train_q_out = True if "to_q_custom_diffusion.weight" in value_dict else False
-                attn_processors[key] = CustomDiffusionAttnProcessor(
-                    weights=None, train_kv=True, train_q_out=train_q_out, hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
-                )
-                attn_processors[key].load_state_dict(value_dict)
+                if len(value_dict) == 0:
+                    attn_processors[key] = CustomDiffusionAttnProcessor(
+                        weights=None, train_kv=False, train_q_out=False, hidden_size=None, cross_attention_dim=None
+                    )
+                else:
+                    cross_attention_dim = value_dict["to_k_custom_diffusion.weight"].shape[1]
+                    hidden_size = value_dict["to_k_custom_diffusion.weight"].shape[0]
+                    train_q_out = True if "to_q_custom_diffusion.weight" in value_dict else False
+                    attn_processors[key] = CustomDiffusionAttnProcessor(
+                        weights=None, train_kv=True, train_q_out=train_q_out, hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
+                    )
+                    attn_processors[key].load_state_dict(value_dict)
         else:
             raise ValueError(f"{model_file} does not seem to be in the correct format expected by LoRA or Custom Diffusion training.")
 
@@ -308,10 +316,13 @@ class UNet2DConditionLoadersMixin:
         is_custom_diffusion = any(isinstance(x, CustomDiffusionAttnProcessor) for (_, x) in self.attn_processors.items())
         if is_custom_diffusion:
             model_to_save = AttnProcsLayers({y: x for (y, x) in self.attn_processors.items() if isinstance(x, CustomDiffusionAttnProcessor)})
+            state_dict = model_to_save.state_dict()
+            for name, attn in self.attn_processors.items():
+                if len(attn.state_dict()) == 0:
+                    state_dict[name] = {}
         else:
             model_to_save = AttnProcsLayers(self.attn_processors)
-        # Save the model
-        state_dict = model_to_save.state_dict()
+            state_dict = model_to_save.state_dict()
 
         if weight_name is None:
             if safe_serialization:
