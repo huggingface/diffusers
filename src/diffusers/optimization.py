@@ -16,7 +16,7 @@
 
 import math
 from enum import Enum
-from typing import Optional, Union
+from typing import Callable, Optional, Union
 
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LambdaLR
@@ -34,6 +34,7 @@ class SchedulerType(Enum):
     POLYNOMIAL = "polynomial"
     CONSTANT = "constant"
     CONSTANT_WITH_WARMUP = "constant_with_warmup"
+    CONSTANT_WITH_RULES = "constant_with_rules"
 
 
 def get_constant_schedule(optimizer: Optimizer, last_epoch: int = -1):
@@ -75,6 +76,49 @@ def get_constant_schedule_with_warmup(optimizer: Optimizer, num_warmup_steps: in
         return 1.0
 
     return LambdaLR(optimizer, lr_lambda, last_epoch=last_epoch)
+
+
+def get_constant_schedule_with_rules(optimizer: Optimizer, rules: str, last_epoch: int = -1):
+    """
+    Create a schedule with a constant learning rate with rule for the learning rate.
+
+    Args:
+        optimizer ([`~torch.optim.Optimizer`]):
+            The optimizer for which to schedule the learning rate.
+        rule (`string`):
+            The rules for the learning rate.
+            ex: rules="1:10,0.1:20,0.01:30,0.005"
+            it means that the learning rate is multiple 1 for the first 10 steps, mutiple 0.1 for the
+            next 20 steps, multiple 0.01 for the next 30 steps and multiple 0.005 for the other steps.
+        last_epoch (`int`, *optional*, defaults to -1):
+            The index of the last epoch when resuming training.
+
+    Return:
+        `torch.optim.lr_scheduler.LambdaLR` with the appropriate schedule.
+    """
+
+    rules_dict = {}
+    rule_list = rules.split(",")
+    for rule_str in rule_list[:-1]:
+        value_str, steps_str = rule_str.split(":")
+        steps = int(steps_str)
+        value = float(value_str)
+        rules_dict[steps] = value
+    last_lr = float(rule_list[-1])
+
+    def create_rules_function():
+        def rule_func(steps: int) -> float:
+            sorted_steps = sorted(rules_dict.keys())
+            for i, sorted_step in enumerate(sorted_steps):
+                if steps < sorted_step:
+                    return rules_dict[sorted_steps[i]]
+            return last_lr
+
+        return rule_func
+
+    rules_f = create_rules_function()
+
+    return LambdaLR(optimizer, rules_f, last_epoch=last_epoch)
 
 
 def get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps, last_epoch=-1):
