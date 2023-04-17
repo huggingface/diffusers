@@ -168,7 +168,7 @@ class ModelMixin(torch.nn.Module):
         is_attribute = name in self.__dict__
 
         if is_in_config and not is_attribute:
-            deprecation_message = f"Accessing config attribute `{name}` directly via '{self.__class__.__name__}' object attribute is deprecated. Please access '{name}' over '{self.__class__.__name__}'s config object instead, e.g. 'unet.config.{name}'."
+            deprecation_message = f"Accessing config attribute `{name}` directly via '{type(self).__name__}' object attribute is deprecated. Please access '{name}' over '{type(self).__name__}'s config object instead, e.g. 'unet.config.{name}'."
             deprecate("direct config name access", "1.0.0", deprecation_message, standard_warn=False, stacklevel=3)
             return self._internal_dict[name]
 
