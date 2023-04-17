@@ -648,11 +648,11 @@ class DiffusionPipeline(ConfigMixin):
             )
 
         module_names, _ = self._get_signature_keys(self)
-        module_names = [m for m in module_names if isinstance(m, torch.nn.Module)]
+        modules = [getattr(self, n, None) for n in module_names]
+        modules = [m for m in modules if isinstance(m, torch.nn.Module)]
 
         is_offloaded = pipeline_is_offloaded or pipeline_is_sequentially_offloaded
-        for name in module_names:
-            module = getattr(self, name)
+        for module in modules:
             module.to(torch_device, torch_dtype)
             if (
                 module.dtype == torch.float16
@@ -676,10 +676,10 @@ class DiffusionPipeline(ConfigMixin):
             `torch.device`: The torch device on which the pipeline is located.
         """
         module_names, _ = self._get_signature_keys(self)
-        module_names = [m for m in module_names if isinstance(m, torch.nn.Module)]
+        modules = [getattr(self, n, None) for n in module_names]
+        modules = [m for m in modules if isinstance(m, torch.nn.Module)]
 
-        for name in module_names:
-            module = getattr(self, name)
+        for module in modules:
             return module.device
 
         return torch.device("cpu")
@@ -1450,11 +1450,11 @@ class DiffusionPipeline(ConfigMixin):
             for child in module.children():
                 fn_recursive_set_mem_eff(child)
 
-        module_names, _, _ = self.extract_init_dict(dict(self.config))
-        module_names = [m for m in module_names if isinstance(m, torch.nn.Module)]
+        module_names, _ = self._get_signature_keys(self)
+        modules = [getattr(self, n, None) for n in module_names]
+        modules = [m for m in modules if isinstance(m, torch.nn.Module)]
 
-        for module_name in module_names:
-            module = getattr(self, module_name)
+        for module in modules:
             fn_recursive_set_mem_eff(module)
 
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
@@ -1482,11 +1482,9 @@ class DiffusionPipeline(ConfigMixin):
         self.enable_attention_slicing(None)
 
     def set_attention_slice(self, slice_size: Optional[int]):
-        module_names, _, _ = self.extract_init_dict(dict(self.config))
-        module_names = [
-            m for m in module_names if isinstance(m, torch.nn.Module) and hasattr(m, "set_attention_slice")
-        ]
+        module_names, _ = self._get_signature_keys(self)
+        modules = [getattr(self, n, None) for n in module_names]
+        modules = [m for m in modules if isinstance(m, torch.nn.Module) and hasattr(m, "set_attention_slice")]
 
-        for module_name in module_names:
-            module = getattr(self, module_name)
+        for module in modules:
             module.set_attention_slice(slice_size)
