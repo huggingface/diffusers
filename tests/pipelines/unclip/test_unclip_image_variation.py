@@ -379,16 +379,21 @@ class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         dtype = pipe.decoder.dtype
         batch_size = 1
 
-        shape = (batch_size, pipe.decoder.in_channels, pipe.decoder.sample_size, pipe.decoder.sample_size)
+        shape = (
+            batch_size,
+            pipe.decoder.config.in_channels,
+            pipe.decoder.config.sample_size,
+            pipe.decoder.config.sample_size,
+        )
         decoder_latents = pipe.prepare_latents(
             shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler()
         )
 
         shape = (
             batch_size,
-            pipe.super_res_first.in_channels // 2,
-            pipe.super_res_first.sample_size,
-            pipe.super_res_first.sample_size,
+            pipe.super_res_first.config.in_channels // 2,
+            pipe.super_res_first.config.sample_size,
+            pipe.super_res_first.config.sample_size,
         )
         super_res_latents = pipe.prepare_latents(
             shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler()

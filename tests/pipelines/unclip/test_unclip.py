@@ -293,16 +293,16 @@ class UnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         prior_latents = pipe.prepare_latents(
             shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler()
         )
-        shape = (batch_size, decoder.in_channels, decoder.sample_size, decoder.sample_size)
+        shape = (batch_size, decoder.config.in_channels, decoder.config.sample_size, decoder.config.sample_size)
         decoder_latents = pipe.prepare_latents(
             shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler()
         )
 
         shape = (
             batch_size,
-            super_res_first.in_channels // 2,
-            super_res_first.sample_size,
-            super_res_first.sample_size,
+            super_res_first.config.in_channels // 2,
+            super_res_first.config.sample_size,
+            super_res_first.config.sample_size,
         )
         super_res_latents = pipe.prepare_latents(
             shape, dtype=dtype, device=device, generator=generator, latents=None, scheduler=DummyScheduler()
