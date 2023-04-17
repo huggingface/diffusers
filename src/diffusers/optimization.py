@@ -16,7 +16,7 @@
 
 import math
 from enum import Enum
-from typing import Callable, Optional, Union
+from typing import Optional, Union
 
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LambdaLR
