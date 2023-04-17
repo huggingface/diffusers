@@ -7,7 +7,8 @@ import torch
 
 from ...schedulers import DDPMScheduler
 from ..onnx_utils import ORT_TO_NP_TYPE, OnnxRuntimeModel
-from ..pipeline_utils import ImagePipelineOutput
+from ...utils import deprecate
+from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionUpscalePipeline
 
 
@@ -45,7 +46,7 @@ def preprocess(image):
     return image
 
 
-class OnnxStableDiffusionUpscalePipeline(StableDiffusionUpscalePipeline):
+class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
     def __init__(
         self,
         vae: OnnxRuntimeModel,
@@ -56,7 +57,32 @@ class OnnxStableDiffusionUpscalePipeline(StableDiffusionUpscalePipeline):
         scheduler: Any,
         max_noise_level: int = 350,
     ):
-        super().__init__(vae, text_encoder, tokenizer, unet, low_res_scheduler, scheduler, max_noise_level)
+        if hasattr(vae, "config"):
+            # check if vae has a config attribute `scaling_factor` and if it is set to 0.08333, else set it to 0.08333 and deprecate
+            is_vae_scaling_factor_set_to_0_08333 = (
+                hasattr(vae.config, "scaling_factor") and vae.config.scaling_factor == 0.08333
+            )
+            if not is_vae_scaling_factor_set_to_0_08333:
+                deprecation_message = (
+                    "The configuration file of the vae does not contain `scaling_factor` or it is set to"
+                    f" {vae.config.scaling_factor}, which seems highly unlikely. If your checkpoint is a fine-tuned"
+                    " version of `stabilityai/stable-diffusion-x4-upscaler` you should change 'scaling_factor' to"
+                    " 0.08333 Please make sure to update the config accordingly, as not doing so might lead to"
+                    " incorrect results in future versions. If you have downloaded this checkpoint from the Hugging"
+                    " Face Hub, it would be very nice if you could open a Pull Request for the `vae/config.json` file"
+                )
+                deprecate("wrong scaling_factor", "1.0.0", deprecation_message, standard_warn=False)
+                vae.register_to_config(scaling_factor=0.08333)
+
+        self.register_modules(
+            vae=vae,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            unet=unet,
+            low_res_scheduler=low_res_scheduler,
+            scheduler=scheduler,
+        )
+        self.register_to_config(max_noise_level=max_noise_level)
 
     def __call__(
         self,
