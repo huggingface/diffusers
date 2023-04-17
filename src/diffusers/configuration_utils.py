@@ -118,6 +118,29 @@ class ConfigMixin:
 
         self._internal_dict = FrozenDict(internal_dict)
 
+    def __getattr__(self, name):
+        try:
+            getattr(super(), name)
+        except AttributeError as e:
+            try:
+                is_in_config = self._safe_hasattr("_internal_dict") and hasattr(self._internal_dict, name)
+                is_attribute = self._safe_hasattr(name)
+
+                if is_in_config and not is_attribute:
+                    return self._internal_dict[name]
+            except AttributeError as e:
+                raise AttributeError(str(e).replace("super", self.__class__.__name__))
+
+            raise AttributeError(str(e).replace("super", self.__class__.__name__))
+
+    def _safe_hasattr(self, name):
+        try:
+            self.__getattribute__(name)
+        except AttributeError:
+            return False
+
+        return True
+
     def save_config(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
         """
         Save a configuration object to the directory `save_directory`, so that it can be re-loaded using the
