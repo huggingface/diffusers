@@ -508,7 +508,7 @@ class DiffusionPipeline(ConfigMixin):
             setattr(self, name, module)
 
     def __setattr__(self, name: str, value: Any):
-        if hasattr(self, name) and hasattr(self.config, name):
+        if name in self.__dict__ and hasattr(self.config, name):
             # We need to overwrite the config if name exists in config
             if isinstance(getattr(self.config, name), (tuple, list)):
                 if value is not None and self.config[name][0] is not None:
