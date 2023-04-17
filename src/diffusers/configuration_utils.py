@@ -127,6 +127,8 @@ class ConfigMixin:
                 is_attribute = self._safe_hasattr(name)
 
                 if is_in_config and not is_attribute:
+                    deprecation_message = f"Accessing config attribute `{name}` directly via '{self.__class__.__name__}' object attribute is deprecated. Please access '{name}' over '{self.__class__.__name__}'s config object instead, e.g. 'unet.config.{name}' or 'scheduler.config.{name}'."
+                    deprecate("direct config name access", "1.0.0", deprecation_message, standard_warn=False)
                     return self._internal_dict[name]
             except AttributeError as e:
                 raise AttributeError(str(e).replace("super", self.__class__.__name__))
