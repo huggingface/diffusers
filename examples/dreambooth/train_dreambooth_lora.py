@@ -741,7 +741,7 @@ def main(args):
         temp_pipeline = StableDiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path, text_encoder=text_encoder
         )
-        temp_pipeline._modify_text_encoder(text_encoder_lora_layers)
+        temp_pipeline._modify_text_encoder(text_lora_attn_procs)
         text_encoder = temp_pipeline.text_encoder
         accelerator.register_for_checkpointing(unet_lora_layers)
         del temp_pipeline
