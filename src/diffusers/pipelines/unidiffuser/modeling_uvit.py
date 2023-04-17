@@ -1,14 +1,13 @@
 from typing import Optional, Union
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models import ModelMixin
 from ...models.attention import AdaLayerNorm, FeedForward
 from ...models.attention_processor import Attention
-from ...models.embeddings import ImagePositionalEmbeddings, PatchEmbed, TimestepEmbedding, Timesteps
+from ...models.embeddings import PatchEmbed, TimestepEmbedding, Timesteps
 from ...models.transformer_2d import Transformer2DModelOutput
 
 
@@ -147,10 +146,6 @@ class UTransformerBlock(nn.Module):
         if self.pre_layer_norm:
             if self.use_ada_layer_norm:
                 norm_hidden_states = self.norm1(hidden_states, timestep)
-            # elif self.use_ada_layer_norm_zero:
-            #     norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(
-            #         hidden_states, timestep, class_labels, hidden_dtype=hidden_states.dtype
-            #     )
             else:
                 norm_hidden_states = self.norm1(hidden_states)
         else:
@@ -165,20 +160,12 @@ class UTransformerBlock(nn.Module):
             **cross_attention_kwargs,
         )
 
+        # Post-LayerNorm
         if not self.pre_layer_norm:
-            # Post-LayerNorm
             if self.use_ada_layer_norm:
                 attn_output = self.norm1(attn_output, timestep)
-            # elif self.use_ada_layer_norm_zero:
-            #     attn_output, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(
-            #         attn_output, timestep, class_labels, hidden_dtype=attn_output.dtype
-            #     )
             else:
                 attn_output = self.norm1(hidden_states)
-        # else:
-        #     # Pre-LayerNorm post-processing
-        #     if self.use_ada_layer_norm_zero:
-        #         attn_output = gate_msa.unsqueeze(1) * attn_output
 
         hidden_states = attn_output + hidden_states
 
@@ -211,24 +198,14 @@ class UTransformerBlock(nn.Module):
         # Pre-LayerNorm
         if self.pre_layer_norm:
             norm_hidden_states = self.norm3(hidden_states)
-
-            # if self.use_ada_layer_norm_zero:
-            #     norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
         else:
             norm_hidden_states = hidden_states
 
         ff_output = self.ff(norm_hidden_states)
 
+        # Post-LayerNorm
         if not self.pre_layer_norm:
-            # Post-LayerNorm
             ff_output = self.norm3(ff_output)
-
-            # if self.use_ada_layer_norm_zero:
-            #     ff_output = ff_output * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
-        # else:
-        #     # Pre-LayerNorm post-processing
-        #     if self.use_ada_layer_norm_zero:
-        #         ff_output = gate_mlp.unsqueeze(1) * ff_output
 
         hidden_states = ff_output + hidden_states
 
@@ -237,7 +214,7 @@ class UTransformerBlock(nn.Module):
 
 # Modified from diffusers.models.transformer_2d.Transformer2DModel
 # Modify the transformer block structure to be U-Net like following U-ViT
-# Only supports patch-style input currently
+# Only supports patch-style input and torch.nn.LayerNorm currently
 # https://github.com/baofff/U-ViT
 class UTransformer2DModel(ModelMixin, ConfigMixin):
     """
@@ -308,66 +285,24 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
         self.attention_head_dim = attention_head_dim
         inner_dim = num_attention_heads * attention_head_dim
 
-        # 1. Transformer2DModel can process both standard continuous images of shape `(batch_size, num_channels, width, height)` as well as quantized image embeddings of shape `(batch_size, num_image_vectors)`
-        # Define whether input is continuous or discrete depending on configuration
-        # TODO: clean up input cases?
-        self.is_input_continuous = (in_channels is not None) and (patch_size is None)
-        self.is_input_vectorized = num_vector_embeds is not None
-        self.is_input_patches = in_channels is not None and patch_size is not None
+        # 1. Input
+        # Only support patch input of shape (batch_size, num_channels, height, width) for now
+        assert in_channels is not None and patch_size is not None, "Patch input requires in_channels and patch_size."
 
-        # Remove layer_norm/num_embeds_ada_norm deprecation message.
-
-        if self.is_input_continuous and self.is_input_vectorized:
-            raise ValueError(
-                f"Cannot define both `in_channels`: {in_channels} and `num_vector_embeds`: {num_vector_embeds}. Make"
-                " sure that either `in_channels` or `num_vector_embeds` is None."
-            )
-        elif self.is_input_vectorized and self.is_input_patches:
-            raise ValueError(
-                f"Cannot define both `num_vector_embeds`: {num_vector_embeds} and `patch_size`: {patch_size}. Make"
-                " sure that either `num_vector_embeds` or `num_patches` is None."
-            )
-        elif not self.is_input_continuous and not self.is_input_vectorized and not self.is_input_patches:
-            raise ValueError(
-                f"Has to define `in_channels`: {in_channels}, `num_vector_embeds`: {num_vector_embeds}, or patch_size:"
-                f" {patch_size}. Make sure that `in_channels`, `num_vector_embeds` or `num_patches` is not None."
-            )
+        assert sample_size is not None, "UTransformer2DModel over patched input must provide sample_size"
 
         # 2. Define input layers
-        if self.is_input_continuous:
-            self.in_channels = in_channels
+        self.height = sample_size
+        self.width = sample_size
 
-            self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
-            if use_linear_projection:
-                self.proj_in = nn.Linear(in_channels, inner_dim)
-            else:
-                self.proj_in = nn.Conv2d(in_channels, inner_dim, kernel_size=1, stride=1, padding=0)
-        elif self.is_input_vectorized:
-            assert sample_size is not None, "Transformer2DModel over discrete input must provide sample_size"
-            assert num_vector_embeds is not None, "Transformer2DModel over discrete input must provide num_embed"
-
-            self.height = sample_size
-            self.width = sample_size
-            self.num_vector_embeds = num_vector_embeds
-            self.num_latent_pixels = self.height * self.width
-
-            self.latent_image_embedding = ImagePositionalEmbeddings(
-                num_embed=num_vector_embeds, embed_dim=inner_dim, height=self.height, width=self.width
-            )
-        elif self.is_input_patches:
-            assert sample_size is not None, "Transformer2DModel over patched input must provide sample_size"
-
-            self.height = sample_size
-            self.width = sample_size
-
-            self.patch_size = patch_size
-            self.pos_embed = PatchEmbed(
-                height=sample_size,
-                width=sample_size,
-                patch_size=patch_size,
-                in_channels=in_channels,
-                embed_dim=inner_dim,
-            )
+        self.patch_size = patch_size
+        self.pos_embed = PatchEmbed(
+            height=sample_size,
+            width=sample_size,
+            patch_size=patch_size,
+            in_channels=in_channels,
+            embed_dim=inner_dim,
+        )
 
         # 3. Define transformers blocks
         # Modify this to have in_blocks ("downsample" blocks, even though we don't actually downsample), a mid_block,
@@ -442,19 +377,9 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
 
         # 4. Define output layers
         self.out_channels = in_channels if out_channels is None else out_channels
-        if self.is_input_continuous:
-            # TODO: should use out_channels for continuous projections
-            if use_linear_projection:
-                self.proj_out = nn.Linear(inner_dim, in_channels)
-            else:
-                self.proj_out = nn.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
-        elif self.is_input_vectorized:
-            self.norm_out = nn.LayerNorm(inner_dim)
-            self.out = nn.Linear(inner_dim, self.num_vector_embeds - 1)
-        elif self.is_input_patches:
-            self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
-            self.proj_out_1 = nn.Linear(inner_dim, 2 * inner_dim)
-            self.proj_out_2 = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
+
+        self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
+        self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
 
     def forward(
         self,
@@ -465,6 +390,7 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
         cross_attention_kwargs=None,
         return_dict: bool = True,
         hidden_states_is_embedding: bool = False,
+        unpatchify: bool = True,
     ):
         """
         Args:
@@ -491,25 +417,18 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
             [`~models.transformer_2d.Transformer2DModelOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is the sample tensor.
         """
+        # 0. Check inputs
+
+        if not unpatchify and return_dict:
+            raise ValueError(
+                f"Cannot both define `unpatchify`: {unpatchify} and `return_dict`: {return_dict} since when"
+                f" `unpatchify` is {unpatchify} the returned output is of shape (batch_size, seq_len, hidden_dim)"
+                " rather than (batch_size, num_channels, height, width)."
+            )
+
         # 1. Input
         if not hidden_states_is_embedding:
-            if self.is_input_continuous:
-                batch, _, height, width = hidden_states.shape
-                residual = hidden_states
-
-                hidden_states = self.norm(hidden_states)
-                if not self.use_linear_projection:
-                    hidden_states = self.proj_in(hidden_states)
-                    inner_dim = hidden_states.shape[1]
-                    hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * width, inner_dim)
-                else:
-                    inner_dim = hidden_states.shape[1]
-                    hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * width, inner_dim)
-                    hidden_states = self.proj_in(hidden_states)
-            elif self.is_input_vectorized:
-                hidden_states = self.latent_image_embedding(hidden_states)
-            elif self.is_input_patches:
-                hidden_states = self.pos_embed(hidden_states)
+            hidden_states = self.pos_embed(hidden_states)
 
         # 2. Blocks
 
@@ -540,33 +459,12 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
             )
 
         # 3. Output
-        if self.is_input_continuous:
-            if not self.use_linear_projection:
-                hidden_states = hidden_states.reshape(batch, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()
-                hidden_states = self.proj_out(hidden_states)
-            else:
-                hidden_states = self.proj_out(hidden_states)
-                hidden_states = hidden_states.reshape(batch, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()
+        # TODO: cleanup!
+        # Don't support AdaLayerNorm for now, so no conditioning/scale/shift logic
+        hidden_states = self.norm_out(hidden_states)
+        hidden_states = self.proj_out(hidden_states)
 
-            output = hidden_states + residual
-        elif self.is_input_vectorized:
-            hidden_states = self.norm_out(hidden_states)
-            logits = self.out(hidden_states)
-            # (batch, self.num_vector_embeds - 1, self.num_latent_pixels)
-            logits = logits.permute(0, 2, 1)
-
-            # log(p(x_0))
-            output = F.log_softmax(logits.double(), dim=1).float()
-        elif self.is_input_patches:
-            # TODO: cleanup!
-            # Use self.transformer_in_blocks for now??
-            conditioning = self.transformer_in_blocks[0].norm1.emb(
-                timestep, class_labels, hidden_dtype=hidden_states.dtype
-            )
-            shift, scale = self.proj_out_1(F.silu(conditioning)).chunk(2, dim=1)
-            hidden_states = self.norm_out(hidden_states) * (1 + scale[:, None]) + shift[:, None]
-            hidden_states = self.proj_out_2(hidden_states)
-
+        if unpatchify:
             # unpatchify
             height = width = int(hidden_states.shape[1] ** 0.5)
             hidden_states = hidden_states.reshape(
@@ -576,6 +474,8 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
             output = hidden_states.reshape(
                 shape=(-1, self.out_channels, height * self.patch_size, width * self.patch_size)
             )
+        else:
+            output = hidden_states
 
         if not return_dict:
             return (output,)
@@ -713,7 +613,8 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
         )
 
         # 3. Define output layers
-        self.vae_img_out = nn.Linear(self.inner_dim, self.num_patches)
+        patch_dim = (patch_size**2) * out_channels
+        self.vae_img_out = nn.Linear(self.inner_dim, patch_dim)
         self.clip_img_out = nn.Linear(self.inner_dim, clip_img_dim)
         self.text_out = nn.Linear(self.inner_dim, text_dim)
 
@@ -728,7 +629,6 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
         timestep=None,
         class_labels=None,
         cross_attention_kwargs=None,
-        return_dict: bool = True,
     ):
         """
         Args:
@@ -769,10 +669,13 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
         clip_hidden_states = self.clip_img_in(img_clip)
         text_hidden_states = self.text_in(text)
 
+        # print(f"VAE embedding shape: {vae_hidden_states.shape}")
+        # print(f"CLIP embedding shape: {clip_hidden_states.shape}")
+        # print(f"Prompt embedding shape: {text_hidden_states.shape}")
+
         num_text_tokens, num_img_tokens = text_hidden_states.size(1), vae_hidden_states.size(1)
 
-        # 1.2. Encode image and text timesteps
-        # t_img
+        # 1.2. Encode image timesteps
         if not torch.is_tensor(t_img):
             t_img = torch.tensor([t_img], dtype=torch.long, device=vae_hidden_states.device)
 
@@ -785,8 +688,9 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
         t_img_token = t_img_token.to(dtype=self.dtype)
         t_img_token = self.t_img_embed(t_img_token)
         t_img_token = t_img_token.unsqueeze(dim=1)
+        # print(f"Image timestep token shape: {t_img_token.shape}")
 
-        # t_text
+        # 1.3. Encode text timesteps
         if not torch.is_tensor(t_text):
             t_text = torch.tensor([t_text], dtype=torch.long, device=vae_hidden_states.device)
 
@@ -799,8 +703,9 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
         t_text_token = t_text_token.to(dtype=self.dtype)
         t_text_token = self.t_text_embed(t_text_token)
         t_text_token = t_text_token.unsqueeze(dim=1)
+        # print(f"Text timestep token shape: {t_text_token.shape}")
 
-        # 1.3. Concatenate all of the embeddings together.
+        # 1.4. Concatenate all of the embeddings together.
         hidden_states = torch.cat(
             [t_img_token, t_text_token, text_hidden_states, clip_hidden_states, vae_hidden_states], dim=1
         )
@@ -812,9 +717,12 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
             timestep=timestep,
             class_labels=class_labels,
             cross_attention_kwargs=cross_attention_kwargs,
-            return_dict=return_dict,
+            return_dict=False,
             hidden_states_is_embedding=True,
-        )
+            unpatchify=False,
+        )[0]
+
+        # print(f"Transformer output shape: {hidden_states.shape}")
 
         # 3. Output
         # Split out the predicted noise representation.
@@ -822,7 +730,10 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
             (1, 1, num_text_tokens, 1, num_img_tokens), dim=1
         )
 
+        # print(F"img vae transformer output shape: {img_vae_out.shape}")
+
         img_vae_out = self.vae_img_out(img_vae_out)
+        # print(f"img_vae_out shape: {img_vae_out.shape}")
         # unpatchify
         height = width = int(img_vae_out.shape[1] ** 0.5)
         img_vae_out = img_vae_out.reshape(

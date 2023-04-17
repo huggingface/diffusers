@@ -47,7 +47,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             dropout=0.0,
             norm_num_groups=32,
             attention_bias=False,
-            sample_size=8,
+            sample_size=16,
             patch_size=2,
             activation_fn="gelu",
             num_embeds_ada_norm=1000,
@@ -108,9 +108,11 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         torch.manual_seed(0)
         # From https://huggingface.co/hf-internal-testing/tiny-random-GPT2Model/blob/main/config.json
+        text_tokenizer = GPT2Tokenizer.from_pretrained("hf-internal-testing/tiny-random-GPT2Model")
         text_decoder = UniDiffuserTextDecoder(
             prefix_length=77,
             prefix_hidden_dim=32,
+            vocab_size=text_tokenizer.vocab_size,
             n_positions=1024,
             n_embd=32,
             n_layer=5,
@@ -123,7 +125,6 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             layer_norm_epsilon=1e-5,
             initializer_range=0.02,
         )
-        text_tokenizer = GPT2Tokenizer.from_pretrained("hf-internal-testing/tiny-random-GPT2Model")
 
         components = {
             "vae": vae,
@@ -157,7 +158,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         }
         return inputs
 
-    @pytest.mark.xfail(reason="not finished debugging")
+    # @pytest.mark.xfail(reason="not finished debugging")
     def test_unidiffuser_default_joint(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -173,12 +174,13 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # Delete prompt and image for joint inference.
         del inputs["prompt"]
         del inputs["image"]
-        image = unidiffuser_pipe(**inputs).images
-        text = unidiffuser_pipe(**inputs).text
+        sample = unidiffuser_pipe(**inputs)
+        image = sample.images
+        text = sample.text
         assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.6646, 0.5723, 0.6812, 0.5742, 0.3872, 0.5137, 0.6206, 0.5986, 0.4983])
+        expected_slice = np.array([0.3965, 0.4568, 0.4495, 0.4590, 0.4465, 0.4690, 0.5454, 0.5093, 0.4321])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
         # TODO: need to figure out correct text output
@@ -203,7 +205,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.6641, 0.5718, 0.6807, 0.5747, 0.3870, 0.5132, 0.6206, 0.5986, 0.4980])
+        expected_slice = np.array([0.3965, 0.4568, 0.4495, 0.4590, 0.4463, 0.4690, 0.5454, 0.5093, 0.4321])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     @pytest.mark.xfail(reason="haven't begun debugging")
@@ -268,7 +270,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         # TODO: get expected slice of image output
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.6641, 0.5723, 0.6812, 0.5742, 0.3867, 0.5132, 0.6206, 0.5986, 0.4983])
+        expected_slice = np.array([0.3967, 0.4568, 0.4495, 0.4590, 0.4463, 0.4690, 0.5454, 0.5093, 0.4321])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
 

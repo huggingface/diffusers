@@ -669,11 +669,16 @@ class UniDiffuserPipeline(DiffusionPipeline):
         # Predicts noise using the noise prediction model for the given mode.
         if mode == "joint":
             # Joint text-image generation
+            # print(f"t: {t}")
             img_vae_latents, img_clip_latents, text_latents = self._split_joint(latents, height, width)
 
+            # print("Running condtional U-Net call...")
             img_vae_out, img_clip_out, text_out = self.unet(
                 img_vae_latents, img_clip_latents, text_latents, t_img=t, t_text=t
             )
+            # print(f"Image VAE out shape: {img_vae_out.shape}")
+            # print(f"Image CLIP out shape: {img_clip_out.shape}")
+            # print(f"Text out shape: {text_out.shape}")
 
             x_out = self._combine_joint(img_vae_out, img_clip_out, text_out)
 
@@ -684,10 +689,15 @@ class UniDiffuserPipeline(DiffusionPipeline):
             img_vae_T = randn_tensor(img_vae.shape, generator=generator, device=device, dtype=img_vae.dtype)
             img_clip_T = randn_tensor(img_clip.shape, generator=generator, device=device, dtype=img_clip.dtype)
             text_T = randn_tensor(prompt_embeds.shape, generator=generator, device=device, dtype=prompt_embeds.dtype)
-            t_img_uncond = torch.ones_like(t) * timesteps
-            t_text_uncond = torch.ones_like(t) * timesteps
+            t_img_uncond = torch.ones_like(t) * timesteps[0]
+            t_text_uncond = torch.ones_like(t) * timesteps[0]
 
+            # print(f"t_img_uncond: {t_img_uncond}")
+            # print(f"t_img_uncond shape: {t_img_uncond.shape}")
+
+            # print("Running unconditional U-Net call 1 for CFG...")
             _, _, text_out_uncond = self.unet(img_vae_T, img_clip_T, text_latents, t_img=t_img_uncond, t_text=t)
+            # print("Running unconditional U-Net call 2 for CFG...")
             img_vae_out_uncond, img_clip_out_uncond, _ = self.unet(
                 img_vae_latents, img_clip_latents, text_T, t_img=t, t_text=t_text_uncond
             )
@@ -1020,6 +1030,8 @@ class UniDiffuserPipeline(DiffusionPipeline):
         # 5. Set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
+        # print(f"Timesteps: {timesteps}")
+        # print(f"Timesteps shape: {timesteps.shape}")
 
         # 6. Prepare latent variables
         if mode == "joint":
@@ -1074,8 +1086,12 @@ class UniDiffuserPipeline(DiffusionPipeline):
         gen_text = None
         if mode == "joint":
             image_vae_latents, image_clip_latents, text_latents = self._split_joint(latents, height, width)
+            # print(f"Image VAE latents shape: {image_vae_latents.shape}")
+            # print(f"VAE scale factor: {self.vae_scale_factor}")
+            # print(self.vae)
             # Map latent VAE image back to pixel space
             gen_image = self.decode_image_latents(image_vae_latents)
+            # print(f"Decoded image shape: {gen_image.shape}")
             # Generate text using the text decoder
             gen_text = self.text_decoder.generate_captions(self.text_tokenizer, text_latents, device=device)
         elif mode in ["text2img", "img"]:

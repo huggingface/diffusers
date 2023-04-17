@@ -17,7 +17,8 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         self,
         prefix_length: int,
         prefix_hidden_dim: Optional[int] = None,
-        n_positions: int = 1024,  # Start of GPT2 config args
+        vocab_size: int = 50257,  # Start of GPT2 config args
+        n_positions: int = 1024,
         n_embd: int = 768,
         n_layer: int = 12,
         n_head: int = 12,
@@ -28,6 +29,10 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         attn_pdrop: float = 0.1,
         layer_norm_epsilon: float = 1e-5,
         initializer_range: float = 0.02,
+        scale_attn_weights: bool = True,
+        use_cache: bool = True,
+        scale_attn_by_inverse_layer_idx: bool = False,
+        reorder_and_upcast_attn: bool = False,
     ):
         """
         Text decoder model for a image-text [UniDiffuser](https://arxiv.org/pdf/2303.06555.pdf) model. This is used to
@@ -52,6 +57,7 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         )
 
         gpt_config = GPT2Config(
+            vocab_size=vocab_size,
             n_positions=n_positions,
             n_embd=n_embd,
             n_layer=n_layer,
@@ -63,6 +69,10 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
             attn_pdrop=attn_pdrop,
             layer_norm_epsilon=layer_norm_epsilon,
             initializer_range=initializer_range,
+            scale_attn_weights=scale_attn_weights,
+            use_cache=use_cache,
+            scale_attn_by_inverse_layer_idx=scale_attn_by_inverse_layer_idx,
+            reorder_and_upcast_attn=reorder_and_upcast_attn,
         )
         self.transformer = GPT2LMHeadModel(gpt_config)
 
@@ -143,8 +153,7 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         TODO: args
         """
         # Generates text until stop_token is reached using beam search with the desired beam size.
-        # TODO: get the stop token index directly from tokenizer rather than manually specifying the EOS token?
-        stop_token_index = tokenizer.encode(stop_token)[0]
+        stop_token_index = tokenizer.eos_token_id
         tokens = None
         scores = None
         seq_lengths = torch.ones(beam_size, device=device)
@@ -159,7 +168,7 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
             generated = self.transformer.transformer.wte(tokens)
 
         for i in range(entry_length):
-            outputs = self.transformer(input_embeds=generated)
+            outputs = self.transformer(inputs_embeds=generated)
             logits = outputs.logits
             logits = logits[:, -1, :] / (temperature if temperature > 0 else 1.0)
             logits = logits.softmax(-1).log()
@@ -198,8 +207,12 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
 
         scores = scores / seq_lengths
         output_list = tokens.cpu().numpy()
+        # print(f"Output list: {output_list}")
+        # print(f"Output list length: {len(output_list)}")
+        # print(f"Seq lengths: {seq_lengths}")
+        # print(f"Seq lengths length: {len(seq_lengths)}")
         output_texts = [
-            self.tokenizer.decode(output[: int(length)], skip_special_tokens=True)
+            tokenizer.decode(output[: int(length)], skip_special_tokens=True)
             for output, length in zip(output_list, seq_lengths)
         ]
         order = scores.argsort(descending=True)
