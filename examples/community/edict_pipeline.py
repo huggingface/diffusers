@@ -12,11 +12,9 @@ from diffusers import DiffusionPipeline
 def preprocess(image):
     if isinstance(image, Image.Image):
         w, h = image.size
-        w, h = map(lambda x: x - x % 8, (w, h))  # resize to integer multiple of 8
+        w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
 
-        image = np.array(image.resize((w, h), resample=Image.Resampling.LANCZOS))[
-            None, :
-        ]
+        image = np.array(image.resize((w, h), resample=Image.Resampling.LANCZOS))[None, :]
         image = np.array(image).astype(np.float32) / 255.0
         image = image.transpose(0, 3, 1, 2)
         image = 2.0 * image - 1.0
@@ -32,43 +30,30 @@ class EDICTScheduler:
         p: float = 0.93,
         beta_1: float = 0.00085,
         beta_T: float = 0.012,
-        num_train_timesteps: int = 1000,  # T = 1000
+        num_train_timesteps: int = 1000,
         set_alpha_to_one: bool = False,
     ):
         self.p = p
         self.num_train_timesteps = num_train_timesteps
 
         # scaled linear
-        betas = (
-            torch.linspace(
-                beta_1**0.5, beta_T**0.5, num_train_timesteps, dtype=torch.float32
-            )
-            ** 2
-        )
+        betas = torch.linspace(beta_1**0.5, beta_T**0.5, num_train_timesteps, dtype=torch.float32) ** 2
 
         alphas = 1.0 - betas
         self.alphas_cumprod = torch.cumprod(alphas, dim=0)
 
-        self.final_alpha_cumprod = (
-            torch.tensor(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
-        )
+        self.final_alpha_cumprod = torch.tensor(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
 
         # For PEP 412's sake
         self.num_inference_steps = None
-        self.timesteps = torch.from_numpy(
-            np.arange(0, num_train_timesteps)[::-1].copy().astype(np.int64)
-        )
+        self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy().astype(np.int64))
 
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device]):
         self.num_inference_steps = num_inference_steps
         step_ratio = self.num_train_timesteps // self.num_inference_steps
 
-        timesteps = (
-            (np.arange(0, num_inference_steps) * step_ratio)
-            .round()[::-1]
-            .copy()
-            .astype(np.int64)
-        )
+        timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
+        
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
     def denoise_mixing_layer(self, x: torch.Tensor, y: torch.Tensor):
@@ -130,7 +115,7 @@ class EDICTScheduler:
 
 
 
-class Pipeline(DiffusionPipeline):
+class EDICTPipeline(DiffusionPipeline):
     def __init__(
         self,
         vae: AutoencoderKL,
@@ -153,16 +138,16 @@ class Pipeline(DiffusionPipeline):
 
 
     def encode_prompt(self, prompt: str, negative_prompt: Optional[str] = None):
-        null_prompt = "" if negative_prompt is None else negative_prompt
+        negative_prompt = "" if negative_prompt is None else negative_prompt
 
         tokens_uncond = self.tokenizer(
-            null_prompt,
+            negative_prompt,
             padding="max_length",
             max_length=self.tokenizer.model_max_length,
             truncation=True,
             return_tensors="pt",
-            return_overflowing_tokens=True,
         )
+
         embeds_uncond = self.encoder(
             tokens_uncond.input_ids.to(self.device)
         ).last_hidden_state
@@ -173,8 +158,8 @@ class Pipeline(DiffusionPipeline):
             max_length=self.tokenizer.model_max_length,
             truncation=True,
             return_tensors="pt",
-            return_overflowing_tokens=True,
         )
+        
         embeds_cond = self.encoder(
             tokens_cond.input_ids.to(self.device)
         ).last_hidden_state
@@ -208,9 +193,7 @@ class Pipeline(DiffusionPipeline):
         coupled_latents = [latent.clone(), latent.clone()]
 
         for i, t in tqdm(enumerate(timesteps), total=len(timesteps)):
-            coupled_latents = self.scheduler.noise_mixing_layer(
-                x=coupled_latents[0], y=coupled_latents[1]
-            )
+            coupled_latents = self.scheduler.noise_mixing_layer(x=coupled_latents[0], y=coupled_latents[1])
 
             # j - model_input index, k - base index
             for j in range(2):
@@ -225,9 +208,7 @@ class Pipeline(DiffusionPipeline):
 
                 latent_model_input = torch.cat([model_input] * 2)
 
-                noise_pred = self.unet(
-                    latent_model_input, t, encoder_hidden_states=text_embeds
-                ).sample
+                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeds).sample
 
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                 noise_pred = noise_pred_uncond + guidance_scale * (
@@ -252,24 +233,23 @@ class Pipeline(DiffusionPipeline):
         target_prompt: str,
         image: Image.Image,
         guidance_scale: float = 3.0,
-        steps: int = 50,
+        num_inference_steps: int = 50,
         strength: float = 0.8,
+        negative_prompt: Optional[str] = None,
     ):
 
         image = preprocess(image)  # from PIL.Image to torch.Tensor
 
-        base_embeds = self.encode_prompt(base_prompt)
-        target_embeds = self.encode_prompt(target_prompt)
+        base_embeds = self.encode_prompt(base_prompt, negative_prompt)
+        target_embeds = self.encode_prompt(target_prompt, negative_prompt)
 
-        self.scheduler.set_timesteps(steps, self.device)
+        self.scheduler.set_timesteps(num_inference_steps, self.device)
 
-        t_limit = steps - int(steps * strength)
+        t_limit = num_inference_steps - int(num_inference_steps * strength)
         fwd_timesteps = self.scheduler.timesteps[t_limit:]
         bwd_timesteps = fwd_timesteps.flip(0)
 
-        latent_pair = self.prepare_latents(
-            image, base_embeds, bwd_timesteps, guidance_scale
-        )
+        coupled_latents = self.prepare_latents(image, base_embeds, bwd_timesteps, guidance_scale)
 
         for i, t in tqdm(enumerate(fwd_timesteps), total=len(fwd_timesteps)):
             # j - model_input index, k - base index
@@ -280,19 +260,15 @@ class Pipeline(DiffusionPipeline):
                     if i % 2 == 1:
                         k, j = j, k
 
-                model_input = latent_pair[j]
-                base = latent_pair[k]
+                model_input = coupled_latents[j]
+                base = coupled_latents[k]
 
                 latent_model_input = torch.cat([model_input] * 2)
 
-                noise_pred = self.unet(
-                    latent_model_input, t, encoder_hidden_states=target_embeds
-                ).sample
+                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=target_embeds).sample
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
 
-                noise_pred = noise_pred_uncond + guidance_scale * (
-                    noise_pred_text - noise_pred_uncond
-                )
+                noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 base, model_input = self.scheduler.denoise_step(
                     base=base,
@@ -301,14 +277,12 @@ class Pipeline(DiffusionPipeline):
                     timestep=t,
                 )
 
-                latent_pair[k] = model_input
+                coupled_latents[k] = model_input
 
-            latent_pair = self.scheduler.denoise_mixing_layer(
-                x=latent_pair[0], y=latent_pair[1]
-            )
+            coupled_latents = self.scheduler.denoise_mixing_layer(x=coupled_latents[0], y=coupled_latents[1])
 
         # either one is fine
-        final_latent = latent_pair[0]
+        final_latent = coupled_latents[0]
 
         image = self.decode_latents(final_latent)
         image = (image[0] * 255).round().astype("uint8")
