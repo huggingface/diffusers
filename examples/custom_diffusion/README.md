@@ -74,7 +74,7 @@ accelerate launch train.py \
           --lr_warmup_steps=0 \
           --max_train_steps=250 \
           --scale_lr --hflip  \
-          --modifier_token "<new1>"
+          --modifier_token "<new1>" 
 ```
 
 **Use `--enable_xformers_memory_efficient_attention` for faster training with lower VRAM requirement (16GB per GPU).**

@@ -18,36 +18,28 @@
 
 import argparse
 import hashlib
+import itertools
+import json
 import logging
 import math
 import os
-import warnings
 import random
-from pathlib import Path
-import json
-import requests
-import itertools
+import warnings
 from io import BytesIO
+from pathlib import Path
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
+from torch.utils.data import Dataset
+
+import diffusers
+import requests
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
-from huggingface_hub import create_repo
-from huggingface_hub import HfApi
-from packaging import version
-from PIL import Image
-from torch.utils.data import Dataset
-from torchvision import transforms
-from tqdm.auto import tqdm
-from transformers import AutoTokenizer, PretrainedConfig
-from clip_retrieval.clip_client import ClipClient
-
-import diffusers
 from diffusers import (
     AutoencoderKL,
     DDPMScheduler,
@@ -55,15 +47,18 @@ from diffusers import (
     DPMSolverMultistepScheduler,
     UNet2DConditionModel,
 )
-
-from diffusers.models.cross_attention import CrossAttention
+from diffusers.loaders import AttnProcsLayers
+from diffusers.models.attention_processor import CustomDiffusionAttnProcessor, AttnProcessor
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
-
-# sys.path.append('./')
-from model_pipeline import CustomDiffusionAttnProcessor, CustomDiffusionPipeline, set_use_memory_efficient_attention_xformers
-
+from huggingface_hub import HfApi, create_repo
+from packaging import version
+from PIL import Image
+from torchvision import transforms
+from tqdm.auto import tqdm
+from transformers import AutoTokenizer, PretrainedConfig
+import ipdb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.14.0")
@@ -71,85 +66,9 @@ check_min_version("0.14.0")
 logger = get_logger(__name__)
 
 
-def create_custom_diffusion(unet, freeze_model):
-    for name, params in unet.named_parameters():
-        if freeze_model == 'crossattn':
-            if 'attn2' in name:
-                params.requires_grad = True
-                print(name)
-            else:
-                params.requires_grad = False
-        elif freeze_model == "crossattn_kv":
-            if 'attn2.to_k' in name or 'attn2.to_v' in name:
-                params.requires_grad = True
-                print(name)
-            else:
-                params.requires_grad = False
-        else:
-            raise ValueError(
-                "freeze_model argument only supports crossattn_kv or crossattn"
-            )
-
-    # change attn class
-    def change_attn(unet):
-        for layer in unet.children():
-            if type(layer) == CrossAttention:
-                bound_method = set_use_memory_efficient_attention_xformers.__get__(layer, layer.__class__)
-                setattr(layer, 'set_use_memory_efficient_attention_xformers', bound_method)
-            else:
-                change_attn(layer)
-
-    change_attn(unet)
-    unet.set_attn_processor(CustomDiffusionAttnProcessor())
-    return unet
-
-
 def freeze_params(params):
     for param in params:
         param.requires_grad = False
-
-
-def retrieve(class_prompt, class_images_dir, num_class_images):
-    factor = 1.5
-    num_images = int(factor * num_class_images)
-    client = ClipClient(url="https://knn.laion.ai/knn-service", indice_name="laion_400m", num_images=num_images, aesthetic_weight=0.1)
-
-    os.makedirs(f'{class_images_dir}/images', exist_ok=True)
-    if len(list(Path(f'{class_images_dir}/images').iterdir())) >= num_class_images:
-        return
-
-    while True:
-        class_images = client.query(text=class_prompt)
-        if len(class_images) >= factor*num_class_images or num_images > 1e4:
-            break
-        else:
-            num_images = int(factor * num_images)
-            client = ClipClient(url="https://knn.laion.ai/knn-service", indice_name="laion_400m", num_images=num_images, aesthetic_weight=0.1)
-
-    count = 0
-    total = 0
-    pbar = tqdm(desc='downloading real regularization images', total=num_class_images)
-
-    with open(f'{class_images_dir}/caption.txt', 'w') as f1, open(f'{class_images_dir}/urls.txt', 'w') as f2, open(f'{class_images_dir}/images.txt', 'w') as f3:
-        while total < num_class_images:
-            images = class_images[count]
-            count += 1
-            try:
-                img = requests.get(images['url'])
-                if img.status_code == 200:
-                    _ = Image.open(BytesIO(img.content))
-                    with open(f'{class_images_dir}/images/{total}.jpg', 'wb') as f:
-                        f.write(img.content)
-                    f1.write(images['caption'] + '\n')
-                    f2.write(images['url'] + '\n')
-                    f3.write(f'{class_images_dir}/images/{total}.jpg' + '\n')
-                    total += 1
-                    pbar.update(1)
-                else:
-                    continue
-            except:
-                continue
-    return
 
 
 def save_model_card(repo_id: str, images=None, base_model=str, prompt=str, repo_folder=None):
@@ -372,6 +291,15 @@ class CustomDiffusionDataset(Dataset):
         return example
 
 
+def save_new_embed(text_encoder, modifier_token_id, accelerator, args, output_dir):
+    logger.info("Saving embeddings")
+    learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight
+    for (x, y) in zip(modifier_token_id, args.modifier_token):
+        learned_embeds_dict = {}
+        learned_embeds_dict[y] = learned_embeds[x]
+        torch.save(learned_embeds_dict, f'{output_dir}/{y}.bin')
+
+
 def parse_args(input_args=None):
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
@@ -563,7 +491,8 @@ def parse_args(input_args=None):
         "--freeze_model",
         type=str,
         default='crossattn_kv',
-        help="crossattn to enable fine-tuning of all key, value, query matrices",
+        choices=['crossattn_kv', 'crossattn'],
+        help="crossattn to enable fine-tuning of all params in the cross attention",
     )
     parser.add_argument(
         "--lr_scheduler",
@@ -760,10 +689,10 @@ def main(args):
             if not class_images_dir.exists():
                 class_images_dir.mkdir(parents=True, exist_ok=True)
             if args.real_prior:
-                if accelerator.is_main_process:
-                    name = '_'.join(concept['class_prompt'].split())
-                    if not Path(os.path.join(class_images_dir, name)).exists() or len(list(Path(os.path.join(class_images_dir, name)).iterdir())) < args.num_class_images:
-                        retrieve(concept['class_prompt'], class_images_dir, args.num_class_images)
+                assert (class_images_dir / 'images').exists(), print(f"Please run python retrieve.py --target {concept['class_prompt']} --outpath {class_images_dir}")
+                assert len(list((class_images_dir / 'images').iterdir())) == args.num_class_images, print(f"Please run python retrieve.py --target {concept['class_prompt']} --outpath {class_images_dir}")
+                assert (class_images_dir / 'caption.txt').exists(), print(f"Please run python retrieve.py --target {concept['class_prompt']} --outpath {class_images_dir}")
+                assert (class_images_dir / 'images.txt').exists(), print(f"Please run python retrieve.py --target {concept['class_prompt']} --outpath {class_images_dir}")
                 concept['class_prompt'] = os.path.join(class_images_dir, 'caption.txt')
                 concept['class_data_dir'] = os.path.join(class_images_dir, 'images.txt')
                 args.concepts_list[i] = concept
@@ -851,11 +780,56 @@ def main(args):
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
 
+    # Adding a modifier token which is optimized ####
+    # Code taken from https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion.py
+    modifier_token_id = []
+    initializer_token_id = []
+    if args.modifier_token is not None:
+        args.modifier_token = args.modifier_token.split('+')
+        args.initializer_token = args.initializer_token.split('+')
+        if len(args.modifier_token) > len(args.initializer_token):
+            raise ValueError("You must specify + separated initializer token for each modifier token.")
+        for modifier_token, initializer_token in zip(args.modifier_token, args.initializer_token[:len(args.modifier_token)]):
+            # Add the placeholder token in tokenizer
+            num_added_tokens = tokenizer.add_tokens(modifier_token)
+            if num_added_tokens == 0:
+                raise ValueError(
+                    f"The tokenizer already contains the token {modifier_token}. Please pass a different"
+                    " `modifier_token` that is not already in the tokenizer."
+                )
+
+            # Convert the initializer_token, placeholder_token to ids
+            token_ids = tokenizer.encode([initializer_token], add_special_tokens=False)
+            print(token_ids)
+            # Check if initializer_token is a single token or a sequence of tokens
+            if len(token_ids) > 1:
+                raise ValueError("The initializer token must be a single token.")
+
+            initializer_token_id.append(token_ids[0])
+            modifier_token_id.append(tokenizer.convert_tokens_to_ids(modifier_token))
+
+        # Resize the token embeddings as we are adding new special tokens to the tokenizer
+        text_encoder.resize_token_embeddings(len(tokenizer))
+
+        # Initialise the newly added placeholder token with the embeddings of the initializer token
+        token_embeds = text_encoder.get_input_embeddings().weight.data
+        for (x, y) in zip(modifier_token_id, initializer_token_id):
+            token_embeds[x] = token_embeds[y]
+
+        # Freeze all parameters except for the token embeddings in text encoder
+        params_to_freeze = itertools.chain(
+            text_encoder.text_model.encoder.parameters(),
+            text_encoder.text_model.final_layer_norm.parameters(),
+            text_encoder.text_model.embeddings.position_embedding.parameters(),
+        )
+        freeze_params(params_to_freeze)
+    ########################################################
+    ########################################################
+
     vae.requires_grad_(False)
     if args.modifier_token is None:
         text_encoder.requires_grad_(False)
-    unet = create_custom_diffusion(unet, args.freeze_model)
-
+    unet.requires_grad_(False)
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
@@ -864,10 +838,56 @@ def main(args):
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
+    # now we will add new Custom Diffusion weights to the attention layers
+    # It's important to realize here how many attention weights will be added and of which sizes
+    # The sizes of the attention layers consist only of two different variables:
+    # 1) - the "hidden_size", which is increased according to `unet.config.block_out_channels`.
+    # 2) - the "cross attention size", which is set to `unet.config.cross_attention_dim`.
+
+    # Let's first see how many attention processors we will have to set.
+    # For Stable Diffusion, it should be equal to:
+    # - down blocks (2x attention layers) * (2x transformer layers) * (3x down blocks) = 12
+    # - mid blocks (2x attention layers) * (1x transformer layers) * (1x mid blocks) = 2
+    # - up blocks (2x attention layers) * (3x transformer layers) * (3x down blocks) = 18
+    # => 32 layers
+
+    # Only train key, value projection layers if freeze_model = 'crossattn_kv' else train all params in the cross attention layer
+    train_kv = True
+    train_q_out = False if args.freeze_model == 'crossattn_kv' else True
+    custom_diffusion_attn_procs = {}
+
+    st = unet.state_dict()
+    for name, attn in unet.attn_processors.items():
+        cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
+        if name.startswith("mid_block"):
+            hidden_size = unet.config.block_out_channels[-1]
+        elif name.startswith("up_blocks"):
+            block_id = int(name[len("up_blocks.")])
+            hidden_size = list(reversed(unet.config.block_out_channels))[block_id]
+        elif name.startswith("down_blocks"):
+            block_id = int(name[len("down_blocks.")])
+            hidden_size = unet.config.block_out_channels[block_id]
+        layer_name = name.split('.processor')[0]
+        # ipdb.set_trace()
+        weights = {'to_k': st[layer_name + '.to_k.weight'],
+                    'to_v': st[layer_name + '.to_v.weight'],
+                    'to_q': st[layer_name + '.to_q.weight'],
+                    'to_out.weight': st[layer_name + '.to_out.0.weight'],
+                    'to_out.bias': st[layer_name + '.to_out.0.bias'], }
+        if cross_attention_dim is not None:
+            custom_diffusion_attn_procs[name] = CustomDiffusionAttnProcessor(weights, train_kv=train_kv, train_q_out=train_q_out, hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
+        else:
+            custom_diffusion_attn_procs[name] = attn
+    del st
+    unet.set_attn_processor(custom_diffusion_attn_procs)
+    custom_diffusion_layers = AttnProcsLayers({y: x for (y, x) in unet.attn_processors.items() if isinstance(x, CustomDiffusionAttnProcessor)})
+
+    accelerator.register_for_checkpointing(custom_diffusion_layers)
+
     # Move unet, vae and text_encoder to device and cast to weight_dtype
-    if accelerator.mixed_precision != "fp16":
-        unet.to(accelerator.device, dtype=weight_dtype)
+    if accelerator.mixed_precision != "fp16" and args.modifier_token is not None:
         text_encoder.to(accelerator.device, dtype=weight_dtype)
+    unet.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
 
     if args.enable_xformers_memory_efficient_attention:
@@ -912,70 +932,9 @@ def main(args):
     else:
         optimizer_class = torch.optim.AdamW
 
-    # Adding a modifier token which is optimized ####
-    # Code taken from https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion.py
-    modifier_token_id = []
-    initializer_token_id = []
-    if args.modifier_token is not None:
-        args.modifier_token = args.modifier_token.split('+')
-        args.initializer_token = args.initializer_token.split('+')
-        if len(args.modifier_token) > len(args.initializer_token):
-            raise ValueError("You must specify + separated initializer token for each modifier token.")
-        for modifier_token, initializer_token in zip(args.modifier_token, args.initializer_token[:len(args.modifier_token)]):
-            # Add the placeholder token in tokenizer
-            num_added_tokens = tokenizer.add_tokens(modifier_token)
-            if num_added_tokens == 0:
-                raise ValueError(
-                    f"The tokenizer already contains the token {modifier_token}. Please pass a different"
-                    " `modifier_token` that is not already in the tokenizer."
-                )
-
-            # Convert the initializer_token, placeholder_token to ids
-            token_ids = tokenizer.encode([initializer_token], add_special_tokens=False)
-            print(token_ids)
-            # Check if initializer_token is a single token or a sequence of tokens
-            if len(token_ids) > 1:
-                raise ValueError("The initializer token must be a single token.")
-
-            initializer_token_id.append(token_ids[0])
-            modifier_token_id.append(tokenizer.convert_tokens_to_ids(modifier_token))
-
-        # Resize the token embeddings as we are adding new special tokens to the tokenizer
-        text_encoder.resize_token_embeddings(len(tokenizer))
-
-        # Initialise the newly added placeholder token with the embeddings of the initializer token
-        token_embeds = text_encoder.get_input_embeddings().weight.data
-        for (x, y) in zip(modifier_token_id, initializer_token_id):
-            token_embeds[x] = token_embeds[y]
-
-        # Freeze all parameters except for the token embeddings in text encoder
-        params_to_freeze = itertools.chain(
-            text_encoder.text_model.encoder.parameters(),
-            text_encoder.text_model.final_layer_norm.parameters(),
-            text_encoder.text_model.embeddings.position_embedding.parameters(),
-        )
-        freeze_params(params_to_freeze)
-
-        if args.freeze_model == 'crossattn':
-            params_to_optimize = itertools.chain(text_encoder.get_input_embeddings().parameters() , [x[1] for x in unet.named_parameters() if 'attn2' in x[0]])
-        else:
-            params_to_optimize = itertools.chain(text_encoder.get_input_embeddings().parameters() , [x[1] for x in unet.named_parameters() if ('attn2.to_k' in x[0] or 'attn2.to_v' in x[0])])
-
-    ########################################################
-    ########################################################
-    else:
-        if args.freeze_model == 'crossattn':
-            params_to_optimize = (
-                itertools.chain([x[1] for x in unet.named_parameters() if 'attn2' in x[0]])
-            )
-        else:
-            params_to_optimize = (
-                itertools.chain([x[1] for x in unet.named_parameters() if ('attn2.to_k' in x[0] or 'attn2.to_v' in x[0])])
-            )
-
     # Optimizer creation
     optimizer = optimizer_class(
-        params_to_optimize,
+        itertools.chain(text_encoder.get_input_embeddings().parameters(), custom_diffusion_layers.parameters()) if args.modifier_token is not None else custom_diffusion_layers.parameters(),
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -1017,12 +976,12 @@ def main(args):
 
     # Prepare everything with our `accelerator`.
     if args.modifier_token is not None:
-        unet, text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-            unet, text_encoder, optimizer, train_dataloader, lr_scheduler
+        custom_diffusion_layers, text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            custom_diffusion_layers, text_encoder, optimizer, train_dataloader, lr_scheduler
         )
     else:
-        unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-            unet, optimizer, train_dataloader, lr_scheduler
+        custom_diffusion_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            custom_diffusion_layers, optimizer, train_dataloader, lr_scheduler
         )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
@@ -1051,7 +1010,7 @@ def main(args):
         if args.resume_from_checkpoint != "latest":
             path = os.path.basename(args.resume_from_checkpoint)
         else:
-            # Get the mos recent checkpoint
+            # Get the most recent checkpoint
             dirs = os.listdir(args.output_dir)
             dirs = [d for d in dirs if d.startswith("checkpoint")]
             dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
@@ -1086,7 +1045,7 @@ def main(args):
                     progress_bar.update(1)
                 continue
 
-            with accelerator.accumulate(unet):
+            with accelerator.accumulate(unet), accelerator.accumulate(text_encoder):
                 # Convert images to latent space
                 latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
@@ -1134,7 +1093,6 @@ def main(args):
                     mask = batch["mask"]
                     loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
                     loss = ((loss * mask).sum([1, 2, 3]) / mask.sum([1, 2, 3])).mean()
-
                 accelerator.backward(loss)
                 # Zero out the gradients for all token embeddings except the newly added
                 # embeddings for the concept, as we only want to optimize the concept embeddings
@@ -1150,11 +1108,7 @@ def main(args):
                     grads_text_encoder.data[index_grads_to_zero, :] = grads_text_encoder.data[index_grads_to_zero, :].fill_(0)
 
                 if accelerator.sync_gradients:
-                    params_to_clip = (
-                        itertools.chain([x[1] for x in unet.named_parameters() if ('attn2' in x[0])], text_encoder.parameters())
-                        if args.modifier_token is not None
-                        else itertools.chain([x[1] for x in unet.named_parameters() if ('attn2' in x[0])]) 
-                    )
+                    params_to_clip = itertools.chain(text_encoder.parameters(), custom_diffusion_layers.parameters()) if args.modifier_token is not None else custom_diffusion_layers.parameters()
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
@@ -1167,20 +1121,9 @@ def main(args):
 
                 if global_step % args.checkpointing_steps == 0:
                     if accelerator.is_main_process:
-                        pipeline = CustomDiffusionPipeline.from_pretrained(
-                            args.pretrained_model_name_or_path,
-                            unet=accelerator.unwrap_model(unet),
-                            text_encoder=accelerator.unwrap_model(text_encoder),
-                            tokenizer=tokenizer,
-                            revision=args.revision,
-                            modifier_token=args.modifier_token,
-                            modifier_token_id=modifier_token_id,
-                        )
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                        pipeline.save_pretrained(save_path, all=True)
+                        accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
-                        del pipeline
-                        torch.cuda.empty_cache()
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
@@ -1196,14 +1139,12 @@ def main(args):
                     f" {args.validation_prompt}."
                 )
                 # create pipeline
-                pipeline = CustomDiffusionPipeline.from_pretrained(
+                pipeline = DiffusionPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     unet=accelerator.unwrap_model(unet),
                     text_encoder=accelerator.unwrap_model(text_encoder),
                     tokenizer=tokenizer,
                     revision=args.revision,
-                    modifier_token=args.modifier_token,
-                    modifier_token_id=modifier_token_id,
                 )
                 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
                 pipeline = pipeline.to(accelerator.device)
@@ -1233,30 +1174,29 @@ def main(args):
                 del pipeline
                 torch.cuda.empty_cache()
 
-    # Save the updated weights 
+    # Save the custom diffusion layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         unet = unet.to(torch.float32)
-        pipeline = CustomDiffusionPipeline.from_pretrained(
-            args.pretrained_model_name_or_path,
-            unet=accelerator.unwrap_model(unet),
-            text_encoder=accelerator.unwrap_model(text_encoder),
-            tokenizer=tokenizer,
-            revision=args.revision,
-            modifier_token=args.modifier_token,
-            modifier_token_id=modifier_token_id,
+        unet.save_attn_procs(args.output_dir)
+        save_new_embed(text_encoder, modifier_token_id, accelerator, args, args.output_dir)
+
+        # Final inference
+        # Load previous pipeline
+        pipeline = DiffusionPipeline.from_pretrained(
+            args.pretrained_model_name_or_path, revision=args.revision, torch_dtype=weight_dtype
         )
-        save_path = os.path.join(args.output_dir, "delta.bin")
-        pipeline.save_pretrained(save_path, freeze_model=args.freeze_model)
+        pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
+        pipeline = pipeline.to(accelerator.device)
+
+        # load attention processors
+        pipeline.unet.load_attn_procs(args.output_dir, weight_name="pytorch_custom_diffusion_weights.bin")
+        for token in args.modifier_token:
+            pipeline.load_textual_inversion(args.output_dir, weight_name=f'{token}.bin')
 
         # run inference
         if args.validation_prompt and args.num_validation_images > 0:
-            pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
-            pipeline = pipeline.to(accelerator.device)
-            pipeline.set_progress_bar_config(disable=True)
-
-            # run inference
-            generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+            generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
             images = [
                 pipeline(args.validation_prompt, num_inference_steps=25, generator=generator, eta=1.).images[0]
                 for _ in range(args.num_validation_images)
