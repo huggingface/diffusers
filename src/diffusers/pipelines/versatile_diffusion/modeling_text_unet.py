@@ -18,7 +18,7 @@ from ...models.dual_transformer_2d import DualTransformer2DModel
 from ...models.embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from ...models.transformer_2d import Transformer2DModel
 from ...models.unet_2d_condition import UNet2DConditionOutput
-from ...utils import deprecate, logging
+from ...utils import logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -543,19 +543,6 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         self.conv_out = LinearMultiDim(
             block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
         )
-
-    @property
-    def in_channels(self):
-        deprecate(
-            "in_channels",
-            "1.0.0",
-            (
-                "Accessing `in_channels` directly via unet.in_channels is deprecated. Please use"
-                " `unet.config.in_channels` instead"
-            ),
-            standard_warn=False,
-        )
-        return self.config.in_channels
 
     @property
     def attn_processors(self) -> Dict[str, AttentionProcessor]:
