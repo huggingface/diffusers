@@ -342,6 +342,12 @@ The final LoRA embedding weights have been uploaded to [patrickvonplaten/lora_dr
 The training results are summarized [here](https://api.wandb.ai/report/patrickvonplaten/xm6cd5q5).
 You can use the `Step` slider to see how the model learned the features of our subject while the model trained.
 
+Optionally, we can also train additional LoRA layers for the text encoder. Specify the `train_text_encoder` argument above for that. If you're interested to know more about how we
+enable this support, check out this [PR](https://github.com/huggingface/diffusers/pull/2918). 
+
+With the default hyperparameters from the above, the training seems to go in a positive direction. Check out [this panel](https://wandb.ai/sayakpaul/dreambooth-lora/reports/test-23-04-17-17-00-13---Vmlldzo0MDkwNjMy). The trained LoRA layers are available [here](https://huggingface.co/sayakpaul/dreambooth).
+
+
 ### Inference
 
 After training, LoRA weights can be loaded very easily into the original pipeline. First, you need to 
