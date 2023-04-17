@@ -119,6 +119,8 @@ class ConfigMixin:
         self._internal_dict = FrozenDict(internal_dict)
 
     def __getattr__(self, name):
+        """The only reason we overwrite `getattr` here is to gracefully deprecate accessing
+        config attributes directly. See https://github.com/huggingface/diffusers/pull/3129"""
         try:
             getattr(super(), name)
         except AttributeError as e:
@@ -136,6 +138,8 @@ class ConfigMixin:
             raise AttributeError(str(e).replace("super", self.__class__.__name__))
 
     def _safe_hasattr(self, name):
+        """This method should NOT be used and is only implemented for `def __getattr__`
+        for deprecation purposes"""
         try:
             self.__getattribute__(name)
         except AttributeError:
