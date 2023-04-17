@@ -32,6 +32,7 @@ from ..utils import (
     WEIGHTS_NAME,
     _add_variant,
     _get_model_file,
+    deprecate,
     is_accelerate_available,
     is_safetensors_available,
     is_torch_version,
@@ -155,6 +156,24 @@ class ModelMixin(torch.nn.Module):
 
     def __init__(self):
         super().__init__()
+
+    def __getattr__(self, name):
+        """The only reason we overwrite `getattr` here is to gracefully deprecate accessing
+        config attributes directly. See https://github.com/huggingface/diffusers/pull/3129"""
+        try:
+            return super().__getattr__(name)
+        except AttributeError as e:
+            try:
+                is_in_config = self._safe_hasattr("_internal_dict") and hasattr(self._internal_dict, name)
+                is_attribute = self._safe_hasattr(name)
+                if is_in_config and not is_attribute:
+                    deprecation_message = f"Accessing config attribute `{name}` directly via '{self.__class__.__name__}' object attribute is deprecated. Please access '{name}' over '{self.__class__.__name__}'s config object instead, e.g. 'unet.config.{name}' or 'scheduler.config.{name}'."
+                    deprecate("direct config name access", "1.0.0", deprecation_message, standard_warn=False)
+                    return self._internal_dict[name]
+            except AttributeError as e:
+                raise AttributeError(str(e).replace("super", self.__class__.__name__))
+
+            raise AttributeError(str(e).replace("super", self.__class__.__name__))
 
     @property
     def is_gradient_checkpointing(self) -> bool:
