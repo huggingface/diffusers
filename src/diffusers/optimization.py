@@ -86,10 +86,9 @@ def get_constant_schedule_with_rules(optimizer: Optimizer, rules: str, last_epoc
         optimizer ([`~torch.optim.Optimizer`]):
             The optimizer for which to schedule the learning rate.
         rule (`string`):
-            The rules for the learning rate.
-            ex: rules="1:10,0.1:20,0.01:30,0.005"
-            it means that the learning rate is multiple 1 for the first 10 steps, mutiple 0.1 for the
-            next 20 steps, multiple 0.01 for the next 30 steps and multiple 0.005 for the other steps.
+            The rules for the learning rate. ex: rules="1:10,0.1:20,0.01:30,0.005" it means that the learning rate is
+            multiple 1 for the first 10 steps, mutiple 0.1 for the next 20 steps, multiple 0.01 for the next 30 steps
+            and multiple 0.005 for the other steps.
         last_epoch (`int`, *optional*, defaults to -1):
             The index of the last epoch when resuming training.
 
