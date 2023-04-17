@@ -99,8 +99,8 @@ class VaeImageProcessor(ConfigMixin):
         Resize a PIL image. Both height and width will be downscaled to the next integer multiple of `vae_scale_factor`
         """
         w, h = images.size
-        w, h = (x - x % self.vae_scale_factor for x in (w, h))  # resize to integer multiple of vae_scale_factor
-        images = images.resize((w, h), resample=PIL_INTERPOLATION[self.resample])
+        w, h = (x - x % self.config.vae_scale_factor for x in (w, h))  # resize to integer multiple of vae_scale_factor
+        images = images.resize((w, h), resample=PIL_INTERPOLATION[self.config.resample])
         return images
 
     def preprocess(
@@ -119,7 +119,7 @@ class VaeImageProcessor(ConfigMixin):
             )
 
         if isinstance(image[0], PIL.Image.Image):
-            if self.do_resize:
+            if self.config.do_resize:
                 image = [self.resize(i) for i in image]
             image = [np.array(i).astype(np.float32) / 255.0 for i in image]
             image = np.stack(image, axis=0)  # to np
@@ -129,23 +129,27 @@ class VaeImageProcessor(ConfigMixin):
             image = np.concatenate(image, axis=0) if image[0].ndim == 4 else np.stack(image, axis=0)
             image = self.numpy_to_pt(image)
             _, _, height, width = image.shape
-            if self.do_resize and (height % self.vae_scale_factor != 0 or width % self.vae_scale_factor != 0):
+            if self.config.do_resize and (
+                height % self.config.vae_scale_factor != 0 or width % self.config.vae_scale_factor != 0
+            ):
                 raise ValueError(
-                    f"Currently we only support resizing for PIL image - please resize your numpy array to be divisible by {self.vae_scale_factor}"
+                    f"Currently we only support resizing for PIL image - please resize your numpy array to be divisible by {self.config.vae_scale_factor}"
                     f"currently the sizes are {height} and {width}. You can also pass a PIL image instead to use resize option in VAEImageProcessor"
                 )
 
         elif isinstance(image[0], torch.Tensor):
             image = torch.cat(image, axis=0) if image[0].ndim == 4 else torch.stack(image, axis=0)
             _, _, height, width = image.shape
-            if self.do_resize and (height % self.vae_scale_factor != 0 or width % self.vae_scale_factor != 0):
+            if self.config.do_resize and (
+                height % self.config.vae_scale_factor != 0 or width % self.config.vae_scale_factor != 0
+            ):
                 raise ValueError(
-                    f"Currently we only support resizing for PIL image - please resize your pytorch tensor to be divisible by {self.vae_scale_factor}"
+                    f"Currently we only support resizing for PIL image - please resize your pytorch tensor to be divisible by {self.config.vae_scale_factor}"
                     f"currently the sizes are {height} and {width}. You can also pass a PIL image instead to use resize option in VAEImageProcessor"
                 )
 
         # expected range [0,1], normalize to [-1,1]
-        do_normalize = self.do_normalize
+        do_normalize = self.config.do_normalize
         if image.min() < 0:
             warnings.warn(
                 "Passing `image` as torch tensor with value range in [-1,1] is deprecated. The expected value range for image tensor is [0,1] "
