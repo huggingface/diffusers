@@ -106,7 +106,7 @@ def get_constant_schedule_with_rules(optimizer: Optimizer, rules: str, last_epoc
         rules_dict[steps] = value
     last_lr = float(rule_list[-1])
 
-    def create_rules_function():
+    def create_rules_function(rules_dict, last_lr):
         def rule_func(steps: int) -> float:
             sorted_steps = sorted(rules_dict.keys())
             for i, sorted_step in enumerate(sorted_steps):
@@ -116,7 +116,7 @@ def get_constant_schedule_with_rules(optimizer: Optimizer, rules: str, last_epoc
 
         return rule_func
 
-    rules_f = create_rules_function()
+    rules_f = create_rules_function(rules_dict, last_lr)
 
     return LambdaLR(optimizer, rules_f, last_epoch=last_epoch)
 
@@ -283,6 +283,7 @@ TYPE_TO_SCHEDULER_FUNCTION = {
 def get_scheduler(
     name: Union[str, SchedulerType],
     optimizer: Optimizer,
+    rules: Optional[str] = None,
     num_warmup_steps: Optional[int] = None,
     num_training_steps: Optional[int] = None,
     num_cycles: int = 1,
@@ -314,6 +315,9 @@ def get_scheduler(
     schedule_func = TYPE_TO_SCHEDULER_FUNCTION[name]
     if name == SchedulerType.CONSTANT:
         return schedule_func(optimizer, last_epoch=last_epoch)
+
+    if name == SchedulerType.CONSTANT_WITH_RULES:
+        return schedule_func(optimizer, rules=rules, last_epoch=last_epoch)
 
     # All other schedulers require `num_warmup_steps`
     if num_warmup_steps is None:
