@@ -118,34 +118,23 @@ class ConfigMixin:
 
         self._internal_dict = FrozenDict(internal_dict)
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
         """The only reason we overwrite `getattr` here is to gracefully deprecate accessing
-        config attributes directly. See https://github.com/huggingface/diffusers/pull/3129"""
-        try:
-            return super().__getattr__(name)
-        except AttributeError as e:
-            try:
-                is_in_config = self._safe_hasattr("_internal_dict") and hasattr(self._internal_dict, name)
-                if is_in_config:
-                    deprecation_message = f"Accessing config attribute `{name}` directly via '{self.__class__.__name__}' object attribute is deprecated. Please access '{name}' over '{self.__class__.__name__}'s config object instead, e.g. 'unet.config.{name}' or 'scheduler.config.{name}'."
-                    deprecate("direct config name access", "1.0.0", deprecation_message, standard_warn=False)
-                    return self._internal_dict[name]
-            except AttributeError as e:
-                error = str(e).replace("super", self.__class__.__name__).replace("__getattr__", name)
-                raise AttributeError(error)
+        config attributes directly. See https://github.com/huggingface/diffusers/pull/3129
 
-            error = str(e).replace("super", self.__class__.__name__).replace("__getattr__", name)
-            raise AttributeError(error)
+        Tihs funtion is mostly copied from PyTorch's __getattr__ overwrite:
+        https://pytorch.org/docs/stable/_modules/torch/nn/modules/module.html#Module
+        """
 
-    def _safe_hasattr(self, name):
-        """This method should NOT be used and is only implemented for `def __getattr__`
-        for deprecation purposes"""
-        try:
-            self.__getattribute__(name)
-        except AttributeError:
-            return False
+        is_in_config = "_internal_dict" in self.__dict__ and hasattr(self.__dict__["_internal_dict"], name)
+        is_attribute = name in self.__dict__
 
-        return True
+        if is_in_config and not is_attribute:
+            deprecation_message = f"Accessing config attribute `{name}` directly via '{self.__class__.__name__}' object attribute is deprecated. Please access '{name}' over '{self.__class__.__name__}'s config object instead, e.g. 'unet.config.{name}' or 'scheduler.config.{name}'."
+            deprecate("direct config name access", "1.0.0", deprecation_message, standard_warn=False)
+            return self._internal_dict[name]
+
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
     def save_config(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
         """
