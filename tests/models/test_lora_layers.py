@@ -71,6 +71,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
             beta_schedule="scaled_linear",
             clip_sample=False,
             set_alpha_to_one=False,
+            steps_offset=1,
         )
         torch.manual_seed(0)
         vae = AutoencoderKL(
