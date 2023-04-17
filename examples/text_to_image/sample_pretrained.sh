@@ -1,0 +1,2 @@
+python3 sample_pretrained.py --prompts "Kelly McKernan" \
+            --num_images 1000 --output_dir "/scratch/mp5847/diffusers_generated_datasets/kelly_mckernan_multi" --random_prompt --create_metadata

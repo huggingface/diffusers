@@ -4,7 +4,7 @@ import os
 import json
 from math import ceil, sqrt
 from PIL import Image
-from utils import save_image, concat_images_in_square_grid
+from utils import save_image, concat_images_in_square_grid, get_random_prompt
 import argparse
 
 #add parser function
@@ -18,6 +18,7 @@ def parse_args():
     #create a store_true argument
     parser.add_argument('--create_metadata', action='store_true', help='if set, create json file with metadata')
     parser.add_argument('--create_grid', action='store_true', help='if set, create grid of images')
+    parser.add_argument('--random_prompt', action='store_true', help='if set, select random prompt from prompts.json file')
 
     return parser.parse_args()
 
@@ -40,8 +41,14 @@ if __name__ == "__main__":
 
     for p in args.prompts:
         for i in range(args.num_images):    
+            
             while(True):
-                nsfw = save_image(pipe_pretrained, p, os.path.join(args.output_dir, f"train/{p}_{i}.png"))
+                if(args.random_prompt):
+                    prompt = get_random_prompt(p)
+                    nsfw = save_image(pipe_pretrained, get_random_prompt(p), os.path.join(args.output_dir, f"train/{prompt}_{i}.png"))
+                else:
+                    prompt = p
+                    nsfw = save_image(pipe_pretrained, p, os.path.join(args.output_dir, f"train/{prompt}_{i}.png"))
                 
                 #check if nsfw is a list
                 if isinstance(nsfw, list):
@@ -51,11 +58,11 @@ if __name__ == "__main__":
                     break
             
             if(args.create_metadata):
-                metadata.append({'file_name': f"train/{p}_{i}.png", 'text': p})
+                metadata.append({'file_name': f"train/{prompt}_{i}.png", 'text': prompt})
     
     if(args.create_grid):
         for p in args.prompts:
-            concat_images_in_square_grid(args.output_dir, p, os.path.join(args.output_dir, f"grid {p}.png"))
+            concat_images_in_square_grid(os.path.join(args.output_dir, "train"), p, os.path.join(args.output_dir, f"grid {p}.png"))
     
     if(args.create_metadata):
         

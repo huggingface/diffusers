@@ -18,6 +18,7 @@ def parse_args():
     parser.add_argument('--output_dir', type=str, default="/scratch/mp5847/diffusers_ckpt/output", help='output directory')
     parser.add_argument('--lora_edit_alpha', type=float, default=-0.97, help='amount of edit to lora layer')
     parser.add_argument('--tv_edit_alpha', type=float, default=0.5, help='amount of edit to task vector layer')
+    parser.add_argument('--create_grid', action='store_true', help='if set, create grid of images')
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -80,9 +81,10 @@ if __name__ == "__main__":
 
                 if not nsfw:
                     break
-
-    for p in args.prompts:
-        concat_images_in_square_grid(args.output_dir, p, os.path.join(args.output_dir, f"grid {p}.png"))
+    
+    if(args.create_grid):
+        for p in args.prompts:
+            concat_images_in_square_grid(args.output_dir, p, os.path.join(args.output_dir, f"grid {p}.png"))
 
     print("Done!")
     
