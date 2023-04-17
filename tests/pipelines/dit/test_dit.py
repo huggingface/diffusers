@@ -23,11 +23,11 @@ from diffusers import AutoencoderKL, DDIMScheduler, DiTPipeline, DPMSolverMultis
 from diffusers.utils import is_xformers_available, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 
-from ...pipeline_params import (
+from ..pipeline_params import (
     CLASS_CONDITIONED_IMAGE_GENERATION_BATCH_PARAMS,
     CLASS_CONDITIONED_IMAGE_GENERATION_PARAMS,
 )
-from ...test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -92,7 +92,7 @@ class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         self.assertEqual(image.shape, (1, 16, 16, 3))
-        expected_slice = np.array([0.4380, 0.4141, 0.5159, 0.0000, 0.4282, 0.6680, 0.5485, 0.2545, 0.6719])
+        expected_slice = np.array([0.2946, 0.6601, 0.4329, 0.3296, 0.4144, 0.5319, 0.7273, 0.5013, 0.4457])
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 

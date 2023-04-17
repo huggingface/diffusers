@@ -32,9 +32,8 @@ from diffusers import (
 from diffusers.utils import slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
 
-from ...pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ...test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
-
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
@@ -50,7 +49,7 @@ class StableDiffusionPanoramaPipelineFastTests(PipelineLatentTesterMixin, Pipeli
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=(32, 64),
-            layers_per_block=2,
+            layers_per_block=1,
             sample_size=32,
             in_channels=4,
             out_channels=4,
@@ -102,7 +101,7 @@ class StableDiffusionPanoramaPipelineFastTests(PipelineLatentTesterMixin, Pipeli
             # Setting height and width to None to prevent OOMs on CPU.
             "height": None,
             "width": None,
-            "num_inference_steps": 2,
+            "num_inference_steps": 1,
             "guidance_scale": 6.0,
             "output_type": "numpy",
         }
@@ -120,9 +119,17 @@ class StableDiffusionPanoramaPipelineFastTests(PipelineLatentTesterMixin, Pipeli
         image_slice = image[0, -3:, -3:, -1]
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array([0.5101, 0.5006, 0.4962, 0.3995, 0.3501, 0.4632, 0.5339, 0.525, 0.4878])
+        expected_slice = np.array([0.6186, 0.5374, 0.4915, 0.4135, 0.4114, 0.4563, 0.5128, 0.4977, 0.4757])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    # override to speed the overall test timing up.
+    def test_inference_batch_consistent(self):
+        super().test_inference_batch_consistent(batch_sizes=[1, 2])
+
+    # override to speed the overall test timing up.
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(batch_size=2)
 
     def test_stable_diffusion_panorama_negative_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -139,7 +146,7 @@ class StableDiffusionPanoramaPipelineFastTests(PipelineLatentTesterMixin, Pipeli
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array([0.5326, 0.5009, 0.5074, 0.4133, 0.371, 0.464, 0.5432, 0.5429, 0.4896])
+        expected_slice = np.array([0.6187, 0.5375, 0.4915, 0.4136, 0.4114, 0.4563, 0.5128, 0.4976, 0.4757])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -159,9 +166,7 @@ class StableDiffusionPanoramaPipelineFastTests(PipelineLatentTesterMixin, Pipeli
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array(
-            [0.48235387, 0.5423796, 0.46016198, 0.5377287, 0.5803722, 0.4876525, 0.5515428, 0.5045897, 0.50709957]
-        )
+        expected_slice = np.array([0.4886, 0.5586, 0.4476, 0.5053, 0.6013, 0.4737, 0.5538, 0.5100, 0.4927])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 

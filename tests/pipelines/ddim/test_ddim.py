@@ -21,8 +21,8 @@ import torch
 from diffusers import DDIMPipeline, DDIMScheduler, UNet2DModel
 from diffusers.utils.testing_utils import require_torch_gpu, slow, torch_device
 
-from ...pipeline_params import UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS, UNCONDITIONAL_IMAGE_GENERATION_PARAMS
-from ...test_pipelines_common import PipelineTesterMixin
+from ..pipeline_params import UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS, UNCONDITIONAL_IMAGE_GENERATION_PARAMS
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False

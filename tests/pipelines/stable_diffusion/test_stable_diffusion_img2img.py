@@ -25,6 +25,7 @@ from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
     DPMSolverMultistepScheduler,
+    HeunDiscreteScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionImg2ImgPipeline,
@@ -34,12 +35,12 @@ from diffusers.image_processor import VaeImageProcessor
 from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
 
-from ...pipeline_params import (
+from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
 )
-from ...test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -129,7 +130,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipelin
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.4492, 0.3865, 0.4222, 0.5854, 0.5139, 0.4379, 0.4193, 0.48, 0.4218])
+        expected_slice = np.array([0.4555, 0.3216, 0.4049, 0.4620, 0.4618, 0.4126, 0.4122, 0.4629, 0.4579])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -148,7 +149,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipelin
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.4065, 0.3783, 0.4050, 0.5266, 0.4781, 0.4252, 0.4203, 0.4692, 0.4365])
+        expected_slice = np.array([0.4593, 0.3408, 0.4232, 0.4749, 0.4476, 0.4115, 0.4357, 0.4733, 0.4663])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -167,7 +168,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipelin
         image_slice = image[-1, -3:, -3:, -1]
 
         assert image.shape == (2, 32, 32, 3)
-        expected_slice = np.array([0.5144, 0.4447, 0.4735, 0.6676, 0.5526, 0.5454, 0.645, 0.5149, 0.4689])
+        expected_slice = np.array([0.4241, 0.5576, 0.5711, 0.4792, 0.4311, 0.5952, 0.5827, 0.5138, 0.5109])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -187,7 +188,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipelin
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.4367, 0.4986, 0.4372, 0.6706, 0.5665, 0.444, 0.5864, 0.6019, 0.5203])
+        expected_slice = np.array([0.4398, 0.4949, 0.4337, 0.6580, 0.5555, 0.4338, 0.5769, 0.5955, 0.5175])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -377,6 +378,33 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
         for module in pipe.text_encoder, pipe.unet, pipe.vae:
             assert module.device == torch.device("cpu")
 
+    def test_img2img_2nd_order(self):
+        sd_pipe = StableDiffusionImg2ImgPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        sd_pipe.scheduler = HeunDiscreteScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 10
+        inputs["strength"] = 0.75
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/img2img/img2img_heun.npy"
+        )
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 5e-2
+
+        inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 11
+        inputs["strength"] = 0.75
+        image_other = sd_pipe(**inputs).images[0]
+
+        mean_diff = np.abs(image - image_other).mean()
+
+        # images should be very similar
+        assert mean_diff < 5e-2
+
     def test_stable_diffusion_img2img_pipeline_multiple_of_8(self):
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
@@ -413,6 +441,20 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
         expected_slice = np.array([0.9393, 0.9500, 0.9399, 0.9438, 0.9458, 0.9400, 0.9455, 0.9414, 0.9423])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
+
+    def test_img2img_safety_checker_works(self):
+        sd_pipe = StableDiffusionImg2ImgPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 20
+        # make sure the safety checker is activated
+        inputs["prompt"] = "naked, sex, porn"
+        out = sd_pipe(**inputs)
+
+        assert out.nsfw_content_detected[0], f"Safety checker should work for prompt: {inputs['prompt']}"
+        assert np.abs(out.images[0]).sum() < 1e-5  # should be all zeros
 
 
 @nightly

@@ -61,6 +61,7 @@ Resources:
 To generate a video from prompt, run the following python command
 ```python
 import torch
+import imageio
 from diffusers import TextToVideoZeroPipeline
 
 model_id = "runwayml/stable-diffusion-v1-5"
@@ -68,6 +69,7 @@ pipe = TextToVideoZeroPipeline.from_pretrained(model_id, torch_dtype=torch.float
 
 prompt = "A panda is playing guitar on times square"
 result = pipe(prompt=prompt).images
+result = [(r * 255).astype("uint8") for r in result]
 imageio.mimsave("video.mp4", result, fps=4)
 ```
 You can change these parameters in the pipeline call:
@@ -95,6 +97,7 @@ To generate a video from prompt with additional pose control
 
 2. Read video containing extracted pose images
     ```python
+    from PIL import Image
     import imageio
 
     reader = imageio.get_reader(video_path, "ffmpeg")
@@ -151,6 +154,7 @@ To perform text-guided video editing (with [InstructPix2Pix](./stable_diffusion/
 
 2. Read video from path
     ```python
+    from PIL import Image
     import imageio
 
     reader = imageio.get_reader(video_path, "ffmpeg")
@@ -174,14 +178,14 @@ To perform text-guided video editing (with [InstructPix2Pix](./stable_diffusion/
     ```
 
 
-### Dreambooth specialization 
+### DreamBooth specialization 
 
 Methods **Text-To-Video**, **Text-To-Video with Pose Control** and **Text-To-Video with Edge Control**
 can run with custom [DreamBooth](../training/dreambooth) models, as shown below for
 [Canny edge ControlNet model](https://huggingface.co/lllyasviel/sd-controlnet-canny) and
 [Avatar style DreamBooth](https://huggingface.co/PAIR/text2video-zero-controlnet-canny-avatar) model
 
-1. Download demo video from huggingface
+1. Download a demo video
 
     ```python
     from huggingface_hub import hf_hub_download
@@ -193,6 +197,7 @@ can run with custom [DreamBooth](../training/dreambooth) models, as shown below 
 
 2. Read video from path
     ```python
+    from PIL import Image
     import imageio
 
     reader = imageio.get_reader(video_path, "ffmpeg")
