@@ -7,6 +7,8 @@ from PIL import Image
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
+from diffusers import DiffusionPipeline
+
 def preprocess(image):
     if isinstance(image, Image.Image):
         w, h = image.size
@@ -128,40 +130,27 @@ class EDICTScheduler:
 
 
 
-class Pipeline:
+class Pipeline(DiffusionPipeline):
     def __init__(
         self,
+        vae: AutoencoderKL,
+        text_encoder: CLIPTextModel,
+        tokenizer: CLIPTokenizer,
+        unet: UNet2DConditionModel,
         scheduler: EDICTScheduler,
-        clip_path: str = "openai/clip-vit-large-patch14",
-        sd_path: str = "CompVis/stable-diffusion-v1-4",
-        vae_path: str = None,
-        revision: str = "fp16",
-        torch_dtype: torch.dtype = torch.float16,
         leapfrog_steps: bool = True,
-        device: Union[str, torch.device] = "cuda",
     ):
         self.scheduler = scheduler
         self.leapfrog_steps = leapfrog_steps
-        self.device = device
+        
+        super().__init__()
+        self.register_modules(
+            vae=vae,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            unet=unet,
+        )
 
-        self.unet = UNet2DConditionModel.from_pretrained(
-            sd_path,
-            subfolder="unet",
-            revision=revision,
-            torch_dtype=torch_dtype,
-        ).to(device)
-
-        self.vae = AutoencoderKL.from_pretrained(
-            sd_path if vae_path is None else vae_path,
-            subfolder="vae" if vae_path is None else None,
-            revision=revision,
-            torch_dtype=torch_dtype,
-        ).to(device)
-
-        self.tokenizer = CLIPTokenizer.from_pretrained(clip_path)
-        self.encoder = CLIPTextModel.from_pretrained(
-            clip_path, torch_dtype=torch_dtype
-        ).to(device)
 
     def encode_prompt(self, prompt: str, negative_prompt: Optional[str] = None):
         null_prompt = "" if negative_prompt is None else negative_prompt
