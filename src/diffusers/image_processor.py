@@ -170,7 +170,7 @@ class VaeImageProcessor(ConfigMixin):
     ):
         if output_type not in ["latent", "pt", "np", "pil"]:
             deprecation_message = (
-                f"the output_type {output_type} is outdated. Please make sure to set it to one of these instead: "
+                f"the output_type {output_type} is outdated and has been set to `np`. Please make sure to set it to one of these instead: "
                 "`pil`, `np`, `pt`, `latent`"
             )
             deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
