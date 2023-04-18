@@ -2,7 +2,6 @@ import random
 import unittest
 
 import numpy as np
-import pytest
 import torch
 from PIL import Image
 from transformers import (
@@ -158,7 +157,6 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         }
         return inputs
 
-    # @pytest.mark.xfail(reason="not finished debugging")
     def test_unidiffuser_default_joint(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -186,7 +184,6 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # TODO: need to figure out correct text output
         print(text)
 
-    @pytest.mark.xfail(reason="haven't begun debugging")
     def test_unidiffuser_default_text2img(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -208,7 +205,6 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         expected_slice = np.array([0.3965, 0.4568, 0.4495, 0.4590, 0.4463, 0.4690, 0.5454, 0.5093, 0.4321])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
-    @pytest.mark.xfail(reason="haven't begun debugging")
     def test_unidiffuser_default_img2text(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -227,8 +223,8 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         # TODO: need to figure out correct text output
         print(text)
+        assert 0 == 1
 
-    @pytest.mark.xfail(reason="haven't begun debugging")
     def test_unidiffuser_default_text(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -248,8 +244,8 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         # TODO: need to figure out correct text output
         print(text)
+        assert 0 == 1
 
-    @pytest.mark.xfail(reason="haven't begun debugging")
     def test_unidiffuser_default_image(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -268,8 +264,8 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image = unidiffuser_pipe(**inputs).images
         assert image.shape == (1, 32, 32, 3)
 
-        # TODO: get expected slice of image output
         image_slice = image[0, -3:, -3:, -1]
+        print(image_slice.flatten())
         expected_slice = np.array([0.3967, 0.4568, 0.4495, 0.4590, 0.4463, 0.4690, 0.5454, 0.5093, 0.4321])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
