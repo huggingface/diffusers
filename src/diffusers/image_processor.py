@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import warnings
-from typing import Union
+from typing import Union, Optional, List
 
 import numpy as np
 import PIL
@@ -93,6 +93,13 @@ class VaeImageProcessor(ConfigMixin):
         Normalize an image array to [-1,1]
         """
         return 2.0 * images - 1.0
+    
+    @staticmethod
+    def denormalize(images):
+        """
+        Denormalize an image array to [0,1]
+        """
+        return (images / 2 + 0.5).clamp(0, 1)
 
     def resize(self, images: PIL.Image.Image) -> PIL.Image.Image:
         """
@@ -165,9 +172,14 @@ class VaeImageProcessor(ConfigMixin):
 
     def postprocess(
         self,
-        image,
+        image: torch.FloatTensor,
         output_type: str = "pil",
-    ):
+        do_normalize: Optional[Union[List[bool], bool]] = None,
+    ):  
+        if not isinstance(image, torch.Tensor):
+            raise ValueError(
+                f"Input for postprocess is in incorrect format: {type(image)}.  we only support pytorch tensor"
+            )
         if output_type not in ["latent", "pt", "np", "pil"]:
             deprecation_message = (
                 f"the output_type {output_type} is outdated and has been set to `np`. Please make sure to set it to one of these instead: "
@@ -179,10 +191,12 @@ class VaeImageProcessor(ConfigMixin):
         if output_type == "latent":
             return image
 
-        if self.config.do_normalize:
-            image = (image / 2 + 0.5).clamp(0, 1)
+        if not isinstance(do_normalize, list):
+            do_normalize = image.shape[0] * [do_normalize or self.config.do_normalize]
+        
+        image = torch.stack([self.denormalize(image[i]) if do_normalize[i] else image[i] for i in range(image.shape[0])])
 
-        if isinstance(image, torch.Tensor) and output_type == "pt":
+        if output_type == "pt":
             return image
 
         image = self.pt_to_numpy(image)

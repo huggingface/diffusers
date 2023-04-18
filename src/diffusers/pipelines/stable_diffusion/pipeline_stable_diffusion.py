@@ -423,11 +423,14 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
 
         return prompt_embeds
 
-    def run_safety_checker(self, image, device, dtype, output_type="pil"):
-        if self.safety_checker is None or output_type == "latent":
+    def run_safety_checker(self, image, device, dtype):
+        if self.safety_checker is None:
             has_nsfw_concept = False
         else:
-            feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
+            if torch.is_tensor(image):
+                feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
+            else:
+                feature_extractor_input = self.image_processor.numpy_to_pil(image)
             safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
             image, has_nsfw_concept = self.safety_checker(
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
@@ -705,10 +708,12 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor).sample
-
-        image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype, output_type=output_type)
-
-        image = self.image_processor.postprocess(image, output_type=output_type)
+            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+        else:
+            has_nsfw_concept = False
+        
+        do_normalize = [not has_nsfw for has_nsfw in has_nsfw_concept] if isinstance(has_nsfw_concept, list) else not has_nsfw_concept
+        image = self.image_processor.postprocess(image, output_type=output_type, do_normalize=do_normalize)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
