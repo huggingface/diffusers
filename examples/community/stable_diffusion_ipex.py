@@ -15,12 +15,16 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
+import intel_extension_for_pytorch as ipex
 import torch
 from packaging import version
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from diffusers.configuration_utils import FrozenDict
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
+from diffusers.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
+from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     deprecate,
@@ -30,11 +34,6 @@ from diffusers.utils import (
     randn_tensor,
     replace_example_docstring,
 )
-from diffusers.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
-
-import intel_extension_for_pytorch as ipex
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -173,7 +172,6 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline):
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     def get_input_example(self, prompt, height=None, width=None, guidance_scale=7.5, num_images_per_prompt=1):
-
         prompt_embeds = None
         negative_prompt_embeds = None
         negative_prompt = None
@@ -237,7 +235,7 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline):
         self.unet = self.unet.to(memory_format=torch.channels_last)
         self.vae.decoder = self.vae.decoder.to(memory_format=torch.channels_last)
         self.text_encoder = self.text_encoder.to(memory_format=torch.channels_last)
-        if self.safety_checker != None:
+        if self.safety_checker is not None:
             self.safety_checker = self.safety_checker.to(memory_format=torch.channels_last)
 
         unet_input_example, vae_decoder_input_example = self.get_input_example(promt, height, width, guidance_scale)
@@ -249,7 +247,7 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline):
             )
             self.vae.decoder = ipex.optimize(self.vae.decoder.eval(), dtype=torch.bfloat16, inplace=True)
             self.text_encoder = ipex.optimize(self.text_encoder.eval(), dtype=torch.bfloat16, inplace=True)
-            if self.safety_checker != None:
+            if self.safety_checker is not None:
                 self.safety_checker = ipex.optimize(self.safety_checker.eval(), dtype=torch.bfloat16, inplace=True)
         elif infer_type == "fp32":
             self.unet = ipex.optimize(
@@ -277,7 +275,7 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline):
                 weights_prepack=True,
                 auto_kernel_selection=False,
             )
-            if self.safety_checker != None:
+            if self.safety_checker is not None:
                 self.safety_checker = ipex.optimize(
                     self.safety_checker.eval(),
                     dtype=torch.float32,
@@ -287,7 +285,7 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline):
                     auto_kernel_selection=False,
                 )
         else:
-            raise ValueError(f" The value of infer_type should be 'bf16' or 'fp32' !")
+            raise ValueError(" The value of infer_type should be 'bf16' or 'fp32' !")
 
         # trace unet model to get better performance on IPEX
         with torch.cpu.amp.autocast(enabled=infer_type == "bf16"), torch.no_grad():
@@ -817,7 +815,6 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline):
             image = latents
             has_nsfw_concept = None
         elif output_type == "pil":
-
             # 8. Post-processing
             image = self.decode_latents(latents)
 
@@ -827,7 +824,6 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline):
             # 10. Convert to PIL
             image = self.numpy_to_pil(image)
         else:
-
             # 8. Post-processing
             image = self.decode_latents(latents)
 
