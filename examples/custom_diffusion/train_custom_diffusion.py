@@ -56,7 +56,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.14.0")
+check_min_version("0.15.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -82,7 +82,7 @@ def save_model_card(repo_id: str, images=None, base_model=str, prompt=str, repo_
         - stable-diffusion-diffusers
         - text-to-image
         - diffusers
-        - custom diffusion
+        - custom-diffusion
         inference: true
         ---
             """
@@ -289,6 +289,7 @@ class CustomDiffusionDataset(Dataset):
 
 
 def save_new_embed(text_encoder, modifier_token_id, accelerator, args, output_dir):
+    """Saves the new token embeddings from the text encoder."""
     logger.info("Saving embeddings")
     learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight
     for x, y in zip(modifier_token_id, args.modifier_token):
@@ -298,7 +299,7 @@ def save_new_embed(text_encoder, modifier_token_id, accelerator, args, output_di
 
 
 def parse_args(input_args=None):
-    parser = argparse.ArgumentParser(description="Simple example of a training script.")
+    parser = argparse.ArgumentParser(description="Custom Diffusion training script.")
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
@@ -358,7 +359,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--validation_steps",
         type=int,
-        default=500,
+        default=50,
         help=(
             "Run dreambooth validation every X epochs. Dreambooth validation consists of running the prompt"
             " `args.validation_prompt` multiple times: `args.num_validation_images`."
@@ -1266,7 +1267,12 @@ def main(args):
                 repo_folder=args.output_dir,
             )
             api = HfApi(token=args.hub_token)
-            api.upload_folder(repo_id=repo_id, folder_path=args.output_dir, path_in_repo=".", repo_type="model")
+            api.upload_folder(
+                repo_id=repo_id,
+                folder_path=args.output_dir,
+                commit_message="End of training",
+                ignore_patterns=["step_*", "epoch_*"],
+            )
 
     accelerator.end_training()
 

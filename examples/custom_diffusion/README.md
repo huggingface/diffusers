@@ -44,7 +44,7 @@ Or if your environment doesn't support an interactive shell e.g. a notebook
 from accelerate.utils import write_basic_config
 write_basic_config()
 ```
-### Cat example
+### Cat example 😺
 
 Now let's get our dataset. Download dataset from [here](https://www.cs.cmu.edu/~custom-diffusion/assets/data.zip) and unzip it. 
 
@@ -82,7 +82,37 @@ accelerate launch train_custom_diffusion.py \
 
 **Use `--enable_xformers_memory_efficient_attention` for faster training with lower VRAM requirement (16GB per GPU). Follow [this guide](https://github.com/facebookresearch/xformers) for installation instructions.**
 
-### Training on multiple concepts
+To track your experiments using Weights and Biases (`wandb`) and to save intermediate results (whcih we HIGHLY recommend), follow these steps:
+
+* Install `wandb`: `pip install wandb`.
+* Authorize: `wandb login`. 
+* Then specify a `validation_prompt` and set `report_to` to `wandb` while launching training. You can also configure the following related arguments:
+    * `num_validation_images`
+    * `validation_steps`
+
+Here is an example command:
+
+```bash
+accelerate launch train_custom_diffusion.py \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --instance_data_dir=$INSTANCE_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --class_data_dir=./real_reg/samples_cat/ \
+  --with_prior_preservation --real_prior --prior_loss_weight=1.0 \
+  --class_prompt="cat" --num_class_images=200 \
+  --instance_prompt="photo of a <new1> cat"  \
+  --resolution=512  \
+  --train_batch_size=2  \
+  --learning_rate=1e-5  \
+  --lr_warmup_steps=0 \
+  --max_train_steps=250 \
+  --scale_lr --hflip  \
+  --modifier_token "<new1>" \
+  --validation_promot="<new1> cat sitting in a bucket" \
+  --report_to="wandb"
+```
+
+### Training on multiple concepts 🐱🪵
 
 Provide a [json](https://github.com/adobe-research/custom-diffusion/blob/main/assets/concept_list.json) file with the info about each concept, similar to [this](https://github.com/ShivamShrirao/diffusers/blob/main/examples/dreambooth/train_dreambooth.py).
 
@@ -176,19 +206,64 @@ image = pipe(
 image.save("cat.png")
 ```
 
+It's possible to directly load these parameters from a Hub repository:
+
+```python
+import torch
+from huggingface_hub.repocard import RepoCard
+from diffusers import DiffusionPipeline
+
+model_id = "TODO"
+card = RepoCard.load(model_id)
+base_model_id = card.data.to_dict()["base_model"]
+
+pipe = DiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16).to(
+"cuda")
+pipe.unet.load_attn_procs(model_id, weight_name="pytorch_custom_diffusion_weights.bin")
+pipe.load_textual_inversion(model_id, weight_name="<new1>.bin")
+
+image = pipe(
+    "<new1> cat sitting in a bucket",
+    num_inference_steps=100,
+    guidance_scale=6.0,
+    eta=1.0,
+).images[0]
+image.save("cat.png")
+```
+
+Here's an example of performing inference with multiple concepts:
+
+```python
+import torch
+from huggingface_hub.repocard import RepoCard
+from diffusers import DiffusionPipeline
+
+model_id = "TODO"
+card = RepoCard.load(model_id)
+base_model_id = card.data.to_dict()["base_model"]
+
+pipe = DiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16).to(
+"cuda")
+pipe.unet.load_attn_procs(model_id, weight_name="pytorch_custom_diffusion_weights.bin")
+pipe.load_textual_inversion(model_id, weight_name="<new1>.bin")
+pipe.load_textual_inversion(model_id, weight_name="<new2>.bin")
+
+image = pipe(
+    "the <new1> cat sculpture in the style of a <new2> wooden pot",
+    num_inference_steps=100,
+    guidance_scale=6.0,
+    eta=1.0,
+).images[0]
+image.save("multi-subject.png")
+```
+
+Here, `cat` and `wooden pot` refer to the multiple concepts.
+
 ### Inference from a training checkpoint
 
 You can also perform inference from one of the complete checkpoint saved during the training process, if you used the `--checkpointing_steps` argument. 
 
-```python
-from diffusers import StableDiffusionPipeline
-import torch
-
-pipe = StableDiffusionPipeline.from_pretrained('path-to-the-model/checkpoint-250/', torch_dtype=torch.float16).to("cuda")
-image = pipe("<new1> cat sitting in a bucket", num_inference_steps=100, guidance_scale=6., eta=1.).images[0]
-
-image.save("cat.png")
-```
+TODO.
 
 ## Set grads to none
 To save even more memory, pass the `--set_grads_to_none` argument to the script. This will set grads to None instead of zero. However, be aware that it changes certain behaviors, so if you start experiencing any problems, remove this argument.
