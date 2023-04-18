@@ -515,3 +515,21 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
+
+    @property
+    def _execution_device(self):
+        r"""
+        Returns the device on which the pipeline's models will be executed. After calling
+        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
+        hooks.
+        """
+        if not hasattr(self.unet, "_hf_hook"):
+            return self.device
+        for module in self.unet.modules():
+            if (
+                hasattr(module, "_hf_hook")
+                and hasattr(module._hf_hook, "execution_device")
+                and module._hf_hook.execution_device is not None
+            ):
+                return torch.device(module._hf_hook.execution_device)
+        return self.device
