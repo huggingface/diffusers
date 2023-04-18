@@ -144,8 +144,14 @@ def parse_args():
     parser.add_argument(
         "--only_save_embeds",
         action="store_true",
-        default=False,
+        default=True,
         help="Save only the embeddings for the new concept.",
+    )
+    parser.add_argument(
+        "--num_vectors",
+        type=int,
+        default=1,
+        help="How many textual inversion vectors shall be used to learn the concept."
     )
     parser.add_argument(
         "--pretrained_model_name_or_path",
@@ -581,8 +587,19 @@ def main():
     )
 
     # Add the placeholder token in tokenizer
+    placeholder_tokens = [args.placeholder_token]
+
+    if args.num_vectors < 1:
+        raise ValueError(f"--num_vectors has to be larger or equal to 1, but is {args.num_vectors}")
+
+    # add dummy tokens for multi-vector
+    additional_tokens = []
+    for i in range(1, args.num_vectors):
+        additional_tokens.append(f"{args.placeholder_token}_{i}")
+    placeholder_tokens += additional_tokens
+
     num_added_tokens = tokenizer.add_tokens(args.placeholder_token)
-    if num_added_tokens == 0:
+    if num_added_tokens != args.num_vectors:
         raise ValueError(
             f"The tokenizer already contains the token {args.placeholder_token}. Please pass a different"
             " `placeholder_token` that is not already in the tokenizer."
@@ -595,14 +612,16 @@ def main():
         raise ValueError("The initializer token must be a single token.")
 
     initializer_token_id = token_ids[0]
-    placeholder_token_id = tokenizer.convert_tokens_to_ids(args.placeholder_token)
+    placeholder_token_ids = tokenizer.convert_tokens_to_ids(placeholder_tokens)
 
     # Resize the token embeddings as we are adding new special tokens to the tokenizer
     text_encoder.resize_token_embeddings(len(tokenizer))
 
     # Initialise the newly added placeholder token with the embeddings of the initializer token
     token_embeds = text_encoder.get_input_embeddings().weight.data
-    token_embeds[placeholder_token_id] = token_embeds[initializer_token_id]
+    with torch.no_grad():
+        for token_id in placeholder_token_ids:
+            token_embeds[token_id] = token_embeds[initializer_token_id].clone()
 
     # Freeze vae and unet
     vae.requires_grad_(False)
@@ -810,7 +829,7 @@ def main():
                 optimizer.zero_grad()
 
                 # Let's make sure we don't update any embedding weights besides the newly added token
-                index_no_updates = torch.arange(len(tokenizer)) != placeholder_token_id
+                index_no_updates = torch.arange(len(tokenizer)) != placeholder_tokens
                 with torch.no_grad():
                     accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[
                         index_no_updates
