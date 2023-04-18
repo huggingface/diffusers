@@ -8,8 +8,7 @@ import torch
 from ...schedulers import DDPMScheduler
 from ...utils import deprecate
 from ..onnx_utils import ORT_TO_NP_TYPE, OnnxRuntimeModel
-from ..pipeline_utils import ImagePipelineOutput
-from . import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 logger = getLogger(__name__)

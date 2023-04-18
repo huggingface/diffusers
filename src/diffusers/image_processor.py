@@ -178,8 +178,9 @@ class VaeImageProcessor(ConfigMixin):
 
         if output_type == "latent":
             return image
-
-        image = (image / 2 + 0.5).clamp(0, 1)
+        
+        if self.config.do_normalize:
+            image = (image / 2 + 0.5).clamp(0, 1)
 
         if isinstance(image, torch.Tensor) and output_type == "pt":
             return image
