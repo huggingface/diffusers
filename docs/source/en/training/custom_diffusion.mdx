@@ -1,3 +1,15 @@
+<!--Copyright 2023 Custom Diffusion authors The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
 # Custom Diffusion training example 
 
 [Custom Diffusion](https://arxiv.org/abs/2212.04488) is a method to customize text-to-image models like Stable Diffusion given just a few (4~5) images of a subject.
@@ -42,6 +54,7 @@ Or if your environment doesn't support an interactive shell e.g. a notebook
 
 ```python
 from accelerate.utils import write_basic_config
+
 write_basic_config()
 ```
 ### Cat example 😺
@@ -148,8 +161,6 @@ accelerate launch train_custom_diffusion.py \
   --modifier_token "<new1>+<new2>" 
 ```
 
-Here is an example [Weights and Biases page](https://wandb.ai/sayakpaul/custom-diffusion/runs/3990tzkg) where you can check out the intermediate results along with other training details.  
-
 ### Training on human faces
 
 For fine-tuning on human faces we found the following configuration to work better: `learning_rate=5e-6`, `max_train_steps=1000 to 2000`, and `freeze_model=crossattn` with at least 15-20 images. 
@@ -195,12 +206,8 @@ Once you have trained a model using the above command, you can run inference usi
 import torch
 from diffusers import DiffusionPipeline
 
-pipe = DiffusionPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16
-).to("cuda")
-pipe.unet.load_attn_procs(
-    "path-to-save-model", weight_name="pytorch_custom_diffusion_weights.bin"
-)
+pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16).to("cuda")
+pipe.unet.load_attn_procs("path-to-save-model", weight_name="pytorch_custom_diffusion_weights.bin")
 pipe.load_textual_inversion("path-to-save-model", weight_name="<new1>.bin")
 
 image = pipe(
@@ -223,8 +230,7 @@ model_id = "sayakpaul/custom-diffusion-cat"
 card = RepoCard.load(model_id)
 base_model_id = card.data.to_dict()["base_model"]
 
-pipe = DiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16).to(
-"cuda")
+pipe = DiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16).to("cuda")
 pipe.unet.load_attn_procs(model_id, weight_name="pytorch_custom_diffusion_weights.bin")
 pipe.load_textual_inversion(model_id, weight_name="<new1>.bin")
 
@@ -248,8 +254,7 @@ model_id = "sayakpaul/custom-diffusion-cat-wooden-pot"
 card = RepoCard.load(model_id)
 base_model_id = card.data.to_dict()["base_model"]
 
-pipe = DiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16).to(
-"cuda")
+pipe = DiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16).to("cuda")
 pipe.unet.load_attn_procs(model_id, weight_name="pytorch_custom_diffusion_weights.bin")
 pipe.load_textual_inversion(model_id, weight_name="<new1>.bin")
 pipe.load_textual_inversion(model_id, weight_name="<new2>.bin")
