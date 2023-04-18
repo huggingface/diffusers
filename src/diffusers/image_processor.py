@@ -178,7 +178,7 @@ class VaeImageProcessor(ConfigMixin):
 
         if output_type == "latent":
             return image
-        
+
         if self.config.do_normalize:
             image = (image / 2 + 0.5).clamp(0, 1)
 
