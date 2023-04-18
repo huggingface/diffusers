@@ -44,7 +44,7 @@ class StableDiffusionAttendAndExcitePipelineFastTests(PipelineTesterMixin, unitt
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=(32, 64),
-            layers_per_block=2,
+            layers_per_block=1,
             sample_size=32,
             in_channels=4,
             out_channels=4,
@@ -111,7 +111,7 @@ class StableDiffusionAttendAndExcitePipelineFastTests(PipelineTesterMixin, unitt
             "prompt": "a cat and a frog",
             "token_indices": [2, 5],
             "generator": generator,
-            "num_inference_steps": 2,
+            "num_inference_steps": 1,
             "guidance_scale": 6.0,
             "output_type": "numpy",
             "max_iter_to_alter": 2,
@@ -132,13 +132,18 @@ class StableDiffusionAttendAndExcitePipelineFastTests(PipelineTesterMixin, unitt
         image_slice = image[0, -3:, -3:, -1]
 
         self.assertEqual(image.shape, (1, 64, 64, 3))
-        expected_slice = np.array([0.5743, 0.6081, 0.4975, 0.5021, 0.5441, 0.4699, 0.4988, 0.4841, 0.4851])
+        expected_slice = np.array(
+            [0.63905364, 0.62897307, 0.48599017, 0.5133624, 0.5550048, 0.45769516, 0.50326973, 0.5023139, 0.45384496]
+        )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
     def test_inference_batch_consistent(self):
         # NOTE: Larger batch sizes cause this test to timeout, only test on smaller batches
-        self._test_inference_batch_consistent(batch_sizes=[2, 4])
+        self._test_inference_batch_consistent(batch_sizes=[1, 2])
+
+    def test_inference_batch_single_identical(self):
+        self._test_inference_batch_single_identical(batch_size=2)
 
 
 @require_torch_gpu
