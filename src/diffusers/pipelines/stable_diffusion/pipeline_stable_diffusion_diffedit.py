@@ -1008,7 +1008,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         image_latents = self.prepare_image_latents(
             image, batch_size * num_maps_per_mask, self.vae.dtype, device, generator
         )
-        noise = torch.randn_like(image_latents)
+        noise = randn_tensor(image_latents.shape, generator=generator, device=device, dtype=self.vae.dtype)
         image_latents = self.scheduler.add_noise(image_latents, noise, encode_timestep)
 
         latent_model_input = torch.cat([image_latents] * (4 if do_classifier_free_guidance else 2))
