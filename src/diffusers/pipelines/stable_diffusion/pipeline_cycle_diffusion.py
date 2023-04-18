@@ -511,7 +511,6 @@ class CycleDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
         if self.safety_checker is None or output_type == "latent":
             has_nsfw_concept = False
         else:
-            image = self.image_processor.postprocess(image, output_type="pt")
             feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
             safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
             image, has_nsfw_concept = self.safety_checker(

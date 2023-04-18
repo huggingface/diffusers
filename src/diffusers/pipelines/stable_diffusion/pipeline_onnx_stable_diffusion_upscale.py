@@ -6,10 +6,10 @@ import PIL
 import torch
 
 from ...schedulers import DDPMScheduler
-from ..onnx_utils import ORT_TO_NP_TYPE, OnnxRuntimeModel
 from ...utils import deprecate
-from ..pipeline_utils import DiffusionPipeline
-from . import StableDiffusionUpscalePipeline
+from ..onnx_utils import ORT_TO_NP_TYPE, OnnxRuntimeModel
+from ..pipeline_utils import ImagePipelineOutput
+from . import DiffusionPipeline
 
 
 logger = getLogger(__name__)

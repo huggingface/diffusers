@@ -29,7 +29,7 @@ from diffusers.utils.testing_utils import (
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
 from ..test_pipelines_common import (
-    PipelineLatentTesterMixin, 
+    PipelineLatentTesterMixin,
     PipelineTesterMixin,
     assert_mean_pixel_difference,
 )
