@@ -94,6 +94,7 @@ def log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight
         tokenizer=tokenizer,
         unet=unet,
         vae=vae,
+        safety_checker=None,
         revision=args.revision,
         torch_dtype=weight_dtype,
     )
@@ -128,7 +129,7 @@ def log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight
 
 def save_progress(text_encoder, placeholder_token_ids, accelerator, args, save_path):
     logger.info("Saving embeddings")
-    learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[min(placeholder_token_ids):max(placeholder_token_ids)]
+    learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[min(placeholder_token_ids):max(placeholder_token_ids) + 1]
     learned_embeds_dict = {args.placeholder_token: learned_embeds.detach().cpu()}
     torch.save(learned_embeds_dict, save_path)
 
@@ -598,7 +599,7 @@ def main():
         additional_tokens.append(f"{args.placeholder_token}_{i}")
     placeholder_tokens += additional_tokens
 
-    num_added_tokens = tokenizer.add_tokens(args.placeholder_token)
+    num_added_tokens = tokenizer.add_tokens(placeholder_tokens)
     if num_added_tokens != args.num_vectors:
         raise ValueError(
             f"The tokenizer already contains the token {args.placeholder_token}. Please pass a different"
@@ -830,7 +831,7 @@ def main():
 
                 # Let's make sure we don't update any embedding weights besides the newly added token
                 index_no_updates = index_no_updates = torch.ones((len(tokenizer),), dtype=torch.bool)
-                index_no_updates[min(placeholder_token_ids):max(placeholder_token_ids)] = False
+                index_no_updates[min(placeholder_token_ids):max(placeholder_token_ids) + 1] = False
 
                 with torch.no_grad():
                     accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[
