@@ -320,7 +320,7 @@ class StableDiffusionWalkPipeline(DiffusionPipeline):
         # Unlike in other pipelines, latents need to be generated in the target device
         # for 1-to-1 results reproducibility with the CompVis implementation.
         # However this currently doesn't work in `mps`.
-        latents_shape = (batch_size * num_images_per_prompt, self.unet.in_channels, height // 8, width // 8)
+        latents_shape = (batch_size * num_images_per_prompt, self.unet.config.in_channels, height // 8, width // 8)
         latents_dtype = text_embeddings.dtype
         if latents is None:
             if self.device.type == "mps":
@@ -416,7 +416,7 @@ class StableDiffusionWalkPipeline(DiffusionPipeline):
     def get_noise(self, seed, dtype=torch.float32, height=512, width=512):
         """Takes in random seed and returns corresponding noise vector"""
         return torch.randn(
-            (1, self.unet.in_channels, height // 8, width // 8),
+            (1, self.unet.config.in_channels, height // 8, width // 8),
             generator=torch.Generator(device=self.device).manual_seed(seed),
             device=self.device,
             dtype=dtype,

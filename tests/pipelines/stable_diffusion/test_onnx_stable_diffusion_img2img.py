@@ -35,7 +35,7 @@ from diffusers.utils.testing_utils import (
     require_torch_gpu,
 )
 
-from ...test_pipelines_onnx_common import OnnxPipelineTesterMixin
+from ..test_pipelines_onnx_common import OnnxPipelineTesterMixin
 
 
 if is_onnx_available():

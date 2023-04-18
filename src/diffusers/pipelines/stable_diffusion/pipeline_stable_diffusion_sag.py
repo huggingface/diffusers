@@ -65,8 +65,8 @@ class CrossAttnStoreProcessor:
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
-        elif attn.cross_attention_norm:
-            encoder_hidden_states = attn.norm_cross(encoder_hidden_states)
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
@@ -574,7 +574,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
-        # and `sag_scale` is` `s` of equation (15)
+        # and `sag_scale` is` `s` of equation (16)
         # of the self-attentnion guidance paper: https://arxiv.org/pdf/2210.00939.pdf
         # `sag_scale = 0` means no self-attention guidance
         do_self_attention_guidance = sag_scale > 0.0
@@ -595,7 +595,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin)
         timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variables
-        num_channels_latents = self.unet.in_channels
+        num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
@@ -645,7 +645,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin)
                     # perform self-attention guidance with the stored self-attentnion map
                     if do_self_attention_guidance:
                         # classifier-free guidance produces two chunks of attention map
-                        # and we only use unconditional one according to equation (24)
+                        # and we only use unconditional one according to equation (25)
                         # in https://arxiv.org/pdf/2210.00939.pdf
                         if do_classifier_free_guidance:
                             # DDIM-like prediction of x0
@@ -701,7 +701,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin)
         # Same masking process as in SAG paper: https://arxiv.org/pdf/2210.00939.pdf
         bh, hw1, hw2 = attn_map.shape
         b, latent_channel, latent_h, latent_w = original_latents.shape
-        h = self.unet.attention_head_dim
+        h = self.unet.config.attention_head_dim
         if isinstance(h, list):
             h = h[-1]
 
