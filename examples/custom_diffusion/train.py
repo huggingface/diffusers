@@ -25,7 +25,6 @@ import math
 import os
 import random
 import warnings
-from io import BytesIO
 from pathlib import Path
 
 import numpy as np
@@ -35,7 +34,6 @@ import torch.utils.checkpoint
 from torch.utils.data import Dataset
 
 import diffusers
-import requests
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
@@ -48,7 +46,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.loaders import AttnProcsLayers
-from diffusers.models.attention_processor import CustomDiffusionAttnProcessor, AttnProcessor
+from diffusers.models.attention_processor import CustomDiffusionAttnProcessor
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
@@ -58,7 +56,7 @@ from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
-import ipdb
+
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.14.0")
@@ -689,10 +687,10 @@ def main(args):
             if not class_images_dir.exists():
                 class_images_dir.mkdir(parents=True, exist_ok=True)
             if args.real_prior:
-                assert (class_images_dir / 'images').exists(), print(f"Please run python retrieve.py --target {concept['class_prompt']} --outpath {class_images_dir}")
-                assert len(list((class_images_dir / 'images').iterdir())) == args.num_class_images, print(f"Please run python retrieve.py --target {concept['class_prompt']} --outpath {class_images_dir}")
-                assert (class_images_dir / 'caption.txt').exists(), print(f"Please run python retrieve.py --target {concept['class_prompt']} --outpath {class_images_dir}")
-                assert (class_images_dir / 'images.txt').exists(), print(f"Please run python retrieve.py --target {concept['class_prompt']} --outpath {class_images_dir}")
+                assert (class_images_dir / 'images').exists(), print(f"Please run: python retrieve.py --class_prompt {concept['class_prompt']} --class_data_dir {class_images_dir} --num_class_images {args.num_class_images}")
+                assert len(list((class_images_dir / 'images').iterdir())) == args.num_class_images, print(f"Please run: python retrieve.py --class_prompt {concept['class_prompt']} --class_data_dir {class_images_dir} --num_class_images {args.num_class_images}")
+                assert (class_images_dir / 'caption.txt').exists(), print(f"Please run: python retrieve.py --class_prompt {concept['class_prompt']} --class_data_dir {class_images_dir} --num_class_images {args.num_class_images}")
+                assert (class_images_dir / 'images.txt').exists(), print(f"Please run: python retrieve.py --class_prompt {concept['class_prompt']} --class_data_dir {class_images_dir} --num_class_images {args.num_class_images}")
                 concept['class_prompt'] = os.path.join(class_images_dir, 'caption.txt')
                 concept['class_data_dir'] = os.path.join(class_images_dir, 'images.txt')
                 args.concepts_list[i] = concept
@@ -838,6 +836,12 @@ def main(args):
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
+    # Move unet, vae and text_encoder to device and cast to weight_dtype
+    if accelerator.mixed_precision != "fp16" and args.modifier_token is not None:
+        text_encoder.to(accelerator.device, dtype=weight_dtype)
+    unet.to(accelerator.device, dtype=weight_dtype)
+    vae.to(accelerator.device, dtype=weight_dtype)
+
     # now we will add new Custom Diffusion weights to the attention layers
     # It's important to realize here how many attention weights will be added and of which sizes
     # The sizes of the attention layers consist only of two different variables:
@@ -868,27 +872,20 @@ def main(args):
             block_id = int(name[len("down_blocks.")])
             hidden_size = unet.config.block_out_channels[block_id]
         layer_name = name.split('.processor')[0]
-        # ipdb.set_trace()
         weights = {'to_k': st[layer_name + '.to_k.weight'],
-                    'to_v': st[layer_name + '.to_v.weight'],
-                    'to_q': st[layer_name + '.to_q.weight'],
-                    'to_out.weight': st[layer_name + '.to_out.0.weight'],
-                    'to_out.bias': st[layer_name + '.to_out.0.bias'], }
+                   'to_v': st[layer_name + '.to_v.weight'],
+                   'to_q': st[layer_name + '.to_q.weight'],
+                   'to_out.weight': st[layer_name + '.to_out.0.weight'],
+                   'to_out.bias': st[layer_name + '.to_out.0.bias'], }
         if cross_attention_dim is not None:
-            custom_diffusion_attn_procs[name] = CustomDiffusionAttnProcessor(weights, train_kv=train_kv, train_q_out=train_q_out, hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
+            custom_diffusion_attn_procs[name] = CustomDiffusionAttnProcessor(weights, train_kv=train_kv, train_q_out=train_q_out, hidden_size=hidden_size, cross_attention_dim=cross_attention_dim).to(unet.device)
         else:
-            custom_diffusion_attn_procs[name] = CustomDiffusionAttnProcessor(weights, train_kv=False, train_q_out=False, hidden_size=hidden_size, cross_attention_dim=cross_attention_dim) #attn
+            custom_diffusion_attn_procs[name] = CustomDiffusionAttnProcessor(weights, train_kv=False, train_q_out=False, hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)  # attn
     del st
     unet.set_attn_processor(custom_diffusion_attn_procs)
     custom_diffusion_layers = AttnProcsLayers({y: x for (y, x) in unet.attn_processors.items() if isinstance(x, CustomDiffusionAttnProcessor)})
 
     accelerator.register_for_checkpointing(custom_diffusion_layers)
-
-    # Move unet, vae and text_encoder to device and cast to weight_dtype
-    if accelerator.mixed_precision != "fp16" and args.modifier_token is not None:
-        text_encoder.to(accelerator.device, dtype=weight_dtype)
-    unet.to(accelerator.device, dtype=weight_dtype)
-    vae.to(accelerator.device, dtype=weight_dtype)
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():

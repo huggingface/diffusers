@@ -50,7 +50,12 @@ write_basic_config()
 Now let's get our dataset. Download dataset from [here](https://www.cs.cmu.edu/~custom-diffusion/assets/data.zip) and unzip it. 
 
 We also collect 200 real images using `clip-retrieval` which are combined with the target images in the training dataset as a regularization. This prevents overfitting to the the given target image. The following flags enable the regularization `with_prior_preservation`, `real_prior` with `prior_loss_weight=1.`. 
-The `class_prompt` should be the category name same as target image. The collected real images are with text captions similar to the `class_prompt`. The retrieved image are saved in `class_data_dir`. You can disable `real_prior` to use generated images as regularization.
+The `class_prompt` should be the category name same as target image. The collected real images are with text captions similar to the `class_prompt`. The retrieved image are saved in `class_data_dir`. You can disable `real_prior` to use generated images as regularization. To collect the real images use this command first before training. 
+
+```
+pip install clip-retrieval
+python retrieve.py --class_prompt cat --class_data_dir real_reg/samples_cat --num_class_images 200
+```
 
 **___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
 
@@ -84,6 +89,14 @@ accelerate launch train.py \
 
 Provide a [json](https://github.com/adobe-research/custom-diffusion/blob/main/assets/concept_list.json) file with the info about each concept, similar to [this](https://github.com/ShivamShrirao/diffusers/blob/main/examples/dreambooth/train_dreambooth.py).
 
+To collect the real images run this command for each concept in the json file. 
+
+```
+pip install clip-retrieval
+python retrieve.py --class_prompt {} --class_data_dir {} --num_class_images 200
+```
+
+
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export OUTPUT_DIR="path-to-save-model"
@@ -108,6 +121,12 @@ accelerate launch train.py \
 ### Training on human faces
 
 For fine-tuning on human faces we found the following configuration to work better: `learning_rate=5e-6`, `max_train_steps=1000 to 2000`, and `freeze_model=crossattn` with atleast 15-20 images. 
+To collect the real images use this command first before training. 
+
+```
+pip install clip-retrieval
+python retrieve.py --class_prompt person --class_data_dir real_reg/samples_person --num_class_images 200
+```
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
