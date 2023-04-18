@@ -161,6 +161,8 @@ accelerate launch train_custom_diffusion.py \
   --modifier_token "<new1>+<new2>" 
 ```
 
+Here is an example [Weights and Biases page](https://wandb.ai/sayakpaul/custom-diffusion/runs/3990tzkg) where you can check out the intermediate results along with other training details.  
+
 ### Training on human faces
 
 For fine-tuning on human faces we found the following configuration to work better: `learning_rate=5e-6`, `max_train_steps=1000 to 2000`, and `freeze_model=crossattn` with at least 15-20 images. 
