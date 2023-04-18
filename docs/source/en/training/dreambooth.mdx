@@ -60,7 +60,9 @@ DreamBooth finetuning is very sensitive to hyperparameters and easy to overfit. 
 
 <frameworkcontent>
 <pt>
-Let's try DreamBooth with a [few images of a dog](https://drive.google.com/drive/folders/1BO_dyz-p65qhBRRMRA4TbZ8qW4rB99JZ); download and save them to a directory and then set the `INSTANCE_DIR` environment variable to that path:
+Let's try DreamBooth with a [few images of a dog](https://drive.google.com/drive/folders/1BO_dyz-p65qhBRRMRA4TbZ8qW4rB99JZ); download and save them to a directory and then set the `INSTANCE_DIR` environment variable to that path.
+
+Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`~diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path`] argument.
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
@@ -93,6 +95,8 @@ Before running the script, make sure you have the requirements installed:
 ```bash
 pip install -U -r requirements.txt
 ```
+
+Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`~diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path`] argument.
 
 Now you can launch the training script with the following command:
 

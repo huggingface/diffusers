@@ -74,8 +74,7 @@ write_basic_config()
 As mentioned before, we'll use a [small toy dataset](https://huggingface.co/datasets/fusing/instructpix2pix-1000-samples) for training. The dataset 
 is a smaller version of the [original dataset](https://huggingface.co/datasets/timbrooks/instructpix2pix-clip-filtered) used in the InstructPix2Pix paper.
 
-Configure environment variables such as the dataset identifier and the Stable Diffusion
-checkpoint:
+Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`~diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path`] argument. You'll also need to specify the dataset name in `DATASET_ID`:
 
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
