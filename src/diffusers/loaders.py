@@ -17,7 +17,11 @@ from typing import Callable, Dict, List, Optional, Union
 
 import torch
 
-from .models.attention_processor import CustomDiffusionAttnProcessor, LoRAAttnProcessor
+from .models.attention_processor import (
+    CustomDiffusionAttnProcessor,
+    CustomDiffusionXFormersAttnProcessor,
+    LoRAAttnProcessor,
+)
 from .utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
@@ -313,9 +317,9 @@ class UNet2DConditionLoadersMixin:
 
         os.makedirs(save_directory, exist_ok=True)
 
-        is_custom_diffusion = any(isinstance(x, CustomDiffusionAttnProcessor) for (_, x) in self.attn_processors.items())
+        is_custom_diffusion = any(isinstance(x, (CustomDiffusionAttnProcessor, CustomDiffusionXFormersAttnProcessor)) for (_, x) in self.attn_processors.items())
         if is_custom_diffusion:
-            model_to_save = AttnProcsLayers({y: x for (y, x) in self.attn_processors.items() if isinstance(x, CustomDiffusionAttnProcessor)})
+            model_to_save = AttnProcsLayers({y: x for (y, x) in self.attn_processors.items() if isinstance(x, (CustomDiffusionAttnProcessor, CustomDiffusionXFormersAttnProcessor))})
             state_dict = model_to_save.state_dict()
             for name, attn in self.attn_processors.items():
                 if len(attn.state_dict()) == 0:

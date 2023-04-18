@@ -165,7 +165,7 @@ import torch
 pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16).to("cuda")
 pipe.unet.load_attn_procs('path-to-save-model', weight_name='pytorch_custom_diffusion_weights.bin')
 pipe.load_textual_inversion('path-to-save-model', weight_name='<new1>.bin')
-image = pipe("<new1> cat sitting in a bucket", num_inference_steps=100, guidance_scale=7.5, eta=1.).images[0]
+image = pipe("<new1> cat sitting in a bucket", num_inference_steps=100, guidance_scale=6., eta=1.).images[0]
 
 image.save("cat.png")
 ```
@@ -178,8 +178,8 @@ You can also perform inference from one of the complete checkpoint saved during 
 from diffusers import StableDiffusionPipeline
 import torch
 
-pipe = StableDiffusionPipeline.from_pretrained('path-to-the-model/checkpoint-<global-step>/', torch_dtype=torch.float16).to("cuda")
-image = pipe("<new1> cat sitting in a bucket", num_inference_steps=100, guidance_scale=7.5, eta=1.).images[0]
+pipe = StableDiffusionPipeline.from_pretrained('path-to-the-model/checkpoint-250/', torch_dtype=torch.float16).to("cuda")
+image = pipe("<new1> cat sitting in a bucket", num_inference_steps=100, guidance_scale=6., eta=1.).images[0]
 
 image.save("cat.png")
 ```
