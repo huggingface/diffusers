@@ -242,6 +242,42 @@ image.save("./multi_controlnet_output.png")
 
 <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/controlnet/multi_controlnet_output.png" width=600/>
 
+### Guess Mode
+
+Guess Mode is [a ControlNet feature that was implemented](https://github.com/lllyasviel/ControlNet#guess-mode--non-prompt-mode) after the publication of [the paper](https://arxiv.org/abs/2302.05543). The description states:
+
+>In this mode, the ControlNet encoder will try best to recognize the content of the input control map, like depth map, edge map, scribbles, etc, even if you remove all prompts.
+
+#### The core implementation:
+
+It adjusts the scale of the output residuals from ControlNet by a fixed ratio depending on the block depth. The shallowest DownBlock corresponds to `0.1`. As the blocks get deeper, the scale increases exponentially, and the scale for the output of the MidBlock becomes `1.0`. 
+
+Since the core implementation is just this, **it does not have any impact on prompt conditioning**. While it is common to use it without specifying any prompts, it is also possible to provide prompts if desired.
+
+#### Usage:
+
+Just specify `guess_mode=True` in the pipe() function. A `guidance_scale` between 3.0 and 5.0 is [recommended](https://github.com/lllyasviel/ControlNet#guess-mode--non-prompt-mode).
+```py
+from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
+import torch
+
+controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny")
+pipe = StableDiffusionControlNetPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", controlnet=controlnet).to(
+    "cuda"
+)
+image = pipe("", image=canny_image, guess_mode=True, guidance_scale=3.0).images[0]
+image.save("guess_mode_generated.png")
+```
+
+#### Output image comparison:
+Canny Control Example
+
+|no guess_mode with prompt|guess_mode without prompt|
+|---|---|
+|<a href="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare_guess_mode/output_images/diffusers/output_bird_canny_0.png"><img width="128" src="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare_guess_mode/output_images/diffusers/output_bird_canny_0.png"/></a>|<a href="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare_guess_mode/output_images/diffusers/output_bird_canny_0_gm.png"><img width="128" src="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare_guess_mode/output_images/diffusers/output_bird_canny_0_gm.png"/></a>|
+
+
+
 ## Available checkpoints
 
 ControlNet requires a *control image* in addition to the text-to-image *prompt*. 
