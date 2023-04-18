@@ -243,7 +243,7 @@ class UNet2DConditionLoadersMixin:
                 if len(value) == 0:
                     custom_diffusion_grouped_dict[key] = {}
                 else:
-                    if 'to_out' in key:
+                    if "to_out" in key:
                         attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
                     else:
                         attn_processor_key, sub_key = ".".join(key.split(".")[:-2]), ".".join(key.split(".")[-2:])
@@ -259,11 +259,17 @@ class UNet2DConditionLoadersMixin:
                     hidden_size = value_dict["to_k_custom_diffusion.weight"].shape[0]
                     train_q_out = True if "to_q_custom_diffusion.weight" in value_dict else False
                     attn_processors[key] = CustomDiffusionAttnProcessor(
-                        weights=None, train_kv=True, train_q_out=train_q_out, hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
+                        weights=None,
+                        train_kv=True,
+                        train_q_out=train_q_out,
+                        hidden_size=hidden_size,
+                        cross_attention_dim=cross_attention_dim,
                     )
                     attn_processors[key].load_state_dict(value_dict)
         else:
-            raise ValueError(f"{model_file} does not seem to be in the correct format expected by LoRA or Custom Diffusion training.")
+            raise ValueError(
+                f"{model_file} does not seem to be in the correct format expected by LoRA or Custom Diffusion training."
+            )
 
         # set correct dtype & device
         attn_processors = {k: v.to(device=self.device, dtype=self.dtype) for k, v in attn_processors.items()}
@@ -317,9 +323,18 @@ class UNet2DConditionLoadersMixin:
 
         os.makedirs(save_directory, exist_ok=True)
 
-        is_custom_diffusion = any(isinstance(x, (CustomDiffusionAttnProcessor, CustomDiffusionXFormersAttnProcessor)) for (_, x) in self.attn_processors.items())
+        is_custom_diffusion = any(
+            isinstance(x, (CustomDiffusionAttnProcessor, CustomDiffusionXFormersAttnProcessor))
+            for (_, x) in self.attn_processors.items()
+        )
         if is_custom_diffusion:
-            model_to_save = AttnProcsLayers({y: x for (y, x) in self.attn_processors.items() if isinstance(x, (CustomDiffusionAttnProcessor, CustomDiffusionXFormersAttnProcessor))})
+            model_to_save = AttnProcsLayers(
+                {
+                    y: x
+                    for (y, x) in self.attn_processors.items()
+                    if isinstance(x, (CustomDiffusionAttnProcessor, CustomDiffusionXFormersAttnProcessor))
+                }
+            )
             state_dict = model_to_save.state_dict()
             for name, attn in self.attn_processors.items():
                 if len(attn.state_dict()) == 0:

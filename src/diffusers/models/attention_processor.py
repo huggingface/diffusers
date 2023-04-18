@@ -412,7 +412,16 @@ class LoRAAttnProcessor(nn.Module):
 
 
 class CustomDiffusionAttnProcessor(nn.Module):
-    def __init__(self, weights=None, train_kv=True, train_q_out=True, hidden_size=None, cross_attention_dim=None, out_bias=True, dropout=0.0,):
+    def __init__(
+        self,
+        weights=None,
+        train_kv=True,
+        train_q_out=True,
+        hidden_size=None,
+        cross_attention_dim=None,
+        out_bias=True,
+        dropout=0.0,
+    ):
         super().__init__()
         self.train_kv = train_kv
         self.train_q_out = train_q_out
@@ -426,8 +435,8 @@ class CustomDiffusionAttnProcessor(nn.Module):
             self.to_v_custom_diffusion = nn.Linear(cross_attention_dim or hidden_size, hidden_size)
             if weights is not None:
                 with torch.no_grad():
-                    self.to_k_custom_diffusion.weight.copy_(weights['to_k'])
-                    self.to_v_custom_diffusion.weight.copy_(weights['to_v'])
+                    self.to_k_custom_diffusion.weight.copy_(weights["to_k"])
+                    self.to_v_custom_diffusion.weight.copy_(weights["to_v"])
         if self.train_q_out:
             self.to_q_custom_diffusion = nn.Linear(hidden_size, hidden_size)
             self.to_out_custom_diffusion = nn.ModuleList([])
@@ -435,9 +444,9 @@ class CustomDiffusionAttnProcessor(nn.Module):
             self.to_out_custom_diffusion.append(nn.Dropout(dropout))
             if weights is not None:
                 with torch.no_grad():
-                    self.to_q_custom_diffusion.weight.copy_(weights['to_q'])
-                    self.to_out_custom_diffusion[0].weight.copy_(weights['to_out.weight'])
-                    self.to_out_custom_diffusion[0].bias.copy_(weights['to_out.bias'])
+                    self.to_q_custom_diffusion.weight.copy_(weights["to_q"])
+                    self.to_out_custom_diffusion[0].weight.copy_(weights["to_out.weight"])
+                    self.to_out_custom_diffusion[0].bias.copy_(weights["to_out.bias"])
 
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
         batch_size, sequence_length, _ = hidden_states.shape
@@ -663,7 +672,16 @@ class LoRAXFormersAttnProcessor(nn.Module):
 
 
 class CustomDiffusionXFormersAttnProcessor(nn.Module):
-    def __init__(self, train_kv=True, train_q_out=False, hidden_size=None, cross_attention_dim=None, out_bias=True, dropout=0.0, attention_op: Optional[Callable] = None):
+    def __init__(
+        self,
+        train_kv=True,
+        train_q_out=False,
+        hidden_size=None,
+        cross_attention_dim=None,
+        out_bias=True,
+        dropout=0.0,
+        attention_op: Optional[Callable] = None,
+    ):
         super().__init__()
         self.train_kv = train_kv
         self.train_q_out = train_q_out

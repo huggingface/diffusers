@@ -31,13 +31,19 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-from torch.utils.data import Dataset
-
-import diffusers
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
+from huggingface_hub import HfApi, create_repo
+from packaging import version
+from PIL import Image
+from torch.utils.data import Dataset
+from torchvision import transforms
+from tqdm.auto import tqdm
+from transformers import AutoTokenizer, PretrainedConfig
+
+import diffusers
 from diffusers import (
     AutoencoderKL,
     DDPMScheduler,
@@ -50,12 +56,6 @@ from diffusers.models.attention_processor import CustomDiffusionAttnProcessor
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
-from huggingface_hub import HfApi, create_repo
-from packaging import version
-from PIL import Image
-from torchvision import transforms
-from tqdm.auto import tqdm
-from transformers import AutoTokenizer, PretrainedConfig
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -136,11 +136,7 @@ def collate_fn(examples, with_prior_preservation):
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
     mask = mask.to(memory_format=torch.contiguous_format).float()
 
-    batch = {
-        "input_ids": input_ids,
-        "pixel_values": pixel_values,
-        "mask": mask.unsqueeze(1)
-    }
+    batch = {"input_ids": input_ids, "pixel_values": pixel_values, "mask": mask.unsqueeze(1)}
     return batch
 
 
@@ -188,7 +184,9 @@ class CustomDiffusionDataset(Dataset):
         self.class_images_path = []
         self.with_prior_preservation = with_prior_preservation
         for concept in concepts_list:
-            inst_img_path = [(x, concept["instance_prompt"]) for x in Path(concept["instance_data_dir"]).iterdir() if x.is_file()]
+            inst_img_path = [
+                (x, concept["instance_prompt"]) for x in Path(concept["instance_data_dir"]).iterdir() if x.is_file()
+            ]
             self.instance_images_path.extend(inst_img_path)
 
             if with_prior_preservation:
@@ -235,11 +233,11 @@ class CustomDiffusionDataset(Dataset):
         instance_image = np.zeros((self.size, self.size, 3), dtype=np.float32)
         mask = np.zeros((self.size // 8, self.size // 8))
         if scale > self.size:
-            instance_image = image[top: top + inner, left: left + inner, :]
+            instance_image = image[top : top + inner, left : left + inner, :]
             mask = np.ones((self.size // 8, self.size // 8))
         else:
-            instance_image[top: top + inner, left: left + inner, :] = image
-            mask[top // 8 + 1: (top + scale) // 8 - 1, left // 8 + 1: (left + scale) // 8 - 1] = 1.
+            instance_image[top : top + inner, left : left + inner, :] = image
+            mask[top // 8 + 1 : (top + scale) // 8 - 1, left // 8 + 1 : (left + scale) // 8 - 1] = 1.0
         return instance_image, mask
 
     def __getitem__(self, index):
@@ -253,7 +251,11 @@ class CustomDiffusionDataset(Dataset):
         # apply resize augmentation and create a valid image region mask
         random_scale = self.size
         if self.aug:
-            random_scale = np.random.randint(self.size // 3, self.size + 1) if np.random.uniform() < 0.66 else np.random.randint(int(1.2 * self.size), int(1.4 * self.size))
+            random_scale = (
+                np.random.randint(self.size // 3, self.size + 1)
+                if np.random.uniform() < 0.66
+                else np.random.randint(int(1.2 * self.size), int(1.4 * self.size))
+            )
         instance_image, mask = self.preprocess(instance_image, random_scale, self.interpolation)
 
         if random_scale < 0.6 * self.size:
@@ -292,10 +294,10 @@ class CustomDiffusionDataset(Dataset):
 def save_new_embed(text_encoder, modifier_token_id, accelerator, args, output_dir):
     logger.info("Saving embeddings")
     learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight
-    for (x, y) in zip(modifier_token_id, args.modifier_token):
+    for x, y in zip(modifier_token_id, args.modifier_token):
         learned_embeds_dict = {}
         learned_embeds_dict[y] = learned_embeds[x]
-        torch.save(learned_embeds_dict, f'{output_dir}/{y}.bin')
+        torch.save(learned_embeds_dict, f"{output_dir}/{y}.bin")
 
 
 def parse_args(input_args=None):
@@ -488,8 +490,8 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--freeze_model",
         type=str,
-        default='crossattn_kv',
-        choices=['crossattn_kv', 'crossattn'],
+        default="crossattn_kv",
+        choices=["crossattn_kv", "crossattn"],
         help="crossattn to enable fine-tuning of all params in the cross attention",
     )
     parser.add_argument(
@@ -593,10 +595,14 @@ def parse_args(input_args=None):
         help="A token to use as a modifier for the concept.",
     )
     parser.add_argument(
-        "--initializer_token", type=str, default='ktn+pll+ucd', help="A token to use as initializer word."
+        "--initializer_token", type=str, default="ktn+pll+ucd", help="A token to use as initializer word."
     )
     parser.add_argument("--hflip", action="store_true", help="Apply horizontal flip data augmentation.")
-    parser.add_argument("--noaug", action="store_true", help="Dont apply augmentation during data augmentation when this flag is enabled.")
+    parser.add_argument(
+        "--noaug",
+        action="store_true",
+        help="Dont apply augmentation during data augmentation when this flag is enabled.",
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -673,7 +679,7 @@ def main(args):
                 "instance_prompt": args.instance_prompt,
                 "class_prompt": args.class_prompt,
                 "instance_data_dir": args.instance_data_dir,
-                "class_data_dir": args.class_data_dir
+                "class_data_dir": args.class_data_dir,
             }
         ]
     else:
@@ -683,16 +689,24 @@ def main(args):
     # Generate class images if prior preservation is enabled.
     if args.with_prior_preservation:
         for i, concept in enumerate(args.concepts_list):
-            class_images_dir = Path(concept['class_data_dir'])
+            class_images_dir = Path(concept["class_data_dir"])
             if not class_images_dir.exists():
                 class_images_dir.mkdir(parents=True, exist_ok=True)
             if args.real_prior:
-                assert (class_images_dir / 'images').exists(), f"Please run: python retrieve.py --class_prompt \"{concept['class_prompt']}\" --class_data_dir {class_images_dir} --num_class_images {args.num_class_images}"
-                assert len(list((class_images_dir / 'images').iterdir())) == args.num_class_images, f"Please run: python retrieve.py --class_prompt \"{concept['class_prompt']}\" --class_data_dir {class_images_dir} --num_class_images {args.num_class_images}"
-                assert (class_images_dir / 'caption.txt').exists(), f"Please run: python retrieve.py --class_prompt \"{concept['class_prompt']}\" --class_data_dir {class_images_dir} --num_class_images {args.num_class_images}"
-                assert (class_images_dir / 'images.txt').exists(), f"Please run: python retrieve.py --class_prompt \"{concept['class_prompt']}\" --class_data_dir {class_images_dir} --num_class_images {args.num_class_images}"
-                concept['class_prompt'] = os.path.join(class_images_dir, 'caption.txt')
-                concept['class_data_dir'] = os.path.join(class_images_dir, 'images.txt')
+                assert (
+                    class_images_dir / "images"
+                ).exists(), f"Please run: python retrieve.py --class_prompt \"{concept['class_prompt']}\" --class_data_dir {class_images_dir} --num_class_images {args.num_class_images}"
+                assert (
+                    len(list((class_images_dir / "images").iterdir())) == args.num_class_images
+                ), f"Please run: python retrieve.py --class_prompt \"{concept['class_prompt']}\" --class_data_dir {class_images_dir} --num_class_images {args.num_class_images}"
+                assert (
+                    class_images_dir / "caption.txt"
+                ).exists(), f"Please run: python retrieve.py --class_prompt \"{concept['class_prompt']}\" --class_data_dir {class_images_dir} --num_class_images {args.num_class_images}"
+                assert (
+                    class_images_dir / "images.txt"
+                ).exists(), f"Please run: python retrieve.py --class_prompt \"{concept['class_prompt']}\" --class_data_dir {class_images_dir} --num_class_images {args.num_class_images}"
+                concept["class_prompt"] = os.path.join(class_images_dir, "caption.txt")
+                concept["class_data_dir"] = os.path.join(class_images_dir, "images.txt")
                 args.concepts_list[i] = concept
                 accelerator.wait_for_everyone()
             else:
@@ -724,13 +738,17 @@ def main(args):
                     pipeline.to(accelerator.device)
 
                     for example in tqdm(
-                        sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
+                        sample_dataloader,
+                        desc="Generating class images",
+                        disable=not accelerator.is_local_main_process,
                     ):
                         images = pipeline(example["prompt"]).images
 
                         for i, image in enumerate(images):
                             hash_image = hashlib.sha1(image.tobytes()).hexdigest()
-                            image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
+                            image_filename = (
+                                class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
+                            )
                             image.save(image_filename)
 
                     del pipeline
@@ -783,11 +801,13 @@ def main(args):
     modifier_token_id = []
     initializer_token_id = []
     if args.modifier_token is not None:
-        args.modifier_token = args.modifier_token.split('+')
-        args.initializer_token = args.initializer_token.split('+')
+        args.modifier_token = args.modifier_token.split("+")
+        args.initializer_token = args.initializer_token.split("+")
         if len(args.modifier_token) > len(args.initializer_token):
             raise ValueError("You must specify + separated initializer token for each modifier token.")
-        for modifier_token, initializer_token in zip(args.modifier_token, args.initializer_token[:len(args.modifier_token)]):
+        for modifier_token, initializer_token in zip(
+            args.modifier_token, args.initializer_token[: len(args.modifier_token)]
+        ):
             # Add the placeholder token in tokenizer
             num_added_tokens = tokenizer.add_tokens(modifier_token)
             if num_added_tokens == 0:
@@ -811,7 +831,7 @@ def main(args):
 
         # Initialise the newly added placeholder token with the embeddings of the initializer token
         token_embeds = text_encoder.get_input_embeddings().weight.data
-        for (x, y) in zip(modifier_token_id, initializer_token_id):
+        for x, y in zip(modifier_token_id, initializer_token_id):
             token_embeds[x] = token_embeds[y]
 
         # Freeze all parameters except for the token embeddings in text encoder
@@ -857,7 +877,7 @@ def main(args):
 
     # Only train key, value projection layers if freeze_model = 'crossattn_kv' else train all params in the cross attention layer
     train_kv = True
-    train_q_out = False if args.freeze_model == 'crossattn_kv' else True
+    train_q_out = False if args.freeze_model == "crossattn_kv" else True
     custom_diffusion_attn_procs = {}
 
     st = unet.state_dict()
@@ -871,19 +891,35 @@ def main(args):
         elif name.startswith("down_blocks"):
             block_id = int(name[len("down_blocks.")])
             hidden_size = unet.config.block_out_channels[block_id]
-        layer_name = name.split('.processor')[0]
-        weights = {'to_k': st[layer_name + '.to_k.weight'],
-                   'to_v': st[layer_name + '.to_v.weight'],
-                   'to_q': st[layer_name + '.to_q.weight'],
-                   'to_out.weight': st[layer_name + '.to_out.0.weight'],
-                   'to_out.bias': st[layer_name + '.to_out.0.bias'], }
+        layer_name = name.split(".processor")[0]
+        weights = {
+            "to_k": st[layer_name + ".to_k.weight"],
+            "to_v": st[layer_name + ".to_v.weight"],
+            "to_q": st[layer_name + ".to_q.weight"],
+            "to_out.weight": st[layer_name + ".to_out.0.weight"],
+            "to_out.bias": st[layer_name + ".to_out.0.bias"],
+        }
         if cross_attention_dim is not None:
-            custom_diffusion_attn_procs[name] = CustomDiffusionAttnProcessor(weights, train_kv=train_kv, train_q_out=train_q_out, hidden_size=hidden_size, cross_attention_dim=cross_attention_dim).to(unet.device)
+            custom_diffusion_attn_procs[name] = CustomDiffusionAttnProcessor(
+                weights,
+                train_kv=train_kv,
+                train_q_out=train_q_out,
+                hidden_size=hidden_size,
+                cross_attention_dim=cross_attention_dim,
+            ).to(unet.device)
         else:
-            custom_diffusion_attn_procs[name] = CustomDiffusionAttnProcessor(weights, train_kv=False, train_q_out=False, hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)  # attn
+            custom_diffusion_attn_procs[name] = CustomDiffusionAttnProcessor(
+                weights,
+                train_kv=False,
+                train_q_out=False,
+                hidden_size=hidden_size,
+                cross_attention_dim=cross_attention_dim,
+            )  # attn
     del st
     unet.set_attn_processor(custom_diffusion_attn_procs)
-    custom_diffusion_layers = AttnProcsLayers({y: x for (y, x) in unet.attn_processors.items() if isinstance(x, CustomDiffusionAttnProcessor)})
+    custom_diffusion_layers = AttnProcsLayers(
+        {y: x for (y, x) in unet.attn_processors.items() if isinstance(x, CustomDiffusionAttnProcessor)}
+    )
 
     accelerator.register_for_checkpointing(custom_diffusion_layers)
 
@@ -914,7 +950,7 @@ def main(args):
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
         if args.with_prior_preservation:
-            args.learning_rate = args.learning_rate * 2.
+            args.learning_rate = args.learning_rate * 2.0
 
     # Use 8-bit Adam for lower memory usage or to fine-tune the model in 16GB GPUs
     if args.use_8bit_adam:
@@ -931,7 +967,9 @@ def main(args):
 
     # Optimizer creation
     optimizer = optimizer_class(
-        itertools.chain(text_encoder.get_input_embeddings().parameters(), custom_diffusion_layers.parameters()) if args.modifier_token is not None else custom_diffusion_layers.parameters(),
+        itertools.chain(text_encoder.get_input_embeddings().parameters(), custom_diffusion_layers.parameters())
+        if args.modifier_token is not None
+        else custom_diffusion_layers.parameters(),
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -946,7 +984,8 @@ def main(args):
         size=args.resolution,
         center_crop=args.center_crop,
         num_class_images=args.num_class_images,
-        hflip=args.hflip, aug=not args.noaug,
+        hflip=args.hflip,
+        aug=not args.noaug,
     )
 
     train_dataloader = torch.utils.data.DataLoader(
@@ -1101,11 +1140,19 @@ def main(args):
                     # Get the index for tokens that we want to zero the grads for
                     index_grads_to_zero = torch.arange(len(tokenizer)) != modifier_token_id[0]
                     for i in range(len(modifier_token_id[1:])):
-                        index_grads_to_zero = index_grads_to_zero & (torch.arange(len(tokenizer)) != modifier_token_id[i])
-                    grads_text_encoder.data[index_grads_to_zero, :] = grads_text_encoder.data[index_grads_to_zero, :].fill_(0)
+                        index_grads_to_zero = index_grads_to_zero & (
+                            torch.arange(len(tokenizer)) != modifier_token_id[i]
+                        )
+                    grads_text_encoder.data[index_grads_to_zero, :] = grads_text_encoder.data[
+                        index_grads_to_zero, :
+                    ].fill_(0)
 
                 if accelerator.sync_gradients:
-                    params_to_clip = itertools.chain(text_encoder.parameters(), custom_diffusion_layers.parameters()) if args.modifier_token is not None else custom_diffusion_layers.parameters()
+                    params_to_clip = (
+                        itertools.chain(text_encoder.parameters(), custom_diffusion_layers.parameters())
+                        if args.modifier_token is not None
+                        else custom_diffusion_layers.parameters()
+                    )
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
@@ -1150,7 +1197,7 @@ def main(args):
                 # run inference
                 generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
                 images = [
-                    pipeline(args.validation_prompt, num_inference_steps=25, generator=generator, eta=1.).images[0]
+                    pipeline(args.validation_prompt, num_inference_steps=25, generator=generator, eta=1.0).images[0]
                     for _ in range(args.num_validation_images)
                 ]
 
@@ -1189,13 +1236,13 @@ def main(args):
         # load attention processors
         pipeline.unet.load_attn_procs(args.output_dir, weight_name="pytorch_custom_diffusion_weights.bin")
         for token in args.modifier_token:
-            pipeline.load_textual_inversion(args.output_dir, weight_name=f'{token}.bin')
+            pipeline.load_textual_inversion(args.output_dir, weight_name=f"{token}.bin")
 
         # run inference
         if args.validation_prompt and args.num_validation_images > 0:
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
             images = [
-                pipeline(args.validation_prompt, num_inference_steps=25, generator=generator, eta=1.).images[0]
+                pipeline(args.validation_prompt, num_inference_steps=25, generator=generator, eta=1.0).images[0]
                 for _ in range(args.num_validation_images)
             ]
 
@@ -1222,12 +1269,7 @@ def main(args):
                 repo_folder=args.output_dir,
             )
             api = HfApi(token=args.hub_token)
-            api.upload_folder(
-                repo_id=repo_id,
-                folder_path=args.output_dir,
-                path_in_repo='.',
-                repo_type='model'
-            )
+            api.upload_folder(repo_id=repo_id, folder_path=args.output_dir, path_in_repo=".", repo_type="model")
 
     accelerator.end_training()
 
