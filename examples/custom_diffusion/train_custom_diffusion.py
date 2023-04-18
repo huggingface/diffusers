@@ -87,13 +87,13 @@ inference: true
 ---
     """
     model_card = f"""
-        # Custom Diffusion - {repo_id}
+# Custom Diffusion - {repo_id}
 
-        These are Custom Diffusion adaption weights for {base_model}. The weights were trained on {prompt} using [Custom Diffusion](https://www.cs.cmu.edu/~custom-diffusion). You can find some example images in the following. \n
-        {img_str}
-        
-        For more details on the training, please follow [this link](https://github.com/huggingface/diffusers/blob/main/examples/custom_diffusion). 
-        """
+These are Custom Diffusion adaption weights for {base_model}. The weights were trained on {prompt} using [Custom Diffusion](https://www.cs.cmu.edu/~custom-diffusion). You can find some example images in the following. \n
+{img_str}
+
+For more details on the training, please follow [this link](https://github.com/huggingface/diffusers/blob/main/examples/custom_diffusion). 
+"""
     with open(os.path.join(repo_folder, "README.md"), "w") as f:
         f.write(yaml + model_card)
 
