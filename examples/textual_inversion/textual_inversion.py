@@ -129,7 +129,11 @@ def log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight
 
 def save_progress(text_encoder, placeholder_token_ids, accelerator, args, save_path):
     logger.info("Saving embeddings")
-    learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[min(placeholder_token_ids):max(placeholder_token_ids) + 1]
+    learned_embeds = (
+        accelerator.unwrap_model(text_encoder)
+        .get_input_embeddings()
+        .weight[min(placeholder_token_ids) : max(placeholder_token_ids) + 1]
+    )
     learned_embeds_dict = {args.placeholder_token: learned_embeds.detach().cpu()}
     torch.save(learned_embeds_dict, save_path)
 
@@ -152,7 +156,7 @@ def parse_args():
         "--num_vectors",
         type=int,
         default=1,
-        help="How many textual inversion vectors shall be used to learn the concept."
+        help="How many textual inversion vectors shall be used to learn the concept.",
     )
     parser.add_argument(
         "--pretrained_model_name_or_path",
@@ -831,12 +835,12 @@ def main():
 
                 # Let's make sure we don't update any embedding weights besides the newly added token
                 index_no_updates = index_no_updates = torch.ones((len(tokenizer),), dtype=torch.bool)
-                index_no_updates[min(placeholder_token_ids):max(placeholder_token_ids) + 1] = False
+                index_no_updates[min(placeholder_token_ids) : max(placeholder_token_ids) + 1] = False
 
                 with torch.no_grad():
                     accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[
                         index_no_updates
-                        ] = orig_embeds_params[index_no_updates]
+                    ] = orig_embeds_params[index_no_updates]
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
