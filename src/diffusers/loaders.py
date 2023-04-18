@@ -619,4 +619,4 @@ class TextualInversionLoaderMixin:
         for token_id, embedding in zip(token_ids, embeddings):
             self.text_encoder.get_input_embeddings().weight.data[token_id] = embedding
 
-        logger.info("Loaded textual inversion embedding for {token}.")
+        logger.info(f"Loaded textual inversion embedding for {token}.")

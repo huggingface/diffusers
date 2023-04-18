@@ -759,12 +759,9 @@ def main(args):
             os.makedirs(args.output_dir, exist_ok=True)
 
         if args.push_to_hub:
-            print(args.hub_model_id or Path(args.output_dir).name)
             repo_id = create_repo(
                 repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
-            )
-            print(repo_id)
-            repo_id = args.hub_model_id
+            ).repo_id
 
     # Load the tokenizer
     if args.tokenizer_name:

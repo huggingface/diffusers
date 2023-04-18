@@ -108,9 +108,11 @@ accelerate launch train_custom_diffusion.py \
   --max_train_steps=250 \
   --scale_lr --hflip  \
   --modifier_token "<new1>" \
-  --validation_promot="<new1> cat sitting in a bucket" \
+  --validation_prompt="<new1> cat sitting in a bucket" \
   --report_to="wandb"
 ```
+
+If you specify `--push_to_hub`, the learned parameters will be pushed to a repository on the Hugging Face Hub.
 
 ### Training on multiple concepts 🐱🪵
 
