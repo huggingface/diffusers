@@ -6,14 +6,14 @@ from diffusers import DiffusionPipeline, AutoencoderKL, UNet2DConditionModel, DD
 from PIL import Image
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
-
+from diffusers.utils import PIL_INTERPOLATION
 
 def preprocess(image):
     if isinstance(image, Image.Image):
         w, h = image.size
         w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
 
-        image = np.array(image.resize((w, h), resample=Image.Resampling.LANCZOS))[None, :]
+        image = np.array(image.resize((w, h), resample=PIL_INTERPOLATION["lanczos"]))[None, :]
         image = np.array(image).astype(np.float32) / 255.0
         image = image.transpose(0, 3, 1, 2)
         image = 2.0 * image - 1.0
@@ -31,12 +31,12 @@ class EDICTPipeline(DiffusionPipeline):
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
         scheduler: DDIMScheduler,
-        p: float = 0.93,
+        mixing_coeff: float = 0.93,
         leapfrog_steps: bool = True,
     ):
+        self.mixing_coeff = mixing_coeff
         self.leapfrog_steps = leapfrog_steps
-        self.p = p
-        
+
         super().__init__()
         self.register_modules(
             vae=vae,
@@ -47,48 +47,54 @@ class EDICTPipeline(DiffusionPipeline):
         )
 
 
-    def encode_prompt(self, prompt: str, negative_prompt: Optional[str] = None):
-        negative_prompt = "" if negative_prompt is None else negative_prompt
-
-        tokens_uncond = self.tokenizer(
-            negative_prompt,
-            padding="max_length",
-            max_length=self.tokenizer.model_max_length,
-            truncation=True,
-            return_tensors="pt",
-        )
-
-        embeds_uncond = self.text_encoder(
-            tokens_uncond.input_ids.to(self.device)
-        ).last_hidden_state
-
-        tokens_cond = self.tokenizer(
+    def _encode_prompt(self, prompt: str, negative_prompt: Optional[str] = None, do_classifier_free_guidance: bool = False):
+        text_inputs = self.tokenizer(
             prompt,
             padding="max_length",
             max_length=self.tokenizer.model_max_length,
             truncation=True,
             return_tensors="pt",
         )
-        
-        embeds_cond = self.text_encoder(
-            tokens_cond.input_ids.to(self.device)
+
+        prompt_embeds = self.text_encoder(
+            text_inputs.input_ids.to(self.device)
         ).last_hidden_state
 
-        return torch.cat([embeds_uncond, embeds_cond])
+        prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=self.device)
+
+        if do_classifier_free_guidance:
+
+            uncond_tokens = "" if negative_prompt is None else negative_prompt
+
+            uncond_input = self.tokenizer(
+                uncond_tokens,
+                padding="max_length",
+                max_length=self.tokenizer.model_max_length,
+                truncation=True,
+                return_tensors="pt",
+            )
+
+            negative_prompt_embeds = self.text_encoder(
+                uncond_input.input_ids.to(self.device)
+            ).last_hidden_state
+
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+
+        return prompt_embeds
 
     def denoise_mixing_layer(self, x: torch.Tensor, y: torch.Tensor):
-        x = self.p * x + (1 - self.p) * y
-        y = self.p * y + (1 - self.p) * x
+        x = self.mixing_coeff * x + (1 - self.mixing_coeff) * y
+        y = self.mixing_coeff * y + (1 - self.mixing_coeff) * x
 
         return [x, y]
 
     def noise_mixing_layer(self, x: torch.Tensor, y: torch.Tensor):
-        y = (y - (1 - self.p) * x) / self.p
-        x = (x - (1 - self.p) * y) / self.p
+        y = (y - (1 - self.mixing_coeff) * x) / self.mixing_coeff
+        x = (x - (1 - self.mixing_coeff) * y) / self.mixing_coeff
 
         return [x, y]
 
-    def get_alpha_and_beta(self, t: torch.Tensor):
+    def _get_alpha_and_beta(self, t: torch.Tensor):
         # as self.alphas_cumprod is always in cpu
         t = int(t)
 
@@ -105,8 +111,8 @@ class EDICTPipeline(DiffusionPipeline):
     ):
         prev_timestep = timestep - self.scheduler.config.num_train_timesteps / self.scheduler.num_inference_steps
 
-        alpha_prod_t, beta_prod_t = self.get_alpha_and_beta(timestep)
-        alpha_prod_t_prev, beta_prod_t_prev = self.get_alpha_and_beta(prev_timestep)
+        alpha_prod_t, beta_prod_t = self._get_alpha_and_beta(timestep)
+        alpha_prod_t_prev, beta_prod_t_prev = self._get_alpha_and_beta(prev_timestep)
 
         a_t = (alpha_prod_t_prev / alpha_prod_t) ** 0.5
         b_t = -a_t * (beta_prod_t**0.5) + beta_prod_t_prev ** 0.5
@@ -124,8 +130,8 @@ class EDICTPipeline(DiffusionPipeline):
     ):
         prev_timestep = timestep - self.scheduler.config.num_train_timesteps / self.scheduler.num_inference_steps
 
-        alpha_prod_t, beta_prod_t = self.get_alpha_and_beta(timestep)
-        alpha_prod_t_prev, beta_prod_t_prev = self.get_alpha_and_beta(prev_timestep)
+        alpha_prod_t, beta_prod_t = self._get_alpha_and_beta(timestep)
+        alpha_prod_t_prev, beta_prod_t_prev = self._get_alpha_and_beta(prev_timestep)
 
         a_t = (alpha_prod_t_prev / alpha_prod_t) ** 0.5
         b_t = -a_t * (beta_prod_t**0.5) + beta_prod_t_prev**0.5
@@ -149,8 +155,10 @@ class EDICTPipeline(DiffusionPipeline):
         text_embeds: torch.Tensor,
         timesteps: torch.Tensor,
         guidance_scale: float,
+        generator: Optional[torch.Generator] = None,
     ):
-        generator = torch.cuda.manual_seed(1)
+        do_classifier_free_guidance = guidance_scale > 1.0
+
         image = image.to(device=self.device, dtype=text_embeds.dtype)
         latent = self.vae.encode(image).latent_dist.sample(generator)
 
@@ -173,14 +181,13 @@ class EDICTPipeline(DiffusionPipeline):
                 model_input = coupled_latents[j]
                 base = coupled_latents[k]
 
-                latent_model_input = torch.cat([model_input] * 2)
+                latent_model_input = torch.cat([model_input] * 2) if do_classifier_free_guidance else model_input
 
                 noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeds).sample
 
-                noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                noise_pred = noise_pred_uncond + guidance_scale * (
-                    noise_pred_text - noise_pred_uncond
-                )
+                if do_classifier_free_guidance:
+                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 base, model_input = self.noise_step(
                     base=base,
@@ -203,12 +210,14 @@ class EDICTPipeline(DiffusionPipeline):
         num_inference_steps: int = 50,
         strength: float = 0.8,
         negative_prompt: Optional[str] = None,
+        generator: Optional[torch.Generator] = None,
     ):
+        do_classifier_free_guidance = guidance_scale > 1.0
 
         image = preprocess(image)  # from PIL.Image to torch.Tensor
 
-        base_embeds = self.encode_prompt(base_prompt, negative_prompt)
-        target_embeds = self.encode_prompt(target_prompt, negative_prompt)
+        base_embeds = self._encode_prompt(base_prompt, negative_prompt, do_classifier_free_guidance)
+        target_embeds = self._encode_prompt(target_prompt, negative_prompt, do_classifier_free_guidance)
 
         self.scheduler.set_timesteps(num_inference_steps, self.device)
 
@@ -216,7 +225,7 @@ class EDICTPipeline(DiffusionPipeline):
         fwd_timesteps = self.scheduler.timesteps[t_limit:]
         bwd_timesteps = fwd_timesteps.flip(0)
 
-        coupled_latents = self.prepare_latents(image, base_embeds, bwd_timesteps, guidance_scale)
+        coupled_latents = self.prepare_latents(image, base_embeds, bwd_timesteps, guidance_scale, generator)
 
         for i, t in tqdm(enumerate(fwd_timesteps), total=len(fwd_timesteps)):
             # j - model_input index, k - base index
@@ -230,12 +239,13 @@ class EDICTPipeline(DiffusionPipeline):
                 model_input = coupled_latents[j]
                 base = coupled_latents[k]
 
-                latent_model_input = torch.cat([model_input] * 2)
+                latent_model_input = torch.cat([model_input] * 2) if do_classifier_free_guidance else model_input
 
                 noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=target_embeds).sample
-                noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-
-                noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                
+                if do_classifier_free_guidance:
+                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 base, model_input = self.denoise_step(
                     base=base,
