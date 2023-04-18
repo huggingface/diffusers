@@ -1,6 +1,3 @@
-# This code is built from the Huggingface repository: https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth_lora.py, and
-# https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion.py
-
 #!/usr/bin/env python
 # coding=utf-8
 # Copyright 2023 Custom Diffusion authors and the HuggingFace Inc. team. All rights reserved.
