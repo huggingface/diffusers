@@ -126,9 +126,9 @@ def log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight
     torch.cuda.empty_cache()
 
 
-def save_progress(text_encoder, placeholder_token_id, accelerator, args, save_path):
+def save_progress(text_encoder, placeholder_token_ids, accelerator, args, save_path):
     logger.info("Saving embeddings")
-    learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_id]
+    learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[min(placeholder_token_ids):max(placeholder_token_ids)]
     learned_embeds_dict = {args.placeholder_token: learned_embeds.detach().cpu()}
     torch.save(learned_embeds_dict, save_path)
 
@@ -714,7 +714,7 @@ def main():
     )
 
     # For mixed precision training we cast the unet and vae weights to half-precision
-    # as these models are only used for inference, keeping weights in full precision is not required.
+    # as these mode.clone()ls are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
         weight_dtype = torch.float16
@@ -829,11 +829,13 @@ def main():
                 optimizer.zero_grad()
 
                 # Let's make sure we don't update any embedding weights besides the newly added token
-                index_no_updates = torch.arange(len(tokenizer)) != placeholder_tokens
+                index_no_updates = index_no_updates = torch.ones((len(tokenizer),), dtype=torch.bool)
+                index_no_updates[min(placeholder_token_ids):max(placeholder_token_ids)] = False
+
                 with torch.no_grad():
                     accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[
                         index_no_updates
-                    ] = orig_embeds_params[index_no_updates]
+                        ] = orig_embeds_params[index_no_updates]
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
@@ -841,7 +843,7 @@ def main():
                 global_step += 1
                 if global_step % args.save_steps == 0:
                     save_path = os.path.join(args.output_dir, f"learned_embeds-steps-{global_step}.bin")
-                    save_progress(text_encoder, placeholder_token_id, accelerator, args, save_path)
+                    save_progress(text_encoder, placeholder_token_ids, accelerator, args, save_path)
 
                 if accelerator.is_main_process:
                     if global_step % args.checkpointing_steps == 0:
@@ -877,7 +879,7 @@ def main():
             pipeline.save_pretrained(args.output_dir)
         # Save the newly trained embeddings
         save_path = os.path.join(args.output_dir, "learned_embeds.bin")
-        save_progress(text_encoder, placeholder_token_id, accelerator, args, save_path)
+        save_progress(text_encoder, placeholder_token_ids, accelerator, args, save_path)
 
         if args.push_to_hub:
             upload_folder(
