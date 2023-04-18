@@ -81,7 +81,7 @@ class Attention(nn.Module):
         self.added_kv_proj_dim = added_kv_proj_dim
 
         if norm_num_groups is not None:
-            self.group_norm = nn.GroupNorm(num_channels=inner_dim, num_groups=norm_num_groups, eps=1e-5, affine=True)
+            self.group_norm = nn.GroupNorm(num_channels=query_dim, num_groups=norm_num_groups, eps=1e-5, affine=True)
         else:
             self.group_norm = None
 
@@ -93,8 +93,8 @@ class Attention(nn.Module):
         self.to_v = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
 
         if self.added_kv_proj_dim is not None:
-            self.add_k_proj = nn.Linear(added_kv_proj_dim, cross_attention_dim)
-            self.add_v_proj = nn.Linear(added_kv_proj_dim, cross_attention_dim)
+            self.add_k_proj = nn.Linear(added_kv_proj_dim, inner_dim)
+            self.add_v_proj = nn.Linear(added_kv_proj_dim, inner_dim)
 
         self.to_out = nn.ModuleList([])
         self.to_out.append(nn.Linear(inner_dim, query_dim, bias=out_bias))
@@ -400,7 +400,6 @@ class AttnAddedKVProcessor:
         residual = hidden_states
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
         batch_size, sequence_length, _ = hidden_states.shape
-        encoder_hidden_states = encoder_hidden_states.transpose(1, 2)
 
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
@@ -627,7 +626,6 @@ class SlicedAttnAddedKVProcessor:
     def __call__(self, attn: "Attention", hidden_states, encoder_hidden_states=None, attention_mask=None):
         residual = hidden_states
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
-        encoder_hidden_states = encoder_hidden_states.transpose(1, 2)
 
         batch_size, sequence_length, _ = hidden_states.shape
 
@@ -686,6 +684,7 @@ class SlicedAttnAddedKVProcessor:
 
 AttentionProcessor = Union[
     AttnProcessor,
+    AttnProcessor2_0,
     XFormersAttnProcessor,
     SlicedAttnProcessor,
     AttnAddedKVProcessor,

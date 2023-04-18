@@ -18,7 +18,7 @@ import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput, apply_forward_hook
+from ..utils import BaseOutput, apply_forward_hook, deprecate
 from .modeling_utils import ModelMixin
 from .vae import Decoder, DecoderOutput, DiagonalGaussianDistribution, Encoder
 
@@ -120,8 +120,18 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
             if isinstance(self.config.sample_size, (list, tuple))
             else self.config.sample_size
         )
-        self.tile_latent_min_size = int(sample_size / (2 ** (len(self.block_out_channels) - 1)))
+        self.tile_latent_min_size = int(sample_size / (2 ** (len(self.config.block_out_channels) - 1)))
         self.tile_overlap_factor = 0.25
+
+    @property
+    def block_out_channels(self):
+        deprecate(
+            "block_out_channels",
+            "1.0.0",
+            "Accessing `block_out_channels` directly via vae.block_out_channels is deprecated. Please use `vae.config.block_out_channels instead`",
+            standard_warn=False,
+        )
+        return self.config.block_out_channels
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (Encoder, Decoder)):
@@ -207,6 +217,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
 
     def tiled_encode(self, x: torch.FloatTensor, return_dict: bool = True) -> AutoencoderKLOutput:
         r"""Encode a batch of images using a tiled encoder.
+
         Args:
         When this option is enabled, the VAE will split the input tensor into tiles to compute encoding in several
         steps. This is useful to keep memory use constant regardless of image size. The end result of tiled encoding is:
@@ -253,6 +264,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
 
     def tiled_decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
         r"""Decode a batch of images using a tiled decoder.
+
         Args:
         When this option is enabled, the VAE will split the input tensor into tiles to compute decoding in several
         steps. This is useful to keep memory use constant regardless of image size. The end result of tiled decoding is:

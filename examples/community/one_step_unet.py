@@ -12,7 +12,7 @@ class UnetSchedulerOneForwardPipeline(DiffusionPipeline):
 
     def __call__(self):
         image = torch.randn(
-            (1, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
+            (1, self.unet.config.in_channels, self.unet.config.sample_size, self.unet.config.sample_size),
         )
         timestep = 1
 

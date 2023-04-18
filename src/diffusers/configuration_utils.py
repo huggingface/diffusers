@@ -109,13 +109,6 @@ class ConfigMixin:
         # TODO: remove this when we remove the deprecation warning, and the `kwargs` argument,
         # or solve in a more general way.
         kwargs.pop("kwargs", None)
-        for key, value in kwargs.items():
-            try:
-                setattr(self, key, value)
-            except AttributeError as err:
-                logger.error(f"Can't set {key} with value {value} for {self}")
-                raise err
-
         if not hasattr(self, "_internal_dict"):
             internal_dict = kwargs
         else:
@@ -420,7 +413,7 @@ class ConfigMixin:
     @classmethod
     def extract_init_dict(cls, config_dict, **kwargs):
         # 0. Copy origin config dict
-        original_dict = {k: v for k, v in config_dict.items()}
+        original_dict = dict(config_dict.items())
 
         # 1. Retrieve expected config attributes from __init__ signature
         expected_keys = cls._get_init_keys(cls)
@@ -610,7 +603,7 @@ def flax_register_to_config(cls):
             )
 
         # Ignore private kwargs in the init. Retrieve all passed attributes
-        init_kwargs = {k: v for k, v in kwargs.items()}
+        init_kwargs = dict(kwargs.items())
 
         # Retrieve default values
         fields = dataclasses.fields(self)

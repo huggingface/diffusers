@@ -18,7 +18,7 @@ from typing import Callable, List, Optional, Union
 import numpy as np
 import PIL
 import torch
-from transformers import CLIPFeatureExtractor
+from transformers import CLIPImageProcessor
 
 from diffusers.utils import is_accelerate_available
 
@@ -156,7 +156,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
-        feature_extractor ([`CLIPFeatureExtractor`]):
+        feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
     # TODO: feature_extractor is required to encode initial images (if they are in PIL format),
@@ -170,7 +170,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
         unet: UNet2DConditionModel,
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
         safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = False,
     ):
         super().__init__()
