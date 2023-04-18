@@ -104,6 +104,10 @@ class ExamplesTestsAccelerate(unittest.TestCase):
                 --learnable_property object
                 --placeholder_token <cat-toy>
                 --initializer_token a
+                --validation_prompt='a <cat-toy> sitting'
+                --validation_steps 1
+                --save_steps 1
+                --num_vectors 2
                 --resolution 64
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
