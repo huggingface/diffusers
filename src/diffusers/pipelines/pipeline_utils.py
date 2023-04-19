@@ -201,24 +201,24 @@ def variant_compatible_siblings(filenames, variant=None) -> Union[List[os.PathLi
     # .bin, .safetensors, ...
     weight_suffixs = [w.split(".")[-1] for w in weight_names]
     # -00001-of-00002
-    transformers_index_format = "\d{5}-of-\d{5}"
+    transformers_index_format = r"\d{5}-of-\d{5}"
 
     if variant is not None:
         # `diffusion_pytorch_model.fp16.bin` as well as `model.fp16-00001-of-00002.safetenstors`
         variant_file_re = re.compile(
-            f"({'|'.join(weight_prefixes)})\.({variant}|{variant}-{transformers_index_format})\.({'|'.join(weight_suffixs)})$"
+            rf"({'|'.join(weight_prefixes)})\.({variant}|{variant}-{transformers_index_format})\.({'|'.join(weight_suffixs)})$"
         )
         # `text_encoder/pytorch_model.bin.index.fp16.json`
         variant_index_re = re.compile(
-            f"({'|'.join(weight_prefixes)})\.({'|'.join(weight_suffixs)})\.index\.{variant}\.json$"
+            rf"({'|'.join(weight_prefixes)})\.({'|'.join(weight_suffixs)})\.index\.{variant}\.json$"
         )
 
     # `diffusion_pytorch_model.bin` as well as `model-00001-of-00002.safetenstors`
     non_variant_file_re = re.compile(
-        f"({'|'.join(weight_prefixes)})(-{transformers_index_format})?\.({'|'.join(weight_suffixs)})$"
+        rf"({'|'.join(weight_prefixes)})(-{transformers_index_format})?\.({'|'.join(weight_suffixs)})$"
     )
     # `text_encoder/pytorch_model.bin.index.json`
-    non_variant_index_re = re.compile(f"({'|'.join(weight_prefixes)})\.({'|'.join(weight_suffixs)})\.index\.json")
+    non_variant_index_re = re.compile(rf"({'|'.join(weight_prefixes)})\.({'|'.join(weight_suffixs)})\.index\.json")
 
     if variant is not None:
         variant_weights = {f for f in filenames if variant_file_re.match(f.split("/")[-1]) is not None}
@@ -508,7 +508,7 @@ class DiffusionPipeline(ConfigMixin):
             setattr(self, name, module)
 
     def __setattr__(self, name: str, value: Any):
-        if hasattr(self, name) and hasattr(self.config, name):
+        if name in self.__dict__ and hasattr(self.config, name):
             # We need to overwrite the config if name exists in config
             if isinstance(getattr(self.config, name), (tuple, list)):
                 if value is not None and self.config[name][0] is not None:
@@ -648,26 +648,25 @@ class DiffusionPipeline(ConfigMixin):
             )
 
         module_names, _ = self._get_signature_keys(self)
-        module_names = [m for m in module_names if hasattr(self, m)]
+        modules = [getattr(self, n, None) for n in module_names]
+        modules = [m for m in modules if isinstance(m, torch.nn.Module)]
 
         is_offloaded = pipeline_is_offloaded or pipeline_is_sequentially_offloaded
-        for name in module_names:
-            module = getattr(self, name)
-            if isinstance(module, torch.nn.Module):
-                module.to(torch_device, torch_dtype)
-                if (
-                    module.dtype == torch.float16
-                    and str(torch_device) in ["cpu"]
-                    and not silence_dtype_warnings
-                    and not is_offloaded
-                ):
-                    logger.warning(
-                        "Pipelines loaded with `torch_dtype=torch.float16` cannot run with `cpu` device. It"
-                        " is not recommended to move them to `cpu` as running them will fail. Please make"
-                        " sure to use an accelerator to run the pipeline in inference, due to the lack of"
-                        " support for`float16` operations on this device in PyTorch. Please, remove the"
-                        " `torch_dtype=torch.float16` argument, or use another device for inference."
-                    )
+        for module in modules:
+            module.to(torch_device, torch_dtype)
+            if (
+                module.dtype == torch.float16
+                and str(torch_device) in ["cpu"]
+                and not silence_dtype_warnings
+                and not is_offloaded
+            ):
+                logger.warning(
+                    "Pipelines loaded with `torch_dtype=torch.float16` cannot run with `cpu` device. It"
+                    " is not recommended to move them to `cpu` as running them will fail. Please make"
+                    " sure to use an accelerator to run the pipeline in inference, due to the lack of"
+                    " support for`float16` operations on this device in PyTorch. Please, remove the"
+                    " `torch_dtype=torch.float16` argument, or use another device for inference."
+                )
         return self
 
     @property
@@ -677,12 +676,12 @@ class DiffusionPipeline(ConfigMixin):
             `torch.device`: The torch device on which the pipeline is located.
         """
         module_names, _ = self._get_signature_keys(self)
-        module_names = [m for m in module_names if hasattr(self, m)]
+        modules = [getattr(self, n, None) for n in module_names]
+        modules = [m for m in modules if isinstance(m, torch.nn.Module)]
 
-        for name in module_names:
-            module = getattr(self, name)
-            if isinstance(module, torch.nn.Module):
-                return module.device
+        for module in modules:
+            return module.device
+
         return torch.device("cpu")
 
     @classmethod
@@ -1451,13 +1450,12 @@ class DiffusionPipeline(ConfigMixin):
             for child in module.children():
                 fn_recursive_set_mem_eff(child)
 
-        module_names, _, _ = self.extract_init_dict(dict(self.config))
-        module_names = [m for m in module_names if hasattr(self, m)]
+        module_names, _ = self._get_signature_keys(self)
+        modules = [getattr(self, n, None) for n in module_names]
+        modules = [m for m in modules if isinstance(m, torch.nn.Module)]
 
-        for module_name in module_names:
-            module = getattr(self, module_name)
-            if isinstance(module, torch.nn.Module):
-                fn_recursive_set_mem_eff(module)
+        for module in modules:
+            fn_recursive_set_mem_eff(module)
 
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
         r"""
@@ -1484,10 +1482,9 @@ class DiffusionPipeline(ConfigMixin):
         self.enable_attention_slicing(None)
 
     def set_attention_slice(self, slice_size: Optional[int]):
-        module_names, _, _ = self.extract_init_dict(dict(self.config))
-        module_names = [m for m in module_names if hasattr(self, m)]
+        module_names, _ = self._get_signature_keys(self)
+        modules = [getattr(self, n, None) for n in module_names]
+        modules = [m for m in modules if isinstance(m, torch.nn.Module) and hasattr(m, "set_attention_slice")]
 
-        for module_name in module_names:
-            module = getattr(self, module_name)
-            if isinstance(module, torch.nn.Module) and hasattr(module, "set_attention_slice"):
-                module.set_attention_slice(slice_size)
+        for module in modules:
+            module.set_attention_slice(slice_size)
