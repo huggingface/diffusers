@@ -816,9 +816,9 @@ class CustomDiffusionXFormersAttnProcessor(nn.Module):
         self.train_kv = train_kv
         self.train_q_out = train_q_out
 
-        self.attention_op = attention_op
         self.hidden_size = hidden_size
         self.cross_attention_dim = cross_attention_dim
+        self.attention_op = attention_op
 
         # `_custom_diffusion` id for easy serialization and loading.
         if self.train_kv:

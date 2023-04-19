@@ -232,7 +232,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
                 --max_train_steps 2
-                --learning_rate 5.0e-04
+                --learning_rate 1.0e-05
                 --scale_lr
                 --lr_scheduler constant
                 --lr_warmup_steps 0

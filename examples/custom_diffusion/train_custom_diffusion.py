@@ -49,7 +49,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.loaders import AttnProcsLayers
-from diffusers.models.attention_processor import CustomDiffusionAttnProcessor
+from diffusers.models.attention_processor import CustomDiffusionAttnProcessor, CustomDiffusionXFormersAttnProcessor
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
@@ -167,6 +167,7 @@ class CustomDiffusionDataset(Dataset):
         concepts_list,
         tokenizer,
         size=512,
+        mask_size=64,
         center_crop=False,
         with_prior_preservation=False,
         num_class_images=200,
@@ -174,6 +175,7 @@ class CustomDiffusionDataset(Dataset):
         aug=True,
     ):
         self.size = size
+        self.mask_size = mask_size
         self.center_crop = center_crop
         self.tokenizer = tokenizer
         self.interpolation = Image.BILINEAR
@@ -223,6 +225,7 @@ class CustomDiffusionDataset(Dataset):
 
     def preprocess(self, image, scale, resample):
         outer, inner = self.size, scale
+        factor = self.size // self.mask_size
         if scale > self.size:
             outer, inner = scale, self.size
         top, left = np.random.randint(0, outer - inner + 1), np.random.randint(0, outer - inner + 1)
@@ -230,13 +233,13 @@ class CustomDiffusionDataset(Dataset):
         image = np.array(image).astype(np.uint8)
         image = (image / 127.5 - 1.0).astype(np.float32)
         instance_image = np.zeros((self.size, self.size, 3), dtype=np.float32)
-        mask = np.zeros((self.size // 8, self.size // 8))
+        mask = np.zeros((self.size // factor, self.size // factor))
         if scale > self.size:
             instance_image = image[top : top + inner, left : left + inner, :]
-            mask = np.ones((self.size // 8, self.size // 8))
+            mask = np.ones((self.size // factor, self.size // factor))
         else:
             instance_image[top : top + inner, left : left + inner, :] = image
-            mask[top // 8 + 1 : (top + scale) // 8 - 1, left // 8 + 1 : (left + scale) // 8 - 1] = 1.0
+            mask[top // factor + 1 : (top + scale) // factor - 1, left // factor + 1 : (left + scale) // factor - 1] = 1.0
         return instance_image, mask
 
     def __getitem__(self, index):
@@ -858,6 +861,20 @@ def main(args):
     unet.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
 
+    attention_class = CustomDiffusionAttnProcessor
+    if args.enable_xformers_memory_efficient_attention:
+        if is_xformers_available():
+            import xformers
+
+            xformers_version = version.parse(xformers.__version__)
+            if xformers_version == version.parse("0.0.16"):
+                logger.warn(
+                    "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
+                )
+            attention_class = CustomDiffusionXFormersAttnProcessor
+        else:
+            raise ValueError("xformers is not available. Make sure it is installed correctly")
+
     # now we will add new Custom Diffusion weights to the attention layers
     # It's important to realize here how many attention weights will be added and of which sizes
     # The sizes of the attention layers consist only of two different variables:
@@ -897,7 +914,7 @@ def main(args):
             weights["to_out_custom_diffusion.0.weight"] = st[layer_name + ".to_out.0.weight"]
             weights["to_out_custom_diffusion.0.bias"] = st[layer_name + ".to_out.0.bias"]
         if cross_attention_dim is not None:
-            custom_diffusion_attn_procs[name] = CustomDiffusionAttnProcessor(
+            custom_diffusion_attn_procs[name] = attention_class(
                 train_kv=train_kv,
                 train_q_out=train_q_out,
                 hidden_size=hidden_size,
@@ -905,7 +922,7 @@ def main(args):
             ).to(unet.device)
             custom_diffusion_attn_procs[name].load_state_dict(weights)
         else:
-            custom_diffusion_attn_procs[name] = CustomDiffusionAttnProcessor(
+            custom_diffusion_attn_procs[name] = attention_class(
                 train_kv=False,
                 train_q_out=False,
                 hidden_size=hidden_size,
@@ -916,19 +933,6 @@ def main(args):
     custom_diffusion_layers = AttnProcsLayers(unet.attn_processors)
 
     accelerator.register_for_checkpointing(custom_diffusion_layers)
-
-    if args.enable_xformers_memory_efficient_attention:
-        if is_xformers_available():
-            import xformers
-
-            xformers_version = version.parse(xformers.__version__)
-            if xformers_version == version.parse("0.0.16"):
-                logger.warn(
-                    "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
-                )
-            unet.enable_xformers_memory_efficient_attention()
-        else:
-            raise ValueError("xformers is not available. Make sure it is installed correctly")
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
@@ -976,6 +980,7 @@ def main(args):
         tokenizer=tokenizer,
         with_prior_preservation=args.with_prior_preservation,
         size=args.resolution,
+        mask_size=vae.encode(torch.randn(1, 3, args.resolution, args.resolution).to(dtype=weight_dtype).to(accelerator.device)).latent_dist.sample().size()[-1],
         center_crop=args.center_crop,
         num_class_images=args.num_class_images,
         hflip=args.hflip,
