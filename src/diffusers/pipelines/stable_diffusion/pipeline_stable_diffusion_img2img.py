@@ -23,7 +23,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
-from ...loaders import TextualInversionLoaderMixin
+from ...loaders import FromCkptMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -37,7 +37,6 @@ from ...utils import (
 )
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
-from .convert_from_ckpt import FromCkptMixin
 from .safety_checker import StableDiffusionSafetyChecker
 
 
