@@ -719,7 +719,7 @@ def main():
     )
 
     # For mixed precision training we cast the unet and vae weights to half-precision
-    # as these mode.clone()ls are only used for inference, keeping weights in full precision is not required.
+    # as these models are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
         weight_dtype = torch.float16
@@ -834,7 +834,7 @@ def main():
                 optimizer.zero_grad()
 
                 # Let's make sure we don't update any embedding weights besides the newly added token
-                index_no_updates = index_no_updates = torch.ones((len(tokenizer),), dtype=torch.bool)
+                index_no_updates = torch.ones((len(tokenizer),), dtype=torch.bool)
                 index_no_updates[min(placeholder_token_ids) : max(placeholder_token_ids) + 1] = False
 
                 with torch.no_grad():
