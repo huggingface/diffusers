@@ -239,7 +239,9 @@ class CustomDiffusionDataset(Dataset):
             mask = np.ones((self.size // factor, self.size // factor))
         else:
             instance_image[top : top + inner, left : left + inner, :] = image
-            mask[top // factor + 1 : (top + scale) // factor - 1, left // factor + 1 : (left + scale) // factor - 1] = 1.0
+            mask[
+                top // factor + 1 : (top + scale) // factor - 1, left // factor + 1 : (left + scale) // factor - 1
+            ] = 1.0
         return instance_image, mask
 
     def __getitem__(self, index):
@@ -980,7 +982,11 @@ def main(args):
         tokenizer=tokenizer,
         with_prior_preservation=args.with_prior_preservation,
         size=args.resolution,
-        mask_size=vae.encode(torch.randn(1, 3, args.resolution, args.resolution).to(dtype=weight_dtype).to(accelerator.device)).latent_dist.sample().size()[-1],
+        mask_size=vae.encode(
+            torch.randn(1, 3, args.resolution, args.resolution).to(dtype=weight_dtype).to(accelerator.device)
+        )
+        .latent_dist.sample()
+        .size()[-1],
         center_crop=args.center_crop,
         num_class_images=args.num_class_images,
         hflip=args.hflip,
