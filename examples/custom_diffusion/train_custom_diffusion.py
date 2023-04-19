@@ -917,34 +917,6 @@ def main(args):
 
     accelerator.register_for_checkpointing(custom_diffusion_layers)
 
-    # to test xformers temporary
-    # from diffusers.utils import floats_tensor
-
-    # def dummy_input():
-    #     torch_device = accelerator.device
-    #     batch_size = 4
-    #     num_channels = 4
-    #     sizes = (32, 32)
-
-    #     noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
-    #     time_step = torch.tensor([10]).to(torch_device)
-    #     encoder_hidden_states = floats_tensor((batch_size, 77, 768)).to(torch_device)
-
-    #     return {"sample": noise, "timestep": time_step, "encoder_hidden_states": encoder_hidden_states}
-
-    # with torch.no_grad():
-    #     inputs_dict = dummy_input()
-    #     sample = unet(**inputs_dict).sample
-
-    #     unet.enable_xformers_memory_efficient_attention()
-    #     on_sample = unet(**inputs_dict).sample
-
-    #     unet.disable_xformers_memory_efficient_attention()
-    #     off_sample = unet(**inputs_dict).sample
-    #     print((sample - off_sample).abs().max(), (sample - on_sample).abs().max() )
-    # assert (sample - on_sample).abs().max() < 1e-4
-    # assert (sample - off_sample).abs().max() < 1e-4
-
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
             import xformers
