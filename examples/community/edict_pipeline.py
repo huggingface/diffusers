@@ -6,21 +6,12 @@ from diffusers import DiffusionPipeline, AutoencoderKL, UNet2DConditionModel, DD
 from PIL import Image
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
-from diffusers.utils import PIL_INTERPOLATION
+from diffusers.utils import (
+    PIL_INTERPOLATION,
+    deprecate,
+)
 
-def preprocess(image):
-    if isinstance(image, Image.Image):
-        w, h = image.size
-        w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
-
-        image = np.array(image.resize((w, h), resample=PIL_INTERPOLATION["lanczos"]))[None, :]
-        image = np.array(image).astype(np.float32) / 255.0
-        image = image.transpose(0, 3, 1, 2)
-        image = 2.0 * image - 1.0
-        image = torch.from_numpy(image)
-    else:
-        raise TypeError("Expected object of type PIL.Image.Image")
-    return image
+from diffusers.image_processor import VaeImageProcessor
 
 
 class EDICTPipeline(DiffusionPipeline):
@@ -45,6 +36,9 @@ class EDICTPipeline(DiffusionPipeline):
             unet=unet,
             scheduler=scheduler,
         )
+
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
 
     def _encode_prompt(self, prompt: str, negative_prompt: Optional[str] = None, do_classifier_free_guidance: bool = False):
@@ -141,11 +135,9 @@ class EDICTPipeline(DiffusionPipeline):
     
     @torch.no_grad()
     def decode_latents(self, latents: torch.Tensor):
-        # latents = 1 / self.vae.config.scaling_factor * latents
-        latents = 1 / 0.18215 * latents
+        latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
-        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
     @torch.no_grad()
@@ -162,8 +154,7 @@ class EDICTPipeline(DiffusionPipeline):
         image = image.to(device=self.device, dtype=text_embeds.dtype)
         latent = self.vae.encode(image).latent_dist.sample(generator)
 
-        # init_latents = self.vae.config.scaling_factor * init_latents
-        latent = 0.18215 * latent
+        latent = self.vae.config.scaling_factor * latent
 
         coupled_latents = [latent.clone(), latent.clone()]
 
@@ -211,10 +202,11 @@ class EDICTPipeline(DiffusionPipeline):
         strength: float = 0.8,
         negative_prompt: Optional[str] = None,
         generator: Optional[torch.Generator] = None,
+        output_type: Optional[str] = "pil",
     ):
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        image = preprocess(image)  # from PIL.Image to torch.Tensor
+        image = self.image_processor.preprocess(image)
 
         base_embeds = self._encode_prompt(base_prompt, negative_prompt, do_classifier_free_guidance)
         target_embeds = self._encode_prompt(target_prompt, negative_prompt, do_classifier_free_guidance)
@@ -261,8 +253,18 @@ class EDICTPipeline(DiffusionPipeline):
         # either one is fine
         final_latent = coupled_latents[0]
 
-        image = self.decode_latents(final_latent)
-        image = (image[0] * 255).round().astype("uint8")
-        pil_image = Image.fromarray(image)
+        if output_type not in ["latent", "pt", "np", "pil"]:
+            deprecation_message = (
+                f"the output_type {output_type} is outdated. Please make sure to set it to one of these instead: "
+                "`pil`, `np`, `pt`, `latent`"
+            )
+            deprecate("Unsupported output_type", "1.0.0", deprecation_message, standard_warn=False)
+            output_type = "np"
 
-        return pil_image
+        if output_type == "latent":
+            image = final_latent
+        else:
+            image = self.decode_latents(final_latent)
+            image = self.image_processor.postprocess(image, output_type=output_type)
+
+        return image
