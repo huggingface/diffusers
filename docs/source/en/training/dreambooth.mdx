@@ -60,7 +60,18 @@ DreamBooth finetuning is very sensitive to hyperparameters and easy to overfit. 
 
 <frameworkcontent>
 <pt>
-Let's try DreamBooth with a [few images of a dog](https://drive.google.com/drive/folders/1BO_dyz-p65qhBRRMRA4TbZ8qW4rB99JZ); download and save them to a directory and then set the `INSTANCE_DIR` environment variable to that path:
+Let's try DreamBooth with a
+[few images of a dog](https://huggingface.co/datasets/diffusers/dog-example);
+download and save them to a directory and then set the `INSTANCE_DIR` environment variable to that path:
+
+```python 
+local_dir = "./path_to_training_images"
+snapshot_download(
+    "diffusers/dog-example",
+    local_dir=local_dir, repo_type="dataset",
+    ignore_patterns=".gitattributes",
+)
+```
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
