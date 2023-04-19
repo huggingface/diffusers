@@ -31,35 +31,30 @@ from transformers import (
     CLIPVisionModelWithProjection,
 )
 
-from diffusers import (
+from ...models import (
     AutoencoderKL,
     ControlNetModel,
+    PriorTransformer,
+    UNet2DConditionModel,
+)
+from ...schedulers import (
     DDIMScheduler,
     DDPMScheduler,
     DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
     HeunDiscreteScheduler,
-    LDMTextToImagePipeline,
     LMSDiscreteScheduler,
     PNDMScheduler,
-    PriorTransformer,
-    StableDiffusionControlNetPipeline,
-    StableDiffusionImg2ImgPipeline,
-    StableDiffusionInpaintPipeline,
-    StableDiffusionPipeline,
-    StableUnCLIPImg2ImgPipeline,
-    StableUnCLIPPipeline,
     UnCLIPScheduler,
-    UNet2DConditionModel,
 )
-from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
-from diffusers.pipelines.paint_by_example import PaintByExampleImageEncoder, PaintByExamplePipeline
-from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
-from diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
-
 from ...utils import is_omegaconf_available, is_safetensors_available, logging
 from ...utils.import_utils import BACKENDS_MAPPING
+from ..latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
+from ..paint_by_example import PaintByExampleImageEncoder
+from ..pipeline_utils import DiffusionPipeline
+from .safety_checker import StableDiffusionSafetyChecker
+from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -981,7 +976,6 @@ def download_from_original_stable_diffusion_ckpt(
     image_size: int = 512,
     prediction_type: str = None,
     model_type: str = None,
-    is_img2img: bool = False,
     extract_ema: bool = False,
     scheduler_type: str = "pndm",
     num_in_channels: Optional[int] = None,
@@ -993,7 +987,8 @@ def download_from_original_stable_diffusion_ckpt(
     clip_stats_path: Optional[str] = None,
     controlnet: Optional[bool] = None,
     load_safety_checker: bool = True,
-) -> StableDiffusionPipeline:
+    pipeline_class: DiffusionPipeline = None,
+) -> DiffusionPipeline:
     """
     Load a Stable Diffusion pipeline object from a CompVis-style `.ckpt`/`.safetensors` file and (ideally) a `.yaml`
     config file.
@@ -1031,12 +1026,29 @@ def download_from_original_stable_diffusion_ckpt(
             Whether the attention computation should always be upcasted. This is necessary when running stable
             diffusion 2.1.
         device (`str`, *optional*, defaults to `None`):
-            The device to use. Pass `None` to determine automatically. :param from_safetensors: If `checkpoint_path` is
-            in `safetensors` format, load checkpoint with safetensors instead of PyTorch. :return: A
-            StableDiffusionPipeline object representing the passed-in `.ckpt`/`.safetensors` file.
+            The device to use. Pass `None` to determine automatically.
+        from_safetensors (`str`, *optional*, defaults to `False`):
+            If `checkpoint_path` is in `safetensors` format, load checkpoint with safetensors instead of PyTorch.
         load_safety_checker (`bool`, *optional*, defaults to `True`):
             Whether to load the safety checker or not. Defaults to `True`.
+        pipeline_class (`str`, *optional*, defaults to `None`):
+            The pipeline class to use. Pass `None` to determine automatically.
+        return: A StableDiffusionPipeline object representing the passed-in `.ckpt`/`.safetensors` file.
     """
+
+    # import pipelines here to avoid circular import error when using from_ckpt method
+    from diffusers import (
+        LDMTextToImagePipeline,
+        PaintByExamplePipeline,
+        StableDiffusionControlNetPipeline,
+        StableDiffusionPipeline,
+        StableUnCLIPImg2ImgPipeline,
+        StableUnCLIPPipeline,
+    )
+
+    if pipeline_class is None:
+        pipeline_class = StableDiffusionPipeline
+
     if prediction_type == "v-prediction":
         prediction_type = "v_prediction"
 
@@ -1198,44 +1210,16 @@ def download_from_original_stable_diffusion_ckpt(
                     requires_safety_checker=False,
                 )
             else:
-                if (
-                    hasattr(original_config, "model")
-                    and hasattr(original_config.model, "target")
-                    and "LatentInpaintDiffusion" in original_config.model.target
-                ):
-                    pipe = StableDiffusionInpaintPipeline(
-                        vae=vae,
-                        text_encoder=text_model,
-                        tokenizer=tokenizer,
-                        unet=unet,
-                        scheduler=scheduler,
-                        safety_checker=None,
-                        feature_extractor=None,
-                        requires_safety_checker=False,
-                    )
-                else:
-                    if is_img2img:
-                        pipe = StableDiffusionImg2ImgPipeline(
-                            vae=vae,
-                            text_encoder=text_model,
-                            tokenizer=tokenizer,
-                            unet=unet,
-                            scheduler=scheduler,
-                            safety_checker=None,
-                            feature_extractor=None,
-                            requires_safety_checker=False,
-                        )
-                    else:
-                        pipe = StableDiffusionPipeline(
-                            vae=vae,
-                            text_encoder=text_model,
-                            tokenizer=tokenizer,
-                            unet=unet,
-                            scheduler=scheduler,
-                            safety_checker=None,
-                            feature_extractor=None,
-                            requires_safety_checker=False,
-                        )
+                pipe = pipeline_class(
+                    vae=vae,
+                    text_encoder=text_model,
+                    tokenizer=tokenizer,
+                    unet=unet,
+                    scheduler=scheduler,
+                    safety_checker=None,
+                    feature_extractor=None,
+                    requires_safety_checker=False,
+                )
         else:
             image_normalizer, image_noising_scheduler = stable_unclip_image_noising_components(
                 original_config, clip_stats_path=clip_stats_path, device=device
@@ -1326,41 +1310,15 @@ def download_from_original_stable_diffusion_ckpt(
                 feature_extractor=feature_extractor,
             )
         else:
-            if (
-                hasattr(original_config, "model")
-                and hasattr(original_config.model, "target")
-                and "LatentInpaintDiffusion" in original_config.model.target
-            ):
-                pipe = StableDiffusionInpaintPipeline(
-                    vae=vae,
-                    text_encoder=text_model,
-                    tokenizer=tokenizer,
-                    unet=unet,
-                    scheduler=scheduler,
-                    safety_checker=safety_checker,
-                    feature_extractor=feature_extractor,
-                )
-            else:
-                if is_img2img:
-                    pipe = StableDiffusionImg2ImgPipeline(
-                        vae=vae,
-                        text_encoder=text_model,
-                        tokenizer=tokenizer,
-                        unet=unet,
-                        scheduler=scheduler,
-                        safety_checker=safety_checker,
-                        feature_extractor=feature_extractor,
-                    )
-                else:
-                    pipe = StableDiffusionPipeline(
-                        vae=vae,
-                        text_encoder=text_model,
-                        tokenizer=tokenizer,
-                        unet=unet,
-                        scheduler=scheduler,
-                        safety_checker=safety_checker,
-                        feature_extractor=feature_extractor,
-                    )
+            pipe = pipeline_class(
+                vae=vae,
+                text_encoder=text_model,
+                tokenizer=tokenizer,
+                unet=unet,
+                scheduler=scheduler,
+                safety_checker=safety_checker,
+                feature_extractor=feature_extractor,
+            )
     else:
         text_config = create_ldm_bert_config(original_config)
         text_model = convert_ldm_bert_checkpoint(checkpoint, text_config)
@@ -1379,7 +1337,7 @@ def download_controlnet_from_original_ckpt(
     upcast_attention: Optional[bool] = None,
     device: str = None,
     from_safetensors: bool = False,
-) -> StableDiffusionPipeline:
+) -> DiffusionPipeline:
     if not is_omegaconf_available():
         raise ValueError(BACKENDS_MAPPING["omegaconf"][1])
 
