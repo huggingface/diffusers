@@ -16,11 +16,12 @@
 
 import re
 from io import BytesIO
-from typing import Optional
 from pathlib import Path
+from typing import Optional
 
 import requests
 import torch
+from huggingface_hub import hf_hub_download
 from transformers import (
     AutoFeatureExtractor,
     BertTokenizerFast,
@@ -32,15 +33,12 @@ from transformers import (
     CLIPVisionModelWithProjection,
 )
 
-from huggingface_hub import hf_hub_download
-
 from ...models import (
     AutoencoderKL,
-    UNet2DConditionModel,
-    PriorTransformer,
     ControlNetModel,
+    PriorTransformer,
+    UNet2DConditionModel,
 )
-
 from ...schedulers import (
     DDIMScheduler,
     DDPMScheduler,
@@ -52,17 +50,13 @@ from ...schedulers import (
     PNDMScheduler,
     UnCLIPScheduler,
 )
-
+from ...utils import DIFFUSERS_CACHE, HF_HUB_OFFLINE, is_omegaconf_available, is_safetensors_available, logging
+from ...utils.import_utils import BACKENDS_MAPPING
 from ..latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
 from ..paint_by_example import PaintByExampleImageEncoder
-from .safety_checker import StableDiffusionSafetyChecker
-
-from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
-
 from ..pipeline_utils import DiffusionPipeline
-
-from ...utils import is_omegaconf_available, is_safetensors_available, logging, DIFFUSERS_CACHE, HF_HUB_OFFLINE
-from ...utils.import_utils import BACKENDS_MAPPING
+from .safety_checker import StableDiffusionSafetyChecker
+from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -1044,12 +1038,12 @@ def download_from_original_stable_diffusion_ckpt(
 
     # import pipelines here to avoid circular import error when using from_ckpt method
     from diffusers import (
+        LDMTextToImagePipeline,
+        PaintByExamplePipeline,
         StableDiffusionControlNetPipeline,
         StableDiffusionPipeline,
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
-        LDMTextToImagePipeline,
-        PaintByExamplePipeline,
     )
 
     if pipeline_class is None:
@@ -1387,8 +1381,8 @@ def download_controlnet_from_original_ckpt(
 
 
 class FromCkptMixin:
-    """ This helper class allows to directly load .ckpt stable diffusion file_extension
-    into the respective classes. """
+    """This helper class allows to directly load .ckpt stable diffusion file_extension
+    into the respective classes."""
 
     @classmethod
     def from_ckpt(cls, pretrained_model_name_or_path, **kwargs):
@@ -1570,7 +1564,6 @@ class FromCkptMixin:
         if from_safetensors and use_safetensors is True:
             raise ValueError("Make sure to install `safetensors` with `pip install safetensors`.")
 
-
         # TODO: For now we only support stable diffusion
         stable_unclip = None
         controlnet = False
@@ -1614,9 +1607,9 @@ class FromCkptMixin:
                 sess_options=sess_options,
             )
 
-        torch_dtype = kwargs.pop("torch_dtype", None)
+        kwargs.pop("torch_dtype", None)
 
-        pipe = download_from_original_stable_diffusion_ckpt(
+        download_from_original_stable_diffusion_ckpt(
             pretrained_model_name_or_path,
             pipeline_class=cls,
             model_type=model_type,

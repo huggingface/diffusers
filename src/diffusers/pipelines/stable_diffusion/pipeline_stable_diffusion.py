@@ -32,9 +32,9 @@ from ...utils import (
 )
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
+from .convert_from_ckpt import FromCkptMixin
 from .safety_checker import StableDiffusionSafetyChecker
 
-from .convert_from_ckpt import FromCkptMixin
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
