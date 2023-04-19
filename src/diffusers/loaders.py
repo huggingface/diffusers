@@ -252,14 +252,13 @@ class UNet2DConditionLoadersMixin:
             for key, value_dict in custom_diffusion_grouped_dict.items():
                 if len(value_dict) == 0:
                     attn_processors[key] = CustomDiffusionAttnProcessor(
-                        weights=None, train_kv=False, train_q_out=False, hidden_size=None, cross_attention_dim=None
+                        train_kv=False, train_q_out=False, hidden_size=None, cross_attention_dim=None
                     )
                 else:
                     cross_attention_dim = value_dict["to_k_custom_diffusion.weight"].shape[1]
                     hidden_size = value_dict["to_k_custom_diffusion.weight"].shape[0]
                     train_q_out = True if "to_q_custom_diffusion.weight" in value_dict else False
                     attn_processors[key] = CustomDiffusionAttnProcessor(
-                        weights=None,
                         train_kv=True,
                         train_q_out=train_q_out,
                         hidden_size=hidden_size,

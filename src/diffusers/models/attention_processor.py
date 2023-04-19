@@ -218,7 +218,15 @@ class Attention(nn.Module):
                 processor.load_state_dict(self.processor.state_dict())
                 processor.to(self.processor.to_q_lora.up.weight.device)
             elif is_custom_diffusion:
-                processor = self.processor
+                processor = CustomDiffusionAttnProcessor(
+                    train_kv=self.processor.train_kv,
+                    train_q_out=self.processor.train_q_out,
+                    hidden_size=self.processor.hidden_size,
+                    cross_attention_dim=self.processor.cross_attention_dim,
+                )
+                processor.load_state_dict(self.processor.state_dict())
+                if hasattr(self.processor, "to_k_custom_diffusion"):
+                    processor.to(self.processor.to_k_custom_diffusion.weight.device)
             else:
                 processor = AttnProcessor()
 
@@ -478,7 +486,6 @@ class LoRAAttnProcessor(nn.Module):
 class CustomDiffusionAttnProcessor(nn.Module):
     def __init__(
         self,
-        weights=None,
         train_kv=True,
         train_q_out=True,
         hidden_size=None,
@@ -495,22 +502,13 @@ class CustomDiffusionAttnProcessor(nn.Module):
 
         # `_custom_diffusion` id for easy serialization and loading.
         if self.train_kv:
-            self.to_k_custom_diffusion = nn.Linear(cross_attention_dim or hidden_size, hidden_size)
-            self.to_v_custom_diffusion = nn.Linear(cross_attention_dim or hidden_size, hidden_size)
-            if weights is not None:
-                with torch.no_grad():
-                    self.to_k_custom_diffusion.weight.copy_(weights["to_k"])
-                    self.to_v_custom_diffusion.weight.copy_(weights["to_v"])
+            self.to_k_custom_diffusion = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
+            self.to_v_custom_diffusion = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
         if self.train_q_out:
-            self.to_q_custom_diffusion = nn.Linear(hidden_size, hidden_size)
+            self.to_q_custom_diffusion = nn.Linear(hidden_size, hidden_size, bias=False)
             self.to_out_custom_diffusion = nn.ModuleList([])
             self.to_out_custom_diffusion.append(nn.Linear(hidden_size, hidden_size, bias=out_bias))
             self.to_out_custom_diffusion.append(nn.Dropout(dropout))
-            if weights is not None:
-                with torch.no_grad():
-                    self.to_q_custom_diffusion.weight.copy_(weights["to_q"])
-                    self.to_out_custom_diffusion[0].weight.copy_(weights["to_out.weight"])
-                    self.to_out_custom_diffusion[0].bias.copy_(weights["to_out.bias"])
 
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
         batch_size, sequence_length, _ = hidden_states.shape
@@ -525,8 +523,8 @@ class CustomDiffusionAttnProcessor(nn.Module):
             encoder_hidden_states = hidden_states
         else:
             crossattn = True
-            if attn.cross_attention_norm:
-                encoder_hidden_states = attn.norm_cross(encoder_hidden_states)
+            if attn.norm_cross:
+                encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         if self.train_kv:
             key = self.to_k_custom_diffusion(encoder_hidden_states)
@@ -824,17 +822,21 @@ class CustomDiffusionXFormersAttnProcessor(nn.Module):
 
         # `_custom_diffusion` id for easy serialization and loading.
         if self.train_kv:
-            self.to_k_custom_diffusion = nn.Linear(cross_attention_dim or hidden_size, hidden_size)
-            self.to_v_custom_diffusion = nn.Linear(cross_attention_dim or hidden_size, hidden_size)
+            self.to_k_custom_diffusion = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
+            self.to_v_custom_diffusion = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
         if self.train_q_out:
-            self.to_q_custom_diffusion = nn.Linear(hidden_size, hidden_size)
+            self.to_q_custom_diffusion = nn.Linear(hidden_size, hidden_size, bias=False)
             self.to_out_custom_diffusion = nn.ModuleList([])
             self.to_out_custom_diffusion.append(nn.Linear(hidden_size, hidden_size, bias=out_bias))
             self.to_out_custom_diffusion.append(nn.Dropout(dropout))
 
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
-        batch_size, sequence_length, _ = hidden_states.shape
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+
         if self.train_q_out:
             query = self.to_q_custom_diffusion(hidden_states)
         else:
@@ -845,8 +847,8 @@ class CustomDiffusionXFormersAttnProcessor(nn.Module):
             encoder_hidden_states = hidden_states
         else:
             crossattn = True
-            if attn.cross_attention_norm:
-                encoder_hidden_states = attn.norm_cross(encoder_hidden_states)
+            if attn.norm_cross:
+                encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         if self.train_kv:
             key = self.to_k_custom_diffusion(encoder_hidden_states)
@@ -881,7 +883,6 @@ class CustomDiffusionXFormersAttnProcessor(nn.Module):
             hidden_states = attn.to_out[0](hidden_states)
             # dropout
             hidden_states = attn.to_out[1](hidden_states)
-
         return hidden_states
 
 

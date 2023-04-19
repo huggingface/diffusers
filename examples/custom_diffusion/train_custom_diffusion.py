@@ -878,7 +878,7 @@ def main(args):
     custom_diffusion_attn_procs = {}
 
     st = unet.state_dict()
-    for name, attn in unet.attn_processors.items():
+    for name, _ in unet.attn_processors.items():
         cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
         if name.startswith("mid_block"):
             hidden_size = unet.config.block_out_channels[-1]
@@ -890,35 +890,60 @@ def main(args):
             hidden_size = unet.config.block_out_channels[block_id]
         layer_name = name.split(".processor")[0]
         weights = {
-            "to_k": st[layer_name + ".to_k.weight"],
-            "to_v": st[layer_name + ".to_v.weight"],
-            "to_q": st[layer_name + ".to_q.weight"],
-            "to_out.weight": st[layer_name + ".to_out.0.weight"],
-            "to_out.bias": st[layer_name + ".to_out.0.bias"],
-        }
+            "to_k_custom_diffusion.weight": st[layer_name + ".to_k.weight"],
+            "to_v_custom_diffusion.weight": st[layer_name + ".to_v.weight"]}
+        if train_q_out:
+            weights["to_q_custom_diffusion.weight"] = st[layer_name + ".to_q.weight"]
+            weights["to_out_custom_diffusion.0.weight"] = st[layer_name + ".to_out.0.weight"]
+            weights["to_out_custom_diffusion.0.bias"] = st[layer_name + ".to_out.0.bias"]
         if cross_attention_dim is not None:
             custom_diffusion_attn_procs[name] = CustomDiffusionAttnProcessor(
-                weights,
                 train_kv=train_kv,
                 train_q_out=train_q_out,
                 hidden_size=hidden_size,
                 cross_attention_dim=cross_attention_dim,
             ).to(unet.device)
+            custom_diffusion_attn_procs[name].load_state_dict(weights)
         else:
             custom_diffusion_attn_procs[name] = CustomDiffusionAttnProcessor(
-                weights,
                 train_kv=False,
                 train_q_out=False,
                 hidden_size=hidden_size,
                 cross_attention_dim=cross_attention_dim,
-            )  # attn
+            )
     del st
     unet.set_attn_processor(custom_diffusion_attn_procs)
-    custom_diffusion_layers = AttnProcsLayers(
-        {y: x for (y, x) in unet.attn_processors.items() if isinstance(x, CustomDiffusionAttnProcessor)}
-    )
+    custom_diffusion_layers = AttnProcsLayers(unet.attn_processors)
 
     accelerator.register_for_checkpointing(custom_diffusion_layers)
+
+    # to test xformers temporary
+    # from diffusers.utils import floats_tensor
+
+    # def dummy_input():
+    #     torch_device = accelerator.device
+    #     batch_size = 4
+    #     num_channels = 4
+    #     sizes = (32, 32)
+
+    #     noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+    #     time_step = torch.tensor([10]).to(torch_device)
+    #     encoder_hidden_states = floats_tensor((batch_size, 77, 768)).to(torch_device)
+
+    #     return {"sample": noise, "timestep": time_step, "encoder_hidden_states": encoder_hidden_states}
+
+    # with torch.no_grad():
+    #     inputs_dict = dummy_input()
+    #     sample = unet(**inputs_dict).sample
+
+    #     unet.enable_xformers_memory_efficient_attention()
+    #     on_sample = unet(**inputs_dict).sample
+
+    #     unet.disable_xformers_memory_efficient_attention()
+    #     off_sample = unet(**inputs_dict).sample
+    #     print((sample - off_sample).abs().max(), (sample - on_sample).abs().max() )
+    # assert (sample - on_sample).abs().max() < 1e-4
+    # assert (sample - off_sample).abs().max() < 1e-4
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
