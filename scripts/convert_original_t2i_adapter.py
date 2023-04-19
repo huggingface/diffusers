@@ -22,7 +22,7 @@ import re
 import torch
 
 
-def convert_adapter():
+def convert_adapter(state):
     mapping = {
         'down_opt': 'downsample',
         'in_conv': 'conv1',
