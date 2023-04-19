@@ -433,6 +433,7 @@ class TextualInversionLoaderMixin:
         Example:
 
         To load a textual inversion embedding vector in `diffusers` format:
+
         ```py
         from diffusers import StableDiffusionPipeline
         import torch
@@ -465,6 +466,7 @@ class TextualInversionLoaderMixin:
         image = pipe(prompt, num_inference_steps=50).images[0]
         image.save("character.png")
         ```
+
         """
         if not hasattr(self, "tokenizer") or not isinstance(self.tokenizer, PreTrainedTokenizer):
             raise ValueError(
@@ -1130,14 +1132,19 @@ class FromCkptMixin:
         >>> from diffusers import StableDiffusionPipeline
 
         >>> # Download pipeline from huggingface.co and cache.
-        >>> pipeline =  StableDiffusionPipeline.from_ckpt("https://huggingface.co/WarriorMama777/OrangeMixs/blob/main/Models/AbyssOrangeMix/AbyssOrangeMix.safetensors")
+        >>> pipeline = StableDiffusionPipeline.from_ckpt(
+        ...     "https://huggingface.co/WarriorMama777/OrangeMixs/blob/main/Models/AbyssOrangeMix/AbyssOrangeMix.safetensors"
+        ... )
 
         >>> # Download pipeline from local file
         >>> # file is downloaded under ./v1-5-pruned-emaonly.ckpt
-        >>> pipeline =  StableDiffusionPipeline.from_ckpt("./v1-5-pruned-emaonly")
+        >>> pipeline = StableDiffusionPipeline.from_ckpt("./v1-5-pruned-emaonly")
 
         >>> # Enable float16 and move to GPU
-        >>> pipeline =  StableDiffusionPipeline.from_ckpt("https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt, torch_dtype=torch.float16)
+        >>> pipeline = StableDiffusionPipeline.from_ckpt(
+        ...     "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt",
+        ...     torch_dtype=torch.float16,
+        ... )
         >>> pipeline.to("cuda")
         ```
         """
