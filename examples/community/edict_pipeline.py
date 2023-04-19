@@ -1,17 +1,15 @@
-from typing import Optional, Union
+from typing import Optional
 
-import numpy as np
 import torch
-from diffusers import DiffusionPipeline, AutoencoderKL, UNet2DConditionModel, DDIMScheduler
 from PIL import Image
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
+
+from diffusers import AutoencoderKL, DDIMScheduler, DiffusionPipeline, UNet2DConditionModel
+from diffusers.image_processor import VaeImageProcessor
 from diffusers.utils import (
-    PIL_INTERPOLATION,
     deprecate,
 )
-
-from diffusers.image_processor import VaeImageProcessor
 
 
 class EDICTPipeline(DiffusionPipeline):
@@ -40,8 +38,9 @@ class EDICTPipeline(DiffusionPipeline):
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
-
-    def _encode_prompt(self, prompt: str, negative_prompt: Optional[str] = None, do_classifier_free_guidance: bool = False):
+    def _encode_prompt(
+        self, prompt: str, negative_prompt: Optional[str] = None, do_classifier_free_guidance: bool = False
+    ):
         text_inputs = self.tokenizer(
             prompt,
             padding="max_length",
@@ -50,14 +49,11 @@ class EDICTPipeline(DiffusionPipeline):
             return_tensors="pt",
         )
 
-        prompt_embeds = self.text_encoder(
-            text_inputs.input_ids.to(self.device)
-        ).last_hidden_state
+        prompt_embeds = self.text_encoder(text_inputs.input_ids.to(self.device)).last_hidden_state
 
         prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=self.device)
 
         if do_classifier_free_guidance:
-
             uncond_tokens = "" if negative_prompt is None else negative_prompt
 
             uncond_input = self.tokenizer(
@@ -68,9 +64,7 @@ class EDICTPipeline(DiffusionPipeline):
                 return_tensors="pt",
             )
 
-            negative_prompt_embeds = self.text_encoder(
-                uncond_input.input_ids.to(self.device)
-            ).last_hidden_state
+            negative_prompt_embeds = self.text_encoder(uncond_input.input_ids.to(self.device)).last_hidden_state
 
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
@@ -109,7 +103,7 @@ class EDICTPipeline(DiffusionPipeline):
         alpha_prod_t_prev, beta_prod_t_prev = self._get_alpha_and_beta(prev_timestep)
 
         a_t = (alpha_prod_t_prev / alpha_prod_t) ** 0.5
-        b_t = -a_t * (beta_prod_t**0.5) + beta_prod_t_prev ** 0.5
+        b_t = -a_t * (beta_prod_t**0.5) + beta_prod_t_prev**0.5
 
         next_model_input = (base - b_t * model_output) / a_t
 
@@ -132,7 +126,7 @@ class EDICTPipeline(DiffusionPipeline):
         next_model_input = a_t * base + b_t * model_output
 
         return model_input, next_model_input.to(base.dtype)
-    
+
     @torch.no_grad()
     def decode_latents(self, latents: torch.Tensor):
         latents = 1 / self.vae.config.scaling_factor * latents
@@ -234,7 +228,7 @@ class EDICTPipeline(DiffusionPipeline):
                 latent_model_input = torch.cat([model_input] * 2) if do_classifier_free_guidance else model_input
 
                 noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=target_embeds).sample
-                
+
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
