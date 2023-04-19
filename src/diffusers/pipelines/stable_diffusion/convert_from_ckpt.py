@@ -982,7 +982,6 @@ def download_from_original_stable_diffusion_ckpt(
     image_size: int = 512,
     prediction_type: str = None,
     model_type: str = None,
-    is_img2img: bool = False,
     extract_ema: bool = False,
     scheduler_type: str = "pndm",
     num_in_channels: Optional[int] = None,
@@ -1052,9 +1051,6 @@ def download_from_original_stable_diffusion_ckpt(
         LDMTextToImagePipeline,
         PaintByExamplePipeline,
     )
-
-    if pipeline_class is None:
-        pipeline_class = StableDiffusionPipeline
 
     if pipeline_class is None:
         pipeline_class = StableDiffusionPipeline
@@ -1564,6 +1560,8 @@ class FromCkptMixin:
         upcast_attention = kwargs.pop("upcast_attention", None)
         load_safety_checker = kwargs.pop("load_safety_checker", True)
 
+        torch_dtype = kwargs.pop("torch_dtype", None)
+
         use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
 
         pipeline_name = cls.__name__
@@ -1617,19 +1615,22 @@ class FromCkptMixin:
                 sess_options=sess_options,
             )
 
-        kwargs.pop("torch_dtype", None)
-
-        download_from_original_stable_diffusion_ckpt(
-            pretrained_model_name_or_path,
-            pipeline_class=cls,
-            model_type=model_type,
-            stable_unclip=stable_unclip,
-            controlnet=controlnet,
-            from_safetensors=from_safetensors,
-            extract_ema=extract_ema,
-            image_size=image_size,
-            scheduler_type=scheduler_type,
-            num_in_channels=num_in_channels,
-            upcast_attention=upcast_attention,
-            load_safety_checker=load_safety_checker,
+        pipe = download_from_original_stable_diffusion_ckpt(
+                pretrained_model_name_or_path,
+                pipeline_class=cls,
+                model_type=model_type,
+                stable_unclip=stable_unclip,
+                controlnet=controlnet,
+                from_safetensors=from_safetensors,
+                extract_ema=extract_ema,
+                image_size=image_size,
+                scheduler_type=scheduler_type,
+                num_in_channels=num_in_channels,
+                upcast_attention=upcast_attention,
+                load_safety_checker=load_safety_checker,
         )
+
+        if torch_dtype is not None:
+            pipe.to(torch_dtype)
+
+        return pipe
