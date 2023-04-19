@@ -227,7 +227,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
                 examples/custom_diffusion/train_custom_diffusion.py
                 --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
                 --instance_data_dir docs/source/en/imgs
-                --instance_prompt "<new1>"
+                --instance_prompt <new1>
                 --resolution 64
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
@@ -236,7 +236,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
                 --scale_lr
                 --lr_scheduler constant
                 --lr_warmup_steps 0
-                --modifier_token "<new1>"
+                --modifier_token <new1>
                 --output_dir {tmpdir}
                 """.split()
 
