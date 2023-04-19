@@ -28,6 +28,7 @@ from transformers import (
     CLIPTokenizer,
 )
 
+from ...loaders import TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention_processor import Attention
 from ...schedulers import DDIMScheduler, DDPMScheduler, EulerAncestralDiscreteScheduler, LMSDiscreteScheduler
@@ -50,7 +51,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 @dataclass
-class Pix2PixInversionPipelineOutput(BaseOutput):
+class Pix2PixInversionPipelineOutput(BaseOutput, TextualInversionLoaderMixin):
     """
     Output class for Stable Diffusion pipelines.
 
@@ -242,8 +243,8 @@ class Pix2PixZeroAttnProcessor:
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
-        elif attn.cross_attention_norm:
-            encoder_hidden_states = attn.norm_cross(encoder_hidden_states)
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
@@ -470,6 +471,10 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
+
             text_inputs = self.tokenizer(
                 prompt,
                 padding="max_length",
@@ -529,6 +534,10 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
                 )
             else:
                 uncond_tokens = negative_prompt
+
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 
             max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(
@@ -920,7 +929,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
         # 5. Generate the inverted noise from the input image or any other image
         # generated from the input prompt.
-        num_channels_latents = self.unet.in_channels
+        num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,

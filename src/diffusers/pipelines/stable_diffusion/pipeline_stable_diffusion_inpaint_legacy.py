@@ -22,6 +22,7 @@ from packaging import version
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
+from ...loaders import TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -82,7 +83,7 @@ def preprocess_mask(mask, scale_factor=8):
         return mask
 
 
-class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline, FromCkptMixin):
+class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline, TextualInversionLoaderMixin, FromCkptMixin):
     r"""
     Pipeline for text-guided image inpainting using Stable Diffusion. *This is an experimental feature*.
 
@@ -318,6 +319,10 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline, FromCkptMixin):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
+
             text_inputs = self.tokenizer(
                 prompt,
                 padding="max_length",
@@ -377,6 +382,10 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline, FromCkptMixin):
                 )
             else:
                 uncond_tokens = negative_prompt
+
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 
             max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(
@@ -499,7 +508,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline, FromCkptMixin):
         init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
 
         t_start = max(num_inference_steps - init_timestep, 0)
-        timesteps = self.scheduler.timesteps[t_start:]
+        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
 
         return timesteps, num_inference_steps - t_start
 

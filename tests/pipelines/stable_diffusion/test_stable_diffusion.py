@@ -21,6 +21,7 @@ import unittest
 
 import numpy as np
 import torch
+from huggingface_hub import hf_hub_download
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
@@ -39,8 +40,8 @@ from diffusers.utils import load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
 
 from ...models.test_models_unet_2d_condition import create_lora_layers
-from ...pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ...test_pipelines_common import PipelineTesterMixin
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -134,7 +135,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5643, 0.6017, 0.4799, 0.5267, 0.5584, 0.4641, 0.5159, 0.4963, 0.4791])
+        expected_slice = np.array([0.5756, 0.6118, 0.5005, 0.5041, 0.5471, 0.4726, 0.4976, 0.4865, 0.4864])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -281,7 +282,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5094, 0.5674, 0.4667, 0.5125, 0.5696, 0.4674, 0.5277, 0.4964, 0.4945])
+        expected_slice = np.array([0.5122, 0.5712, 0.4825, 0.5053, 0.5646, 0.4769, 0.5179, 0.4894, 0.4994])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -321,19 +322,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array(
-            [
-                0.47082293033599854,
-                0.5371589064598083,
-                0.4562119245529175,
-                0.5220914483070374,
-                0.5733777284622192,
-                0.4795039892196655,
-                0.5465868711471558,
-                0.5074326395988464,
-                0.5042197108268738,
-            ]
-        )
+        expected_slice = np.array([0.4873, 0.5443, 0.4845, 0.5004, 0.5549, 0.4850, 0.5191, 0.4941, 0.5065])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -352,19 +341,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array(
-            [
-                0.4707113206386566,
-                0.5372191071510315,
-                0.4563021957874298,
-                0.5220003724098206,
-                0.5734264850616455,
-                0.4794946610927582,
-                0.5463782548904419,
-                0.5074145197868347,
-                0.504422664642334,
-            ]
-        )
+        expected_slice = np.array([0.4872, 0.5444, 0.4846, 0.5003, 0.5549, 0.4850, 0.5189, 0.4941, 0.5067])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -383,19 +360,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array(
-            [
-                0.47082313895225525,
-                0.5371587872505188,
-                0.4562119245529175,
-                0.5220913887023926,
-                0.5733776688575745,
-                0.47950395941734314,
-                0.546586811542511,
-                0.5074326992034912,
-                0.5042197108268738,
-            ]
-        )
+        expected_slice = np.array([0.4873, 0.5443, 0.4845, 0.5004, 0.5549, 0.4850, 0.5191, 0.4941, 0.5065])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -467,19 +432,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array(
-            [
-                0.5108221173286438,
-                0.5688379406929016,
-                0.4685141146183014,
-                0.5098261833190918,
-                0.5657756328582764,
-                0.4631010890007019,
-                0.5226285457611084,
-                0.49129390716552734,
-                0.4899061322212219,
-            ]
-        )
+        expected_slice = np.array([0.5114, 0.5706, 0.4772, 0.5028, 0.5637, 0.4732, 0.5169, 0.4881, 0.4977])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -885,6 +838,31 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 
         assert mem_bytes_slicing < mem_bytes_offloaded
         assert mem_bytes_slicing < 3 * 10**9
+
+    def test_stable_diffusion_textual_inversion(self):
+        pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+        pipe.load_textual_inversion("sd-concepts-library/low-poly-hd-logos-icons")
+
+        a111_file = hf_hub_download("hf-internal-testing/text_inv_embedding_a1111_format", "winter_style.pt")
+        a111_file_neg = hf_hub_download(
+            "hf-internal-testing/text_inv_embedding_a1111_format", "winter_style_negative.pt"
+        )
+        pipe.load_textual_inversion(a111_file)
+        pipe.load_textual_inversion(a111_file_neg)
+        pipe.to("cuda")
+
+        generator = torch.Generator(device="cpu").manual_seed(1)
+
+        prompt = "An logo of a turtle in strong Style-Winter with <low-poly-hd-logos-icons>"
+        neg_prompt = "Style-Winter-neg"
+
+        image = pipe(prompt=prompt, negative_prompt=neg_prompt, generator=generator, output_type="np").images[0]
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/text_inv/winter_logo_style.npy"
+        )
+
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 5e-2
 
 
 @nightly

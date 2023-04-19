@@ -19,6 +19,7 @@ import importlib
 import inspect
 import os
 import re
+import sys
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -134,7 +135,7 @@ class AudioPipelineOutput(BaseOutput):
     audios: np.ndarray
 
 
-def is_safetensors_compatible(filenames, variant=None) -> bool:
+def is_safetensors_compatible(filenames, variant=None, passed_components=None) -> bool:
     """
     Checking for safetensors compatibility:
     - By default, all models are saved with the default pytorch serialization, so we use the list of default pytorch
@@ -150,8 +151,13 @@ def is_safetensors_compatible(filenames, variant=None) -> bool:
 
     sf_filenames = set()
 
+    passed_components = passed_components or []
+
     for filename in filenames:
         _, extension = os.path.splitext(filename)
+
+        if len(filename.split("/")) == 2 and filename.split("/")[0] in passed_components:
+            continue
 
         if extension == ".bin":
             pt_filenames.append(filename)
@@ -163,10 +169,8 @@ def is_safetensors_compatible(filenames, variant=None) -> bool:
         path, filename = os.path.split(filename)
         filename, extension = os.path.splitext(filename)
 
-        if filename == "pytorch_model":
-            filename = "model"
-        elif filename == f"pytorch_model.{variant}":
-            filename = f"model.{variant}"
+        if filename.startswith("pytorch_model"):
+            filename = filename.replace("pytorch_model", "model")
         else:
             filename = filename
 
@@ -196,24 +200,51 @@ def variant_compatible_siblings(filenames, variant=None) -> Union[List[os.PathLi
     weight_prefixes = [w.split(".")[0] for w in weight_names]
     # .bin, .safetensors, ...
     weight_suffixs = [w.split(".")[-1] for w in weight_names]
-
-    variant_file_regex = (
-        re.compile(f"({'|'.join(weight_prefixes)})(.{variant}.)({'|'.join(weight_suffixs)})")
-        if variant is not None
-        else None
-    )
-    non_variant_file_regex = re.compile(f"{'|'.join(weight_names)}")
+    # -00001-of-00002
+    transformers_index_format = r"\d{5}-of-\d{5}"
 
     if variant is not None:
-        variant_filenames = {f for f in filenames if variant_file_regex.match(f.split("/")[-1]) is not None}
+        # `diffusion_pytorch_model.fp16.bin` as well as `model.fp16-00001-of-00002.safetenstors`
+        variant_file_re = re.compile(
+            rf"({'|'.join(weight_prefixes)})\.({variant}|{variant}-{transformers_index_format})\.({'|'.join(weight_suffixs)})$"
+        )
+        # `text_encoder/pytorch_model.bin.index.fp16.json`
+        variant_index_re = re.compile(
+            rf"({'|'.join(weight_prefixes)})\.({'|'.join(weight_suffixs)})\.index\.{variant}\.json$"
+        )
+
+    # `diffusion_pytorch_model.bin` as well as `model-00001-of-00002.safetenstors`
+    non_variant_file_re = re.compile(
+        rf"({'|'.join(weight_prefixes)})(-{transformers_index_format})?\.({'|'.join(weight_suffixs)})$"
+    )
+    # `text_encoder/pytorch_model.bin.index.json`
+    non_variant_index_re = re.compile(rf"({'|'.join(weight_prefixes)})\.({'|'.join(weight_suffixs)})\.index\.json")
+
+    if variant is not None:
+        variant_weights = {f for f in filenames if variant_file_re.match(f.split("/")[-1]) is not None}
+        variant_indexes = {f for f in filenames if variant_index_re.match(f.split("/")[-1]) is not None}
+        variant_filenames = variant_weights | variant_indexes
     else:
         variant_filenames = set()
 
-    non_variant_filenames = {f for f in filenames if non_variant_file_regex.match(f.split("/")[-1]) is not None}
+    non_variant_weights = {f for f in filenames if non_variant_file_re.match(f.split("/")[-1]) is not None}
+    non_variant_indexes = {f for f in filenames if non_variant_index_re.match(f.split("/")[-1]) is not None}
+    non_variant_filenames = non_variant_weights | non_variant_indexes
 
+    # all variant filenames will be used by default
     usable_filenames = set(variant_filenames)
+
+    def convert_to_variant(filename):
+        if "index" in filename:
+            variant_filename = filename.replace("index", f"index.{variant}")
+        elif re.compile(f"^(.*?){transformers_index_format}").match(filename) is not None:
+            variant_filename = f"{filename.split('-')[0]}.{variant}-{'-'.join(filename.split('-')[1:])}"
+        else:
+            variant_filename = f"{filename.split('.')[0]}.{variant}.{filename.split('.')[1]}"
+        return variant_filename
+
     for f in non_variant_filenames:
-        variant_filename = f"{f.split('.')[0]}.{variant}.{f.split('.')[1]}"
+        variant_filename = convert_to_variant(f)
         if variant_filename not in usable_filenames:
             usable_filenames.add(f)
 
@@ -290,6 +321,27 @@ def get_class_obj_and_candidates(library_name, class_name, importable_classes, p
         class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
 
     return class_obj, class_candidates
+
+
+def _get_pipeline_class(class_obj, config, custom_pipeline=None, cache_dir=None, revision=None):
+    if custom_pipeline is not None:
+        if custom_pipeline.endswith(".py"):
+            path = Path(custom_pipeline)
+            # decompose into folder & file
+            file_name = path.name
+            custom_pipeline = path.parent.absolute()
+        else:
+            file_name = CUSTOM_PIPELINE_FILE_NAME
+
+        return get_class_from_dynamic_module(
+            custom_pipeline, module_file=file_name, cache_dir=cache_dir, revision=revision
+        )
+
+    if class_obj != DiffusionPipeline:
+        return class_obj
+
+    diffusers_module = importlib.import_module(class_obj.__module__.split(".")[0])
+    return getattr(diffusers_module, config["_class_name"])
 
 
 def load_sub_model(
@@ -455,6 +507,21 @@ class DiffusionPipeline(ConfigMixin):
             # set models
             setattr(self, name, module)
 
+    def __setattr__(self, name: str, value: Any):
+        if name in self.__dict__ and hasattr(self.config, name):
+            # We need to overwrite the config if name exists in config
+            if isinstance(getattr(self.config, name), (tuple, list)):
+                if value is not None and self.config[name][0] is not None:
+                    class_library_tuple = (value.__module__.split(".")[0], value.__class__.__name__)
+                else:
+                    class_library_tuple = (None, None)
+
+                self.register_to_config(**{name: class_library_tuple})
+            else:
+                self.register_to_config(**{name: value})
+
+        super().__setattr__(name, value)
+
     def save_pretrained(
         self,
         save_directory: Union[str, os.PathLike],
@@ -474,11 +541,9 @@ class DiffusionPipeline(ConfigMixin):
             variant (`str`, *optional*):
                 If specified, weights are saved in the format pytorch_model.<variant>.bin.
         """
-        self.save_config(save_directory)
-
         model_index_dict = dict(self.config)
-        model_index_dict.pop("_class_name")
-        model_index_dict.pop("_diffusers_version")
+        model_index_dict.pop("_class_name", None)
+        model_index_dict.pop("_diffusers_version", None)
         model_index_dict.pop("_module", None)
 
         expected_modules, optional_kwargs = self._get_signature_keys(self)
@@ -491,7 +556,6 @@ class DiffusionPipeline(ConfigMixin):
             return True
 
         model_index_dict = {k: v for k, v in model_index_dict.items() if is_saveable_module(k, v)}
-
         for pipeline_component_name in model_index_dict.keys():
             sub_model = getattr(self, pipeline_component_name)
             model_cls = sub_model.__class__
@@ -505,7 +569,13 @@ class DiffusionPipeline(ConfigMixin):
             save_method_name = None
             # search for the model's base class in LOADABLE_CLASSES
             for library_name, library_classes in LOADABLE_CLASSES.items():
-                library = importlib.import_module(library_name)
+                if library_name in sys.modules:
+                    library = importlib.import_module(library_name)
+                else:
+                    logger.info(
+                        f"{library_name} is not installed. Cannot save {pipeline_component_name} as {library_classes} from {library_name}"
+                    )
+
                 for base_class, save_load_methods in library_classes.items():
                     class_candidate = getattr(library, base_class, None)
                     if class_candidate is not None and issubclass(model_cls, class_candidate):
@@ -514,6 +584,12 @@ class DiffusionPipeline(ConfigMixin):
                         break
                 if save_method_name is not None:
                     break
+
+            if save_method_name is None:
+                logger.warn(f"self.{pipeline_component_name}={sub_model} of type {type(sub_model)} cannot be saved.")
+                # make sure that unsaveable components are not tried to be loaded afterward
+                self.register_to_config(**{pipeline_component_name: (None, None)})
+                continue
 
             save_method = getattr(sub_model, save_method_name)
 
@@ -529,6 +605,9 @@ class DiffusionPipeline(ConfigMixin):
                 save_kwargs["variant"] = variant
 
             save_method(os.path.join(save_directory, pipeline_component_name), **save_kwargs)
+
+        # finally save the config
+        self.save_config(save_directory)
 
     def to(
         self,
@@ -568,25 +647,26 @@ class DiffusionPipeline(ConfigMixin):
                 f"It seems like you have activated model offloading by calling `enable_model_cpu_offload`, but are now manually moving the pipeline to GPU. It is strongly recommended against doing so as memory gains from offloading are likely to be lost. Offloading automatically takes care of moving the individual components {', '.join(self.components.keys())} to GPU when needed. To make sure offloading works as expected, you should consider moving the pipeline back to CPU: `pipeline.to('cpu')` or removing the move altogether if you use offloading."
             )
 
-        module_names, _, _ = self.extract_init_dict(dict(self.config))
+        module_names, _ = self._get_signature_keys(self)
+        modules = [getattr(self, n, None) for n in module_names]
+        modules = [m for m in modules if isinstance(m, torch.nn.Module)]
+
         is_offloaded = pipeline_is_offloaded or pipeline_is_sequentially_offloaded
-        for name in module_names.keys():
-            module = getattr(self, name)
-            if isinstance(module, torch.nn.Module):
-                module.to(torch_device, torch_dtype)
-                if (
-                    module.dtype == torch.float16
-                    and str(torch_device) in ["cpu"]
-                    and not silence_dtype_warnings
-                    and not is_offloaded
-                ):
-                    logger.warning(
-                        "Pipelines loaded with `torch_dtype=torch.float16` cannot run with `cpu` device. It"
-                        " is not recommended to move them to `cpu` as running them will fail. Please make"
-                        " sure to use an accelerator to run the pipeline in inference, due to the lack of"
-                        " support for`float16` operations on this device in PyTorch. Please, remove the"
-                        " `torch_dtype=torch.float16` argument, or use another device for inference."
-                    )
+        for module in modules:
+            module.to(torch_device, torch_dtype)
+            if (
+                module.dtype == torch.float16
+                and str(torch_device) in ["cpu"]
+                and not silence_dtype_warnings
+                and not is_offloaded
+            ):
+                logger.warning(
+                    "Pipelines loaded with `torch_dtype=torch.float16` cannot run with `cpu` device. It"
+                    " is not recommended to move them to `cpu` as running them will fail. Please make"
+                    " sure to use an accelerator to run the pipeline in inference, due to the lack of"
+                    " support for`float16` operations on this device in PyTorch. Please, remove the"
+                    " `torch_dtype=torch.float16` argument, or use another device for inference."
+                )
         return self
 
     @property
@@ -595,11 +675,13 @@ class DiffusionPipeline(ConfigMixin):
         Returns:
             `torch.device`: The torch device on which the pipeline is located.
         """
-        module_names, _, _ = self.extract_init_dict(dict(self.config))
-        for name in module_names.keys():
-            module = getattr(self, name)
-            if isinstance(module, torch.nn.Module):
-                return module.device
+        module_names, _ = self._get_signature_keys(self)
+        modules = [getattr(self, n, None) for n in module_names]
+        modules = [m for m in modules if isinstance(m, torch.nn.Module)]
+
+        for module in modules:
+            return module.device
+
         return torch.device("cpu")
 
     @classmethod
@@ -779,7 +861,7 @@ class DiffusionPipeline(ConfigMixin):
         device_map = kwargs.pop("device_map", None)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
-        kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
+        use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -794,8 +876,11 @@ class DiffusionPipeline(ConfigMixin):
                 use_auth_token=use_auth_token,
                 revision=revision,
                 from_flax=from_flax,
+                use_safetensors=use_safetensors,
                 custom_pipeline=custom_pipeline,
+                custom_revision=custom_revision,
                 variant=variant,
+                **kwargs,
             )
         else:
             cached_folder = pretrained_model_name_or_path
@@ -810,29 +895,17 @@ class DiffusionPipeline(ConfigMixin):
             for folder in os.listdir(cached_folder):
                 folder_path = os.path.join(cached_folder, folder)
                 is_folder = os.path.isdir(folder_path) and folder in config_dict
-                variant_exists = is_folder and any(path.split(".")[1] == variant for path in os.listdir(folder_path))
+                variant_exists = is_folder and any(
+                    p.split(".")[1].startswith(variant) for p in os.listdir(folder_path)
+                )
                 if variant_exists:
                     model_variants[folder] = variant
 
         # 3. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
-        if custom_pipeline is not None:
-            if custom_pipeline.endswith(".py"):
-                path = Path(custom_pipeline)
-                # decompose into folder & file
-                file_name = path.name
-                custom_pipeline = path.parent.absolute()
-            else:
-                file_name = CUSTOM_PIPELINE_FILE_NAME
-
-            pipeline_class = get_class_from_dynamic_module(
-                custom_pipeline, module_file=file_name, cache_dir=cache_dir, revision=custom_revision
-            )
-        elif cls != DiffusionPipeline:
-            pipeline_class = cls
-        else:
-            diffusers_module = importlib.import_module(cls.__module__.split(".")[0])
-            pipeline_class = getattr(diffusers_module, config_dict["_class_name"])
+        pipeline_class = _get_pipeline_class(
+            cls, config_dict, custom_pipeline=custom_pipeline, cache_dir=cache_dir, revision=custom_revision
+        )
 
         # DEPRECATED: To be removed in 1.0.0
         if pipeline_class.__name__ == "StableDiffusionInpaintPipeline" and version.parse(
@@ -985,7 +1058,7 @@ class DiffusionPipeline(ConfigMixin):
         return_cached_folder = kwargs.pop("return_cached_folder", False)
         if return_cached_folder:
             message = f"Passing `return_cached_folder=True` is deprecated and will be removed in `diffusers=0.17.0`. Please do the following instead: \n 1. Load the cached_folder via `cached_folder={cls}.download({pretrained_model_name_or_path})`. \n 2. Load the pipeline by loading from the cached folder: `pipeline={cls}.from_pretrained(cached_folder)`."
-            deprecate("return_cached_folder", "0.17.0", message, take_from=kwargs)
+            deprecate("return_cached_folder", "0.17.0", message)
             return model, cached_folder
 
         return model
@@ -1095,6 +1168,7 @@ class DiffusionPipeline(ConfigMixin):
         revision = kwargs.pop("revision", None)
         from_flax = kwargs.pop("from_flax", False)
         custom_pipeline = kwargs.pop("custom_pipeline", None)
+        custom_revision = kwargs.pop("custom_revision", None)
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
 
@@ -1153,7 +1227,7 @@ class DiffusionPipeline(ConfigMixin):
             # this enables downloading schedulers, tokenizers, ...
             allow_patterns += [os.path.join(k, "*") for k in folder_names if k not in model_folder_names]
             # also allow downloading config.json files with the model
-            allow_patterns += [os.path.join(k, "*.json") for k in model_folder_names]
+            allow_patterns += [os.path.join(k, "config.json") for k in model_folder_names]
 
             allow_patterns += [
                 SCHEDULER_CONFIG_NAME,
@@ -1162,17 +1236,28 @@ class DiffusionPipeline(ConfigMixin):
                 CUSTOM_PIPELINE_FILE_NAME,
             ]
 
+            # retrieve passed components that should not be downloaded
+            pipeline_class = _get_pipeline_class(
+                cls, config_dict, custom_pipeline=custom_pipeline, cache_dir=cache_dir, revision=custom_revision
+            )
+            expected_components, _ = cls._get_signature_keys(pipeline_class)
+            passed_components = [k for k in expected_components if k in kwargs]
+
             if (
                 use_safetensors
                 and not allow_pickle
-                and not is_safetensors_compatible(model_filenames, variant=variant)
+                and not is_safetensors_compatible(
+                    model_filenames, variant=variant, passed_components=passed_components
+                )
             ):
                 raise EnvironmentError(
                     f"Could not found the necessary `safetensors` weights in {model_filenames} (variant={variant})"
                 )
             if from_flax:
                 ignore_patterns = ["*.bin", "*.safetensors", "*.onnx", "*.pb"]
-            elif use_safetensors and is_safetensors_compatible(model_filenames, variant=variant):
+            elif use_safetensors and is_safetensors_compatible(
+                model_filenames, variant=variant, passed_components=passed_components
+            ):
                 ignore_patterns = ["*.bin", "*.msgpack"]
 
                 safetensors_variant_filenames = {f for f in variant_filenames if f.endswith(".safetensors")}
@@ -1193,6 +1278,13 @@ class DiffusionPipeline(ConfigMixin):
                     logger.warn(
                         f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(bin_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(bin_model_filenames - bin_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
                     )
+
+            # Don't download any objects that are passed
+            allow_patterns = [
+                p for p in allow_patterns if not (len(p.split("/")) == 2 and p.split("/")[0] in passed_components)
+            ]
+            # Don't download index files of forbidden patterns either
+            ignore_patterns = ignore_patterns + [f"{i}.index.*json" for i in ignore_patterns]
 
             re_ignore_pattern = [re.compile(fnmatch.translate(p)) for p in ignore_patterns]
             re_allow_pattern = [re.compile(fnmatch.translate(p)) for p in allow_patterns]
@@ -1358,11 +1450,12 @@ class DiffusionPipeline(ConfigMixin):
             for child in module.children():
                 fn_recursive_set_mem_eff(child)
 
-        module_names, _, _ = self.extract_init_dict(dict(self.config))
-        for module_name in module_names:
-            module = getattr(self, module_name)
-            if isinstance(module, torch.nn.Module):
-                fn_recursive_set_mem_eff(module)
+        module_names, _ = self._get_signature_keys(self)
+        modules = [getattr(self, n, None) for n in module_names]
+        modules = [m for m in modules if isinstance(m, torch.nn.Module)]
+
+        for module in modules:
+            fn_recursive_set_mem_eff(module)
 
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
         r"""
@@ -1389,8 +1482,9 @@ class DiffusionPipeline(ConfigMixin):
         self.enable_attention_slicing(None)
 
     def set_attention_slice(self, slice_size: Optional[int]):
-        module_names, _, _ = self.extract_init_dict(dict(self.config))
-        for module_name in module_names:
-            module = getattr(self, module_name)
-            if isinstance(module, torch.nn.Module) and hasattr(module, "set_attention_slice"):
-                module.set_attention_slice(slice_size)
+        module_names, _ = self._get_signature_keys(self)
+        modules = [getattr(self, n, None) for n in module_names]
+        modules = [m for m in modules if isinstance(m, torch.nn.Module) and hasattr(m, "set_attention_slice")]
+
+        for module in modules:
+            module.set_attention_slice(slice_size)

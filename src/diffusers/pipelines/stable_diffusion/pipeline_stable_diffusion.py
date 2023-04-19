@@ -20,6 +20,7 @@ from packaging import version
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
+from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -53,7 +54,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class StableDiffusionPipeline(DiffusionPipeline, FromCkptMixin):
+class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromCkptMixin):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.
 
@@ -316,6 +317,10 @@ class StableDiffusionPipeline(DiffusionPipeline, FromCkptMixin):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
+
             text_inputs = self.tokenizer(
                 prompt,
                 padding="max_length",
@@ -375,6 +380,10 @@ class StableDiffusionPipeline(DiffusionPipeline, FromCkptMixin):
                 )
             else:
                 uncond_tokens = negative_prompt
+
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 
             max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(
@@ -641,7 +650,7 @@ class StableDiffusionPipeline(DiffusionPipeline, FromCkptMixin):
         timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variables
-        num_channels_latents = self.unet.in_channels
+        num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,

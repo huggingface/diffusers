@@ -21,7 +21,6 @@ import logging
 import math
 import os
 from pathlib import Path
-from typing import Optional
 
 import accelerate
 import datasets
@@ -37,7 +36,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
-from huggingface_hub import HfFolder, Repository, create_repo, whoami
+from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -52,7 +51,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.15.0.dev0")
+check_min_version("0.16.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -363,16 +362,6 @@ def parse_args():
     return args
 
 
-def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
-    if token is None:
-        token = HfFolder.get_token()
-    if organization is None:
-        username = whoami(token)["name"]
-        return f"{username}/{model_id}"
-    else:
-        return f"{organization}/{model_id}"
-
-
 def convert_to_np(image, resolution):
     image = image.convert("RGB").resize((resolution, resolution))
     return np.array(image).transpose(2, 0, 1)
@@ -436,21 +425,13 @@ def main():
 
     # Handle the repository creation
     if accelerator.is_main_process:
-        if args.push_to_hub:
-            if args.hub_model_id is None:
-                repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
-            else:
-                repo_name = args.hub_model_id
-            create_repo(repo_name, exist_ok=True, token=args.hub_token)
-            repo = Repository(args.output_dir, clone_from=repo_name, token=args.hub_token)
-
-            with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
-                if "step_*" not in gitignore:
-                    gitignore.write("step_*\n")
-                if "epoch_*" not in gitignore:
-                    gitignore.write("epoch_*\n")
-        elif args.output_dir is not None:
+        if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
+
+        if args.push_to_hub:
+            repo_id = create_repo(
+                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
+            ).repo_id
 
     # Load scheduler, tokenizer and models.
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
@@ -470,19 +451,18 @@ def main():
     # then fine-tuned on the custom InstructPix2Pix dataset. This modified UNet is initialized
     # from the pre-trained checkpoints. For the extra channels added to the first layer, they are
     # initialized to zero.
-    if accelerator.is_main_process:
-        logger.info("Initializing the InstructPix2Pix UNet from the pretrained UNet.")
-        in_channels = 8
-        out_channels = unet.conv_in.out_channels
-        unet.register_to_config(in_channels=in_channels)
+    logger.info("Initializing the InstructPix2Pix UNet from the pretrained UNet.")
+    in_channels = 8
+    out_channels = unet.conv_in.out_channels
+    unet.register_to_config(in_channels=in_channels)
 
-        with torch.no_grad():
-            new_conv_in = nn.Conv2d(
-                in_channels, out_channels, unet.conv_in.kernel_size, unet.conv_in.stride, unet.conv_in.padding
-            )
-            new_conv_in.weight.zero_()
-            new_conv_in.weight[:, :4, :, :].copy_(unet.conv_in.weight)
-            unet.conv_in = new_conv_in
+    with torch.no_grad():
+        new_conv_in = nn.Conv2d(
+            in_channels, out_channels, unet.conv_in.kernel_size, unet.conv_in.stride, unet.conv_in.padding
+        )
+        new_conv_in.weight.zero_()
+        new_conv_in.weight[:, :4, :, :].copy_(unet.conv_in.weight)
+        unet.conv_in = new_conv_in
 
     # Freeze vae and text_encoder
     vae.requires_grad_(False)
@@ -813,7 +793,7 @@ def main():
                 noise = torch.randn_like(latents)
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
-                timesteps = torch.randint(0, noise_scheduler.num_train_timesteps, (bsz,), device=latents.device)
+                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
                 timesteps = timesteps.long()
 
                 # Add noise to the latents according to the noise magnitude at each timestep
@@ -911,9 +891,12 @@ def main():
                     # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
                     ema_unet.store(unet.parameters())
                     ema_unet.copy_to(unet.parameters())
+                # The models need unwrapping because for compatibility in distributed training mode.
                 pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
-                    unet=unet,
+                    unet=accelerator.unwrap_model(unet),
+                    text_encoder=accelerator.unwrap_model(text_encoder),
+                    vae=accelerator.unwrap_model(vae),
                     revision=args.revision,
                     torch_dtype=weight_dtype,
                 )
@@ -923,7 +906,9 @@ def main():
                 # run inference
                 original_image = download_image(args.val_image_url)
                 edited_images = []
-                with torch.autocast(str(accelerator.device), enabled=accelerator.mixed_precision == "fp16"):
+                with torch.autocast(
+                    str(accelerator.device).replace(":0", ""), enabled=accelerator.mixed_precision == "fp16"
+                ):
                     for _ in range(args.num_validation_images):
                         edited_images.append(
                             pipeline(
@@ -968,12 +953,17 @@ def main():
         pipeline.save_pretrained(args.output_dir)
 
         if args.push_to_hub:
-            repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
+            upload_folder(
+                repo_id=repo_id,
+                folder_path=args.output_dir,
+                commit_message="End of training",
+                ignore_patterns=["step_*", "epoch_*"],
+            )
 
         if args.validation_prompt is not None:
             edited_images = []
             pipeline = pipeline.to(accelerator.device)
-            with torch.autocast(str(accelerator.device)):
+            with torch.autocast(str(accelerator.device).replace(":0", "")):
                 for _ in range(args.num_validation_images):
                     edited_images.append(
                         pipeline(

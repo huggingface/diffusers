@@ -49,14 +49,18 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
     UnCLIPScheduler,
+    StableDiffusionControlNetPipeline,
 )
-from ...utils import DIFFUSERS_CACHE, HF_HUB_OFFLINE, is_omegaconf_available, is_safetensors_available, logging
-from ...utils.import_utils import BACKENDS_MAPPING
 from ..latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
 from ..paint_by_example import PaintByExampleImageEncoder
-from ..pipeline_utils import DiffusionPipeline
 from .safety_checker import StableDiffusionSafetyChecker
+
 from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
+
+from ..pipeline_utils import DiffusionPipeline
+
+from ...utils import is_omegaconf_available, is_safetensors_available, logging, DIFFUSERS_CACHE, HF_HUB_OFFLINE
+from ...utils.import_utils import BACKENDS_MAPPING
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -978,6 +982,7 @@ def download_from_original_stable_diffusion_ckpt(
     image_size: int = 512,
     prediction_type: str = None,
     model_type: str = None,
+    is_img2img: bool = False,
     extract_ema: bool = False,
     scheduler_type: str = "pndm",
     num_in_channels: Optional[int] = None,
@@ -1018,6 +1023,8 @@ def download_from_original_stable_diffusion_ckpt(
         model_type (`str`, *optional*, defaults to `None`):
             The pipeline type. `None` to automatically infer, or one of `["FrozenOpenCLIPEmbedder",
             "FrozenCLIPEmbedder", "PaintByExample"]`.
+        is_img2img (`bool`, *optional*, defaults to `False`):
+            Whether the model should be loaded as an img2img pipeline.
         extract_ema (`bool`, *optional*, defaults to `False`): Only relevant for
             checkpoints that have both EMA and non-EMA weights. Whether to extract the EMA weights or not. Defaults to
             `False`. Pass `True` to extract the EMA weights. EMA weights usually yield higher quality images for
@@ -1038,13 +1045,16 @@ def download_from_original_stable_diffusion_ckpt(
 
     # import pipelines here to avoid circular import error when using from_ckpt method
     from diffusers import (
-        LDMTextToImagePipeline,
-        PaintByExamplePipeline,
         StableDiffusionControlNetPipeline,
         StableDiffusionPipeline,
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
+        LDMTextToImagePipeline,
+        PaintByExamplePipeline,
     )
+
+    if pipeline_class is None:
+        pipeline_class = StableDiffusionPipeline
 
     if pipeline_class is None:
         pipeline_class = StableDiffusionPipeline

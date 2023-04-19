@@ -162,6 +162,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         self.init_noise_sigma = 1.0
 
         # setable values
+        self.custom_timesteps = False
         self.num_inference_steps = None
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy())
 
@@ -181,31 +182,62 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(
+        self,
+        num_inference_steps: Optional[int] = None,
+        device: Union[str, torch.device] = None,
+        timesteps: Optional[List[int]] = None,
+    ):
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
         Args:
-            num_inference_steps (`int`):
-                the number of diffusion steps used when generating samples with a pre-trained model.
+            num_inference_steps (`Optional[int]`):
+                the number of diffusion steps used when generating samples with a pre-trained model. If passed, then
+                `timesteps` must be `None`.
+            device (`str` or `torch.device`, optional):
+                the device to which the timesteps are moved to.
+            custom_timesteps (`List[int]`, optional):
+                custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
+                timestep spacing strategy of equal spacing between timesteps is used. If passed, `num_inference_steps`
+                must be `None`.
+
         """
+        if num_inference_steps is not None and timesteps is not None:
+            raise ValueError("Can only pass one of `num_inference_steps` or `custom_timesteps`.")
 
-        if num_inference_steps > self.config.num_train_timesteps:
-            raise ValueError(
-                f"`num_inference_steps`: {num_inference_steps} cannot be larger than `self.config.train_timesteps`:"
-                f" {self.config.num_train_timesteps} as the unet model trained with this scheduler can only handle"
-                f" maximal {self.config.num_train_timesteps} timesteps."
-            )
+        if timesteps is not None:
+            for i in range(1, len(timesteps)):
+                if timesteps[i] >= timesteps[i - 1]:
+                    raise ValueError("`custom_timesteps` must be in descending order.")
 
-        self.num_inference_steps = num_inference_steps
+            if timesteps[0] >= self.config.num_train_timesteps:
+                raise ValueError(
+                    f"`timesteps` must start before `self.config.train_timesteps`:"
+                    f" {self.config.num_train_timesteps}."
+                )
 
-        step_ratio = self.config.num_train_timesteps // self.num_inference_steps
-        timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
+            timesteps = np.array(timesteps, dtype=np.int64)
+            self.custom_timesteps = True
+        else:
+            if num_inference_steps > self.config.num_train_timesteps:
+                raise ValueError(
+                    f"`num_inference_steps`: {num_inference_steps} cannot be larger than `self.config.train_timesteps`:"
+                    f" {self.config.num_train_timesteps} as the unet model trained with this scheduler can only handle"
+                    f" maximal {self.config.num_train_timesteps} timesteps."
+                )
+
+            self.num_inference_steps = num_inference_steps
+
+            step_ratio = self.config.num_train_timesteps // self.num_inference_steps
+            timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
+            self.custom_timesteps = False
+
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
     def _get_variance(self, t, predicted_variance=None, variance_type=None):
-        num_inference_steps = self.num_inference_steps if self.num_inference_steps else self.config.num_train_timesteps
-        prev_t = t - self.config.num_train_timesteps // num_inference_steps
+        prev_t = self.previous_timestep(t)
+
         alpha_prod_t = self.alphas_cumprod[t]
         alpha_prod_t_prev = self.alphas_cumprod[prev_t] if prev_t >= 0 else self.one
         current_beta_t = 1 - alpha_prod_t / alpha_prod_t_prev
@@ -215,15 +247,18 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         # x_{t-1} ~ N(pred_prev_sample, variance) == add variance to pred_sample
         variance = (1 - alpha_prod_t_prev) / (1 - alpha_prod_t) * current_beta_t
 
+        # we always take the log of variance, so clamp it to ensure it's not 0
+        variance = torch.clamp(variance, min=1e-20)
+
         if variance_type is None:
             variance_type = self.config.variance_type
 
         # hacks - were probably added for training stability
         if variance_type == "fixed_small":
-            variance = torch.clamp(variance, min=1e-20)
+            variance = variance
         # for rl-diffuser https://arxiv.org/abs/2205.09991
         elif variance_type == "fixed_small_log":
-            variance = torch.log(torch.clamp(variance, min=1e-20))
+            variance = torch.log(variance)
             variance = torch.exp(0.5 * variance)
         elif variance_type == "fixed_large":
             variance = current_beta_t
@@ -234,22 +269,45 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             return predicted_variance
         elif variance_type == "learned_range":
             min_log = torch.log(variance)
-            max_log = torch.log(self.betas[t])
+            max_log = torch.log(current_beta_t)
             frac = (predicted_variance + 1) / 2
             variance = frac * max_log + (1 - frac) * min_log
 
         return variance
 
     def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
-        # Dynamic thresholding in https://arxiv.org/abs/2205.11487
-        dynamic_max_val = (
-            sample.flatten(1)
-            .abs()
-            .quantile(self.config.dynamic_thresholding_ratio, dim=1)
-            .clamp_min(self.config.sample_max_value)
-            .view(-1, *([1] * (sample.ndim - 1)))
-        )
-        return sample.clamp(-dynamic_max_val, dynamic_max_val) / dynamic_max_val
+        """
+        "Dynamic thresholding: At each sampling step we set s to a certain percentile absolute pixel value in xt0 (the
+        prediction of x_0 at timestep t), and if s > 1, then we threshold xt0 to the range [-s, s] and then divide by
+        s. Dynamic thresholding pushes saturated pixels (those near -1 and 1) inwards, thereby actively preventing
+        pixels from saturation at each step. We find that dynamic thresholding results in significantly better
+        photorealism as well as better image-text alignment, especially when using very large guidance weights."
+
+        https://arxiv.org/abs/2205.11487
+        """
+        dtype = sample.dtype
+        batch_size, channels, height, width = sample.shape
+
+        if dtype not in (torch.float32, torch.float64):
+            sample = sample.float()  # upcast for quantile calculation, and clamp not implemented for cpu half
+
+        # Flatten sample for doing quantile calculation along each image
+        sample = sample.reshape(batch_size, channels * height * width)
+
+        abs_sample = sample.abs()  # "a certain percentile absolute pixel value"
+
+        s = torch.quantile(abs_sample, self.config.dynamic_thresholding_ratio, dim=1)
+        s = torch.clamp(
+            s, min=1, max=self.config.sample_max_value
+        )  # When clamped to min=1, equivalent to standard clipping to [-1, 1]
+
+        s = s.unsqueeze(1)  # (batch_size, 1) because clamp will broadcast along dim=0
+        sample = torch.clamp(sample, -s, s) / s  # "we threshold xt0 to the range [-s, s] and then divide by s"
+
+        sample = sample.reshape(batch_size, channels, height, width)
+        sample = sample.to(dtype)
+
+        return sample
 
     def step(
         self,
@@ -278,8 +336,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         """
         t = timestep
-        num_inference_steps = self.num_inference_steps if self.num_inference_steps else self.config.num_train_timesteps
-        prev_t = timestep - self.config.num_train_timesteps // num_inference_steps
+
+        prev_t = self.previous_timestep(t)
 
         if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
             model_output, predicted_variance = torch.split(model_output, sample.shape[1], dim=1)
@@ -309,13 +367,12 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             )
 
         # 3. Clip or threshold "predicted x_0"
-        if self.config.clip_sample:
+        if self.config.thresholding:
+            pred_original_sample = self._threshold_sample(pred_original_sample)
+        elif self.config.clip_sample:
             pred_original_sample = pred_original_sample.clamp(
                 -self.config.clip_sample_range, self.config.clip_sample_range
             )
-
-        if self.config.thresholding:
-            pred_original_sample = self._threshold_sample(pred_original_sample)
 
         # 4. Compute coefficients for pred_original_sample x_0 and current sample x_t
         # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
@@ -355,15 +412,15 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
-        self.alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
+        alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
         timesteps = timesteps.to(original_samples.device)
 
-        sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
+        sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = sqrt_alpha_prod.flatten()
         while len(sqrt_alpha_prod.shape) < len(original_samples.shape):
             sqrt_alpha_prod = sqrt_alpha_prod.unsqueeze(-1)
 
-        sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
+        sqrt_one_minus_alpha_prod = (1 - alphas_cumprod[timesteps]) ** 0.5
         sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
         while len(sqrt_one_minus_alpha_prod.shape) < len(original_samples.shape):
             sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.unsqueeze(-1)
@@ -375,15 +432,15 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         self, sample: torch.FloatTensor, noise: torch.FloatTensor, timesteps: torch.IntTensor
     ) -> torch.FloatTensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as sample
-        self.alphas_cumprod = self.alphas_cumprod.to(device=sample.device, dtype=sample.dtype)
+        alphas_cumprod = self.alphas_cumprod.to(device=sample.device, dtype=sample.dtype)
         timesteps = timesteps.to(sample.device)
 
-        sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
+        sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = sqrt_alpha_prod.flatten()
         while len(sqrt_alpha_prod.shape) < len(sample.shape):
             sqrt_alpha_prod = sqrt_alpha_prod.unsqueeze(-1)
 
-        sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
+        sqrt_one_minus_alpha_prod = (1 - alphas_cumprod[timesteps]) ** 0.5
         sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
         while len(sqrt_one_minus_alpha_prod.shape) < len(sample.shape):
             sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.unsqueeze(-1)
@@ -393,3 +450,18 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
     def __len__(self):
         return self.config.num_train_timesteps
+
+    def previous_timestep(self, timestep):
+        if self.custom_timesteps:
+            index = (self.timesteps == timestep).nonzero(as_tuple=True)[0][0]
+            if index == self.timesteps.shape[0] - 1:
+                prev_t = torch.tensor(-1)
+            else:
+                prev_t = self.timesteps[index + 1]
+        else:
+            num_inference_steps = (
+                self.num_inference_steps if self.num_inference_steps else self.config.num_train_timesteps
+            )
+            prev_t = timestep - self.config.num_train_timesteps // num_inference_steps
+
+        return prev_t
