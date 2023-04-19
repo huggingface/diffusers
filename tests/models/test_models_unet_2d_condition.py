@@ -630,7 +630,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             sample1 = model(**inputs_dict).sample
 
-        custom_diffusion_attn_procs = create_custom_diffusion_layers(model)
+        custom_diffusion_attn_procs = create_custom_diffusion_layers(model, mock_weights=False)
 
         # make sure we can set a list of attention processors
         model.set_attn_processor(custom_diffusion_attn_procs)
@@ -657,7 +657,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             old_sample = model(**inputs_dict).sample
 
-        custom_diffusion_attn_procs = create_custom_diffusion_layers(model)
+        custom_diffusion_attn_procs = create_custom_diffusion_layers(model, mock_weights=False)
         model.set_attn_processor(custom_diffusion_attn_procs)
 
         with torch.no_grad():
@@ -669,7 +669,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
             torch.manual_seed(0)
             new_model = self.model_class(**init_dict)
             new_model.to(torch_device)
-            new_model.load_attn_procs(tmpdirname)
+            new_model.load_attn_procs(tmpdirname, weight_name="pytorch_custom_diffusion_weights.bin")
 
         with torch.no_grad():
             new_sample = new_model(**inputs_dict).sample
@@ -692,7 +692,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
         model.to(torch_device)
-        custom_diffusion_attn_procs = create_custom_diffusion_layers(model)
+        custom_diffusion_attn_procs = create_custom_diffusion_layers(model, mock_weights=False)
         model.set_attn_processor(custom_diffusion_attn_procs)
 
         # default
