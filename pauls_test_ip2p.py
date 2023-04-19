@@ -6,6 +6,7 @@ import sys
 import torch
 from diffusers import StableDiffusionInstructPix2PixPipeline, EulerAncestralDiscreteScheduler
 from PIL import Image
+import numpy as np
 
 model_id = 'timbrooks/instruct-pix2pix'
 
@@ -13,7 +14,10 @@ pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(model_id, torch_dt
 pipe.to('cuda')
 pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(pipe.scheduler.config)
 img = Image.open(sys.argv[1])
-mask = Image.open(sys.argv[2])
+mask_init = Image.open(sys.argv[2])
+mask_numpy = np.array(mask_init)
+mask_int = mask_numpy.astype(int)
+mask = mask_int / mask_int.max()
 images = pipe(sys.argv[3], image=img, mask=mask, mask_guidance_scale=0.2).images
 result = images[0]
 
