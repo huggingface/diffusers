@@ -951,7 +951,7 @@ def main(args):
                     params_to_clip = (
                         itertools.chain(unet_lora_layers.parameters(), text_encoder_lora_layers.parameters())
                         if args.train_text_encoder
-                        else text_encoder_lora_layers.parameters()
+                        else unet_lora_layers.parameters()
                     )
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
