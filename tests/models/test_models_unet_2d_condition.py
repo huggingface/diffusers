@@ -74,7 +74,7 @@ def create_custom_diffusion_layers(model, mock_weights: bool = True):
     custom_diffusion_attn_procs = {}
 
     st = model.state_dict()
-    for name, attn in model.attn_processors.items():
+    for name, _ in model.attn_processors.items():
         cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
         if name.startswith("mid_block"):
             hidden_size = model.config.block_out_channels[-1]
@@ -713,7 +713,6 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
         assert (sample - on_sample).abs().max() < 1e-4
         assert (sample - off_sample).abs().max() < 1e-4
-
 
 
 @slow
