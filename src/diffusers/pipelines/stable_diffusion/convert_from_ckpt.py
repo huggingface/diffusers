@@ -1387,54 +1387,220 @@ def download_controlnet_from_original_ckpt(
 
 
 class FromCkptMixin:
+    """ This helper class allows to directly load .ckpt stable diffusion file_extension
+    into the respective classes. """
+
     @classmethod
-    def from_ckpt(cls, model_path_or_checkpoint, **kwargs):
+    def from_ckpt(cls, pretrained_model_name_or_path, **kwargs):
+        r"""
+        Instantiate a PyTorch diffusion pipeline from pre-trained pipeline weights saved in the original .ckpt format.
+
+        The pipeline is set in evaluation mode by default using `model.eval()` (Dropout modules are deactivated).
+
+        Parameters:
+            pretrained_model_name_or_path (`str` or `os.PathLike`, *optional*):
+                Can be either:
+
+                    - A string, the *repo id* of a pretrained pipeline hosted inside a model repo on
+                      https://huggingface.co/ Valid repo ids have to be located under a user or organization name, like
+                      `CompVis/ldm-text2im-large-256`.
+                    - A path to a *directory* containing pipeline weights saved using
+                      [`~DiffusionPipeline.save_pretrained`], e.g., `./my_pipeline_directory/`.
+            torch_dtype (`str` or `torch.dtype`, *optional*):
+                Override the default `torch.dtype` and load the model under this dtype. If `"auto"` is passed the dtype
+                will be automatically derived from the model's weights.
+            custom_pipeline (`str`, *optional*):
+
+                <Tip warning={true}>
+
+                    This is an experimental feature and is likely to change in the future.
+
+                </Tip>
+
+                Can be either:
+
+                    - A string, the *repo id* of a custom pipeline hosted inside a model repo on
+                      https://huggingface.co/. Valid repo ids have to be located under a user or organization name,
+                      like `hf-internal-testing/diffusers-dummy-pipeline`.
+
+                        <Tip>
+
+                         It is required that the model repo has a file, called `pipeline.py` that defines the custom
+                         pipeline.
+
+                        </Tip>
+
+                    - A string, the *file name* of a community pipeline hosted on GitHub under
+                      https://github.com/huggingface/diffusers/tree/main/examples/community. Valid file names have to
+                      match exactly the file name without `.py` located under the above link, *e.g.*
+                      `clip_guided_stable_diffusion`.
+
+                        <Tip>
+
+                         Community pipelines are always loaded from the current `main` branch of GitHub.
+
+                        </Tip>
+
+                    - A path to a *directory* containing a custom pipeline, e.g., `./my_pipeline_directory/`.
+
+                        <Tip>
+
+                         It is required that the directory has a file, called `pipeline.py` that defines the custom
+                         pipeline.
+
+                        </Tip>
+
+                For more information on how to load and create custom pipelines, please have a look at [Loading and
+                Adding Custom
+                Pipelines](https://huggingface.co/docs/diffusers/using-diffusers/custom_pipeline_overview)
+
+            force_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
+                cached versions if they exist.
+            cache_dir (`Union[str, os.PathLike]`, *optional*):
+                Path to a directory in which a downloaded pretrained model configuration should be cached if the
+                standard cache should not be used.
+            resume_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to delete incompletely received files. Will attempt to resume the download if such a
+                file exists.
+            proxies (`Dict[str, str]`, *optional*):
+                A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
+                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
+            output_loading_info(`bool`, *optional*, defaults to `False`):
+                Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
+            local_files_only(`bool`, *optional*, defaults to `False`):
+                Whether or not to only look at local files (i.e., do not try to download the model).
+            use_auth_token (`str` or *bool*, *optional*):
+                The token to use as HTTP bearer authorization for remote files. If `True`, will use the token generated
+                when running `huggingface-cli login` (stored in `~/.huggingface`).
+            revision (`str`, *optional*, defaults to `"main"`):
+                The specific model version to use. It can be a branch name, a tag name, or a commit id, since we use a
+                git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
+                identifier allowed by git.
+            custom_revision (`str`, *optional*, defaults to `"main"` when loading from the Hub and to local version of `diffusers` when loading from GitHub):
+                The specific model version to use. It can be a branch name, a tag name, or a commit id similar to
+                `revision` when loading a custom pipeline from the Hub. It can be a diffusers version when loading a
+                custom pipeline from GitHub.
+            mirror (`str`, *optional*):
+                Mirror source to accelerate downloads in China. If you are from China and have an accessibility
+                problem, you can set this option to resolve it. Note that we do not guarantee the timeliness or safety.
+                Please refer to the mirror site for more information. specify the folder name here.
+            device_map (`str` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
+                A map that specifies where each submodule should go. It doesn't need to be refined to each
+                parameter/buffer name, once a given module name is inside, every submodule of it will be sent to the
+                same device.
+
+                To have Accelerate compute the most optimized `device_map` automatically, set `device_map="auto"`. For
+                more information about each option see [designing a device
+                map](https://hf.co/docs/accelerate/main/en/usage_guides/big_modeling#designing-a-device-map).
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
+                Speed up model loading by not initializing the weights and only loading the pre-trained weights. This
+                also tries to not use more than 1x model size in CPU memory (including peak memory) while loading the
+                model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
+                setting this argument to `True` will raise an error.
+            use_safetensors (`bool`, *optional* ):
+                If set to `True`, the pipeline will be loaded from `safetensors` weights. If set to `None` (the
+                default). The pipeline will load using `safetensors` if the safetensors weights are available *and* if
+                `safetensors` is installed. If the to `False` the pipeline will *not* use `safetensors`.
+            kwargs (remaining dictionary of keyword arguments, *optional*):
+                Can be used to overwrite load - and saveable variables - *i.e.* the pipeline components - of the
+                specific pipeline class. The overwritten components are then directly passed to the pipelines
+                `__init__` method. See example below for more information.
+            variant (`str`, *optional*):
+                If specified load weights from `variant` filename, *e.g.* pytorch_model.<variant>.bin. `variant` is
+                ignored when using `from_flax`.
+
+        <Tip>
+
+         It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
+         models](https://huggingface.co/docs/hub/models-gated#gated-models), *e.g.* `"runwayml/stable-diffusion-v1-5"`
+
+        </Tip>
+
+        <Tip>
+
+        Activate the special ["offline-mode"](https://huggingface.co/diffusers/installation.html#offline-mode) to use
+        this method in a firewalled environment.
+
+        </Tip>
+
+        Examples:
+
+        ```py
+        >>> from diffusers import DiffusionPipeline
+
+        >>> # Download pipeline from huggingface.co and cache.
+        >>> pipeline = DiffusionPipeline.from_pretrained("CompVis/ldm-text2im-large-256")
+
+        >>> # Download pipeline that requires an authorization token
+        >>> # For more information on access tokens, please refer to this section
+        >>> # of the documentation](https://huggingface.co/docs/hub/security-tokens)
+        >>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+
+        >>> # Use a different scheduler
+        >>> from diffusers import LMSDiscreteScheduler
+
+        >>> scheduler = LMSDiscreteScheduler.from_config(pipeline.scheduler.config)
+        >>> pipeline.scheduler = scheduler
+        ```
+        """
+        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        resume_download = kwargs.pop("resume_download", False)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
+        use_auth_token = kwargs.pop("use_auth_token", None)
+        revision = kwargs.pop("revision", None)
+        provider = kwargs.pop("provider", None)
+        sess_options = kwargs.pop("sess_options", None)
+        extract_ema = kwargs.pop("extract_ema", False)
+        image_size = kwargs.pop("image_size", 512)
+        scheduler_type = kwargs.pop("scheduler_type", "pndm")
+        num_in_channels = kwargs.pop("num_in_channels", None)
+        upcast_attention = kwargs.pop("upcast_attention", None)
+        load_safety_checker = kwargs.pop("load_safety_checker", True)
+
+        use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
+
         pipeline_name = cls.__name__
 
-        file_extension = model_path_or_checkpoint.rsplit(".", 1)[-1]
+        file_extension = pretrained_model_name_or_path.rsplit(".", 1)[-1]
         from_safetensors = file_extension == "safetensors"
 
+        if from_safetensors and use_safetensors is True:
+            raise ValueError("Make sure to install `safetensors` with `pip install safetensors`.")
+
+
+        # TODO: For now we only support stable diffusion
         stable_unclip = None
         controlnet = False
+
         if pipeline_name == "StableDiffusionControlNetPipeline":
             model_type = "FrozenCLIPEmbedder"
             controlnet = True
-
         elif "StableDiffusion" in pipeline_name:
             model_type = "FrozenCLIPEmbedder"
-
         elif pipeline_name == "StableUnCLIPPipeline":
             model_type == "FrozenOpenCLIPEmbedder"
             stable_unclip = "txt2img"
-
         elif pipeline_name == "StableUnCLIPImg2ImgPipeline":
             model_type == "FrozenOpenCLIPEmbedder"
             stable_unclip = "img2img"
-
         elif pipeline_name == "PaintByExamplePipeline":
             model_type == "PaintByExample"
-
         elif pipeline_name == "LDMTextToImagePipeline":
             model_type == "LDMTextToImage"
-
         else:
             raise ValueError(f"Unhandled pipeline class: {pipeline_name}")
 
         # Code based on diffusers.pipelines.pipeline_utils.DiffusionPipeline.from_pretrained
-        ckpt_path = Path(model_path_or_checkpoint)
+        ckpt_path = Path(pretrained_model_name_or_path)
         if not ckpt_path.is_file():
             # get repo_id and (potentially nested) file path of ckpt in repo
             repo_id = str(Path().joinpath(*ckpt_path.parts[:2]))
             file_path = str(Path().joinpath(*ckpt_path.parts[2:]))
 
-            cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
-            resume_download = kwargs.pop("resume_download", False)
-            local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
-            revision = kwargs.pop("revision", None)
-            proxies = kwargs.pop("proxies", None)
-            use_auth_token = kwargs.pop("use_auth_token", None)
-
-            model_path_or_checkpoint = hf_hub_download(
+            pretrained_model_name_or_path = hf_hub_download(
                 repo_id,
                 filename=file_path,
                 cache_dir=cache_dir,
@@ -1443,14 +1609,24 @@ class FromCkptMixin:
                 local_files_only=local_files_only,
                 use_auth_token=use_auth_token,
                 revision=revision,
+                force_download=force_download,
+                provider=provider,
+                sess_options=sess_options,
             )
 
-        return download_from_original_stable_diffusion_ckpt(
-            model_path_or_checkpoint,
+        torch_dtype = kwargs.pop("torch_dtype", None)
+
+        pipe = download_from_original_stable_diffusion_ckpt(
+            pretrained_model_name_or_path,
             pipeline_class=cls,
             model_type=model_type,
             stable_unclip=stable_unclip,
             controlnet=controlnet,
             from_safetensors=from_safetensors,
-            **kwargs,
+            extract_ema=extract_ema,
+            image_size=image_size,
+            scheduler_type=scheduler_type,
+            num_in_channels=num_in_channels,
+            upcast_attention=upcast_attention,
+            load_safety_checker=load_safety_checker,
         )
