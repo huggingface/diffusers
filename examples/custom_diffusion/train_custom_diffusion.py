@@ -92,7 +92,7 @@ inference: true
 These are Custom Diffusion adaption weights for {base_model}. The weights were trained on {prompt} using [Custom Diffusion](https://www.cs.cmu.edu/~custom-diffusion). You can find some example images in the following. \n
 {img_str}
 
-\nFor more details on the training, please follow [this link](https://github.com/huggingface/diffusers/blob/main/examples/custom_diffusion). 
+\nFor more details on the training, please follow [this link](https://github.com/huggingface/diffusers/blob/main/examples/custom_diffusion).
 """
     with open(os.path.join(repo_folder, "README.md"), "w") as f:
         f.write(yaml + model_card)
@@ -667,7 +667,6 @@ def main(args):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        print(vars(args))
         accelerator.init_trackers("custom-diffusion", config=vars(args))
 
     # If passed along, set the training seed now.
@@ -891,7 +890,8 @@ def main(args):
         layer_name = name.split(".processor")[0]
         weights = {
             "to_k_custom_diffusion.weight": st[layer_name + ".to_k.weight"],
-            "to_v_custom_diffusion.weight": st[layer_name + ".to_v.weight"]}
+            "to_v_custom_diffusion.weight": st[layer_name + ".to_v.weight"],
+        }
         if train_q_out:
             weights["to_q_custom_diffusion.weight"] = st[layer_name + ".to_q.weight"]
             weights["to_out_custom_diffusion.0.weight"] = st[layer_name + ".to_out.0.weight"]

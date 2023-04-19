@@ -22,7 +22,7 @@ import torch
 from parameterized import parameterized
 
 from diffusers import UNet2DConditionModel
-from diffusers.models.attention_processor import LoRAAttnProcessor, CustomDiffusionAttnProcessor
+from diffusers.models.attention_processor import CustomDiffusionAttnProcessor, LoRAAttnProcessor
 from diffusers.utils import (
     floats_tensor,
     load_hf_numpy,
@@ -87,7 +87,8 @@ def create_custom_diffusion_layers(model, mock_weights: bool = True):
         layer_name = name.split(".processor")[0]
         weights = {
             "to_k_custom_diffusion.weight": st[layer_name + ".to_k.weight"],
-            "to_v_custom_diffusion.weight": st[layer_name + ".to_v.weight"]}
+            "to_v_custom_diffusion.weight": st[layer_name + ".to_v.weight"],
+        }
         if train_q_out:
             weights["to_q_custom_diffusion.weight"] = st[layer_name + ".to_q.weight"]
             weights["to_out_custom_diffusion.0.weight"] = st[layer_name + ".to_out.0.weight"]
