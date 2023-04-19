@@ -891,7 +891,8 @@ def main(args):
         layer_name = name.split(".processor")[0]
         weights = {
             "to_k_custom_diffusion.weight": st[layer_name + ".to_k.weight"],
-            "to_v_custom_diffusion.weight": st[layer_name + ".to_v.weight"]}
+            "to_v_custom_diffusion.weight": st[layer_name + ".to_v.weight"],
+        }
         if train_q_out:
             weights["to_q_custom_diffusion.weight"] = st[layer_name + ".to_q.weight"]
             weights["to_out_custom_diffusion.0.weight"] = st[layer_name + ".to_out.0.weight"]
