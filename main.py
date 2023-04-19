@@ -382,18 +382,21 @@ def fix_ckpt_name(hub_repo_dir):
     
     print('-' * 100)
     print('Open: ', hub_repo_dir)
-    # bin_path = os.path.join(hub_repo_dir, "diffusion_pytorch_model.bin")
-    # state = torch.load(bin_path)
-    # wrong_keys = [k for k in state.keys() if 'skep' in k]
-    # print(state.keys())
-    # print("wrong_keys: ", wrong_keys)
-    # state = {
-    #     k.replace('skep', 'skip'): v
-    #     for k, v in state.items()
-    # }
-    cfg_path = os.path.join(hub_repo_dir, "config.json")
-    with open(cfg_path, mode='r') as f:
-        config = json.load(f)
+    bin_path = os.path.join(hub_repo_dir, "diffusion_pytorch_model.bin")
+    state = torch.load(bin_path)
+    mapping = {
+        'down_opt': 'down_opt'
+    }
+    wrong_keys = [k for k in state.keys() if 'skep' in k]
+    print(state.keys())
+    print("wrong_keys: ", wrong_keys)
+    state = {
+        k.replace('skep', 'skip'): v
+        for k, v in state.items()
+    }
+    # cfg_path = os.path.join(hub_repo_dir, "config.json")
+    # with open(cfg_path, mode='r') as f:
+    #     config = json.load(f)
     # config['_class_name'] = 
 
 
