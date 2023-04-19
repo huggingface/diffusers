@@ -1062,14 +1062,14 @@ class FromCkptMixin:
     into the respective classes."""
 
     @classmethod
-    def from_ckpt(cls, pretrained_model_name_or_path, **kwargs):
+    def from_ckpt(cls, pretrained_model_link_or_path, **kwargs):
         r"""
         Instantiate a PyTorch diffusion pipeline from pre-trained pipeline weights saved in the original .ckpt format.
 
         The pipeline is set in evaluation mode by default using `model.eval()` (Dropout modules are deactivated).
 
         Parameters:
-            pretrained_model_name_or_path (`str` or `os.PathLike`, *optional*):
+            pretrained_model_link_or_path (`str` or `os.PathLike`, *optional*):
                 Can be either:
                     - A link to the .ckpt file on the Hub. Should be in the format
                       `"https://huggingface.co/<repo_id>/blob/main/<path_to_file>"`
@@ -1171,7 +1171,7 @@ class FromCkptMixin:
         use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
 
         pipeline_name = cls.__name__
-        file_extension = pretrained_model_name_or_path.rsplit(".", 1)[-1]
+        file_extension = pretrained_model_link_or_path.rsplit(".", 1)[-1]
         from_safetensors = file_extension == "safetensors"
 
         if from_safetensors and use_safetensors is True:
@@ -1201,11 +1201,11 @@ class FromCkptMixin:
 
         # remove huggingface url
         for prefix in ["https://huggingface.co/", "huggingface.co/", "hf.co/", "https://hf.co/"]:
-            if pretrained_model_name_or_path.startswith(prefix):
-                pretrained_model_name_or_path = pretrained_model_name_or_path[len(prefix) :]
+            if pretrained_model_link_or_path.startswith(prefix):
+                pretrained_model_link_or_path = pretrained_model_link_or_path[len(prefix) :]
 
         # Code based on diffusers.pipelines.pipeline_utils.DiffusionPipeline.from_pretrained
-        ckpt_path = Path(pretrained_model_name_or_path)
+        ckpt_path = Path(pretrained_model_link_or_path)
         if not ckpt_path.is_file():
             # get repo_id and (potentially nested) file path of ckpt in repo
             repo_id = str(Path().joinpath(*ckpt_path.parts[:2]))
@@ -1217,7 +1217,7 @@ class FromCkptMixin:
             if file_path.startswith("main/"):
                 file_path = file_path[len("main/") :]
 
-            pretrained_model_name_or_path = hf_hub_download(
+            pretrained_model_link_or_path = hf_hub_download(
                 repo_id,
                 filename=file_path,
                 cache_dir=cache_dir,
@@ -1230,7 +1230,7 @@ class FromCkptMixin:
             )
 
         pipe = download_from_original_stable_diffusion_ckpt(
-            pretrained_model_name_or_path,
+            pretrained_model_link_or_path,
             pipeline_class=cls,
             model_type=model_type,
             stable_unclip=stable_unclip,
