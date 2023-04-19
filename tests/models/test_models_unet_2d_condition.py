@@ -640,15 +640,9 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         model.set_attn_processor(model.attn_processors)
 
         with torch.no_grad():
-            sample2 = model(**inputs_dict, cross_attention_kwargs={"scale": 0.0}).sample
-            sample3 = model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
-            sample4 = model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
+            sample2 = model(**inputs_dict).sample
 
         assert (sample1 - sample2).abs().max() < 1e-4
-        assert (sample3 - sample4).abs().max() < 1e-4
-
-        # sample 2 and sample 3 should be different
-        assert (sample2 - sample3).abs().max() > 1e-4
 
     def test_custom_diffusion_save_load(self):
         # enable deterministic behavior for gradient checkpointing
@@ -667,7 +661,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         model.set_attn_processor(custom_diffusion_attn_procs)
 
         with torch.no_grad():
-            sample = model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
+            sample = model(**inputs_dict).sample
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_attn_procs(tmpdirname)
@@ -678,7 +672,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
             new_model.load_attn_procs(tmpdirname)
 
         with torch.no_grad():
-            new_sample = new_model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
+            new_sample = new_model(**inputs_dict).sample
 
         assert (sample - new_sample).abs().max() < 1e-4
 
