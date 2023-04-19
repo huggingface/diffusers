@@ -667,7 +667,6 @@ def main(args):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        print(vars(args))
         accelerator.init_trackers("custom-diffusion", config=vars(args))
 
     # If passed along, set the training seed now.
