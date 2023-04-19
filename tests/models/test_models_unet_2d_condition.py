@@ -107,7 +107,6 @@ def create_custom_diffusion_layers(model, mock_weights: bool = True):
                     custom_diffusion_attn_procs[name].to_v_custom_diffusion.weight += 1
         else:
             custom_diffusion_attn_procs[name] = CustomDiffusionAttnProcessor(
-                weights,
                 train_kv=False,
                 train_q_out=False,
                 hidden_size=hidden_size,
