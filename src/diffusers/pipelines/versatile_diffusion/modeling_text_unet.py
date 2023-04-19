@@ -840,7 +840,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             )
 
         if is_controlnet:
-            sample = sample + mid_block_additional_residual
+            sample += mid_block_additional_residual
 
         # 5. up
         for i, upsample_block in enumerate(self.up_blocks):

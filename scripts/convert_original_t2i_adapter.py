@@ -14,14 +14,31 @@
 # limitations under the License.
 """
 Conversion script for the T2I-Adapter checkpoints.
-Only models using the `Adapter-Light` architecture need this conversion,
-the more common used `Adapter` architecture checkpoint can be use by diffuers `T2IAdapter` without conversion.
 """
 
 import argparse
 import re
 
 import torch
+
+
+def convert_adapter():
+    mapping = {
+        'down_opt': 'downsample',
+        'in_conv': 'conv1',
+        'out_conv': 'conv2',
+    }
+
+    def apply(name):
+        for k, v in mapping.items():
+            name = name.replace(k, v)
+        return name
+    
+    cvr_state = {
+        apply(k): v
+        for k, v in state.items()
+    }
+    return cvr_state
 
 
 def convert_adapter_light(old_state_dict):
@@ -64,8 +81,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output_path", default=None, type=str, required=True, help="Path to the store the result checkpoint."
     )
+    parser.add_argument(
+        "--is_adapter_light", default=False, type=bool, required=False, help="Is checkpoint come from Adapter-Light architecture. ex: color-adapter"
+    )
 
     args = parser.parse_args()
     src_state = torch.load(args.checkpoint_path)
-    res_state = convert_adapter_light(src_state)
+    if args.is_adapter_light:
+        res_state = convert_adapter_light(src_state)
+    else:
+        res_state = convert_adapter(src_state)
     torch.save(res_state, args.output_path)

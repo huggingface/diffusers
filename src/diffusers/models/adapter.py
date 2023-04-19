@@ -31,7 +31,7 @@ class BottleneckResnetBlock(nn.Module):
         if sk is False:
             self.conv_shortcut = nn.Conv2d(in_c, mid_c, ksize, 1, ps)
         else:
-            self.skip = None
+            self.conv_shortcut = None
 
         self.down = down
         if self.down is True:
@@ -39,20 +39,20 @@ class BottleneckResnetBlock(nn.Module):
 
     def forward(self, x):
         if self.down is True:
-            x = self.down_opt(x)
-        if self.in_conv is not None:  # edit
-            x = self.in_conv(x)
+            x = self.downsample(x)
+        if self.conv1 is not None:  # edit
+            x = self.conv1(x)
 
         h = self.block1(x)
         h = self.act(h)
         h = self.block2(h)
-        if self.skip is not None:
-            h = h + self.skip(x)
+        if self.conv_shortcut is not None:
+            h = h + self.conv_shortcut(x)
         else:
             h = h + x
 
-        if self.out_conv is not None:
-            h = self.out_conv(h)
+        if self.conv2 is not None:
+            h = self.conv2(h)
         return h
 
 
