@@ -31,33 +31,30 @@ from transformers import (
     CLIPVisionModelWithProjection,
 )
 
-from diffusers import (
+from ...models import (
     AutoencoderKL,
     ControlNetModel,
+    PriorTransformer,
+    UNet2DConditionModel,
+)
+from ...schedulers import (
     DDIMScheduler,
     DDPMScheduler,
     DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
     HeunDiscreteScheduler,
-    LDMTextToImagePipeline,
     LMSDiscreteScheduler,
     PNDMScheduler,
-    PriorTransformer,
-    StableDiffusionControlNetPipeline,
-    StableDiffusionPipeline,
-    StableUnCLIPImg2ImgPipeline,
-    StableUnCLIPPipeline,
     UnCLIPScheduler,
-    UNet2DConditionModel,
 )
-from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
-from diffusers.pipelines.paint_by_example import PaintByExampleImageEncoder, PaintByExamplePipeline
-from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
-from diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
-
 from ...utils import is_omegaconf_available, is_safetensors_available, logging
 from ...utils.import_utils import BACKENDS_MAPPING
+from ..latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
+from ..paint_by_example import PaintByExampleImageEncoder
+from ..pipeline_utils import DiffusionPipeline
+from .safety_checker import StableDiffusionSafetyChecker
+from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -274,18 +271,18 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
         else:
             raise NotImplementedError(f"Unknown conditional unet num_classes config: {unet_params.num_classes}")
 
-    config = dict(
-        sample_size=image_size // vae_scale_factor,
-        in_channels=unet_params.in_channels,
-        down_block_types=tuple(down_block_types),
-        block_out_channels=tuple(block_out_channels),
-        layers_per_block=unet_params.num_res_blocks,
-        cross_attention_dim=unet_params.context_dim,
-        attention_head_dim=head_dim,
-        use_linear_projection=use_linear_projection,
-        class_embed_type=class_embed_type,
-        projection_class_embeddings_input_dim=projection_class_embeddings_input_dim,
-    )
+    config = {
+        "sample_size": image_size // vae_scale_factor,
+        "in_channels": unet_params.in_channels,
+        "down_block_types": tuple(down_block_types),
+        "block_out_channels": tuple(block_out_channels),
+        "layers_per_block": unet_params.num_res_blocks,
+        "cross_attention_dim": unet_params.context_dim,
+        "attention_head_dim": head_dim,
+        "use_linear_projection": use_linear_projection,
+        "class_embed_type": class_embed_type,
+        "projection_class_embeddings_input_dim": projection_class_embeddings_input_dim,
+    }
 
     if not controlnet:
         config["out_channels"] = unet_params.out_channels
@@ -305,16 +302,16 @@ def create_vae_diffusers_config(original_config, image_size: int):
     down_block_types = ["DownEncoderBlock2D"] * len(block_out_channels)
     up_block_types = ["UpDecoderBlock2D"] * len(block_out_channels)
 
-    config = dict(
-        sample_size=image_size,
-        in_channels=vae_params.in_channels,
-        out_channels=vae_params.out_ch,
-        down_block_types=tuple(down_block_types),
-        up_block_types=tuple(up_block_types),
-        block_out_channels=tuple(block_out_channels),
-        latent_channels=vae_params.z_channels,
-        layers_per_block=vae_params.num_res_blocks,
-    )
+    config = {
+        "sample_size": image_size,
+        "in_channels": vae_params.in_channels,
+        "out_channels": vae_params.out_ch,
+        "down_block_types": tuple(down_block_types),
+        "up_block_types": tuple(up_block_types),
+        "block_out_channels": tuple(block_out_channels),
+        "latent_channels": vae_params.z_channels,
+        "layers_per_block": vae_params.num_res_blocks,
+    }
     return config
 
 
@@ -989,7 +986,9 @@ def download_from_original_stable_diffusion_ckpt(
     stable_unclip_prior: Optional[str] = None,
     clip_stats_path: Optional[str] = None,
     controlnet: Optional[bool] = None,
-) -> StableDiffusionPipeline:
+    load_safety_checker: bool = True,
+    pipeline_class: DiffusionPipeline = None,
+) -> DiffusionPipeline:
     """
     Load a Stable Diffusion pipeline object from a CompVis-style `.ckpt`/`.safetensors` file and (ideally) a `.yaml`
     config file.
@@ -1017,6 +1016,8 @@ def download_from_original_stable_diffusion_ckpt(
         model_type (`str`, *optional*, defaults to `None`):
             The pipeline type. `None` to automatically infer, or one of `["FrozenOpenCLIPEmbedder",
             "FrozenCLIPEmbedder", "PaintByExample"]`.
+        is_img2img (`bool`, *optional*, defaults to `False`):
+            Whether the model should be loaded as an img2img pipeline.
         extract_ema (`bool`, *optional*, defaults to `False`): Only relevant for
             checkpoints that have both EMA and non-EMA weights. Whether to extract the EMA weights or not. Defaults to
             `False`. Pass `True` to extract the EMA weights. EMA weights usually yield higher quality images for
@@ -1025,10 +1026,29 @@ def download_from_original_stable_diffusion_ckpt(
             Whether the attention computation should always be upcasted. This is necessary when running stable
             diffusion 2.1.
         device (`str`, *optional*, defaults to `None`):
-            The device to use. Pass `None` to determine automatically. :param from_safetensors: If `checkpoint_path` is
-            in `safetensors` format, load checkpoint with safetensors instead of PyTorch. :return: A
-            StableDiffusionPipeline object representing the passed-in `.ckpt`/`.safetensors` file.
+            The device to use. Pass `None` to determine automatically.
+        from_safetensors (`str`, *optional*, defaults to `False`):
+            If `checkpoint_path` is in `safetensors` format, load checkpoint with safetensors instead of PyTorch.
+        load_safety_checker (`bool`, *optional*, defaults to `True`):
+            Whether to load the safety checker or not. Defaults to `True`.
+        pipeline_class (`str`, *optional*, defaults to `None`):
+            The pipeline class to use. Pass `None` to determine automatically.
+        return: A StableDiffusionPipeline object representing the passed-in `.ckpt`/`.safetensors` file.
     """
+
+    # import pipelines here to avoid circular import error when using from_ckpt method
+    from diffusers import (
+        LDMTextToImagePipeline,
+        PaintByExamplePipeline,
+        StableDiffusionControlNetPipeline,
+        StableDiffusionPipeline,
+        StableUnCLIPImg2ImgPipeline,
+        StableUnCLIPPipeline,
+    )
+
+    if pipeline_class is None:
+        pipeline_class = StableDiffusionPipeline
+
     if prediction_type == "v-prediction":
         prediction_type = "v_prediction"
 
@@ -1190,7 +1210,7 @@ def download_from_original_stable_diffusion_ckpt(
                     requires_safety_checker=False,
                 )
             else:
-                pipe = StableDiffusionPipeline(
+                pipe = pipeline_class(
                     vae=vae,
                     text_encoder=text_model,
                     tokenizer=tokenizer,
@@ -1270,8 +1290,13 @@ def download_from_original_stable_diffusion_ckpt(
     elif model_type == "FrozenCLIPEmbedder":
         text_model = convert_ldm_clip_checkpoint(checkpoint)
         tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
-        safety_checker = StableDiffusionSafetyChecker.from_pretrained("CompVis/stable-diffusion-safety-checker")
-        feature_extractor = AutoFeatureExtractor.from_pretrained("CompVis/stable-diffusion-safety-checker")
+
+        if load_safety_checker:
+            safety_checker = StableDiffusionSafetyChecker.from_pretrained("CompVis/stable-diffusion-safety-checker")
+            feature_extractor = AutoFeatureExtractor.from_pretrained("CompVis/stable-diffusion-safety-checker")
+        else:
+            safety_checker = None
+            feature_extractor = None
 
         if controlnet:
             pipe = StableDiffusionControlNetPipeline(
@@ -1285,7 +1310,7 @@ def download_from_original_stable_diffusion_ckpt(
                 feature_extractor=feature_extractor,
             )
         else:
-            pipe = StableDiffusionPipeline(
+            pipe = pipeline_class(
                 vae=vae,
                 text_encoder=text_model,
                 tokenizer=tokenizer,
@@ -1312,7 +1337,7 @@ def download_controlnet_from_original_ckpt(
     upcast_attention: Optional[bool] = None,
     device: str = None,
     from_safetensors: bool = False,
-) -> StableDiffusionPipeline:
+) -> DiffusionPipeline:
     if not is_omegaconf_available():
         raise ValueError(BACKENDS_MAPPING["omegaconf"][1])
 

@@ -25,6 +25,7 @@ from .import_utils import (
     is_onnx_available,
     is_opencv_available,
     is_torch_available,
+    is_torch_version,
 )
 from .logging import get_logger
 
@@ -165,6 +166,15 @@ def require_torch(test_case):
     return unittest.skipUnless(is_torch_available(), "test requires PyTorch")(test_case)
 
 
+def require_torch_2(test_case):
+    """
+    Decorator marking a test that requires PyTorch 2. These tests are skipped when it isn't installed.
+    """
+    return unittest.skipUnless(is_torch_available() and is_torch_version(">=", "2.0.0"), "test requires PyTorch 2")(
+        test_case
+    )
+
+
 def require_torch_gpu(test_case):
     """Decorator marking a test that requires CUDA and PyTorch."""
     return unittest.skipUnless(is_torch_available() and torch_device == "cuda", "test requires PyTorch+CUDA")(
@@ -267,6 +277,16 @@ def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
     image = PIL.ImageOps.exif_transpose(image)
     image = image.convert("RGB")
     return image
+
+
+def preprocess_image(image: PIL.Image, batch_size: int):
+    w, h = image.size
+    w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
+    image = image.resize((w, h), resample=PIL.Image.LANCZOS)
+    image = np.array(image).astype(np.float32) / 255.0
+    image = np.vstack([image[None].transpose(0, 3, 1, 2)] * batch_size)
+    image = torch.from_numpy(image)
+    return 2.0 * image - 1.0
 
 
 def export_to_video(video_frames: List[np.ndarray], output_video_path: str = None) -> str:

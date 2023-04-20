@@ -4,7 +4,7 @@
   - local: quicktour
     title: Quicktour
   - local: stable_diffusion
-    title: Stable Diffusion
+    title: Effective and efficient diffusion
   - local: installation
     title: Installation
   title: Get started
@@ -25,7 +25,7 @@
     - local: using-diffusers/schedulers
       title: Load and compare different schedulers
     - local: using-diffusers/custom_pipeline_overview
-      title: Load and add custom pipelines
+      title: Load community pipelines
     - local: using-diffusers/kerascv
       title: Load KerasCV Stable Diffusion checkpoints
     title: Loading & Hub
@@ -47,11 +47,13 @@
     - local: using-diffusers/reproducibility
       title: Create reproducible pipelines
     - local: using-diffusers/custom_pipeline_examples
-      title: Community Pipelines
+      title: Community pipelines
     - local: using-diffusers/contribute_pipeline
-      title: How to contribute a Pipeline
+      title: How to contribute a community pipeline
     - local: using-diffusers/using_safetensors
       title: Using safetensors
+    - local: using-diffusers/stable_diffusion_jax_how_to
+      title: Stable Diffusion in JAX/Flax
     - local: using-diffusers/weighted_prompts
       title: Weighting Prompts
     title: Pipelines for Inference
@@ -72,6 +74,8 @@
       title: ControlNet
     - local: training/instructpix2pix
       title: InstructPix2Pix Training
+    - local: training/custom_diffusion
+      title: Custom Diffusion
     title: Training
   - sections:
     - local: using-diffusers/rl
@@ -95,6 +99,8 @@
     title: ONNX
   - local: optimization/open_vino
     title: OpenVINO
+  - local: optimization/coreml
+    title: Core ML
   - local: optimization/mps
     title: MPS
   - local: optimization/habana
@@ -202,6 +208,8 @@
       title: Stochastic Karras VE
     - local: api/pipelines/text_to_video
       title: Text-to-Video
+    - local: api/pipelines/text_to_video_zero
+      title: Text-to-Video Zero
     - local: api/pipelines/unclip
       title: UnCLIP
     - local: api/pipelines/latent_diffusion_uncond

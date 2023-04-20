@@ -1,4 +1,4 @@
-__version__ = "0.15.0.dev0"
+__version__ = "0.16.0.dev0"
 
 from .configuration_utils import ConfigMixin
 from .utils import (
@@ -136,6 +136,7 @@ else:
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
         TextToVideoSDPipeline,
+        TextToVideoZeroPipeline,
         UnCLIPImageVariationPipeline,
         UnCLIPPipeline,
         VersatileDiffusionDualGuidedPipeline,
@@ -177,10 +178,10 @@ else:
     from .pipelines import AudioDiffusionPipeline, Mel
 
 try:
-    if not (is_torch_available() and is_note_seq_available()):
+    if not (is_transformers_available() and is_torch_available() and is_note_seq_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from .utils.dummy_torch_and_note_seq_objects import *  # noqa F403
+    from .utils.dummy_transformers_and_torch_and_note_seq_objects import *  # noqa F403
 else:
     from .pipelines import SpectrogramDiffusionPipeline
 

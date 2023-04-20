@@ -25,9 +25,9 @@ import torch
 from requests.exceptions import HTTPError
 
 from diffusers.models import UNet2DConditionModel
-from diffusers.models.attention_processor import AttnProcessor
 from diffusers.training_utils import EMAModel
-from diffusers.utils import torch_device
+from diffusers.utils import logging, torch_device
+from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
 
 
 class ModelUtilsTest(unittest.TestCase):
@@ -100,22 +100,46 @@ class ModelUtilsTest(unittest.TestCase):
 
         diffusers.utils.import_utils._safetensors_available = True
 
+    def test_weight_overwrite(self):
+        with tempfile.TemporaryDirectory() as tmpdirname, self.assertRaises(ValueError) as error_context:
+            UNet2DConditionModel.from_pretrained(
+                "hf-internal-testing/tiny-stable-diffusion-torch",
+                subfolder="unet",
+                cache_dir=tmpdirname,
+                in_channels=9,
+            )
+
+        # make sure that error message states what keys are missing
+        assert "Cannot load" in str(error_context.exception)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            model = UNet2DConditionModel.from_pretrained(
+                "hf-internal-testing/tiny-stable-diffusion-torch",
+                subfolder="unet",
+                cache_dir=tmpdirname,
+                in_channels=9,
+                low_cpu_mem_usage=False,
+                ignore_mismatched_sizes=True,
+            )
+
+        assert model.config.in_channels == 9
+
 
 class ModelTesterMixin:
     def test_from_save_pretrained(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict)
-        if hasattr(model, "set_attn_processor"):
-            model.set_attn_processor(AttnProcessor())
+        if hasattr(model, "set_default_attn_processor"):
+            model.set_default_attn_processor()
         model.to(torch_device)
         model.eval()
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_pretrained(tmpdirname)
             new_model = self.model_class.from_pretrained(tmpdirname)
-            if hasattr(new_model, "set_attn_processor"):
-                new_model.set_attn_processor(AttnProcessor())
+            if hasattr(new_model, "set_default_attn_processor"):
+                new_model.set_default_attn_processor()
             new_model.to(torch_device)
 
         with torch.no_grad():
@@ -131,20 +155,63 @@ class ModelTesterMixin:
         max_diff = (image - new_image).abs().sum().item()
         self.assertLessEqual(max_diff, 5e-5, "Models give different forward passes")
 
+    def test_getattr_is_correct(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+
+        # save some things to test
+        model.dummy_attribute = 5
+        model.register_to_config(test_attribute=5)
+
+        logger = logging.get_logger("diffusers.models.modeling_utils")
+        # 30 for warning
+        logger.setLevel(30)
+        with CaptureLogger(logger) as cap_logger:
+            assert hasattr(model, "dummy_attribute")
+            assert getattr(model, "dummy_attribute") == 5
+            assert model.dummy_attribute == 5
+
+        # no warning should be thrown
+        assert cap_logger.out == ""
+
+        logger = logging.get_logger("diffusers.models.modeling_utils")
+        # 30 for warning
+        logger.setLevel(30)
+        with CaptureLogger(logger) as cap_logger:
+            assert hasattr(model, "save_pretrained")
+            fn = model.save_pretrained
+            fn_1 = getattr(model, "save_pretrained")
+
+            assert fn == fn_1
+        # no warning should be thrown
+        assert cap_logger.out == ""
+
+        # warning should be thrown
+        with self.assertWarns(FutureWarning):
+            assert model.test_attribute == 5
+
+        with self.assertWarns(FutureWarning):
+            assert getattr(model, "test_attribute") == 5
+
+        with self.assertRaises(AttributeError) as error:
+            model.does_not_exist
+
+        assert str(error.exception) == f"'{type(model).__name__}' object has no attribute 'does_not_exist'"
+
     def test_from_save_pretrained_variant(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict)
-        if hasattr(model, "set_attn_processor"):
-            model.set_attn_processor(AttnProcessor())
+        if hasattr(model, "set_default_attn_processor"):
+            model.set_default_attn_processor()
         model.to(torch_device)
         model.eval()
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_pretrained(tmpdirname, variant="fp16")
             new_model = self.model_class.from_pretrained(tmpdirname, variant="fp16")
-            if hasattr(new_model, "set_attn_processor"):
-                new_model.set_attn_processor(AttnProcessor())
+            if hasattr(new_model, "set_default_attn_processor"):
+                new_model.set_default_attn_processor()
 
             # non-variant cannot be loaded
             with self.assertRaises(OSError) as error_context:
@@ -167,6 +234,21 @@ class ModelTesterMixin:
 
         max_diff = (image - new_image).abs().sum().item()
         self.assertLessEqual(max_diff, 5e-5, "Models give different forward passes")
+
+    @require_torch_gpu
+    def test_from_save_pretrained_dynamo(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model = torch.compile(model)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            model.save_pretrained(tmpdirname)
+            new_model = self.model_class.from_pretrained(tmpdirname)
+            new_model.to(torch_device)
+
+        assert new_model.__class__ == self.model_class
 
     def test_from_save_pretrained_dtype(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()

@@ -109,13 +109,6 @@ class ConfigMixin:
         # TODO: remove this when we remove the deprecation warning, and the `kwargs` argument,
         # or solve in a more general way.
         kwargs.pop("kwargs", None)
-        for key, value in kwargs.items():
-            try:
-                setattr(self, key, value)
-            except AttributeError as err:
-                logger.error(f"Can't set {key} with value {value} for {self}")
-                raise err
-
         if not hasattr(self, "_internal_dict"):
             internal_dict = kwargs
         else:
@@ -124,6 +117,24 @@ class ConfigMixin:
             logger.debug(f"Updating config from {previous_dict} to {internal_dict}")
 
         self._internal_dict = FrozenDict(internal_dict)
+
+    def __getattr__(self, name: str) -> Any:
+        """The only reason we overwrite `getattr` here is to gracefully deprecate accessing
+        config attributes directly. See https://github.com/huggingface/diffusers/pull/3129
+
+        Tihs funtion is mostly copied from PyTorch's __getattr__ overwrite:
+        https://pytorch.org/docs/stable/_modules/torch/nn/modules/module.html#Module
+        """
+
+        is_in_config = "_internal_dict" in self.__dict__ and hasattr(self.__dict__["_internal_dict"], name)
+        is_attribute = name in self.__dict__
+
+        if is_in_config and not is_attribute:
+            deprecation_message = f"Accessing config attribute `{name}` directly via '{type(self).__name__}' object attribute is deprecated. Please access '{name}' over '{type(self).__name__}'s config object instead, e.g. 'scheduler.config.{name}'."
+            deprecate("direct config name access", "1.0.0", deprecation_message, standard_warn=False)
+            return self._internal_dict[name]
+
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
     def save_config(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
         """
@@ -420,7 +431,7 @@ class ConfigMixin:
     @classmethod
     def extract_init_dict(cls, config_dict, **kwargs):
         # 0. Copy origin config dict
-        original_dict = {k: v for k, v in config_dict.items()}
+        original_dict = dict(config_dict.items())
 
         # 1. Retrieve expected config attributes from __init__ signature
         expected_keys = cls._get_init_keys(cls)
@@ -610,7 +621,7 @@ def flax_register_to_config(cls):
             )
 
         # Ignore private kwargs in the init. Retrieve all passed attributes
-        init_kwargs = {k: v for k, v in kwargs.items()}
+        init_kwargs = dict(kwargs.items())
 
         # Retrieve default values
         fields = dataclasses.fields(self)

@@ -60,7 +60,18 @@ DreamBooth finetuning is very sensitive to hyperparameters and easy to overfit. 
 
 <frameworkcontent>
 <pt>
-Let's try DreamBooth with a [few images of a dog](https://drive.google.com/drive/folders/1BO_dyz-p65qhBRRMRA4TbZ8qW4rB99JZ); download and save them to a directory and then set the `INSTANCE_DIR` environment variable to that path:
+Let's try DreamBooth with a
+[few images of a dog](https://huggingface.co/datasets/diffusers/dog-example);
+download and save them to a directory and then set the `INSTANCE_DIR` environment variable to that path:
+
+```python 
+local_dir = "./path_to_training_images"
+snapshot_download(
+    "diffusers/dog-example",
+    local_dir=local_dir, repo_type="dataset",
+    ignore_patterns=".gitattributes",
+)
+```
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
@@ -237,7 +248,7 @@ python train_dreambooth_flax.py \
 
 ## Finetuning with LoRA
 
-You can also use Low-Rank Adaptation of Large Language Models (LoRA), a fine-tuning technique for accelerating training large models, on DreamBooth. For more details, take a look at the [LoRA training](training/lora#dreambooth) guide.
+You can also use Low-Rank Adaptation of Large Language Models (LoRA), a fine-tuning technique for accelerating training large models, on DreamBooth. For more details, take a look at the [LoRA training](./lora#dreambooth) guide.
 
 ## Saving checkpoints while training
 
@@ -457,11 +468,11 @@ If you have **`"accelerate>=0.16.0"`** installed, you can use the following code
 inference from an intermediate checkpoint:
 
 ```python
-from diffusers import StableDiffusionPipeline
+from diffusers import DiffusionPipeline
 import torch
 
 model_id = "path_to_saved_model"
-pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
+pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 
 prompt = "A photo of sks dog in a bucket"
 image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]

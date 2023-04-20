@@ -83,7 +83,7 @@ EXAMPLE_DOC_STRING = """
         ...     "lllyasviel/sd-controlnet-canny", from_pt=True, dtype=jnp.float32
         ... )
         >>> pipe, params = FlaxStableDiffusionControlNetPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, from_pt=True, dtype=jnp.float32
+        ...     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, revision="flax", dtype=jnp.float32
         ... )
         >>> params["controlnet"] = controlnet_params
 
@@ -283,7 +283,7 @@ class FlaxStableDiffusionControlNetPipeline(FlaxDiffusionPipeline):
 
         latents_shape = (
             batch_size,
-            self.unet.in_channels,
+            self.unet.config.in_channels,
             height // self.vae_scale_factor,
             width // self.vae_scale_factor,
         )
@@ -530,7 +530,7 @@ def unshard(x: jnp.ndarray):
 def preprocess(image, dtype):
     image = image.convert("RGB")
     w, h = image.size
-    w, h = map(lambda x: x - x % 64, (w, h))  # resize to integer multiple of 64
+    w, h = (x - x % 64 for x in (w, h))  # resize to integer multiple of 64
     image = image.resize((w, h), resample=PIL_INTERPOLATION["lanczos"])
     image = jnp.array(image).astype(dtype) / 255.0
     image = image[None].transpose(0, 3, 1, 2)
