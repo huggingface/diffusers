@@ -279,9 +279,11 @@ You can also perform inference from one of the complete checkpoint saved during 
 TODO.
 
 ## Set grads to none
+
 To save even more memory, pass the `--set_grads_to_none` argument to the script. This will set grads to None instead of zero. However, be aware that it changes certain behaviors, so if you start experiencing any problems, remove this argument.
 
 More info: https://pytorch.org/docs/stable/generated/torch.optim.Optimizer.zero_grad.html
 
 ## Experimental results
+
 You can refer to [our webpage](https://www.cs.cmu.edu/~custom-diffusion/) that discusses our experiments in detail. 
