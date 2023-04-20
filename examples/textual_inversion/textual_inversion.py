@@ -97,7 +97,7 @@ tags:
 - stable-diffusion-diffusers
 - text-to-image
 - diffusers
-- lora
+- textual_inversion
 inference: true
 ---
     """
