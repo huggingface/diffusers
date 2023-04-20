@@ -15,6 +15,7 @@
 
 import argparse
 import hashlib
+import itertools
 import logging
 import math
 import os
@@ -43,12 +44,13 @@ from diffusers import (
     DDPMScheduler,
     DiffusionPipeline,
     DPMSolverMultistepScheduler,
+    StableDiffusionPipeline,
     UNet2DConditionModel,
 )
-from diffusers.loaders import AttnProcsLayers
+from diffusers.loaders import AttnProcsLayers, LoraLoaderMixin
 from diffusers.models.attention_processor import LoRAAttnProcessor
 from diffusers.optimization import get_scheduler
-from diffusers.utils import check_min_version, is_wandb_available
+from diffusers.utils import TEXT_ENCODER_TARGET_MODULES, check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
 
@@ -58,7 +60,7 @@ check_min_version("0.16.0.dev0")
 logger = get_logger(__name__)
 
 
-def save_model_card(repo_id: str, images=None, base_model=str, prompt=str, repo_folder=None):
+def save_model_card(repo_id: str, images=None, base_model=str, train_text_encoder=False, prompt=str, repo_folder=None):
     img_str = ""
     for i, image in enumerate(images):
         image.save(os.path.join(repo_folder, f"image_{i}.png"))
@@ -83,6 +85,8 @@ inference: true
 
 These are LoRA adaption weights for {base_model}. The weights were trained on {prompt} using [DreamBooth](https://dreambooth.github.io/). You can find some example images in the following. \n
 {img_str}
+
+LoRA for the text encoder was enabled: {train_text_encoder}.
 """
     with open(os.path.join(repo_folder, "README.md"), "w") as f:
         f.write(yaml + model_card)
@@ -218,6 +222,11 @@ def parse_args(input_args=None):
             "Whether to center crop the input images to the resolution. If not set, the images will be randomly"
             " cropped. The images will be resized to the resolution first before cropping."
         ),
+    )
+    parser.add_argument(
+        "--train_text_encoder",
+        action="store_true",
+        help="Whether to train the text encoder. If set, the text encoder should be float32 precision.",
     )
     parser.add_argument(
         "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
@@ -547,7 +556,13 @@ def main(args):
 
     # Currently, it's not possible to do gradient accumulation when training two models with accelerate.accumulate
     # This will be enabled soon in accelerate. For now, we don't allow gradient accumulation when training two models.
-    # TODO (patil-suraj): Remove this check when gradient accumulation with two models is enabled in accelerate.
+    # TODO (sayakpaul): Remove this check when gradient accumulation with two models is enabled in accelerate.
+    if args.train_text_encoder and args.gradient_accumulation_steps > 1 and accelerator.num_processes > 1:
+        raise ValueError(
+            "Gradient accumulation is not supported when training the text encoder in distributed training. "
+            "Please set gradient_accumulation_steps to 1. This feature will be supported in the future."
+        )
+
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -691,7 +706,7 @@ def main(args):
     # => 32 layers
 
     # Set correct lora layers
-    lora_attn_procs = {}
+    unet_lora_attn_procs = {}
     for name in unet.attn_processors.keys():
         cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
         if name.startswith("mid_block"):
@@ -703,12 +718,33 @@ def main(args):
             block_id = int(name[len("down_blocks.")])
             hidden_size = unet.config.block_out_channels[block_id]
 
-        lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
+        unet_lora_attn_procs[name] = LoRAAttnProcessor(
+            hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
+        )
 
-    unet.set_attn_processor(lora_attn_procs)
-    lora_layers = AttnProcsLayers(unet.attn_processors)
+    unet.set_attn_processor(unet_lora_attn_procs)
+    unet_lora_layers = AttnProcsLayers(unet.attn_processors)
+    accelerator.register_for_checkpointing(unet_lora_layers)
 
-    accelerator.register_for_checkpointing(lora_layers)
+    # The text encoder comes from 🤗 transformers, so we cannot directly modify it.
+    # So, instead, we monkey-patch the forward calls of its attention-blocks. For this,
+    # we first load a dummy pipeline with the text encoder and then do the monkey-patching.
+    text_encoder_lora_layers = None
+    if args.train_text_encoder:
+        text_lora_attn_procs = {}
+        for name, module in text_encoder.named_modules():
+            if any(x in name for x in TEXT_ENCODER_TARGET_MODULES):
+                text_lora_attn_procs[name] = LoRAAttnProcessor(
+                    hidden_size=module.out_features, cross_attention_dim=None
+                )
+        text_encoder_lora_layers = AttnProcsLayers(text_lora_attn_procs)
+        temp_pipeline = StableDiffusionPipeline.from_pretrained(
+            args.pretrained_model_name_or_path, text_encoder=text_encoder
+        )
+        temp_pipeline._modify_text_encoder(text_lora_attn_procs)
+        text_encoder = temp_pipeline.text_encoder
+        accelerator.register_for_checkpointing(unet_lora_layers)
+        del temp_pipeline
 
     if args.scale_lr:
         args.learning_rate = (
@@ -739,8 +775,13 @@ def main(args):
         optimizer_class = torch.optim.AdamW
 
     # Optimizer creation
+    params_to_optimize = (
+        itertools.chain(unet_lora_layers.parameters(), text_encoder_lora_layers.parameters())
+        if args.train_text_encoder
+        else unet_lora_layers.parameters()
+    )
     optimizer = optimizer_class(
-        lora_layers.parameters(),
+        params_to_optimize,
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -784,9 +825,14 @@ def main(args):
     )
 
     # Prepare everything with our `accelerator`.
-    lora_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        lora_layers, optimizer, train_dataloader, lr_scheduler
-    )
+    if args.train_text_encoder:
+        unet_lora_layers, text_encoder_lora_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            unet_lora_layers, text_encoder_lora_layers, optimizer, train_dataloader, lr_scheduler
+        )
+    else:
+        unet_lora_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            unet_lora_layers, optimizer, train_dataloader, lr_scheduler
+        )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -845,6 +891,8 @@ def main(args):
 
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
+        if args.train_text_encoder:
+            text_encoder.train()
         for step, batch in enumerate(train_dataloader):
             # Skip steps until we reach the resumed step
             if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
@@ -900,7 +948,11 @@ def main(args):
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    params_to_clip = lora_layers.parameters()
+                    params_to_clip = (
+                        itertools.chain(unet_lora_layers.parameters(), text_encoder_lora_layers.parameters())
+                        if args.train_text_encoder
+                        else unet_lora_layers.parameters()
+                    )
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
@@ -914,7 +966,14 @@ def main(args):
                 if global_step % args.checkpointing_steps == 0:
                     if accelerator.is_main_process:
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                        accelerator.save_state(save_path)
+                        # We combine the text encoder and UNet LoRA parameters with a simple
+                        # custom logic. `accelerator.save_state()` won't know that. So,
+                        # use `LoraLoaderMixin.save_lora_weights()`.
+                        LoraLoaderMixin.save_lora_weights(
+                            save_directory=save_path,
+                            unet_lora_layers=unet_lora_layers,
+                            text_encoder_lora_layers=text_encoder_lora_layers,
+                        )
                         logger.info(f"Saved state to {save_path}")
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
@@ -970,7 +1029,12 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         unet = unet.to(torch.float32)
-        unet.save_attn_procs(args.output_dir)
+        text_encoder = text_encoder.to(torch.float32)
+        LoraLoaderMixin.save_lora_weights(
+            save_directory=args.output_dir,
+            unet_lora_layers=unet_lora_layers,
+            text_encoder_lora_layers=text_encoder_lora_layers,
+        )
 
         # Final inference
         # Load previous pipeline
@@ -981,7 +1045,7 @@ def main(args):
         pipeline = pipeline.to(accelerator.device)
 
         # load attention processors
-        pipeline.unet.load_attn_procs(args.output_dir)
+        pipeline.load_attn_procs(args.output_dir)
 
         # run inference
         if args.validation_prompt and args.num_validation_images > 0:
@@ -1010,6 +1074,7 @@ def main(args):
                 repo_id,
                 images=images,
                 base_model=args.pretrained_model_name_or_path,
+                train_text_encoder=args.train_text_encoder,
                 prompt=args.instance_prompt,
                 repo_folder=args.output_dir,
             )
