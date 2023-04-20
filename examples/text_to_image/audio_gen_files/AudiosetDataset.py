@@ -178,9 +178,9 @@ class AudiosetDataset(Dataset):
         audio is a FloatTensor of size (N_freq, N_frames) for spectrogram, or (N_frames) for waveform
         nframes is an integer
         """
+        datum = self.data[index]
         # do mix-up for this sample (controlled by the given mixup rate)
         if random.random() < self.mixup:
-            datum = self.data[index]
             # find another sample to mix, also do balance sampling
             # sample the other sample from the multinomial distribution, will make the performance worse
             # mix_sample_idx = np.random.choice(len(self.data), p=self.sample_weight_file)
@@ -200,7 +200,6 @@ class AudiosetDataset(Dataset):
             label_indices = torch.FloatTensor(label_indices)
         # if not do mixup
         else:
-            datum = self.data[index]
             label_indices = np.zeros(self.label_num)
             fbank, mix_lambda, sr = self._wav2fbank(datum['wav'])
             for label_str in datum['labels'].split(','):
@@ -239,7 +238,11 @@ class AudiosetDataset(Dataset):
 
         # the output fbank shape is [time_frame_num, frequency_bins], e.g., [1024, 128]
         # return fbank, np.argmax(label_indices)
-        label = self.construct_label(label_indices)
+        if "caption" in datum:
+            label = datum["caption"]
+            print("USING DATUM CAPTION: ", label)
+        else:
+            label = self.construct_label(label_indices)
         input_ids = []
         if (self.tokenizer is not None):
             input_ids = self.tokenizer(
@@ -254,7 +257,7 @@ class AudiosetDataset(Dataset):
             input_ids = input_ids.to(self.device, dtype=torch.int32)
             
         
-        return {"pixel_values": ret_bank, "input_ids": input_ids, "caption": label, 'filename': datum['wav'], 'sample_rate': sr}
+        return {"pixel_values": ret_bank, "input_ids": input_ids, "caption": label, 'filename': datum['wav'], 'sample_rate': sr, "label_ids": label_indices}
 
     def __len__(self):
         return len(self.data)
@@ -263,7 +266,7 @@ class AudiosetDataset(Dataset):
         #base string to add labels to
         label = "A mel spectrogram of the sound of "
         # pulling english label names from non-zero indicies of multi-hot encoded labels
-        terms = [self.name_dict[str(int(idx))] for idx in (label_indices == 1).nonzero(as_tuple=True)[0]]
+        terms = [self.name_dict[str(int(idx))] for idx in (label_indices >= 0).nonzero(as_tuple=True)[0]]
         # converting list of labels to oxford comma single string
         label += ", ".join(terms[:-2] + [", and ".join(terms[-2:])])
         return label
