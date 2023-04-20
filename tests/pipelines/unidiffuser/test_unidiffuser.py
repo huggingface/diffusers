@@ -38,6 +38,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         unet = UniDiffuserModel(
             text_dim=32,
             clip_img_dim=32,
+            num_text_tokens=77,
             num_attention_heads=2,
             attention_head_dim=8,
             in_channels=4,
@@ -51,8 +52,11 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             activation_fn="gelu",
             num_embeds_ada_norm=1000,
             norm_type="layer_norm",
+            block_type="unidiffuser",
             pre_layer_norm=False,
-            norm_elementwise_affine=False,
+            use_timestep_embedding=False,
+            norm_elementwise_affine=True,
+            ff_final_dropout=True,
         )
 
         scheduler = DPMSolverMultistepScheduler(
@@ -178,6 +182,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
+        print(image_slice.flatten())
         expected_slice = np.array([0.3965, 0.4568, 0.4495, 0.4590, 0.4465, 0.4690, 0.5454, 0.5093, 0.4321])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
