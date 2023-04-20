@@ -511,7 +511,7 @@ class TextualInversionLoaderMixin:
         model_id = "runwayml/stable-diffusion-v1-5"
         pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 
-        pipe.load_textual_inversion("./charturnerv2.pt")
+        pipe.load_textual_inversion("./charturnerv2.pt", token="charturnerv2")
 
         prompt = "charturnerv2, multiple views of the same character in the same outfit, a character turnaround of a woman wearing a black jacket and red shirt, best quality, intricate details."
 
@@ -848,7 +848,7 @@ class LoraLoaderMixin:
         """
         # Loop over the original attention modules.
         for name, _ in self.text_encoder.named_modules():
-            if any([x in name for x in TEXT_ENCODER_TARGET_MODULES]):
+            if any(x in name for x in TEXT_ENCODER_TARGET_MODULES):
                 # Retrieve the module and its corresponding LoRA processor.
                 module = self.text_encoder.get_submodule(name)
                 # Construct a new function that performs the LoRA merging. We will monkey patch
