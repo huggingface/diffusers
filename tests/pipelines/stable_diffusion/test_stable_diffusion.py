@@ -36,6 +36,7 @@ from diffusers import (
     UNet2DConditionModel,
     logging,
 )
+from diffusers.models.attention_processor import AttnProcessor
 from diffusers.utils import load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
 
@@ -863,6 +864,62 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 
         max_diff = np.abs(expected_image - image).max()
         assert max_diff < 5e-2
+
+
+@slow
+@require_torch_gpu
+class StableDiffusionPipelineCkptTests(unittest.TestCase):
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_download_from_hub(self):
+        ckpt_paths = [
+            "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt",
+            "https://huggingface.co/WarriorMama777/OrangeMixs/blob/main/Models/AbyssOrangeMix/AbyssOrangeMix_base.ckpt",
+        ]
+
+        for ckpt_path in ckpt_paths:
+            pipe = StableDiffusionPipeline.from_ckpt(ckpt_path, torch_dtype=torch.float16)
+            pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+            pipe.to("cuda")
+
+        image_out = pipe("test", num_inference_steps=1, output_type="np").images[0]
+
+        assert image_out.shape == (512, 512, 3)
+
+    def test_download_local(self):
+        filename = hf_hub_download("runwayml/stable-diffusion-v1-5", filename="v1-5-pruned-emaonly.ckpt")
+
+        pipe = StableDiffusionPipeline.from_ckpt(filename, torch_dtype=torch.float16)
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.to("cuda")
+
+        image_out = pipe("test", num_inference_steps=1, output_type="np").images[0]
+
+        assert image_out.shape == (512, 512, 3)
+
+    def test_download_ckpt_diff_format_is_same(self):
+        ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt"
+
+        pipe = StableDiffusionPipeline.from_ckpt(ckpt_path)
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.unet.set_attn_processor(AttnProcessor())
+        pipe.to("cuda")
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        image_ckpt = pipe("a turtle", num_inference_steps=5, generator=generator, output_type="np").images[0]
+
+        pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.unet.set_attn_processor(AttnProcessor())
+        pipe.to("cuda")
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        image = pipe("a turtle", num_inference_steps=5, generator=generator, output_type="np").images[0]
+
+        assert np.max(np.abs(image - image_ckpt)) < 1e-4
 
 
 @nightly
