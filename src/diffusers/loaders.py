@@ -848,7 +848,7 @@ class LoraLoaderMixin:
         """
         # Loop over the original attention modules.
         for name, _ in self.text_encoder.named_modules():
-            if any([x in name for x in TEXT_ENCODER_TARGET_MODULES]):
+            if any(x in name for x in TEXT_ENCODER_TARGET_MODULES):
                 # Retrieve the module and its corresponding LoRA processor.
                 module = self.text_encoder.get_submodule(name)
                 # Construct a new function that performs the LoRA merging. We will monkey patch
