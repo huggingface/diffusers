@@ -82,6 +82,34 @@ check_min_version("0.16.0.dev0")
 logger = get_logger(__name__)
 
 
+def save_model_card(repo_id: str, images=None, base_model=str, repo_folder=None):
+    img_str = ""
+    for i, image in enumerate(images):
+        image.save(os.path.join(repo_folder, f"image_{i}.png"))
+        img_str += f"![img_{i}](./image_{i}.png)\n"
+
+    yaml = f"""
+---
+license: creativeml-openrail-m
+base_model: {base_model}
+tags:
+- stable-diffusion
+- stable-diffusion-diffusers
+- text-to-image
+- diffusers
+- lora
+inference: true
+---
+    """
+    model_card = f"""
+# Textual inversion text2image fine-tuning - {repo_id}
+These are textual inversion adaption weights for {base_model}. You can find some example images in the following. \n
+{img_str}
+"""
+    with open(os.path.join(repo_folder, "README.md"), "w") as f:
+        f.write(yaml + model_card)
+
+
 def log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch):
     logger.info(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
@@ -125,6 +153,7 @@ def log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight
 
     del pipeline
     torch.cuda.empty_cache()
+    return images
 
 
 def save_progress(text_encoder, placeholder_token_ids, accelerator, args, save_path):
@@ -844,6 +873,7 @@ def main():
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
+                images = []
                 progress_bar.update(1)
                 global_step += 1
                 if global_step % args.save_steps == 0:
@@ -857,7 +887,9 @@ def main():
                         logger.info(f"Saved state to {save_path}")
 
                     if args.validation_prompt is not None and global_step % args.validation_steps == 0:
-                        log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch)
+                        images = log_validation(
+                            text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch
+                        )
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
@@ -887,6 +919,12 @@ def main():
         save_progress(text_encoder, placeholder_token_ids, accelerator, args, save_path)
 
         if args.push_to_hub:
+            save_model_card(
+                repo_id,
+                images=images,
+                base_model=args.pretrained_model_name_or_path,
+                repo_folder=args.output_dir,
+            )
             upload_folder(
                 repo_id=repo_id,
                 folder_path=args.output_dir,
