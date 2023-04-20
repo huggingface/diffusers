@@ -1,0 +1,21 @@
+{"dataset_json_file": "/home/junchenl/AudioTaggingDoneRight/egs/audioset/data/datafiles/audioset_unbal_train_data.json",
+"audio_conf": {
+    "num_mel_bins": 64,
+    "freqm": 0,
+    "timem": 0,
+    "mixup": 0,
+    "dataset": "unbalanced wav set",
+    "skip_norm": "False",
+    "noise": "False",
+    "mode": "train",
+    "target_length": 400,
+    "mean": -38,
+    "std": 45,
+    "channels": 3,
+    "n_fft": 1600,
+    "win_length": 1200,
+    "hop_length": 400,
+    "transpose": "True"
+},
+"label_csv": "/home/junchenl/AudioTaggingDoneRight/egs/audioset/data/class_labels_indices.csv"
+}
