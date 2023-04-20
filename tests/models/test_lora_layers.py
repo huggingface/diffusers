@@ -46,7 +46,7 @@ def create_unet_lora_layers(unet: nn.Module):
 def create_text_encoder_lora_layers(text_encoder: nn.Module):
     text_lora_attn_procs = {}
     for name, module in text_encoder.named_modules():
-        if any([x in name for x in TEXT_ENCODER_TARGET_MODULES]):
+        if any(x in name for x in TEXT_ENCODER_TARGET_MODULES):
             text_lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=module.out_features, cross_attention_dim=None)
     text_encoder_lora_layers = AttnProcsLayers(text_lora_attn_procs)
     return text_encoder_lora_layers
