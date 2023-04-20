@@ -733,7 +733,7 @@ def main(args):
     if args.train_text_encoder:
         text_lora_attn_procs = {}
         for name, module in text_encoder.named_modules():
-            if any([x in name for x in TEXT_ENCODER_TARGET_MODULES]):
+            if any(x in name for x in TEXT_ENCODER_TARGET_MODULES):
                 text_lora_attn_procs[name] = LoRAAttnProcessor(
                     hidden_size=module.out_features, cross_attention_dim=None
                 )
