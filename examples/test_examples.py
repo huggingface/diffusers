@@ -221,6 +221,30 @@ class ExamplesTestsAccelerate(unittest.TestCase):
             self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-4")))
             self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-6")))
 
+    def test_custom_diffusion(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+                examples/custom_diffusion/train_custom_diffusion.py
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
+                --instance_data_dir docs/source/en/imgs
+                --instance_prompt <new1>
+                --resolution 64
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 2
+                --learning_rate 1.0e-05
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --modifier_token <new1>
+                --output_dir {tmpdir}
+                """.split()
+
+            run_command(self._launch_args + test_args)
+            # save_pretrained smoke test
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_custom_diffusion_weights.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "<new1>.bin")))
+
     def test_text_to_image(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
