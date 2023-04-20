@@ -23,6 +23,7 @@ import tempfile
 import unittest
 from typing import List
 
+import torch
 from accelerate.utils import write_basic_config
 
 from diffusers import DiffusionPipeline, UNet2DConditionModel
@@ -220,6 +221,68 @@ class ExamplesTestsAccelerate(unittest.TestCase):
             # check new checkpoints exist
             self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-4")))
             self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-6")))
+
+    def test_dreambooth_lora(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+                examples/dreambooth/train_dreambooth_lora.py
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
+                --instance_data_dir docs/source/en/imgs
+                --instance_prompt photo
+                --resolution 64
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 2
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --output_dir {tmpdir}
+                """.split()
+
+            run_command(self._launch_args + test_args)
+            # save_pretrained smoke test
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.bin")))
+
+            # make sure the state_dict has the correct naming in the parameters.
+            lora_state_dict = torch.load(os.path.join(tmpdir, "pytorch_lora_weights.bin"))
+            is_lora = all("lora" in k for k in lora_state_dict.keys())
+            self.assertTrue(is_lora)
+
+            # when not training the text encoder, all the parameters in the state dict should start
+            # with `"unet"` in their names.
+            starts_with_unet = all(key.startswith("unet") for key in lora_state_dict.keys())
+            self.assertTrue(starts_with_unet)
+
+    def test_dreambooth_lora_with_text_encoder(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+                examples/dreambooth/train_dreambooth_lora.py
+                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
+                --instance_data_dir docs/source/en/imgs
+                --instance_prompt photo
+                --resolution 64
+                --train_batch_size 1
+                --gradient_accumulation_steps 1
+                --max_train_steps 2
+                --learning_rate 5.0e-04
+                --scale_lr
+                --lr_scheduler constant
+                --lr_warmup_steps 0
+                --train_text_encoder
+                --output_dir {tmpdir}
+                """.split()
+
+            run_command(self._launch_args + test_args)
+            # save_pretrained smoke test
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.bin")))
+
+            # the names of the keys of the state dict should either start with `unet`
+            # or `text_encoder`.
+            lora_state_dict = torch.load(os.path.join(tmpdir, "pytorch_lora_weights.bin"))
+            keys = lora_state_dict.keys()
+            is_correct_naming = all(k.startswith("unet") or k.startswith("text_encoder") for k in keys)
+            self.assertTrue(is_correct_naming)
 
     def test_custom_diffusion(self):
         with tempfile.TemporaryDirectory() as tmpdir:
