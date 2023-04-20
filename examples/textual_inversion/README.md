@@ -91,7 +91,6 @@ to a number larger than one, *e.g.*:
 ```
 --num_vectors 5
 ```
-.
 
 The saved textual inversion vectors will then be larger in size compared to the default case.
 
