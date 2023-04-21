@@ -703,7 +703,7 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
         )
 
     def to(self, torch_device: Optional[Union[str, torch.device]] = None, silence_dtype_warnings: bool = False):
-        super().to(torch_device, silence_dtype_warnings)
+        super().to(torch_device, silence_dtype_warnings=silence_dtype_warnings)
 
         self.onnx_dir = os.path.join(self.cached_folder, self.onnx_dir)
         self.engine_dir = os.path.join(self.cached_folder, self.engine_dir)
