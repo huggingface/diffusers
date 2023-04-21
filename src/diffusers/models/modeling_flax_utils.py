@@ -197,6 +197,7 @@ class FlaxModelMixin:
         cls,
         pretrained_model_name_or_path: Union[str, os.PathLike],
         dtype: jnp.dtype = jnp.float32,
+        rng: jax.random.KeyArray = jax.random.PRNGKey(0),
         *model_args,
         **kwargs,
     ):
@@ -432,7 +433,7 @@ class FlaxModelMixin:
         # flatten dicts
         state = flatten_dict(state)
 
-        params_shape_tree = jax.eval_shape(model.init_weights, rng=jax.random.PRNGKey(0))
+        params_shape_tree = jax.eval_shape(model.init_weights, rng=rng)
         required_params = set(flatten_dict(unfreeze(params_shape_tree)).keys())
 
         shape_state = flatten_dict(unfreeze(params_shape_tree))
