@@ -23,7 +23,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 from ...loaders import TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDPMScheduler, KarrasDiffusionSchedulers
-from ...utils import deprecate, is_accelerate_available, logging, randn_tensor
+from ...utils import deprecate, is_accelerate_available, is_accelerate_version, logging, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
