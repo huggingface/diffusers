@@ -122,6 +122,18 @@ accelerate launch textual_inversion.py \
   --lr_warmup_steps=0 \
   --output_dir="textual_inversion_cat"
 ```
+
+<Tip>
+
+💡 If you want to increase the trainable capacity, you can associate your placeholder token, *e.g.* `<cat-toy>` to 
+multiple embedding vectors. This can help the model to better capture the style of more (complex) images. 
+To enable training multiple embedding vectors, simply pass:
+
+```bash
+--num_vectors=5
+```
+
+</Tip>
 </pt>
 <jax>
 If you have access to TPUs, try out the [Flax training script](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion_flax.py) to train even faster (this'll also work for GPUs). With the same configuration settings, the Flax training script should be at least 70% faster than the PyTorch training script! ⚡️
