@@ -55,6 +55,9 @@ def get_image_features(model, preprocess, image_dir, device):
 
         with torch.no_grad(), torch.cuda.amp.autocast():
             image_features = model.encode_image(image)
+
+            # Normalize the image features
+            image_features /= image_features.norm(dim=-1, keepdim=True)
             all_vecs.append(image_features.cpu().numpy())
 
     all_vecs = np.concatenate(all_vecs, axis=0)
@@ -68,15 +71,15 @@ if __name__ == "__main__":
     model, _, preprocess = open_clip.create_model_and_transforms('ViT-L-14', pretrained='laion2b_s32b_b82k')
     model = model.to(device)
 
-    all_vecs = get_image_features(model, preprocess, "/scratch/mp5847/diffusers_generated_datasets/kilian_eng_multi/train", device)
-    distances = pairwise_cosine_distance(all_vecs)
+    all_vecs_ke = get_image_features(model, preprocess, "/scratch/mp5847/diffusers_generated_datasets/kilian_eng_multi/train", device)
+    distances = pairwise_cosine_distance(all_vecs_ke)
     distances = distances[np.triu_indices(distances.shape[0], k=1)]
     
     #plot histogram of distances
     plt.hist(distances, label='kilian')
 
-    all_vecs = get_image_features(model, preprocess, "/scratch/mp5847/diffusers_generated_datasets/van_gogh_multi/train", device)
-    distances = pairwise_cosine_distance(all_vecs)
+    all_vecs_vg = get_image_features(model, preprocess, "/scratch/mp5847/diffusers_generated_datasets/van_gogh_multi/train", device)
+    distances = pairwise_cosine_distance(all_vecs_vg)
     distances = distances[np.triu_indices(distances.shape[0], k=1)]
     
     #plot histogram of distances
@@ -86,6 +89,38 @@ if __name__ == "__main__":
     plt.show()
     # plt.savefig(args.histogram_name)
     plt.savefig("deduplication_histogram.png")
+
+    #clear plt
+    plt.clf()
+
+    #get text features
+    prompt_vg = "Van Gogh"
+    prompt_ke = "Kilian Eng"
+    text_vg = open_clip.tokenize([prompt_vg]).to(device)
+    text_ke = open_clip.tokenize([prompt_ke]).to(device)
+    with torch.no_grad(), torch.cuda.amp.autocast():
+        text_features_vg = model.encode_text(text_vg)
+        text_features_ke = model.encode_text(text_ke)
+
+        text_features_vg /= text_features_vg.norm(dim=-1, keepdim=True)
+        text_features_ke /= text_features_ke.norm(dim=-1, keepdim=True)
+
+        text_features_vg = text_features_vg.cpu().numpy()
+        text_features_ke = text_features_ke.cpu().numpy()
+    
+    #distance between text and image
+    distances_vg = np.matmul(text_features_vg, all_vecs_vg.T).squeeze()
+    distances_ke = np.matmul(text_features_ke, all_vecs_ke.T).squeeze()
+
+    print("Van Gogh: ", distances_vg.shape)
+    print("Kilian: ", distances_ke.shape)
+
+    #plot histogram of distances
+    plt.hist(distances_vg, label='van_gogh', alpha=0.5)
+    plt.hist(distances_ke, label='kilian', alpha=0.5)
+    plt.legend(loc='upper right')
+    plt.show()
+    plt.savefig("text_to_image_histogram.png")
     
     
     

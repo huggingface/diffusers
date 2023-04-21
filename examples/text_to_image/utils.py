@@ -5,6 +5,7 @@ import json
 from math import ceil, sqrt
 from PIL import Image
 import random
+import open_clip
 
 class TaskVector():
     def __init__(self, pretrained_checkpoint=None, finetuned_checkpoint=None, vector=None):
@@ -64,6 +65,27 @@ class TaskVector():
                 new_state_dict[key] = pretrained_state_dict[key] + scaling_coef * self.vector[key]
         pretrained_model.load_state_dict(new_state_dict, strict=False)
         return pretrained_model
+    
+def get_clip_score(prompt, image_path):
+    """Returns the CLIP score for a given prompt and image."""
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    with torch.no_grad(), torch.cuda.amp.autocast():
+        model, _, preprocess = open_clip.create_model_and_transforms('ViT-g-14', pretrained='laion2b_s34b_b88k')
+        model = model.to(device)
+
+        image = preprocess(Image.open(image_path)).unsqueeze(0).to(device)
+        text = open_clip.tokenize([prompt]).to(device)
+        image_features = model.encode_image(image)
+        text_features = model.encode_text(text)
+        
+        image_features /= image_features.norm(dim=-1, keepdim=True)
+        text_features /= text_features.norm(dim=-1, keepdim=True)
+
+        image_features = image_features.cpu().numpy()
+        text_features = text_features.cpu().numpy()
+
+        score = (image_features @ text_features.T).flatten()[0]
+    return score 
 
 def save_image(pipeline, prompt, path):
     output = pipeline(prompt=prompt)
@@ -97,7 +119,7 @@ def concat_images_in_square_grid(folder_path, prompt, output_path='output.png'):
         grid.paste(image, (x, y))
 
     # Save the output image
-    grid.save(output_path)
+    grid.save(output_path, overwrite=True)
 
 def get_random_prompt(artist_style):
      
