@@ -230,18 +230,18 @@ class UNet2DConditionLoadersMixin:
         is_custom_diffusion = any("custom_diffusion" in k for k in state_dict.keys())
 
         if is_lora:
-            is_lora_legacy = all(
+            is_new_lora_format = all(
                 key.startswith(self.unet_name) or key.startswith(self.text_encoder_name) for key in state_dict.keys()
             )
-            if not is_lora_legacy:
+            if is_new_lora_format:
+                raise ValueError(
+                    "You are using the new LoRA serialization format introduced in https://github.com/huggingface/diffusers/pull/2918. Please use `pipe.load_lora_weights(...)`"
+                )
+            else:
                 deprecation_message = (
                     "Using `pipe.unet.load_attn_procs()` is deprecated. Please change to: `pipe.load_lora_weights()`."
                 )
                 deprecate("legacy LoRA weights", "1.0.0", deprecation_message, standard_warn=False)
-            else:
-                raise ValueError(
-                    "You are using the new LoRA serialization format introduced in https://github.com/huggingface/diffusers/pull/2918. Please use `pipe.load_lora_weights(...)`"
-                )
 
             lora_grouped_dict = defaultdict(dict)
             for key, value in state_dict.items():
@@ -828,21 +828,24 @@ class LoraLoaderMixin:
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
         # their prefixes.
         keys = list(state_dict.keys())
-
-        # Load the layers corresponding to UNet.
-        if all(key.startswith(self.unet_name) for key in keys):
+        if all(key.startswith(self.unet_name) or key.startswith(self.text_encoder_name) for key in keys):
+            # Load the layers corresponding to UNet.
+            unet_keys = [k for k in keys if k.startswith(self.unet_name)]
             logger.info(f"Loading {self.unet_name}.")
-            unet_lora_state_dict = {k: v for k, v in state_dict.items() if k.startswith(self.unet_name)}
+            unet_lora_state_dict = {
+                k.replace(f"{self.unet_name}.", ""): v for k, v in state_dict.items() if k in unet_keys
+            }
             self.unet.load_attn_procs(unet_lora_state_dict)
 
-        # Load the layers corresponding to text encoder and make necessary adjustments.
-        elif all(key.startswith(self.text_encoder_name) for key in keys):
+            # Load the layers corresponding to text encoder and make necessary adjustments.
+            text_encoder_keys = [k for k in keys if k.startswith(self.text_encoder_name)]
             logger.info(f"Loading {self.text_encoder_name}.")
             text_encoder_lora_state_dict = {
-                k: v for k, v in state_dict.items() if k.startswith(self.text_encoder_name)
+                k.replace(f"{self.text_encoder_name}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
             }
-            attn_procs_text_encoder = self.__load_text_encoder_attn_procs(text_encoder_lora_state_dict)
-            self._modify_text_encoder(attn_procs_text_encoder)
+            if len(text_encoder_lora_state_dict) > 0:
+                attn_procs_text_encoder = self.__load_text_encoder_attn_procs(text_encoder_lora_state_dict)
+                self._modify_text_encoder(attn_procs_text_encoder)
 
         # Otherwise, we're dealing with the old format. This means the `state_dict` should only
         # contain the module names of the `unet` as its keys WITHOUT any prefix.
