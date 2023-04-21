@@ -16,7 +16,9 @@ specific language governing permissions and limitations under the License.
 
 <Tip warning={true}>
 
-Currently, LoRA is only supported for the attention layers of the [`UNet2DConditionalModel`].
+Currently, LoRA is only supported for the attention layers of the [`UNet2DConditionalModel`]. We also 
+support LoRA fine-tuning of the text encoder for DreamBooth in a limited capacity. For more details on how we support 
+LoRA fine-tuning of the text encoder, refer to the discussion on [this PR](https://github.com/huggingface/diffusers/pull/2918). 
 
 </Tip>
 
@@ -174,6 +176,11 @@ accelerate launch train_dreambooth_lora.py \
   --seed="0" \
   --push_to_hub
 ```
+
+It's also possible to additionally fine-tune the text encoder with LoRA. This, in most cases, leads
+to better results with a slight increase in the compute. To allow fine-tuning the text encoder with LoRA,
+specify the `--train_text_encoder` while launching the `train_dreambooth_lora.py` script. 
+
 
 ### Inference[[dreambooth-inference]]
 

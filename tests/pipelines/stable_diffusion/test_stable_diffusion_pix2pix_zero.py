@@ -14,6 +14,8 @@
 # limitations under the License.
 
 import gc
+import random
+import tempfile
 import unittest
 
 import numpy as np
@@ -30,7 +32,7 @@ from diffusers import (
     StableDiffusionPix2PixZeroPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import load_numpy, slow, torch_device
+from diffusers.utils import floats_tensor, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import load_image, load_pt, require_torch_gpu, skip_mps
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
@@ -69,6 +71,7 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
             cross_attention_dim=32,
         )
         scheduler = DDIMScheduler()
+        inverse_scheduler = DDIMInverseScheduler()
         torch.manual_seed(0)
         vae = AutoencoderKL(
             block_out_channels=[32, 64],
@@ -101,7 +104,7 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
             "tokenizer": tokenizer,
             "safety_checker": None,
             "feature_extractor": None,
-            "inverse_scheduler": None,
+            "inverse_scheduler": inverse_scheduler,
             "caption_generator": None,
             "caption_processor": None,
         }
@@ -121,6 +124,90 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
             "output_type": "numpy",
         }
         return inputs
+
+    def get_dummy_inversion_inputs(self, device, seed=0):
+        dummy_image = floats_tensor((2, 3, 32, 32), rng=random.Random(seed)).to(torch_device)
+        generator = torch.manual_seed(seed)
+
+        inputs = {
+            "prompt": [
+                "A painting of a squirrel eating a burger",
+                "A painting of a burger eating a squirrel",
+            ],
+            "image": dummy_image.cpu(),
+            "num_inference_steps": 2,
+            "guidance_scale": 6.0,
+            "generator": generator,
+            "output_type": "numpy",
+        }
+        return inputs
+
+    def test_save_load_optional_components(self):
+        if not hasattr(self.pipeline_class, "_optional_components"):
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        # set all optional components to None and update pipeline config accordingly
+        for optional_component in pipe._optional_components:
+            setattr(pipe, optional_component, None)
+        pipe.register_modules(**{optional_component: None for optional_component in pipe._optional_components})
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output = pipe(**inputs)[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir)
+            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
+            pipe_loaded.to(torch_device)
+            pipe_loaded.set_progress_bar_config(disable=None)
+
+        for optional_component in pipe._optional_components:
+            self.assertTrue(
+                getattr(pipe_loaded, optional_component) is None,
+                f"`{optional_component}` did not stay set to None after loading.",
+            )
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_loaded = pipe_loaded(**inputs)[0]
+
+        max_diff = np.abs(output - output_loaded).max()
+        self.assertLess(max_diff, 1e-4)
+
+    def test_stable_diffusion_pix2pix_zero_inversion(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionPix2PixZeroPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inversion_inputs(device)
+        inputs["image"] = inputs["image"][:1]
+        inputs["prompt"] = inputs["prompt"][:1]
+        image = sd_pipe.invert(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+        assert image.shape == (1, 32, 32, 3)
+        expected_slice = np.array([0.4833, 0.4696, 0.5574, 0.5194, 0.5248, 0.5638, 0.5040, 0.5423, 0.5072])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    def test_stable_diffusion_pix2pix_zero_inversion_batch(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionPix2PixZeroPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inversion_inputs(device)
+        image = sd_pipe.invert(**inputs).images
+        image_slice = image[1, -3:, -3:, -1]
+        assert image.shape == (2, 32, 32, 3)
+        expected_slice = np.array([0.6672, 0.5203, 0.4908, 0.4376, 0.4517, 0.5544, 0.4605, 0.4826, 0.5007])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_pix2pix_zero_default_case(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
