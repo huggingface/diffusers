@@ -229,6 +229,21 @@ image = pipe(prompt, num_inference_steps=30, guidance_scale=7.5).images[0]
 image.save("pokemon.png")
 ```
 
+If you are loading the LoRA parameters from the Hub and if the Hub repository has
+a `base_model` tag (such as [this](https://huggingface.co/sayakpaul/sd-model-finetuned-lora-t4/blob/main/README.md?code=true#L4)), then
+you can do: 
+
+```py 
+from huggingface_hub.repocard import RepoCard
+
+lora_model_id = "sayakpaul/sd-model-finetuned-lora-t4"
+card = RepoCard.load(lora_model_id)
+base_model_id = card.data.to_dict()["base_model"]
+
+pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
+...
+```
+
 ## Training with Flax/JAX
 
 For faster training on TPUs and GPUs you can leverage the flax training example. Follow the instructions above to get the model and dataset before running the script.

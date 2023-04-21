@@ -45,6 +45,8 @@ if is_transformers_available():
 
 logger = logging.get_logger(__name__)
 
+TEXT_ENCODER_NAME = "text_encoder"
+UNET_NAME = "unet"
 
 LORA_WEIGHT_NAME = "pytorch_lora_weights.bin"
 LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
@@ -87,6 +89,9 @@ class AttnProcsLayers(torch.nn.Module):
 
 
 class UNet2DConditionLoadersMixin:
+    text_encoder_name = TEXT_ENCODER_NAME
+    unet_name = UNET_NAME
+
     def load_attn_procs(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         r"""
         Load pretrained attention processor layers into `UNet2DConditionModel`. Attention processor layers have to be
@@ -225,6 +230,19 @@ class UNet2DConditionLoadersMixin:
         is_custom_diffusion = any("custom_diffusion" in k for k in state_dict.keys())
 
         if is_lora:
+            is_lora_legacy = all(
+                key.startswith(self.unet_name) or key.startswith(self.text_encoder_name) for key in state_dict.keys()
+            )
+            if not is_lora_legacy:
+                deprecation_message = (
+                    "Using `pipe.unet.load_attn_procs()` is deprecated. Please change to: `pipe.load_lora_weights()`."
+                )
+                deprecate("legacy LoRA weights", "1.0.0", deprecation_message, standard_warn=False)
+            else:
+                raise ValueError(
+                    "You are using the new LoRA serialization format introduced in https://github.com/huggingface/diffusers/pull/2918. Please use `pipe.load_lora_weights(...)`"
+                )
+
             lora_grouped_dict = defaultdict(dict)
             for key, value in state_dict.items():
                 attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
@@ -672,8 +690,8 @@ class LoraLoaderMixin:
 
     </Tip>
     """
-    text_encoder_name = "text_encoder"
-    unet_name = "unet"
+    text_encoder_name = TEXT_ENCODER_NAME
+    unet_name = UNET_NAME
 
     def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         r"""
@@ -823,7 +841,7 @@ class LoraLoaderMixin:
             text_encoder_lora_state_dict = {
                 k: v for k, v in state_dict.items() if k.startswith(self.text_encoder_name)
             }
-            attn_procs_text_encoder = self.load_attn_procs(text_encoder_lora_state_dict)
+            attn_procs_text_encoder = self._load_attn_procs(text_encoder_lora_state_dict)
             self._modify_text_encoder(attn_procs_text_encoder)
 
         # Otherwise, we're dealing with the old format. This means the `state_dict` should only
@@ -872,7 +890,7 @@ class LoraLoaderMixin:
         else:
             return "to_out_lora"
 
-    def load_attn_procs(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
+    def _load_attn_procs(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         r"""
         Load pretrained attention processor layers for
         [`CLIPTextModel`](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel).
