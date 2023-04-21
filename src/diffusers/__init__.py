@@ -109,7 +109,6 @@ try:
 except OptionalDependencyNotAvailable:
     from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
 else:
-    from .loaders import TextualInversionLoaderMixin
     from .pipelines import (
         AltDiffusionImg2ImgPipeline,
         AltDiffusionPipeline,
