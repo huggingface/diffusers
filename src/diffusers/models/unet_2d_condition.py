@@ -248,7 +248,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if class_embed_type is None and num_class_embeds is not None:
             self.class_embedding = nn.Embedding(num_class_embeds, time_embed_dim)
         elif class_embed_type == "timestep":
-            self.class_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim)
+            self.class_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim, act_fn=act_fn)
         elif class_embed_type == "identity":
             self.class_embedding = nn.Identity(time_embed_dim, time_embed_dim)
         elif class_embed_type == "projection":
@@ -437,7 +437,18 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             self.conv_norm_out = nn.GroupNorm(
                 num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=norm_eps
             )
-            self.conv_act = nn.SiLU()
+
+            if act_fn == "swish":
+                self.conv_act = lambda x: F.silu(x)
+            elif act_fn == "mish":
+                self.conv_act = nn.Mish()
+            elif act_fn == "silu":
+                self.conv_act = nn.SiLU()
+            elif act_fn == "gelu":
+                self.conv_act = nn.GELU()
+            else:
+                raise ValueError(f"Unsupported activation function: {act_fn}")
+
         else:
             self.conv_norm_out = None
             self.conv_act = None
@@ -648,7 +659,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         t_emb = self.time_proj(timesteps)
 
-        # timesteps does not contain any weights and will always return f32 tensors
+        # `Timesteps` does not contain any weights and will always return f32 tensors
         # but time_embedding might actually be running in fp16. so we need to cast here.
         # there might be better ways to encapsulate this.
         t_emb = t_emb.to(dtype=self.dtype)
@@ -661,6 +672,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
             if self.config.class_embed_type == "timestep":
                 class_labels = self.time_proj(class_labels)
+
+                # `Timesteps` does not contain any weights and will always return f32 tensors
+                # there might be better ways to encapsulate this.
+                class_labels = class_labels.to(dtype=sample.dtype)
 
             class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
 

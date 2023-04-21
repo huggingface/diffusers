@@ -74,6 +74,8 @@
       title: ControlNet
     - local: training/instructpix2pix
       title: InstructPix2Pix Training
+    - local: training/custom_diffusion
+      title: Custom Diffusion
     title: Training
   - sections:
     - local: using-diffusers/rl
