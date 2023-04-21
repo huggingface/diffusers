@@ -623,7 +623,9 @@ class DiffusionPipeline(ConfigMixin):
             if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
                 return False
 
-            return hasattr(module, "_hf_hook") and not isinstance(module._hf_hook, accelerate.hooks.CpuOffload)
+            return hasattr(module, "_hf_hook") and not isinstance(
+                module._hf_hook, (accelerate.hooks.CpuOffload, accelerate.hooks.AlignDevicesHook)
+            )
 
         def module_is_offloaded(module):
             if not is_accelerate_available() or is_accelerate_version("<", "0.17.0.dev0"):
@@ -653,7 +655,20 @@ class DiffusionPipeline(ConfigMixin):
 
         is_offloaded = pipeline_is_offloaded or pipeline_is_sequentially_offloaded
         for module in modules:
-            module.to(torch_device, torch_dtype)
+            is_loaded_in_8bit = hasattr(module, "is_loaded_in_8bit") and module.is_loaded_in_8bit
+
+            if is_loaded_in_8bit and torch_dtype is not None:
+                logger.warning(
+                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and conversion to {torch_dtype} is not yet supported. Module is still in 8bit precision."
+                )
+
+            if is_loaded_in_8bit and torch_device is not None:
+                logger.warning(
+                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and moving it to {torch_dtype} via `.to()` is not yet supported. Module is still on {module.device}."
+                )
+            else:
+                module.to(torch_device, torch_dtype)
+
             if (
                 module.dtype == torch.float16
                 and str(torch_device) in ["cpu"]
