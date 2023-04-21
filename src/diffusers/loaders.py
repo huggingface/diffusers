@@ -841,7 +841,7 @@ class LoraLoaderMixin:
             text_encoder_lora_state_dict = {
                 k: v for k, v in state_dict.items() if k.startswith(self.text_encoder_name)
             }
-            attn_procs_text_encoder = self._load_attn_procs(text_encoder_lora_state_dict)
+            attn_procs_text_encoder = self.__load_text_encoder_attn_procs(text_encoder_lora_state_dict)
             self._modify_text_encoder(attn_procs_text_encoder)
 
         # Otherwise, we're dealing with the old format. This means the `state_dict` should only
@@ -890,7 +890,9 @@ class LoraLoaderMixin:
         else:
             return "to_out_lora"
 
-    def _load_attn_procs(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
+    def __load_text_encoder_attn_procs(
+        self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs
+    ):
         r"""
         Load pretrained attention processor layers for
         [`CLIPTextModel`](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel).
