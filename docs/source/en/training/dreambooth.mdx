@@ -50,6 +50,20 @@ from accelerate.utils import write_basic_config
 write_basic_config()
 ```
 
+Finally, download a [few images of a dog](https://huggingface.co/datasets/diffusers/dog-example) to DreamBooth with:
+
+```py
+from huggingface_hub import snapshot_download
+
+local_dir = "./dog"
+snapshot_download(
+    "diffusers/dog-example",
+    local_dir=local_dir,
+    repo_type="dataset",
+    ignore_patterns=".gitattributes",
+)
+```
+
 ## Finetuning
 
 <Tip warning={true}>
@@ -60,22 +74,13 @@ DreamBooth finetuning is very sensitive to hyperparameters and easy to overfit. 
 
 <frameworkcontent>
 <pt>
-Let's try DreamBooth with a
-[few images of a dog](https://huggingface.co/datasets/diffusers/dog-example);
-download and save them to a directory and then set the `INSTANCE_DIR` environment variable to that path:
+Set the `INSTANCE_DIR` environment variable to the path of the directory containing the dog images.
 
-```python 
-local_dir = "./path_to_training_images"
-snapshot_download(
-    "diffusers/dog-example",
-    local_dir=local_dir, repo_type="dataset",
-    ignore_patterns=".gitattributes",
-)
-```
+Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`~diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path`] argument.
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path_to_training_images"
+export INSTANCE_DIR="./dog"
 export OUTPUT_DIR="path_to_saved_model"
 ```
 
@@ -105,11 +110,13 @@ Before running the script, make sure you have the requirements installed:
 pip install -U -r requirements.txt
 ```
 
+Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`~diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path`] argument.
+
 Now you can launch the training script with the following command:
 
 ```bash
 export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="./dog"
 export OUTPUT_DIR="path-to-save-model"
 
 python train_dreambooth_flax.py \
@@ -135,7 +142,7 @@ The authors recommend generating `num_epochs * num_samples` images for prior pre
 <pt>
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path_to_training_images"
+export INSTANCE_DIR="./dog"
 export CLASS_DIR="path_to_class_images"
 export OUTPUT_DIR="path_to_saved_model"
 
@@ -160,7 +167,7 @@ accelerate launch train_dreambooth.py \
 <jax>
 ```bash
 export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="./dog"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
@@ -197,7 +204,7 @@ Pass the `--train_text_encoder` argument to the training script to enable finetu
 <pt>
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path_to_training_images"
+export INSTANCE_DIR="./dog"
 export CLASS_DIR="path_to_class_images"
 export OUTPUT_DIR="path_to_saved_model"
 
@@ -224,7 +231,7 @@ accelerate launch train_dreambooth.py \
 <jax>
 ```bash
 export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="./dog"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
@@ -360,7 +367,7 @@ Then pass the `--use_8bit_adam` option to the training script:
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path_to_training_images"
+export INSTANCE_DIR="./dog"
 export CLASS_DIR="path_to_class_images"
 export OUTPUT_DIR="path_to_saved_model"
 
@@ -389,7 +396,7 @@ To run DreamBooth on a 12GB GPU, you'll need to enable gradient checkpointing, t
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path-to-instance-images"
+export INSTANCE_DIR="./dog"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
@@ -436,7 +443,7 @@ Launch training with the following command:
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path_to_training_images"
+export INSTANCE_DIR="./dog"
 export CLASS_DIR="path_to_class_images"
 export OUTPUT_DIR="path_to_saved_model"
 

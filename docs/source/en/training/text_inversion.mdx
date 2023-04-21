@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+ <!--Copyright 2023 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -81,9 +81,20 @@ To resume training from a saved checkpoint, pass the following argument to the t
 
 ## Finetuning
 
-For your training dataset, download these [images of a cat statue](https://drive.google.com/drive/folders/1fmJMs25nxS_rSNqS5hTcRdLem_YQXbq5) and store them in a directory. 
+For your training dataset, download these [images of a cat toy](https://huggingface.co/datasets/diffusers/cat_toy_example) and store them in a directory:
 
-Set the `MODEL_NAME` environment variable to the model repository id, and the `DATA_DIR` environment variable to the path of the directory containing the images. Now you can launch the [training script](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion.py):
+```py
+from huggingface_hub import snapshot_download
+
+local_dir = "./cat"
+snapshot_download(
+    "diffusers/cat_toy_example", local_dir=local_dir, repo_type="dataset", ignore_patterns=".gitattributes"
+)
+```
+
+Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`~diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path`] argument, and the `DATA_DIR` environment variable to the path of the directory containing the images. 
+
+Now you can launch the [training script](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion.py):
 
 <Tip>
 
@@ -95,7 +106,7 @@ Set the `MODEL_NAME` environment variable to the model repository id, and the `D
 <pt>
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
-export DATA_DIR="path-to-dir-containing-images"
+export DATA_DIR="./cat"
 
 accelerate launch textual_inversion.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
@@ -121,11 +132,13 @@ Before you begin, make sure you install the Flax specific dependencies:
 pip install -U -r requirements_flax.txt
 ```
 
+Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`~diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path`] argument.
+
 Then you can launch the [training script](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion_flax.py):
 
 ```bash
 export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export DATA_DIR="path-to-dir-containing-images"
+export DATA_DIR="./cat"
 
 python textual_inversion_flax.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
