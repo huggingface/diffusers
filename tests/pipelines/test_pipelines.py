@@ -541,7 +541,7 @@ class DownloadTests(unittest.TestCase):
             assert pipe.text_encoder.get_input_embeddings().weight[-3].sum().item() == 96
             assert pipe.text_encoder.get_input_embeddings().weight[-2].sum().item() == 128
             assert pipe.text_encoder.get_input_embeddings().weight[-1].sum().item() == 160
-            assert pipe._maybe_convert_prompt("<***>", pipe.tokenizer) == "<***><***>_1<***>_2"
+            assert pipe._maybe_convert_prompt("<***>", pipe.tokenizer) == "<***> <***>_1 <***>_2"
 
             prompt = "hey <***>"
             out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
@@ -569,7 +569,7 @@ class DownloadTests(unittest.TestCase):
             assert pipe.text_encoder.get_input_embeddings().weight[-3].sum().item() == 96
             assert pipe.text_encoder.get_input_embeddings().weight[-2].sum().item() == 128
             assert pipe.text_encoder.get_input_embeddings().weight[-1].sum().item() == 160
-            assert pipe._maybe_convert_prompt("<****>", pipe.tokenizer) == "<****><****>_1<****>_2"
+            assert pipe._maybe_convert_prompt("<****>", pipe.tokenizer) == "<****> <****>_1 <****>_2"
 
             prompt = "hey <****>"
             out = pipe(prompt, num_inference_steps=1, output_type="numpy").images

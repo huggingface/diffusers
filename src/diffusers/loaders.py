@@ -410,7 +410,7 @@ class TextualInversionLoaderMixin:
                 replacement = token
                 i = 1
                 while f"{token}_{i}" in tokenizer.added_tokens_encoder:
-                    replacement += f"{token}_{i}"
+                    replacement += f" {token}_{i}"
                     i += 1
 
                 prompt = prompt.replace(token, replacement)
