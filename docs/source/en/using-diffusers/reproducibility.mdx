@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 Reproducibility is important for testing, replicating results, and can even be used to [improve image quality](reusing_seeds). However, the randomness in diffusion models is a desired property because it allows the pipeline to generate different images every time it is run. While you can't expect to get the exact same results across platforms, you can expect results to be reproducible across releases and platforms within a certain tolerance range. Even then, tolerance varies depending on the diffusion pipeline and checkpoint.
 
-This is why it's important to understand how to control sources of randomness in diffusion models.
+This is why it's important to understand how to control sources of randomness in diffusion models or use deterministic algorithms.
 
 <Tip>
 
@@ -24,7 +24,7 @@ This is why it's important to understand how to control sources of randomness in
 
 </Tip>
 
-## Inference
+## Control randomness
 
 During inference, pipelines rely heavily on random sampling operations which include creating the 
 Gaussian noise tensors to denoise and adding noise to the scheduling step.
@@ -147,5 +147,46 @@ susceptible to precision error propagation. Don't expect similar results across
 different GPU hardware or PyTorch versions. In this case, you'll need to run 
 exactly the same hardware and PyTorch version for full reproducibility.
 
-## randn_tensor
+### randn_tensor
 [[autodoc]] diffusers.utils.randn_tensor
+
+## Deterministic algorithms
+
+You can also configure PyTorch to use deterministic algorithms to create a reproducible pipeline. However, you should be aware that deterministic algorithms may be slower than nondeterministic ones and you may observe a decrease in performance. But if reproducibility is important to you, then this is the way to go!
+
+Nondeterministic behavior occurs when operations are launched in more than one CUDA stream. To avoid this, set the environment varibale [`CUBLAS_WORKSPACE_CONFIG`](https://docs.nvidia.com/cuda/cublas/index.html#results-reproducibility) to `:16:8` to only use one buffer size during runtime.
+
+PyTorch typically benchmarks multiple algorithms to select the fastest one, but if you want reproducibility, you should disable this feature because the benchmark may select different algorithms each time. Lastly, pass `True` to [`torch.use_deterministic_algorithms`](https://pytorch.org/docs/stable/generated/torch.use_deterministic_algorithms.html) to enable deterministic algorithms.
+
+```py
+import os
+
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
+
+torch.backends.cudnn.benchmark = False
+torch.use_deterministic_algorithms(True)
+```
+
+Now when you run the same pipeline twice, you'll get identical results.
+
+```py
+import torch
+from diffusers import DDIMScheduler, StableDiffusionPipeline
+import numpy as np
+
+model_id = "runwayml/stable-diffusion-v1-5"
+pipe = StableDiffusionPipeline.from_pretrained(model_id).to("cuda")
+pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+g = torch.Generator(device="cuda")
+
+prompt = "A bear is playing a guitar on Times Square"
+
+g.manual_seed(0)
+result1 = pipe(prompt=prompt, num_inference_steps=50, generator=g, output_type="latent").images
+
+g.manual_seed(0)
+result2 = pipe(prompt=prompt, num_inference_steps=50, generator=g, output_type="latent").images
+
+print("L_inf dist = ", abs(result1 - result2).max())
+"L_inf dist =  tensor(0., device='cuda:0')"
+```
