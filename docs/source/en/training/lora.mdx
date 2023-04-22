@@ -52,7 +52,9 @@ Finetuning a model like Stable Diffusion, which has billions of parameters, can 
 
 Let's finetune [`stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) on the [Pokémon BLIP captions](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions) dataset to generate your own Pokémon.
 
-To start, make sure you have the `MODEL_NAME` and `DATASET_NAME` environment variables set. The `OUTPUT_DIR` and `HUB_MODEL_ID` variables are optional and specify where to save the model to on the Hub:
+Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`~diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path`] argument. You'll also need to set the `DATASET_NAME` environment variable to the name of the dataset you want to train on.
+
+The `OUTPUT_DIR` and `HUB_MODEL_ID` variables are optional and specify where to save the model to on the Hub:
 
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
@@ -140,7 +142,9 @@ Load the LoRA weights from your finetuned model *on top of the base model weight
 
 Let's finetune [`stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) with DreamBooth and LoRA with some 🐶 [dog images](https://drive.google.com/drive/folders/1BO_dyz-p65qhBRRMRA4TbZ8qW4rB99JZ). Download and save these images to a directory.
 
-To start, make sure you have the `MODEL_NAME` and `INSTANCE_DIR` (path to directory containing images) environment variables set. The `OUTPUT_DIR` variables is optional and specifies where to save the model to on the Hub:
+To start, specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`~diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path`] argument. You'll also need to set `INSTANCE_DIR` to the path of the directory containing the images. 
+
+The `OUTPUT_DIR` variables is optional and specifies where to save the model to on the Hub:
 
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
