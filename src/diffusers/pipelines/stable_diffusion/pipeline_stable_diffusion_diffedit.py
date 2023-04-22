@@ -1247,7 +1247,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
                                     # Derive epsilon from model output before regularizing to IID standard normal
                                     var_epsilon = self.get_epsilon(var, latent_model_input.detach(), t)
 
-                                    l_ac = self.auto_corr_loss(var_epsilon, generator=generator)
+                                    l_ac = auto_corr_loss(var_epsilon, generator=generator)
                                     l_ac.backward()
 
                                     grad = var.grad.detach() / num_auto_corr_rolls
@@ -1472,7 +1472,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
                 f"`image_latents` must have batch size {batch_size} with latent images from {len(timesteps)} timesteps, "
                 f"but has batch size {image_latents.shape[0]} with latent images from {image_latents.shape[1]} timesteps."
             )
-        image_latents = torch.cat([image_latents.transpose(0, 1)] * num_images_per_prompt, 1)
+        image_latents = image_latents.transpose(0, 1).unsqueeze(1).repeat(1, num_images_per_prompt, 1, 1, 1, 1)
         image_latents = image_latents.to(device=device, dtype=prompt_embeds.dtype)
 
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
