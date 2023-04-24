@@ -36,7 +36,7 @@ And that’s it!
 
 `tomesd.apply_patch()` exposes [a number of arguments](https://github.com/dbolya/tomesd#usage) to let us strike a balance between the pipeline inference speed and the quality of the generated tokens. Amongst those arguments, the most important one is `ratio`. `ratio` controls the number of tokens that will be merged during the forward pass. For more details on `tomesd`, please refer to the original repository https://github.com/dbolya/tomesd and [the paper](https://arxiv.org/abs/2303.17604). 
 
-## Benchmarking `tomesd` with [`StableDiffusionPipeline`]
+## Benchmarking `tomesd` with `StableDiffusionPipeline`
 
 We benchmarked the impact of using `tomesd` on [`StableDiffusionPipeline`] along with [xformers](https://huggingface.co/docs/diffusers/optimization/xformers) across different image resolutions. We used A100 and V100 as our test GPU devices with the following development environment (with Python 3.8.5):
 
