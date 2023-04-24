@@ -30,7 +30,6 @@ import PIL
 import torch
 from huggingface_hub import hf_hub_download, model_info, snapshot_download
 from packaging import version
-from PIL import Image
 from tqdm.auto import tqdm
 
 import diffusers
@@ -56,6 +55,7 @@ from ..utils import (
     is_torch_version,
     is_transformers_available,
     logging,
+    numpy_to_pil,
 )
 
 
@@ -1370,16 +1370,7 @@ class DiffusionPipeline(ConfigMixin):
         """
         Convert a numpy image or a batch of images to a PIL image.
         """
-        if images.ndim == 3:
-            images = images[None, ...]
-        images = (images * 255).round().astype("uint8")
-        if images.shape[-1] == 1:
-            # special case for grayscale (single channel) images
-            pil_images = [Image.fromarray(image.squeeze(), mode="L") for image in images]
-        else:
-            pil_images = [Image.fromarray(image) for image in images]
-
-        return pil_images
+        return numpy_to_pil(images)
 
     def progress_bar(self, iterable=None, total=None):
         if not hasattr(self, "_progress_bar_config"):
