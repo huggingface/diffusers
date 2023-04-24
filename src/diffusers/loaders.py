@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
+import warnings
 from collections import defaultdict
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
@@ -234,14 +235,13 @@ class UNet2DConditionLoadersMixin:
                 key.startswith(self.unet_name) or key.startswith(self.text_encoder_name) for key in state_dict.keys()
             )
             if is_new_lora_format:
-                raise ValueError(
-                    "You are using the new LoRA serialization format introduced in https://github.com/huggingface/diffusers/pull/2918. Please use `pipe.load_lora_weights(...)`"
-                )
-            else:
-                deprecation_message = (
-                    "Using `pipe.unet.load_attn_procs()` is deprecated. Please change to: `pipe.load_lora_weights()`."
-                )
-                deprecate("legacy LoRA weights", "1.0.0", deprecation_message, standard_warn=False)
+                # Strip the `"unet"` prefix.
+                is_text_encoder_present = any(key.startswith(self.text_encoder_name) for key in state_dict.keys())
+                if is_text_encoder_present:
+                    warn_message = "The state_dict contains LoRA params corresponding to the text encoder which are not being used here. To use both UNet and text encoder related LoRA params, use [`pipe.load_lora_weights()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraLoaderMixin.load_lora_weights)."
+                    warnings.warn(warn_message)
+                unet_keys = [k for k in state_dict.keys() if k.startswith(self.unet_name)]
+                state_dict = {k.replace(f"{self.unet_name}.", ""): v for k, v in state_dict.items() if k in unet_keys}
 
             lora_grouped_dict = defaultdict(dict)
             for key, value in state_dict.items():
@@ -853,11 +853,8 @@ class LoraLoaderMixin:
             key.startswith(self.unet_name) or key.startswith(self.text_encoder_name) for key in state_dict.keys()
         ):
             self.unet.load_attn_procs(state_dict)
-            deprecation_message = "You have saved the LoRA weights using the old format. This will be"
-            " deprecated soon. To convert the old LoRA weights to the new format, you can first load them"
-            " in a dictionary and then create a new dictionary like the following:"
-            " `new_state_dict = {f'unet'.{module_name}: params for module_name, params in old_state_dict.items()}`."
-            deprecate("legacy LoRA weights", "1.0.0", deprecation_message, standard_warn=False)
+            warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet'.{module_name}: params for module_name, params in old_state_dict.items()}`."
+            warnings.warn(warn_message)
 
     def _modify_text_encoder(self, attn_processors: Dict[str, LoRAAttnProcessor]):
         r"""
