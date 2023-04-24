@@ -105,6 +105,8 @@
     title: MPS
   - local: optimization/habana
     title: Habana Gaudi
+  - local: optimization/tome
+    title: Token Merging
   title: Optimization/Special Hardware
 - sections:
   - local: conceptual/philosophy
