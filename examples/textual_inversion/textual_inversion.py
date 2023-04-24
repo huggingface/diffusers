@@ -178,7 +178,6 @@ def parse_args():
     parser.add_argument(
         "--only_save_embeds",
         action="store_true",
-        default=True,
         help="Save only the embeddings for the new concept.",
     )
     parser.add_argument(
