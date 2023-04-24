@@ -18,7 +18,7 @@ from ...models.dual_transformer_2d import DualTransformer2DModel
 from ...models.embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from ...models.transformer_2d import Transformer2DModel
 from ...models.unet_2d_condition import UNet2DConditionOutput
-from ...utils import deprecate, logging
+from ...utils import logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -345,7 +345,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         if class_embed_type is None and num_class_embeds is not None:
             self.class_embedding = nn.Embedding(num_class_embeds, time_embed_dim)
         elif class_embed_type == "timestep":
-            self.class_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim)
+            self.class_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim, act_fn=act_fn)
         elif class_embed_type == "identity":
             self.class_embedding = nn.Identity(time_embed_dim, time_embed_dim)
         elif class_embed_type == "projection":
@@ -534,7 +534,18 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             self.conv_norm_out = nn.GroupNorm(
                 num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=norm_eps
             )
-            self.conv_act = nn.SiLU()
+
+            if act_fn == "swish":
+                self.conv_act = lambda x: F.silu(x)
+            elif act_fn == "mish":
+                self.conv_act = nn.Mish()
+            elif act_fn == "silu":
+                self.conv_act = nn.SiLU()
+            elif act_fn == "gelu":
+                self.conv_act = nn.GELU()
+            else:
+                raise ValueError(f"Unsupported activation function: {act_fn}")
+
         else:
             self.conv_norm_out = None
             self.conv_act = None
@@ -543,19 +554,6 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         self.conv_out = LinearMultiDim(
             block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
         )
-
-    @property
-    def in_channels(self):
-        deprecate(
-            "in_channels",
-            "1.0.0",
-            (
-                "Accessing `in_channels` directly via unet.in_channels is deprecated. Please use"
-                " `unet.config.in_channels` instead"
-            ),
-            standard_warn=False,
-        )
-        return self.config.in_channels
 
     @property
     def attn_processors(self) -> Dict[str, AttentionProcessor]:
@@ -758,7 +756,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
         t_emb = self.time_proj(timesteps)
 
-        # timesteps does not contain any weights and will always return f32 tensors
+        # `Timesteps` does not contain any weights and will always return f32 tensors
         # but time_embedding might actually be running in fp16. so we need to cast here.
         # there might be better ways to encapsulate this.
         t_emb = t_emb.to(dtype=self.dtype)
@@ -771,6 +769,10 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
             if self.config.class_embed_type == "timestep":
                 class_labels = self.time_proj(class_labels)
+
+                # `Timesteps` does not contain any weights and will always return f32 tensors
+                # there might be better ways to encapsulate this.
+                class_labels = class_labels.to(dtype=sample.dtype)
 
             class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
 

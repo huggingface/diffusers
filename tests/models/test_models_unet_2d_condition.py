@@ -22,7 +22,7 @@ import torch
 from parameterized import parameterized
 
 from diffusers import UNet2DConditionModel
-from diffusers.models.attention_processor import LoRAAttnProcessor
+from diffusers.models.attention_processor import CustomDiffusionAttnProcessor, LoRAAttnProcessor
 from diffusers.utils import (
     floats_tensor,
     load_hf_numpy,
@@ -66,6 +66,55 @@ def create_lora_layers(model, mock_weights: bool = True):
                 lora_attn_procs[name].to_out_lora.up.weight += 1
 
     return lora_attn_procs
+
+
+def create_custom_diffusion_layers(model, mock_weights: bool = True):
+    train_kv = True
+    train_q_out = True
+    custom_diffusion_attn_procs = {}
+
+    st = model.state_dict()
+    for name, _ in model.attn_processors.items():
+        cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
+        if name.startswith("mid_block"):
+            hidden_size = model.config.block_out_channels[-1]
+        elif name.startswith("up_blocks"):
+            block_id = int(name[len("up_blocks.")])
+            hidden_size = list(reversed(model.config.block_out_channels))[block_id]
+        elif name.startswith("down_blocks"):
+            block_id = int(name[len("down_blocks.")])
+            hidden_size = model.config.block_out_channels[block_id]
+        layer_name = name.split(".processor")[0]
+        weights = {
+            "to_k_custom_diffusion.weight": st[layer_name + ".to_k.weight"],
+            "to_v_custom_diffusion.weight": st[layer_name + ".to_v.weight"],
+        }
+        if train_q_out:
+            weights["to_q_custom_diffusion.weight"] = st[layer_name + ".to_q.weight"]
+            weights["to_out_custom_diffusion.0.weight"] = st[layer_name + ".to_out.0.weight"]
+            weights["to_out_custom_diffusion.0.bias"] = st[layer_name + ".to_out.0.bias"]
+        if cross_attention_dim is not None:
+            custom_diffusion_attn_procs[name] = CustomDiffusionAttnProcessor(
+                train_kv=train_kv,
+                train_q_out=train_q_out,
+                hidden_size=hidden_size,
+                cross_attention_dim=cross_attention_dim,
+            ).to(model.device)
+            custom_diffusion_attn_procs[name].load_state_dict(weights)
+            if mock_weights:
+                # add 1 to weights to mock trained weights
+                with torch.no_grad():
+                    custom_diffusion_attn_procs[name].to_k_custom_diffusion.weight += 1
+                    custom_diffusion_attn_procs[name].to_v_custom_diffusion.weight += 1
+        else:
+            custom_diffusion_attn_procs[name] = CustomDiffusionAttnProcessor(
+                train_kv=False,
+                train_q_out=False,
+                hidden_size=hidden_size,
+                cross_attention_dim=cross_attention_dim,
+            )
+    del st
+    return custom_diffusion_attn_procs
 
 
 class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
@@ -555,6 +604,96 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         model.to(torch_device)
         lora_attn_procs = create_lora_layers(model)
         model.set_attn_processor(lora_attn_procs)
+
+        # default
+        with torch.no_grad():
+            sample = model(**inputs_dict).sample
+
+            model.enable_xformers_memory_efficient_attention()
+            on_sample = model(**inputs_dict).sample
+
+            model.disable_xformers_memory_efficient_attention()
+            off_sample = model(**inputs_dict).sample
+
+        assert (sample - on_sample).abs().max() < 1e-4
+        assert (sample - off_sample).abs().max() < 1e-4
+
+    def test_custom_diffusion_processors(self):
+        # enable deterministic behavior for gradient checkpointing
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        init_dict["attention_head_dim"] = (8, 16)
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        with torch.no_grad():
+            sample1 = model(**inputs_dict).sample
+
+        custom_diffusion_attn_procs = create_custom_diffusion_layers(model, mock_weights=False)
+
+        # make sure we can set a list of attention processors
+        model.set_attn_processor(custom_diffusion_attn_procs)
+        model.to(torch_device)
+
+        # test that attn processors can be set to itself
+        model.set_attn_processor(model.attn_processors)
+
+        with torch.no_grad():
+            sample2 = model(**inputs_dict).sample
+
+        assert (sample1 - sample2).abs().max() < 1e-4
+
+    def test_custom_diffusion_save_load(self):
+        # enable deterministic behavior for gradient checkpointing
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        init_dict["attention_head_dim"] = (8, 16)
+
+        torch.manual_seed(0)
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        with torch.no_grad():
+            old_sample = model(**inputs_dict).sample
+
+        custom_diffusion_attn_procs = create_custom_diffusion_layers(model, mock_weights=False)
+        model.set_attn_processor(custom_diffusion_attn_procs)
+
+        with torch.no_grad():
+            sample = model(**inputs_dict).sample
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            model.save_attn_procs(tmpdirname)
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_custom_diffusion_weights.bin")))
+            torch.manual_seed(0)
+            new_model = self.model_class(**init_dict)
+            new_model.to(torch_device)
+            new_model.load_attn_procs(tmpdirname, weight_name="pytorch_custom_diffusion_weights.bin")
+
+        with torch.no_grad():
+            new_sample = new_model(**inputs_dict).sample
+
+        assert (sample - new_sample).abs().max() < 1e-4
+
+        # custom diffusion and no custom diffusion should be the same
+        assert (sample - old_sample).abs().max() < 1e-4
+
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_custom_diffusion_xformers_on_off(self):
+        # enable deterministic behavior for gradient checkpointing
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        init_dict["attention_head_dim"] = (8, 16)
+
+        torch.manual_seed(0)
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        custom_diffusion_attn_procs = create_custom_diffusion_layers(model, mock_weights=False)
+        model.set_attn_processor(custom_diffusion_attn_procs)
 
         # default
         with torch.no_grad():
