@@ -86,8 +86,10 @@ class AttentionBlock(nn.Module):
         head_size = self.num_heads
 
         if unmerge_head_and_batch:
-            batch_size, seq_len, dim = tensor.shape
-            tensor = tensor.reshape(batch_size // head_size, head_size, seq_len, dim)
+            batch_head_size, seq_len, dim = tensor.shape
+            batch_size = batch_head_size // head_size
+
+            tensor = tensor.reshape(batch_size, head_size, seq_len, dim)
         else:
             batch_size, _, seq_len, dim = tensor.shape
 
