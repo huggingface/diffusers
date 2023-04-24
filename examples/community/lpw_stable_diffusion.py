@@ -539,7 +539,7 @@ class StableDiffusionLongPromptWeightingPipeline(StableDiffusionPipeline):
                 " the batch size of `prompt`."
             )
 
-        # textual inversion: procecss multi-vector tokens if necessary
+        # textual inversion: process multi-vector tokens if necessary
         if isinstance(self, TextualInversionLoaderMixin):
             prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
             negative_prompt = self.maybe_convert_prompt(negative_prompt, self.tokenizer)
