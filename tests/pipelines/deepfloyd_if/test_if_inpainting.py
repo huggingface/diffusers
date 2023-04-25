@@ -20,7 +20,7 @@ import torch
 
 from diffusers import IFInpaintingPipeline
 from diffusers.utils import floats_tensor
-from diffusers.utils.testing_utils import torch_device
+from diffusers.utils.testing_utils import skip_mps, torch_device
 
 from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
@@ -30,6 +30,7 @@ from ..test_pipelines_common import PipelineTesterMixin
 from . import IFPipelineTesterMixin
 
 
+@skip_mps
 class IFInpaintingPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, unittest.TestCase):
     pipeline_class = IFInpaintingPipeline
     params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS - {"width", "height"}
