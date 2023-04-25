@@ -36,6 +36,25 @@ The following sections give more in-detail examples of how to use IF. Specifical
 - [Speed optimization](#optimizing-for-speed)
 - [Memory optimization](#optimizing-for-memory)
 
+**Available checkpoints**
+- *Stage-1*
+  - [DeepFloyd/IF-I-IF-v1.0](https://huggingface.co/DeepFloyd/IF-I-IF-v1.0)
+  - [DeepFloyd/IF-I-L-v1.0](https://huggingface.co/DeepFloyd/IF-I-L-v1.0)
+  - [DeepFloyd/IF-I-M-v1.0](https://huggingface.co/DeepFloyd/IF-I-M-v1.0)
+
+- *Stage-2*
+  - [DeepFloyd/IF-II-L-v1.0](https://huggingface.co/DeepFloyd/IF-II-L-v1.0)
+  - [DeepFloyd/IF-II-M-v1.0](https://huggingface.co/DeepFloyd/IF-II-M-v1.0)
+
+- *Stage-3*
+  - [stabilityai/stable-diffusion-x4-upscaler](https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler)
+
+**Demo**
+[![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/DeepFloyd/IF)
+
+**Google Colab**
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/DeepFloyd_IF_Free_Tier_Google_Colab.ipynb)
+
 ### Text-to-Image Generation
 
 By default diffusers makes use of [model cpu offloading](https://huggingface.co/docs/diffusers/optimization/fp16#model-offloading-for-fast-inference-and-memory-savings)
@@ -74,7 +93,7 @@ image = stage_2(image=image, prompt_embeds=prompt_embeds, negative_prompt_embeds
 pt_to_pil(image)[0].save("./if_stage_II.png")
 
 # stage 3
-image = stage_3(prompt=prompt, image=image).images[0]
+image = stage_3(prompt=prompt, image=image, noise_level=100).images[0]
 image.save("./if_stage_III.png")
 ```
 
@@ -130,7 +149,7 @@ image = stage_2(image=image, original_image=original_image, prompt_embeds=prompt
 pt_to_pil(image)[0].save("./if_stage_II.png")
 
 # stage 3
-image = stage_3(prompt=prompt, image=image).images[0]
+image = stage_3(prompt=prompt, image=image, noise_level=100).images[0]
 image.save("./if_stage_III.png")
 ```
 
@@ -163,12 +182,6 @@ response = requests.get(url)
 mask_image = Image.open(BytesIO(response.content))
 mask_image = mask_image
 
-
-url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
-response = requests.get(url)
-original_image = Image.open(BytesIO(response.content)).convert("RGB")
-original_image = original_image.resize((768, 512))
-
 # stage 1
 stage_1 = IFInpaintingPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
 stage_1.enable_model_cpu_offload()
@@ -197,7 +210,7 @@ image = stage_2(image=image, original_image=original_image, mask_image=mask_imag
 pt_to_pil(image)[0].save("./if_stage_II.png")
 
 # stage 3
-image = stage_3(prompt=prompt, image=image).images[0]
+image = stage_3(prompt=prompt, image=image, noise_level=100).images[0]
 image.save("./if_stage_III.png")
 ```
 
