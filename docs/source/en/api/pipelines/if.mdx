@@ -100,43 +100,40 @@ stage_2 = DiffusionPipeline.from_pretrained(
 stage_2.enable_model_cpu_offload()
 
 # stage 3
-stage_3 = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-x4-upscaler", torch_dtype=torch.float16)
+safety_modules = {
+    "feature_extractor": stage_1.feature_extractor,
+    "safety_checker": stage_1.safety_checker,
+    "watermarker": stage_1.watermarker,
+}
+stage_3 = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-x4-upscaler", **safety_modules, torch_dtype=torch.float16
+)
 stage_3.enable_model_cpu_offload()
 
 prompt = 'a photo of a kangaroo wearing an orange hoodie and blue sunglasses standing in front of the eiffel tower holding a sign that says "very deep learning"'
+generator = torch.manual_seed(1)
 
 # text embeds
 prompt_embeds, negative_embeds = stage_1.encode_prompt(prompt)
 
 # stage 1
-image = stage_1(prompt_embeds=prompt_embeds, negative_prompt_embeds=negative_embeds, output_type="pt").images
+image = stage_1(
+    prompt_embeds=prompt_embeds, negative_prompt_embeds=negative_embeds, generator=generator, output_type="pt"
+).images
 pt_to_pil(image)[0].save("./if_stage_I.png")
 
 # stage 2
 image = stage_2(
-    image=image, prompt_embeds=prompt_embeds, negative_prompt_embeds=negative_embeds, output_type="pt"
+    image=image,
+    prompt_embeds=prompt_embeds,
+    negative_prompt_embeds=negative_embeds,
+    generator=generator,
+    output_type="pt",
 ).images
 pt_to_pil(image)[0].save("./if_stage_II.png")
 
 # stage 3
-image = stage_3(prompt=prompt, image=image, noise_level=100).images
-
-
-# for stage 3, manually run safety checker and watermarker
-
-from diffusers.pipelines.deepfloyd_if import IFSafetyChecker, IFWatermarker
-from transformers import CLIPImageProcessor
-
-feature_extractor = CLIPImageProcessor.from_pretrained("DeepFloyd/IF-I-IF-v1.0", subfolder="feature_extractor")
-safety_checker = IFSafetyChecker.from_pretrained("DeepFloyd/IF-I-IF-v1.0", subfolder="safety_checker")
-watermarker = IFWatermarker.from_pretrained("DeepFloyd/IF-I-IF-v1.0", subfolder="watermarker")
-
-safety_checker_input = feature_extractor(image, return_tensors="pt").to(safety_checker.device)
-image, nsfw_detected, watermark_detected = safety_checker(images=image, clip_input=safety_checker_input.pixel_values)
-
-watermarker.apply_watermark(image, stage_3.unet.config.sample_size)
-
-
+image = stage_3(prompt=prompt, image=image, noise_level=100, generator=generator).images
 image[0].save("./if_stage_III.png")
 ```
 
@@ -175,17 +172,29 @@ stage_2 = IFImg2ImgSuperResolutionPipeline.from_pretrained(
 stage_2.enable_model_cpu_offload()
 
 # stage 3
-stage_3 = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-x4-upscaler", torch_dtype=torch.float16)
+safety_modules = {
+    "feature_extractor": stage_1.feature_extractor,
+    "safety_checker": stage_1.safety_checker,
+    "watermarker": stage_1.watermarker,
+}
+stage_3 = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-x4-upscaler", **safety_modules, torch_dtype=torch.float16
+)
 stage_3.enable_model_cpu_offload()
 
 prompt = "A fantasy landscape in style minecraft"
+generator = torch.manual_seed(1)
 
 # text embeds
 prompt_embeds, negative_embeds = stage_1.encode_prompt(prompt)
 
 # stage 1
 image = stage_1(
-    image=original_image, prompt_embeds=prompt_embeds, negative_prompt_embeds=negative_embeds, output_type="pt"
+    image=original_image,
+    prompt_embeds=prompt_embeds,
+    negative_prompt_embeds=negative_embeds,
+    generator=generator,
+    output_type="pt",
 ).images
 pt_to_pil(image)[0].save("./if_stage_I.png")
 
@@ -195,29 +204,13 @@ image = stage_2(
     original_image=original_image,
     prompt_embeds=prompt_embeds,
     negative_prompt_embeds=negative_embeds,
+    generator=generator,
     output_type="pt",
 ).images
 pt_to_pil(image)[0].save("./if_stage_II.png")
 
 # stage 3
-image = stage_3(prompt=prompt, image=image, noise_level=100).images
-
-
-# for stage 3, manually run safety checker and watermarker
-
-from diffusers.pipelines.deepfloyd_if import IFSafetyChecker, IFWatermarker
-from transformers import CLIPImageProcessor
-
-feature_extractor = CLIPImageProcessor.from_pretrained("DeepFloyd/IF-I-IF-v1.0", subfolder="feature_extractor")
-safety_checker = IFSafetyChecker.from_pretrained("DeepFloyd/IF-I-IF-v1.0", subfolder="safety_checker")
-watermarker = IFWatermarker.from_pretrained("DeepFloyd/IF-I-IF-v1.0", subfolder="watermarker")
-
-safety_checker_input = feature_extractor(image, return_tensors="pt").to(safety_checker.device)
-image, nsfw_detected, watermark_detected = safety_checker(images=image, clip_input=safety_checker_input.pixel_values)
-
-watermarker.apply_watermark(image, stage_3.unet.config.sample_size)
-
-
+image = stage_3(prompt=prompt, image=image, generator=generator, noise_level=100).images
 image[0].save("./if_stage_III.png")
 ```
 
@@ -261,10 +254,18 @@ stage_2 = IFInpaintingSuperResolutionPipeline.from_pretrained(
 stage_2.enable_model_cpu_offload()
 
 # stage 3
-stage_3 = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-x4-upscaler", torch_dtype=torch.float16)
+safety_modules = {
+    "feature_extractor": stage_1.feature_extractor,
+    "safety_checker": stage_1.safety_checker,
+    "watermarker": stage_1.watermarker,
+}
+stage_3 = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-x4-upscaler", **safety_modules, torch_dtype=torch.float16
+)
 stage_3.enable_model_cpu_offload()
 
 prompt = "blue sunglasses"
+generator = torch.manual_seed(1)
 
 # text embeds
 prompt_embeds, negative_embeds = stage_1.encode_prompt(prompt)
@@ -275,6 +276,7 @@ image = stage_1(
     mask_image=mask_image,
     prompt_embeds=prompt_embeds,
     negative_prompt_embeds=negative_embeds,
+    generator=generator,
     output_type="pt",
 ).images
 pt_to_pil(image)[0].save("./if_stage_I.png")
@@ -286,29 +288,13 @@ image = stage_2(
     mask_image=mask_image,
     prompt_embeds=prompt_embeds,
     negative_prompt_embeds=negative_embeds,
+    generator=generator,
     output_type="pt",
 ).images
 pt_to_pil(image)[0].save("./if_stage_II.png")
 
 # stage 3
-image = stage_3(prompt=prompt, image=image, noise_level=100).images
-
-
-# for stage 3, manually run safety checker and watermarker
-
-from diffusers.pipelines.deepfloyd_if import IFSafetyChecker, IFWatermarker
-from transformers import CLIPImageProcessor
-
-feature_extractor = CLIPImageProcessor.from_pretrained("DeepFloyd/IF-I-IF-v1.0", subfolder="feature_extractor")
-safety_checker = IFSafetyChecker.from_pretrained("DeepFloyd/IF-I-IF-v1.0", subfolder="safety_checker")
-watermarker = IFWatermarker.from_pretrained("DeepFloyd/IF-I-IF-v1.0", subfolder="watermarker")
-
-safety_checker_input = feature_extractor(image, return_tensors="pt").to(safety_checker.device)
-image, nsfw_detected, watermark_detected = safety_checker(images=image, clip_input=safety_checker_input.pixel_values)
-
-watermarker.apply_watermark(image, stage_3.unet.config.sample_size)
-
-
+image = stage_3(prompt=prompt, image=image, generator=generator, noise_level=100).images
 image[0].save("./if_stage_III.png")
 ```
 
