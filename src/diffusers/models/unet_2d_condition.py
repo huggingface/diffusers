@@ -704,7 +704,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             else:
                 emb = emb + class_emb
 
-        # TODO(PVP) - think about naming here
         if self.config.addition_embed_type == "text":
             aug_emb = self.add_embedding(encoder_hidden_states)
             emb = emb + aug_emb
