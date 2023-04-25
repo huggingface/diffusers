@@ -16,11 +16,13 @@ class IFWatermarker(ModelMixin, ConfigMixin):
         self.register_buffer("watermark_image", torch.zeros((62, 62, 4)))
         self.watermark_image_as_pil = None
 
-    def apply_watermark(self, images: List[PIL.Image.Image], sample_size):
+    def apply_watermark(self, images: List[PIL.Image.Image], sample_size=None):
         # copied from https://github.com/deep-floyd/IF/blob/b77482e36ca2031cb94dbca1001fc1e6400bf4ab/deepfloyd_if/modules/base.py#L287
 
         h = images[0].height
         w = images[0].width
+
+        sample_size = sample_size or h
 
         coef = min(h / sample_size, w / sample_size)
         img_h, img_w = (int(h / coef), int(w / coef)) if coef < 1 else (h, w)
