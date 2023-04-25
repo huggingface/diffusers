@@ -757,6 +757,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMi
             image = self.vae.decode(latents / self.vae.config.scaling_factor).sample
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
+            image = latents
             has_nsfw_concept = False
         
         do_normalize = (
