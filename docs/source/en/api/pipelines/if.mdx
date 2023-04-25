@@ -387,20 +387,112 @@ pipe.unet = torch.compile(pipe.unet)
 
 ### Optimizing for memory
 
-TODO:
-- optimizing for GPU memory (cpu offload)
-  - cpu offloading
-  - torch.int8 optimization
+When optimizing for GPU memory, we can use the standard diffusers cpu offloading APIs.
 
-- optimizing for CPU memory
-  - full disk offloading like in blog post
-  - torch.int8 optimization
-  - ...
+Either the model based CPU offloading,
 
-# For CPU RAM constrained machines like google colab free tier where we can't load all 
-# model components to the CPU at once, we can manually only load the pipeline with
-# the text encoder or unet when the respective model components are needed. The pipelines will
-# use 12 GB RAM which is needed for the text encoder.
+```py
+pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
+pipe.enable_model_cpu_offload()
+```
+
+or the more aggressive layer based CPU offloading.
+
+```py
+pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
+pipe.enable_sequential_cpu_offload()
+```
+
+Additionally, T5 can be loaded in 8bit precision
+
+```py
+from transformers import T5EncoderModel
+
+text_encoder = T5EncoderModel.from_pretrained(
+    "DeepFloyd/IF-I-IF-v1.0", subfolder="text_encoder", device_map="auto", load_in_8bit=True, variant="8bit"
+)
+
+from diffusers import DiffusionPipeline
+
+pipe = DiffusionPipeline.from_pretrained(
+    "DeepFloyd/IF-I-IF-v1.0",
+    text_encoder=text_encoder,  # pass the previously instantiated 8bit text encoder
+    unet=None,
+    device_map="auto",
+)
+
+prompt_embeds, negative_embeds = pipe.encode_prompt("<prompt>")
+```
+
+For CPU RAM constrained machines like google colab free tier where we can't load all 
+model components to the CPU at once, we can manually only load the pipeline with
+the text encoder or unet when the respective model components are needed.
+
+```py
+from diffusers import IFPipeline, IFSuperResolutionPipeline
+import torch
+import gc
+from transformers import T5EncoderModel
+from diffusers.utils import pt_to_pil
+
+text_encoder = T5EncoderModel.from_pretrained(
+    "DeepFloyd/IF-I-IF-v1.0", subfolder="text_encoder", device_map="auto", load_in_8bit=True, variant="8bit"
+)
+
+# text to image
+
+pipe = DiffusionPipeline.from_pretrained(
+    "DeepFloyd/IF-I-IF-v1.0",
+    text_encoder=text_encoder,  # pass the previously instantiated 8bit text encoder
+    unet=None,
+    device_map="auto",
+)
+
+prompt = 'a photo of a kangaroo wearing an orange hoodie and blue sunglasses standing in front of the eiffel tower holding a sign that says "very deep learning"'
+prompt_embeds, negative_embeds = pipe.encode_prompt(prompt)
+
+# Remove the pipeline so we can re-load the pipeline with the unet
+del text_encoder
+del pipe
+gc.collect()
+torch.cuda.empty_cache()
+
+pipe = IFPipeline.from_pretrained(
+    "DeepFloyd/IF-I-IF-v1.0", text_encoder=None, variant="fp16", torch_dtype=torch.float16, device_map="auto"
+)
+
+generator = torch.Generator().manual_seed(0)
+image = pipe(
+    prompt_embeds=prompt_embeds,
+    negative_prompt_embeds=negative_embeds,
+    output_type="pt",
+    generator=generator,
+).images
+
+pt_to_pil(image)[0].save("./if_stage_I.png")
+
+# Remove the pipeline so we can load the super-resolution pipeline
+del pipe
+gc.collect()
+torch.cuda.empty_cache()
+
+# First super resolution
+
+pipe = IFSuperResolutionPipeline.from_pretrained(
+    "DeepFloyd/IF-II-L-v1.0", text_encoder=None, variant="fp16", torch_dtype=torch.float16, device_map="auto"
+)
+
+generator = torch.Generator().manual_seed(0)
+image = pipe(
+    image=image,
+    prompt_embeds=prompt_embeds,
+    negative_prompt_embeds=negative_embeds,
+    output_type="pt",
+    generator=generator,
+).images
+
+pt_to_pil(image)[0].save("./if_stage_II.png")
+```
 
 
 ## Available Pipelines:
