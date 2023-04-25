@@ -109,6 +109,7 @@ class ConfigMixin:
         # TODO: remove this when we remove the deprecation warning, and the `kwargs` argument,
         # or solve in a more general way.
         kwargs.pop("kwargs", None)
+
         if not hasattr(self, "_internal_dict"):
             internal_dict = kwargs
         else:
@@ -541,6 +542,9 @@ class ConfigMixin:
         config_dict = self._internal_dict if hasattr(self, "_internal_dict") else {}
         config_dict["_class_name"] = self.__class__.__name__
         config_dict["_diffusers_version"] = __version__
+
+        # Don't save "_ignore_files"
+        config_dict.pop("_ignore_files", None)
 
         def to_json_saveable(value):
             if isinstance(value, np.ndarray):
