@@ -30,7 +30,6 @@ import PIL
 import torch
 from huggingface_hub import hf_hub_download, model_info, snapshot_download
 from packaging import version
-from PIL import Image
 from tqdm.auto import tqdm
 
 import diffusers
@@ -56,6 +55,7 @@ from ..utils import (
     is_torch_version,
     is_transformers_available,
     logging,
+    numpy_to_pil,
 )
 
 
@@ -623,7 +623,9 @@ class DiffusionPipeline(ConfigMixin):
             if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
                 return False
 
-            return hasattr(module, "_hf_hook") and not isinstance(module._hf_hook, accelerate.hooks.CpuOffload)
+            return hasattr(module, "_hf_hook") and not isinstance(
+                module._hf_hook, (accelerate.hooks.CpuOffload, accelerate.hooks.AlignDevicesHook)
+            )
 
         def module_is_offloaded(module):
             if not is_accelerate_available() or is_accelerate_version("<", "0.17.0.dev0"):
@@ -653,7 +655,20 @@ class DiffusionPipeline(ConfigMixin):
 
         is_offloaded = pipeline_is_offloaded or pipeline_is_sequentially_offloaded
         for module in modules:
-            module.to(torch_device, torch_dtype)
+            is_loaded_in_8bit = hasattr(module, "is_loaded_in_8bit") and module.is_loaded_in_8bit
+
+            if is_loaded_in_8bit and torch_dtype is not None:
+                logger.warning(
+                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and conversion to {torch_dtype} is not yet supported. Module is still in 8bit precision."
+                )
+
+            if is_loaded_in_8bit and torch_device is not None:
+                logger.warning(
+                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and moving it to {torch_dtype} via `.to()` is not yet supported. Module is still on {module.device}."
+                )
+            else:
+                module.to(torch_device, torch_dtype)
+
             if (
                 module.dtype == torch.float16
                 and str(torch_device) in ["cpu"]
@@ -886,6 +901,9 @@ class DiffusionPipeline(ConfigMixin):
             cached_folder = pretrained_model_name_or_path
 
         config_dict = cls.load_config(cached_folder)
+
+        # pop out "_ignore_files" as it is only needed for download
+        config_dict.pop("_ignore_files", None)
 
         # 2. Define which model components should load variants
         # We retrieve the information by matching whether variant
@@ -1204,11 +1222,18 @@ class DiffusionPipeline(ConfigMixin):
             )
 
             config_dict = cls._dict_from_json_file(config_file)
+
+            ignore_filenames = config_dict.pop("_ignore_files", [])
+
             # retrieve all folder_names that contain relevant files
             folder_names = [k for k, v in config_dict.items() if isinstance(v, list)]
 
             filenames = {sibling.rfilename for sibling in info.siblings}
             model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+
+            # remove ignored filenames
+            model_filenames = set(model_filenames) - set(ignore_filenames)
+            variant_filenames = set(variant_filenames) - set(ignore_filenames)
 
             # if the whole pipeline is cached we don't have to ping the Hub
             if revision in DEPRECATED_REVISION_ARGS and version.parse(
@@ -1370,16 +1395,7 @@ class DiffusionPipeline(ConfigMixin):
         """
         Convert a numpy image or a batch of images to a PIL image.
         """
-        if images.ndim == 3:
-            images = images[None, ...]
-        images = (images * 255).round().astype("uint8")
-        if images.shape[-1] == 1:
-            # special case for grayscale (single channel) images
-            pil_images = [Image.fromarray(image.squeeze(), mode="L") for image in images]
-        else:
-            pil_images = [Image.fromarray(image) for image in images]
-
-        return pil_images
+        return numpy_to_pil(images)
 
     def progress_bar(self, iterable=None, total=None):
         if not hasattr(self, "_progress_bar_config"):
