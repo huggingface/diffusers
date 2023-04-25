@@ -713,6 +713,8 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
             # 11. Apply watermark
             if self.watermarker is not None:
                 image = self.watermarker.apply_watermark(image)
+        else:
+            has_nsfw_concept = None
 
         if not return_dict:
             return (image, has_nsfw_concept)
