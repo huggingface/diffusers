@@ -27,56 +27,90 @@ Our work underscores the potential of larger UNet architectures in the first sta
 
 ## Text-to-Image Generation
 
+By default diffusers makes use of [model cpu offloading](https://huggingface.co/docs/diffusers/optimization/fp16#model-offloading-for-fast-inference-and-memory-savings)
+to run the whole IF pipeline with as little as 14 GB of VRAM.
+
 ```python
-from diffusers import IFPipeline, IFSuperResolutionPipeline, DiffusionPipeline
+from diffusers import DiffusionPipeline
+from diffusers.utils import pt_to_pil
 import torch
 
-pipe = IFPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
-pipe.enable_model_cpu_offload()
+# stage 1
+stage_1 = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
+stage_1.enable_model_cpu_offload()
 
-prompt = 'a photo of a kangaroo wearing an orange hoodie and blue sunglasses standing in front of the eiffel tower holding a sign that says "very deep learning"'
-prompt_embeds, negative_embeds = pipe.encode_prompt(prompt)
-
-image = pipe(prompt_embeds=prompt_embeds, negative_prompt_embeds=negative_embeds, output_type="pt").images
-
-# save intermediate image
-pil_image = image
-pil_image = (pil_image / 2 + 0.5).clamp(0, 1)
-pil_image = pil_image.cpu().permute(0, 2, 3, 1).float().numpy()
-pil_image = pipe.numpy_to_pil(pil_image)[0]
-pil_image.save("./if_stage_I.png")
-
-super_res_1_pipe = IFSuperResolutionPipeline.from_pretrained(
+# stage 2
+stage_2 = DiffusionPipeline.from_pretrained(
     "DeepFloyd/IF-II-L-v1.0", text_encoder=None, variant="fp16", torch_dtype=torch.float16
 )
-super_res_1_pipe.enable_model_cpu_offload()
+stage_2.enable_model_cpu_offload()
 
-image = super_res_1_pipe(
-    image=image, prompt_embeds=prompt_embeds, negative_prompt_embeds=negative_embeds, output_type="pt"
-).images
+# stage 3
+stage_3 = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-x4-upscaler", torch_dtype=torch.float16)
+stage_3.enable_model_cpu_offload()
 
-# save intermediate image
-pil_image = image
-pil_image = (pil_image / 2 + 0.5).clamp(0, 1)
-pil_image = pil_image.cpu().permute(0, 2, 3, 1).float().numpy()
-pil_image = pipe.numpy_to_pil(pil_image)[0]
-pil_image.save("./if_stage_II.png")
+prompt = 'a photo of a kangaroo wearing an orange hoodie and blue sunglasses standing in front of the eiffel tower holding a sign that says "very deep learning"'
 
-super_res_2_pipe = DiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-x4-upscaler", torch_dtype=torch.float16
-)
-super_res_2_pipe.enable_model_cpu_offload()
+# text embeds
+prompt_embeds, negative_embeds = stage_1.encode_prompt(prompt)
 
-pil_image = super_res_2_pipe(
-    prompt=prompt,
-    image=image,
-).images[0]
+# stage 1
+image = stage_1(prompt_embeds=prompt_embeds, negative_prompt_embeds=negative_embeds, output_type="pt").images
+pt_to_pil(image)[0].save("./if_stage_I.png")
 
-# save end image
-pil_image.save("./if_stage_III.png")
+# stage 2
+image = stage_2(image=image, prompt_embeds=prompt_embeds, negative_prompt_embeds=negative_embeds, output_type="pt").images
+pt_to_pil(image)[0].save("./if_stage_II.png")
+
+# stage 3
+image = stage_3(prompt=prompt, image=image).images[0]
+image.save("./if_stage_III.png")
 ```
 
-## Running on CPU RAM constrained machines
+## Text Guided Image-to-Image Generation
+
+The same IF model weights can be used for text-guided image-to-image translation or image variation.
+In this case just make sure to load the weights using the [`IFImg2ImgPipeline`] and [`IFImg2ImgSuperResolutionPipeline`] pipelines.
+
+```python
+from diffusers import IFImg2ImgPipeline, IFImg2ImgSuperResolutionPipeline
+from diffusers.utils import pt_to_pil
+import torch
+
+# stage 1
+stage_1 = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
+stage_1.enable_model_cpu_offload()
+
+# stage 2
+stage_2 = DiffusionPipeline.from_pretrained(
+    "DeepFloyd/IF-II-L-v1.0", text_encoder=None, variant="fp16", torch_dtype=torch.float16
+)
+stage_2.enable_model_cpu_offload()
+
+# stage 3
+stage_3 = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-x4-upscaler", torch_dtype=torch.float16)
+stage_3.enable_model_cpu_offload()
+
+prompt = 'a photo of a kangaroo wearing an orange hoodie and blue sunglasses standing in front of the eiffel tower holding a sign that says "very deep learning"'
+
+# text embeds
+prompt_embeds, negative_embeds = stage_1.encode_prompt(prompt)
+
+# stage 1
+image = stage_1(prompt_embeds=prompt_embeds, negative_prompt_embeds=negative_embeds, output_type="pt").images
+pt_to_pil(image)[0].save("./if_stage_I.png")
+
+# stage 2
+image = stage_2(image=image, prompt_embeds=prompt_embeds, negative_prompt_embeds=negative_embeds, output_type="pt").images
+pt_to_pil(image)[0].save("./if_stage_II.png")
+
+# stage 3
+image = stage_3(prompt=prompt, image=image).images[0]
+image.save("./if_stage_III.png")
+```
+
+## Optimizing for speed
+
 For CPU RAM constrained machines like google colab free tier where we can't load all 
 model components to the CPU at once, we can manually only load the pipeline with
 the text encoder or unet when the respective model components are needed. The pipelines will
