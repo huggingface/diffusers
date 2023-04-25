@@ -13,19 +13,18 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, List, Optional, Union, Any
+from typing import Any, Callable, List, Optional, Union
 
 import numpy as np
 import PIL
 import torch
-from torch.fx.experimental.symbolic_shapes import has_symbolic_sizes_strides
-from transformers import CLIPTextModel, CLIPTokenizer, CLIPImageProcessor
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...loaders import TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDPMScheduler, KarrasDiffusionSchedulers
 from ...utils import deprecate, is_accelerate_available, is_accelerate_version, logging, randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 
 
@@ -95,7 +94,9 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
     ):
         super().__init__()
 
-        if hasattr(vae, "config"): # check if vae has a config attribute `scaling_factor` and if it is set to 0.08333, else set it to 0.08333 and deprecate
+        if hasattr(
+            vae, "config"
+        ):  # check if vae has a config attribute `scaling_factor` and if it is set to 0.08333, else set it to 0.08333 and deprecate
             is_vae_scaling_factor_set_to_0_08333 = (
                 hasattr(vae.config, "scaling_factor") and vae.config.scaling_factor == 0.08333
             )
