@@ -173,7 +173,9 @@ class IFPipelineSlowTests(unittest.TestCase):
         mem_bytes = torch.cuda.max_memory_allocated()
         assert mem_bytes < 13 * 10**9
 
-        expected_image = load_numpy("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/if/test_if.npy")
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/if/test_if.npy"
+        )
         assert_mean_pixel_difference(image, expected_image)
 
         # pipeline 2
@@ -200,7 +202,9 @@ class IFPipelineSlowTests(unittest.TestCase):
         mem_bytes = torch.cuda.max_memory_allocated()
         assert mem_bytes < 4 * 10**9
 
-        expected_image = load_numpy("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/if/test_if_superresolution_stage_II.npy")
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/if/test_if_superresolution_stage_II.npy"
+        )
         assert_mean_pixel_difference(image, expected_image)
 
     def _test_if_img2img(self, pipe_1, pipe_2, prompt_embeds, negative_prompt_embeds):
@@ -223,13 +227,14 @@ class IFPipelineSlowTests(unittest.TestCase):
 
         image = output.images[0]
 
-
         assert image.shape == (64, 64, 3)
 
         mem_bytes = torch.cuda.max_memory_allocated()
         assert mem_bytes < 10 * 10**9
 
-        expected_image = load_numpy("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/if/test_if_img2img.npy")
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/if/test_if_img2img.npy"
+        )
         assert_mean_pixel_difference(image, expected_image)
 
         # pipeline 2
@@ -258,7 +263,9 @@ class IFPipelineSlowTests(unittest.TestCase):
         mem_bytes = torch.cuda.max_memory_allocated()
         assert mem_bytes < 4 * 10**9
 
-        expected_image = load_numpy("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/if/test_if_img2img_superresolution_stage_II.npy")
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/if/test_if_img2img_superresolution_stage_II.npy"
+        )
         assert_mean_pixel_difference(image, expected_image)
 
     def _test_if_inpainting(self, pipe_1, pipe_2, prompt_embeds, negative_prompt_embeds):
@@ -287,7 +294,9 @@ class IFPipelineSlowTests(unittest.TestCase):
         mem_bytes = torch.cuda.max_memory_allocated()
         assert mem_bytes < 10 * 10**9
 
-        expected_image = load_numpy("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/if/test_if_inpainting.npy")
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/if/test_if_inpainting.npy"
+        )
         assert_mean_pixel_difference(image, expected_image)
 
         # pipeline 2
@@ -318,7 +327,9 @@ class IFPipelineSlowTests(unittest.TestCase):
         mem_bytes = torch.cuda.max_memory_allocated()
         assert mem_bytes < 4 * 10**9
 
-        expected_image = load_numpy("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/if/test_if_inpainting_superresolution_stage_II.npy")
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/if/test_if_inpainting_superresolution_stage_II.npy"
+        )
         assert_mean_pixel_difference(image, expected_image)
 
 
