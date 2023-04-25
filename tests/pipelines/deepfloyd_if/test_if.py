@@ -28,13 +28,14 @@ from diffusers import (
     IFSuperResolutionPipeline,
 )
 from diffusers.models.attention_processor import AttnAddedKVProcessor
-from diffusers.utils.testing_utils import floats_tensor, load_numpy, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import floats_tensor, load_numpy, require_torch_gpu, skip_mps, slow, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 from . import IFPipelineTesterMixin
 
 
+@skip_mps
 class IFPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, unittest.TestCase):
     pipeline_class = IFPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"width", "height", "latents"}

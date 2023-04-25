@@ -20,13 +20,14 @@ import torch
 
 from diffusers import IFImg2ImgSuperResolutionPipeline
 from diffusers.utils import floats_tensor
-from diffusers.utils.testing_utils import torch_device
+from diffusers.utils.testing_utils import skip_mps, torch_device
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 from . import IFPipelineTesterMixin
 
 
+@skip_mps
 class IFImg2ImgSuperResolutionPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, unittest.TestCase):
     pipeline_class = IFImg2ImgSuperResolutionPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"width", "height"}
