@@ -613,13 +613,13 @@ def convert_caption_decoder_to_diffusers(ckpt, diffusers_model):
 def main(args):
     # Create corresponding models, hardcoded for now.
     vae_config = create_vae_diffusers_config(args)
-    AutoencoderKL(**vae_config)
+    vae = AutoencoderKL(**vae_config)
 
     unet_config = create_unidiffuser_unet_config(args)
     unet = UniDiffuserModel(**unet_config)
 
     text_decoder_config = create_text_decoder_config(args)
-    UniDiffuserTextDecoder(**text_decoder_config)
+    text_decoder = UniDiffuserTextDecoder(**text_decoder_config)
 
     print("Converting VAE checkpoint...")
     vae = convert_vae_to_diffusers(args.vae_ckpt, vae)
