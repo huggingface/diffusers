@@ -337,12 +337,53 @@ pipe_2 = IFInpaintingSuperResolutionPipeline(**pipe_2.components)
 
 ### Optimizing for speed
 
-TODO:
-- use custom timesteps
-- reduce timesteps
-- leave everything on GPU
-- for image-to-image use weak strength
-- For future, `torch.compile`
+The simplest optimization to run IF faster is to move all model components to the GPU.
+
+```py
+pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
+pipe.to("cuda")
+```
+
+You can also run the diffusion process for a shorter number of timesteps.
+
+This can either be done with the `num_inference_steps` argument
+
+```py
+pipe("<prompt>", num_inference_steps=30)
+```
+
+Or with the `timesteps` argument
+
+```py
+from diffusers.pipelines.deepfloyd_if import fast27_timesteps
+
+pipe("<prompt>", timesteps=fast27_timesteps)
+```
+
+When doing image variation or inpainting, you can also decrease the number of timesteps
+with the strength argument. The strength argument is the amount of noise to add to 
+the input image which also determines how many steps to run in the denoising process.
+A smaller number will vary the image less but run faster.
+
+```py
+pipe = IFImg2ImgPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
+pipe.to("cuda")
+
+image = pipe(image=image, prompt="<prompt>", strength=0.3).images
+```
+
+You can also use [`torch.compile`](../../optimization/torch2.0). Note that we have not exhaustively tested `torch.compile`
+with IF and it might not give expected results.
+
+```py
+import torch
+
+pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
+pipe.to("cuda")
+
+pipe.text_encoder = torch.compile(pipe.text_encoder)
+pipe.unet = torch.compile(pipe.unet)
+```
 
 ### Optimizing for memory
 
