@@ -60,23 +60,58 @@ def resize(images: PIL.Image.Image, img_size: int) -> PIL.Image.Image:
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> from diffusers import IFInpaintingPipeline, IFInpaintingSuperResolutionPipeline, DiffusionPipeline >>> from
-        diffusers.utils import pt_to_pil >>> import torch >>> from PIL import Image >>> import requests >>> from io
-        import BytesIO >>> url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/if/person.png" >>>
-        response = requests.get(url) >>> original_image = Image.open(BytesIO(response.content)).convert("RGB") >>>
-        original_image = original_image >>> url =
-        "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/if/glasses_mask.png" >>> response =
-        requests.get(url) >>> mask_image = Image.open(BytesIO(response.content)) >>> mask_image = mask_image >>> pipe =
-        IFInpaintingPipeline.from_pretrained( ... "DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16
-        ... ) >>> pipe.enable_model_cpu_offload() >>> prompt = "blue sunglasses" >>> prompt_embeds, negative_embeds =
-        pipe.encode_prompt(prompt) >>> image = pipe( ... image=original_image, ... mask_image=mask_image, ...
-        prompt_embeds=prompt_embeds, ... negative_prompt_embeds=negative_embeds, ... output_type="pt", ... ).images >>>
-        # save intermediate image >>> pil_image = pt_to_pil(image) >>> pil_image[0].save("./if_stage_I.png") >>>
-        super_res_1_pipe = IFInpaintingSuperResolutionPipeline.from_pretrained( ... "DeepFloyd/IF-II-L-v1.0",
-        text_encoder=None, variant="fp16", torch_dtype=torch.float16 ... ) >>>
-        super_res_1_pipe.enable_model_cpu_offload() >>> image = super_res_1_pipe( ... image=image, ...
-        mask_image=mask_image, ... original_image=original_image, ... prompt_embeds=prompt_embeds, ...
-        negative_prompt_embeds=negative_embeds, ... ).images >>> image[0].save("./if_stage_II.png")"""
+        >>> from diffusers import IFInpaintingPipeline, IFInpaintingSuperResolutionPipeline, DiffusionPipeline
+        >>> from diffusers.utils import pt_to_pil
+        >>> import torch
+        >>> from PIL import Image
+        >>> import requests
+        >>> from io import BytesIO
+
+        >>> url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/if/person.png"
+        >>> response = requests.get(url)
+        >>> original_image = Image.open(BytesIO(response.content)).convert("RGB")
+        >>> original_image = original_image
+
+        >>> url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/if/glasses_mask.png"
+        >>> response = requests.get(url)
+        >>> mask_image = Image.open(BytesIO(response.content))
+        >>> mask_image = mask_image
+
+        >>> pipe = IFInpaintingPipeline.from_pretrained(
+        ...     "DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16
+        ... )
+        >>> pipe.enable_model_cpu_offload()
+
+        >>> prompt = "blue sunglasses"
+
+        >>> prompt_embeds, negative_embeds = pipe.encode_prompt(prompt)
+        >>> image = pipe(
+        ...     image=original_image,
+        ...     mask_image=mask_image,
+        ...     prompt_embeds=prompt_embeds,
+        ...     negative_prompt_embeds=negative_embeds,
+        ...     output_type="pt",
+        ... ).images
+
+        >>> # save intermediate image
+        >>> pil_image = pt_to_pil(image)
+        >>> pil_image[0].save("./if_stage_I.png")
+
+        >>> super_res_1_pipe = IFInpaintingSuperResolutionPipeline.from_pretrained(
+        ...     "DeepFloyd/IF-II-L-v1.0", text_encoder=None, variant="fp16", torch_dtype=torch.float16
+        ... )
+        >>> super_res_1_pipe.enable_model_cpu_offload()
+
+        >>> image = super_res_1_pipe(
+        ...     image=image,
+        ...     mask_image=mask_image,
+        ...     original_image=original_image,
+        ...     prompt_embeds=prompt_embeds,
+        ...     negative_prompt_embeds=negative_embeds,
+        ... ).images
+        >>> image[0].save("./if_stage_II.png")
+        ```
+    """
 
 
 class IFInpaintingSuperResolutionPipeline(DiffusionPipeline):
