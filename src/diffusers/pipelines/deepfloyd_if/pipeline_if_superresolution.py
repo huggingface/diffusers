@@ -80,13 +80,26 @@ EXAMPLE_DOC_STRING = """
         ... )
         >>> super_res_2_pipe.enable_model_cpu_offload()
 
-        >>> pil_image = super_res_2_pipe(
+        >>> image = super_res_2_pipe(
         ...     prompt=prompt,
         ...     image=image,
-        ... ).images[0]
+        ... ).images
+
+        >>> # for stage 3, manually run safety checker and watermarker
+
+        >>> from diffusers.pipelines.deepfloyd_if import IFSafetyChecker, IFWatermarker
+        >>> from transformers import CLIPImageProcessor
+
+        >>> feature_extractor = CLIPImageProcessor.from_pretrained("DeepFloyd/IF-I-IF-v1.0", subfolder="feature_extractor")
+        >>> safety_checker = IFSafetyChecker.from_pretrained("DeepFloyd/IF-I-IF-v1.0", subfolder="safety_checker")
+        >>> watermarker = IFWatermarker.from_pretrained("DeepFloyd/IF-I-IF-v1.0", subfolder="watermarker")
+
+        >>> safety_checker_input = feature_extractor(image, return_tensors="pt").to(safety_checker.device)
+        >>> image, nsfw_detected, watermark_detected = safety_checker(images=image, clip_input=safety_checker_input.pixel_values)
+        >>> watermarker.apply_watermark(image, stage_3.unet.config.sample_size)
 
         >>> # save end image
-        >>> pil_image.save("./if_stage_III.png")
+        >>> image[0].save("./if_stage_III.png")
         ```
 """
 
