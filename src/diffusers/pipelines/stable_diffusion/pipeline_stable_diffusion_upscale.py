@@ -87,9 +87,9 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
         unet: UNet2DConditionModel,
         low_res_scheduler: DDPMScheduler,
         scheduler: KarrasDiffusionSchedulers,
-        safety_checker: Any,
-        feature_extractor: CLIPImageProcessor,
-        watermarker: Any,
+        safety_checker: Optional[Any] = None,
+        feature_extractor: Optional[CLIPImageProcessor] = None,
+        watermarker: Optional[Any] = None,
         max_noise_level: int = 350,
     ):
         super().__init__()
