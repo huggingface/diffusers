@@ -38,6 +38,7 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> from diffusers import IFPipeline, IFSuperResolutionPipeline, DiffusionPipeline
+        >>> from diffusers.utils import pt_to_pil
         >>> import torch
 
         >>> pipe = IFPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
@@ -49,11 +50,8 @@ EXAMPLE_DOC_STRING = """
         >>> image = pipe(prompt_embeds=prompt_embeds, negative_prompt_embeds=negative_embeds, output_type="pt").images
 
         >>> # save intermediate image
-        >>> pil_image = image
-        >>> pil_image = (pil_image / 2 + 0.5).clamp(0, 1)
-        >>> pil_image = pil_image.cpu().permute(0, 2, 3, 1).float().numpy()
-        >>> pil_image = pipe.numpy_to_pil(pil_image)[0]
-        >>> pil_image.save("./if_stage_I.png")
+        >>> pil_image = pt_to_pil(image)
+        >>> pil_image[0].save("./if_stage_I.png")
 
         >>> super_res_1_pipe = IFSuperResolutionPipeline.from_pretrained(
         ...     "DeepFloyd/IF-II-L-v1.0", text_encoder=None, variant="fp16", torch_dtype=torch.float16
@@ -65,11 +63,8 @@ EXAMPLE_DOC_STRING = """
         ... ).images
 
         >>> # save intermediate image
-        >>> pil_image = image
-        >>> pil_image = (pil_image / 2 + 0.5).clamp(0, 1)
-        >>> pil_image = pil_image.cpu().permute(0, 2, 3, 1).float().numpy()
-        >>> pil_image = pipe.numpy_to_pil(pil_image)[0]
-        >>> pil_image.save("./if_stage_II.png")
+        >>> pil_image = pt_to_pil(image)
+        >>> pil_image[0].save("./if_stage_I.png")
 
         >>> super_res_2_pipe = DiffusionPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-x4-upscaler", torch_dtype=torch.float16

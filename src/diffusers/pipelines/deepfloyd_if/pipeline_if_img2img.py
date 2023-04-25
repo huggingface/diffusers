@@ -58,6 +58,7 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> from diffusers import IFImg2ImgPipeline, IFImg2ImgSuperResolutionPipeline, DiffusionPipeline
+        >>> from diffusers.utils import pt_to_pil
         >>> import torch
         >>> from PIL import Image
         >>> import requests
@@ -86,11 +87,8 @@ EXAMPLE_DOC_STRING = """
         ... ).images
 
         >>> # save intermediate image
-        >>> pil_image = image
-        >>> pil_image = (pil_image / 2 + 0.5).clamp(0, 1)
-        >>> pil_image = pil_image.cpu().permute(0, 2, 3, 1).float().numpy()
-        >>> pil_image = pipe.numpy_to_pil(pil_image)[0]
-        >>> pil_image.save("./if_stage_I.png")
+        >>> pil_image = pt_to_pil(image)
+        >>> pil_image[0].save("./if_stage_I.png")
 
         >>> super_res_1_pipe = IFImg2ImgSuperResolutionPipeline.from_pretrained(
         ...     "DeepFloyd/IF-II-L-v1.0",
@@ -109,11 +107,8 @@ EXAMPLE_DOC_STRING = """
         ... ).images
 
         >>> # save intermediate image
-        >>> pil_image = image
-        >>> pil_image = (pil_image / 2 + 0.5).clamp(0, 1)
-        >>> pil_image = pil_image.cpu().permute(0, 2, 3, 1).float().numpy()
-        >>> pil_image = pipe.numpy_to_pil(pil_image)[0]
-        >>> pil_image.save("./if_stage_II.png")
+        >>> pil_image = pt_to_pil(image)
+        >>> pil_image[0].save("./if_stage_I.png")
 
         >>> super_res_2_pipe = DiffusionPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-x4-upscaler", torch_dtype=torch.float16
