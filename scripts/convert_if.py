@@ -1056,7 +1056,7 @@ def superres_convert_ldm_unet_checkpoint(unet_state_dict, config, path=None, ext
             resnets = [key for key in output_blocks[i] if f"output_blocks.{i}.0" in key]
 
             has_attention = True
-            if len(output_block_list) == 2 and any(["in_layers" in k for k in output_block_list["1"]]):
+            if len(output_block_list) == 2 and any("in_layers" in k for k in output_block_list["1"]):
                 has_attention = False
 
             maybe_attentions = [key for key in output_blocks[i] if f"output_blocks.{i}.1" in key]
