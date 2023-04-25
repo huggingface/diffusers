@@ -543,9 +543,6 @@ class ConfigMixin:
         config_dict["_class_name"] = self.__class__.__name__
         config_dict["_diffusers_version"] = __version__
 
-        # Don't save "_ignore_files"
-        config_dict.pop("_ignore_files", None)
-
         def to_json_saveable(value):
             if isinstance(value, np.ndarray):
                 value = value.tolist()
@@ -554,6 +551,9 @@ class ConfigMixin:
             return value
 
         config_dict = {k: to_json_saveable(v) for k, v in config_dict.items()}
+        # Don't save "_ignore_files"
+        config_dict.pop("_ignore_files", None)
+
         return json.dumps(config_dict, indent=2, sort_keys=True) + "\n"
 
     def to_json_file(self, json_file_path: Union[str, os.PathLike]):
