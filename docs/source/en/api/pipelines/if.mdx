@@ -70,19 +70,33 @@ image.save("./if_stage_III.png")
 ## Text Guided Image-to-Image Generation
 
 The same IF model weights can be used for text-guided image-to-image translation or image variation.
-In this case just make sure to load the weights using the [`IFImg2ImgPipeline`] and [`IFImg2ImgSuperResolutionPipeline`] pipelines.
+In this case just make sure to load the weights using the [`IFInpaintingPipeline`] and [`IFInpaintingSuperResolutionPipeline`] pipelines.
+
+**Note**: You can also directly move the weights of the text-to-image pipelines to the image-to-image pipelines
+without loading them twice by making use of the [`~DiffusionPipeline.components()`] function as explained [here](#converting-between-different-pipelines).
 
 ```python
 from diffusers import IFImg2ImgPipeline, IFImg2ImgSuperResolutionPipeline
 from diffusers.utils import pt_to_pil
+
 import torch
 
+from PIL import Image
+import requests
+from io import BytesIO
+
+# download image
+url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
+response = requests.get(url)
+original_image = Image.open(BytesIO(response.content)).convert("RGB")
+original_image = original_image.resize((768, 512))
+
 # stage 1
-stage_1 = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
+stage_1 = IFInpaintingPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
 stage_1.enable_model_cpu_offload()
 
 # stage 2
-stage_2 = DiffusionPipeline.from_pretrained(
+stage_2 = IFInpaintingSuperResolutionPipeline.from_pretrained(
     "DeepFloyd/IF-II-L-v1.0", text_encoder=None, variant="fp16", torch_dtype=torch.float16
 )
 stage_2.enable_model_cpu_offload()
@@ -91,259 +105,89 @@ stage_2.enable_model_cpu_offload()
 stage_3 = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-x4-upscaler", torch_dtype=torch.float16)
 stage_3.enable_model_cpu_offload()
 
-prompt = 'a photo of a kangaroo wearing an orange hoodie and blue sunglasses standing in front of the eiffel tower holding a sign that says "very deep learning"'
+prompt = "A fantasy landscape in style minecraft"
 
 # text embeds
 prompt_embeds, negative_embeds = stage_1.encode_prompt(prompt)
 
 # stage 1
-image = stage_1(prompt_embeds=prompt_embeds, negative_prompt_embeds=negative_embeds, output_type="pt").images
+image = stage_1(image=original_image, prompt_embeds=prompt_embeds, negative_prompt_embeds=negative_embeds, output_type="pt").images
 pt_to_pil(image)[0].save("./if_stage_I.png")
 
 # stage 2
 image = stage_2(image=image, prompt_embeds=prompt_embeds, negative_prompt_embeds=negative_embeds, output_type="pt").images
-pt_to_pil(image)[0].save("./if_stage_II.png")
+pt_to_pil(image=image, original_image=original_image)[0].save("./if_stage_II.png")
 
 # stage 3
 image = stage_3(prompt=prompt, image=image).images[0]
 image.save("./if_stage_III.png")
 ```
 
-## Optimizing for speed
+## Text Guided Inpainting Generation
 
-For CPU RAM constrained machines like google colab free tier where we can't load all 
-model components to the CPU at once, we can manually only load the pipeline with
-the text encoder or unet when the respective model components are needed. The pipelines will
-use 12 GB RAM which is needed for the text encoder.
+The same IF model weights can be used for text-guided image-to-image translation or image variation.
+In this case just make sure to load the weights using the [`IFInpaintingPipeline`] and [`IFInpaintingSuperResolutionPipeline`] pipelines.
 
-```python
-from diffusers import IFPipeline, IFSuperResolutionPipeline
-import torch
-import gc
-
-# text to image
-
-pipe = IFPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", unet=None, variant="fp16", torch_dtype=torch.float16)
-pipe.to("cuda")
-
-prompt = 'a photo of a kangaroo wearing an orange hoodie and blue sunglasses standing in front of the eiffel tower holding a sign that says "very deep learning"'
-prompt_embeds, negative_embeds = pipe.encode_prompt(prompt)
-
-del pipe
-gc.collect()
-torch.cuda.empty_cache()
-
-pipe = IFPipeline.from_pretrained(
-    "DeepFloyd/IF-I-IF-v1.0", text_encoder=None, variant="fp16", torch_dtype=torch.float16
-)
-pipe.to("cuda")
-
-generator = torch.Generator().manual_seed(0)
-image = pipe(
-    prompt_embeds=prompt_embeds,
-    negative_prompt_embeds=negative_embeds,
-    output_type="pt",
-    generator=generator,
-).images
-
-pil_image = image
-pil_image = (pil_image / 2 + 0.5).clamp(0, 1)
-pil_image = pil_image.cpu().permute(0, 2, 3, 1).float().numpy()
-pil_image = pipe.numpy_to_pil(pil_image)[0]
-
-del pipe
-gc.collect()
-torch.cuda.empty_cache()
-
-# first super resolution
-
-pipe = IFSuperResolutionPipeline.from_pretrained(
-    "DeepFloyd/IF-II-L-v1.0", text_encoder=None, variant="fp16", torch_dtype=torch.float16
-)
-pipe.to("cuda")
-
-generator = torch.Generator().manual_seed(0)
-image = pipe(
-    image=image,
-    prompt_embeds=prompt_embeds,
-    negative_prompt_embeds=negative_embeds,
-    output_type="pt",
-    generator=generator,
-).images
-
-pil_image = image
-pil_image = (pil_image / 2 + 0.5).clamp(0, 1)
-pil_image = pil_image.cpu().permute(0, 2, 3, 1).float().numpy()
-pil_image = pipe.numpy_to_pil(pil_image)[0]
-
-del pipe
-gc.collect()
-torch.cuda.empty_cache()
-
-# second super resolution
-
-pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-x4-upscaler", torch_dtype=torch.float16)
-pipe.to("cuda")
-
-pil_image = pipe(
-    prompt=prompt,
-    image=image,
-).images[0]
-
-del pipe
-gc.collect()
-torch.cuda.empty_cache()
-```
-
-
-## Text Guided Image-to-Image Generation
+**Note**: You can also directly move the weights of the text-to-image pipelines to the image-to-image pipelines
+without loading them twice by making use of the [`~DiffusionPipeline.components()`] function as explained [here](#converting-between-different-pipelines).
 
 ```python
-from diffusers import IFImg2ImgPipeline, IFImg2ImgSuperResolutionPipeline
+from diffusers import IFInpaintingPipeline, IFInpaintingSuperResolutionPipeline
+from diffusers.utils import pt_to_pil
 import torch
+
 from PIL import Image
 import requests
 from io import BytesIO
+
+# download image
+url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/if/person.png"
+response = requests.get(url)
+original_image = Image.open(BytesIO(response.content)).convert("RGB")
+original_image = original_image
+
+# download mask
+url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/if/glasses_mask.png"
+response = requests.get(url)
+mask_image = Image.open(BytesIO(response.content))
+mask_image = mask_image
+
 
 url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
 response = requests.get(url)
 original_image = Image.open(BytesIO(response.content)).convert("RGB")
 original_image = original_image.resize((768, 512))
 
-pipe = IFImg2ImgPipeline.from_pretrained(
-    "DeepFloyd/IF-I-IF-v1.0",
-    variant="fp16",
-    torch_dtype=torch.float16,
-)
-pipe.enable_model_cpu_offload()
+# stage 1
+stage_1 = IFImg2ImgPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
+stage_1.enable_model_cpu_offload()
 
-prompt = "A fantasy landscape in style minecraft"
-prompt_embeds, negative_embeds = pipe.encode_prompt(prompt)
-
-image = pipe(
-    image=original_image,
-    prompt_embeds=prompt_embeds,
-    negative_prompt_embeds=negative_embeds,
-    output_type="pt",
-).images
-
-# save intermediate image
-pil_image = image
-pil_image = (pil_image / 2 + 0.5).clamp(0, 1)
-pil_image = pil_image.cpu().permute(0, 2, 3, 1).float().numpy()
-pil_image = pipe.numpy_to_pil(pil_image)[0]
-pil_image.save("./if_stage_I.png")
-
-super_res_1_pipe = IFImg2ImgSuperResolutionPipeline.from_pretrained(
-    "DeepFloyd/IF-II-L-v1.0",
-    text_encoder=None,
-    variant="fp16",
-    torch_dtype=torch.float16,
-)
-super_res_1_pipe.enable_model_cpu_offload()
-
-image = super_res_1_pipe(
-    image=image,
-    original_image=original_image,
-    prompt_embeds=prompt_embeds,
-    negative_prompt_embeds=negative_embeds,
-    output_type="pt",
-).images
-
-# save intermediate image
-pil_image = image
-pil_image = (pil_image / 2 + 0.5).clamp(0, 1)
-pil_image = pil_image.cpu().permute(0, 2, 3, 1).float().numpy()
-pil_image = pipe.numpy_to_pil(pil_image)[0]
-pil_image.save("./if_stage_II.png")
-
-super_res_2_pipe = DiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-x4-upscaler", torch_dtype=torch.float16
-)
-super_res_2_pipe.enable_model_cpu_offload()
-
-pil_image = super_res_2_pipe(
-    prompt=prompt,
-    image=image,
-).images[0]
-
-# save end image
-pil_image.save(f"./if_stage_III.png")
-```
-
-## Text Guided Image Inpainting
-
-```python
-from diffusers import IFInpaintingPipeline, IFInpaintingSuperResolutionPipeline
-import torch
-from PIL import Image
-import requests
-from io import BytesIO
-
-url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/if/person.png"
-response = requests.get(url)
-original_image = Image.open(BytesIO(response.content)).convert("RGB")
-original_image = original_image
-
-url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/if/glasses_mask.png"
-response = requests.get(url)
-mask_image = Image.open(BytesIO(response.content))
-mask_image = mask_image
-
-pipe = IFInpaintingPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
-pipe.enable_model_cpu_offload()
-
-prompt = "blue sunglasses"
-prompt_embeds, negative_embeds = pipe.encode_prompt(prompt)
-
-image = pipe(
-    image=original_image,
-    mask_image=mask_image,
-    prompt_embeds=prompt_embeds,
-    negative_prompt_embeds=negative_embeds,
-    output_type="pt",
-).images
-
-# save intermediate image
-pil_image = image
-pil_image = (pil_image / 2 + 0.5).clamp(0, 1)
-pil_image = pil_image.cpu().permute(0, 2, 3, 1).float().numpy()
-pil_image = pipe.numpy_to_pil(pil_image)[0]
-pil_image.save("./if_stage_I.png")
-
-super_res_1_pipe = IFInpaintingSuperResolutionPipeline.from_pretrained(
+# stage 2
+stage_2 = IFImg2ImgSuperResolutionPipeline.from_pretrained(
     "DeepFloyd/IF-II-L-v1.0", text_encoder=None, variant="fp16", torch_dtype=torch.float16
 )
-super_res_1_pipe.enable_model_cpu_offload()
+stage_2.enable_model_cpu_offload()
 
-image = super_res_1_pipe(
-    image=image,
-    mask_image=mask_image,
-    original_image=original_image,
-    prompt_embeds=prompt_embeds,
-    negative_prompt_embeds=negative_embeds,
-    output_type="pt",
-).images
+# stage 3
+stage_3 = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-x4-upscaler", torch_dtype=torch.float16)
+stage_3.enable_model_cpu_offload()
 
-# save intermediate image
-pil_image = image
-pil_image = (pil_image / 2 + 0.5).clamp(0, 1)
-pil_image = pil_image.cpu().permute(0, 2, 3, 1).float().numpy()
-pil_image = pipe.numpy_to_pil(pil_image)[0]
-pil_image.save("./if_stage_II.png")
+prompt = "blue sunglasses"
 
-super_res_2_pipe = DiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-x4-upscaler", torch_dtype=torch.float16
-)
-super_res_2_pipe.enable_model_cpu_offload()
+# text embeds
+prompt_embeds, negative_embeds = stage_1.encode_prompt(prompt)
 
-pil_image = super_res_2_pipe(
-    prompt=prompt,
-    image=image,
-).images[0]
+# stage 1
+image = stage_1(image=original_image, mask_image=mask_image, prompt_embeds=prompt_embeds, negative_prompt_embeds=negative_embeds, output_type="pt").images
+pt_to_pil(image)[0].save("./if_stage_I.png")
 
-# save end image
-pil_image.save("./if_stage_III.png")
+# stage 2
+image = stage_2(image=image, mask_image=mask_image, prompt_embeds=prompt_embeds, negative_prompt_embeds=negative_embeds, output_type="pt").images
+pt_to_pil(image=image, original_image=original_image)[0].save("./if_stage_II.png")
+
+# stage 3
+image = stage_3(prompt=prompt, image=image).images[0]
+image.save("./if_stage_III.png")
 ```
 
 ## Converting between different pipelines
@@ -368,6 +212,33 @@ from diffusers import IFInpaintingPipeline, IFInpaintingSuperResolutionPipeline
 pipe_1 = IFInpaintingPipeline(**pipe_1.components)
 pipe_2 = IFInpaintingSuperResolutionPipeline(**pipe_2.components)
 ```
+
+## Optimizing for speed
+
+TODO:
+- use custom timesteps
+- reduce timesteps
+- leave everything on GPU
+- for image-to-image use weak strength
+- For future, `torch.compile`
+
+## Optimizing for memory
+
+TODO:
+- optimizing for GPU memory (cpu offload)
+  - cpu offloading
+  - torch.int8 optimization
+
+- optimizing for CPU memory
+  - full disk offloading like in blog post
+  - torch.int8 optimization
+  - ...
+
+# For CPU RAM constrained machines like google colab free tier where we can't load all 
+# model components to the CPU at once, we can manually only load the pipeline with
+# the text encoder or unet when the respective model components are needed. The pipelines will
+# use 12 GB RAM which is needed for the text encoder.
+
 
 ## Available Pipelines:
 
