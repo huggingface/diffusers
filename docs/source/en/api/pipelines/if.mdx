@@ -25,7 +25,20 @@ Stage 3 is [Stability's x4 Upscaling model](https://huggingface.co/stabilityai/s
 The result is a highly efficient model that outperforms current state-of-the-art models, achieving a zero-shot FID score of 6.66 on the COCO dataset. 
 Our work underscores the potential of larger UNet architectures in the first stage of cascaded diffusion models and depicts a promising future for text-to-image synthesis.
 
-## Text-to-Image Generation
+## Usage
+
+The following sections give more in-detail examples of how to use IF. Specifically:
+
+- [Text-to-Image Generation](#text-to-image-generation)
+- [Image-to-Image Generation](#text-to-image-generation)
+- [Inpainting](#text-to-image-generation)
+- [Reusing model weights](#text-to-image-generation)
+- [Speed optimization](#text-to-image-generation)
+- [Memory optimization](#text-to-image-generation)
+
+###
+
+### Text-to-Image Generation
 
 By default diffusers makes use of [model cpu offloading](https://huggingface.co/docs/diffusers/optimization/fp16#model-offloading-for-fast-inference-and-memory-savings)
 to run the whole IF pipeline with as little as 14 GB of VRAM.
@@ -67,7 +80,7 @@ image = stage_3(prompt=prompt, image=image).images[0]
 image.save("./if_stage_III.png")
 ```
 
-## Text Guided Image-to-Image Generation
+### Text Guided Image-to-Image Generation
 
 The same IF model weights can be used for text-guided image-to-image translation or image variation.
 In this case just make sure to load the weights using the [`IFInpaintingPipeline`] and [`IFInpaintingSuperResolutionPipeline`] pipelines.
@@ -92,11 +105,11 @@ original_image = Image.open(BytesIO(response.content)).convert("RGB")
 original_image = original_image.resize((768, 512))
 
 # stage 1
-stage_1 = IFInpaintingPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
+stage_1 = IFImg2ImgPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
 stage_1.enable_model_cpu_offload()
 
 # stage 2
-stage_2 = IFInpaintingSuperResolutionPipeline.from_pretrained(
+stage_2 = IFImg2ImgSuperResolutionPipeline.from_pretrained(
     "DeepFloyd/IF-II-L-v1.0", text_encoder=None, variant="fp16", torch_dtype=torch.float16
 )
 stage_2.enable_model_cpu_offload()
@@ -123,7 +136,7 @@ image = stage_3(prompt=prompt, image=image).images[0]
 image.save("./if_stage_III.png")
 ```
 
-## Text Guided Inpainting Generation
+### Text Guided Inpainting Generation
 
 The same IF model weights can be used for text-guided image-to-image translation or image variation.
 In this case just make sure to load the weights using the [`IFInpaintingPipeline`] and [`IFInpaintingSuperResolutionPipeline`] pipelines.
@@ -159,11 +172,11 @@ original_image = Image.open(BytesIO(response.content)).convert("RGB")
 original_image = original_image.resize((768, 512))
 
 # stage 1
-stage_1 = IFImg2ImgPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
+stage_1 = IFInpaintingPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
 stage_1.enable_model_cpu_offload()
 
 # stage 2
-stage_2 = IFImg2ImgSuperResolutionPipeline.from_pretrained(
+stage_2 = IFInpaintingSuperResolutionPipeline.from_pretrained(
     "DeepFloyd/IF-II-L-v1.0", text_encoder=None, variant="fp16", torch_dtype=torch.float16
 )
 stage_2.enable_model_cpu_offload()
@@ -190,7 +203,7 @@ image = stage_3(prompt=prompt, image=image).images[0]
 image.save("./if_stage_III.png")
 ```
 
-## Converting between different pipelines
+### Converting between different pipelines
 
 In addition to being loaded with `from_pretrained`, Pipelines can also be loaded directly from each other.
 
@@ -213,7 +226,7 @@ pipe_1 = IFInpaintingPipeline(**pipe_1.components)
 pipe_2 = IFInpaintingSuperResolutionPipeline(**pipe_2.components)
 ```
 
-## Optimizing for speed
+### Optimizing for speed
 
 TODO:
 - use custom timesteps
@@ -222,7 +235,7 @@ TODO:
 - for image-to-image use weak strength
 - For future, `torch.compile`
 
-## Optimizing for memory
+### Optimizing for memory
 
 TODO:
 - optimizing for GPU memory (cpu offload)
