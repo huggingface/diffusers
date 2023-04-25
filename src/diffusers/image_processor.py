@@ -203,7 +203,6 @@ class VaeImageProcessor(ConfigMixin):
 
         if output_type == "np":
             return image
-        elif output_type == "pil":
+        
+        if output_type == "pil":
             return self.numpy_to_pil(image)
-        else:
-            raise ValueError(f"Unsupported output_type {output_type}.")
