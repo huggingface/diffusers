@@ -133,12 +133,16 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.pipelines.deepfloyd_if import IFSafetyChecker, IFWatermarker
         >>> from transformers import CLIPImageProcessor
 
-        >>> feature_extractor = CLIPImageProcessor.from_pretrained("DeepFloyd/IF-I-IF-v1.0", subfolder="feature_extractor")
+        >>> feature_extractor = CLIPImageProcessor.from_pretrained(
+        ...     "DeepFloyd/IF-I-IF-v1.0", subfolder="feature_extractor"
+        ... )
         >>> safety_checker = IFSafetyChecker.from_pretrained("DeepFloyd/IF-I-IF-v1.0", subfolder="safety_checker")
         >>> watermarker = IFWatermarker.from_pretrained("DeepFloyd/IF-I-IF-v1.0", subfolder="watermarker")
 
         >>> safety_checker_input = feature_extractor(image, return_tensors="pt").to(safety_checker.device)
-        >>> image, nsfw_detected, watermark_detected = safety_checker(images=image, clip_input=safety_checker_input.pixel_values)
+        >>> image, nsfw_detected, watermark_detected = safety_checker(
+        ...     images=image, clip_input=safety_checker_input.pixel_values
+        ... )
         >>> watermarker.apply_watermark(image, stage_3.unet.config.sample_size)
 
         >>> # save end image
