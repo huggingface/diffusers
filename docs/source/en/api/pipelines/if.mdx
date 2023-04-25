@@ -119,8 +119,25 @@ image = stage_2(
 pt_to_pil(image)[0].save("./if_stage_II.png")
 
 # stage 3
-image = stage_3(prompt=prompt, image=image, noise_level=100).images[0]
-image.save("./if_stage_III.png")
+image = stage_3(prompt=prompt, image=image, noise_level=100).images
+
+
+# for stage 3, manually run safety checker and watermarker
+
+from diffusers.pipelines.deepfloyd_if import IFSafetyChecker, IFWatermarker
+from transformers import CLIPImageProcessor
+
+feature_extractor = CLIPImageProcessor.from_pretrained("DeepFloyd/IF-I-IF-v1.0", subfolder="feature_extractor")
+safety_checker = IFSafetyChecker.from_pretrained("DeepFloyd/IF-I-IF-v1.0", subfolder="safety_checker")
+watermarker = IFWatermarker.from_pretrained("DeepFloyd/IF-I-IF-v1.0", subfolder="watermarker")
+
+safety_checker_input = feature_extractor(image, return_tensors="pt").to(safety_checker.device)
+image, nsfw_detected, watermark_detected = safety_checker(images=image, clip_input=safety_checker_input.pixel_values)
+
+watermarker.apply_watermark(image, stage_3.unet.config.sample_size)
+
+
+image[0].save("./if_stage_III.png")
 ```
 
 ### Text Guided Image-to-Image Generation
@@ -183,8 +200,25 @@ image = stage_2(
 pt_to_pil(image)[0].save("./if_stage_II.png")
 
 # stage 3
-image = stage_3(prompt=prompt, image=image, noise_level=100).images[0]
-image.save("./if_stage_III.png")
+image = stage_3(prompt=prompt, image=image, noise_level=100).images
+
+
+# for stage 3, manually run safety checker and watermarker
+
+from diffusers.pipelines.deepfloyd_if import IFSafetyChecker, IFWatermarker
+from transformers import CLIPImageProcessor
+
+feature_extractor = CLIPImageProcessor.from_pretrained("DeepFloyd/IF-I-IF-v1.0", subfolder="feature_extractor")
+safety_checker = IFSafetyChecker.from_pretrained("DeepFloyd/IF-I-IF-v1.0", subfolder="safety_checker")
+watermarker = IFWatermarker.from_pretrained("DeepFloyd/IF-I-IF-v1.0", subfolder="watermarker")
+
+safety_checker_input = feature_extractor(image, return_tensors="pt").to(safety_checker.device)
+image, nsfw_detected, watermark_detected = safety_checker(images=image, clip_input=safety_checker_input.pixel_values)
+
+watermarker.apply_watermark(image, stage_3.unet.config.sample_size)
+
+
+image[0].save("./if_stage_III.png")
 ```
 
 ### Text Guided Inpainting Generation
@@ -257,8 +291,25 @@ image = stage_2(
 pt_to_pil(image)[0].save("./if_stage_II.png")
 
 # stage 3
-image = stage_3(prompt=prompt, image=image, noise_level=100).images[0]
-image.save("./if_stage_III.png")
+image = stage_3(prompt=prompt, image=image, noise_level=100).images
+
+
+# for stage 3, manually run safety checker and watermarker
+
+from diffusers.pipelines.deepfloyd_if import IFSafetyChecker, IFWatermarker
+from transformers import CLIPImageProcessor
+
+feature_extractor = CLIPImageProcessor.from_pretrained("DeepFloyd/IF-I-IF-v1.0", subfolder="feature_extractor")
+safety_checker = IFSafetyChecker.from_pretrained("DeepFloyd/IF-I-IF-v1.0", subfolder="safety_checker")
+watermarker = IFWatermarker.from_pretrained("DeepFloyd/IF-I-IF-v1.0", subfolder="watermarker")
+
+safety_checker_input = feature_extractor(image, return_tensors="pt").to(safety_checker.device)
+image, nsfw_detected, watermark_detected = safety_checker(images=image, clip_input=safety_checker_input.pixel_values)
+
+watermarker.apply_watermark(image, stage_3.unet.config.sample_size)
+
+
+image[0].save("./if_stage_III.png")
 ```
 
 ### Converting between different pipelines
