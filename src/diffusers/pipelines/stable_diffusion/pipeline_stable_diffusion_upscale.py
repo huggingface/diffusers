@@ -13,18 +13,19 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, List, Optional, Union
+from typing import Any, Callable, List, Optional, Union
 
 import numpy as np
 import PIL
 import torch
-from transformers import CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...loaders import TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDPMScheduler, KarrasDiffusionSchedulers
 from ...utils import deprecate, is_accelerate_available, is_accelerate_version, logging, randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import DiffusionPipeline
+from . import StableDiffusionPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -76,6 +77,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
+    _optional_components = ["watermarker", "safety_checker", "feature_extractor"]
 
     def __init__(
         self,
@@ -85,12 +87,16 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
         unet: UNet2DConditionModel,
         low_res_scheduler: DDPMScheduler,
         scheduler: KarrasDiffusionSchedulers,
+        safety_checker: Optional[Any] = None,
+        feature_extractor: Optional[CLIPImageProcessor] = None,
+        watermarker: Optional[Any] = None,
         max_noise_level: int = 350,
     ):
         super().__init__()
 
-        if hasattr(vae, "config"):
-            # check if vae has a config attribute `scaling_factor` and if it is set to 0.08333, else set it to 0.08333 and deprecate
+        if hasattr(
+            vae, "config"
+        ):  # check if vae has a config attribute `scaling_factor` and if it is set to 0.08333, else set it to 0.08333 and deprecate
             is_vae_scaling_factor_set_to_0_08333 = (
                 hasattr(vae.config, "scaling_factor") and vae.config.scaling_factor == 0.08333
             )
@@ -113,6 +119,9 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
             unet=unet,
             low_res_scheduler=low_res_scheduler,
             scheduler=scheduler,
+            safety_checker=safety_checker,
+            watermarker=watermarker,
+            feature_extractor=feature_extractor,
         )
         self.register_to_config(max_noise_level=max_noise_level)
 
@@ -177,6 +186,23 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
             ):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
+
+    # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline.run_safety_checker
+    def run_safety_checker(self, image, device, dtype):
+        if self.safety_checker is not None:
+            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
+            image, nsfw_detected, watermark_detected = self.safety_checker(
+                images=image,
+                clip_input=safety_checker_input.pixel_values.to(dtype=dtype),
+            )
+        else:
+            nsfw_detected = None
+            watermark_detected = None
+
+            if hasattr(self, "unet_offload_hook") and self.unet_offload_hook is not None:
+                self.unet_offload_hook.offload()
+
+        return image, nsfw_detected, watermark_detected
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(
@@ -678,10 +704,19 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
             self.final_offload_hook.offload()
 
         # 11. Convert to PIL
+        # has_nsfw_concept = False
         if output_type == "pil":
+            image, has_nsfw_concept, _ = self.run_safety_checker(image, device, prompt_embeds.dtype)
+
             image = self.numpy_to_pil(image)
 
-        if not return_dict:
-            return (image,)
+            # 11. Apply watermark
+            if self.watermarker is not None:
+                image = self.watermarker.apply_watermark(image)
+        else:
+            has_nsfw_concept = None
 
-        return ImagePipelineOutput(images=image)
+        if not return_dict:
+            return (image, has_nsfw_concept)
+
+        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
