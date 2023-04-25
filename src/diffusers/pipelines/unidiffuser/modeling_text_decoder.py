@@ -16,6 +16,7 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
     def __init__(
         self,
         prefix_length: int,
+        prefix_inner_dim: int,
         prefix_hidden_dim: Optional[int] = None,
         vocab_size: int = 50257,  # Start of GPT2 config args
         n_positions: int = 1024,
@@ -48,9 +49,20 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         super().__init__()
 
         self.prefix_length = prefix_length
+
+        if prefix_inner_dim != n_embd and prefix_hidden_dim is None:
+            raise ValueError(
+                f"`prefix_hidden_dim` cannot be `None` when `prefix_inner_dim`: {prefix_hidden_dim} and"
+                f" `n_embd`: {n_embd} are not equal."
+            )
+
+        self.prefix_inner_dim = prefix_inner_dim
         self.prefix_hidden_dim = prefix_hidden_dim
+
         self.encode_prefix = (
-            nn.Linear(n_embd, self.prefix_hidden_dim) if self.prefix_hidden_dim is not None else nn.Identity()
+            nn.Linear(self.prefix_inner_dim, self.prefix_hidden_dim)
+            if self.prefix_hidden_dim is not None
+            else nn.Identity()
         )
         self.decode_prefix = (
             nn.Linear(self.prefix_hidden_dim, n_embd) if self.prefix_hidden_dim is not None else nn.Identity()

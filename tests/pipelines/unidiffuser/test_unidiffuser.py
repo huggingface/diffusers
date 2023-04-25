@@ -67,12 +67,15 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         torch.manual_seed(0)
         vae = AutoencoderKL(
-            block_out_channels=[32, 64],
             in_channels=3,
             out_channels=3,
             down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
             up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
+            block_out_channels=[32, 64],
+            layers_per_block=1,
+            act_fn="silu",
             latent_channels=4,
+            sample_size=32,
         )
 
         torch.manual_seed(0)
@@ -114,6 +117,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         text_tokenizer = GPT2Tokenizer.from_pretrained("hf-internal-testing/tiny-random-GPT2Model")
         text_decoder = UniDiffuserTextDecoder(
             prefix_length=77,
+            prefix_inner_dim=32,
             prefix_hidden_dim=32,
             vocab_size=text_tokenizer.vocab_size,
             n_positions=1024,

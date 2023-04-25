@@ -10,6 +10,7 @@ from diffusers import (
     UniDiffuserTextDecoder,
 )
 
+
 # from ...utils import logging
 
 
@@ -87,8 +88,8 @@ def assign_to_checkpoint(
 ):
     """
     This does the final conversion step: take locally converted weights and apply a global renaming to them. It splits
-    attention layers, and takes into account additional replacements that may arise.
-    Assigns the weights to the new checkpoint.
+    attention layers, and takes into account additional replacements that may arise. Assigns the weights to the new
+    checkpoint.
     """
     assert isinstance(paths, list), "Paths should be a list of dicts containing 'old' and 'new' keys."
 
@@ -186,6 +187,7 @@ def create_text_decoder_config(args):
         )
     return text_decoder_config
 
+
 # Hardcoded configs for test versions of the UniDiffuser models, corresponding to those in the fast default tests.
 def create_vae_diffusers_config_test():
     vae_config = {
@@ -233,6 +235,7 @@ def create_unidiffuser_unet_config_test():
 def create_text_decoder_config_test():
     text_decoder_config = {
         "prefix_length": 77,
+        "prefix_inner_dim": 32,
         "prefix_hidden_dim": 32,
         "vocab_size": 1025,  # 1024 + 1 for new EOS token
         "n_positions": 1024,
@@ -270,7 +273,7 @@ def create_vae_diffusers_config_big():
 
 def create_unidiffuser_unet_config_big():
     unet_config = {
-        "text_dim": 768,
+        "text_dim": 64,
         "clip_img_dim": 512,
         "num_text_tokens": 77,
         "num_attention_heads": 24,
@@ -295,17 +298,19 @@ def create_unidiffuser_unet_config_big():
 
     return unet_config
 
+
 # From https://huggingface.co/gpt2/blob/main/config.json, the GPT2 checkpoint used by UniDiffuser
 def create_text_decoder_config_big():
     text_decoder_config = {
         "prefix_length": 77,
+        "prefix_inner_dim": 768,
         "prefix_hidden_dim": 64,
-        "vocab_size": 50528,  # 50527 + 1 for new EOS token
+        "vocab_size": 50258,  # 50257 + 1 for new EOS token
         "n_positions": 1024,
         "n_embd": 768,
         "n_layer": 12,
         "n_head": 12,
-        "n_inner": 1024,
+        "n_inner": 3072,
         "activation_function": "gelu",
         "resid_pdrop": 0.1,
         "embd_pdrop": 0.1,
@@ -368,7 +373,7 @@ def convert_vae_to_diffusers(ckpt, diffusers_model, num_head_channels=1):
             new_checkpoint[f"encoder.down_blocks.{i}.downsamplers.0.conv.bias"] = vae_state_dict.pop(
                 f"encoder.down.{i}.downsample.conv.bias"
             )
-        
+
         paths = renew_vae_resnet_paths(resnets)
         meta_path = {"old": f"down.{i}.block", "new": f"down_blocks.{i}.resnets"}
         assign_to_checkpoint(
@@ -378,7 +383,7 @@ def convert_vae_to_diffusers(ckpt, diffusers_model, num_head_channels=1):
             additional_replacements=[meta_path],
             num_head_channels=num_head_channels,  # not used in vae
         )
-    
+
     mid_resnets = [key for key in vae_state_dict if "encoder.mid.block" in key]
     num_mid_res_blocks = 2
     for i in range(1, num_mid_res_blocks + 1):
@@ -393,7 +398,7 @@ def convert_vae_to_diffusers(ckpt, diffusers_model, num_head_channels=1):
             additional_replacements=[meta_path],
             num_head_channels=num_head_channels,  # not used in vae
         )
-    
+
     mid_attentions = [key for key in vae_state_dict if "encoder.mid.attn" in key]
     paths = renew_vae_attention_paths(mid_attentions)
     meta_path = {"old": "mid.attn_1", "new": "mid_block.attentions.0"}
@@ -429,7 +434,7 @@ def convert_vae_to_diffusers(ckpt, diffusers_model, num_head_channels=1):
             additional_replacements=[meta_path],
             num_head_channels=num_head_channels,  # not used in vae
         )
-    
+
     mid_resnets = [key for key in vae_state_dict if "decoder.mid.block" in key]
     num_mid_res_blocks = 2
     for i in range(1, num_mid_res_blocks + 1):
@@ -444,7 +449,7 @@ def convert_vae_to_diffusers(ckpt, diffusers_model, num_head_channels=1):
             additional_replacements=[meta_path],
             num_head_channels=num_head_channels,  # not used in vae
         )
-    
+
     mid_attentions = [key for key in vae_state_dict if "decoder.mid.attn" in key]
     paths = renew_vae_attention_paths(mid_attentions)
     meta_path = {"old": "mid.attn_1", "new": "mid_block.attentions.0"}
@@ -456,13 +461,13 @@ def convert_vae_to_diffusers(ckpt, diffusers_model, num_head_channels=1):
         num_head_channels=num_head_channels,  # not used in vae
     )
     conv_attn_to_linear(new_checkpoint)
-    
+
     missing_keys, unexpected_keys = diffusers_model.load_state_dict(new_checkpoint)
     for missing_key in missing_keys:
         print(f"Missing key: {missing_key}")
     for unexpected_key in unexpected_keys:
         print(f"Unexpected key: {unexpected_key}")
-    
+
     return diffusers_model
 
 
@@ -486,7 +491,7 @@ def convert_uvit_block_to_diffusers_block(
 
         # Create the prefix string for out_blocks.
         prefix += ".block"
-    
+
     # Split up attention qkv.weight into to_q.weight, to_k.weight, to_v.weight
     qkv = uvit_state_dict[block_prefix + ".attn.qkv.weight"]
     new_attn_keys = [".attn1.to_q.weight", ".attn1.to_k.weight", ".attn1.to_v.weight"]
@@ -494,7 +499,7 @@ def convert_uvit_block_to_diffusers_block(
     shape = qkv.shape[0] // len(new_attn_keys)
     for i, attn_key in enumerate(new_attn_keys):
         new_state_dict[attn_key] = qkv[i * shape : (i + 1) * shape]
-    
+
     new_state_dict[prefix + ".attn1.to_out.0.weight"] = uvit_state_dict[block_prefix + ".attn.proj.weight"]
     new_state_dict[prefix + ".attn1.to_out.0.bias"] = uvit_state_dict[block_prefix + ".attn.proj.bias"]
     new_state_dict[prefix + ".norm1.weight"] = uvit_state_dict[block_prefix + ".norm2.weight"]
@@ -563,7 +568,7 @@ def convert_uvit_to_diffusers(ckpt, diffusers_model):
         print(f"Missing key: {missing_key}")
     for unexpected_key in unexpected_keys:
         print(f"Unexpected key: {unexpected_key}")
-    
+
     return diffusers_model
 
 
@@ -572,7 +577,15 @@ def convert_caption_decoder_to_diffusers(ckpt, diffusers_model):
     Converts a UniDiffuser caption_decoder.pth checkpoint to a diffusers UniDiffuserTextDecoder.
     """
     # caption_decoder.pth ckpt is a torch state dict
-    decoder_state_dict = torch.load(ckpt, map_location="cpu")
+    checkpoint_state_dict = torch.load(ckpt, map_location="cpu")
+    decoder_state_dict = {}
+    # Remove the "module." prefix, if necessary
+    caption_decoder_key = "module."
+    for key in checkpoint_state_dict:
+        if key.startswith(caption_decoder_key):
+            decoder_state_dict[key.replace(caption_decoder_key, "")] = checkpoint_state_dict.get(key)
+        else:
+            decoder_state_dict[key] = checkpoint_state_dict.get(key)
 
     new_state_dict = {}
 
@@ -585,28 +598,28 @@ def convert_caption_decoder_to_diffusers(ckpt, diffusers_model):
     # Internal GPT2LMHeadModel transformer model
     for key, val in decoder_state_dict.items():
         if key.startswith("gpt"):
-            suffix = key[len("gpt"):]
+            suffix = key[len("gpt") :]
             new_state_dict["transformer" + suffix] = val
-    
+
     missing_keys, unexpected_keys = diffusers_model.load_state_dict(new_state_dict)
     for missing_key in missing_keys:
         print(f"Missing key: {missing_key}")
     for unexpected_key in unexpected_keys:
         print(f"Unexpected key: {unexpected_key}")
-    
+
     return diffusers_model
 
 
 def main(args):
     # Create corresponding models, hardcoded for now.
     vae_config = create_vae_diffusers_config(args)
-    vae = AutoencoderKL(**vae_config)
+    AutoencoderKL(**vae_config)
 
     unet_config = create_unidiffuser_unet_config(args)
     unet = UniDiffuserModel(**unet_config)
 
     text_decoder_config = create_text_decoder_config(args)
-    text_decoder = UniDiffuserTextDecoder(**text_decoder_config)
+    UniDiffuserTextDecoder(**text_decoder_config)
 
     print("Converting VAE checkpoint...")
     vae = convert_vae_to_diffusers(args.vae_ckpt, vae)
@@ -624,7 +637,7 @@ def main(args):
     print("DONE")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--text_decoder_ckpt", type=str, default=None)
     parser.add_argument("--uvit_ckpt", type=str, default=None)

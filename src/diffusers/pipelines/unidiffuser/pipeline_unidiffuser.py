@@ -126,6 +126,12 @@ class UniDiffuserPipeline(DiffusionPipeline):
     ):
         super().__init__()
 
+        if text_encoder.config.hidden_size != text_decoder.prefix_inner_dim:
+            raise ValueError(
+                f"The text encoder hidden size and text decoder prefix inner dim must be the same, but"
+                f" `text_encoder.config.hidden_size`: {text_encoder.config.hidden_size} and `text_decoder.prefix_inner_dim`: {text_decoder.prefix_inner_dim}"
+            )
+
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -144,6 +150,10 @@ class UniDiffuserPipeline(DiffusionPipeline):
         self.text_encoder_seq_len = clip_tokenizer.model_max_length
         self.text_encoder_hidden_size = text_encoder.config.hidden_size
         self.image_encoder_hidden_size = image_encoder.config.hidden_size
+
+        self.text_intermediate_dim = 0
+        if self.text_decoder.prefix_hidden_dim is not None:
+            self.text_intermediate_dim = self.text_decoder.prefix_hidden_dim
 
         self.mode = None
 
@@ -924,6 +934,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         mode = self._infer_mode(prompt, prompt_embeds, image, prompt_latents, vae_latents, clip_latents)
         batch_size = self._infer_batch_size(mode, prompt, prompt_embeds, image, num_samples)
         device = self._execution_device
+        reduce_text_emb_dim = self.text_intermediate_dim < self.text_encoder_hidden_size or self.mode != "t2i"
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -960,6 +971,8 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 prompt_latents,
             )
 
+        if reduce_text_emb_dim:
+            prompt_embeds = self.text_decoder.encode_prefix(prompt_embeds)
         # print(f"Prompt embeds shape: {prompt_embeds.shape}")
 
         # 4. Encode image, if available; otherwise prepare image latents
