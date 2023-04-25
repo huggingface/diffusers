@@ -27,6 +27,30 @@ Our work underscores the potential of larger UNet architectures in the first sta
 
 ## Usage
 
+Before you can use IF, you need to accept its usage conditions. To do so:
+1. Make sure to have a [Hugging Face account](https://huggingface.co/join) and be loggin in
+2. Accept the license on the model card of [DeepFloyd/IF-I-IF-v1.0](https://huggingface.co/DeepFloyd/IF-I-IF-v1.0) and [DeepFloyd/IF-II-L-v1.0](https://huggingface.co/DeepFloyd/IF-II-L-v1.0)
+3. Make sure to login locally. Install `huggingface_hub`
+```sh
+pip install huggingface_hub --upgrade
+```
+
+run the login function in a Python shell
+
+```py
+from huggingface_hub import login
+
+login()
+```
+
+and enter your [Hugging Face Hub access token](https://huggingface.co/docs/hub/security-tokens#what-are-user-access-tokens).
+
+Next we install `diffusers` and dependencies:
+
+```sh
+pip install diffusers accelerate transformers safetensors
+```
+
 The following sections give more in-detail examples of how to use IF. Specifically:
 
 - [Text-to-Image Generation](#text-to-image-generation)
