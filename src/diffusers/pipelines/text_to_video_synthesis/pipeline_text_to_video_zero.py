@@ -401,7 +401,8 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
                 Timestep t0. Should be in the range [t0 + 1, num_inference_steps - 1]. See the
                 [paper](https://arxiv.org/abs/2303.13439), Sect. 3.3.1.
             frame_ids (`List[int]`, *optional*):
-                Indexes of the frames that are being generated. This is used when generating longer videos chunk-by-chunk.
+                Indexes of the frames that are being generated. This is used when generating longer videos
+                chunk-by-chunk.
 
         Returns:
             [`~pipelines.text_to_video_synthesis.TextToVideoPipelineOutput`]:
