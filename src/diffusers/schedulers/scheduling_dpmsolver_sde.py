@@ -131,6 +131,8 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
              This parameter controls whether to use Karras sigmas (Karras et al. (2022) scheme) for step sizes in the
              noise schedule during the sampling process. If True, the sigmas will be determined according to a sequence
              of noise levels {σi} as defined in Equation (5) of the paper https://arxiv.org/pdf/2206.00364.pdf.
+        noise_sampler_seed (`int`, *optional*, defaults to `None`):
+            The random seed to use for the noise sampler. If `None`, a random seed will be generated.
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -146,6 +148,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
         prediction_type: str = "epsilon",
         use_karras_sigmas: Optional[bool] = False,
+        noise_sampler_seed: Optional[int] = None,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -169,9 +172,15 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         self.set_timesteps(num_train_timesteps, None, num_train_timesteps)
         self.use_karras_sigmas = use_karras_sigmas
         self.noise_sampler = None
+        self.noise_sampler_seed = noise_sampler_seed
 
-    def index_for_timestep(self, timestep):
-        indices = (self.timesteps == timestep).nonzero()
+    # Copied from diffusers.schedulers.scheduling_heun_discrete.HeunDiscreteScheduler.index_for_timestep
+    def index_for_timestep(self, timestep, schedule_timesteps=None):
+        if schedule_timesteps is None:
+            schedule_timesteps = self.timesteps
+
+        indices = (schedule_timesteps == timestep).nonzero()
+
         if self.state_in_first_order:
             pos = -1
         else:
@@ -335,7 +344,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         # Create a noise sampler if it hasn't been created yet
         if self.noise_sampler is None:
             min_sigma, max_sigma = self.sigmas[self.sigmas > 0].min(), self.sigmas.max()
-            self.noise_sampler = BrownianTreeNoiseSampler(sample, min_sigma, max_sigma)
+            self.noise_sampler = BrownianTreeNoiseSampler(sample, min_sigma, max_sigma, self.noise_sampler_seed)
 
         # Define functions to compute sigma and t from each other
         def sigma_fn(_t: torch.FloatTensor) -> torch.FloatTensor:
@@ -408,6 +417,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
 
         return SchedulerOutput(prev_sample=prev_sample)
 
+    # Copied from diffusers.schedulers.scheduling_heun_discrete.HeunDiscreteScheduler.add_noise
     def add_noise(
         self,
         original_samples: torch.FloatTensor,
@@ -415,18 +425,18 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         timesteps: torch.FloatTensor,
     ) -> torch.FloatTensor:
         # Make sure sigmas and timesteps have the same device and dtype as original_samples
-        self.sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
+        sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
         if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):
             # mps does not support float64
-            self.timesteps = self.timesteps.to(original_samples.device, dtype=torch.float32)
+            schedule_timesteps = self.timesteps.to(original_samples.device, dtype=torch.float32)
             timesteps = timesteps.to(original_samples.device, dtype=torch.float32)
         else:
-            self.timesteps = self.timesteps.to(original_samples.device)
+            schedule_timesteps = self.timesteps.to(original_samples.device)
             timesteps = timesteps.to(original_samples.device)
 
-        step_indices = [self.index_for_timestep(t) for t in timesteps]
+        step_indices = [self.index_for_timestep(t, schedule_timesteps) for t in timesteps]
 
-        sigma = self.sigmas[step_indices].flatten()
+        sigma = sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):
             sigma = sigma.unsqueeze(-1)
 
