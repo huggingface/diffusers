@@ -107,7 +107,7 @@ try:
     if not (is_torch_available() and is_torchsde_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from ..utils.dummy_torch_and_torchsde_objects import *  # noqa F403
+    from .utils.dummy_torch_and_torchsde_objects import *  # noqa F403
 else:
     from .schedulers import DPMSolverSDEScheduler
 
