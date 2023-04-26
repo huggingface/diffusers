@@ -73,7 +73,9 @@ method, or pass the `scheduler` argument to the `from_pretrained` method of the 
 
 >>> # or
 >>> dpm_scheduler = DPMSolverMultistepScheduler.from_pretrained("cvssp/audioldm-s-full-v2", subfolder="scheduler")
->>> pipeline = AudioLDMPipeline.from_pretrained("cvssp/audioldm-s-full-v2", scheduler=dpm_scheduler, torch_dtype=torch.float16)
+>>> pipeline = AudioLDMPipeline.from_pretrained(
+...     "cvssp/audioldm-s-full-v2", scheduler=dpm_scheduler, torch_dtype=torch.float16
+... )
 ```
 
 ## AudioLDMPipeline
