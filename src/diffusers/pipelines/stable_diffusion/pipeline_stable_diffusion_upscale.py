@@ -697,15 +697,11 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
         # 10. Post-processing
         # make sure the VAE is in float32 mode, as it overflows in float16
         self.vae.to(dtype=torch.float32)
-        image = self.decode_latents(latents.float())
-
-        # Offload last model to CPU
-        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-            self.final_offload_hook.offload()
 
         # 11. Convert to PIL
         # has_nsfw_concept = False
         if output_type == "pil":
+            image = self.decode_latents(latents.float())
             image, has_nsfw_concept, _ = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
             image = self.numpy_to_pil(image)
@@ -713,8 +709,17 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
             # 11. Apply watermark
             if self.watermarker is not None:
                 image = self.watermarker.apply_watermark(image)
-        else:
+        elif output_type == "pt":
+            latents = 1 / self.vae.config.scaling_factor * latents.float()
+            image = self.vae.decode(latents).sample
             has_nsfw_concept = None
+        else:
+            image = self.decode_latents(latents.float())
+            has_nsfw_concept = None
+
+        # Offload last model to CPU
+        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
+            self.final_offload_hook.offload()
 
         if not return_dict:
             return (image, has_nsfw_concept)
