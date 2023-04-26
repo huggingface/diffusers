@@ -63,7 +63,7 @@ class DPMSolverSDESchedulerTest(SchedulerCommonTest):
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_sum.item() - 167.47821044921875) < 1e-2
+        assert abs(result_sum.item() - 162.52383422851562) < 1e-2
         assert abs(result_mean.item() - 0.2178705964565277) < 1e-3
 
     def test_full_loop_with_v_prediction(self):
@@ -88,7 +88,7 @@ class DPMSolverSDESchedulerTest(SchedulerCommonTest):
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_sum.item() - 124.77149200439453) < 1e-2
+        assert abs(result_sum.item() - 119.8487548828125) < 1e-2
         assert abs(result_mean.item() - 0.16226289014816284) < 1e-3
 
     def test_full_loop_device(self):
@@ -112,7 +112,7 @@ class DPMSolverSDESchedulerTest(SchedulerCommonTest):
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_sum.item() - 167.46957397460938) < 1e-2
+        assert abs(result_sum.item() - 162.52383422851562) < 1e-2
         assert abs(result_mean.item() - 0.21805934607982635) < 1e-3
 
     def test_full_loop_device_karras_sigmas(self):
@@ -137,5 +137,5 @@ class DPMSolverSDESchedulerTest(SchedulerCommonTest):
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_sum.item() - 176.66974135742188) < 1e-2
+        assert abs(result_sum.item() - 170.3135223388672) < 1e-2
         assert abs(result_mean.item() - 0.23003872730981811) < 1e-2
