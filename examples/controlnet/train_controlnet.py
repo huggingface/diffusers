@@ -55,7 +55,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.15.0.dev0")
+check_min_version("0.16.0")
 
 logger = get_logger(__name__)
 
@@ -525,6 +525,11 @@ def parse_args(input_args=None):
             " or the same number of `--validation_prompt`s and `--validation_image`s"
         )
 
+    if args.resolution % 8 != 0:
+        raise ValueError(
+            "`--resolution` must be divisible by 8 for consistently sized encoded images between the VAE and the controlnet encoder."
+        )
+
     return args
 
 
@@ -577,7 +582,7 @@ def make_train_dataset(args, tokenizer, accelerator):
 
     if args.conditioning_image_column is None:
         conditioning_image_column = column_names[2]
-        logger.info(f"conditioning image column defaulting to {caption_column}")
+        logger.info(f"conditioning image column defaulting to {conditioning_image_column}")
     else:
         conditioning_image_column = args.conditioning_image_column
         if conditioning_image_column not in column_names:
@@ -607,6 +612,7 @@ def make_train_dataset(args, tokenizer, accelerator):
     image_transforms = transforms.Compose(
         [
             transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
+            transforms.CenterCrop(args.resolution),
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5]),
         ]
@@ -615,6 +621,7 @@ def make_train_dataset(args, tokenizer, accelerator):
     conditioning_image_transforms = transforms.Compose(
         [
             transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
+            transforms.CenterCrop(args.resolution),
             transforms.ToTensor(),
         ]
     )
@@ -972,8 +979,10 @@ def main(args):
                     noisy_latents,
                     timesteps,
                     encoder_hidden_states=encoder_hidden_states,
-                    down_block_additional_residuals=down_block_res_samples,
-                    mid_block_additional_residual=mid_block_res_sample,
+                    down_block_additional_residuals=[
+                        sample.to(dtype=weight_dtype) for sample in down_block_res_samples
+                    ],
+                    mid_block_additional_residual=mid_block_res_sample.to(dtype=weight_dtype),
                 ).sample
 
                 # Get the target for loss depending on the prediction type

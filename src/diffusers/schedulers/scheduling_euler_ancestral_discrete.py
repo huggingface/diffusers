@@ -279,6 +279,7 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             prev_sample=prev_sample, pred_original_sample=pred_original_sample
         )
 
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.add_noise
     def add_noise(
         self,
         original_samples: torch.FloatTensor,
@@ -286,19 +287,18 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         timesteps: torch.FloatTensor,
     ) -> torch.FloatTensor:
         # Make sure sigmas and timesteps have the same device and dtype as original_samples
-        self.sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
+        sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
         if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):
             # mps does not support float64
-            self.timesteps = self.timesteps.to(original_samples.device, dtype=torch.float32)
+            schedule_timesteps = self.timesteps.to(original_samples.device, dtype=torch.float32)
             timesteps = timesteps.to(original_samples.device, dtype=torch.float32)
         else:
-            self.timesteps = self.timesteps.to(original_samples.device)
+            schedule_timesteps = self.timesteps.to(original_samples.device)
             timesteps = timesteps.to(original_samples.device)
 
-        schedule_timesteps = self.timesteps
         step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
 
-        sigma = self.sigmas[step_indices].flatten()
+        sigma = sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):
             sigma = sigma.unsqueeze(-1)
 

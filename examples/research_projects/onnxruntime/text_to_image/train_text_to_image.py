@@ -328,7 +328,7 @@ def main():
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
         logging_dir=logging_dir,
-        accelerator_project_config=accelerator_project_config,
+        project_config=accelerator_project_config,
     )
 
     # Make one log on every process with the configuration for debugging.
@@ -641,7 +641,7 @@ def main():
                 noise = torch.randn_like(latents)
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
-                timesteps = torch.randint(0, noise_scheduler.num_train_timesteps, (bsz,), device=latents.device)
+                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
                 timesteps = timesteps.long()
 
                 # Add noise to the latents according to the noise magnitude at each timestep

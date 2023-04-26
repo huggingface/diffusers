@@ -44,6 +44,14 @@ except OptionalDependencyNotAvailable:
 else:
     from .alt_diffusion import AltDiffusionImg2ImgPipeline, AltDiffusionPipeline
     from .audioldm import AudioLDMPipeline
+    from .deepfloyd_if import (
+        IFImg2ImgPipeline,
+        IFImg2ImgSuperResolutionPipeline,
+        IFInpaintingPipeline,
+        IFInpaintingSuperResolutionPipeline,
+        IFPipeline,
+        IFSuperResolutionPipeline,
+    )
     from .latent_diffusion import LDMTextToImagePipeline
     from .paint_by_example import PaintByExamplePipeline
     from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
@@ -68,7 +76,7 @@ else:
         StableUnCLIPPipeline,
     )
     from .stable_diffusion_safe import StableDiffusionPipelineSafe
-    from .text_to_video_synthesis import TextToVideoSDPipeline
+    from .text_to_video_synthesis import TextToVideoSDPipeline, TextToVideoZeroPipeline
     from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline
     from .versatile_diffusion import (
         VersatileDiffusionDualGuidedPipeline,

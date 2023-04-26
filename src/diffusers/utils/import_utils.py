@@ -271,6 +271,23 @@ except importlib_metadata.PackageNotFoundError:
     _compel_available = False
 
 
+_ftfy_available = importlib.util.find_spec("ftfy") is not None
+try:
+    _ftfy_version = importlib_metadata.version("ftfy")
+    logger.debug(f"Successfully imported ftfy version {_ftfy_version}")
+except importlib_metadata.PackageNotFoundError:
+    _ftfy_available = False
+
+
+_bs4_available = importlib.util.find_spec("bs4") is not None
+try:
+    # importlib metadata under different name
+    _bs4_version = importlib_metadata.version("beautifulsoup4")
+    logger.debug(f"Successfully imported ftfy version {_bs4_version}")
+except importlib_metadata.PackageNotFoundError:
+    _bs4_available = False
+
+
 def is_torch_available():
     return _torch_available
 
@@ -345,6 +362,14 @@ def is_tensorboard_available():
 
 def is_compel_available():
     return _compel_available
+
+
+def is_ftfy_available():
+    return _ftfy_available
+
+
+def is_bs4_available():
+    return _bs4_available
 
 
 # docstyle-ignore
@@ -437,8 +462,23 @@ COMPEL_IMPORT_ERROR = """
 {0} requires the compel library but it was not found in your environment. You can install it with pip: `pip install compel`
 """
 
+# docstyle-ignore
+BS4_IMPORT_ERROR = """
+{0} requires the Beautiful Soup library but it was not found in your environment. You can install it with pip:
+`pip install beautifulsoup4`. Please note that you may need to restart your runtime after installation.
+"""
+
+# docstyle-ignore
+FTFY_IMPORT_ERROR = """
+{0} requires the ftfy library but it was not found in your environment. Checkout the instructions on the
+installation section: https://github.com/rspeer/python-ftfy/tree/master#installing and follow the ones
+that match your environment. Please note that you may need to restart your runtime after installation.
+"""
+
+
 BACKENDS_MAPPING = OrderedDict(
     [
+        ("bs4", (is_bs4_available, BS4_IMPORT_ERROR)),
         ("flax", (is_flax_available, FLAX_IMPORT_ERROR)),
         ("inflect", (is_inflect_available, INFLECT_IMPORT_ERROR)),
         ("onnx", (is_onnx_available, ONNX_IMPORT_ERROR)),
@@ -454,6 +494,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("omegaconf", (is_omegaconf_available, OMEGACONF_IMPORT_ERROR)),
         ("tensorboard", (_tensorboard_available, TENSORBOARD_IMPORT_ERROR)),
         ("compel", (_compel_available, COMPEL_IMPORT_ERROR)),
+        ("ftfy", (is_ftfy_available, FTFY_IMPORT_ERROR)),
     ]
 )
 

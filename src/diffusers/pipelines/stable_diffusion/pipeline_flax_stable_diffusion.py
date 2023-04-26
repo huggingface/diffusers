@@ -245,9 +245,12 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         negative_prompt_embeds = self.text_encoder(uncond_input, params=params["text_encoder"])[0]
         context = jnp.concatenate([negative_prompt_embeds, prompt_embeds])
 
+        # Ensure model output will be `float32` before going into the scheduler
+        guidance_scale = jnp.array([guidance_scale], dtype=jnp.float32)
+
         latents_shape = (
             batch_size,
-            self.unet.in_channels,
+            self.unet.config.in_channels,
             height // self.vae_scale_factor,
             width // self.vae_scale_factor,
         )
