@@ -541,7 +541,7 @@ class DownloadTests(unittest.TestCase):
             assert pipe.text_encoder.get_input_embeddings().weight[-3].sum().item() == 96
             assert pipe.text_encoder.get_input_embeddings().weight[-2].sum().item() == 128
             assert pipe.text_encoder.get_input_embeddings().weight[-1].sum().item() == 160
-            assert pipe._maybe_convert_prompt("<***>", pipe.tokenizer) == "<***><***>_1<***>_2"
+            assert pipe._maybe_convert_prompt("<***>", pipe.tokenizer) == "<***> <***>_1 <***>_2"
 
             prompt = "hey <***>"
             out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
@@ -569,11 +569,24 @@ class DownloadTests(unittest.TestCase):
             assert pipe.text_encoder.get_input_embeddings().weight[-3].sum().item() == 96
             assert pipe.text_encoder.get_input_embeddings().weight[-2].sum().item() == 128
             assert pipe.text_encoder.get_input_embeddings().weight[-1].sum().item() == 160
-            assert pipe._maybe_convert_prompt("<****>", pipe.tokenizer) == "<****><****>_1<****>_2"
+            assert pipe._maybe_convert_prompt("<****>", pipe.tokenizer) == "<****> <****>_1 <****>_2"
 
             prompt = "hey <****>"
             out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
             assert out.shape == (1, 128, 128, 3)
+
+    def test_download_ignore_files(self):
+        # Check https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe-ignore-files/blob/72f58636e5508a218c6b3f60550dc96445547817/model_index.json#L4
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            # pipeline has Flax weights
+            tmpdirname = DiffusionPipeline.download("hf-internal-testing/tiny-stable-diffusion-pipe-ignore-files")
+            all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
+            files = [item for sublist in all_root_files for item in sublist]
+
+            # None of the downloaded files should be a pytorch file even if we have some here:
+            # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe/blob/main/unet/diffusion_flax_model.msgpack
+            assert not any(f in ["vae/diffusion_pytorch_model.bin", "text_encoder/config.json"] for f in files)
+            assert len(files) == 14
 
 
 class CustomPipelineTests(unittest.TestCase):
