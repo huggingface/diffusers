@@ -1075,8 +1075,8 @@ class DiffusionPipeline(ConfigMixin):
 
         return_cached_folder = kwargs.pop("return_cached_folder", False)
         if return_cached_folder:
-            message = f"Passing `return_cached_folder=True` is deprecated and will be removed in `diffusers=0.17.0`. Please do the following instead: \n 1. Load the cached_folder via `cached_folder={cls}.download({pretrained_model_name_or_path})`. \n 2. Load the pipeline by loading from the cached folder: `pipeline={cls}.from_pretrained(cached_folder)`."
-            deprecate("return_cached_folder", "0.17.0", message)
+            message = f"Passing `return_cached_folder=True` is deprecated and will be removed in `diffusers=0.18.0`. Please do the following instead: \n 1. Load the cached_folder via `cached_folder={cls}.download({pretrained_model_name_or_path})`. \n 2. Load the pipeline by loading from the cached folder: `pipeline={cls}.from_pretrained(cached_folder)`."
+            deprecate("return_cached_folder", "0.18.0", message)
             return model, cached_folder
 
         return model
@@ -1238,7 +1238,7 @@ class DiffusionPipeline(ConfigMixin):
             # if the whole pipeline is cached we don't have to ping the Hub
             if revision in DEPRECATED_REVISION_ARGS and version.parse(
                 version.parse(__version__).base_version
-            ) >= version.parse("0.17.0"):
+            ) >= version.parse("0.18.0"):
                 warn_deprecated_model_variant(
                     pretrained_model_name, use_auth_token, variant, revision, model_filenames
                 )
