@@ -202,7 +202,7 @@ can run with custom [DreamBooth](../training/dreambooth) models, as shown below 
 
     reader = imageio.get_reader(video_path, "ffmpeg")
     frame_count = 8
-    video = [Image.fromarray(reader.get_data(i)) for i in range(frame_count)]
+    canny_edges = [Image.fromarray(reader.get_data(i)) for i in range(frame_count)]
     ```
 
 3. Run `StableDiffusionControlNetPipeline` with custom trained DreamBooth model
@@ -223,10 +223,10 @@ can run with custom [DreamBooth](../training/dreambooth) models, as shown below 
     pipe.controlnet.set_attn_processor(CrossFrameAttnProcessor(batch_size=2))
 
     # fix latents for all frames
-    latents = torch.randn((1, 4, 64, 64), device="cuda", dtype=torch.float16).repeat(len(pose_images), 1, 1, 1)
+    latents = torch.randn((1, 4, 64, 64), device="cuda", dtype=torch.float16).repeat(len(canny_edges), 1, 1, 1)
 
     prompt = "oil painting of a beautiful girl avatar style"
-    result = pipe(prompt=[prompt] * len(pose_images), image=pose_images, latents=latents).images
+    result = pipe(prompt=[prompt] * len(canny_edges), image=canny_edges, latents=latents).images
     imageio.mimsave("video.mp4", result, fps=4)
     ```
 

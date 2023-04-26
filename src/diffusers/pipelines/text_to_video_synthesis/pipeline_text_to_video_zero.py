@@ -338,6 +338,7 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
         callback_steps: Optional[int] = 1,
         t0: int = 44,
         t1: int = 47,
+        frame_ids: Optional[List[int]] = None,
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -399,6 +400,8 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
             t1 (`int`, *optional*, defaults to 47):
                 Timestep t0. Should be in the range [t0 + 1, num_inference_steps - 1]. See the
                 [paper](https://arxiv.org/abs/2303.13439), Sect. 3.3.1.
+            frame_ids (`List[int]`, *optional*):
+                Indexes of the frames that are being generated. This is used when generating longer videos chunk-by-chunk.
 
         Returns:
             [`~pipelines.text_to_video_synthesis.TextToVideoPipelineOutput`]:
@@ -407,7 +410,9 @@ class TextToVideoZeroPipeline(StableDiffusionPipeline):
                 likely represents "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
         """
         assert video_length > 0
-        frame_ids = list(range(video_length))
+        if frame_ids is None:
+            frame_ids = list(range(video_length))
+        assert len(frame_ids) == video_length
 
         assert num_videos_per_prompt == 1
 
