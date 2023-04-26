@@ -355,6 +355,8 @@ def load_sub_model(
     provider: Any,
     sess_options: Any,
     device_map: Optional[Union[Dict[str, torch.device], str]],
+    offload_folder: Optional[Union[str, os.PathLike]],
+    offload_state_dict: bool,
     model_variants: Dict[str, str],
     name: str,
     from_flax: bool,
@@ -417,6 +419,8 @@ def load_sub_model(
     # This makes sure that the weights won't be initialized which significantly speeds up loading.
     if is_diffusers_model or is_transformers_model:
         loading_kwargs["device_map"] = device_map
+        loading_kwargs["offload_folder"] = offload_folder
+        loading_kwargs["offload_state_dict"] = offload_state_dict
         loading_kwargs["variant"] = model_variants.pop(name, None)
         if from_flax:
             loading_kwargs["from_flax"] = True
@@ -809,6 +813,12 @@ class DiffusionPipeline(ConfigMixin):
                 To have Accelerate compute the most optimized `device_map` automatically, set `device_map="auto"`. For
                 more information about each option see [designing a device
                 map](https://hf.co/docs/accelerate/main/en/usage_guides/big_modeling#designing-a-device-map).
+            offload_folder (`str` or `os.PathLike`, *optional*):
+                If the `device_map` contains any value `"disk"`, the folder where we will offload weights.
+            offload_state_dict (`bool`, *optional*):
+                If `True`, will temporarily offload the CPU state dict to the hard drive to avoid getting out of CPU
+                RAM if the weight of the CPU state dict + the biggest shard of the checkpoint does not fit. Defaults to
+                `True` when there is some disk offload.
             low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
                 Speed up model loading by not initializing the weights and only loading the pre-trained weights. This
                 also tries to not use more than 1x model size in CPU memory (including peak memory) while loading the
@@ -874,6 +884,8 @@ class DiffusionPipeline(ConfigMixin):
         provider = kwargs.pop("provider", None)
         sess_options = kwargs.pop("sess_options", None)
         device_map = kwargs.pop("device_map", None)
+        offload_folder = kwargs.pop("offload_folder", None)
+        offload_state_dict = kwargs.pop("offload_state_dict", False)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None if is_safetensors_available() else False)
@@ -1047,6 +1059,8 @@ class DiffusionPipeline(ConfigMixin):
                     provider=provider,
                     sess_options=sess_options,
                     device_map=device_map,
+                    offload_folder=offload_folder,
+                    offload_state_dict=offload_state_dict,
                     model_variants=model_variants,
                     name=name,
                     from_flax=from_flax,
