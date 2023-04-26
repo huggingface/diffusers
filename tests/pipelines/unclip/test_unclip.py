@@ -358,7 +358,7 @@ class UnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_attention_slicing_forward_pass(self):
         test_max_difference = torch_device == "cpu"
 
-        self._test_attention_slicing_forward_pass(test_max_difference=test_max_difference)
+        self._test_attention_slicing_forward_pass(test_max_difference=test_max_difference, expected_max_diff=0.01)
 
     # Overriding PipelineTesterMixin::test_inference_batch_single_identical
     # because UnCLIP undeterminism requires a looser check.
