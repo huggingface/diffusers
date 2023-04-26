@@ -1005,7 +1005,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         )
 
         # 4. Preprocess image
-        image = preprocess(image)
+        image = preprocess(image).repeat_interleave(num_maps_per_mask, dim=0)
 
         # 5. Set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -1111,8 +1111,6 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds`. instead. Ignored when not using guidance (i.e., ignored if `guidance_scale`
                 is less than `1`).
-            num_images_per_prompt (`int`, *optional*, defaults to 1):
-                The number of images to generate per prompt.
             generator (`torch.Generator`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
