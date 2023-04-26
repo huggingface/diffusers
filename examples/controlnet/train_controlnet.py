@@ -139,12 +139,22 @@ def log_validation(vae, text_encoder, tokenizer, unet, controlnet, args, acceler
                 validation_prompt = log["validation_prompt"]
                 validation_image = log["validation_image"]
 
+                # incase there are minor discrepancies in the dimensions of the conditioning
+                # image and the generated images, resize the conditioning images.
+                height = validation_image.height
+                width = validation_image.width
+
                 formatted_images = []
 
-                formatted_images.append(np.asarray(validation_image))
+                validation_image = validation_image.convert("RGB")
+                validation_image = np.asarray(validation_image)
+                formatted_images.append(validation_image)
 
                 for image in images:
-                    formatted_images.append(np.asarray(image))
+                    image = image.convert("RGB")
+                    image = image.resize((height, width))
+                    image = np.asarray(image)
+                    formatted_images.append(image)
 
                 formatted_images = np.stack(formatted_images)
 
