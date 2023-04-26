@@ -135,6 +135,7 @@ images = pipe([prompt] * 32).images
 다중 이미지 배치에서 VAE 디코드가 약간의 성능 향상이 이루어집니다. 단일 이미지 배치에서는 성능 영향은 없습니다.
 
 
+<a name="sequential_offloading"></a>
 ## 메모리 절약을 위해 가속 기능을 사용하여 CPU로 오프로딩
 
 추가 메모리 절약을 위해 가중치를 CPU로 오프로드하고 순방향 전달을 수행할 때만 GPU로 로드할 수 있습니다.
@@ -158,13 +159,13 @@ image = pipe(prompt).images[0]
 
 그러면 메모리 소비를 3GB 미만으로 줄일 수 있습니다.
 
-Note that this method works at the submodule level, not on whole models. This is the best way to minimize memory consumption, but inference is much slower due to the iterative nature of the process. The UNet component of the pipeline runs several times (as many as `num_inference_steps`); each time, the different submodules of the UNet are sequentially onloaded and then offloaded as they are needed, so the number of memory transfers is large.
+참고로 이 방법은 전체 모델이 아닌 서브모듈 수준에서 작동합니다. 이는 메모리 소비를 최소화하는 가장 좋은 방법이지만 프로세스의 반복적 특성으로 인해 추론 속도가 훨씬 느립니다. 파이프라인의 UNet 구성 요소는 여러 번 실행됩니다('num_inference_steps' 만큼). 매번 UNet의 서로 다른 서브모듈이 순차적으로 온로드된 다음 필요에 따라 오프로드되므로 메모리 이동 횟수가 많습니다.
 
 <Tip>
-Consider using <a href="#model_offloading">model offloading</a> as another point in the optimization space: it will be much faster, but memory savings won't be as large.
+또 다른 최적화 방법인 <a href="#model_offloading">모델 오프로딩</a>을 사용하는 것을 고려하십시오. 이는 훨씬 빠르지만 메모리 절약이 크지는 않습니다.
 </Tip>
 
-It is also possible to chain offloading with attention slicing for minimal memory consumption (< 2GB).
+또한 ttention slicing과 연결해서 최소 메모리(< 2GB)로도 동작할 수 있습니다. 
 
 
 ```Python
@@ -187,16 +188,16 @@ image = pipe(prompt).images[0]
 **참고**: 'enable_sequential_cpu_offload()'를 사용할 때, 미리 파이프라인을 CUDA로 이동하지 **않는** 것이 중요합니다.그렇지 않으면 메모리 소비의 이득이 최소화됩니다. 더 많은 정보를 위해 [이 이슈](https://github.com/huggingface/diffusers/issues/1934)를 보세요.
 
 <a name="model_offloading"></a>
-## Model offloading for fast inference and memory savings
+## 빠른 추론과 메모리 메모리 절약을 위한 모델 오프로딩
 
-[Sequential CPU offloading](#sequential_offloading), as discussed in the previous section, preserves a lot of memory but makes inference slower, because submodules are moved to GPU as needed, and immediately returned to CPU when a new module runs.
+[순차적 CPU 오프로딩](#sequential_offloading)은 이전 섹션에서 설명한 것처럼 많은 메모리를 보존하지만 필요에 따라 서브모듈을 GPU로 이동하고 새 모듈이 실행될 때 즉시 CPU로 반환되기 때문에 추론 속도가 느려집니다.
 
-Full-model offloading is an alternative that moves whole models to the GPU, instead of handling each model's constituent _modules_. This results in a negligible impact on inference time (compared with moving the pipeline to `cuda`), while still providing some memory savings.
+전체 모델 오프로딩은 각 모델의 구성 요소인 _modules_을 처리하는 대신, 전체 모델을 GPU로 이동하는 대안입니다. 이로 인해 추론 시간에 미치는 영향은 미미하지만(파이프라인을 'cuda'로 이동하는 것과 비교하여) 여전히 약간의 메모리를 절약할 수 있습니다.
 
-In this scenario, only one of the main components of the pipeline (typically: text encoder, unet and vae)
-will be in the GPU while the others wait in the CPU. Components like the UNet that run for multiple iterations will stay on GPU until they are no longer needed.
+이 시나리오에서는 파이프라인의 주요 구성 요소 중 하나만(일반적으로 텍스트 인코더, unet 및 vae) GPU에 있고, 나머지는 CPU에서 대기할 것입니다.
+여러 반복을 위해 실행되는 UNet과 같은 구성 요소는 더 이상 필요하지 않을 때까지 GPU에 남아 있습니다.
 
-This feature can be enabled by invoking `enable_model_cpu_offload()` on the pipeline, as shown below.
+이 기능은 아래와 같이 파이프라인에서 `enable_model_cpu_offload()`를 호출하여 활성화할 수 있습니다.
 
 ```Python
 import torch
@@ -212,7 +213,7 @@ pipe.enable_model_cpu_offload()
 image = pipe(prompt).images[0]
 ```
 
-This is also compatible with attention slicing for additional memory savings.
+이는 추가적인 메모리 절약을 위한 attention slicing과도 호환됩니다.
 
 ```Python
 import torch
@@ -231,7 +232,7 @@ image = pipe(prompt).images[0]
 ```
 
 <Tip>
-This feature requires `accelerate` version 0.17.0 or larger.
+이 기능을 사용하려면 'accelerate' 버전 0.17.0 이상이 필요합니다.
 </Tip>
 
 ## Channels Last 메모리 형식 사용하기
@@ -252,7 +253,7 @@ print(pipe.unet.conv_out.state_dict()["weight"].stride())
 
 ## 추적(tracing)
 
-추적은 모델을 통해 예제 입력 텐서를 통해 실행되는데, 해당 입력이 모델의 레이어를 통과할 때 호출되는 작업을 캡처하여 실행 파일 또는 'ScriptFunction'이 반환되도록 하고, 이는 just-in-time 컴파일을 사용하여 최적화됩니다.
+추적은 모델을 통해 예제 입력 텐서를 통해 실행되는데, 해당 입력이 모델의 레이어를 통과할 때 호출되는 작업을 캡처하여 실행 파일 또는 'ScriptFunction'이 반환되도록 하고, 이는 just-in-time 컴파일로 최적화됩니다.
 
 UNet 모델을 추적하기 위해 다음을 사용할 수 있습니다:
 
