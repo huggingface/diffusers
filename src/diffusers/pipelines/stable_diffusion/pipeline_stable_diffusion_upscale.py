@@ -18,6 +18,7 @@ from typing import Any, Callable, List, Optional, Union
 import numpy as np
 import PIL
 import torch
+import torch.nn.functional as F
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...loaders import TextualInversionLoaderMixin
@@ -698,10 +699,22 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
         # make sure the VAE is in float32 mode, as it overflows in float16
         self.vae.to(dtype=torch.float32)
 
+        # TODO(Patrick, William) - clean up when attention is refactored
+        use_torch_2_0_attn = hasattr(F, "scaled_dot_product_attention")
+        use_xformers = self.vae.decoder.mid_block.attentions[0]._use_memory_efficient_attention_xformers
+        # if xformers or torch_2_0 is used attention block does not need
+        # to be in float32 which can save lots of memory
+        if not use_torch_2_0_attn and not use_xformers:
+            self.vae.post_quant_conv.to(latents.dtype)
+            self.vae.decoder.conv_in.to(latents.dtype)
+            self.vae.decoder.mid_block.to(latents.dtype)
+        else:
+            latents = latents.float()
+
         # 11. Convert to PIL
-        # has_nsfw_concept = False
         if output_type == "pil":
-            image = self.decode_latents(latents.float())
+            image = self.decode_latents(latents)
+
             image, has_nsfw_concept, _ = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
             image = self.numpy_to_pil(image)
@@ -710,11 +723,11 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
             if self.watermarker is not None:
                 image = self.watermarker.apply_watermark(image)
         elif output_type == "pt":
-            latents = 1 / self.vae.config.scaling_factor * latents.float()
+            latents = 1 / self.vae.config.scaling_factor * latents
             image = self.vae.decode(latents).sample
             has_nsfw_concept = None
         else:
-            image = self.decode_latents(latents.float())
+            image = self.decode_latents(latents)
             has_nsfw_concept = None
 
         # Offload last model to CPU
