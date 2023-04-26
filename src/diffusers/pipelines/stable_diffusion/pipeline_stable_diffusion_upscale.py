@@ -714,6 +714,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
         # 11. Convert to PIL
         if output_type == "pil":
             image = self.decode_latents(latents)
+
             image, has_nsfw_concept, _ = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
             image = self.numpy_to_pil(image)
