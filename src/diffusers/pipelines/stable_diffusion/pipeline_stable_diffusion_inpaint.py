@@ -877,6 +877,9 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
         # 13. Convert to PIL
+        if output_type == "latent":
+            image = latents
+            has_nsfw_concept = None
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
