@@ -721,7 +721,6 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline, TextualInversionLoaderMi
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.final_offload_hook.offload()
 
-
         if not return_dict:
             return (image, has_nsfw_concept)
 
