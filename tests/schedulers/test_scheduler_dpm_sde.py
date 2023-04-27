@@ -13,7 +13,6 @@ class DPMSolverSDESchedulerTest(SchedulerCommonTest):
     num_inference_steps = 10
 
     def get_scheduler_config(self, **kwargs):
-        # ??
         config = {
             "num_train_timesteps": 1100,
             "beta_start": 0.0001,

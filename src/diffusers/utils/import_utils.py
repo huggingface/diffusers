@@ -287,7 +287,7 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _bs4_available = False
 
-_torchsde_available = importlib.util.find_spec("torchsde")
+_torchsde_available = importlib.util.find_spec("torchsde") is not None
 try:
     _torchsde_version = importlib_metadata.version("torchsde")
     logger.debug(f"Successfully imported torchsde version {_torchsde_version}")
