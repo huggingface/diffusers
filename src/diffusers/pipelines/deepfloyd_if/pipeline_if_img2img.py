@@ -70,7 +70,7 @@ EXAMPLE_DOC_STRING = """
         >>> original_image = original_image.resize((768, 512))
 
         >>> pipe = IFImg2ImgPipeline.from_pretrained(
-        ...     "DeepFloyd/IF-I-IF-v1.0",
+        ...     "DeepFloyd/IF-I-XL-v1.0",
         ...     variant="fp16",
         ...     torch_dtype=torch.float16,
         ... )
