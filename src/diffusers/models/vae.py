@@ -212,6 +212,7 @@ class Decoder(nn.Module):
         sample = z
         sample = self.conv_in(sample)
 
+        upscale_dtype = next(iter(self.up_blocks.parameters())).dtype
         if self.training and self.gradient_checkpointing:
 
             def create_custom_forward(module):
@@ -222,6 +223,7 @@ class Decoder(nn.Module):
 
             # middle
             sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample)
+            sample = sample.to(upscale_dtype)
 
             # up
             for up_block in self.up_blocks:
@@ -229,6 +231,7 @@ class Decoder(nn.Module):
         else:
             # middle
             sample = self.mid_block(sample)
+            sample = sample.to(upscale_dtype)
 
             # up
             for up_block in self.up_blocks:

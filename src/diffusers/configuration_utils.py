@@ -109,6 +109,7 @@ class ConfigMixin:
         # TODO: remove this when we remove the deprecation warning, and the `kwargs` argument,
         # or solve in a more general way.
         kwargs.pop("kwargs", None)
+
         if not hasattr(self, "_internal_dict"):
             internal_dict = kwargs
         else:
@@ -550,6 +551,9 @@ class ConfigMixin:
             return value
 
         config_dict = {k: to_json_saveable(v) for k, v in config_dict.items()}
+        # Don't save "_ignore_files"
+        config_dict.pop("_ignore_files", None)
+
         return json.dumps(config_dict, indent=2, sort_keys=True) + "\n"
 
     def to_json_file(self, json_file_path: Union[str, os.PathLike]):
