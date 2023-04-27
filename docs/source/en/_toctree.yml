@@ -266,6 +266,8 @@
       title: VP-SDE
     - local: api/schedulers/vq_diffusion
       title: VQDiffusionScheduler
+    - local: api/schedulers/dpm_sde
+      title: DPMSolverSDEScheduler
     title: Schedulers
   - sections:
     - local: api/experimental/rl
