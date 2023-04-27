@@ -29,7 +29,7 @@ Our work underscores the potential of larger UNet architectures in the first sta
 
 Before you can use IF, you need to accept its usage conditions. To do so:
 1. Make sure to have a [Hugging Face account](https://huggingface.co/join) and be logged in
-2. Accept the license on the model card of [DeepFloyd/IF-I-IF-v1.0](https://huggingface.co/DeepFloyd/IF-I-IF-v1.0). Accepting the license on the stage I model card will auto accept for the other IF models.
+2. Accept the license on the model card of [DeepFloyd/IF-I-XL-v1.0](https://huggingface.co/DeepFloyd/IF-I-XL-v1.0). Accepting the license on the stage I model card will auto accept for the other IF models.
 3. Make sure to login locally. Install `huggingface_hub`
 ```sh
 pip install huggingface_hub --upgrade
@@ -62,7 +62,7 @@ The following sections give more in-detail examples of how to use IF. Specifical
 
 **Available checkpoints**
 - *Stage-1*
-  - [DeepFloyd/IF-I-IF-v1.0](https://huggingface.co/DeepFloyd/IF-I-IF-v1.0)
+  - [DeepFloyd/IF-I-XL-v1.0](https://huggingface.co/DeepFloyd/IF-I-XL-v1.0)
   - [DeepFloyd/IF-I-L-v1.0](https://huggingface.co/DeepFloyd/IF-I-L-v1.0)
   - [DeepFloyd/IF-I-M-v1.0](https://huggingface.co/DeepFloyd/IF-I-M-v1.0)
 
@@ -90,7 +90,7 @@ from diffusers.utils import pt_to_pil
 import torch
 
 # stage 1
-stage_1 = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
+stage_1 = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", torch_dtype=torch.float16)
 stage_1.enable_model_cpu_offload()
 
 # stage 2
@@ -162,7 +162,7 @@ original_image = Image.open(BytesIO(response.content)).convert("RGB")
 original_image = original_image.resize((768, 512))
 
 # stage 1
-stage_1 = IFImg2ImgPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
+stage_1 = IFImg2ImgPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", torch_dtype=torch.float16)
 stage_1.enable_model_cpu_offload()
 
 # stage 2
@@ -244,7 +244,7 @@ mask_image = Image.open(BytesIO(response.content))
 mask_image = mask_image
 
 # stage 1
-stage_1 = IFInpaintingPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
+stage_1 = IFInpaintingPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", torch_dtype=torch.float16)
 stage_1.enable_model_cpu_offload()
 
 # stage 2
@@ -305,7 +305,7 @@ In addition to being loaded with `from_pretrained`, Pipelines can also be loaded
 ```python
 from diffusers import IFPipeline, IFSuperResolutionPipeline
 
-pipe_1 = IFPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0")
+pipe_1 = IFPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0")
 pipe_2 = IFSuperResolutionPipeline.from_pretrained("DeepFloyd/IF-II-L-v1.0")
 
 
@@ -326,7 +326,7 @@ pipe_2 = IFInpaintingSuperResolutionPipeline(**pipe_2.components)
 The simplest optimization to run IF faster is to move all model components to the GPU.
 
 ```py
-pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
+pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", torch_dtype=torch.float16)
 pipe.to("cuda")
 ```
 
@@ -352,7 +352,7 @@ the input image which also determines how many steps to run in the denoising pro
 A smaller number will vary the image less but run faster.
 
 ```py
-pipe = IFImg2ImgPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
+pipe = IFImg2ImgPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", torch_dtype=torch.float16)
 pipe.to("cuda")
 
 image = pipe(image=image, prompt="<prompt>", strength=0.3).images
@@ -364,7 +364,7 @@ with IF and it might not give expected results.
 ```py
 import torch
 
-pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
+pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", torch_dtype=torch.float16)
 pipe.to("cuda")
 
 pipe.text_encoder = torch.compile(pipe.text_encoder)
@@ -378,14 +378,14 @@ When optimizing for GPU memory, we can use the standard diffusers cpu offloading
 Either the model based CPU offloading,
 
 ```py
-pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
+pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", torch_dtype=torch.float16)
 pipe.enable_model_cpu_offload()
 ```
 
 or the more aggressive layer based CPU offloading.
 
 ```py
-pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
+pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", torch_dtype=torch.float16)
 pipe.enable_sequential_cpu_offload()
 ```
 
@@ -395,13 +395,13 @@ Additionally, T5 can be loaded in 8bit precision
 from transformers import T5EncoderModel
 
 text_encoder = T5EncoderModel.from_pretrained(
-    "DeepFloyd/IF-I-IF-v1.0", subfolder="text_encoder", device_map="auto", load_in_8bit=True, variant="8bit"
+    "DeepFloyd/IF-I-XL-v1.0", subfolder="text_encoder", device_map="auto", load_in_8bit=True, variant="8bit"
 )
 
 from diffusers import DiffusionPipeline
 
 pipe = DiffusionPipeline.from_pretrained(
-    "DeepFloyd/IF-I-IF-v1.0",
+    "DeepFloyd/IF-I-XL-v1.0",
     text_encoder=text_encoder,  # pass the previously instantiated 8bit text encoder
     unet=None,
     device_map="auto",
@@ -422,13 +422,13 @@ from transformers import T5EncoderModel
 from diffusers.utils import pt_to_pil
 
 text_encoder = T5EncoderModel.from_pretrained(
-    "DeepFloyd/IF-I-IF-v1.0", subfolder="text_encoder", device_map="auto", load_in_8bit=True, variant="8bit"
+    "DeepFloyd/IF-I-XL-v1.0", subfolder="text_encoder", device_map="auto", load_in_8bit=True, variant="8bit"
 )
 
 # text to image
 
 pipe = DiffusionPipeline.from_pretrained(
-    "DeepFloyd/IF-I-IF-v1.0",
+    "DeepFloyd/IF-I-XL-v1.0",
     text_encoder=text_encoder,  # pass the previously instantiated 8bit text encoder
     unet=None,
     device_map="auto",
@@ -444,7 +444,7 @@ gc.collect()
 torch.cuda.empty_cache()
 
 pipe = IFPipeline.from_pretrained(
-    "DeepFloyd/IF-I-IF-v1.0", text_encoder=None, variant="fp16", torch_dtype=torch.float16, device_map="auto"
+    "DeepFloyd/IF-I-XL-v1.0", text_encoder=None, variant="fp16", torch_dtype=torch.float16, device_map="auto"
 )
 
 generator = torch.Generator().manual_seed(0)
