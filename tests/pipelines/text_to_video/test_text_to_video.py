@@ -35,6 +35,7 @@ from ...test_pipelines_common import PipelineTesterMixin
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
+@skip_mps
 class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = TextToVideoSDPipeline
     params = TEXT_TO_IMAGE_PARAMS
@@ -134,7 +135,7 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = frames[0][-3:, -3:, -1]
 
         assert frames[0].shape == (64, 64, 3)
-        expected_slice = np.array([166, 184, 167, 118, 102, 123, 108, 93, 114])
+        expected_slice = np.array([158.0, 160.0, 153.0, 125.0, 100.0, 121.0, 111.0, 93.0, 113.0])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -155,12 +156,12 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_num_images_per_prompt(self):
         pass
 
-    @skip_mps
     def test_progress_bar(self):
         return super().test_progress_bar()
 
 
 @slow
+@skip_mps
 class TextToVideoSDPipelineSlowTests(unittest.TestCase):
     def test_full_model(self):
         expected_video = load_numpy(

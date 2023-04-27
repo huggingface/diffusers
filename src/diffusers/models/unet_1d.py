@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
+from ..utils import BaseOutput, deprecate
 from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
 from .unet_1d_blocks import get_down_block, get_mid_block, get_out_block, get_up_block
@@ -47,6 +47,9 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         sample_size (`int`, *optional*): Default length of sample. Should be adaptable at runtime.
         in_channels (`int`, *optional*, defaults to 2): Number of channels in the input sample.
         out_channels (`int`, *optional*, defaults to 2): Number of channels in the output.
+        extra_in_channels (`int`, *optional*, defaults to 0):
+            Number of additional channels to be added to the input of the first down block. Useful for cases where the
+            input data has more channels than what the model is initially designed for.
         time_embedding_type (`str`, *optional*, defaults to `"fourier"`): Type of time embedding to use.
         freq_shift (`float`, *optional*, defaults to 0.0): Frequency shift for fourier time embedding.
         flip_sin_to_cos (`bool`, *optional*, defaults to :
@@ -186,6 +189,16 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             act_fn=act_fn,
             fc_dim=block_out_channels[-1] // 4,
         )
+
+    @property
+    def in_channels(self):
+        deprecate(
+            "in_channels",
+            "1.0.0",
+            "Accessing `in_channels` directly via unet.in_channels is deprecated. Please use `unet.config.in_channels` instead",
+            standard_warn=False,
+        )
+        return self.config.in_channels
 
     def forward(
         self,

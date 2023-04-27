@@ -278,7 +278,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
         >>> from diffusers import FlaxDPMSolverMultistepScheduler
 
         >>> model_id = "runwayml/stable-diffusion-v1-5"
-        >>> sched, sched_state = FlaxDPMSolverMultistepScheduler.from_pretrained(
+        >>> dpmpp, dpmpp_state = FlaxDPMSolverMultistepScheduler.from_pretrained(
         ...     model_id,
         ...     subfolder="scheduler",
         ... )
@@ -296,6 +296,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
         from_pt = kwargs.pop("from_pt", False)
+        use_memory_efficient_attention = kwargs.pop("use_memory_efficient_attention", False)
         dtype = kwargs.pop("dtype", None)
 
         # 1. Download the checkpoints and configs
@@ -365,7 +366,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
         # some modules can be passed directly to the init
         # in this case they are already instantiated in `kwargs`
         # extract them here
-        expected_modules = set(inspect.signature(pipeline_class.__init__).parameters.keys())
+        expected_modules, optional_kwargs = cls._get_signature_keys(pipeline_class)
         passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
 
         init_dict, _, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
@@ -451,7 +452,12 @@ class FlaxDiffusionPipeline(ConfigMixin):
                     loaded_sub_model = cached_folder
 
                 if issubclass(class_obj, FlaxModelMixin):
-                    loaded_sub_model, loaded_params = load_method(loadable_folder, from_pt=from_pt, dtype=dtype)
+                    loaded_sub_model, loaded_params = load_method(
+                        loadable_folder,
+                        from_pt=from_pt,
+                        use_memory_efficient_attention=use_memory_efficient_attention,
+                        dtype=dtype,
+                    )
                     params[name] = loaded_params
                 elif is_transformers_available() and issubclass(class_obj, FlaxPreTrainedModel):
                     if from_pt:
@@ -470,6 +476,19 @@ class FlaxDiffusionPipeline(ConfigMixin):
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
+        # 4. Potentially add passed objects if expected
+        missing_modules = set(expected_modules) - set(init_kwargs.keys())
+        passed_modules = list(passed_class_obj.keys())
+
+        if len(missing_modules) > 0 and missing_modules <= set(passed_modules):
+            for module in missing_modules:
+                init_kwargs[module] = passed_class_obj.get(module, None)
+        elif len(missing_modules) > 0:
+            passed_modules = set(list(init_kwargs.keys()) + list(passed_class_obj.keys())) - optional_kwargs
+            raise ValueError(
+                f"Pipeline {pipeline_class} expected {expected_modules}, but only {passed_modules} were passed."
+            )
+
         model = pipeline_class(**init_kwargs, dtype=dtype)
         return model, params
 
@@ -478,7 +497,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
         parameters = inspect.signature(obj.__init__).parameters
         required_parameters = {k: v for k, v in parameters.items() if v.default == inspect._empty}
         optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
-        expected_modules = set(required_parameters.keys()) - set(["self"])
+        expected_modules = set(required_parameters.keys()) - {"self"}
         return expected_modules, optional_parameters
 
     @property

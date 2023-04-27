@@ -21,9 +21,11 @@ from .import_utils import (
     BACKENDS_MAPPING,
     is_compel_available,
     is_flax_available,
+    is_note_seq_available,
     is_onnx_available,
     is_opencv_available,
     is_torch_available,
+    is_torch_version,
 )
 from .logging import get_logger
 
@@ -164,6 +166,15 @@ def require_torch(test_case):
     return unittest.skipUnless(is_torch_available(), "test requires PyTorch")(test_case)
 
 
+def require_torch_2(test_case):
+    """
+    Decorator marking a test that requires PyTorch 2. These tests are skipped when it isn't installed.
+    """
+    return unittest.skipUnless(is_torch_available() and is_torch_version(">=", "2.0.0"), "test requires PyTorch 2")(
+        test_case
+    )
+
+
 def require_torch_gpu(test_case):
     """Decorator marking a test that requires CUDA and PyTorch."""
     return unittest.skipUnless(is_torch_available() and torch_device == "cuda", "test requires PyTorch+CUDA")(
@@ -196,6 +207,13 @@ def require_onnxruntime(test_case):
     Decorator marking a test that requires onnxruntime. These tests are skipped when onnxruntime isn't installed.
     """
     return unittest.skipUnless(is_onnx_available(), "test requires onnxruntime")(test_case)
+
+
+def require_note_seq(test_case):
+    """
+    Decorator marking a test that requires note_seq. These tests are skipped when note_seq isn't installed.
+    """
+    return unittest.skipUnless(is_note_seq_available(), "test requires note_seq")(test_case)
 
 
 def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -> np.ndarray:

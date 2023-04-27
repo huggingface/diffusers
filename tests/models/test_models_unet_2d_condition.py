@@ -22,7 +22,7 @@ import torch
 from parameterized import parameterized
 
 from diffusers import UNet2DConditionModel
-from diffusers.models.attention_processor import AttnProcessor, LoRAAttnProcessor
+from diffusers.models.attention_processor import LoRAAttnProcessor
 from diffusers.utils import (
     floats_tensor,
     load_hf_numpy,
@@ -41,7 +41,7 @@ logger = logging.get_logger(__name__)
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-def create_lora_layers(model):
+def create_lora_layers(model, mock_weights: bool = True):
     lora_attn_procs = {}
     for name in model.attn_processors.keys():
         cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
@@ -57,12 +57,13 @@ def create_lora_layers(model):
         lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
         lora_attn_procs[name] = lora_attn_procs[name].to(model.device)
 
-        # add 1 to weights to mock trained weights
-        with torch.no_grad():
-            lora_attn_procs[name].to_q_lora.up.weight += 1
-            lora_attn_procs[name].to_k_lora.up.weight += 1
-            lora_attn_procs[name].to_v_lora.up.weight += 1
-            lora_attn_procs[name].to_out_lora.up.weight += 1
+        if mock_weights:
+            # add 1 to weights to mock trained weights
+            with torch.no_grad():
+                lora_attn_procs[name].to_q_lora.up.weight += 1
+                lora_attn_procs[name].to_k_lora.up.weight += 1
+                lora_attn_procs[name].to_v_lora.up.weight += 1
+                lora_attn_procs[name].to_out_lora.up.weight += 1
 
     return lora_attn_procs
 
@@ -199,6 +200,74 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         expected_shape = inputs_dict["sample"].shape
         self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
+    def test_model_with_cross_attention_dim_tuple(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        init_dict["cross_attention_dim"] = (32, 32)
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)
+
+            if isinstance(output, dict):
+                output = output.sample
+
+        self.assertIsNotNone(output)
+        expected_shape = inputs_dict["sample"].shape
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+
+    def test_model_with_simple_projection(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        batch_size, _, _, sample_size = inputs_dict["sample"].shape
+
+        init_dict["class_embed_type"] = "simple_projection"
+        init_dict["projection_class_embeddings_input_dim"] = sample_size
+
+        inputs_dict["class_labels"] = floats_tensor((batch_size, sample_size)).to(torch_device)
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)
+
+            if isinstance(output, dict):
+                output = output.sample
+
+        self.assertIsNotNone(output)
+        expected_shape = inputs_dict["sample"].shape
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+
+    def test_model_with_class_embeddings_concat(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        batch_size, _, _, sample_size = inputs_dict["sample"].shape
+
+        init_dict["class_embed_type"] = "simple_projection"
+        init_dict["projection_class_embeddings_input_dim"] = sample_size
+        init_dict["class_embeddings_concat"] = True
+
+        inputs_dict["class_labels"] = floats_tensor((batch_size, sample_size)).to(torch_device)
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)
+
+            if isinstance(output, dict):
+                output = output.sample
+
+        self.assertIsNotNone(output)
+        expected_shape = inputs_dict["sample"].shape
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+
     def test_model_attention_slicing(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -310,26 +379,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             sample1 = model(**inputs_dict).sample
 
-        lora_attn_procs = {}
-        for name in model.attn_processors.keys():
-            cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
-            if name.startswith("mid_block"):
-                hidden_size = model.config.block_out_channels[-1]
-            elif name.startswith("up_blocks"):
-                block_id = int(name[len("up_blocks.")])
-                hidden_size = list(reversed(model.config.block_out_channels))[block_id]
-            elif name.startswith("down_blocks"):
-                block_id = int(name[len("down_blocks.")])
-                hidden_size = model.config.block_out_channels[block_id]
-
-            lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
-
-            # add 1 to weights to mock trained weights
-            with torch.no_grad():
-                lora_attn_procs[name].to_q_lora.up.weight += 1
-                lora_attn_procs[name].to_k_lora.up.weight += 1
-                lora_attn_procs[name].to_v_lora.up.weight += 1
-                lora_attn_procs[name].to_out_lora.up.weight += 1
+        lora_attn_procs = create_lora_layers(model)
 
         # make sure we can set a list of attention processors
         model.set_attn_processor(lora_attn_procs)
@@ -397,28 +447,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             old_sample = model(**inputs_dict).sample
 
-        lora_attn_procs = {}
-        for name in model.attn_processors.keys():
-            cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
-            if name.startswith("mid_block"):
-                hidden_size = model.config.block_out_channels[-1]
-            elif name.startswith("up_blocks"):
-                block_id = int(name[len("up_blocks.")])
-                hidden_size = list(reversed(model.config.block_out_channels))[block_id]
-            elif name.startswith("down_blocks"):
-                block_id = int(name[len("down_blocks.")])
-                hidden_size = model.config.block_out_channels[block_id]
-
-            lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
-            lora_attn_procs[name] = lora_attn_procs[name].to(model.device)
-
-            # add 1 to weights to mock trained weights
-            with torch.no_grad():
-                lora_attn_procs[name].to_q_lora.up.weight += 1
-                lora_attn_procs[name].to_k_lora.up.weight += 1
-                lora_attn_procs[name].to_v_lora.up.weight += 1
-                lora_attn_procs[name].to_out_lora.up.weight += 1
-
+        lora_attn_procs = create_lora_layers(model)
         model.set_attn_processor(lora_attn_procs)
 
         with torch.no_grad():
@@ -450,21 +479,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         model = self.model_class(**init_dict)
         model.to(torch_device)
 
-        lora_attn_procs = {}
-        for name in model.attn_processors.keys():
-            cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
-            if name.startswith("mid_block"):
-                hidden_size = model.config.block_out_channels[-1]
-            elif name.startswith("up_blocks"):
-                block_id = int(name[len("up_blocks.")])
-                hidden_size = list(reversed(model.config.block_out_channels))[block_id]
-            elif name.startswith("down_blocks"):
-                block_id = int(name[len("down_blocks.")])
-                hidden_size = model.config.block_out_channels[block_id]
-
-            lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
-            lora_attn_procs[name] = lora_attn_procs[name].to(model.device)
-
+        lora_attn_procs = create_lora_layers(model, mock_weights=False)
         model.set_attn_processor(lora_attn_procs)
         # Saving as torch, properly reloads with directly filename
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -485,21 +500,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         model = self.model_class(**init_dict)
         model.to(torch_device)
 
-        lora_attn_procs = {}
-        for name in model.attn_processors.keys():
-            cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
-            if name.startswith("mid_block"):
-                hidden_size = model.config.block_out_channels[-1]
-            elif name.startswith("up_blocks"):
-                block_id = int(name[len("up_blocks.")])
-                hidden_size = list(reversed(model.config.block_out_channels))[block_id]
-            elif name.startswith("down_blocks"):
-                block_id = int(name[len("down_blocks.")])
-                hidden_size = model.config.block_out_channels[block_id]
-
-            lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
-            lora_attn_procs[name] = lora_attn_procs[name].to(model.device)
-
+        lora_attn_procs = create_lora_layers(model, mock_weights=False)
         model.set_attn_processor(lora_attn_procs)
         # Saving as torch, properly reloads with directly filename
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -531,7 +532,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             sample = model(**inputs_dict, cross_attention_kwargs={"scale": 0.0}).sample
 
-        model.set_attn_processor(AttnProcessor())
+        model.set_default_attn_processor()
 
         with torch.no_grad():
             new_sample = model(**inputs_dict).sample

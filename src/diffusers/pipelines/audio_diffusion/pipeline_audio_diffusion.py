@@ -60,9 +60,9 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         input_module = self.vqvae if self.vqvae is not None else self.unet
         # For backwards compatibility
         sample_size = (
-            (input_module.sample_size, input_module.sample_size)
-            if type(input_module.sample_size) == int
-            else input_module.sample_size
+            (input_module.config.sample_size, input_module.config.sample_size)
+            if type(input_module.config.sample_size) == int
+            else input_module.config.sample_size
         )
         return sample_size
 
@@ -121,17 +121,17 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(steps)
         step_generator = step_generator or generator
         # For backwards compatibility
-        if type(self.unet.sample_size) == int:
-            self.unet.sample_size = (self.unet.sample_size, self.unet.sample_size)
+        if type(self.unet.config.sample_size) == int:
+            self.unet.config.sample_size = (self.unet.config.sample_size, self.unet.config.sample_size)
         input_dims = self.get_input_dims()
         self.mel.set_resolution(x_res=input_dims[1], y_res=input_dims[0])
         if noise is None:
             noise = randn_tensor(
                 (
                     batch_size,
-                    self.unet.in_channels,
-                    self.unet.sample_size[0],
-                    self.unet.sample_size[1],
+                    self.unet.config.in_channels,
+                    self.unet.config.sample_size[0],
+                    self.unet.config.sample_size[1],
                 ),
                 generator=generator,
                 device=self.device,
@@ -158,7 +158,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
                 images[0, 0] = self.scheduler.add_noise(input_images, noise, self.scheduler.timesteps[start_step - 1])
 
             pixels_per_second = (
-                self.unet.sample_size[1] * self.mel.get_sample_rate() / self.mel.x_res / self.mel.hop_length
+                self.unet.config.sample_size[1] * self.mel.get_sample_rate() / self.mel.x_res / self.mel.hop_length
             )
             mask_start = int(mask_start_secs * pixels_per_second)
             mask_end = int(mask_end_secs * pixels_per_second)
@@ -201,12 +201,12 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         images = images.cpu().permute(0, 2, 3, 1).numpy()
         images = (images * 255).round().astype("uint8")
         images = list(
-            map(lambda _: Image.fromarray(_[:, :, 0]), images)
+            (Image.fromarray(_[:, :, 0]) for _ in images)
             if images.shape[3] == 1
-            else map(lambda _: Image.fromarray(_, mode="RGB").convert("L"), images)
+            else (Image.fromarray(_, mode="RGB").convert("L") for _ in images)
         )
 
-        audios = list(map(lambda _: self.mel.image_to_audio(_), images))
+        audios = [self.mel.image_to_audio(_) for _ in images]
         if not return_dict:
             return images, (self.mel.get_sample_rate(), audios)
 
