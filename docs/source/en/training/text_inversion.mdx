@@ -245,7 +245,7 @@ from flax.training.common_utils import shard
 from diffusers import FlaxStableDiffusionPipeline
 
 model_path = "path-to-your-trained-model"
-pipe, params = FlaxStableDiffusionPipeline.from_pretrained(model_path, dtype=jax.numpy.bfloat16)
+pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(model_path, dtype=jax.numpy.bfloat16)
 
 prompt = "A <cat-toy> backpack"
 prng_seed = jax.random.PRNGKey(0)
