@@ -22,7 +22,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel, set_seed
+from transformers import CLIPImageProcessor, CLIPTokenizer, FlaxCLIPTextModel, set_seed
 
 from diffusers import (
     FlaxAutoencoderKL,
@@ -36,7 +36,7 @@ from diffusers.utils import check_min_version
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.15.0.dev0")
+check_min_version("0.15.0")
 
 # Cache compiled models across invocations of this script.
 cc.initialize_cache(os.path.expanduser("~/.cache/jax/compilation_cache"))
@@ -652,7 +652,7 @@ def main():
             tokenizer=tokenizer,
             scheduler=scheduler,
             safety_checker=safety_checker,
-            feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
+            feature_extractor=CLIPImageProcessor.from_pretrained("openai/clip-vit-base-patch32"),
         )
 
         outdir = os.path.join(args.output_dir, str(step)) if step else args.output_dir

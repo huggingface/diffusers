@@ -95,8 +95,10 @@ _deps = [
     "Jinja2",
     "k-diffusion>=0.0.12",
     "librosa",
+    "note-seq",
     "numpy",
     "parameterized",
+    "protobuf>=3.20.3,<4",
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
@@ -182,13 +184,14 @@ extras = {}
 extras = {}
 extras["quality"] = deps_list("black", "isort", "ruff", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
-extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "Jinja2")
+extras["training"] = deps_list("accelerate", "datasets", "protobuf", "tensorboard", "Jinja2")
 extras["test"] = deps_list(
     "compel",
     "datasets",
     "Jinja2",
     "k-diffusion",
     "librosa",
+    "note-seq",
     "parameterized",
     "pytest",
     "pytest-timeout",
@@ -223,7 +226,7 @@ install_requires = [
 
 setup(
     name="diffusers",
-    version="0.15.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.15.0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="Diffusers",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

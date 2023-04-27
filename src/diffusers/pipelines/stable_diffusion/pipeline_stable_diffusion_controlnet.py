@@ -21,8 +21,9 @@ import numpy as np
 import PIL.Image
 import torch
 from torch import nn
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
+from ...loaders import TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
 from ...models.controlnet import ControlNetOutput
 from ...models.modeling_utils import ModelMixin
@@ -146,7 +147,7 @@ class MultiControlNetModel(ModelMixin):
         return down_block_res_samples, mid_block_res_sample
 
 
-class StableDiffusionControlNetPipeline(DiffusionPipeline):
+class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion with ControlNet guidance.
 
@@ -174,7 +175,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
-        feature_extractor ([`CLIPFeatureExtractor`]):
+        feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
     _optional_components = ["safety_checker", "feature_extractor"]
@@ -188,7 +189,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         controlnet: Union[ControlNetModel, List[ControlNetModel], Tuple[ControlNetModel], MultiControlNetModel],
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -336,8 +337,8 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                 whether to use classifier free guidance or not
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
-                Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
@@ -354,6 +355,10 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
+
             text_inputs = self.tokenizer(
                 prompt,
                 padding="max_length",
@@ -413,6 +418,10 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                 )
             else:
                 uncond_tokens = negative_prompt
+
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 
             max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(
@@ -537,15 +546,27 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                     f" {negative_prompt_embeds.shape}."
                 )
 
-        # Check `image`
+        # `prompt` needs more sophisticated handling when there are multiple
+        # conditionings.
+        if isinstance(self.controlnet, MultiControlNetModel):
+            if isinstance(prompt, list):
+                logger.warning(
+                    f"You have {len(self.controlnet.nets)} ControlNets and you have passed {len(prompt)}"
+                    " prompts. The conditionings will be fixed across the prompts."
+                )
 
+        # Check `image`
         if isinstance(self.controlnet, ControlNetModel):
             self.check_image(image, prompt, prompt_embeds)
         elif isinstance(self.controlnet, MultiControlNetModel):
             if not isinstance(image, list):
                 raise TypeError("For multiple controlnets: `image` must be type `list`")
 
-            if len(image) != len(self.controlnet.nets):
+            # When `image` is a nested list:
+            # (e.g. [[canny_image_1, pose_image_1], [canny_image_2, pose_image_2]])
+            elif any(isinstance(i, list) for i in image):
+                raise ValueError("A single batch of multiple conditionings are supported at the moment.")
+            elif len(image) != len(self.controlnet.nets):
                 raise ValueError(
                     "For multiple controlnets: `image` must have the same length as the number of controlnets."
                 )
@@ -556,12 +577,14 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
             assert False
 
         # Check `controlnet_conditioning_scale`
-
         if isinstance(self.controlnet, ControlNetModel):
             if not isinstance(controlnet_conditioning_scale, float):
                 raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
         elif isinstance(self.controlnet, MultiControlNetModel):
-            if isinstance(controlnet_conditioning_scale, list) and len(controlnet_conditioning_scale) != len(
+            if isinstance(controlnet_conditioning_scale, list):
+                if any(isinstance(i, list) for i in controlnet_conditioning_scale):
+                    raise ValueError("A single batch of multiple conditionings are supported at the moment.")
+            elif isinstance(controlnet_conditioning_scale, list) and len(controlnet_conditioning_scale) != len(
                 self.controlnet.nets
             ):
                 raise ValueError(
@@ -675,7 +698,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
             if isinstance(image, PIL.Image.Image):
                 height = image.height
             elif isinstance(image, torch.Tensor):
-                height = image.shape[3]
+                height = image.shape[2]
 
             height = (height // 8) * 8  # round down to nearest multiple of 8
 
@@ -683,7 +706,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
             if isinstance(image, PIL.Image.Image):
                 width = image.width
             elif isinstance(image, torch.Tensor):
-                width = image.shape[2]
+                width = image.shape[3]
 
             width = (width // 8) * 8  # round down to nearest multiple of 8
 
@@ -755,8 +778,8 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
                 usually at the expense of lower image quality.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
-                Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
@@ -887,7 +910,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline):
         timesteps = self.scheduler.timesteps
 
         # 6. Prepare latent variables
-        num_channels_latents = self.unet.in_channels
+        num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,

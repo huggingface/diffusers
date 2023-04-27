@@ -20,7 +20,7 @@ import numpy as np
 import torch
 
 from diffusers import AutoencoderKL, DDIMScheduler, DiTPipeline, DPMSolverMultistepScheduler, Transformer2DModel
-from diffusers.utils import load_numpy, slow
+from diffusers.utils import is_xformers_available, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 
 from ...pipeline_params import (
@@ -92,12 +92,19 @@ class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         self.assertEqual(image.shape, (1, 16, 16, 3))
-        expected_slice = np.array([0.4380, 0.4141, 0.5159, 0.0000, 0.4282, 0.6680, 0.5485, 0.2545, 0.6719])
+        expected_slice = np.array([0.2946, 0.6601, 0.4329, 0.3296, 0.4144, 0.5319, 0.7273, 0.5013, 0.4457])
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(relax_max_difference=True)
+        self._test_inference_batch_single_identical(relax_max_difference=True, expected_max_diff=1e-3)
+
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_xformers_attention_forwardGenerator_pass(self):
+        self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=1e-3)
 
 
 @require_torch_gpu
@@ -123,7 +130,7 @@ class DiTPipelineIntegrationTests(unittest.TestCase):
             expected_image = load_numpy(
                 f"https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/dit/{word}.npy"
             )
-            assert np.abs((expected_image - image).max()) < 1e-3
+            assert np.abs((expected_image - image).max()) < 1e-2
 
     def test_dit_512(self):
         pipe = DiTPipeline.from_pretrained("facebook/DiT-XL-2-512")

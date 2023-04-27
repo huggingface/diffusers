@@ -20,8 +20,9 @@ import torch.nn as nn
 import torch.utils.checkpoint
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..loaders import UNet2DConditionLoadersMixin
 from ..utils import BaseOutput, logging
-from .attention_processor import AttentionProcessor
+from .attention_processor import AttentionProcessor, AttnProcessor
 from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
 from .transformer_temporal import TransformerTemporalModel
@@ -50,7 +51,7 @@ class UNet3DConditionOutput(BaseOutput):
     sample: torch.FloatTensor
 
 
-class UNet3DConditionModel(ModelMixin, ConfigMixin):
+class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     r"""
     UNet3DConditionModel is a conditional 2D UNet model that takes in a noisy sample, conditional state, and a timestep
     and returns sample shaped output.
@@ -372,6 +373,13 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
+    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
+    def set_default_attn_processor(self):
+        """
+        Disables custom attention processors and sets the default attention implementation.
+        """
+        self.set_attn_processor(AttnProcessor())
+
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (CrossAttnDownBlock3D, DownBlock3D, CrossAttnUpBlock3D, UpBlock3D)):
             module.gradient_checkpointing = value
@@ -458,7 +466,9 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         sample = sample.permute(0, 2, 1, 3, 4).reshape((sample.shape[0] * num_frames, -1) + sample.shape[3:])
         sample = self.conv_in(sample)
 
-        sample = self.transformer_in(sample, num_frames=num_frames).sample
+        sample = self.transformer_in(
+            sample, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs
+        ).sample
 
         # 3. down
         down_block_res_samples = (sample,)

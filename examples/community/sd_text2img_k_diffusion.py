@@ -65,7 +65,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
-        feature_extractor ([`CLIPFeatureExtractor`]):
+        feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
     _optional_components = ["safety_checker", "feature_extractor"]
@@ -105,7 +105,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         )
 
         model = ModelWrapper(unet, scheduler.alphas_cumprod)
-        if scheduler.prediction_type == "v_prediction":
+        if scheduler.config.prediction_type == "v_prediction":
             self.k_diffusion_model = CompVisVDenoiser(model)
         else:
             self.k_diffusion_model = CompVisDenoiser(model)
@@ -433,7 +433,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         sigmas = sigmas.to(text_embeddings.dtype)
 
         # 5. Prepare latent variables
-        num_channels_latents = self.unet.in_channels
+        num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,

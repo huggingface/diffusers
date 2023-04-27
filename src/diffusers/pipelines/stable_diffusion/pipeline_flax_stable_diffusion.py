@@ -24,7 +24,7 @@ from flax.jax_utils import unreplicate
 from flax.training.common_utils import shard
 from packaging import version
 from PIL import Image
-from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel
+from transformers import CLIPImageProcessor, CLIPTokenizer, FlaxCLIPTextModel
 
 from ...models import FlaxAutoencoderKL, FlaxUNet2DConditionModel
 from ...schedulers import (
@@ -103,7 +103,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         safety_checker ([`FlaxStableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
-        feature_extractor ([`CLIPFeatureExtractor`]):
+        feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
 
@@ -117,7 +117,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
             FlaxDDIMScheduler, FlaxPNDMScheduler, FlaxLMSDiscreteScheduler, FlaxDPMSolverMultistepScheduler
         ],
         safety_checker: FlaxStableDiffusionSafetyChecker,
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
         dtype: jnp.dtype = jnp.float32,
     ):
         super().__init__()
@@ -245,9 +245,12 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         negative_prompt_embeds = self.text_encoder(uncond_input, params=params["text_encoder"])[0]
         context = jnp.concatenate([negative_prompt_embeds, prompt_embeds])
 
+        # Ensure model output will be `float32` before going into the scheduler
+        guidance_scale = jnp.array([guidance_scale], dtype=jnp.float32)
+
         latents_shape = (
             batch_size,
-            self.unet.in_channels,
+            self.unet.config.in_channels,
             height // self.vae_scale_factor,
             width // self.vae_scale_factor,
         )
