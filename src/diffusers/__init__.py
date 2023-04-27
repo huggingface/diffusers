@@ -1,4 +1,4 @@
-__version__ = "0.16.0.dev0"
+__version__ = "0.17.0.dev0"
 
 from .configuration_utils import ConfigMixin
 from .utils import (
@@ -114,6 +114,12 @@ else:
         AltDiffusionPipeline,
         AudioLDMPipeline,
         CycleDiffusionPipeline,
+        IFImg2ImgPipeline,
+        IFImg2ImgSuperResolutionPipeline,
+        IFInpaintingPipeline,
+        IFInpaintingSuperResolutionPipeline,
+        IFPipeline,
+        IFSuperResolutionPipeline,
         LDMTextToImagePipeline,
         PaintByExamplePipeline,
         SemanticStableDiffusionPipeline,
