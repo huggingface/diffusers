@@ -78,7 +78,7 @@ EXAMPLE_DOC_STRING = """
         >>> mask_image = mask_image
 
         >>> pipe = IFInpaintingPipeline.from_pretrained(
-        ...     "DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16
+        ...     "DeepFloyd/IF-I-XL-v1.0", variant="fp16", torch_dtype=torch.float16
         ... )
         >>> pipe.enable_model_cpu_offload()
 
