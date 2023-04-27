@@ -26,6 +26,7 @@ from .import_utils import (
     is_opencv_available,
     is_torch_available,
     is_torch_version,
+    is_torchsde_available,
 )
 from .logging import get_logger
 
@@ -214,6 +215,13 @@ def require_note_seq(test_case):
     Decorator marking a test that requires note_seq. These tests are skipped when note_seq isn't installed.
     """
     return unittest.skipUnless(is_note_seq_available(), "test requires note_seq")(test_case)
+
+
+def require_torchsde(test_case):
+    """
+    Decorator marking a test that requires torchsde. These tests are skipped when torchsde isn't installed.
+    """
+    return unittest.skipUnless(is_torchsde_available(), "test requires torchsde")(test_case)
 
 
 def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -> np.ndarray:
