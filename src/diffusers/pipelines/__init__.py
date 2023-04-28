@@ -27,6 +27,7 @@ else:
     from .repaint import RePaintPipeline
     from .score_sde_ve import ScoreSdeVePipeline
     from .stochastic_karras_ve import KarrasVePipeline
+    from .cm import CMPipeline
 
 try:
     if not (is_torch_available() and is_librosa_available()):

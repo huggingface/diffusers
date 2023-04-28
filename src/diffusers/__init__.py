@@ -70,6 +70,7 @@ else:
         PNDMPipeline,
         RePaintPipeline,
         ScoreSdeVePipeline,
+        CMPipeline,
     )
     from .schedulers import (
         DDIMInverseScheduler,
@@ -92,6 +93,7 @@ else:
         UnCLIPScheduler,
         UniPCMultistepScheduler,
         VQDiffusionScheduler,
+        CMScheduler,
     )
     from .training_utils import EMAModel
 
