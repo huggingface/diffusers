@@ -15,6 +15,7 @@
 # limitations under the License.
 
 import inspect
+import itertools
 import os
 from functools import partial
 from typing import Any, Callable, List, Optional, Tuple, Union
@@ -60,7 +61,8 @@ if is_safetensors_available():
 
 def get_parameter_device(parameter: torch.nn.Module):
     try:
-        return next(parameter.parameters()).device
+        parameters_and_buffers = itertools.chain(parameter.parameters(), parameter.buffers())
+        return next(parameters_and_buffers).device
     except StopIteration:
         # For torch.nn.DataParallel compatibility in PyTorch 1.5
 
@@ -75,7 +77,8 @@ def get_parameter_device(parameter: torch.nn.Module):
 
 def get_parameter_dtype(parameter: torch.nn.Module):
     try:
-        return next(parameter.parameters()).dtype
+        parameters_and_buffers = itertools.chain(parameter.parameters(), parameter.buffers())
+        return next(parameters_and_buffers).dtype
     except StopIteration:
         # For torch.nn.DataParallel compatibility in PyTorch 1.5
 

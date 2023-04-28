@@ -105,6 +105,8 @@
     title: MPS
   - local: optimization/habana
     title: Habana Gaudi
+  - local: optimization/tome
+    title: Token Merging
   title: Optimization/Special Hardware
 - sections:
   - local: conceptual/philosophy
@@ -152,6 +154,8 @@
       title: DDPM
     - local: api/pipelines/dit
       title: DiT
+    - local: api/pipelines/if
+      title: IF
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
     - local: api/pipelines/paint_by_example
@@ -262,6 +266,8 @@
       title: VP-SDE
     - local: api/schedulers/vq_diffusion
       title: VQDiffusionScheduler
+    - local: api/schedulers/dpm_sde
+      title: DPMSolverSDEScheduler
     title: Schedulers
   - sections:
     - local: api/experimental/rl
