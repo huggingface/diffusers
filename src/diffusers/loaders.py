@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
+import warnings
 from collections import defaultdict
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
@@ -45,6 +46,8 @@ if is_transformers_available():
 
 logger = logging.get_logger(__name__)
 
+TEXT_ENCODER_NAME = "text_encoder"
+UNET_NAME = "unet"
 
 LORA_WEIGHT_NAME = "pytorch_lora_weights.bin"
 LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
@@ -87,6 +90,9 @@ class AttnProcsLayers(torch.nn.Module):
 
 
 class UNet2DConditionLoadersMixin:
+    text_encoder_name = TEXT_ENCODER_NAME
+    unet_name = UNET_NAME
+
     def load_attn_procs(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         r"""
         Load pretrained attention processor layers into `UNet2DConditionModel`. Attention processor layers have to be
@@ -225,6 +231,18 @@ class UNet2DConditionLoadersMixin:
         is_custom_diffusion = any("custom_diffusion" in k for k in state_dict.keys())
 
         if is_lora:
+            is_new_lora_format = all(
+                key.startswith(self.unet_name) or key.startswith(self.text_encoder_name) for key in state_dict.keys()
+            )
+            if is_new_lora_format:
+                # Strip the `"unet"` prefix.
+                is_text_encoder_present = any(key.startswith(self.text_encoder_name) for key in state_dict.keys())
+                if is_text_encoder_present:
+                    warn_message = "The state_dict contains LoRA params corresponding to the text encoder which are not being used here. To use both UNet and text encoder related LoRA params, use [`pipe.load_lora_weights()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraLoaderMixin.load_lora_weights)."
+                    warnings.warn(warn_message)
+                unet_keys = [k for k in state_dict.keys() if k.startswith(self.unet_name)]
+                state_dict = {k.replace(f"{self.unet_name}.", ""): v for k, v in state_dict.items() if k in unet_keys}
+
             lora_grouped_dict = defaultdict(dict)
             for key, value in state_dict.items():
                 attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
@@ -672,8 +690,8 @@ class LoraLoaderMixin:
 
     </Tip>
     """
-    text_encoder_name = "text_encoder"
-    unet_name = "unet"
+    text_encoder_name = TEXT_ENCODER_NAME
+    unet_name = UNET_NAME
 
     def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         r"""
@@ -810,21 +828,24 @@ class LoraLoaderMixin:
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
         # their prefixes.
         keys = list(state_dict.keys())
-
-        # Load the layers corresponding to UNet.
-        if all(key.startswith(self.unet_name) for key in keys):
+        if all(key.startswith(self.unet_name) or key.startswith(self.text_encoder_name) for key in keys):
+            # Load the layers corresponding to UNet.
+            unet_keys = [k for k in keys if k.startswith(self.unet_name)]
             logger.info(f"Loading {self.unet_name}.")
-            unet_lora_state_dict = {k: v for k, v in state_dict.items() if k.startswith(self.unet_name)}
+            unet_lora_state_dict = {
+                k.replace(f"{self.unet_name}.", ""): v for k, v in state_dict.items() if k in unet_keys
+            }
             self.unet.load_attn_procs(unet_lora_state_dict)
 
-        # Load the layers corresponding to text encoder and make necessary adjustments.
-        elif all(key.startswith(self.text_encoder_name) for key in keys):
+            # Load the layers corresponding to text encoder and make necessary adjustments.
+            text_encoder_keys = [k for k in keys if k.startswith(self.text_encoder_name)]
             logger.info(f"Loading {self.text_encoder_name}.")
             text_encoder_lora_state_dict = {
-                k: v for k, v in state_dict.items() if k.startswith(self.text_encoder_name)
+                k.replace(f"{self.text_encoder_name}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
             }
-            attn_procs_text_encoder = self.load_attn_procs(text_encoder_lora_state_dict)
-            self._modify_text_encoder(attn_procs_text_encoder)
+            if len(text_encoder_lora_state_dict) > 0:
+                attn_procs_text_encoder = self._load_text_encoder_attn_procs(text_encoder_lora_state_dict)
+                self._modify_text_encoder(attn_procs_text_encoder)
 
         # Otherwise, we're dealing with the old format. This means the `state_dict` should only
         # contain the module names of the `unet` as its keys WITHOUT any prefix.
@@ -832,11 +853,8 @@ class LoraLoaderMixin:
             key.startswith(self.unet_name) or key.startswith(self.text_encoder_name) for key in state_dict.keys()
         ):
             self.unet.load_attn_procs(state_dict)
-            deprecation_message = "You have saved the LoRA weights using the old format. This will be"
-            " deprecated soon. To convert the old LoRA weights to the new format, you can first load them"
-            " in a dictionary and then create a new dictionary like the following:"
-            " `new_state_dict = {f'unet'.{module_name}: params for module_name, params in old_state_dict.items()}`."
-            deprecate("legacy LoRA weights", "1.0.0", deprecation_message, standard_warn=False)
+            warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet'.{module_name}: params for module_name, params in old_state_dict.items()}`."
+            warnings.warn(warn_message)
 
     def _modify_text_encoder(self, attn_processors: Dict[str, LoRAAttnProcessor]):
         r"""
@@ -872,7 +890,9 @@ class LoraLoaderMixin:
         else:
             return "to_out_lora"
 
-    def load_attn_procs(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
+    def _load_text_encoder_attn_procs(
+        self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs
+    ):
         r"""
         Load pretrained attention processor layers for
         [`CLIPTextModel`](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel).
