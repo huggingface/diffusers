@@ -98,7 +98,8 @@ accelerate launch train_dreambooth.py \
   --learning_rate=5e-6 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
-  --max_train_steps=400
+  --max_train_steps=400 \
+  --push_to_hub
 ```
 </pt>
 <jax>
@@ -161,7 +162,8 @@ accelerate launch train_dreambooth.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
-  --max_train_steps=800
+  --max_train_steps=800 \
+  --push_to_hub
 ```
 </pt>
 <jax>
@@ -225,7 +227,8 @@ accelerate launch train_dreambooth.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
-  --max_train_steps=800
+  --max_train_steps=800 \
+  --push_to_hub
 ```
 </pt>
 <jax>
@@ -387,7 +390,8 @@ accelerate launch train_dreambooth.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
-  --max_train_steps=800
+  --max_train_steps=800 \
+  --push_to_hub
 ```
 
 ### 12GB GPU
@@ -418,7 +422,8 @@ accelerate launch train_dreambooth.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
-  --max_train_steps=800
+  --max_train_steps=800 \
+  --push_to_hub
 ```
 
 ### 8 GB GPU
@@ -464,7 +469,8 @@ accelerate launch train_dreambooth.py \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
   --max_train_steps=800 \
-  --mixed_precision=fp16
+  --mixed_precision=fp16 \
+  --push_to_hub
 ```
 
 ## Inference

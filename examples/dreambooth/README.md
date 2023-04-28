@@ -80,7 +80,8 @@ accelerate launch train_dreambooth.py \
   --learning_rate=5e-6 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
-  --max_train_steps=400
+  --max_train_steps=400 \
+  --push_to_hub
 ```
 
 ### Training with prior-preservation loss
@@ -109,7 +110,8 @@ accelerate launch train_dreambooth.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
-  --max_train_steps=800
+  --max_train_steps=800 \
+  --push_to_hub
 ```
 
 
@@ -141,7 +143,8 @@ accelerate launch train_dreambooth.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
-  --max_train_steps=800
+  --max_train_steps=800 \
+  --push_to_hub
 ```
 
 
@@ -176,7 +179,8 @@ accelerate launch train_dreambooth.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
-  --max_train_steps=800
+  --max_train_steps=800 \
+  --push_to_hub
 ```
 
 
@@ -218,7 +222,8 @@ accelerate launch --mixed_precision="fp16" train_dreambooth.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
-  --max_train_steps=800
+  --max_train_steps=800 \
+  --push_to_hub
 ```
 
 ### Fine-tune text encoder with the UNet.
@@ -251,7 +256,8 @@ accelerate launch train_dreambooth.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
-  --max_train_steps=800
+  --max_train_steps=800 \
+  --push_to_hub
 ```
 
 ### Using DreamBooth for pipelines other than Stable Diffusion
