@@ -203,6 +203,8 @@
         title: Text-to-Image Generation with ControlNet Conditioning
       - local: api/pipelines/stable_diffusion/model_editing
         title: Text-to-Image Model Editing
+      - local: api/pipelines/stable_diffusion/diffedit
+        title: DiffEdit
       title: Stable Diffusion
     - local: api/pipelines/stable_diffusion_2
       title: Stable Diffusion 2
