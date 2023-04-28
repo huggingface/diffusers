@@ -74,6 +74,8 @@
       title: ControlNet
     - local: training/instructpix2pix
       title: InstructPix2Pix Training
+    - local: training/custom_diffusion
+      title: Custom Diffusion
     title: Training
   - sections:
     - local: using-diffusers/rl
@@ -103,6 +105,8 @@
     title: MPS
   - local: optimization/habana
     title: Habana Gaudi
+  - local: optimization/tome
+    title: Token Merging
   title: Optimization/Special Hardware
 - sections:
   - local: conceptual/philosophy
@@ -150,6 +154,8 @@
       title: DDPM
     - local: api/pipelines/dit
       title: DiT
+    - local: api/pipelines/if
+      title: IF
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
     - local: api/pipelines/paint_by_example
@@ -165,7 +171,7 @@
     - local: api/pipelines/semantic_stable_diffusion
       title: Semantic Guidance
     - local: api/pipelines/spectrogram_diffusion
-      title: "Spectrogram Diffusion"
+      title: Spectrogram Diffusion
     - sections:
       - local: api/pipelines/stable_diffusion/overview
         title: Overview
@@ -232,6 +238,8 @@
       title: DPM Discrete Scheduler
     - local: api/schedulers/dpm_discrete_ancestral
       title: DPM Discrete Scheduler with ancestral sampling
+    - local: api/schedulers/dpm_sde
+      title: DPMSolverSDEScheduler
     - local: api/schedulers/euler_ancestral
       title: Euler Ancestral Scheduler
     - local: api/schedulers/euler

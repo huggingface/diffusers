@@ -1,0 +1,7 @@
+accelerate
+torchvision
+transformers>=4.25.0
+ftfy
+tensorboard
+modelcards
+neural-compressor
