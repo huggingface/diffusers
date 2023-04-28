@@ -243,8 +243,7 @@ Load the LoRA weights from your finetuned DreamBooth model *on top of the base m
 >>> image.save("bucket-dog.png")
 ```
 
-Note that we will gradually be depcrecating the use of [`UNet2DConditionLoadersMixin.load_attn_procs`] since we now have a more general
-method to load the LoRA parameters -- [`LoraLoaderMixin.load_lora_weights`]. This is because
+Note that the use of [`LoraLoaderMixin.load_lora_weights`] is preferred to [`UNet2DConditionLoadersMixin.load_attn_procs`] for loading LoRA parameters. This is because
 [`LoraLoaderMixin.load_lora_weights`] can handle the following situations:
 
 * LoRA parameters that don't have separate identifiers for the UNet and the text encoder (such as [`"patrickvonplaten/lora_dreambooth_dog_example"`](https://huggingface.co/patrickvonplaten/lora_dreambooth_dog_example)). So, you can just do:
