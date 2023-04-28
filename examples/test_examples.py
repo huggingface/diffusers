@@ -281,10 +281,14 @@ class ExamplesTestsAccelerate(unittest.TestCase):
             # save_pretrained smoke test
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.bin")))
 
-            # the names of the keys of the state dict should either start with `unet`
-            # or `text_encoder`.
+            # check `text_encoder` is present at all.
             lora_state_dict = torch.load(os.path.join(tmpdir, "pytorch_lora_weights.bin"))
             keys = lora_state_dict.keys()
+            is_text_encoder_present = any(k.startswith("text_encoder") for k in keys)
+            self.assertTrue(is_text_encoder_present)
+
+            # the names of the keys of the state dict should either start with `unet`
+            # or `text_encoder`.
             is_correct_naming = all(k.startswith("unet") or k.startswith("text_encoder") for k in keys)
             self.assertTrue(is_correct_naming)
 

@@ -171,7 +171,7 @@
     - local: api/pipelines/semantic_stable_diffusion
       title: Semantic Guidance
     - local: api/pipelines/spectrogram_diffusion
-      title: "Spectrogram Diffusion"
+      title: Spectrogram Diffusion
     - sections:
       - local: api/pipelines/stable_diffusion/overview
         title: Overview
@@ -238,6 +238,8 @@
       title: DPM Discrete Scheduler
     - local: api/schedulers/dpm_discrete_ancestral
       title: DPM Discrete Scheduler with ancestral sampling
+    - local: api/schedulers/dpm_sde
+      title: DPMSolverSDEScheduler
     - local: api/schedulers/euler_ancestral
       title: Euler Ancestral Scheduler
     - local: api/schedulers/euler
@@ -266,8 +268,6 @@
       title: VP-SDE
     - local: api/schedulers/vq_diffusion
       title: VQDiffusionScheduler
-    - local: api/schedulers/dpm_sde
-      title: DPMSolverSDEScheduler
     title: Schedulers
   - sections:
     - local: api/experimental/rl
