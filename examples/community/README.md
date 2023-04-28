@@ -32,6 +32,8 @@ MagicMix | Diffusion Pipeline for semantic mixing of an image and a text prompt 
 | DDIM Noise Comparative Analysis Pipeline | Investigating how the diffusion models learn visual concepts from each noise level (which is a contribution of [P2 weighting (CVPR 2022)](https://arxiv.org/abs/2204.00227)) | [DDIM Noise Comparative Analysis Pipeline](#ddim-noise-comparative-analysis-pipeline) | - |[Aengus (Duc-Anh)](https://github.com/aengusng8) |
 | CLIP Guided Img2Img Stable Diffusion Pipeline | Doing CLIP guidance for image to image generation with Stable Diffusion | [CLIP Guided Img2Img Stable Diffusion](#clip-guided-img2img-stable-diffusion) | - | [Nipun Jindal](https://github.com/nipunjindal/) | 
 | TensorRT Stable Diffusion Pipeline | Accelerates the Stable Diffusion Text2Image Pipeline using TensorRT | [TensorRT Stable Diffusion Pipeline](#tensorrt-text2image-stable-diffusion-pipeline) | - |[Asfiya Baig](https://github.com/asfiyab-nvidia) |
+| EDICT Image Editing Pipeline | Diffusion pipeline for text-guided image editing | [EDICT Image Editing Pipeline](#edict-image-editing-pipeline) | - | [Joqsan Azocar](https://github.com/Joqsan) | 
+
 
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
@@ -1161,3 +1163,87 @@ prompt = "a beautiful photograph of Mt. Fuji during cherry blossom"
 image = pipe(prompt).images[0]
 image.save('tensorrt_mt_fuji.png')
 ```
+
+### EDICT Image Editing Pipeline
+
+This pipeline implements the text-guided image editing approach from the paper [EDICT: Exact Diffusion Inversion via Coupled Transformations](https://arxiv.org/abs/2211.12446). You have to pass:
+- (`PIL`) `image` you want to edit.
+- `base_prompt`: the text prompt describing the current image (before editing).
+- `target_prompt`: the text prompt describing with the edits.
+
+```python
+from diffusers import DiffusionPipeline, DDIMScheduler
+from transformers import CLIPTextModel
+import torch, PIL, requests
+from io import BytesIO
+from IPython.display import display
+
+def center_crop_and_resize(im):
+
+    width, height = im.size
+    d = min(width, height)
+    left = (width - d) / 2
+    upper = (height - d) / 2
+    right = (width + d) / 2
+    lower = (height + d) / 2
+
+    return im.crop((left, upper, right, lower)).resize((512, 512))
+
+torch_dtype = torch.float16
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+# scheduler and text_encoder param values as in the paper
+scheduler = DDIMScheduler(
+        num_train_timesteps=1000,
+        beta_start=0.00085,
+        beta_end=0.012,
+        beta_schedule="scaled_linear",
+        set_alpha_to_one=False,
+        clip_sample=False,
+)
+
+text_encoder = CLIPTextModel.from_pretrained(
+    pretrained_model_name_or_path="openai/clip-vit-large-patch14",
+    torch_dtype=torch_dtype,
+)
+
+# initialize pipeline
+pipeline = DiffusionPipeline.from_pretrained(
+    pretrained_model_name_or_path="CompVis/stable-diffusion-v1-4",
+    custom_pipeline="edict_pipeline",
+    revision="fp16",
+    scheduler=scheduler,
+    text_encoder=text_encoder,
+    leapfrog_steps=True,
+    torch_dtype=torch_dtype,
+).to(device)
+
+# download image
+image_url = "https://huggingface.co/datasets/Joqsan/images/resolve/main/imagenet_dog_1.jpeg"
+response = requests.get(image_url)
+image = PIL.Image.open(BytesIO(response.content))
+
+# preprocess it
+cropped_image = center_crop_and_resize(image)
+
+# define the prompts
+base_prompt = "A dog"
+target_prompt = "A golden retriever"
+
+# run the pipeline
+result_image = pipeline(
+      base_prompt=base_prompt, 
+      target_prompt=target_prompt, 
+      image=cropped_image,
+)
+
+display(result_image)
+```
+
+Init Image
+
+![img2img_init_edict_text_editing](https://huggingface.co/datasets/Joqsan/images/resolve/main/imagenet_dog_1.jpeg)
+
+Output Image
+
+![img2img_edict_text_editing](https://huggingface.co/datasets/Joqsan/images/resolve/main/imagenet_dog_1_cropped_generated.png)
