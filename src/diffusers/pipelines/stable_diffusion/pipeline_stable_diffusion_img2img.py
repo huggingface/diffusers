@@ -442,10 +442,9 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMi
 
         return prompt_embeds
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
-    def run_safety_checker(self, image, device, dtype, output_type="pil"):
+    def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is None:
-            has_nsfw_concept = False
+            has_nsfw_concept = None
         else:
             if torch.is_tensor(image):
                 feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
@@ -457,7 +456,6 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMi
             )
         return image, has_nsfw_concept
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
         warnings.warn(
             "The decode_latents method is deprecated and will be removed in a future version. Please"
@@ -758,14 +756,14 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMi
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
             image = latents
-            has_nsfw_concept = False
-        
-        do_normalize = (
-            [not has_nsfw for has_nsfw in has_nsfw_concept]
-            if isinstance(has_nsfw_concept, list)
-            else not has_nsfw_concept
-        )
-        image = self.image_processor.postprocess(image, output_type=output_type, do_normalize=do_normalize)
+            has_nsfw_concept = None
+
+        if has_nsfw_concept is None:
+            do_denormalize = [True] * image.shape[0]
+        else:
+            do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
+
+        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
