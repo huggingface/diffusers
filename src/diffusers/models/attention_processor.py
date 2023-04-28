@@ -16,6 +16,7 @@ from typing import Callable, Optional, Union
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torch._dynamo import allow_in_graph
 
 from ..utils import deprecate, logging
 from ..utils.import_utils import is_xformers_available
@@ -31,6 +32,7 @@ else:
     xformers = None
 
 
+@allow_in_graph
 class Attention(nn.Module):
     r"""
     A cross attention layer.
