@@ -1039,7 +1039,9 @@ def main(args):
                         logger.info(f"Saved state to {save_path}")
 
                     if args.validation_prompt is not None and global_step % args.validation_steps == 0:
-                        images = log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch)
+                        images = log_validation(
+                            text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch
+                        )
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
