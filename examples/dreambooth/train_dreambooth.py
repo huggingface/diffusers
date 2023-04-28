@@ -61,7 +61,7 @@ check_min_version("0.17.0.dev0")
 logger = get_logger(__name__)
 
 
-def save_model_card(repo_id: str, images=None, base_model=str, prompt=str, repo_folder=None):
+def save_model_card(repo_id: str, images=None, base_model=str, train_text_encoder=False, prompt=str, repo_folder=None):
     img_str = ""
     for i, image in enumerate(images):
         image.save(os.path.join(repo_folder, f"image_{i}.png"))
@@ -87,6 +87,8 @@ inference: true
 This is a dreambooth model derived from {base_model}. The weights were trained on {prompt} using [DreamBooth](https://dreambooth.github.io/).
 You can find some example images in the following. \n
 {img_str}
+
+DreamBooth for the text encoder was enabled: {train_text_encoder}.
 """
     with open(os.path.join(repo_folder, "README.md"), "w") as f:
         f.write(yaml + model_card)
