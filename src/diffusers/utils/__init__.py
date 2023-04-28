@@ -70,6 +70,7 @@ from .import_utils import (
     is_tf_available,
     is_torch_available,
     is_torch_version,
+    is_torchsde_available,
     is_transformers_available,
     is_transformers_version,
     is_unidecode_available,

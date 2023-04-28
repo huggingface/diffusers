@@ -202,6 +202,8 @@ image = pipe(prompt).images[0]
 
 **Note**: When using `enable_sequential_cpu_offload()`, it is important to **not** move the pipeline to CUDA beforehand or else the gain in memory consumption will only be minimal. See [this issue](https://github.com/huggingface/diffusers/issues/1934) for more information.
 
+**Note**: `enable_sequential_cpu_offload()` is a stateful operation that installs hooks on the models.
+
 
 <a name="model_offloading"></a>
 ## Model offloading for fast inference and memory savings
@@ -250,6 +252,11 @@ image = pipe(prompt).images[0]
 <Tip>
 This feature requires `accelerate` version 0.17.0 or larger.
 </Tip>
+
+**Note**: `enable_model_cpu_offload()` is a stateful operation that installs hooks on the models and state on the pipeline. In order to properly offload
+models after they are called, it is required that the entire pipeline is run and models are called in the order the pipeline expects them to be. Exercise caution
+if models are re-used outside the context of the pipeline after hooks have been installed. See [accelerate](https://huggingface.co/docs/accelerate/v0.18.0/en/package_reference/big_modeling#accelerate.hooks.remove_hook_from_module)
+for further docs on removing hooks.
 
 ## Using Channels Last memory format
 

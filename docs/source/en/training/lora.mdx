@@ -115,7 +115,7 @@ Load the LoRA weights from your finetuned model *on top of the base model weight
 </Tip>
 
 ```py
->>> pipe.unet.load_attn_procs(model_path)
+>>> pipe.unet.load_attn_procs(lora_model_path)
 >>> pipe.to("cuda")
 # use half the weights from the LoRA finetuned model and half the weights from the base model
 
@@ -127,6 +127,25 @@ Load the LoRA weights from your finetuned model *on top of the base model weight
 >>> image = pipe("A pokemon with blue eyes.", num_inference_steps=25, guidance_scale=7.5).images[0]
 >>> image.save("blue_pokemon.png")
 ```
+
+<Tip>
+
+If you are loading the LoRA parameters from the Hub and if the Hub repository has
+a `base_model` tag (such as [this](https://huggingface.co/sayakpaul/sd-model-finetuned-lora-t4/blob/main/README.md?code=true#L4)), then
+you can do: 
+
+```py 
+from huggingface_hub.repocard import RepoCard
+
+lora_model_id = "sayakpaul/sd-model-finetuned-lora-t4"
+card = RepoCard.load(lora_model_id)
+base_model_id = card.data.to_dict()["base_model"]
+
+pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
+...
+```
+
+</Tip>
 
 ## DreamBooth
 
@@ -208,7 +227,7 @@ Load the LoRA weights from your finetuned DreamBooth model *on top of the base m
 </Tip>
 
 ```py
->>> pipe.unet.load_attn_procs(model_path)
+>>> pipe.unet.load_attn_procs(lora_model_path)
 >>> pipe.to("cuda")
 # use half the weights from the LoRA finetuned model and half the weights from the base model
 
@@ -223,3 +242,14 @@ Load the LoRA weights from your finetuned DreamBooth model *on top of the base m
 >>> image = pipe("A picture of a sks dog in a bucket.", num_inference_steps=25, guidance_scale=7.5).images[0]
 >>> image.save("bucket-dog.png")
 ```
+
+Note that the use of [`LoraLoaderMixin.load_lora_weights`] is preferred to [`UNet2DConditionLoadersMixin.load_attn_procs`] for loading LoRA parameters. This is because
+[`LoraLoaderMixin.load_lora_weights`] can handle the following situations:
+
+* LoRA parameters that don't have separate identifiers for the UNet and the text encoder (such as [`"patrickvonplaten/lora_dreambooth_dog_example"`](https://huggingface.co/patrickvonplaten/lora_dreambooth_dog_example)). So, you can just do:
+
+  ```py 
+  pipe.load_lora_weights(lora_model_path)
+  ```
+
+* LoRA parameters that have separate identifiers for the UNet and the text encoder such as: [`"sayakpaul/dreambooth"`](https://huggingface.co/sayakpaul/dreambooth).

@@ -94,7 +94,7 @@ class IFPipelineSlowTests(unittest.TestCase):
     def test_all(self):
         # if
 
-        pipe_1 = IFPipeline.from_pretrained("DeepFloyd/IF-I-IF-v1.0", variant="fp16", torch_dtype=torch.float16)
+        pipe_1 = IFPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", variant="fp16", torch_dtype=torch.float16)
 
         pipe_2 = IFSuperResolutionPipeline.from_pretrained(
             "DeepFloyd/IF-II-L-v1.0", variant="fp16", torch_dtype=torch.float16, text_encoder=None, tokenizer=None
