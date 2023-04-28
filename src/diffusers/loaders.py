@@ -844,7 +844,7 @@ class LoraLoaderMixin:
                 k.replace(f"{self.text_encoder_name}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
             }
             if len(text_encoder_lora_state_dict) > 0:
-                attn_procs_text_encoder = self.__load_text_encoder_attn_procs(text_encoder_lora_state_dict)
+                attn_procs_text_encoder = self._load_text_encoder_attn_procs(text_encoder_lora_state_dict)
                 self._modify_text_encoder(attn_procs_text_encoder)
 
         # Otherwise, we're dealing with the old format. This means the `state_dict` should only
