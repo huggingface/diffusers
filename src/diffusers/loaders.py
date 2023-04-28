@@ -890,7 +890,7 @@ class LoraLoaderMixin:
         else:
             return "to_out_lora"
 
-    def __load_text_encoder_attn_procs(
+    def _load_text_encoder_attn_procs(
         self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs
     ):
         r"""
