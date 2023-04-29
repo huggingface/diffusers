@@ -26,13 +26,13 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
-import torch
-
-import diffusers
 import PIL
+import torch
 from huggingface_hub import hf_hub_download, model_info, snapshot_download
 from packaging import version
 from tqdm.auto import tqdm
+
+import diffusers
 
 from .. import __version__
 from ..configuration_utils import ConfigMixin
