@@ -51,12 +51,11 @@ class CMOutput(BaseOutput):
 
 class CMScheduler(SchedulerMixin, ConfigMixin):
     """
-    Stochastic sampling from Karras et al. [1] tailored to the Variance-Expanding (VE) models [2]. Use Algorithm 2 and
-    the VE column of Table 1 from [1] for reference.
-
-    [1] Karras, Tero, et al. "Elucidating the Design Space of Diffusion-Based Generative Models."
-    https://arxiv.org/abs/2206.00364 [2] Song, Yang, et al. "Score-based generative modeling through stochastic
-    differential equations." https://arxiv.org/abs/2011.13456
+    The training and inference code of **CT** from consistency models [1].
+    **CD** from consistency models has not been verified.
+    The source code refers to https://github.com/openai/consistency_models
+    
+    [1] Song, Yang, et al. "Consistency Models." https://arxiv.org/abs/2303.01469 
 
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.

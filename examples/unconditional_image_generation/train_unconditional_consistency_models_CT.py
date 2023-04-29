@@ -406,6 +406,9 @@ def main(args):
 
     # Initialize the model
     if args.model_config_name_or_path is None:
+        '''
+            This UNet remains same as DDPM, but it may need to be tuned to fit the consistency model.
+        '''
         model = UNet2DModel(
             sample_size=args.resolution,
             in_channels=3,
@@ -485,13 +488,8 @@ def main(args):
         )
 
     # Initialize the optimizer
-    #optimizer = torch.optim.AdamW(
-    #    model.parameters(),
-    #    lr=args.learning_rate,
-    #    betas=(args.adam_beta1, args.adam_beta2),
-    #    weight_decay=args.adam_weight_decay,
-    #    eps=args.adam_epsilon,
-    #)
+    # In consistency model, use RAdam instead of AdamW
+    # https://github.com/openai/consistency_models/blob/main/cm/train_util.py
     optimizer = torch.optim.RAdam(
         model.parameters(),
         lr=args.learning_rate,
