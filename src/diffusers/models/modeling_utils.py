@@ -392,6 +392,12 @@ class ModelMixin(torch.nn.Module):
                 To have Accelerate compute the most optimized `device_map` automatically, set `device_map="auto"`. For
                 more information about each option see [designing a device
                 map](https://hf.co/docs/accelerate/main/en/usage_guides/big_modeling#designing-a-device-map).
+            offload_folder (`str` or `os.PathLike`, *optional*):
+                If the `device_map` contains any value `"disk"`, the folder where we will offload weights.
+            offload_state_dict (`bool`, *optional*):
+                If `True`, will temporarily offload the CPU state dict to the hard drive to avoid getting out of CPU
+                RAM if the weight of the CPU state dict + the biggest shard of the checkpoint does not fit. Defaults to
+                `True` when there is some disk offload.
             low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
                 Speed up model loading by not initializing the weights and only loading the pre-trained weights. This
                 also tries to not use more than 1x model size in CPU memory (including peak memory) while loading the
@@ -433,6 +439,8 @@ class ModelMixin(torch.nn.Module):
         torch_dtype = kwargs.pop("torch_dtype", None)
         subfolder = kwargs.pop("subfolder", None)
         device_map = kwargs.pop("device_map", None)
+        offload_folder = kwargs.pop("offload_folder", None)
+        offload_state_dict = kwargs.pop("offload_state_dict", False)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
@@ -504,6 +512,8 @@ class ModelMixin(torch.nn.Module):
             revision=revision,
             subfolder=subfolder,
             device_map=device_map,
+            offload_folder=offload_folder,
+            offload_state_dict=offload_state_dict,
             user_agent=user_agent,
             **kwargs,
         )
@@ -607,7 +617,14 @@ class ModelMixin(torch.nn.Module):
                 else:  # else let accelerate handle loading and dispatching.
                     # Load weights and dispatch according to the device_map
                     # by default the device_map is None and the weights are loaded on the CPU
-                    accelerate.load_checkpoint_and_dispatch(model, model_file, device_map, dtype=torch_dtype)
+                    accelerate.load_checkpoint_and_dispatch(
+                        model,
+                        model_file,
+                        device_map,
+                        offload_folder=offload_folder,
+                        offload_state_dict=offload_state_dict,
+                        dtype=torch_dtype,
+                    )
 
                 loading_info = {
                     "missing_keys": [],
