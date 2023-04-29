@@ -18,10 +18,10 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from ..utils import maybe_allow_in_graph
 from ..utils.import_utils import is_xformers_available
 from .attention_processor import Attention
 from .embeddings import CombinedTimestepLabelEmbeddings
-from torch._dynamo import allow_in_graph
 
 
 if is_xformers_available():
@@ -194,7 +194,7 @@ class AttentionBlock(nn.Module):
         return hidden_states
 
 
-@allow_in_graph
+@maybe_allow_in_graph
 class BasicTransformerBlock(nn.Module):
     r"""
     A basic Transformer block.
