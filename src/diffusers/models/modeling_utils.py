@@ -623,7 +623,7 @@ class ModelMixin(torch.nn.Module):
                         device_map,
                         offload_folder=offload_folder,
                         offload_state_dict=offload_state_dict,
-                        dtype=torch_dtype
+                        dtype=torch_dtype,
                     )
 
                 loading_info = {
