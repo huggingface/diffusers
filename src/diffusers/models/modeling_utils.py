@@ -79,11 +79,11 @@ def get_parameter_dtype(parameter: torch.nn.Module):
     try:
         params = tuple(parameter.parameters())
         if len(params) > 0:
-            return params[0]
+            return params[0].dtype
 
         buffers = tuple(parameter.buffers())
         if len(buffers) > 0:
-            return buffers[0]
+            return buffers[0].dtype
 
     except StopIteration:
         # For torch.nn.DataParallel compatibility in PyTorch 1.5
