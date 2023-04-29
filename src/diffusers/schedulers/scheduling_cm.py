@@ -362,7 +362,6 @@ class CMScheduler(SchedulerMixin, ConfigMixin):
         timesteps, 
         model, 
         target_model, 
-        tmp_target_model, 
         teacher_model=None,
     ):
         t = self.get_edm_timesteps(timesteps, num_scales)
@@ -382,10 +381,11 @@ class CMScheduler(SchedulerMixin, ConfigMixin):
         
         torch.set_rng_state(dropout_state)
         
-        target_model.store(tmp_target_model.parameters())
-        target_model.copy_to(tmp_target_model.parameters())
+        #target_model.store(tmp_target_model.parameters())
+        #target_model.copy_to(tmp_target_model.parameters())
         
-        distiller_target = self.denoise(x_t2, t2, tmp_target_model)
+        #distiller_target = self.denoise(x_t2, t2, tmp_target_model)
+        distiller_target = self.denoise(x_t2, t2, target_model)
         distiller_target = distiller_target.detach()
         
         snrs = self.get_snr(t)
@@ -411,7 +411,7 @@ class CMScheduler(SchedulerMixin, ConfigMixin):
         else:
             raise ValueError(f"Unknown loss norm {self.loss_norm}")
         
-        target_model.restore(tmp_target_model.parameters())
+        #target_model.restore(tmp_target_model.parameters())
         
         return loss
     

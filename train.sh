@@ -1,8 +1,8 @@
 # test CM
-CUDA_VISIBLE_DEVICES=6,7 accelerate launch --multi_gpu ./examples/unconditional_image_generation/train_unconditional_cm.py --train_data_dir="datasets/valid_64x64" --resolution=64 --center_crop --random_flip --output_dir="ddpm-ema-flowers-64" --train_batch_size=32 --num_epochs=100 --gradient_accumulation_steps=1 --use_ema --learning_rate=1e-4 --lr_warmup_steps=500 
+CUDA_VISIBLE_DEVICES=6,7 accelerate launch --multi_gpu ./examples/unconditional_image_generation/train_unconditional_consistency_models_CT.py --train_data_dir="datasets/valid_64x64" --resolution=64 --center_crop --random_flip --output_dir="ddpm-ema-flowers-64" --train_batch_size=32 --num_epochs=100 --gradient_accumulation_steps=1 --use_ema --learning_rate=1e-4 --lr_warmup_steps=500 
 
 
-CUDA_VISIBLE_DEVICES=6,7 accelerate launch --multi_gpu ./examples/unconditional_image_generation/train_unconditional_cm.py --train_data_dir="datasets/valid_64x64" --resolution=64 --center_crop --random_flip --output_dir="ddpm-ema-flowers-64" --train_batch_size=16 --num_epochs=100 --gradient_accumulation_steps=1 --use_ema --learning_rate=1e-4 --lr_warmup_steps=500 
+CUDA_VISIBLE_DEVICES=6,7 accelerate launch --multi_gpu ./examples/unconditional_image_generation/train_unconditional_consistency_models_CT.py --train_data_dir="datasets/valid_64x64" --resolution=64 --center_crop --random_flip --output_dir="ddpm-ema-flowers-64" --train_batch_size=16 --num_epochs=100 --gradient_accumulation_steps=1 --use_ema --learning_rate=1e-4 --lr_warmup_steps=500 
 
 --model_config_name_or_path CMPipeline
 

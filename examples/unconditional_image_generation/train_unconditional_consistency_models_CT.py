@@ -24,8 +24,8 @@ import diffusers
 
 from diffusers import KarrasVePipeline, KarrasVeScheduler
 from diffusers import CMPipeline, CMScheduler
+from diffusers.pipelines.cm import ForwardEMAModel
 
-from diffusers import CMPipeline, CMScheduler
 from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
@@ -574,13 +574,15 @@ def main(args):
     global_step = 0
     first_epoch = 0
     
-    tmp_target_model = copy.deepcopy(ori_model)
+    #tmp_target_model = copy.deepcopy(ori_model)
     
     
     noise_scheduler.total_steps = max_train_steps
     target_ema, _ = noise_scheduler.create_ema_and_scales_fn(global_step)
-    target_model = EMAModel(
-        ori_model.parameters(),
+    #target_model = EMAModel(
+    #    ori_model.parameters(),
+    target_model = ForwardEMAModel(
+        accelerator.unwrap_model(model),
         decay=target_ema,
         min_decay=target_ema,
         use_ema_warmup=True,
@@ -644,7 +646,8 @@ def main(args):
                 # Predict the noise residual and calculate loss
                 loss = noise_scheduler.consistency_loss(
                     clean_images, noisy_images, 
-                    num_scales, timesteps, model, target_model, tmp_target_model, teacher_model=None)
+                    num_scales, timesteps, model, target_model, teacher_model=None)
+                #    num_scales, timesteps, model, target_model, tmp_target_model, teacher_model=None)
 
                 if args.schedule_sampler == "uniform":
                     loss = loss.mean()
