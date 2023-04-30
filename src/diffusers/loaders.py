@@ -49,6 +49,9 @@ logger = logging.get_logger(__name__)
 TEXT_ENCODER_NAME = "text_encoder"
 UNET_NAME = "unet"
 
+LORA_PREFIX_TEXT_ENCODER_NAME = "lora_te"
+LORA_PREFIX_UNET_NAME = "lora_unet"
+
 LORA_WEIGHT_NAME = "pytorch_lora_weights.bin"
 LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
 
@@ -693,6 +696,9 @@ class LoraLoaderMixin:
     text_encoder_name = TEXT_ENCODER_NAME
     unet_name = UNET_NAME
 
+    lora_prefix_text_encoder_name = LORA_PREFIX_TEXT_ENCODER_NAME
+    lora_prefix_unet_name = LORA_PREFIX_UNET_NAME
+
     def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         r"""
         Load pretrained attention processor layers (such as LoRA) into [`UNet2DConditionModel`] and
@@ -745,6 +751,8 @@ class LoraLoaderMixin:
                 problem, you can set this option to resolve it. Note that we do not guarantee the timeliness or safety.
                 Please refer to the mirror site for more information.
 
+            lora_weight (`float`, *optional*, defaults to `1.0`):
+                The specific weight to apply to whole lora model, between 0 and 1.
         <Tip>
 
         It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
@@ -764,6 +772,7 @@ class LoraLoaderMixin:
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        lora_weight = kwargs.pop("lora_weight", 1.0)
 
         if use_safetensors and not is_safetensors_available():
             raise ValueError(
@@ -828,7 +837,10 @@ class LoraLoaderMixin:
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
         # their prefixes.
         keys = list(state_dict.keys())
-        if all(key.startswith(self.unet_name) or key.startswith(self.text_encoder_name) for key in keys):
+        if all(key.startswith(self.lora_prefix_unet_name) or key.startswith(self.lora_prefix_text_encoder_name) for key in keys):
+            self._load_lora_weights(state_dict, weight=lora_weight)
+            
+        elif all(key.startswith(self.unet_name) or key.startswith(self.text_encoder_name) for key in keys):
             # Load the layers corresponding to UNet.
             unet_keys = [k for k in keys if k.startswith(self.unet_name)]
             logger.info(f"Loading {self.unet_name}.")
@@ -855,6 +867,64 @@ class LoraLoaderMixin:
             self.unet.load_attn_procs(state_dict)
             warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet'.{module_name}: params for module_name, params in old_state_dict.items()}`."
             warnings.warn(warn_message)
+
+    def _load_lora_weights(self, pretrained_model_dict: Dict[str, torch.Tensor], weight: float):
+        state_dict = pretrained_model_dict
+        visited = []
+        # directly update weight in diffusers model
+        for key in state_dict:
+            # key fromat
+            # 'lora_unet_down_blocks_0_attentions_1_transformer_blocks_0_attn1_to_out_0.alpha'
+            # 'lora_unet_down_blocks_0_attentions_1_transformer_blocks_0_attn1_to_out_0.lora_down.weight'
+            # 'lora_unet_down_blocks_0_attentions_1_transformer_blocks_0_attn1_to_out_0.lora_up.weight'
+
+            # alpha will handled, continue for skip
+            if ".alpha" in key or key in visited:
+                continue
+
+            if "text" in key:
+                layer_infos = key.split(".")[0].split(self.lora_prefix_text_encoder_name + "_")[-1].split("_")
+                curr_layer = self.text_encoder
+                dtype = self.text_encoder.dtype
+            else:
+                layer_infos = key.split(".")[0].split(self.lora_prefix_unet_name + "_")[-1].split("_")
+                curr_layer = self.unet
+                dtype = self.unet.dtype
+
+            # traverse layer_infos to find the key-specific layer
+            temp_name = layer_infos.pop(0)
+            while len(layer_infos) > -1:
+                try:
+                    curr_layer = curr_layer.__getattr__(temp_name)
+                    if len(layer_infos) > 0:
+                        temp_name = layer_infos.pop(0)
+                    elif len(layer_infos) == 0:
+                        break
+                except Exception:
+                    if len(temp_name) > 0:
+                        temp_name += "_" + layer_infos.pop(0)
+                    else:
+                        temp_name = layer_infos.pop(0)
+
+            layer = key.split('.', 1)[0]
+            layer_keys = list(map(lambda e: layer + e, ['.lora_up.weight', '.lora_down.weight', '.alpha']))
+            
+            weight_up = state_dict[layer_keys[0]].to(dtype)
+            weight_down = state_dict[layer_keys[1]].to(dtype)
+            alpha = state_dict[layer_keys[2]]
+            alpha = alpha.item() / weight_up.shape[1] if alpha else 1.0
+    
+            # update weights
+            if len(state_dict[layer_keys[0]].shape) == 4:
+                weight_up = weight_up.squeeze(3).squeeze(2)
+                weight_down = weight_down.squeeze(3).squeeze(2)
+                curr_layer.weight.data += weight * alpha * torch.mm(weight_up, weight_down).unsqueeze(2).unsqueeze(3)
+            else:
+                curr_layer.weight.data += weight * alpha * torch.mm(weight_up, weight_down)
+
+            # update visited list
+            for item in layer_keys:
+                visited.append(item)
 
     def _modify_text_encoder(self, attn_processors: Dict[str, LoRAAttnProcessor]):
         r"""
