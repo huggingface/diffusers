@@ -753,6 +753,7 @@ class LoraLoaderMixin:
 
             lora_weight (`float`, *optional*, defaults to `1.0`):
                 The specific weight to apply to whole lora model, between 0 and 1.
+
         <Tip>
 
         It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
