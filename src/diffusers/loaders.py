@@ -837,9 +837,12 @@ class LoraLoaderMixin:
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
         # their prefixes.
         keys = list(state_dict.keys())
-        if all(key.startswith(self.lora_prefix_unet_name) or key.startswith(self.lora_prefix_text_encoder_name) for key in keys):
+        if all(
+            key.startswith(self.lora_prefix_unet_name) or key.startswith(self.lora_prefix_text_encoder_name)
+            for key in keys
+        ):
             self._load_lora_weights(state_dict, weight=lora_weight)
-            
+
         elif all(key.startswith(self.unet_name) or key.startswith(self.text_encoder_name) for key in keys):
             # Load the layers corresponding to UNet.
             unet_keys = [k for k in keys if k.startswith(self.unet_name)]
@@ -906,14 +909,14 @@ class LoraLoaderMixin:
                     else:
                         temp_name = layer_infos.pop(0)
 
-            layer = key.split('.', 1)[0]
-            layer_keys = list(map(lambda e: layer + e, ['.lora_up.weight', '.lora_down.weight', '.alpha']))
-            
+            layer = key.split(".", 1)[0]
+            layer_keys = list(map(lambda e: layer + e, [".lora_up.weight", ".lora_down.weight", ".alpha"]))
+
             weight_up = state_dict[layer_keys[0]].to(dtype)
             weight_down = state_dict[layer_keys[1]].to(dtype)
             alpha = state_dict[layer_keys[2]]
             alpha = alpha.item() / weight_up.shape[1] if alpha else 1.0
-    
+
             # update weights
             if len(state_dict[layer_keys[0]].shape) == 4:
                 weight_up = weight_up.squeeze(3).squeeze(2)
