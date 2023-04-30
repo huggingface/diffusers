@@ -909,8 +909,8 @@ class LoraLoaderMixin:
                     else:
                         temp_name = layer_infos.pop(0)
 
-            layer = key.split(".", 1)[0]
-            layer_keys = list(map(lambda e: layer + e, [".lora_up.weight", ".lora_down.weight", ".alpha"]))
+            layers = map(lambda v: key.split(".", 1)[0] + v, [".lora_up.weight", ".lora_down.weight", ".alpha"])
+            layer_keys = list(layers)
 
             weight_up = state_dict[layer_keys[0]].to(dtype)
             weight_down = state_dict[layer_keys[1]].to(dtype)
