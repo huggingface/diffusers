@@ -43,7 +43,7 @@ write_basic_config()
 ```
 
 ## Single-Subject Generation
-"Single-Subject Generation" is a domain-tuning on a single object or concept (using 3-5 images).
+"Single-Subject Generation" is a domain-tuning on a single object or concept (using 3-5 images). For example, you can use [dog toy images](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth#dog-toy-example). 
 
 ### Training
 According to the paper, the learning rate for SVDiff needs to be 1000 times larger than the lr used for fine-tuning. 
