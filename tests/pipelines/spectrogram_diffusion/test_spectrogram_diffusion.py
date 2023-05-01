@@ -34,6 +34,10 @@ torch.backends.cuda.matmul.allow_tf32 = False
 MIDI_FILE = "./tests/fixtures/elise_format0.mid"
 
 
+# The note-seq package throws an error on import because the default installed version of Ipython
+# is not compatible with python 3.8 which we run in the CI.
+# https://github.com/huggingface/diffusers/actions/runs/4830121056/jobs/8605954838#step:7:98
+@unittest.skip("The note-seq package currently throws an error on import")
 class SpectrogramDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = SpectrogramDiffusionPipeline
     required_optional_params = PipelineTesterMixin.required_optional_params - {
