@@ -28,6 +28,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 try:
     from torch._dynamo import allow_in_graph as maybe_allow_in_graph
 except (ImportError, ModuleNotFoundError):
+
     def maybe_allow_in_graph(cls):
         return cls
 

@@ -560,7 +560,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
                 cross_attention_kwargs=cross_attention_kwargs,
-                return_dict=False
+                return_dict=False,
             )[0]
             hidden_states = resnet(hidden_states, temb)
 
