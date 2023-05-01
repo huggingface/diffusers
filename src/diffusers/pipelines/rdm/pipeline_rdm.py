@@ -1,12 +1,12 @@
 import inspect
 from typing import Callable, List, Optional, Union
 
-import torch
 import numpy as np
+import torch
 from PIL import Image
+from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTokenizer
 
 from diffusers.utils import is_accelerate_available
-from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel

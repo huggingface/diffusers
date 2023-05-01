@@ -1,13 +1,16 @@
-from transformers import CLIPModel, CLIPFeatureExtractor, PretrainedConfig
-from datasets import load_dataset, Dataset
-import torch
+import os
+
 import numpy as np
+import torch
+from datasets import Dataset, load_dataset
+from transformers import CLIPFeatureExtractor, CLIPModel, PretrainedConfig
+
+from diffusers.pipelines.rdm.pipeline_rdm import normalize_images, preprocess_images
+
 from ..utils import logging
 
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-from diffusers.pipelines.rdm.pipeline_rdm import preprocess_images, normalize_images
-import os
-from torch.nn import Module
 
 
 class IndexConfig(PretrainedConfig):
