@@ -56,7 +56,7 @@ from encodec.utils import convert_audio
 # # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 # check_min_version("0.15.0.dev0")
 
-logger = get_logger(__name__, log_level="WARNING")
+logger = get_logger(__name__, log_level="INFO")
 
 
 def parse_args():
@@ -313,14 +313,30 @@ def parse_args():
     )
     
     parser.add_argument(
-        "--bal_train",
+        "--post_quant",
         action="store_true",
         default=False,
         required=False,
-        help="use flag to use balanced sampler for AudioSet Dataset",
+        help="use flag to train on post quantized images instead of pre",
     )
-
-
+    
+    parser.add_argument(
+        "--custom_unet",
+        type=str,
+        default=None,
+        required=False,
+        help="Path to custom unet config, this will not load a checkpoint and provide a random initialization for the unet",
+    )
+    
+    
+    parser.add_argument(
+        "--log_level",
+        type=str,
+        default="WARNING",
+        required=False,
+        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+        help="Level for logger to log at",
+    )
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
@@ -354,6 +370,9 @@ dataset_name_mapping = {
 
 def main():
     args = parse_args()
+    
+    logger = get_logger(__name__, log_level=args.log_level)
+    
     if args.non_ema_revision is not None:
         deprecate(
             "non_ema_revision!=None",
@@ -415,17 +434,17 @@ def main():
 
     # Load scheduler, tokenizer and models.
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
-    # tokenizer = CLIPTokenizer.from_pretrained(
-    #     args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
-    # )
-    # text_encoder = CLIPTextModel.from_pretrained(
-    #     args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
-    # )
+    tokenizer = CLIPTokenizer.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
+    )
+    text_encoder = CLIPTextModel.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
+    )
     
     
     
-    tokenizer = AutoTokenizer.from_pretrained("t5-small")
-    text_encoder = T5EncoderModel.from_pretrained("t5-small")
+    # tokenizer = AutoTokenizer.from_pretrained("t5-small")
+    # text_encoder = T5EncoderModel.from_pretrained("t5-small")
     
     
     vae = EncodecModel.encodec_model_24khz()
@@ -435,10 +454,17 @@ def main():
     # For the 48 kHz model, only 3, 6, 12, and 24 kbps are supported. The number
     # of codebooks for each is half that of the 24 kHz model as the frame rate is twice as much.
     vae.set_target_bandwidth(6.0)
-
-    unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
-    )
+    
+    if (args.custom_unet):
+    
+        unet_conf = "/u/li19/data_folder/model_cache/custom_unet"
+    
+        unet = UNet2DConditionModel.from_config(args.custom_unet)
+    
+    else:
+        unet = UNet2DConditionModel.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
+        )
     
     # Freeze vae and text_encoder
     vae.requires_grad_(False)
@@ -628,15 +654,10 @@ def main():
             ]
         )
         
-        def preprocess_train_audio(examples):
-            images = [image.convert("RGB") for image in examples[image_column]]
-            examples["pixel_values"] = [train_transforms(image) for image in images]
-            examples["input_ids"] = tokenize_captions(examples)
-            return examples
 
         def preprocess_train(examples):
-            images = [image.convert("RGB") for image in examples[image_column]]
-            examples["pixel_values"] = [train_transforms(image) for image in images]
+            # images = [image.convert("RGB") for image in examples[image_column]]
+            # examples["pixel_values"] = [train_transforms(image) for image in images]
             examples["input_ids"] = tokenize_captions(examples)
             return examples
 
@@ -665,8 +686,8 @@ def main():
         data = json.load(f)
         f.close()
         dataset_json_file = data["dataset_json_file"]
-        audio_conf = data["audio_conf"]
-        label_csv=data["label_csv"]
+        latent_folder = data["latent_folder_path"]
+        wav_folder = data["wav_folder"]
         
         weight_dtype = torch.float32
         if accelerator.mixed_precision == "fp16":
@@ -674,20 +695,12 @@ def main():
         elif accelerator.mixed_precision == "bf16":
             weight_dtype = torch.bfloat16
                     
-        
-        if (args.bal_train):
-            samples_weight = np.loadtxt(dataset_json_file[:-5]+'_weight.csv', delimiter=',')
-            sampler = WeightedRandomSampler(samples_weight, len(samples_weight), replacement=True)
 
-            print("Loaded sampler with weights at: ", dataset_json_file[:-5]+'_weight.csv')
+        sampler=None
 
-            train_dataloader = torch.utils.data.DataLoader( 
-                AudiosetDataset(dataset_json_file, audio_conf, label_csv, tokenizer, accelerator.device, weight_dtype),
+        train_dataloader = torch.utils.data.DataLoader( 
+                AudiosetDataset(dataset_json_file, latent_folder=latent_folder, tokenizer=tokenizer, device=accelerator.device, dtype=weight_dtype, label_csv=None, wav_folder=wav_folder, logger=logger, channels=1),
                 batch_size=args.train_batch_size, sampler=sampler, num_workers=args.dataloader_num_workers)
-        else:
-            train_dataloader = torch.utils.data.DataLoader( 
-                AudiosetDataset(dataset_json_file, audio_conf, label_csv, tokenizer, accelerator.device, weight_dtype),
-                batch_size=args.train_batch_size, shuffle=True, num_workers=args.dataloader_num_workers)
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -790,9 +803,14 @@ def main():
 
             with accelerator.accumulate(unet):
                 # Convert images to latent space
-                latents = vae.encode(batch["waveform"].to(weight_dtype))[0][0][0]
-                print(latents.shape)
-                # latents = latents * vae.config.scaling_factor
+                # latents = vae.encode(batch["waveform"])[0][0].to(weight_dtype)[None, :, :, :]
+                
+                latents = batch["latent"]
+
+                final_type = latents.dtype
+                if (args.post_quant):
+                    latents = [vae.quantizer.decode(l.transpose(0,1).to(dtype=torch.int32)) for l in latents]
+                    latents = torch.stack(latents, dim=0).to(accelerator.device, dtype=final_type)
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents)
@@ -812,6 +830,8 @@ def main():
                 # print(batch["input_ids"].device)
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0]
 
+                logger.info(f'TEXT ENCODER SIZE: {encoder_hidden_states.shape}')
+                
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
                     target = noise
@@ -821,6 +841,11 @@ def main():
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
                 # Predict the noise residual and compute loss
+                
+                print("===============")
+                print(timesteps.shape)
+                print(encoder_hidden_states.shape)
+                
                 model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 

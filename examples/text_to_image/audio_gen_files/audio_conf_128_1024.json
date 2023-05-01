@@ -1,8 +1,8 @@
 {"dataset_json_file": "/u/li19/data_folder/AudioTaggingDoneRight/egs/audioset/data/datafiles/audioset_bal_unbal_train_data.json",
 "audio_conf": {
     "num_mel_bins": 128,
-    "freqm": 0,
-    "timem": 0,
+    "freqm": 24,
+    "timem": 192,
     "mixup": 0,
     "dataset": "bal + unbalanced wav set",
     "skip_norm": "False",

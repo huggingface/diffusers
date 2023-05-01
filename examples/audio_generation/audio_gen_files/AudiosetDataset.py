@@ -6,6 +6,8 @@ import torch
 import torch.nn.functional
 from torch.utils.data import Dataset
 import random
+from pathlib import Path
+import os
 
 def make_index_dict(label_csv):
     index_lookup = {}
@@ -44,58 +46,28 @@ def preemphasis(signal,coeff=0.97):
     return np.append(signal[0],signal[1:]-coeff*signal[:-1])
 
 class AudiosetDataset(Dataset):
-    def __init__(self, dataset_json_file, audio_conf, label_csv=None, tokenizer=None, device=None, dtype=None, batch_size=1):
+    def __init__(self, dataset_json_file, tokenizer=None, device=None, dtype=None, latent_folder=None, label_csv=None, wav_folder=None, channels=4, logger=None):
         """
         Dataset that manages audio recordings
         :param audio_conf: Dictionary containing the audio loading and preprocessing settings
         :param dataset_json_file
         """
         self.datapath = dataset_json_file
+        self.latent_folder = latent_folder
         with open(dataset_json_file, 'r') as fp:
             data_json = json.load(fp)
 
         self.data = data_json['data']
-        self.audio_conf = audio_conf
-        self.channels = self.audio_conf.get('channels')
-        print('---------------the {:s} dataloader---------------'.format(self.audio_conf.get('mode')))
-        self.melbins = self.audio_conf.get('num_mel_bins')
-        self.freqm = self.audio_conf.get('freqm')
-        self.timem = self.audio_conf.get('timem')
-        print('now using following mask: {:d} freq, {:d} time'.format(self.audio_conf.get('freqm'), self.audio_conf.get('timem')))
-        self.mixup = self.audio_conf.get('mixup')
-        print('now using mix-up with rate {:f}'.format(self.mixup))
-        self.dataset = self.audio_conf.get('dataset')
-        print('now process ' + self.dataset)
-        # dataset spectrogram mean and std, used to normalize the input
-        self.norm_mean = self.audio_conf.get('mean')
-        self.norm_std = self.audio_conf.get('std')
-        # skip_norm is a flag that if you want to skip normalization to compute the normalization stats using src/get_norm_stats.py, if Ture, input normalization will be skipped for correctly calculating the stats.
-        # set it as True ONLY when you are getting the normalization stats.
-        self.skip_norm = self.audio_conf.get('skip_norm') if self.audio_conf.get('skip_norm') else False
-        if self.skip_norm:
-            print('now skip normalization (use it ONLY when you are computing the normalization stats).')
-        else:
-            print('use dataset mean {:.3f} and std {:.3f} to normalize the input.'.format(self.norm_mean, self.norm_std))
-        # if add noise for data augmentation
-        self.noise = self.audio_conf.get('noise')
-        if self.noise == True:
-            print('now use noise augmentation')
-
-        self.index_dict = make_index_dict(label_csv)
-        self.name_dict = make_name_dict(label_csv)
-        self.label_num = len(self.index_dict)
-
-        self.n_fft=self.audio_conf.get('n_fft') 
-        self.win_length=self.audio_conf.get('win_length')
-        self.hop_length=self.audio_conf.get('hop_length')
-        self.transpose_images = self.audio_conf.get('transpose')
+        self.dataset = dataset_json_file
+        self.wav_folder = wav_folder
         self.tokenizer = tokenizer
         self.device = device
+        self.channels = channels
+        self.logger = logger
         if (dtype is None):
             self.dtype = torch.float16
         else:
             self.dtype = dtype
-        print('number of classes is {:d}'.format(self.label_num))
 
 #     def _wav2fbank(self, filename, filename2=None):
 #         # mixup
@@ -179,33 +151,60 @@ class AudiosetDataset(Dataset):
         nframes is an integer
         """
         datum = self.data[index]
+        
         # do mix-up for this sample (controlled by the given mixup rate)
-        label_indices = np.zeros(self.label_num)
-        waveform, sr = torchaudio.load(datum['wav'])
-        waveform = waveform - waveform.mean()
-
-        for label_str in datum['labels'].split(','):
-            label_indices[int(self.index_dict[label_str])] = 1.0
-
-        if "caption" in datum:
-            label = datum["caption"]
+        if (self.wav_folder):
+            path = datum['wav'].split("/")[-1]
+            path = os.path.join(self.wav_folder, path)
+            waveform, sr = torchaudio.load(path)
         else:
-            label = self.construct_label(label_indices)
+            waveform, sr = torchaudio.load(datum['wav'])
+        waveform = waveform - waveform.mean()
+        label = datum["caption"]
+        
+        if (self.logger):
+            self.logger.info(datum['wav'])
+            self.logger.info(f'WAVEFORM_PRE_PAD: {waveform.shape}')
+            self.logger.info(f'LABEL: {label}')
+            
         input_ids = []
         if (self.tokenizer is not None):
-            print(type(self.tokenizer))
             input_ids = self.tokenizer(
                 [label], max_length=self.tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
             )
             input_ids = input_ids.input_ids[0]
             
-
+        m = torch.nn.ConstantPad1d((0, 1_000), 0)    
+        waveform = m(waveform)
+        
+        latent = None
+        
+        if (self.logger):
+            self.logger.info(f'WAVEFORM_POST_PAD: {waveform.shape}')
+            self.logger.info(f'INPUT_IDS: {input_ids}')
+        
+        if (self.latent_folder):
+            file_name = Path(datum["wav"]).name.split(".")[0]
+            latent = np.load(f'{os.path.join(self.latent_folder,file_name)}.npy', allow_pickle=True)
+            latent = torch.from_numpy(latent)[None, :, :]
+            if (self.channels != 1):
+                latent = latent.repeat(self.channels, 1, 1)
+            
         if (self.device is not None):
             waveform = waveform.to(self.device, dtype=self.dtype)
             input_ids = input_ids.to(self.device, dtype=torch.int32)
-            
+            if (latent is not None):
+                latent = latent.to(self.device, dtype=self.dtype)
         
-        return {"waveform": waveform, "input_ids": input_ids, "caption": label, 'filename': datum['wav'], 'sample_rate': sr, "label_ids": label_indices}
+        
+        batch = {"waveform": waveform, "input_ids": input_ids, "caption": label, 'filename': datum['wav'], 'sample_rate': sr, "latent": latent}
+        if (self.logger):
+            self.logger.info(f'''BATCH; 
+                             wavform shape: {batch['waveform'].shape}, 
+                             batch ids: {batch["input_ids"].shape}, 
+                             latent shape: {batch['latent'].shape}''')
+        
+        return batch
 
     def __len__(self):
         return len(self.data)
