@@ -77,7 +77,7 @@ write_basic_config()
 ### Toy example
 
 As mentioned before, we'll use a [small toy dataset](https://huggingface.co/datasets/fusing/instructpix2pix-1000-samples) for training. The dataset 
-is a smaller version of the [original dataset](https://huggingface.co/datasets/timbrooks/instructpix2pix-clip-filtered) used in the InstructPix2Pix paper.
+is a smaller version of the [original dataset](https://huggingface.co/datasets/timbrooks/instructpix2pix-clip-filtered) used in the InstructPix2Pix paper. To use your own dataset, take a look at the [Create a dataset for training](create_dataset) guide.
 
 Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`~diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path`] argument. You'll also need to specify the dataset name in `DATASET_ID`:
 
