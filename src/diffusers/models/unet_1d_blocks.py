@@ -179,7 +179,6 @@ class MidResTemporalBlock1D(nn.Module):
         num_layers: int = 1,
         add_downsample: bool = False,
         add_upsample: bool = False,
-        non_linearity=None,
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -193,15 +192,6 @@ class MidResTemporalBlock1D(nn.Module):
             resnets.append(ResidualTemporalBlock1D(out_channels, out_channels, embed_dim=embed_dim))
 
         self.resnets = nn.ModuleList(resnets)
-
-        if non_linearity in {"swish", "silu"}:
-            self.nonlinearity = nn.SiLU()
-        elif non_linearity == "mish":
-            self.nonlinearity = nn.Mish()
-        elif non_linearity == "gelu":
-            self.nonlinearity = nn.GELU()
-        else:
-            self.nonlinearity = None
 
         self.upsample = None
         if add_upsample:
