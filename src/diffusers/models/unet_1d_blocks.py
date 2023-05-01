@@ -222,10 +222,14 @@ class OutConv1DBlock(nn.Module):
         super().__init__()
         self.final_conv1d_1 = nn.Conv1d(embed_dim, embed_dim, 5, padding=2)
         self.final_conv1d_gn = nn.GroupNorm(num_groups_out, embed_dim)
-        if act_fn == "silu":
+        if act_fn in {"silu", "swish"}:
             self.final_conv1d_act = nn.SiLU()
-        if act_fn == "mish":
+        elif act_fn == "mish":
             self.final_conv1d_act = nn.Mish()
+        elif act_fn == "gelu":
+            self.final_conv1d_act = nn.GELU()
+        else:
+            raise ValueError(f"Act_fn {act_fn} must be one of silu, mish, gelu")
         self.final_conv1d_2 = nn.Conv1d(embed_dim, out_channels, 1)
 
     def forward(self, hidden_states, temb=None):
