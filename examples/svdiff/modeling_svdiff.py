@@ -63,7 +63,6 @@ def set_spectral_shifts(model: nn.Module, spectral_shifts_ckpt: str = None, **kw
     svdiff_modules = {}
     for name, module in model.named_modules():
         svdiff_module = None
-        # TODO: currently only support classes in SD. Needs to be more general (eg. there are more classes for 1-D weights)
         if isinstance(module, nn.Conv1d) or isinstance(module, nn.Conv2d):
             svdiff_module = SVDiffModule(module.weight, weight_type="conv")
         elif isinstance(module, nn.LayerNorm) or isinstance(module, nn.GroupNorm):
