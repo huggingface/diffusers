@@ -64,7 +64,14 @@ logger = get_logger(__name__)
 
 
 
-def save_model_card(repo_id: str, base_model=str, prompt=str, repo_folder=None):
+def save_model_card(repo_id: str, images=None, base_model=str, prompt=str, repo_folder=None):
+    suffix = ""
+    if images:
+        img_str = ""
+        for i, image in enumerate(images):
+            image.save(os.path.join(repo_folder, f"image_{i}.png"))
+            img_str += f"![img_{i}](./image_{i}.png)\n"
+        suffix = f"""You can find some example images in the following. \n{img_str}"""
     yaml = f"""
 ---
 license: creativeml-openrail-m
@@ -82,6 +89,7 @@ inference: true
     model_card = f"""
 # SVDiff - {repo_id}
 These are SVDiff weights for {base_model}. The weights were trained on {prompt}.
+{suffix}
 """
     with open(os.path.join(repo_folder, "README.md"), "w") as f:
         f.write(yaml + model_card)
@@ -1049,6 +1057,7 @@ def main(args):
     # Create the pipeline using using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
+        images = None
         if args.validation_prompt and args.num_validation_images > 0:
             # Final inference
             # Load previous pipeline
@@ -1085,7 +1094,7 @@ def main(args):
         if args.push_to_hub:
             save_model_card(
                 repo_id,
-                # images=images,
+                images=images,
                 base_model=args.pretrained_model_name_or_path,
                 prompt=args.instance_prompt,
                 repo_folder=args.output_dir,
