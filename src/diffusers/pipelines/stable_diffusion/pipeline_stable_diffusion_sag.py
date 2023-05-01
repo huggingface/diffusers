@@ -619,7 +619,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin)
 
         def get_map_size(module, input, output):
             nonlocal map_size
-            map_size = output.sample.shape[-2:]
+            map_size = output[0].shape[-2:]
 
         with self.unet.mid_block.attentions[0].register_forward_hook(get_map_size):
             with self.progress_bar(total=num_inference_steps) as progress_bar:
