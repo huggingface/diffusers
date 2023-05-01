@@ -51,7 +51,7 @@ from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 from safetensors.torch import save_file
-from modeling_svdiff import SVDiffModule, set_spectral_shifts
+from modeling_svdiff import set_spectral_shifts
 
 
 if is_wandb_available():
