@@ -806,8 +806,9 @@ class IFSuperResolutionPipeline(DiffusionPipeline):
 
         # 2. Define call parameters
 
-        height = self.unet.config.sample_size
-        width = self.unet.config.sample_size
+        height, width = image.shape[2:]
+        width *= 4
+        height *= 4
 
         device = self._execution_device
 
