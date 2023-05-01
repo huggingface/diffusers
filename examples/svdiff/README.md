@@ -45,6 +45,7 @@ write_basic_config()
 ## Single-Subject Generation
 "Single-Subject Generation" is a domain-tuning on a single object or concept (using 3-5 images). For example, you can use [dog toy images](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth#dog-toy-example). 
 
+
 ### Training
 According to the paper, the learning rate for SVDiff needs to be 1000 times larger than the lr used for fine-tuning. 
 
@@ -104,7 +105,7 @@ image = pipe("A picture of a sks dog in a bucket", num_inference_steps=25).image
 
 ## Single Image Editing
 ### Training
-In Single Image Editing, your instance prompt should be just the description of your input image **without the identifier**. 
+In Single Image Editing, your instance prompt should be just the description of your input image **without the identifier**. For example, you can download an image from [here](https://unsplash.com/photos/1JJJIHh7-Mk).
 
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
