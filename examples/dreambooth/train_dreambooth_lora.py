@@ -1045,7 +1045,7 @@ def main(args):
         pipeline = pipeline.to(accelerator.device)
 
         # load attention processors
-        pipeline.load_attn_procs(args.output_dir)
+        pipeline.load_lora_weights(args.output_dir)
 
         # run inference
         if args.validation_prompt and args.num_validation_images > 0:
