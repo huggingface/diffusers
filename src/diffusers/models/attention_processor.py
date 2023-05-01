@@ -17,7 +17,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ..utils import deprecate, logging
+from ..utils import deprecate, logging, maybe_allow_in_graph
 from ..utils.import_utils import is_xformers_available
 
 
@@ -31,6 +31,7 @@ else:
     xformers = None
 
 
+@maybe_allow_in_graph
 class Attention(nn.Module):
     r"""
     A cross attention layer.
