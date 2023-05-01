@@ -178,7 +178,7 @@ class VaeImageProcessor(ConfigMixin):
     ):
         if not isinstance(image, torch.Tensor):
             raise ValueError(
-                f"Input for postprocess is in incorrect format: {type(image)}.  we only support pytorch tensor"
+                f"Input for postprocessing is in incorrect format: {type(image)}. We only support pytorch tensor"
             )
         if output_type not in ["latent", "pt", "np", "pil"]:
             deprecation_message = (
