@@ -513,12 +513,10 @@ class ResnetBlock2D(nn.Module):
         conv_2d_out_channels = conv_2d_out_channels or out_channels
         self.conv2 = torch.nn.Conv2d(out_channels, conv_2d_out_channels, kernel_size=3, stride=1, padding=1)
 
-        if non_linearity == "swish":
-            self.nonlinearity = lambda x: F.silu(x)
+        if non_linearity in {"swish", "silu"}:
+            self.nonlinearity = nn.SiLU()
         elif non_linearity == "mish":
             self.nonlinearity = nn.Mish()
-        elif non_linearity == "silu":
-            self.nonlinearity = nn.SiLU()
         elif non_linearity == "gelu":
             self.nonlinearity = nn.GELU()
 

@@ -55,12 +55,12 @@ class DownResnetBlock1D(nn.Module):
 
         self.resnets = nn.ModuleList(resnets)
 
-        if non_linearity == "swish":
-            self.nonlinearity = lambda x: F.silu(x)
+        if non_linearity in {"swish", "silu"}:
+            self.nonlinearity = nn.SiLU()
         elif non_linearity == "mish":
             self.nonlinearity = nn.Mish()
-        elif non_linearity == "silu":
-            self.nonlinearity = nn.SiLU()
+        elif non_linearity == "gelu":
+            self.nonlinearity = nn.GELU()
         else:
             self.nonlinearity = None
 
@@ -119,12 +119,12 @@ class UpResnetBlock1D(nn.Module):
 
         self.resnets = nn.ModuleList(resnets)
 
-        if non_linearity == "swish":
-            self.nonlinearity = lambda x: F.silu(x)
+        if non_linearity in {"swish", "silu"}:
+            self.nonlinearity = nn.SiLU()
         elif non_linearity == "mish":
             self.nonlinearity = nn.Mish()
-        elif non_linearity == "silu":
-            self.nonlinearity = nn.SiLU()
+        elif non_linearity == "gelu":
+            self.nonlinearity = nn.GELU()
         else:
             self.nonlinearity = None
 
@@ -194,12 +194,12 @@ class MidResTemporalBlock1D(nn.Module):
 
         self.resnets = nn.ModuleList(resnets)
 
-        if non_linearity == "swish":
-            self.nonlinearity = lambda x: F.silu(x)
+        if non_linearity in {"swish", "silu"}:
+            self.nonlinearity = nn.SiLU()
         elif non_linearity == "mish":
             self.nonlinearity = nn.Mish()
-        elif non_linearity == "silu":
-            self.nonlinearity = nn.SiLU()
+        elif non_linearity == "gelu":
+            self.nonlinearity = nn.GELU()
         else:
             self.nonlinearity = None
 

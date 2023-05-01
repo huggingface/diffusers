@@ -398,12 +398,10 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
         if time_embedding_act_fn is None:
             self.time_embed_act = None
-        elif time_embedding_act_fn == "swish":
-            self.time_embed_act = lambda x: F.silu(x)
+        elif time_embedding_act_fn in {"swish", "silu"}:
+            self.time_embed_act = nn.SiLU()
         elif time_embedding_act_fn == "mish":
             self.time_embed_act = nn.Mish()
-        elif time_embedding_act_fn == "silu":
-            self.time_embed_act = nn.SiLU()
         elif time_embedding_act_fn == "gelu":
             self.time_embed_act = nn.GELU()
         else:
@@ -561,12 +559,10 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=norm_eps
             )
 
-            if act_fn == "swish":
-                self.conv_act = lambda x: F.silu(x)
+            if act_fn in {"swish", "silu"}:
+                self.conv_act = nn.SiLU()
             elif act_fn == "mish":
                 self.conv_act = nn.Mish()
-            elif act_fn == "silu":
-                self.conv_act = nn.SiLU()
             elif act_fn == "gelu":
                 self.conv_act = nn.GELU()
             else:

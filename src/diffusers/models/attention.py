@@ -518,12 +518,10 @@ class AdaGroupNorm(nn.Module):
         self.num_groups = num_groups
         self.eps = eps
         self.act = None
-        if act_fn == "swish":
-            self.act = lambda x: F.silu(x)
+        if act_fn in {"swish", "silu"}:
+            self.act = nn.SiLU()
         elif act_fn == "mish":
             self.act = nn.Mish()
-        elif act_fn == "silu":
-            self.act = nn.SiLU()
         elif act_fn == "gelu":
             self.act = nn.GELU()
 
