@@ -408,9 +408,26 @@ pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.
 ...
 ```
 
-**Note** that we will gradually be depcrecating the use of [`UNet2DConditionLoadersMixin.load_attn_procs`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.UNet2DConditionLoadersMixin.load_attn_procs) since we now have a more general
-method to load the LoRA parameters -- [`LoraLoaderMixin.load_lora_weights`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraLoaderMixin.load_lora_weights). This is because
-[`LoraLoaderMixin.load_lora_weights`] can handle the following situations:
+If you used `--train_text_encoder` during training, then use `pipe.load_lora_weights()` to load the LoRA
+weights. For example:
+
+```python
+from huggingface_hub.repocard import RepoCard
+from diffusers import StableDiffusionPipeline
+import torch 
+
+lora_model_id = "sayakpaul/dreambooth-text-encoder-test"
+card = RepoCard.load(lora_model_id)
+base_model_id = card.data.to_dict()["base_model"]
+
+pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
+pipe = pipe.to("cuda")
+pipe.load_lora_weights(lora_model_id)
+image = pipe("A picture of a sks dog in a bucket", num_inference_steps=25).images[0]
+```
+
+Note that the use of [`LoraLoaderMixin.load_lora_weights`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraLoaderMixin.load_lora_weights) is preferred to [`UNet2DConditionLoadersMixin.load_attn_procs`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.UNet2DConditionLoadersMixin.load_attn_procs) for loading LoRA parameters. This is because
+`LoraLoaderMixin.load_lora_weights` can handle the following situations:
 
 * LoRA parameters that don't have separate identifiers for the UNet and the text encoder (such as [`"patrickvonplaten/lora_dreambooth_dog_example"`](https://huggingface.co/patrickvonplaten/lora_dreambooth_dog_example)). So, you can just do:
 
