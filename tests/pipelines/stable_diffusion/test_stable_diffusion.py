@@ -22,6 +22,7 @@ import unittest
 import numpy as np
 import torch
 from huggingface_hub import hf_hub_download
+from packaging import version
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
@@ -920,6 +921,28 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
         image = pipe("a turtle", num_inference_steps=5, generator=generator, output_type="np").images[0]
 
         assert np.max(np.abs(image - image_ckpt)) < 1e-4
+
+    def test_stable_diffusion_compile(self):
+        if version.parse(torch.__version__) >= version.parse("2.0"):
+            print(f"Test `test_stable_diffusion_ddim` is skipped because {torch.__version__} is < 2.0")
+            return
+
+        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
+        sd_pipe.scheduler = DDIMScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe = sd_pipe.to(torch_device)
+
+        sd_pipe.unet.to(memory_format=torch.channels_last)
+        sd_pipe.unet = torch.compile(sd_pipe.unet, mode="reduce-overhead", fullgraph=True)
+
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1].flatten()
+
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.38019, 0.28647, 0.27321, 0.40377, 0.38290, 0.35446, 0.39218, 0.38165, 0.42239])
+        assert np.abs(image_slice - expected_slice).max() < 1e-4
 
 
 @nightly

@@ -77,8 +77,14 @@ def get_parameter_device(parameter: torch.nn.Module):
 
 def get_parameter_dtype(parameter: torch.nn.Module):
     try:
-        parameters_and_buffers = itertools.chain(parameter.parameters(), parameter.buffers())
-        return next(parameters_and_buffers).dtype
+        params = tuple(parameter.parameters())
+        if len(params) > 0:
+            return params[0].dtype
+
+        buffers = tuple(parameter.buffers())
+        if len(buffers) > 0:
+            return buffers[0].dtype
+
     except StopIteration:
         # For torch.nn.DataParallel compatibility in PyTorch 1.5
 
