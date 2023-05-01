@@ -866,23 +866,6 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         max_diff = np.abs(expected_image - image).max()
         assert max_diff < 5e-2
 
-    def test_stable_diffusion_compile(self):
-        if torch.__version__
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
-        sd_pipe.scheduler = DDIMScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        image = sd_pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1].flatten()
-
-        assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.38019, 0.28647, 0.27321, 0.40377, 0.38290, 0.35446, 0.39218, 0.38165, 0.42239])
-
-
-
-
 
 @slow
 @require_torch_gpu
