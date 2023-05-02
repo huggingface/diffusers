@@ -76,6 +76,8 @@ The full training state is saved in a subfolder in the `output_dir` every 500 st
 
 You're ready to launch the [training script](https://github.com/huggingface/diffusers/blob/main/examples/unconditional_image_generation/train_unconditional.py) now! Specify the dataset name to finetune on with the `--dataset_name` argument and then save it to the path in `--output_dir`. To use your own dataset, take a look at the [Create a dataset for training](create_dataset) guide.
 
+The training script creates and saves a `diffusion_pytorch_model.bin` file in your repository.
+
 <Tip>
 
 💡 A full training run takes 2 hours on 4xV100 GPUs.

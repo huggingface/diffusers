@@ -79,6 +79,8 @@ python retrieve.py --class_prompt cat --class_data_dir real_reg/samples_cat --nu
 
 **___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
 
+The script creates and saves model checkpoints and a `pytorch_custom_diffusion_weights.bin` file in your repository.
+
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export OUTPUT_DIR="path-to-save-model"

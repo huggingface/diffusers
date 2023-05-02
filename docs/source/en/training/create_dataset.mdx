@@ -1,11 +1,11 @@
 # Create a dataset for training
 
-There are many datasets on the [Hub](https://huggingface.co/datasets?task_categories=task_categories:text-to-image&sort=downloads) to train a model on, but if you can't find one you're interested in or prefer to use your own, you can create a dataset with the 🤗 [Datasets](hf.co/docs/datasets) library. The dataset structure depends on the task you want to train your model on. Some common formats include a directory of only images for tasks like unconditional image generation or images with corresponding text captions for tasks like text-to-image generation.
+There are many datasets on the [Hub](https://huggingface.co/datasets?task_categories=task_categories:text-to-image&sort=downloads) to train a model on, but if you can't find one you're interested in or want to use your own, you can create a dataset with the 🤗 [Datasets](hf.co/docs/datasets) library. The dataset structure depends on the task you want to train your model on. The most basic dataset structure is a directory of images for tasks like unconditional image generation. Another dataset structure may be a directory of images and a text file containing their corresponding text captions for tasks like text-to-image generation.
 
-This guide will show you two ways to create your own dataset to finetune on:
+This guide will show you two ways to create a dataset to finetune on:
 
-- provide your own folder of images to the `--train_data_dir` argument
-- upload your dataset to the Hub and pass the dataset repository id to the `--dataset_name` argument.
+- provide a folder of images to the `--train_data_dir` argument
+- upload a dataset to the Hub and pass the dataset repository id to the `--dataset_name` argument
 
 <Tip>
 
@@ -13,7 +13,7 @@ This guide will show you two ways to create your own dataset to finetune on:
 
 </Tip>
 
-## Provide the dataset as a folder
+## Provide a dataset as a folder
 
 For unconditional generation, you can provide your own dataset as a folder of images. The training script uses the [`ImageFolder`](https://huggingface.co/docs/datasets/en/image_dataset#imagefolder) builder from 🤗 Datasets to automatically build a dataset from the folder. Your directory structure should look like:
 
@@ -23,7 +23,7 @@ data_dir/xxy.png
 data_dir/[...]/xxz.png
 ```
 
-Pass the path to the folder containing the images to the `--train_data_dir` argument and launch the training:
+Pass the path to the dataset directory to the `--train_data_dir` argument, and then you can start training:
 
 ```bash
 accelerate launch train_unconditional.py \
@@ -31,7 +31,7 @@ accelerate launch train_unconditional.py \
     <other-arguments>
 ```
 
-### Upload your data to the Hub
+## Upload your data to the Hub
 
 <Tip>
 
@@ -82,3 +82,9 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
   --dataset_name="name_of_your_dataset" \
   <other-arguments>
 ```
+
+## Next steps
+
+Now that you've created a dataset, you can plug it into the `train_data_dir` (if your dataset is local) or `dataset_name` (if your dataset is on the Hub) arguments of a training script.
+
+For your next steps, feel free to try and use your dataset to train a model for [unconditional generation](uncondtional_training) or [text-to-image generation](text2image)!
