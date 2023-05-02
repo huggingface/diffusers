@@ -465,3 +465,81 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             prev_t = timestep - self.config.num_train_timesteps // num_inference_steps
 
         return prev_t
+
+    # TODO unify q_posterior and p_mean_variance, and probably move directly to training script
+
+    def q_posterior(self, x_start, x_t, t):
+        alphas_cumprod = self.alphas_cumprod.to(device=t.device)
+
+        prev_t = t - 1
+        alpha_prod_t = alphas_cumprod[t]
+        alpha_prod_t_prev = torch.where(prev_t > 0, alphas_cumprod[prev_t], self.one)
+        beta_prod_t = 1 - alpha_prod_t
+        beta_prod_t_prev = 1 - alpha_prod_t_prev
+        current_alpha_t = alpha_prod_t / alpha_prod_t_prev
+        current_beta_t = 1 - current_alpha_t
+
+        posterior_variance = current_beta_t * (1.0 - alpha_prod_t_prev) / (1.0 - alpha_prod_t)
+        posterior_log_variance_clipped = torch.log(posterior_variance.clamp(min=1e-20))
+
+        pred_original_sample_coeff = (alpha_prod_t_prev ** (0.5) * current_beta_t) / beta_prod_t
+        current_sample_coeff = current_alpha_t ** (0.5) * beta_prod_t_prev / beta_prod_t
+
+        n, c, h, w = x_start.shape
+
+        pred_original_sample_coeff = pred_original_sample_coeff[..., None, None, None].expand(n, c, h, w)
+        current_sample_coeff = current_sample_coeff[..., None, None, None].expand(n, c, h, w)
+
+        posterior_mean = pred_original_sample_coeff * x_start + current_sample_coeff * x_t
+
+        posterior_variance = posterior_variance[..., None, None, None].expand(n, c, h, w)
+        posterior_log_variance_clipped = posterior_log_variance_clipped[..., None, None, None].expand(n, c, h, w)
+
+        return posterior_mean, posterior_variance, posterior_log_variance_clipped
+
+    def p_mean_variance(
+        self,
+        *,
+        x,
+        t,
+        model_output,
+    ):
+        alphas_cumprod = self.alphas_cumprod.to(device=t.device)
+
+        prev_t = t - 1
+        alpha_prod_t = alphas_cumprod[t]
+        alpha_prod_t_prev = torch.where(prev_t > 0, alphas_cumprod[prev_t], self.one)
+        beta_prod_t = 1 - alpha_prod_t
+        current_alpha_t = alpha_prod_t / alpha_prod_t_prev
+        current_beta_t = 1 - current_alpha_t
+
+        posterior_variance = current_beta_t * (1.0 - alpha_prod_t_prev) / (1.0 - alpha_prod_t)
+        posterior_log_variance_clipped = torch.log(posterior_variance.clamp(min=1e-20))
+
+        pred_noise, var_interp_frac_unnormalized = model_output.chunk(2, dim=1)
+
+        min_log = posterior_log_variance_clipped
+        max_log = torch.log(current_beta_t)
+        var_interp_frac = (var_interp_frac_unnormalized + 1) * 0.5
+
+        n, c, h, w = x.shape
+
+        min_log = min_log[..., None, None, None].expand(n, c, h, w)
+        max_log = max_log[..., None, None, None].expand(n, c, h, w)
+
+        model_log_variance = var_interp_frac * max_log + (1 - var_interp_frac) * min_log
+        model_variance = model_log_variance.exp()
+
+        beta_prod_t = beta_prod_t[..., None, None, None].expand(n, c, h, w)
+        alpha_prod_t = alpha_prod_t[..., None, None, None].expand(n, c, h, w)
+
+        x_start = (x - beta_prod_t ** (0.5) * pred_noise) / alpha_prod_t ** (0.5)
+
+        if self.config.thresholding:
+            x_start = self._threshold_sample(x_start)
+        elif self.config.clip_sample:
+            x_start = x_start.clamp(-self.config.clip_sample_range, self.config.clip_sample_range)
+
+        model_mean, _, _ = self.q_posterior(x_start, x, t)
+
+        return model_mean, model_variance, model_log_variance, x_start

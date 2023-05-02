@@ -38,7 +38,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import CLIPTextModel, CLIPTokenizer
+from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5Tokenizer
 
 import diffusers
 from diffusers import (
@@ -46,6 +46,7 @@ from diffusers import (
     DDPMScheduler,
     DiffusionPipeline,
     DPMSolverMultistepScheduler,
+    IFPipeline,
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
@@ -115,16 +116,22 @@ def log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
         f" {args.validation_prompt}."
     )
+
+    # in case of pixel space model, no vae is used
+    kwargs = {}
+    if vae is not None:
+        kwargs["vae"] = vae
+
     # create pipeline (note: unet and vae are loaded again in float32)
     pipeline = DiffusionPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
         text_encoder=accelerator.unwrap_model(text_encoder),
         tokenizer=tokenizer,
         unet=unet,
-        vae=vae,
         safety_checker=None,
         revision=args.revision,
         torch_dtype=weight_dtype,
+        **kwargs,
     )
     pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
     pipeline = pipeline.to(accelerator.device)
@@ -133,9 +140,14 @@ def log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight
     # run inference
     generator = None if args.seed is None else torch.Generator(device=accelerator.device).manual_seed(args.seed)
     images = []
+
+    kwargs = {}
+    if isinstance(pipeline, IFPipeline):
+        kwargs['clean_caption'] = False
+
     for _ in range(args.num_validation_images):
         with torch.autocast("cuda"):
-            image = pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
+            image = pipeline(args.validation_prompt, num_inference_steps=25, generator=generator, **kwargs).images[0]
         images.append(image)
 
     for tracker in accelerator.trackers:
@@ -165,6 +177,51 @@ def save_progress(text_encoder, placeholder_token_ids, accelerator, args, save_p
     )
     learned_embeds_dict = {args.placeholder_token: learned_embeds.detach().cpu()}
     torch.save(learned_embeds_dict, save_path)
+
+
+# KL divergence based loss function helpers
+# https://github.com/lucidrains/denoising-diffusion-pytorch/blob/81b4a5de041c0d4d7c19647037388e97cd03f5a8/denoising_diffusion_pytorch/learned_gaussian_diffusion.py#L122
+
+NAT = 1.0 / math.log(2)
+
+
+def log(t, eps=1e-15):
+    return torch.log(t.clamp(min=eps))
+
+
+def meanflat(x):
+    return x.mean(dim=tuple(range(1, len(x.shape))))
+
+
+def normal_kl(mean1, logvar1, mean2, logvar2):
+    """
+    KL divergence between normal distributions parameterized by mean and log-variance.
+    """
+    return 0.5 * (
+        -1.0 + logvar2 - logvar1 + torch.exp(logvar1 - logvar2) + ((mean1 - mean2) ** 2) * torch.exp(-logvar2)
+    )
+
+
+def approx_standard_normal_cdf(x):
+    return 0.5 * (1.0 + torch.tanh(math.sqrt(2.0 / math.pi) * (x + 0.044715 * (x**3))))
+
+
+def discretized_gaussian_log_likelihood(x, *, means, log_scales, thres=0.999):
+    assert x.shape == means.shape == log_scales.shape
+
+    centered_x = x - means
+    inv_stdv = torch.exp(-log_scales)
+    plus_in = inv_stdv * (centered_x + 1.0 / 255.0)
+    cdf_plus = approx_standard_normal_cdf(plus_in)
+    min_in = inv_stdv * (centered_x - 1.0 / 255.0)
+    cdf_min = approx_standard_normal_cdf(min_in)
+    log_cdf_plus = log(cdf_plus)
+    log_one_minus_cdf_min = log(1.0 - cdf_min)
+    cdf_delta = cdf_plus - cdf_min
+
+    log_probs = torch.where(x < -thres, log_cdf_plus, torch.where(x > thres, log_one_minus_cdf_min, log(cdf_delta)))
+
+    return log_probs
 
 
 def parse_args():
@@ -407,6 +464,12 @@ def parse_args():
     parser.add_argument(
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
+    parser.add_argument(
+        "--pipeline",
+        type=str,
+        default="StableDiffusionPipeline",
+        help="The pipeline to use. Defaults to `StableDiffusionPipeline. Can be `StableDiffusionPipeline` or `IFPipeline`.",
+    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -604,18 +667,33 @@ def main():
                 repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
             ).repo_id
 
-    # Load tokenizer
-    if args.tokenizer_name:
-        tokenizer = CLIPTokenizer.from_pretrained(args.tokenizer_name)
-    elif args.pretrained_model_name_or_path:
-        tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer")
-
     # Load scheduler and models
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
-    text_encoder = CLIPTextModel.from_pretrained(
+
+    if args.pipeline == "StableDiffusionPipeline":
+        tokenizer_class = CLIPTokenizer
+        text_encoder_class = CLIPTextModel
+        vae = AutoencoderKL.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision
+        )
+    elif args.pipeline == "IFPipeline":
+        # TODO should we load T5 in lower precision?
+        tokenizer_class = T5Tokenizer
+        text_encoder_class = T5EncoderModel
+        vae = None
+    else:
+        raise ValueError(f"Unknown pipeline {args.pipeline}")
+
+    # Load tokenizer
+    if args.tokenizer_name:
+        tokenizer = tokenizer_class.from_pretrained(args.tokenizer_name)
+    elif args.pretrained_model_name_or_path:
+        tokenizer = tokenizer_class.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer")
+
+    text_encoder = text_encoder_class.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
     )
-    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision)
+
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
@@ -658,12 +736,20 @@ def main():
             token_embeds[token_id] = token_embeds[initializer_token_id].clone()
 
     # Freeze vae and unet
-    vae.requires_grad_(False)
+    if vae is not None:
+        vae.requires_grad_(False)
     unet.requires_grad_(False)
+
     # Freeze all parameters except for the token embeddings in text encoder
-    text_encoder.text_model.encoder.requires_grad_(False)
-    text_encoder.text_model.final_layer_norm.requires_grad_(False)
-    text_encoder.text_model.embeddings.position_embedding.requires_grad_(False)
+    if args.pipeline == "StableDiffusionPipeline":
+        text_encoder.text_model.encoder.requires_grad_(False)
+        text_encoder.text_model.final_layer_norm.requires_grad_(False)
+        text_encoder.text_model.embeddings.position_embedding.requires_grad_(False)
+    elif args.pipeline == "IFPipeline":
+        text_encoder.encoder.requires_grad_(False)
+        text_encoder.encoder.embed_tokens.requires_grad_(True)
+    else:
+        raise ValueError(f"Unknown pipeline {args.pipeline}")
 
     if args.gradient_checkpointing:
         # Keep unet in train mode if we are using gradient checkpointing to save memory.
@@ -703,6 +789,16 @@ def main():
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon,
     )
+
+    if args.pipeline == "IFPipeline" and args.resolution != unet.config.sample_size:
+        logger.warn(
+            f"You are using the `IFPipeline` with a different resolution, {args.resolution},"
+            f" than the `sample_size` of the UNet, {unet.config.sample_size}. If this is intentional"
+            f" and you mean to use slightly different resolutions than the unet was originally trained"
+            f" on, carry on. However, if this is unintentional and the resolution is significantly larger"
+            f" than the `sample_size` of the unet, you might very likely OOM your GPU."
+            f" Consider restarting the script setting `--resolution={unet.config.sample_size}`."
+        )
 
     # Dataset and DataLoaders creation:
     train_dataset = TextualInversionDataset(
@@ -757,7 +853,8 @@ def main():
 
     # Move vae and unet to device and cast to weight_dtype
     unet.to(accelerator.device, dtype=weight_dtype)
-    vae.to(accelerator.device, dtype=weight_dtype)
+    if vae is not None:
+        vae.to(accelerator.device, dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -825,36 +922,85 @@ def main():
                 continue
 
             with accelerator.accumulate(text_encoder):
-                # Convert images to latent space
-                latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample().detach()
-                latents = latents * vae.config.scaling_factor
+                if vae is not None:
+                    # Convert images to latent space
+                    latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample().detach()
+                    latents = latents * vae.config.scaling_factor
+                    input_images = latents
+                else:
+                    input_images = batch["pixel_values"].to(dtype=weight_dtype)
 
-                # Sample noise that we'll add to the latents
-                noise = torch.randn_like(latents)
-                bsz = latents.shape[0]
+                # Sample noise that we'll add to the input images
+                noise = torch.randn_like(input_images)
+                bsz = input_images.shape[0]
                 # Sample a random timestep for each image
-                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+                timesteps = torch.randint(
+                    0, noise_scheduler.config.num_train_timesteps, (bsz,), device=input_images.device
+                )
                 timesteps = timesteps.long()
 
-                # Add noise to the latents according to the noise magnitude at each timestep
+                # Add noise to the inputs according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
-                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+                noisy_input_images = noise_scheduler.add_noise(input_images, noise, timesteps)
 
                 # Get the text embedding for conditioning
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0].to(dtype=weight_dtype)
 
                 # Predict the noise residual
-                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                model_pred = unet(noisy_input_images, timesteps, encoder_hidden_states).sample
 
-                # Get the target for loss depending on the prediction type
-                if noise_scheduler.config.prediction_type == "epsilon":
-                    target = noise
-                elif noise_scheduler.config.prediction_type == "v_prediction":
-                    target = noise_scheduler.get_velocity(latents, noise, timesteps)
+                # https://arxiv.org/abs/2006.11239
+                #
+                # When we predict variance, we use the KL divergence form of the training objective, equation (5).
+                # When variance is fixed, we use the simplified training objective, equation (14).
+                allow_variance_loss = False # TODO temp override flag
+                if allow_variance_loss and noise_scheduler.config.variance_type in ["learned", "learned_range"]:
+                    # https://github.com/lucidrains/denoising-diffusion-pytorch/blob/81b4a5de041c0d4d7c19647037388e97cd03f5a8/denoising_diffusion_pytorch/learned_gaussian_diffusion.py#L122
+                    true_mean, _, true_log_variance_clipped = noise_scheduler.q_posterior(
+                        x_start=input_images, x_t=noisy_input_images, t=timesteps
+                    )
+                    model_mean, _, model_log_variance, _ = noise_scheduler.p_mean_variance(
+                        x=noisy_input_images, t=timesteps, model_output=model_pred
+                    )
+
+                    # kl loss with detached model predicted mean, for stability reasons as in paper
+
+                    detached_model_mean = model_mean.detach()
+
+                    kl = normal_kl(true_mean, true_log_variance_clipped, detached_model_mean, model_log_variance)
+                    kl = meanflat(kl) * NAT
+
+                    decoder_nll = -discretized_gaussian_log_likelihood(
+                        input_images, means=detached_model_mean, log_scales=0.5 * model_log_variance
+                    )
+                    decoder_nll = meanflat(decoder_nll) * NAT
+
+                    # at the first timestep return the decoder NLL, otherwise return KL(q(x_{t-1}|x_t,x_0) || p(x_{t-1}|x_t))
+
+                    vb_losses = torch.where(timesteps == 0, decoder_nll, kl)
+
+                    # simple loss - predicting noise, x0, or x_prev
+
+                    pred_noise, _ = model_pred.chunk(2, dim=1)
+
+                    simple_losses = F.mse_loss(pred_noise, noise)
+
+                    vb_loss_weight = noise_scheduler.config.num_train_timesteps / 1000.0
+
+                    loss = simple_losses + vb_losses.mean() * vb_loss_weight
                 else:
-                    raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+                    if model_pred.shape[1] == 6:
+                        model_pred, _ = model_pred.chunk(2, dim=1)
 
-                loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+                    # Get the target for loss depending on the prediction type
+                    if noise_scheduler.config.prediction_type == "epsilon":
+                        target = noise
+                    elif noise_scheduler.config.prediction_type == "v_prediction":
+                        target = noise_scheduler.get_velocity(input_images, noise, timesteps)
+                    else:
+                        raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+
+                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
                 accelerator.backward(loss)
 
@@ -906,13 +1052,23 @@ def main():
         else:
             save_full_model = not args.only_save_embeds
         if save_full_model:
-            pipeline = StableDiffusionPipeline.from_pretrained(
-                args.pretrained_model_name_or_path,
-                text_encoder=accelerator.unwrap_model(text_encoder),
-                vae=vae,
-                unet=unet,
-                tokenizer=tokenizer,
-            )
+            if args.pipeline == "StableDiffusionPipeline":
+                pipeline = StableDiffusionPipeline.from_pretrained(
+                    args.pretrained_model_name_or_path,
+                    text_encoder=accelerator.unwrap_model(text_encoder),
+                    vae=vae,
+                    unet=unet,
+                    tokenizer=tokenizer,
+                )
+            elif args.pipeline == "IFPipeline":
+                pipeline = IFPipeline.from_pretrained(
+                    args.pretrained_model_name_or_path,
+                    text_encoder=accelerator.unwrap_model(text_encoder),
+                    unet=unet,
+                    tokenizer=tokenizer,
+                )
+            else:
+                raise ValueError(f"Unknown pipeline {args.pipeline}")
             pipeline.save_pretrained(args.output_dir)
         # Save the newly trained embeddings
         save_path = os.path.join(args.output_dir, "learned_embeds.bin")
