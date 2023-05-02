@@ -15,7 +15,7 @@ def parse_args():
     parser.add_argument('--num_images', type=int, default=30, help='number of images')
     parser.add_argument('--output_dir', type=str, default="/scratch/mp5847/diffusers_ckpt/output", help='output directory')
     parser.add_argument('--clip_filtering_threshold', type=float, default=0.25, help='clip filtering threshold')
-    parser.add_argument('--clip_filtering_tolerance', type=int, default=5, help='how many iterations before continue')
+    parser.add_argument('--clip_filtering_tolerance', type=int, default=10, help='how many iterations before continue')
     
     #create a store_true argument
     parser.add_argument('--create_metadata', action='store_true', help='if set, create json file with metadata')
@@ -42,9 +42,10 @@ if __name__ == "__main__":
     if(args.create_metadata):
         metadata = []
 
-    for p in args.prompts:
+    count = 0
+    while len(os.listdir(os.path.join(args.output_dir, "train"))) < 1000:
+        p = args.prompts[count]
         for i in range(args.num_images):    
-            
             while(True):
                 if(args.random_prompt):
                     prompt = get_random_prompt(p)
@@ -90,6 +91,48 @@ if __name__ == "__main__":
                     prompt = p
                     nsfw = save_image(pipe_pretrained, p, os.path.join(args.output_dir, f"train/{prompt}_{i}.png"))
 
+                    if(args.clip_filtering):
+                        history = {}
+                        tolerance = 0
+                        while(tolerance < args.clip_filtering_tolerance):
+                            clip_score = get_clip_score("Thomas Kinkade style", os.path.join(args.output_dir, f"train/{prompt}_{i}.png"))
+                            
+                            print(f"Prompt: {prompt}, clip score: {clip_score}")
+                            if(clip_score > args.clip_filtering_threshold):    
+                                print("Accepting image") 
+                                #delete all images in history
+                                for k, v in history.items():
+                                    print(f"Deleting image with clip score {v}")
+                                    os.remove(k)
+                                break
+                            else:
+                                print("Rejecting image")
+                                #rename image with clip score and save it in history
+                                history[os.path.join(args.output_dir, f"train/{prompt}_{i}_{clip_score}.png")] = clip_score
+                                os.rename(os.path.join(args.output_dir, f"train/{prompt}_{i}.png"), os.path.join(args.output_dir, f"train/{prompt}_{i}_{clip_score}.png"))
+                                
+                                #generate new image
+                                nsfw = save_image(pipe_pretrained, prompt, os.path.join(args.output_dir, f"train/{prompt}_{i}.png"))
+                                tolerance += 1     
+
+                        #if tolerance is reached, select the image with the highest clip score and rename it, delete the others
+                        if(tolerance == args.clip_filtering_tolerance):
+                            print("Tolerance reached")
+                            max_clip_score = max(history.values())
+                            print("Deleting all images")
+                            for k, v in history.items():
+                                # if(v == max_clip_score):
+                                #     print(f"Accepting image with clip score {v}")
+                                #     os.rename(k, os.path.join(args.output_dir, f"train/{prompt}_{i}.png"))
+                                # else:
+                                    # print(f"Deleting image with clip score {v}")
+                                    # os.remove(k)
+                                #Delete all images
+                                
+                                print(f"Deleting image with clip score {v}")
+                                os.remove(k)
+                            print("Move on to next prompt")
+
                 #check if nsfw is a list
                 if isinstance(nsfw, list):
                     nsfw = nsfw[0]
@@ -98,8 +141,9 @@ if __name__ == "__main__":
                     break
             
             if(args.create_metadata):
-                metadata.append({'file_name': f"train/{prompt}_{i}.png", 'text': prompt})
-    
+                metadata.append({'file_name': f"train/{prompt}_{i}.png", 'text': prompt.replace("Thomas Kinkade", "")})
+        count += 1
+        
     if(args.create_grid):
         for p in args.prompts:
             concat_images_in_square_grid(os.path.join(args.output_dir, "train"), p, os.path.join(args.output_dir, f"grid {p}.png"))

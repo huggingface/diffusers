@@ -40,8 +40,8 @@ def pairwise_cosine_distance(matrix):
 #add parser function
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--images_dir', type=str, help='path to images directory', required=True)
-    parser.add_argument('--histogram_name', type=str, help='name of histogram', required=True)
+    parser.add_argument('--images_dir', type=str, help='path to images directory')
+    parser.add_argument('--histogram_name', type=str, help='name of histogram')
     return parser.parse_args()
 
 def get_image_features(model, preprocess, image_dir, device):
@@ -67,56 +67,55 @@ if __name__ == "__main__":
     args = parse_args()
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    print("Directory: ", args.images_dir)
-    model, _, preprocess = open_clip.create_model_and_transforms('ViT-L-14', pretrained='laion2b_s32b_b82k')
+    model, _, preprocess = open_clip.create_model_and_transforms('ViT-g-14', pretrained='laion2b_s34b_b88k')
     model = model.to(device)
 
-    all_vecs_ke = get_image_features(model, preprocess, "/scratch/mp5847/diffusers_generated_datasets/kilian_eng_multi/train", device)
+    all_vecs_ke = get_image_features(model, preprocess, "/scratch/mp5847/diffusers_generated_datasets/kilian_eng_gpt4_pretrained/train", device)
     distances = pairwise_cosine_distance(all_vecs_ke)
     distances = distances[np.triu_indices(distances.shape[0], k=1)]
     
     #plot histogram of distances
     plt.hist(distances, label='kilian')
 
-    all_vecs_vg = get_image_features(model, preprocess, "/scratch/mp5847/diffusers_generated_datasets/van_gogh_multi/train", device)
-    distances = pairwise_cosine_distance(all_vecs_vg)
+    all_vecs_tk = get_image_features(model, preprocess, "/scratch/mp5847/diffusers_generated_datasets/thomas_kinkade_gpt4_pretrained/train", device)
+    distances = pairwise_cosine_distance(all_vecs_tk)
     distances = distances[np.triu_indices(distances.shape[0], k=1)]
     
     #plot histogram of distances
-    plt.hist(distances, label='van_gogh')
+    plt.hist(distances, label='thomas_kinkade')
     plt.legend(loc='upper right')
 
     plt.show()
     # plt.savefig(args.histogram_name)
-    plt.savefig("deduplication_histogram.png")
+    plt.savefig("deduplication_histogram_gpt4.png")
 
     #clear plt
     plt.clf()
 
     #get text features
-    prompt_vg = "Van Gogh"
-    prompt_ke = "Kilian Eng"
-    text_vg = open_clip.tokenize([prompt_vg]).to(device)
+    prompt_tk = "Thomas Kinkade style"
+    prompt_ke = "Kilian Eng style"
+    text_tk = open_clip.tokenize([prompt_tk]).to(device)
     text_ke = open_clip.tokenize([prompt_ke]).to(device)
     with torch.no_grad(), torch.cuda.amp.autocast():
-        text_features_vg = model.encode_text(text_vg)
+        text_features_tk = model.encode_text(text_tk)
         text_features_ke = model.encode_text(text_ke)
 
-        text_features_vg /= text_features_vg.norm(dim=-1, keepdim=True)
+        text_features_tk /= text_features_tk.norm(dim=-1, keepdim=True)
         text_features_ke /= text_features_ke.norm(dim=-1, keepdim=True)
 
-        text_features_vg = text_features_vg.cpu().numpy()
+        text_features_tk = text_features_tk.cpu().numpy()
         text_features_ke = text_features_ke.cpu().numpy()
     
     #distance between text and image
-    distances_vg = np.matmul(text_features_vg, all_vecs_vg.T).squeeze()
+    distances_tk = np.matmul(text_features_tk, all_vecs_tk.T).squeeze()
     distances_ke = np.matmul(text_features_ke, all_vecs_ke.T).squeeze()
 
-    print("Van Gogh: ", distances_vg.shape)
+    print("Kinkade: ", distances_tk.shape)
     print("Kilian: ", distances_ke.shape)
 
     #plot histogram of distances
-    plt.hist(distances_vg, label='van_gogh', alpha=0.5)
+    plt.hist(distances_tk, label='kinkade', alpha=0.5)
     plt.hist(distances_ke, label='kilian', alpha=0.5)
     plt.legend(loc='upper right')
     plt.show()

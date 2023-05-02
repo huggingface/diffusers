@@ -118,8 +118,16 @@ def concat_images_in_square_grid(folder_path, prompt, output_path='output.png'):
         y = (index // cols) * image_height
         grid.paste(image, (x, y))
 
+    if(os.path.exists(output_path)):
+        os.remove(output_path)
+        
     # Save the output image
     grid.save(output_path, overwrite=True)
+
+    #close
+    first_image.close()
+    image.close()
+    grid.close()
 
 def get_random_prompt(artist_style):
      

@@ -67,6 +67,7 @@ if __name__ == "__main__":
         for name, param in pipe_finetuned.unet.named_parameters():
             if("_lora.up.weight" in name):
                 with torch.no_grad():
+                    print("Editing lora layer: ", name)
                     #flip the sign of the lora layer
                     param.copy_(torch.nn.Parameter(args.lora_edit_alpha * param))
 
