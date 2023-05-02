@@ -923,7 +923,7 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
         assert np.max(np.abs(image - image_ckpt)) < 1e-4
 
     def test_stable_diffusion_compile(self):
-        if version.parse(torch.__version__) >= version.parse("2.0"):
+        if version.parse(torch.__version__) < version.parse("2.0"):
             print(f"Test `test_stable_diffusion_ddim` is skipped because {torch.__version__} is < 2.0")
             return
 

@@ -276,7 +276,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         assert mem_bytes < 2.2 * 10**9
 
     def test_inpaint_compile(self):
-        if version.parse(torch.__version__) >= version.parse("2.0"):
+        if version.parse(torch.__version__) < version.parse("2.0"):
             print(f"Test `test_stable_diffusion_ddim` is skipped because {torch.__version__} is < 2.0")
             return
 
