@@ -1033,7 +1033,8 @@ class IFInpaintingPipeline(DiffusionPipeline):
                     t,
                     encoder_hidden_states=prompt_embeds,
                     cross_attention_kwargs=cross_attention_kwargs,
-                ).sample
+                    return_dict=False,
+                )[0]
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -1047,8 +1048,8 @@ class IFInpaintingPipeline(DiffusionPipeline):
                 prev_intermediate_images = intermediate_images
 
                 intermediate_images = self.scheduler.step(
-                    noise_pred, t, intermediate_images, **extra_step_kwargs
-                ).prev_sample
+                    noise_pred, t, intermediate_images, **extra_step_kwargs, return_dict=False
+                )[0]
 
                 intermediate_images = (1 - mask_image) * prev_intermediate_images + mask_image * intermediate_images
 
