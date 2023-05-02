@@ -20,6 +20,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 import PIL.Image
 import torch
+import torch.nn.functional as F
 from torch import nn
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
@@ -579,9 +580,20 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
                 )
 
         # Check `image`
-        if isinstance(self.controlnet, ControlNetModel):
+        is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
+            self.controlnet, torch._dynamo.eval_frame.OptimizedModule
+        )
+        if (
+            isinstance(self.controlnet, ControlNetModel)
+            or is_compiled
+            and isinstance(self.controlnet._orig_mod, ControlNetModel)
+        ):
             self.check_image(image, prompt, prompt_embeds)
-        elif isinstance(self.controlnet, MultiControlNetModel):
+        elif (
+            isinstance(self.controlnet, MultiControlNetModel)
+            or is_compiled
+            and isinstance(self.controlnet._orig_mod, MultiControlNetModel)
+        ):
             if not isinstance(image, list):
                 raise TypeError("For multiple controlnets: `image` must be type `list`")
 
@@ -600,10 +612,18 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
             assert False
 
         # Check `controlnet_conditioning_scale`
-        if isinstance(self.controlnet, ControlNetModel):
+        if (
+            isinstance(self.controlnet, ControlNetModel)
+            or is_compiled
+            and isinstance(self.controlnet._orig_mod, ControlNetModel)
+        ):
             if not isinstance(controlnet_conditioning_scale, float):
                 raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
-        elif isinstance(self.controlnet, MultiControlNetModel):
+        elif (
+            isinstance(self.controlnet, MultiControlNetModel)
+            or is_compiled
+            and isinstance(self.controlnet._orig_mod, MultiControlNetModel)
+        ):
             if isinstance(controlnet_conditioning_scale, list):
                 if any(isinstance(i, list) for i in controlnet_conditioning_scale):
                     raise ValueError("A single batch of multiple conditionings are supported at the moment.")
@@ -910,7 +930,14 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
         )
 
         # 4. Prepare image
-        if isinstance(self.controlnet, ControlNetModel):
+        is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
+            self.controlnet, torch._dynamo.eval_frame.OptimizedModule
+        )
+        if (
+            isinstance(self.controlnet, ControlNetModel)
+            or is_compiled
+            and isinstance(self.controlnet._orig_mod, ControlNetModel)
+        ):
             image = self.prepare_image(
                 image=image,
                 width=width,
@@ -922,7 +949,11 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
                 do_classifier_free_guidance=do_classifier_free_guidance,
                 guess_mode=guess_mode,
             )
-        elif isinstance(self.controlnet, MultiControlNetModel):
+        elif (
+            isinstance(self.controlnet, MultiControlNetModel)
+            or is_compiled
+            and isinstance(self.controlnet._orig_mod, MultiControlNetModel)
+        ):
             images = []
 
             for image_ in image:
@@ -1006,7 +1037,8 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
                     cross_attention_kwargs=cross_attention_kwargs,
                     down_block_additional_residuals=down_block_res_samples,
                     mid_block_additional_residual=mid_block_res_sample,
-                ).sample
+                    return_dict=False,
+                )[0]
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -1014,7 +1046,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
