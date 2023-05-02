@@ -18,8 +18,8 @@ import random
 import unittest
 
 import numpy as np
-from packaging import version
 import torch
+from packaging import version
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 

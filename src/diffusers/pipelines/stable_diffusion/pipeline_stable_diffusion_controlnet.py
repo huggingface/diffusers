@@ -20,6 +20,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 import PIL.Image
 import torch
+import torch.nn.functional as F
 from torch import nn
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
@@ -579,9 +580,20 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
                 )
 
         # Check `image`
-        if isinstance(self.controlnet, ControlNetModel):
+        is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
+            self.controlnet, torch._dynamo.eval_frame.OptimizedModule
+        )
+        if (
+            isinstance(self.controlnet, ControlNetModel)
+            or is_compiled
+            and isinstance(self.controlnet._orig_mod, ControlNetModel)
+        ):
             self.check_image(image, prompt, prompt_embeds)
-        elif isinstance(self.controlnet, MultiControlNetModel):
+        elif (
+            isinstance(self.controlnet, MultiControlNetModel)
+            or is_compiled
+            and isinstance(self.controlnet._orig_mod, MultiControlNetModel)
+        ):
             if not isinstance(image, list):
                 raise TypeError("For multiple controlnets: `image` must be type `list`")
 
@@ -600,10 +612,18 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
             assert False
 
         # Check `controlnet_conditioning_scale`
-        if isinstance(self.controlnet, ControlNetModel):
+        if (
+            isinstance(self.controlnet, ControlNetModel)
+            or is_compiled
+            and isinstance(self.controlnet._orig_mod, ControlNetModel)
+        ):
             if not isinstance(controlnet_conditioning_scale, float):
                 raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
-        elif isinstance(self.controlnet, MultiControlNetModel):
+        elif (
+            isinstance(self.controlnet, MultiControlNetModel)
+            or is_compiled
+            and isinstance(self.controlnet._orig_mod, MultiControlNetModel)
+        ):
             if isinstance(controlnet_conditioning_scale, list):
                 if any(isinstance(i, list) for i in controlnet_conditioning_scale):
                     raise ValueError("A single batch of multiple conditionings are supported at the moment.")
@@ -910,7 +930,14 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
         )
 
         # 4. Prepare image
-        if isinstance(self.controlnet, ControlNetModel):
+        is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
+            self.controlnet, torch._dynamo.eval_frame.OptimizedModule
+        )
+        if (
+            isinstance(self.controlnet, ControlNetModel)
+            or is_compiled
+            and isinstance(self.controlnet._orig_mod, ControlNetModel)
+        ):
             image = self.prepare_image(
                 image=image,
                 width=width,
@@ -922,7 +949,11 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
                 do_classifier_free_guidance=do_classifier_free_guidance,
                 guess_mode=guess_mode,
             )
-        elif isinstance(self.controlnet, MultiControlNetModel):
+        elif (
+            isinstance(self.controlnet, MultiControlNetModel)
+            or is_compiled
+            and isinstance(self.controlnet._orig_mod, MultiControlNetModel)
+        ):
             images = []
 
             for image_ in image:
