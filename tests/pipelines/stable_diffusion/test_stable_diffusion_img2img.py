@@ -19,6 +19,7 @@ import unittest
 
 import numpy as np
 import torch
+from packaging import version
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
@@ -459,6 +460,28 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
 
         assert out.nsfw_content_detected[0], f"Safety checker should work for prompt: {inputs['prompt']}"
         assert np.abs(out.images[0]).sum() < 1e-5  # should be all zeros
+
+    def test_img2img_compile(self):
+        if version.parse(torch.__version__) < version.parse("2.0"):
+            print(f"Test `test_stable_diffusion_ddim` is skipped because {torch.__version__} is < 2.0")
+            return
+
+        pipe = StableDiffusionImg2ImgPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        pipe.unet.to(memory_format=torch.channels_last)
+        pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+
+        inputs = self.get_inputs(torch_device)
+        image = pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1].flatten()
+
+        assert image.shape == (1, 512, 768, 3)
+        expected_slice = np.array([0.0593, 0.0607, 0.0851, 0.0582, 0.0636, 0.0721, 0.0751, 0.0981, 0.0781])
+
+        assert np.abs(expected_slice - image_slice).max() < 1e-3
 
 
 @nightly
