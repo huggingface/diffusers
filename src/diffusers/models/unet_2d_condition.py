@@ -740,7 +740,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 down_block_res_samples, down_block_additional_residuals
             ):
                 down_block_res_sample = down_block_res_sample + down_block_additional_residual
-                new_down_block_res_samples += (down_block_res_sample,)
+                new_down_block_res_samples = new_down_block_res_samples + (down_block_res_sample,)
 
             down_block_res_samples = new_down_block_res_samples
 

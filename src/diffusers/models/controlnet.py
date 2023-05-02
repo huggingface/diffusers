@@ -551,7 +551,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
 
         for down_block_res_sample, controlnet_block in zip(down_block_res_samples, self.controlnet_down_blocks):
             down_block_res_sample = controlnet_block(down_block_res_sample)
-            controlnet_down_block_res_samples += (down_block_res_sample,)
+            controlnet_down_block_res_samples = controlnet_down_block_res_samples + (down_block_res_sample,)
 
         down_block_res_samples = controlnet_down_block_res_samples
 
