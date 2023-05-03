@@ -151,7 +151,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         lower_order_final: bool = True,
         use_karras_sigmas: Optional[bool] = False,
         lambda_min_clipped: float = -float("inf"),
-        is_predicting_variance: bool = False,
+        variance_type: Optional[str] = None,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
