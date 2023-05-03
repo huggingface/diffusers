@@ -13,4 +13,4 @@ except OptionalDependencyNotAvailable:
     print("to-do")
 #    from ...utils.dummy_torch_and_transformers_objects import UnCLIPImageVariationPipeline, UnCLIPPipeline
 else:
-    from .pipeline_kandinsky_prior import KandinskyPipeline
+    from .pipeline_kandinsky import KandinskyPipeline
