@@ -118,7 +118,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
              This parameter controls whether to use Karras sigmas (Karras et al. (2022) scheme) for step sizes in the
              noise schedule during the sampling process. If True, the sigmas will be determined according to a sequence
              of noise levels {σi} as defined in Equation (5) of the paper https://arxiv.org/pdf/2206.00364.pdf.
-        lambda_min_clipped (`float`, default `-5.1`):
+        lambda_min_clipped (`float`, default `-inf`):
             the clipping threshold for the minimum value of lambda(t) for numerical stability. This is critical for
             cosine (squaredcos_cap_v2) noise schedule.
         variance_type (`str`, *optional*):
