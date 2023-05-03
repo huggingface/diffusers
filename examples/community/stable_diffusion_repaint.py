@@ -21,21 +21,21 @@ import torch
 from packaging import version
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
-from diffusers.configuration_utils import FrozenDict
+from diffusers import AutoencoderKL, DiffusionPipeline, UNet2DConditionModel
+from diffusers.configuration_utils import FrozenDict, deprecate
 from diffusers.loaders import LoraLoaderMixin, TextualInversionLoaderMixin
+from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
+from diffusers.pipelines.stable_diffusion.safety_checker import (
+    StableDiffusionSafetyChecker,
+)
 from diffusers.schedulers import KarrasDiffusionSchedulers
-from diffusers.configuration_utils import deprecate
 from diffusers.utils import (
     is_accelerate_available,
     is_accelerate_version,
     logging,
     randn_tensor,
 )
-from diffusers import DiffusionPipeline, AutoencoderKL, UNet2DConditionModel
-from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.pipelines.stable_diffusion.safety_checker import (
-    StableDiffusionSafetyChecker,
-)
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -850,7 +850,7 @@ class StableDiffusionRepaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
         self.scheduler.eta = eta
 
         timesteps = self.scheduler.timesteps
-        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
+        # latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
@@ -879,8 +879,8 @@ class StableDiffusionRepaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
         )
 
         # 8. Check that sizes of mask, masked image and latents match
-        num_channels_mask = mask.shape[1]
-        num_channels_masked_image = masked_image_latents.shape[1]
+        # num_channels_mask = mask.shape[1]
+        # num_channels_masked_image = masked_image_latents.shape[1]
         if num_channels_latents != self.unet.config.in_channels:
             raise ValueError(
                 f"Incorrect configuration settings! The config of `pipeline.unet`: {self.unet.config} expects"
@@ -895,7 +895,6 @@ class StableDiffusionRepaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
         t_last = timesteps[0] + 1
 
         # 10. Denoising loop
-        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=len(timesteps)) as progress_bar:
             for i, t in enumerate(timesteps):
                 if t >= t_last:
