@@ -42,7 +42,7 @@ class ImageProcessorTest(unittest.TestCase):
         return image
 
     def test_vae_image_processor_pt(self):
-        image_processor = VaeImageProcessor(do_resize=False, do_normalize=False)
+        image_processor = VaeImageProcessor(do_resize=False, do_normalize=True)
 
         input_pt = self.dummy_sample
         input_np = self.to_np(input_pt)
@@ -59,7 +59,7 @@ class ImageProcessorTest(unittest.TestCase):
             ), f"decoded output does not match input for output_type {output_type}"
 
     def test_vae_image_processor_np(self):
-        image_processor = VaeImageProcessor(do_resize=False, do_normalize=False)
+        image_processor = VaeImageProcessor(do_resize=False, do_normalize=True)
         input_np = self.dummy_sample.cpu().numpy().transpose(0, 2, 3, 1)
 
         for output_type in ["pt", "np", "pil"]:
@@ -72,7 +72,7 @@ class ImageProcessorTest(unittest.TestCase):
             ), f"decoded output does not match input for output_type {output_type}"
 
     def test_vae_image_processor_pil(self):
-        image_processor = VaeImageProcessor(do_resize=False, do_normalize=False)
+        image_processor = VaeImageProcessor(do_resize=False, do_normalize=True)
 
         input_np = self.dummy_sample.cpu().numpy().transpose(0, 2, 3, 1)
         input_pil = image_processor.numpy_to_pil(input_np)

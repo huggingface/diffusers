@@ -886,7 +886,8 @@ class IFSuperResolutionPipeline(DiffusionPipeline):
                     encoder_hidden_states=prompt_embeds,
                     class_labels=noise_level,
                     cross_attention_kwargs=cross_attention_kwargs,
-                ).sample
+                    return_dict=False,
+                )[0]
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -898,8 +899,8 @@ class IFSuperResolutionPipeline(DiffusionPipeline):
 
                 # compute the previous noisy sample x_t -> x_t-1
                 intermediate_images = self.scheduler.step(
-                    noise_pred, t, intermediate_images, **extra_step_kwargs
-                ).prev_sample
+                    noise_pred, t, intermediate_images, **extra_step_kwargs, return_dict=False
+                )[0]
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):

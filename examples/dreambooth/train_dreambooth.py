@@ -61,6 +61,39 @@ check_min_version("0.17.0.dev0")
 logger = get_logger(__name__)
 
 
+def save_model_card(repo_id: str, images=None, base_model=str, train_text_encoder=False, prompt=str, repo_folder=None):
+    img_str = ""
+    for i, image in enumerate(images):
+        image.save(os.path.join(repo_folder, f"image_{i}.png"))
+        img_str += f"![img_{i}](./image_{i}.png)\n"
+
+    yaml = f"""
+---
+license: creativeml-openrail-m
+base_model: {base_model}
+instance_prompt: {prompt}
+tags:
+- stable-diffusion
+- stable-diffusion-diffusers
+- text-to-image
+- diffusers
+- dreambooth
+inference: true
+---
+    """
+    model_card = f"""
+# DreamBooth - {repo_id}
+
+This is a dreambooth model derived from {base_model}. The weights were trained on {prompt} using [DreamBooth](https://dreambooth.github.io/).
+You can find some example images in the following. \n
+{img_str}
+
+DreamBooth for the text encoder was enabled: {train_text_encoder}.
+"""
+    with open(os.path.join(repo_folder, "README.md"), "w") as f:
+        f.write(yaml + model_card)
+
+
 def log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch):
     logger.info(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
@@ -103,6 +136,8 @@ def log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight
 
     del pipeline
     torch.cuda.empty_cache()
+
+    return images
 
 
 def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision: str):
@@ -997,13 +1032,16 @@ def main(args):
                 global_step += 1
 
                 if accelerator.is_main_process:
+                    images = []
                     if global_step % args.checkpointing_steps == 0:
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
                     if args.validation_prompt is not None and global_step % args.validation_steps == 0:
-                        log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch)
+                        images = log_validation(
+                            text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch
+                        )
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
@@ -1024,6 +1062,14 @@ def main(args):
         pipeline.save_pretrained(args.output_dir)
 
         if args.push_to_hub:
+            save_model_card(
+                repo_id,
+                images=images,
+                base_model=args.pretrained_model_name_or_path,
+                train_text_encoder=args.train_text_encoder,
+                prompt=args.instance_prompt,
+                repo_folder=args.output_dir,
+            )
             upload_folder(
                 repo_id=repo_id,
                 folder_path=args.output_dir,

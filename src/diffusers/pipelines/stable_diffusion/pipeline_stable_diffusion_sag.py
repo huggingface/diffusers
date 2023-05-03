@@ -366,7 +366,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin)
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
         latents = 1 / self.vae.config.scaling_factor * latents
-        image = self.vae.decode(latents).sample
+        image = self.vae.decode(latents, return_dict=False)[0]
         image = (image / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
@@ -619,7 +619,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin)
 
         def get_map_size(module, input, output):
             nonlocal map_size
-            map_size = output.sample.shape[-2:]
+            map_size = output[0].shape[-2:]
 
         with self.unet.mid_block.attentions[0].register_forward_hook(get_map_size):
             with self.progress_bar(total=num_inference_steps) as progress_bar:
