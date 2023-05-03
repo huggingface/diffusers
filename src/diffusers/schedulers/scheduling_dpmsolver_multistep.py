@@ -147,7 +147,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         solver_type: str = "midpoint",
         lower_order_final: bool = True,
         use_karras_sigmas: Optional[bool] = False,
-        lambda_min_clipped: float = -5.1,
+        lambda_min_clipped: float = -float("inf"),
         is_predicting_variance: bool = False,
     ):
         if trained_betas is not None:
