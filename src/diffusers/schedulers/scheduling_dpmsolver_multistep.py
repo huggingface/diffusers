@@ -122,12 +122,13 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             the clipping threshold for the minimum value of lambda(t) for numerical stability. This is critical for
             cosine (squaredcos_cap_v2) noise schedule.
         variance_type (`str`, *optional*):
-            Set to "learned" or "learned_range" for diffusion models that predict variance. For example, OpenAI's guided-diffusion
-            (https://github.com/openai/guided-diffusion) predicts both mean and variance of the Gaussian distribution
-            in the model's output. DPM-Solver only needs the "mean" output because it is based on diffusion ODEs.
-            whether the model's output contains the predicted Gaussian variance. For example, OpenAI's guided-diffusion
-            (https://github.com/openai/guided-diffusion) predicts both mean and variance of the Gaussian distribution
-            in the model's output. DPM-Solver only needs the "mean" output because it is based on diffusion ODEs.
+            Set to "learned" or "learned_range" for diffusion models that predict variance. For example, OpenAI's
+            guided-diffusion (https://github.com/openai/guided-diffusion) predicts both mean and variance of the
+            Gaussian distribution in the model's output. DPM-Solver only needs the "mean" output because it is based on
+            diffusion ODEs. whether the model's output contains the predicted Gaussian variance. For example, OpenAI's
+            guided-diffusion (https://github.com/openai/guided-diffusion) predicts both mean and variance of the
+            Gaussian distribution in the model's output. DPM-Solver only needs the "mean" output because it is based on
+            diffusion ODEs.
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
