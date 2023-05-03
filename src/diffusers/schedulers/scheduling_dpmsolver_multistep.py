@@ -340,7 +340,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         if self.config.algorithm_type == "dpmsolver++":
             if self.config.prediction_type == "epsilon":
                 # DPM-Solver and DPM-Solver++ only need the "mean" output.
-                if self.is_predicting_variance:
+                if self.config.variance_type in ["learned_range"]:
                     model_output = model_output[:, :3]
                 alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
                 x0_pred = (sample - sigma_t * model_output) / alpha_t
