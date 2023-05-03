@@ -101,6 +101,7 @@ if is_torch_available():
         torch_all_close,
         torch_device,
     )
+    from .torch_utils import maybe_allow_in_graph
 
 from .testing_utils import export_to_video
 
