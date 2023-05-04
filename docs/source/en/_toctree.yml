@@ -250,6 +250,8 @@
       title: Euler scheduler
     - local: api/schedulers/heun
       title: Heun Scheduler
+    - local: api/schedulers/multistep_dpm_solver_inverse
+      title: Inverse Multistep DPM-Solver
     - local: api/schedulers/ipndm
       title: IPNDM
     - local: api/schedulers/lms_discrete
