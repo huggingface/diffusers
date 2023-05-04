@@ -19,7 +19,6 @@ deps = {
     "Jinja2": "Jinja2",
     "k-diffusion": "k-diffusion>=0.0.12",
     "librosa": "librosa",
-    "note-seq": "note-seq",
     "numpy": "numpy",
     "parameterized": "parameterized",
     "protobuf": "protobuf>=3.20.3,<4",

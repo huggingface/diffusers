@@ -75,10 +75,12 @@ try:
 except OptionalDependencyNotAvailable:
     from ...utils.dummy_torch_and_transformers_objects import (
         StableDiffusionDepth2ImgPipeline,
+        StableDiffusionDiffEditPipeline,
         StableDiffusionPix2PixZeroPipeline,
     )
 else:
     from .pipeline_stable_diffusion_depth2img import StableDiffusionDepth2ImgPipeline
+    from .pipeline_stable_diffusion_diffedit import StableDiffusionDiffEditPipeline
     from .pipeline_stable_diffusion_pix2pix_zero import StableDiffusionPix2PixZeroPipeline
 
 
