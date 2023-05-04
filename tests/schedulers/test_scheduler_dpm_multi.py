@@ -29,6 +29,8 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
             "algorithm_type": "dpmsolver++",
             "solver_type": "midpoint",
             "lower_order_final": False,
+            "lambda_min_clipped": -float("inf"),
+            "variance_type": None,
         }
 
         config.update(**kwargs)
@@ -187,6 +189,14 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
         self.check_over_configs(lower_order_final=True)
         self.check_over_configs(lower_order_final=False)
 
+    def test_lambda_min_clipped(self):
+        self.check_over_configs(lambda_min_clipped=-float("inf"))
+        self.check_over_configs(lambda_min_clipped=-5.1)
+
+    def test_variance_type(self):
+        self.check_over_configs(variance_type=None)
+        self.check_over_configs(variance_type="learned_range")
+
     def test_inference_steps(self):
         for num_inference_steps in [1, 2, 3, 5, 10, 50, 100, 999, 1000]:
             self.check_over_forward(num_inference_steps=num_inference_steps, time_step=0)
@@ -208,6 +218,12 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
         result_mean = torch.mean(torch.abs(sample))
 
         assert abs(result_mean.item() - 0.2251) < 1e-3
+
+    def test_full_loop_with_karras_and_v_prediction(self):
+        sample = self.full_loop(prediction_type="v_prediction", use_karras_sigmas=True)
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.2096) < 1e-3
 
     def test_switch(self):
         # make sure that iterating over schedulers with same config names gives same results

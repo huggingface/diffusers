@@ -30,6 +30,7 @@ from .constants import (
     ONNX_EXTERNAL_WEIGHTS_NAME,
     ONNX_WEIGHTS_NAME,
     SAFETENSORS_WEIGHTS_NAME,
+    TEXT_ENCODER_TARGET_MODULES,
     WEIGHTS_NAME,
 )
 from .deprecation_utils import deprecate
@@ -43,6 +44,7 @@ from .hub_utils import (
     http_user_agent,
 )
 from .import_utils import (
+    BACKENDS_MAPPING,
     ENV_VARS_TRUE_AND_AUTO_VALUES,
     ENV_VARS_TRUE_VALUES,
     USE_JAX,
@@ -52,7 +54,9 @@ from .import_utils import (
     OptionalDependencyNotAvailable,
     is_accelerate_available,
     is_accelerate_version,
+    is_bs4_available,
     is_flax_available,
+    is_ftfy_available,
     is_inflect_available,
     is_k_diffusion_available,
     is_k_diffusion_version,
@@ -66,6 +70,7 @@ from .import_utils import (
     is_tf_available,
     is_torch_available,
     is_torch_version,
+    is_torchsde_available,
     is_transformers_available,
     is_transformers_version,
     is_unidecode_available,
@@ -75,7 +80,7 @@ from .import_utils import (
 )
 from .logging import get_logger
 from .outputs import BaseOutput
-from .pil_utils import PIL_INTERPOLATION
+from .pil_utils import PIL_INTERPOLATION, numpy_to_pil, pt_to_pil
 from .torch_utils import is_compiled_module, randn_tensor
 
 
@@ -85,6 +90,7 @@ if is_torch_available():
         load_hf_numpy,
         load_image,
         load_numpy,
+        load_pt,
         nightly,
         parse_flag_from_env,
         print_tensor_test,
@@ -95,6 +101,7 @@ if is_torch_available():
         torch_all_close,
         torch_device,
     )
+    from .torch_utils import maybe_allow_in_graph
 
 from .testing_utils import export_to_video
 

@@ -25,7 +25,7 @@
     - local: using-diffusers/schedulers
       title: Load and compare different schedulers
     - local: using-diffusers/custom_pipeline_overview
-      title: Load and add custom pipelines
+      title: Load community pipelines
     - local: using-diffusers/kerascv
       title: Load KerasCV Stable Diffusion checkpoints
     title: Loading & Hub
@@ -47,9 +47,9 @@
     - local: using-diffusers/reproducibility
       title: Create reproducible pipelines
     - local: using-diffusers/custom_pipeline_examples
-      title: Community Pipelines
+      title: Community pipelines
     - local: using-diffusers/contribute_pipeline
-      title: How to contribute a Pipeline
+      title: How to contribute a community pipeline
     - local: using-diffusers/using_safetensors
       title: Using safetensors
     - local: using-diffusers/stable_diffusion_jax_how_to
@@ -60,6 +60,8 @@
   - sections:
     - local: training/overview
       title: Overview
+    - local: training/create_dataset
+      title: Create a dataset for training
     - local: training/unconditional_training
       title: Unconditional image generation
     - local: training/text_inversion
@@ -74,6 +76,8 @@
       title: ControlNet
     - local: training/instructpix2pix
       title: InstructPix2Pix Training
+    - local: training/custom_diffusion
+      title: Custom Diffusion
     title: Training
   - sections:
     - local: using-diffusers/rl
@@ -103,6 +107,8 @@
     title: MPS
   - local: optimization/habana
     title: Habana Gaudi
+  - local: optimization/tome
+    title: Token Merging
   title: Optimization/Special Hardware
 - sections:
   - local: conceptual/philosophy
@@ -150,6 +156,8 @@
       title: DDPM
     - local: api/pipelines/dit
       title: DiT
+    - local: api/pipelines/if
+      title: IF
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
     - local: api/pipelines/paint_by_example
@@ -165,7 +173,7 @@
     - local: api/pipelines/semantic_stable_diffusion
       title: Semantic Guidance
     - local: api/pipelines/spectrogram_diffusion
-      title: "Spectrogram Diffusion"
+      title: Spectrogram Diffusion
     - sections:
       - local: api/pipelines/stable_diffusion/overview
         title: Overview
@@ -197,6 +205,8 @@
         title: Text-to-Image Generation with ControlNet Conditioning
       - local: api/pipelines/stable_diffusion/model_editing
         title: Text-to-Image Model Editing
+      - local: api/pipelines/stable_diffusion/diffedit
+        title: DiffEdit
       title: Stable Diffusion
     - local: api/pipelines/stable_diffusion_2
       title: Stable Diffusion 2
@@ -232,6 +242,8 @@
       title: DPM Discrete Scheduler
     - local: api/schedulers/dpm_discrete_ancestral
       title: DPM Discrete Scheduler with ancestral sampling
+    - local: api/schedulers/dpm_sde
+      title: DPMSolverSDEScheduler
     - local: api/schedulers/euler_ancestral
       title: Euler Ancestral Scheduler
     - local: api/schedulers/euler

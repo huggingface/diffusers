@@ -16,8 +16,8 @@ specific language governing permissions and limitations under the License.
 
 ## Requirements
 
-- Optimum Habana 1.4 or later, [here](https://huggingface.co/docs/optimum/habana/installation) is how to install it.
-- SynapseAI 1.8.
+- Optimum Habana 1.5 or later, [here](https://huggingface.co/docs/optimum/habana/installation) is how to install it.
+- SynapseAI 1.9.
 
 
 ## Inference Pipeline
@@ -64,7 +64,16 @@ For more information, check out Optimum Habana's [documentation](https://hugging
 
 Here are the latencies for Habana first-generation Gaudi and Gaudi2 with the [Habana/stable-diffusion](https://huggingface.co/Habana/stable-diffusion) Gaudi configuration (mixed precision bf16/fp32):
 
+- [Stable Diffusion v1.5](https://huggingface.co/runwayml/stable-diffusion-v1-5) (512x512 resolution):
+
 |                        | Latency (batch size = 1) | Throughput (batch size = 8) |
 | ---------------------- |:------------------------:|:---------------------------:|
-| first-generation Gaudi | 4.29s                    | 0.283 images/s              |
-| Gaudi2                 | 1.54s                    | 0.904 images/s              |
+| first-generation Gaudi | 4.22s                    | 0.29 images/s               |
+| Gaudi2                 | 1.70s                    | 0.925 images/s              |
+
+- [Stable Diffusion v2.1](https://huggingface.co/stabilityai/stable-diffusion-2-1) (768x768 resolution):
+
+|                        | Latency (batch size = 1) | Throughput                      |
+| ---------------------- |:------------------------:|:-------------------------------:|
+| first-generation Gaudi | 23.3s                    | 0.045 images/s (batch size = 2) |
+| Gaudi2                 | 7.75s                    | 0.14 images/s (batch size = 5)  |

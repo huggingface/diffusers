@@ -206,7 +206,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             )
 
         if self.use_karras_sigmas:
-            sigmas = self._convert_to_karras(in_sigmas=sigmas)
+            sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
 
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
@@ -241,14 +241,14 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         return t
 
     # Copied from https://github.com/crowsonkb/k-diffusion/blob/686dbad0f39640ea25c8a8c6a6e56bb40eacefa2/k_diffusion/sampling.py#L17
-    def _convert_to_karras(self, in_sigmas: torch.FloatTensor) -> torch.FloatTensor:
+    def _convert_to_karras(self, in_sigmas: torch.FloatTensor, num_inference_steps) -> torch.FloatTensor:
         """Constructs the noise schedule of Karras et al. (2022)."""
 
         sigma_min: float = in_sigmas[-1].item()
         sigma_max: float = in_sigmas[0].item()
 
         rho = 7.0  # 7.0 is the value used in the paper
-        ramp = np.linspace(0, 1, self.num_inference_steps)
+        ramp = np.linspace(0, 1, num_inference_steps)
         min_inv_rho = sigma_min ** (1 / rho)
         max_inv_rho = sigma_max ** (1 / rho)
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho

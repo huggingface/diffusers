@@ -51,21 +51,6 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         super().__init__()
         self.register_modules(unet=unet, scheduler=scheduler, mel=mel, vqvae=vqvae)
 
-    def get_input_dims(self) -> Tuple:
-        """Returns dimension of input image
-
-        Returns:
-            `Tuple`: (height, width)
-        """
-        input_module = self.vqvae if self.vqvae is not None else self.unet
-        # For backwards compatibility
-        sample_size = (
-            (input_module.sample_size, input_module.sample_size)
-            if type(input_module.sample_size) == int
-            else input_module.sample_size
-        )
-        return sample_size
-
     def get_default_steps(self) -> int:
         """Returns default number of steps recommended for inference
 
@@ -121,17 +106,15 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(steps)
         step_generator = step_generator or generator
         # For backwards compatibility
-        if type(self.unet.sample_size) == int:
-            self.unet.sample_size = (self.unet.sample_size, self.unet.sample_size)
-        input_dims = self.get_input_dims()
-        self.mel.set_resolution(x_res=input_dims[1], y_res=input_dims[0])
+        if type(self.unet.config.sample_size) == int:
+            self.unet.config.sample_size = (self.unet.config.sample_size, self.unet.config.sample_size)
         if noise is None:
             noise = randn_tensor(
                 (
                     batch_size,
-                    self.unet.in_channels,
-                    self.unet.sample_size[0],
-                    self.unet.sample_size[1],
+                    self.unet.config.in_channels,
+                    self.unet.config.sample_size[0],
+                    self.unet.config.sample_size[1],
                 ),
                 generator=generator,
                 device=self.device,
@@ -158,7 +141,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
                 images[0, 0] = self.scheduler.add_noise(input_images, noise, self.scheduler.timesteps[start_step - 1])
 
             pixels_per_second = (
-                self.unet.sample_size[1] * self.mel.get_sample_rate() / self.mel.x_res / self.mel.hop_length
+                self.unet.config.sample_size[1] * self.mel.get_sample_rate() / self.mel.x_res / self.mel.hop_length
             )
             mask_start = int(mask_start_secs * pixels_per_second)
             mask_end = int(mask_end_secs * pixels_per_second)
@@ -234,7 +217,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         sample = torch.Tensor(sample).to(self.device)
 
         for t in self.progress_bar(torch.flip(self.scheduler.timesteps, (0,))):
-            prev_timestep = t - self.scheduler.num_train_timesteps // self.scheduler.num_inference_steps
+            prev_timestep = t - self.scheduler.config.num_train_timesteps // self.scheduler.num_inference_steps
             alpha_prod_t = self.scheduler.alphas_cumprod[t]
             alpha_prod_t_prev = (
                 self.scheduler.alphas_cumprod[prev_timestep]
