@@ -118,6 +118,17 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
              This parameter controls whether to use Karras sigmas (Karras et al. (2022) scheme) for step sizes in the
              noise schedule during the sampling process. If True, the sigmas will be determined according to a sequence
              of noise levels {σi} as defined in Equation (5) of the paper https://arxiv.org/pdf/2206.00364.pdf.
+        lambda_min_clipped (`float`, default `-inf`):
+            the clipping threshold for the minimum value of lambda(t) for numerical stability. This is critical for
+            cosine (squaredcos_cap_v2) noise schedule.
+        variance_type (`str`, *optional*):
+            Set to "learned" or "learned_range" for diffusion models that predict variance. For example, OpenAI's
+            guided-diffusion (https://github.com/openai/guided-diffusion) predicts both mean and variance of the
+            Gaussian distribution in the model's output. DPM-Solver only needs the "mean" output because it is based on
+            diffusion ODEs. whether the model's output contains the predicted Gaussian variance. For example, OpenAI's
+            guided-diffusion (https://github.com/openai/guided-diffusion) predicts both mean and variance of the
+            Gaussian distribution in the model's output. DPM-Solver only needs the "mean" output because it is based on
+            diffusion ODEs.
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -140,6 +151,8 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         solver_type: str = "midpoint",
         lower_order_final: bool = True,
         use_karras_sigmas: Optional[bool] = False,
+        lambda_min_clipped: float = -float("inf"),
+        variance_type: Optional[str] = None,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -187,7 +200,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         self.lower_order_nums = 0
         self.use_karras_sigmas = use_karras_sigmas
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(self, num_inference_steps: int = None, device: Union[str, torch.device] = None):
         """
         Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -197,8 +210,11 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             device (`str` or `torch.device`, optional):
                 the device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
         """
+        # Clipping the minimum of all lambda(t) for numerical stability.
+        # This is critical for cosine (squaredcos_cap_v2) noise schedule.
+        clipped_idx = torch.searchsorted(torch.flip(self.lambda_t, [0]), self.lambda_min_clipped)
         timesteps = (
-            np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps + 1)
+            np.linspace(0, self.config.num_train_timesteps - 1 - clipped_idx, num_inference_steps + 1)
             .round()[::-1][:-1]
             .copy()
             .astype(np.int64)
@@ -320,9 +336,13 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         Returns:
             `torch.FloatTensor`: the converted model output.
         """
+
         # DPM-Solver++ needs to solve an integral of the data prediction model.
         if self.config.algorithm_type == "dpmsolver++":
             if self.config.prediction_type == "epsilon":
+                # DPM-Solver and DPM-Solver++ only need the "mean" output.
+                if self.config.variance_type in ["learned_range"]:
+                    model_output = model_output[:, :3]
                 alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
                 x0_pred = (sample - sigma_t * model_output) / alpha_t
             elif self.config.prediction_type == "sample":
@@ -343,6 +363,9 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         # DPM-Solver needs to solve an integral of the noise prediction model.
         elif self.config.algorithm_type == "dpmsolver":
             if self.config.prediction_type == "epsilon":
+                # DPM-Solver and DPM-Solver++ only need the "mean" output.
+                if self.config.variance_type in ["learned_range"]:
+                    model_output = model_output[:, :3]
                 return model_output
             elif self.config.prediction_type == "sample":
                 alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
