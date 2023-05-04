@@ -300,6 +300,25 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         assert np.abs(expected_slice - image_slice).max() < 1e-4
         assert np.abs(expected_slice - image_slice).max() < 1e-3
 
+    def test_stable_diffusion_inpaint_pil_input_resolution_test(self):
+            pipe = StableDiffusionInpaintPipeline.from_pretrained(
+                "runwayml/stable-diffusion-inpainting", safety_checker=None
+            )
+            pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
+            pipe.to(torch_device)
+            pipe.set_progress_bar_config(disable=None)
+            pipe.enable_attention_slicing()
+
+            inputs = self.get_inputs(torch_device)
+            # change input image to a random size (one that would cause a tensor mismatch error)
+            inputs['image'] = inputs['image'].resize((127,127))
+            inputs['mask_image'] = inputs['mask_image'].resize((127,127))
+            inputs['height'] = 128
+            inputs['width'] = 128
+            image = pipe(**inputs).images
+            # verify that the returned image has the same height and width as the input height and width
+            assert image.shape == (1, inputs['height'], inputs['width'], 3)
+
 
 @nightly
 @require_torch_gpu
