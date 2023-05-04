@@ -19,6 +19,7 @@ import unittest
 
 import numpy as np
 import torch
+from packaging import version
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
@@ -584,6 +585,42 @@ class StableDiffusionControlNetPipelineSlowTests(unittest.TestCase):
         image_slice = image[-3:, -3:, -1]
         expected_slice = np.array([0.2724, 0.2846, 0.2724, 0.3843, 0.3682, 0.2736, 0.4675, 0.3862, 0.2887])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_stable_diffusion_compile(self):
+        if version.parse(torch.__version__) < version.parse("2.0"):
+            print(f"Test `test_stable_diffusion_ddim` is skipped because {torch.__version__} is < 2.0")
+            return
+
+        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny")
+
+        pipe = StableDiffusionControlNetPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
+        )
+        pipe.to("cuda")
+        pipe.set_progress_bar_config(disable=None)
+
+        pipe.unet.to(memory_format=torch.channels_last)
+        pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+
+        pipe.controlnet.to(memory_format=torch.channels_last)
+        pipe.controlnet = torch.compile(pipe.controlnet, mode="reduce-overhead", fullgraph=True)
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        prompt = "bird"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
+        )
+
+        output = pipe(prompt, image, generator=generator, output_type="np")
+        image = output.images[0]
+
+        assert image.shape == (768, 512, 3)
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny_out_full.npy"
+        )
+
+        assert np.abs(expected_image - image).max() < 1e-1
 
 
 @slow

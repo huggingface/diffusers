@@ -67,7 +67,7 @@ write_basic_config()
 ```
 ### Cat example 😺
 
-Now let's get our dataset. Download dataset from [here](https://www.cs.cmu.edu/~custom-diffusion/assets/data.zip) and unzip it. 
+Now let's get our dataset. Download dataset from [here](https://www.cs.cmu.edu/~custom-diffusion/assets/data.zip) and unzip it. To use your own dataset, take a look at the [Create a dataset for training](create_dataset) guide.
 
 We also collect 200 real images using `clip-retrieval` which are combined with the target images in the training dataset as a regularization. This prevents overfitting to the the given target image. The following flags enable the regularization `with_prior_preservation`, `real_prior` with `prior_loss_weight=1.`. 
 The `class_prompt` should be the category name same as target image. The collected real images are with text captions similar to the `class_prompt`. The retrieved image are saved in `class_data_dir`. You can disable `real_prior` to use generated images as regularization. To collect the real images use this command first before training. 
@@ -78,6 +78,8 @@ python retrieve.py --class_prompt cat --class_data_dir real_reg/samples_cat --nu
 ```
 
 **___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
+
+The script creates and saves model checkpoints and a `pytorch_custom_diffusion_weights.bin` file in your repository.
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"

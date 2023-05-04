@@ -781,7 +781,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         # `Timesteps` does not contain any weights and will always return f32 tensors
         # but time_embedding might actually be running in fp16. so we need to cast here.
         # there might be better ways to encapsulate this.
-        t_emb = t_emb.to(dtype=self.dtype)
+        t_emb = t_emb.to(dtype=sample.dtype)
 
         emb = self.time_embedding(t_emb, timestep_cond)
 
@@ -796,7 +796,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 # there might be better ways to encapsulate this.
                 class_labels = class_labels.to(dtype=sample.dtype)
 
-            class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
+            class_emb = self.class_embedding(class_labels).to(dtype=sample.dtype)
 
             if self.config.class_embeddings_concat:
                 emb = torch.cat([emb, class_emb], dim=-1)
@@ -839,7 +839,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 down_block_res_samples, down_block_additional_residuals
             ):
                 down_block_res_sample = down_block_res_sample + down_block_additional_residual
-                new_down_block_res_samples += (down_block_res_sample,)
+                new_down_block_res_samples = new_down_block_res_samples + (down_block_res_sample,)
 
             down_block_res_samples = new_down_block_res_samples
 
@@ -1077,13 +1077,13 @@ class DownBlockFlat(nn.Module):
             else:
                 hidden_states = resnet(hidden_states, temb)
 
-            output_states += (hidden_states,)
+            output_states = output_states + (hidden_states,)
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
                 hidden_states = downsampler(hidden_states)
 
-            output_states += (hidden_states,)
+            output_states = output_states + (hidden_states,)
 
         return hidden_states, output_states
 
@@ -1207,15 +1207,16 @@ class CrossAttnDownBlockFlat(nn.Module):
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=cross_attention_kwargs,
-                ).sample
+                    return_dict=False,
+                )[0]
 
-            output_states += (hidden_states,)
+            output_states = output_states + (hidden_states,)
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
                 hidden_states = downsampler(hidden_states)
 
-            output_states += (hidden_states,)
+            output_states = output_states + (hidden_states,)
 
         return hidden_states, output_states
 
@@ -1420,7 +1421,8 @@ class CrossAttnUpBlockFlat(nn.Module):
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=cross_attention_kwargs,
-                ).sample
+                    return_dict=False,
+                )[0]
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -1524,7 +1526,8 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
                 cross_attention_kwargs=cross_attention_kwargs,
-            ).sample
+                return_dict=False,
+            )[0]
             hidden_states = resnet(hidden_states, temb)
 
         return hidden_states
