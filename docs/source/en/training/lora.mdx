@@ -17,8 +17,7 @@ specific language governing permissions and limitations under the License.
 <Tip warning={true}>
 
 Currently, LoRA is only supported for the attention layers of the [`UNet2DConditionalModel`]. We also 
-support LoRA fine-tuning of the text encoder for DreamBooth in a limited capacity. For more details on how we support 
-LoRA fine-tuning of the text encoder, refer to the discussion on [this PR](https://github.com/huggingface/diffusers/pull/2918). 
+support fine-tuning the text encoder for DreamBooth with LoRA in a limited capacity. Fine-tuning the text encoder for DreamBooth generally yields better results, but it can increase compute usage.
 
 </Tip>
 
@@ -52,7 +51,7 @@ Finetuning a model like Stable Diffusion, which has billions of parameters, can 
 
 Let's finetune [`stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) on the [Pokémon BLIP captions](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions) dataset to generate your own Pokémon.
 
-Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`~diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path`] argument. You'll also need to set the `DATASET_NAME` environment variable to the name of the dataset you want to train on.
+Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`pretrained_model_name_or_path`](https://huggingface.co/docs/diffusers/en/api/diffusion_pipeline#diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path) argument. You'll also need to set the `DATASET_NAME` environment variable to the name of the dataset you want to train on. To use your own dataset, take a look at the [Create a dataset for training](create_dataset) guide.
 
 The `OUTPUT_DIR` and `HUB_MODEL_ID` variables are optional and specify where to save the model to on the Hub:
 
@@ -69,7 +68,7 @@ There are some flags to be aware of before you start training:
 * `--report_to=wandb` reports and logs the training results to your Weights & Biases dashboard (as an example, take a look at this [report](https://wandb.ai/pcuenq/text2image-fine-tune/runs/b4k1w0tn?workspace=user-pcuenq)).
 * `--learning_rate=1e-04`, you can afford to use a higher learning rate than you normally would with LoRA.
 
-Now you're ready to launch the training (you can find the full training script [here](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora.py)):
+Now you're ready to launch the training (you can find the full training script [here](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora.py)). Training takes about 5 hours on a 2080 Ti GPU with 11GB of RAM, and it'll create and save model checkpoints and the `pytorch_lora_weights` in your repository.
 
 ```bash
 accelerate launch --mixed_precision="fp16"  train_text_to_image_lora.py \
@@ -159,9 +158,9 @@ pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.
 
 ### Training[[dreambooth-training]]
 
-Let's finetune [`stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) with DreamBooth and LoRA with some 🐶 [dog images](https://drive.google.com/drive/folders/1BO_dyz-p65qhBRRMRA4TbZ8qW4rB99JZ). Download and save these images to a directory.
+Let's finetune [`stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) with DreamBooth and LoRA with some 🐶 [dog images](https://drive.google.com/drive/folders/1BO_dyz-p65qhBRRMRA4TbZ8qW4rB99JZ). Download and save these images to a directory. To use your own dataset, take a look at the [Create a dataset for training](create_dataset) guide.
 
-To start, specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`~diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path`] argument. You'll also need to set `INSTANCE_DIR` to the path of the directory containing the images. 
+To start, specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`pretrained_model_name_or_path`](https://huggingface.co/docs/diffusers/en/api/diffusion_pipeline#diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path) argument. You'll also need to set `INSTANCE_DIR` to the path of the directory containing the images. 
 
 The `OUTPUT_DIR` variables is optional and specifies where to save the model to on the Hub:
 
@@ -177,7 +176,11 @@ There are some flags to be aware of before you start training:
 * `--report_to=wandb` reports and logs the training results to your Weights & Biases dashboard (as an example, take a look at this [report](https://wandb.ai/pcuenq/text2image-fine-tune/runs/b4k1w0tn?workspace=user-pcuenq)).
 * `--learning_rate=1e-04`, you can afford to use a higher learning rate than you normally would with LoRA.
 
-Now you're ready to launch the training (you can find the full training script [here](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth_lora.py)):
+Now you're ready to launch the training (you can find the full training script [here](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth_lora.py)). The script creates and saves model checkpoints and the `pytorch_lora_weights.bin` file in your repository.
+
+It's also possible to additionally fine-tune the text encoder with LoRA. This, in most cases, leads
+to better results with a slight increase in the compute. To allow fine-tuning the text encoder with LoRA,
+specify the `--train_text_encoder` while launching the `train_dreambooth_lora.py` script.
 
 ```bash
 accelerate launch train_dreambooth_lora.py \
@@ -198,12 +201,7 @@ accelerate launch train_dreambooth_lora.py \
   --validation_epochs=50 \
   --seed="0" \
   --push_to_hub
-```
-
-It's also possible to additionally fine-tune the text encoder with LoRA. This, in most cases, leads
-to better results with a slight increase in the compute. To allow fine-tuning the text encoder with LoRA,
-specify the `--train_text_encoder` while launching the `train_dreambooth_lora.py` script. 
-
+``` 
 
 ### Inference[[dreambooth-inference]]
 

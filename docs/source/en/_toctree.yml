@@ -60,6 +60,8 @@
   - sections:
     - local: training/overview
       title: Overview
+    - local: training/create_dataset
+      title: Create a dataset for training
     - local: training/unconditional_training
       title: Unconditional image generation
     - local: training/text_inversion
